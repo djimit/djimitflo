@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Djimit design tokens - Dark mode first */
+    --djimit-bg-primary: 12 12 14;
+    --djimit-bg-secondary: 20 20 23;
+    --djimit-bg-tertiary: 28 28 32;
+    --djimit-bg-elevated: 32 32 36;
+    
+    --djimit-border-default: 45 45 50;
+    --djimit-border-subtle: 35 35 40;
+    --djimit-border-accent: 60 120 255;
+    
+    --djimit-text-primary: 250 250 252;
+    --djimit-text-secondary: 200 200 205;
+    --djimit-text-tertiary: 150 150 160;
+    --djimit-text-muted: 100 100 115;
+    
+    --djimit-accent-primary: 60 120 255;
+    --djimit-accent-secondary: 80 200 255;
+    --djimit-accent-success: 34 197 94;
+    --djimit-accent-warning: 250 204 21;
+    --djimit-accent-danger: 239 68 68;
+    
+    --djimit-status-idle: 100 116 139;
+    --djimit-status-active: 34 197 94;
+    --djimit-status-running: 59 130 246;
+    --djimit-status-paused: 250 204 21;
+    --djimit-status-error: 239 68 68;
+    --djimit-status-completed: 34 197 94;
+    
+    --djimit-risk-low: 34 197 94;
+    --djimit-risk-medium: 250 204 21;
+    --djimit-risk-high: 251 146 60;
+    --djimit-risk-critical: 239 68 68;
+  }
+  
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-[rgb(var(--djimit-bg-primary))] text-[rgb(var(--djimit-text-primary))];
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  code {
+    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+      monospace;
+  }
+}

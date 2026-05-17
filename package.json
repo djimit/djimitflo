@@ -1,0 +1,31 @@
+{
+  "name": "djimitflo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex-native agent orchestration control plane for serious engineering teams",
+  "author": "Dennis Landman",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:server dev:dashboard",
+    "dev:server": "npm run dev --workspace=@djimitflo/server",
+    "dev:dashboard": "npm run dev --workspace=@djimitflo/dashboard",
+    "build": "npm run build --workspaces",
+    "build:server": "npm run build --workspace=@djimitflo/server",
+    "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
+    "test": "npm run test --workspaces",
+    "lint": "npm run lint --workspaces",
+    "type-check": "npm run type-check --workspaces",
+    "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
