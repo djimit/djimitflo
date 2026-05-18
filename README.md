@@ -4,29 +4,33 @@
 
 Djimitflo is a production-grade UX/UI control plane for managing AI agent workflows with OpenCode/Codex. It provides enterprise-grade task management, approval workflows, security policies, and comprehensive audit trails.
 
+> **Inspired by [ruflo](https://github.com/ruvnet/ruflo)** — the open-source codex orchestration CLI by [ruvnet](https://github.com/ruvnet). Djimitflo builds on the ideas pioneered in ruflo, extending them with a full dashboard, governance, and enterprise control plane. Check out [ruflo on GitHub](https://github.com/ruvnet/ruflo) and [Agentics on LinkedIn](https://www.linkedin.com/company/agentics-org/posts/?feedView=all) for the broader vision of agent-native tooling.
+
 ## Features
 
-- **Mission Control Dashboard** - Real-time monitoring of agent tasks and system health
-- **Task Management** - Create, track, and manage agent execution with approval gates
-- **Agent Monitoring** - Track agent status, capabilities, and performance metrics
-- **Security-First** - Default-deny policies, risk assessment, and approval workflows
-- **Audit Trail** - Comprehensive logging of all agent actions and decisions
-- **WebSocket Updates** - Real-time task and execution event streaming
-- **MCP Integration** - Manage Model Context Protocol servers and tools
+- **Mission Control Dashboard** — Real-time monitoring of agent tasks and system health
+- **Task Management** — Create, track, and manage agent execution with approval gates
+- **Agent Monitoring** — Track agent status, capabilities, and performance metrics
+- **Security-First** — Default-deny policies, risk assessment, and approval workflows
+- **Audit Trail** — Comprehensive logging of all agent actions and decisions
+- **WebSocket Updates** — Real-time task and execution event streaming
+- **MCP Integration** — Manage Model Context Protocol servers and tools
+- **Repository Intelligence** — Git-aware scanning, stack detection, health scoring, AGENTS.md governance (Phase 4.4)
+- **Diff Awareness** — Pre/post execution git snapshots, secret redaction, risk-classified file changes (Phase 4.4)
 
 ## Architecture
 
 Djimitflo is a TypeScript monorepo with three packages:
 
-- **`@djimitflo/shared`** - Shared types and schemas (backend + frontend)
-- **`@djimitflo/server`** - Express + SQLite backend with WebSocket support
-- **`@djimitflo/dashboard`** - React + Vite + Tailwind frontend
+- **`@djimitflo/shared`** — Shared types and schemas (backend + frontend)
+- **`@djimitflo/server`** — Express + SQLite backend with WebSocket support
+- **`@djimitflo/dashboard`** — React + Vite + Tailwind frontend
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm 9+
 
 ### Installation
@@ -72,19 +76,20 @@ djimitflo/
 ├── packages/
 │   ├── shared/           # Shared TypeScript types
 │   │   └── src/
-│   │       ├── types/    # Domain types (Task, Agent, MCP, etc.)
+│   │       ├── types/    # Domain types (Task, Agent, MCP, Evidence, etc.)
 │   │       └── index.ts
 │   │
 │   ├── server/           # Backend API server
 │   │   └── src/
 │   │       ├── routes/   # API endpoints
 │   │       ├── database/ # SQLite schema and migrations
-│   │       ├── services/ # WebSocket service
+│   │       ├── services/ # Business logic (execution, evidence, diff capture, etc.)
+│   │       ├── execution/ # Execution engine, executors, risk classification
 │   │       └── middleware/
 │   │
 │   └── dashboard/        # Frontend React app
 │       └── src/
-│           ├── pages/    # Dashboard, Tasks, Agents
+│           ├── pages/    # Dashboard, Tasks, Repositories, Review, etc.
 │           ├── components/
 │           └── styles/   # Tailwind CSS
 │
@@ -96,37 +101,61 @@ djimitflo/
 ## API Endpoints
 
 ### Tasks
-- `GET /api/tasks` - List tasks
-- `GET /api/tasks/:id` - Get task by ID
-- `POST /api/tasks` - Create task
-- `PATCH /api/tasks/:id` - Update task
-- `DELETE /api/tasks/:id` - Delete task
+- `GET /api/tasks` — List tasks
+- `GET /api/tasks/:id` — Get task by ID
+- `POST /api/tasks` — Create task
+- `PATCH /api/tasks/:id` — Update task
+- `POST /api/tasks/:id/execute` — Execute task (with risk assessment and policy gating)
+- `POST /api/tasks/:id/cancel` — Cancel running task
+
+### Repositories (Phase 4.4)
+- `GET /api/repositories` — List repositories
+- `GET /api/repositories/:id` — Get repository details
+- `POST /api/repositories/scan` — Scan a repository path
+- `POST /api/repositories/:id/rescan` — Rescan repository
+- `GET /api/repositories/:id/health` — Health findings and score
+- `GET /api/repositories/:id/agents-md` — AGENTS.md files and issues
+- `POST /api/repositories/:id/agents-md/validate` — Validate AGENTS.md governance
+- `GET /api/repositories/:id/agents-md/effective` — Effective instruction stack
+
+### Diffs (Phase 4.4)
+- `GET /api/tasks/:taskId/diff` — Task diff with file changes and risk levels
+- `GET /api/tasks/:taskId/file-changes` — File changes for a task
+- `GET /api/tasks/:taskId/snapshots` — Pre/post execution git snapshots
+
+### Evidence & Observability
+- `GET /api/evidence/task/:taskId` — Execution evidence chain
+- `GET /api/evidence/summary/:taskId` — Execution summary
+- `GET /api/evidence/review/:taskId` — Full review package (task, summary, evidence, file changes, audit trail)
+- `GET /api/observability/metrics` — System metrics
+- `GET /api/observability/risk-trends` — Risk level trends
+- `GET /api/observability/policy-stats` — Policy decision statistics
+
+### Approvals & Policies
+- `POST /api/approvals/:id/approve` — Approve a request
+- `POST /api/approvals/:id/deny` — Deny a request
+- `POST /api/policies` — Create approval policy
+- `GET /api/policies` — List policies
 
 ### Agents
-- `GET /api/agents` - List agents
-- `GET /api/agents/:id` - Get agent by ID
+- `GET /api/agents` — List agents
+- `GET /api/agents/:id` — Get agent by ID
 
 ### MCP
-- `GET /api/mcp/servers` - List MCP servers
-- `GET /api/mcp/tools` - List MCP tools
+- `GET /api/mcp/servers` — List MCP servers
+- `GET /api/mcp/tools` — List MCP tools
 
 ## Database Schema
 
-Djimitflo uses SQLite with 14 tables:
+Djimitflo uses SQLite with 20+ tables across 4 phases:
 
-- `tasks` - Task execution tracking
-- `agents` - Agent configuration and metrics
-- `execution_events` - Task execution timeline
-- `task_artifacts` - Generated files, diffs, logs
-- `mcp_servers` - MCP server registry
-- `mcp_tools` - MCP tool permissions
-- `sandbox_policies` - Security constraints
-- `approval_policies` - Approval workflow rules
-- `approvals` - Approval requests/decisions
-- `instruction_profiles` - AGENTS.md templates
-- `repositories` - Git repository tracking
-- `audit_events` - Immutable audit log
-- `config` - Application configuration
+**Core**: `tasks`, `agents`, `execution_events`, `task_artifacts`, `mcp_servers`, `mcp_tools`, `repositories`, `audit_events`, `config`
+
+**Phase 4.2 — Policy-aware execution**: `risk_assessments`, `policy_violations`, `approval_policies`, `approvals`
+
+**Phase 4.3 — Evidence & observability**: `execution_evidence`, `execution_summaries`, `file_changes`
+
+**Phase 4.4 — Repository intelligence**: `repository_scans`, `repository_health_findings`, `agents_md_files`, `agents_md_issues`, `task_repository_snapshots`
 
 ## Design System
 
@@ -163,14 +192,24 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Approval request API
 - [x] Risk level indicators
 - [x] Tool call inspection
-- [ ] Audit log viewer (deferred)
-- [ ] Policy management UI (deferred)
+- [x] Audit log viewer
+- [x] Policy management UI
 
-### Phase 4: Integration (Planned)
-- [ ] OpenCode CLI wrapper
-- [ ] AGENTS.md validation
-- [ ] Git repository integration
-- [ ] MCP tool permission management
+### Phase 4: Integration & Governance (✅ COMPLETE)
+- [x] OpenCode CLI executor with real command execution
+- [x] Mock executor for testing
+- [x] Execution engine with event streaming
+- [x] Command risk classification (deterministic LOW/MEDIUM/HIGH/CRITICAL)
+- [x] Policy decision service (priority-based matching)
+- [x] Approval workflow with WebSocket broadcast
+- [x] Evidence model (11 evidence types)
+- [x] Observability API (metrics, risk trends, policy stats)
+- [x] Review API and ReviewPage
+- [x] Audit trail API and AuditPage
+- [x] Repository intelligence (git status, stack detection, health scoring)
+- [x] AGENTS.md governance (discovery, validation, effective instruction stack)
+- [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
+- [x] Diff panel in ReviewPage with expandable diff viewer
 
 ### Phase 5: Production Features (Planned)
 - [ ] Authentication & authorization
@@ -182,20 +221,20 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 ## Technology Stack
 
 ### Backend
-- **Express** - HTTP server
-- **better-sqlite3** - SQLite database
-- **ws** - WebSocket server
-- **TypeScript** - Type safety
-- **Zod** - Runtime validation
+- **Express** — HTTP server
+- **better-sqlite3** — SQLite database
+- **ws** — WebSocket server
+- **TypeScript** — Type safety
+- **Zod** — Runtime validation
 
 ### Frontend
-- **React 18** - UI framework
-- **Vite 6** - Build tool
-- **React Router** - Navigation
-- **Tailwind CSS** - Styling
-- **Radix UI** - Primitives
-- **Lucide React** - Icons
-- **Zustand** - State management
+- **React 18** — UI framework
+- **Vite 6** — Build tool
+- **React Router** — Navigation
+- **Tailwind CSS** — Styling
+- **Radix UI** — Primitives
+- **Lucide React** — Icons
+- **Zustand** — State management
 
 ## Contributing
 
@@ -207,12 +246,12 @@ MIT
 
 ## Author
 
-Dennis Landman  
-DjimIT Consulting  
+Dennis Landman
+DjimIT Consulting
 2026
 
 ---
 
-**Status**: MVP Phase 3 Complete (Security & Policies)  
-**Version**: 0.3.0  
+**Status**: Phase 4.4 Complete (Repository Intelligence, AGENTS.md Governance & Diff Awareness)
+**Version**: 0.4.4
 **Last Updated**: May 2026
