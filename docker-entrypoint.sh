@@ -3,7 +3,7 @@ set -e
 
 echo "========================================="
 echo " Djimitflo Server"
-echo " Version: 0.5.3"
+echo " Version: $(node -e "console.log(require('/app/package.json').version)")"
 echo "========================================="
 echo ""
 

@@ -44,6 +44,9 @@ RUN npm run build --workspace=@djimitflo/dashboard
 # Prune devDependencies for production
 RUN npm prune --production
 
+# Verify runtime-critical dependencies resolve after prune
+RUN node -e "require('better-sqlite3'); require('@djimitflo/shared')"
+
 # --- Stage 3: Production runtime ---
 FROM node:20-bookworm-slim AS runner
 
@@ -73,6 +76,9 @@ COPY --from=builder /app/packages/dashboard/dist ./packages/dashboard/dist
 # Copy root package files for workspace resolution
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/package-lock.json ./package-lock.json
+
+# Verify runtime-critical dependencies in final image
+RUN node -e "require('better-sqlite3'); require('@djimitflo/shared')"
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

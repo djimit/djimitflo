@@ -7,6 +7,7 @@ dist
 .git
 .github
 .env
+.env.docker
 .env.local
 .env.*.local
 coverage
