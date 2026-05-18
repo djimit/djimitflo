@@ -9,6 +9,21 @@ import { Agent } from './agent';
 import { MCPServer, MCPTool } from './mcp';
 import { AuditEvent } from './audit';
 import { ExecutionEvidence } from './evidence';
+import { UserRole } from './auth';
+
+export const WS_CLOSE_CODES = {
+  AUTH_REQUIRED: 4001,
+  AUTH_INVALID: 4002,
+  AUTH_EXPIRED: 4003,
+  FORBIDDEN: 4004,
+} as const;
+
+export interface AuthenticatedClient {
+  userId: string;
+  email: string;
+  role: UserRole;
+  tokenExp: number;
+}
 
 // WebSocket message envelope
 export interface WebSocketMessage<T = unknown> {

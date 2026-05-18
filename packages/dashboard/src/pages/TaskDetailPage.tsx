@@ -14,7 +14,7 @@ export function TaskDetailPage() {
   const navigate = useNavigate();
   const tasks = useStore((state) => state.tasks);
   const agents = useStore((state) => state.agents);
-  const { subscribe } = useWebSocket();
+  const { subscribe } = useWebSocket(true);
   
   const [task, setTask] = useState<Task | null>(null);
   const [executionEvents, setExecutionEvents] = useState<ExecutionEvent[]>([]);

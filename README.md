@@ -333,6 +333,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.5 Complete (Multi-User Ownership Model)
-**Version**: 0.5.5
+**Status**: Phase 5.5.1 Complete (WebSocket Authentication & Event Scoping)
+**Version**: 0.5.6
 **Last Updated**: May 2026

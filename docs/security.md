@@ -41,6 +41,15 @@
 - Background/system actions use `user_id = 'system'`
 - Audit events are immutable — no update or delete operations
 
+## WebSocket Authentication
+
+- WebSocket connections require a valid JWT token delivered via query string (`?token=<JWT>`)
+- Events are scoped server-side by user role and task ownership — the frontend is not the security boundary
+- Invalid, expired, or missing tokens cause the connection to be rejected with close codes 4001/4002/4003
+- Tokens are validated at connection time and rechecked opportunistically during broadcasts
+- Token is never logged or echoed in error messages
+- Use WSS in production to prevent token exposure in proxy logs
+
 ## Security Override
 
 - `SECURITY_OVERRIDE` AuditEventType records when OpenCode permission bypass is enabled
@@ -54,6 +63,9 @@
 4. **No CSRF protection**: API uses Bearer tokens, not cookies, so CSRF is not applicable.
 5. **No password reset**: Users must be recreated or password reset via environment variable.
 6. **No account lockout**: Repeated failed login attempts are not blocked.
+7. **WebSocket query-string token**: Token is passed via query string which may appear in reverse proxy logs. Use WSS in production.
+8. **In-memory WebSocket map**: Socket connections are stored in server memory, not horizontally scalable. Distributed pub/sub (e.g., Redis) is future work.
+9. **No dedicated WS token-expiry timer**: Expired connections are closed opportunistically during broadcast cycles.
 
 ## Recommended Production Configuration
 

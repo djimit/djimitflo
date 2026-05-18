@@ -9,7 +9,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 export function ApprovalQueuePage() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const { subscribe } = useWebSocket();
+  const { subscribe } = useWebSocket(true);
 
   useEffect(() => {
     const load = async () => {

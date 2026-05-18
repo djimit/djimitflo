@@ -146,7 +146,7 @@ export class ExecutionEngine {
         risk_level: assessment.risk_level,
         metadata: { explanation: evaluation.explanation },
       });
-      this.wsService.broadcast({
+      this.wsService.broadcastTaskEvent(this.getTask(taskId), {
         type: WebSocketEventType.EXECUTION_DENIED_BY_POLICY,
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
@@ -182,7 +182,7 @@ export class ExecutionEngine {
         approval_id: approval.id,
         metadata: { assessment, policyId: evaluation.matchingPolicies[0]?.id || null },
       });
-      this.wsService.broadcast({
+      this.wsService.broadcastTaskEventById(parsedTask.id, {
         type: WebSocketEventType.EXECUTION_PAUSED_FOR_APPROVAL,
         payload: { approval },
         timestamp: new Date().toISOString(),
@@ -286,7 +286,7 @@ export class ExecutionEngine {
       level: LogLevel.INFO,
       approval_id: approvalId,
     });
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEventById(approval.task_id, {
       type: WebSocketEventType.EXECUTION_RESUMED_AFTER_APPROVAL,
       payload: { approval },
       timestamp: new Date().toISOString(),
@@ -321,7 +321,7 @@ export class ExecutionEngine {
     this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
     
     // Broadcast cancellation event
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEvent(this.getTask(taskId), {
       type: WebSocketEventType.TASK_CANCELLED,
       payload: { task: this.getTask(taskId) },
       timestamp: new Date().toISOString(),
@@ -398,11 +398,11 @@ export class ExecutionEngine {
    * Broadcast execution event via WebSocket
    */
   private broadcastExecutionEvent(
-    _taskId: string,
+    taskId: string,
     eventId: string,
     event: ExecutionEventCreateInput
   ): void {
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEventById(taskId, {
       type: WebSocketEventType.EXECUTION_EVENT,
       payload: {
         event: {
@@ -449,8 +449,7 @@ export class ExecutionEngine {
         source: 'executor',
       });
       
-      // Broadcast completion
-      this.wsService.broadcast({
+      this.wsService.broadcastTaskEvent(this.getTask(taskId), {
         type: WebSocketEventType.TASK_COMPLETED,
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
@@ -471,8 +470,7 @@ export class ExecutionEngine {
         source: 'executor',
       });
       
-      // Broadcast failure
-      this.wsService.broadcast({
+      this.wsService.broadcastTaskEvent(this.getTask(taskId), {
         type: WebSocketEventType.TASK_FAILED,
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
@@ -502,8 +500,7 @@ export class ExecutionEngine {
       metadata: { error: error.stack },
     });
     
-    // Broadcast failure
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEvent(this.getTask(taskId), {
       type: WebSocketEventType.TASK_FAILED,
       payload: { task: this.getTask(taskId) },
       timestamp: new Date().toISOString(),
@@ -529,8 +526,7 @@ export class ExecutionEngine {
     
     this.db.prepare(`UPDATE tasks SET ${setClauses} WHERE id = ?`).run(...values, taskId);
     
-    // Broadcast status change
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEvent(this.getTask(taskId), {
       type: WebSocketEventType.TASK_UPDATED,
       payload: { task: this.getTask(taskId) },
       timestamp: new Date().toISOString(),
@@ -571,7 +567,7 @@ export class ExecutionEngine {
       now,
       now
     );
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEventById(taskId, {
       type: WebSocketEventType.RISK_DETECTED,
       payload: { assessment, task_id: taskId },
       timestamp: now,

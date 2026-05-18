@@ -156,17 +156,60 @@ ALTER TABLE approvals ADD COLUMN requested_by TEXT;
 - Existing data is not modified — no backfill UPDATE statements
 - The `decided_by` and `approved_by` columns (Phase 4.2) now receive actual user IDs instead of hardcoded `'user'`
 
-## WebSocket Gap
+## WebSocket Authentication & Event Scoping
 
-**Known limitation (not addressed in Phase 5.5):**
+### Connection Authentication
 
-WebSocket connections currently have no authentication. All connected clients receive all broadcast events, which may include sensitive task and execution data. This is a security gap.
+WebSocket connections require a valid JWT token via query string:
 
-Recommended next hardening step: WebSocket authentication and event scoping based on user role and task ownership.
+```
+ws://host/ws?token=<JWT>
+```
+
+- Invalid or missing tokens cause the connection to be rejected with a close code (4001, 4002, or 4003)
+- Token is validated at connection time and rechecked opportunistically during broadcasts
+- Expired tokens detected during broadcast cause the socket to be closed with code 4003
+- Token is never logged or echoed in error messages
+- Reverse proxies may log query strings — use HTTPS/WSS in production
+- **Security boundary is server-side**: event scoping is enforced by the server, not the frontend
+
+### WebSocket Close Codes
+
+| Code | Meaning |
+|------|---------|
+| 4001 | Authentication required — no token provided |
+| 4002 | Invalid token — verification failed or user inactive |
+| 4003 | Token expired — JWT has expired |
+| 4004 | Forbidden — insufficient permissions |
+
+### Event Scoping Rules
+
+| Event Category | Admin | Operator | Viewer |
+|----------------|-------|----------|--------|
+| Task lifecycle events (created, updated, completed, failed, cancelled) | All tasks | Own tasks only | Own tasks (read-only) |
+| Execution events | All tasks | Own tasks only | Own tasks (read-only) |
+| Approval events (requested, granted, denied, paused, resumed) | All tasks | Own tasks only | Own tasks |
+| Risk/policy events (risk detected, policy denied) | All tasks | Own tasks only | Own tasks |
+| System health | All authenticated | All authenticated | All authenticated |
+| Backup/restore events (future) | Admin only | — | — |
+
+### Frontend Behavior
+
+- WebSocket connects only when the user is authenticated
+- WebSocket disconnects on logout
+- On auth-failure close codes (4001/4002/4003), the frontend stops reconnecting
+- A session check (`/auth/me`) is recommended before clearing auth state on WS auth failure
+
+### Known Limitations
+
+- **Query-string token delivery**: Token appears in the WebSocket URL. Reverse proxies may log it. Use WSS in production.
+- **In-memory connection map**: Socket connections are stored in server memory. Not horizontally scalable. Distributed event scoping via Redis pub/sub remains future work.
+- **No dedicated token-expiry timer**: Expired connections are closed opportunistically during broadcast cycles. A timer-based disconnect is not implemented.
+- **Multiple connections per browser session**: Pages that independently call `useWebSocket` create separate connections. The `WebSocketProvider` manages the primary connection.
 
 ## Future Roadmap
 
-- **WebSocket authentication**: Authenticate WebSocket connections and scope events by user role and task ownership
+- **Distributed WebSocket scaling**: Redis pub/sub for horizontal scaling across multiple server processes
 - **Organization/workspace model**: Multi-tenant isolation for teams
 - **Shared/global task visibility**: Configurable sharing model for operator collaboration
 - **Repository ownership**: Per-user repository access controls

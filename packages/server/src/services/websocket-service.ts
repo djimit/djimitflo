@@ -1,25 +1,40 @@
-/**
- * WebSocket service for real-time updates
- */
-
 import { WebSocketServer, WebSocket } from 'ws';
-import { WebSocketMessage, WebSocketEventType } from '@djimitflo/shared';
+import type { Database } from 'better-sqlite3';
+import {
+  WebSocketMessage,
+  WebSocketEventType,
+  WS_CLOSE_CODES,
+  AuthenticatedClient,
+  UserRole,
+} from '@djimitflo/shared';
+import type { AuthService } from './auth-service';
+import { AuthorizationService } from './authorization-service';
+
+type ClientFilter = (client: AuthenticatedClient) => boolean;
 
 export class WebSocketService {
   private wss: WebSocketServer;
-  private clients: Set<WebSocket> = new Set();
-  
-  constructor(wss: WebSocketServer) {
+  private clients: Map<WebSocket, AuthenticatedClient> = new Map();
+  private authService: AuthService;
+  private db: Database;
+
+  constructor(wss: WebSocketServer, authService: AuthService, db: Database) {
     this.wss = wss;
+    this.authService = authService;
+    this.db = db;
     this.setupServer();
   }
-  
+
   private setupServer() {
-    this.wss.on('connection', (ws: WebSocket) => {
+    this.wss.on('connection', (ws: WebSocket, req: any) => {
+      const client = this.authenticateConnection(req);
+      if (!client) {
+        return;
+      }
+
       console.log('🔌 WebSocket client connected');
-      this.clients.add(ws);
-      
-      // Send welcome message
+      this.clients.set(ws, client);
+
       this.send(ws, {
         type: WebSocketEventType.SYSTEM_HEALTH,
         payload: {
@@ -32,44 +47,137 @@ export class WebSocketService {
         },
         timestamp: new Date().toISOString(),
       });
-      
+
       ws.on('close', () => {
-        console.log('🔌 WebSocket client disconnected');
         this.clients.delete(ws);
       });
-      
-      ws.on('error', (error) => {
-        console.error('🔌 WebSocket error:', error);
+
+      ws.on('error', () => {
+        console.error('🔌 WebSocket error');
         this.clients.delete(ws);
       });
     });
   }
-  
-  /**
-   * Send message to a specific client
-   */
+
+  authenticateConnection(req: any): AuthenticatedClient | null {
+    const url = req?.url || '';
+    let token: string | null = null;
+
+    try {
+      const queryString = url.split('?')[1] || '';
+      const params = new URLSearchParams(queryString);
+      token = params.get('token');
+    } catch {
+      token = null;
+    }
+
+    if (!token) {
+      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_REQUIRED);
+      return null;
+    }
+
+    const payload = this.authService.verifyToken(token);
+    if (!payload) {
+      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_INVALID);
+      return null;
+    }
+
+    if (payload.exp && payload.exp < Date.now() / 1000) {
+      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_EXPIRED);
+      return null;
+    }
+
+    const user = this.authService.findUserById(payload.sub);
+    if (!user || !user.isActive) {
+      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_INVALID);
+      return null;
+    }
+
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.role as UserRole,
+      tokenExp: payload.exp || 0,
+    };
+  }
+
+  private rejectPendingConnection(req: any, code: number) {
+    const ws = req?.ws;
+    if (ws && typeof ws.close === 'function') {
+      ws.close(code, 'Authentication failed');
+    }
+  }
+
   send(client: WebSocket, message: WebSocketMessage) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify(message));
     }
   }
-  
-  /**
-   * Broadcast message to all connected clients
-   */
-  broadcast(message: WebSocketMessage) {
+
+  broadcastToAuthenticated(message: WebSocketMessage) {
     const data = JSON.stringify(message);
-    this.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
+    const now = Date.now() / 1000;
+    this.clients.forEach((clientInfo, ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
+          ws.close(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
+          this.clients.delete(ws);
+          return;
+        }
+        ws.send(data);
       }
     });
   }
-  
-  /**
-   * Get number of connected clients
-   */
+
+  broadcastFiltered(message: WebSocketMessage, filterFn: ClientFilter) {
+    const data = JSON.stringify(message);
+    const now = Date.now() / 1000;
+    this.clients.forEach((clientInfo, ws) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
+        ws.close(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
+        this.clients.delete(ws);
+        return;
+      }
+      if (filterFn(clientInfo)) {
+        ws.send(data);
+      }
+    });
+  }
+
+  broadcastTaskEvent(task: any, message: WebSocketMessage) {
+    this.broadcastFiltered(message, (client) => {
+      return AuthorizationService.canReadTask(
+        { sub: client.userId, email: client.email, role: client.role } as any,
+        task
+      );
+    });
+  }
+
+  broadcastTaskEventById(taskId: string, message: WebSocketMessage) {
+    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as any;
+    if (!row) return;
+    const task = {
+      ...row,
+      tags: JSON.parse(row.tags || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+    };
+    this.broadcastTaskEvent(task, message);
+  }
+
+  broadcastToAdmins(message: WebSocketMessage) {
+    this.broadcastFiltered(message, (client) => client.role === UserRole.ADMIN);
+  }
+
+  broadcastToUser(userId: string, message: WebSocketMessage) {
+    this.broadcastFiltered(message, (client) => client.userId === userId);
+  }
+
   getClientCount(): number {
     return this.clients.size;
+  }
+
+  getAuthenticatedClient(ws: WebSocket): AuthenticatedClient | undefined {
+    return this.clients.get(ws);
   }
 }

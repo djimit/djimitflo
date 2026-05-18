@@ -92,7 +92,7 @@ export class ApprovalService {
         actionType: input.assessment.action_type,
       },
     });
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEventById(input.task.id, {
       type: WebSocketEventType.APPROVAL_REQUESTED,
       payload: { approval },
       timestamp: now,
@@ -148,7 +148,7 @@ export class ApprovalService {
       risk_level: updated.risk_level,
       metadata: { reason: reason || null },
     });
-    this.wsService.broadcast({
+    this.wsService.broadcastTaskEventById(updated.task_id, {
       type: approved ? WebSocketEventType.APPROVAL_GRANTED : WebSocketEventType.APPROVAL_DENIED,
       payload: { approval: updated },
       timestamp: now,

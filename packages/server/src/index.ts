@@ -59,8 +59,8 @@ async function main() {
   
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  const wsService = new WebSocketService(wss);
-  console.log('🔌 WebSocket server initialized');
+  const wsService = new WebSocketService(wss, authService, db);
+  console.log('🔌 WebSocket server initialized (authenticated)');
   
   // Create execution engine
   const executionEngine = new ExecutionEngine(db, wsService);
