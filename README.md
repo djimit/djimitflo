@@ -1,10 +1,10 @@
 # Djimitflo
 
-**Codex-native agent orchestration control plane for serious engineering teams**
+**AI agent orchestration control plane for serious engineering teams**
 
-Djimitflo is a production-grade UX/UI control plane for managing AI agent workflows with OpenCode/Codex. It provides enterprise-grade task management, approval workflows, security policies, and comprehensive audit trails.
+Djimitflo is a production-grade UX/UI control plane for managing AI agent workflows with a verified OpenCode executor integration and a Codex-oriented roadmap. It provides enterprise-grade task management, approval workflows, security policies, and comprehensive audit trails.
 
-> **Inspired by [ruflo](https://github.com/ruvnet/ruflo)** — the open-source codex orchestration CLI by [ruvnet](https://github.com/ruvnet). Djimitflo builds on the ideas pioneered in ruflo, extending them with a full dashboard, governance, and enterprise control plane. Check out [ruflo on GitHub](https://github.com/ruvnet/ruflo) and [Agentics on LinkedIn](https://www.linkedin.com/company/agentics-org/posts/?feedView=all) for the broader vision of agent-native tooling.
+> **Inspired by [ruflo](https://github.com/ruvnet/ruflo)** — the open-source agent orchestration framework for Claude Code, by [ruvnet](https://github.com/ruvnet). Djimitflo builds on the ideas pioneered in ruflo, extending them with a full dashboard, governance, and enterprise control plane. Check out [ruflo on GitHub](https://github.com/ruvnet/ruflo) and [Agentics on LinkedIn](https://www.linkedin.com/company/agentics-org/posts/?feedView=all) for the broader vision of agent-native tooling.
 
 ## Features
 
@@ -25,6 +25,23 @@ Djimitflo is a TypeScript monorepo with three packages:
 - **`@djimitflo/shared`** — Shared types and schemas (backend + frontend)
 - **`@djimitflo/server`** — Express + SQLite backend with WebSocket support
 - **`@djimitflo/dashboard`** — React + Vite + Tailwind frontend
+
+## Integration Compatibility
+
+| Integration | Status | Details |
+|-------------|--------|---------|
+| **OpenCode** | Partially verified | CLI flags and JSON output verified against v1.15.4 |
+| **Codex** | Not implemented | Type placeholder exists, no executor implementation |
+| **Ruflo** | Conceptually mapped | No runtime dependency, conceptual inspiration only |
+
+See [docs/integrations.md](docs/integrations.md) for full compatibility details.
+
+## Known Limitations
+
+- OpenCode session continuity (`--continue`, `--session`) not yet supported
+- OpenCode MCP integration during execution not yet supported
+- OpenCode agent selection passed through but not validated against known agents
+- Codex executor requires CLI contract capture before implementation
 
 ## Quick Start
 
@@ -211,7 +228,11 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
 - [x] Diff panel in ReviewPage with expandable diff viewer
 
-### Phase 5: Production Features (Planned)
+### Phase 5: Integration Contract Stabilization & Production (In Progress)
+- [x] OpenCode executor CLI flags corrected (--dir, --format json, --dangerously-skip-permissions, --agent)
+- [x] Structured JSON event parsing with heuristic fallback and evidence warnings
+- [x] Safety guardrail: OPENCODE_SKIP_PERMISSIONS defaults to false, audit event on bypass
+- [x] Compatibility documentation (OpenCode partially verified, Codex not implemented, Ruflo conceptually mapped)
 - [ ] Authentication & authorization
 - [ ] Multi-user support
 - [ ] Backup & restore
@@ -252,6 +273,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 4.4 Complete (Repository Intelligence, AGENTS.md Governance & Diff Awareness)
-**Version**: 0.4.4
+**Status**: Phase 5.1 In Progress (Integration Contract Stabilization)
+**Version**: 0.5.1
 **Last Updated**: May 2026

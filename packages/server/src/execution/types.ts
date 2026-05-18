@@ -118,8 +118,9 @@ export interface ExecutorOptions {
   environment?: Record<string, string>;
   timeout?: number; // milliseconds
   model?: string;
-  temperature?: number;
-  maxTokens?: number;
+  agentKind?: string; // OpenCode agent: build, plan, explore, scout, or custom
+  skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
+  format?: 'json' | 'default'; // output format (default: json for structured parsing)
   approvalCallback?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
 }
 

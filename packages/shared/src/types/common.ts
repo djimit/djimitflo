@@ -139,6 +139,7 @@ export enum AuditEventType {
   SECRET_REDACTED = 'secret.redacted',
   REPOSITORY_HEALTH_FINDING = 'repository.health_finding',
   DIRTY_TREE_EXECUTION = 'execution.dirty_tree',
+  SECURITY_OVERRIDE = 'security.override',
 }
 
 // Base timestamp fields
