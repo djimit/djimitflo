@@ -16,9 +16,16 @@ const MONOREPO_ROOT = process.cwd().includes('/packages/server')
 const DATA_DIR = join(MONOREPO_ROOT, '.data');
 const DB_PATH = process.env.DB_PATH || join(DATA_DIR, 'djimitflo.sqlite');
 
-// Ensure .data directory exists
-if (!existsSync(DATA_DIR)) {
-  mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data directory exists only when using the default path
+if (!process.env.DB_PATH) {
+  if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true });
+  }
+} else {
+  const dbDir = join(DB_PATH, '..');
+  if (!existsSync(dbDir)) {
+    mkdirSync(dbDir, { recursive: true });
+  }
 }
 
 export function initializeDatabase(): Database.Database {
