@@ -23,6 +23,7 @@ import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
+import { DiffCaptureService } from '../services/diff-capture';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -36,22 +37,26 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
+  private diffCaptureService: DiffCaptureService;
   
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
     this.wsService = wsService;
     this.executors = new Map();
     this.activeSessions = new Map();
+    this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
     this.policyDecisionService = new PolicyDecisionService(db);
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
+    this.diffCaptureService = new DiffCaptureService(db);
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -206,6 +211,10 @@ export class ExecutionEngine {
       details: { riskLevel: assessment.risk_level, policyDecision: evaluation.decision, executorKind },
       source: 'system',
     });
+
+    // Capture pre-execution git snapshot if task has a repository
+    const repositoryId = parsedTask.repository_id || task.repository_id;
+    this.capturePreExecutionDiff(taskId, repositoryId);
     
     try {
       // Start execution
@@ -306,6 +315,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
+    this.diffContexts.delete(taskId);
     
     // Update task status
     this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
@@ -416,6 +426,9 @@ export class ExecutionEngine {
   ): void {
     this.activeSessions.delete(taskId);
     
+    // Capture post-execution diff if task has a repository
+    this.capturePostExecutionDiff(taskId);
+
     const completedAt = new Date().toISOString();
     const executionTimeMs = Date.now() - session.startedAt.getTime();
     
@@ -473,6 +486,9 @@ export class ExecutionEngine {
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
     
+    // Capture post-execution diff even on error (changes may have been made)
+    this.capturePostExecutionDiff(taskId);
+
     this.updateTaskStatus(taskId, TaskStatus.FAILED, {
       failed_at: new Date().toISOString(),
     });
@@ -571,5 +587,78 @@ export class ExecutionEngine {
       LIMIT 1
     `).get(taskId) as any;
     return Boolean(approval);
+  }
+
+  private capturePreExecutionDiff(taskId: string, repositoryId: string | null | undefined): void {
+    if (!repositoryId) return;
+
+    const repo = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(repositoryId) as any;
+    if (!repo || !repo.path) return;
+
+    try {
+      const preSnapshot = this.diffCaptureService.capturePreExecutionSnapshot(repo.path, repositoryId, taskId);
+      this.diffContexts.set(taskId, {
+        repositoryId,
+        repositoryPath: repo.path,
+        preSnapshotId: preSnapshot?.id ?? null,
+      });
+
+      this.auditService.record({
+        event_type: AuditEventType.REPOSITORY_SCANNED,
+        action: 'pre_execution_snapshot_captured',
+        resource_type: 'repository',
+        resource_id: repositoryId,
+        task_id: taskId,
+        metadata: { preSnapshotId: preSnapshot?.id ?? null, isClean: preSnapshot?.isClean },
+      });
+    } catch (error) {
+      console.error(`Failed to capture pre-execution snapshot for task ${taskId}:`, error);
+    }
+  }
+
+  private capturePostExecutionDiff(taskId: string): void {
+    const ctx = this.diffContexts.get(taskId);
+    if (!ctx) return;
+
+    this.diffContexts.delete(taskId);
+
+    try {
+      const result = this.diffCaptureService.capturePostExecutionDiff(
+        ctx.repositoryPath,
+        ctx.repositoryId,
+        taskId,
+        ctx.preSnapshotId,
+      );
+
+      if (result.files.length > 0) {
+        this.auditService.record({
+          event_type: AuditEventType.DIFF_CAPTURED,
+          action: 'post_execution_diff_captured',
+          resource_type: 'repository',
+          resource_id: ctx.repositoryId,
+          task_id: taskId,
+          metadata: {
+            filesChanged: result.files.length,
+            totalAdditions: result.summary.totalAdditions,
+            totalDeletions: result.summary.totalDeletions,
+            redactedSecrets: result.summary.redactedSecrets,
+            truncated: result.summary.truncated,
+          },
+        });
+      }
+
+      if (result.summary.redactedSecrets > 0) {
+        this.auditService.record({
+          event_type: AuditEventType.SECRET_REDACTED,
+          action: 'secrets_redacted_in_diff',
+          resource_type: 'task',
+          resource_id: taskId,
+          task_id: taskId,
+          metadata: { count: result.summary.redactedSecrets },
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to capture post-execution diff for task ${taskId}:`, error);
+    }
   }
 }

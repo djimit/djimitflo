@@ -13,6 +13,7 @@ import { createPolicyRoutes } from './policies';
 import { createRiskRoutes } from './risk';
 import { createEvidenceRoutes } from './evidence';
 import { createObservabilityRoutes } from './observability';
+import { createRepositoryRoutes, createDiffRoutes } from './repositories';
 
 export function createRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
   const router = Router();
@@ -20,7 +21,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine): R
   // API version
   router.get('/version', (_req, res) => {
     res.json({
-      version: '0.4.2',
+      version: '0.4.4',
       name: 'Djimitflo API',
     });
   });
@@ -34,6 +35,8 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine): R
   router.use('/risk', createRiskRoutes(db));
   router.use('/evidence', createEvidenceRoutes(db));
   router.use('/observability', createObservabilityRoutes(db));
+  router.use('/repositories', createRepositoryRoutes(db));
+  router.use('/', createDiffRoutes(db));
   
   return router;
 }

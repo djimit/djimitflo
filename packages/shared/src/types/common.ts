@@ -131,6 +131,14 @@ export enum AuditEventType {
   POLICY_CREATED = 'policy.created',
   POLICY_VIOLATION = 'policy.violation',
   MCP_PERMISSION_CHANGED = 'mcp.permission.changed',
+  REPOSITORY_SCANNED = 'repository.scanned',
+  AGENTS_MD_VALIDATED = 'agents_md.validated',
+  AGENTS_MD_EDITED = 'agents_md.edited',
+  DIFF_CAPTURED = 'diff.captured',
+  FILE_CHANGE_DETECTED = 'file_change.detected',
+  SECRET_REDACTED = 'secret.redacted',
+  REPOSITORY_HEALTH_FINDING = 'repository.health_finding',
+  DIRTY_TREE_EXECUTION = 'execution.dirty_tree',
 }
 
 // Base timestamp fields

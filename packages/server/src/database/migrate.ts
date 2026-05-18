@@ -310,12 +310,141 @@ function createPhase43Tables(db: BetterSqlite3Database) {
   `);
 }
 
+function createPhase44Tables(db: BetterSqlite3Database) {
+  const repositoryColumns: ColumnSpec[] = [
+    { name: 'provider', definition: "TEXT NOT NULL DEFAULT 'local'" },
+    { name: 'status', definition: "TEXT NOT NULL DEFAULT 'unknown'" },
+    { name: 'detected_stacks', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'package_manager', definition: "TEXT NOT NULL DEFAULT 'unknown'" },
+    { name: 'test_commands', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'build_commands', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'lint_commands', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'typecheck_commands', definition: "TEXT NOT NULL DEFAULT '[]'" },
+    { name: 'has_git', definition: "INTEGER NOT NULL DEFAULT 0" },
+    { name: 'has_agents_md', definition: "INTEGER NOT NULL DEFAULT 0" },
+    { name: 'health_score', definition: "INTEGER" },
+  ];
+  addMissingColumns(db, 'repositories', repositoryColumns);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS repository_scans (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      is_git_repository INTEGER NOT NULL DEFAULT 0,
+      current_branch TEXT,
+      default_branch TEXT,
+      is_clean INTEGER NOT NULL DEFAULT 1,
+      staged_files INTEGER NOT NULL DEFAULT 0,
+      modified_files INTEGER NOT NULL DEFAULT 0,
+      untracked_files INTEGER NOT NULL DEFAULT 0,
+      head_commit TEXT,
+      head_commit_message TEXT,
+      detected_stacks TEXT NOT NULL DEFAULT '[]',
+      package_manager TEXT NOT NULL DEFAULT 'unknown',
+      test_commands TEXT NOT NULL DEFAULT '[]',
+      build_commands TEXT NOT NULL DEFAULT '[]',
+      lint_commands TEXT NOT NULL DEFAULT '[]',
+      typecheck_commands TEXT NOT NULL DEFAULT '[]',
+      has_type_script INTEGER NOT NULL DEFAULT 0,
+      has_tests INTEGER NOT NULL DEFAULT 0,
+      has_lint INTEGER NOT NULL DEFAULT 0,
+      has_ci INTEGER NOT NULL DEFAULT 0,
+      has_docker INTEGER NOT NULL DEFAULT 0,
+      health_score INTEGER,
+      scan_duration_ms INTEGER,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scans_repository ON repository_scans(repository_id);
+
+    CREATE TABLE IF NOT EXISTS repository_health_findings (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      recommendation TEXT,
+      discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_findings_repository ON repository_health_findings(repository_id);
+    CREATE INDEX IF NOT EXISTS idx_findings_severity ON repository_health_findings(severity);
+
+    CREATE TABLE IF NOT EXISTS agents_md_files (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      path TEXT NOT NULL,
+      relative_path TEXT NOT NULL,
+      applies_to_path TEXT NOT NULL DEFAULT '/',
+      content_hash TEXT NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      content TEXT,
+      discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agentsmd_repository ON agents_md_files(repository_id);
+
+    CREATE TABLE IF NOT EXISTS agents_md_issues (
+      id TEXT PRIMARY KEY,
+      file_id TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      rule_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      recommendation TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (file_id) REFERENCES agents_md_files(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agentsmd_issues_file ON agents_md_issues(file_id);
+
+    CREATE TABLE IF NOT EXISTS task_repository_snapshots (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL,
+      task_id TEXT,
+      snapshot_type TEXT NOT NULL,
+      head_commit TEXT,
+      branch TEXT,
+      is_clean INTEGER NOT NULL DEFAULT 1,
+      staged_files INTEGER NOT NULL DEFAULT 0,
+      modified_files INTEGER NOT NULL DEFAULT 0,
+      untracked_files INTEGER NOT NULL DEFAULT 0,
+      diff_summary TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE,
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_snapshots_repository ON task_repository_snapshots(repository_id);
+    CREATE INDEX IF NOT EXISTS idx_snapshots_task ON task_repository_snapshots(task_id);
+  `);
+
+  const fileChangeColumns: ColumnSpec[] = [
+    { name: 'repository_id', definition: "TEXT" },
+    { name: 'additions', definition: "INTEGER" },
+    { name: 'deletions', definition: "INTEGER" },
+    { name: 'diff_truncated', definition: "INTEGER NOT NULL DEFAULT 0" },
+  ];
+  addMissingColumns(db, 'file_changes', fileChangeColumns);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
   createPhase42Tables(db);
   seedDefaultPolicies(db);
   createPhase43Tables(db);
+  createPhase44Tables(db);
 }
 
 if (require.main === module) {

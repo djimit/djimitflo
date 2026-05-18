@@ -126,8 +126,9 @@ export class EvidenceService {
       INSERT INTO file_changes (
         id, task_id, execution_event_id, file_path, change_type,
         before_hash, after_hash, before_size, after_size, diff,
-        risk_level, detected_at, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        risk_level, detected_at, repository_id, additions, deletions, diff_truncated,
+        metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.task_id,
@@ -141,6 +142,10 @@ export class EvidenceService {
       input.diff || null,
       input.risk_level || RiskLevel.LOW,
       input.detected_at || now,
+      input.repository_id || null,
+      input.additions ?? null,
+      input.deletions ?? null,
+      input.diff_truncated ? 1 : 0,
       JSON.stringify(input.metadata || {}),
       now,
       now
@@ -348,6 +353,10 @@ export class EvidenceService {
   private mapFileChange(row: any): FileChange {
     return {
       ...row,
+      repository_id: row.repository_id ?? null,
+      additions: row.additions ?? null,
+      deletions: row.deletions ?? null,
+      diff_truncated: Boolean(row.diff_truncated),
       metadata: JSON.parse(row.metadata || '{}'),
     };
   }

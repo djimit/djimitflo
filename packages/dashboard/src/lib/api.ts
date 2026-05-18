@@ -21,6 +21,10 @@ import type {
   FileChange,
   ObservabilityMetrics,
   AuditTrailEntry,
+  Repository,
+  RepositoryScanResult,
+  RepositoryHealthFinding,
+  AgentsMdIssue,
 } from '@djimitflo/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
@@ -251,6 +255,54 @@ class ApiClient {
   }> {
     const query = hours ? `?hours=${hours}` : '';
     return this.request(`/observability/execution-activity${query}`);
+  }
+
+  // Repositories
+  async getRepositories(): Promise<{ repositories: Repository[] }> {
+    return this.request('/repositories');
+  }
+
+  async getRepository(id: string): Promise<{ repository: Repository }> {
+    return this.request(`/repositories/${id}`);
+  }
+
+  async scanRepository(path: string): Promise<RepositoryScanResult> {
+    return this.request('/repositories/scan', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+  }
+
+  async rescanRepository(id: string): Promise<RepositoryScanResult> {
+    return this.request(`/repositories/${id}/rescan`, {
+      method: 'POST',
+    });
+  }
+
+  async getRepositoryHealth(id: string): Promise<{ health_score: number | null; findings: RepositoryHealthFinding[] }> {
+    return this.request(`/repositories/${id}/health`);
+  }
+
+  async getRepositoryAgentsMd(id: string): Promise<{ files: any[]; issues: AgentsMdIssue[] }> {
+    return this.request(`/repositories/${id}/agents-md`);
+  }
+
+  async getEffectiveInstructionStack(id: string, path?: string): Promise<any> {
+    const query = path ? `?path=${encodeURIComponent(path)}` : '';
+    return this.request(`/repositories/${id}/agents-md/effective${query}`);
+  }
+
+  async validateAgentsMd(id: string): Promise<{ issues: AgentsMdIssue[]; total: number; critical: number; errors: number; warnings: number }> {
+    return this.request(`/repositories/${id}/agents-md/validate`, { method: 'POST' });
+  }
+
+  // Diffs
+  async getTaskDiff(taskId: string): Promise<{ files: FileChange[]; summary: { totalFiles: number; totalAdditions: number; totalDeletions: number; truncated: boolean; redactedSecrets: number } }> {
+    return this.request(`/tasks/${taskId}/diff`);
+  }
+
+  async getTaskSnapshots(taskId: string): Promise<{ snapshots: any[] }> {
+    return this.request(`/tasks/${taskId}/snapshots`);
   }
 }
 

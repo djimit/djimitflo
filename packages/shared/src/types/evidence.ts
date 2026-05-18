@@ -16,6 +16,12 @@ export enum EvidenceType {
   ARTIFACT = 'artifact',
   ERROR = 'error',
   AUDIT_EVENT = 'audit_event',
+  REPOSITORY_SCAN = 'repository_scan',
+  AGENTS_MD_VALIDATION = 'agents_md_validation',
+  PRE_EXECUTION_GIT_STATUS = 'pre_execution_git_status',
+  POST_EXECUTION_GIT_STATUS = 'post_execution_git_status',
+  DIFF_SUMMARY = 'diff_summary',
+  REPOSITORY_HEALTH_FINDING = 'repository_health_finding',
 }
 
 export enum EvidenceSeverity {
@@ -70,13 +76,17 @@ export interface FileChange extends Timestamps {
   id: ID;
   task_id: ID;
   execution_event_id: ID | null;
+  repository_id: ID | null;
   file_path: string;
-  change_type: 'created' | 'modified' | 'deleted';
+  change_type: 'created' | 'modified' | 'deleted' | 'renamed' | 'unknown';
   before_hash: string | null;
   after_hash: string | null;
   before_size: number | null;
   after_size: number | null;
+  additions: number | null;
+  deletions: number | null;
   diff: string | null;
+  diff_truncated: boolean;
   risk_level: RiskLevel;
   detected_at: string;
   metadata: Record<string, unknown>;
@@ -100,12 +110,16 @@ export interface FileChangeInput {
   task_id: ID;
   execution_event_id?: ID;
   file_path: string;
-  change_type: 'created' | 'modified' | 'deleted';
+  change_type: 'created' | 'modified' | 'deleted' | 'renamed' | 'unknown';
   before_hash?: string;
   after_hash?: string;
   before_size?: number;
   after_size?: number;
+  repository_id?: ID;
+  additions?: number;
+  deletions?: number;
   diff?: string;
+  diff_truncated?: boolean;
   risk_level?: RiskLevel;
   detected_at?: string;
   metadata?: Record<string, unknown>;

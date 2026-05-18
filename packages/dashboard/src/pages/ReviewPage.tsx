@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Clock, Shield, FileText } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Clock, Shield, FileText, GitBranch } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import type { Task, ExecutionSummary, ExecutionEvidence, FileChange, AuditTrailEntry } from '@djimitflo/shared';
 import { api } from '../lib/api';
@@ -62,6 +62,7 @@ export function ReviewPage() {
         <div className="space-y-6">
           <EvidenceSection evidence={evidence} />
           <FileChangesSection changes={fileChanges} />
+          <DiffSection taskId={taskId!} />
         </div>
         <AuditTrailSection trail={auditTrail} />
       </div>
@@ -221,6 +222,105 @@ function AuditTrailSection({ trail }: { trail: AuditTrailEntry[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DiffSection({ taskId }: { taskId: string }) {
+  const [diffData, setDiffData] = useState<{ files: FileChange[]; summary: { totalFiles: number; totalAdditions: number; totalDeletions: number; truncated: boolean; redactedSecrets: number } } | null>(null);
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api.getTaskDiff(taskId).catch(() => ({ files: [], summary: { totalFiles: 0, totalAdditions: 0, totalDeletions: 0, truncated: false, redactedSecrets: 0 } })),
+      api.getTaskSnapshots(taskId).catch(() => ({ snapshots: [] })),
+    ]).then(([diff, snap]) => {
+      setDiffData(diff);
+      setSnapshots(snap.snapshots || []);
+    }).finally(() => setLoading(false));
+  }, [taskId]);
+
+  if (loading) return <div className="bg-background-secondary border border-border rounded-lg p-6 animate-pulse"><div className="h-6 bg-background-elevated rounded w-32 mb-4" /><div className="space-y-2"><div className="h-4 bg-background-elevated rounded" /><div className="h-4 bg-background-elevated rounded w-3/4" /></div></div>;
+
+  if (!diffData || (diffData.files.length === 0 && snapshots.length === 0)) return null;
+
+  const typeIcons: Record<string, string> = { created: '+', modified: '~', deleted: '-', renamed: '»' };
+  const riskColors: Record<string, string> = {
+    critical: 'bg-risk-critical/10 text-risk-critical border-risk-critical/20',
+    high: 'bg-risk-high/10 text-risk-high border-risk-high/20',
+    medium: 'bg-risk-medium/10 text-risk-medium border-risk-medium/20',
+    low: 'bg-risk-low/10 text-risk-low border-risk-low/20',
+  };
+
+  return (
+    <div className="bg-background-secondary border border-border rounded-lg p-6">
+      <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+        <GitBranch className="w-5 h-5" /> Git Diff & Snapshots
+      </h2>
+
+      {snapshots.length > 0 && (
+        <div className="mb-4 space-y-2">
+          <h3 className="text-sm font-medium text-foreground-tertiary">Execution Snapshots</h3>
+          {snapshots.map((s: any) => (
+            <div key={s.id} className="flex items-center gap-3 text-sm border border-border rounded p-2">
+              <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${s.snapshot_type === 'pre_execution' ? 'bg-blue-500/10 text-blue-400' : 'bg-status-completed/10 text-status-completed'}`}>
+                {s.snapshot_type === 'pre_execution' ? 'PRE' : 'POST'}
+              </span>
+              <span className="font-mono text-foreground-tertiary text-xs">{s.branch || 'N/A'}</span>
+              <span className="font-mono text-foreground-tertiary text-xs">{s.head_commit?.slice(0, 8) || 'N/A'}</span>
+              <span className={s.is_clean ? 'text-status-completed' : 'text-status-paused'}>
+                {s.is_clean ? 'clean' : 'dirty'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {diffData.summary.redactedSecrets > 0 && (
+        <div className="mb-4 p-2 rounded border border-risk-critical/20 bg-risk-critical/5 text-sm flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-risk-critical" />
+          <span className="text-risk-critical">{diffData.summary.redactedSecrets} secret(s) redacted from diff</span>
+        </div>
+      )}
+
+      {diffData.files.length > 0 ? (
+        <>
+          <div className="flex gap-4 mb-3 text-sm text-foreground-secondary">
+            <span>{diffData.summary.totalFiles} file(s)</span>
+            <span className="text-status-completed">+{diffData.summary.totalAdditions}</span>
+            <span className="text-status-error">-{diffData.summary.totalDeletions}</span>
+            {diffData.summary.truncated && <span className="text-status-paused">(truncated)</span>}
+          </div>
+          <div className="space-y-1">
+            {diffData.files.map((f) => (
+              <div key={f.id || f.file_path}>
+                <button
+                  className="w-full flex items-center gap-2 text-sm p-2 rounded hover:bg-background-elevated transition-colors"
+                  onClick={() => setExpandedFile(expandedFile === f.file_path ? null : f.file_path)}
+                >
+                  <span className={`font-mono font-bold ${f.change_type === 'created' ? 'text-status-completed' : f.change_type === 'deleted' ? 'text-status-error' : 'text-status-paused'}`}>
+                    {typeIcons[f.change_type] || '?'}
+                  </span>
+                  <span className="font-mono text-foreground flex-1 text-left truncate">{f.file_path}</span>
+                  {(f as any).additions != null && <span className="text-status-completed text-xs">+{(f as any).additions}</span>}
+                  {(f as any).deletions != null && <span className="text-status-error text-xs">-{(f as any).deletions}</span>}
+                  <span className={`text-xs px-1.5 py-0.5 rounded border ${riskColors[f.risk_level] || ''}`}>{f.risk_level}</span>
+                  {(f as any).diff_truncated && <span className="text-xs text-status-paused">truncated</span>}
+                </button>
+                {expandedFile === f.file_path && f.diff && (
+                  <pre className="bg-background-elevated rounded p-3 text-xs font-mono overflow-x-auto max-h-64 mt-1 mb-2 border border-border">
+                    {f.diff.length > 5000 ? f.diff.substring(0, 5000) + '\n... (diff truncated in view)' : f.diff}
+                  </pre>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-foreground-secondary text-sm">No file changes detected.</p>
+      )}
     </div>
   );
 }

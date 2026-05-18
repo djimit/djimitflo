@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit } from 'lucide-react';
 
 export function Layout() {
   const location = useLocation();
@@ -74,6 +74,12 @@ export function Layout() {
             label="Audit Trail"
             active={isActive('/audit')}
           />
+          <NavLink
+            to="/repositories"
+            icon={<FolderGit className="w-5 h-5" />}
+            label="Repositories"
+            active={isActive('/repositories')}
+          />
         </nav>
         
         {/* Footer */}
@@ -85,7 +91,7 @@ export function Layout() {
             active={isActive('/settings')}
           />
           <div className="mt-4 text-xs text-foreground-muted">
-            v0.4.3 • {new Date().getFullYear()}
+            v0.4.4 • {new Date().getFullYear()}
           </div>
         </div>
       </aside>

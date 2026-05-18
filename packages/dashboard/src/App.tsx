@@ -12,6 +12,8 @@ import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { AuditPage } from './pages/AuditPage';
+import { RepositoriesPage } from './pages/RepositoriesPage';
+import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { useStore } from './lib/store';
 import { api } from './lib/api';
 
@@ -54,6 +56,8 @@ export function App() {
               <Route path="observability" element={<ObservabilityPage />} />
               <Route path="tasks/:taskId/review" element={<ReviewPage />} />
               <Route path="audit" element={<AuditPage />} />
+              <Route path="repositories" element={<RepositoriesPage />} />
+              <Route path="repositories/:id" element={<RepositoryDetailPage />} />
               <Route path="agents" element={<AgentsPage />} />
             </Route>
           </Routes>
