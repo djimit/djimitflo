@@ -3,24 +3,51 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { Task, TaskStatus, ExecutionEventCreateInput, WebSocketEventType } from '@djimitflo/shared';
+import {
+  ApprovalRequestType,
+  AuditEventType,
+  ExecutionEventCreateInput,
+  ExecutionEventType,
+  LogLevel,
+  Task,
+  TaskStatus,
+  WebSocketEventType,
+} from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutorKind } from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
+import { CommandRiskClassifier } from '../services/command-risk-classifier';
+import { PolicyDecisionService } from '../services/policy-decision-service';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
+
+export interface ExecuteTaskResult {
+  status: 'started' | 'awaiting_approval' | 'denied';
+  approvalId?: string;
+  reason?: string;
+}
 
 export class ExecutionEngine {
   private db: Database;
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private riskClassifier: CommandRiskClassifier;
+  private policyDecisionService: PolicyDecisionService;
+  private auditService: AuditService;
+  private approvalService: ApprovalService;
   
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
     this.wsService = wsService;
     this.executors = new Map();
     this.activeSessions = new Map();
+    this.riskClassifier = new CommandRiskClassifier();
+    this.policyDecisionService = new PolicyDecisionService(db);
+    this.auditService = new AuditService(db);
+    this.approvalService = new ApprovalService(db, wsService, this.auditService);
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -45,7 +72,7 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<void> {
+  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
     // Check if task is already running
     if (this.activeSessions.has(taskId)) {
       throw new Error('Task is already running');
@@ -63,6 +90,11 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+
+    const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
+    if (latestApproval) {
+      throw new Error('Task is awaiting approval');
+    }
     
     // Get executor
     const executor = this.executors.get(executorKind);
@@ -72,6 +104,72 @@ export class ExecutionEngine {
     
     if (!executor.canExecute(parsedTask)) {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
+    }
+
+    const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
+    const evaluation = this.policyDecisionService.evaluate(assessment);
+    this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
+
+    if (evaluation.decision === 'deny') {
+      this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.ERROR,
+        message: `Execution denied by policy. ${evaluation.explanation}`,
+        level: LogLevel.ERROR,
+        metadata: { assessment, matchingPolicies: evaluation.matchingPolicies.map((policy) => policy.id) },
+      });
+      this.auditService.record({
+        event_type: AuditEventType.EXECUTION_DENIED,
+        action: 'execution_denied_by_policy',
+        resource_type: 'task',
+        resource_id: taskId,
+        task_id: taskId,
+        risk_level: assessment.risk_level,
+        metadata: { explanation: evaluation.explanation },
+      });
+      this.wsService.broadcast({
+        type: WebSocketEventType.EXECUTION_DENIED_BY_POLICY,
+        payload: { task: this.getTask(taskId) },
+        timestamp: new Date().toISOString(),
+      });
+      return { status: 'denied', reason: evaluation.explanation };
+    }
+
+    if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId)) {
+      const approval = this.approvalService.createApproval({
+        task: parsedTask,
+        assessment,
+        requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+        title: 'Approval required before task execution',
+        description: evaluation.explanation,
+        policyId: evaluation.matchingPolicies[0]?.id,
+        metadata: { executorKind },
+      });
+      this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.APPROVAL_REQUESTED,
+        message: evaluation.explanation,
+        level: LogLevel.WARNING,
+        approval_id: approval.id,
+        metadata: { assessment, policyId: evaluation.matchingPolicies[0]?.id || null },
+      });
+      this.wsService.broadcast({
+        type: WebSocketEventType.EXECUTION_PAUSED_FOR_APPROVAL,
+        payload: { approval },
+        timestamp: new Date().toISOString(),
+      });
+      this.auditService.record({
+        event_type: AuditEventType.EXECUTION_PAUSED,
+        action: 'execution_paused_for_approval',
+        resource_type: 'task',
+        resource_id: taskId,
+        task_id: taskId,
+        risk_level: assessment.risk_level,
+        metadata: { approvalId: approval.id },
+      });
+      return { status: 'awaiting_approval', approvalId: approval.id, reason: evaluation.explanation };
     }
     
     // Update task status to queued
@@ -99,13 +197,52 @@ export class ExecutionEngine {
       }).catch((error) => {
         this.handleExecutionError(taskId, error);
       });
-      
+      return { status: 'started' };
     } catch (error) {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
       throw error;
     }
+  }
+
+  async handleApprovalDecision(approvalId: string, approved: boolean, reason?: string): Promise<ExecuteTaskResult | null> {
+    const approval = this.approvalService.decideApproval(approvalId, approved, reason);
+    if (!approved) {
+      this.updateTaskStatus(approval.task_id, TaskStatus.CANCELLED);
+      this.persistEvent({
+        task_id: approval.task_id,
+        event_type: ExecutionEventType.APPROVAL_DENIED,
+        message: reason || 'Approval denied',
+        level: LogLevel.WARNING,
+        approval_id: approvalId,
+      });
+      return { status: 'denied', reason: reason || 'Approval denied' };
+    }
+
+    this.persistEvent({
+      task_id: approval.task_id,
+      event_type: ExecutionEventType.APPROVAL_GRANTED,
+      message: 'Approval granted. Resuming execution.',
+      level: LogLevel.INFO,
+      approval_id: approvalId,
+    });
+    this.wsService.broadcast({
+      type: WebSocketEventType.EXECUTION_RESUMED_AFTER_APPROVAL,
+      payload: { approval },
+      timestamp: new Date().toISOString(),
+    });
+    this.auditService.record({
+      event_type: AuditEventType.EXECUTION_RESUMED,
+      action: 'execution_resumed_after_approval',
+      resource_type: 'task',
+      resource_id: approval.task_id,
+      task_id: approval.task_id,
+      risk_level: approval.risk_level,
+      metadata: { approvalId },
+    });
+    const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
+    return this.executeTask(approval.task_id, executorKind);
   }
   
   /**
@@ -324,5 +461,45 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+  }
+
+  private persistRiskAssessment(taskId: string, assessment: any, subject: string): string {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO risk_assessments (
+        id, task_id, execution_event_id, action_type, subject, risk_level,
+        recommended_decision, matched_rules, explanation, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      taskId,
+      null,
+      assessment.action_type,
+      subject,
+      assessment.risk_level,
+      assessment.recommended_decision,
+      JSON.stringify(assessment.matched_rules),
+      assessment.explanation,
+      JSON.stringify(assessment.metadata || {}),
+      now,
+      now
+    );
+    this.wsService.broadcast({
+      type: WebSocketEventType.RISK_DETECTED,
+      payload: { assessment, task_id: taskId },
+      timestamp: now,
+    });
+    return id;
+  }
+
+  private hasApprovedStart(taskId: string): boolean {
+    const approval = this.db.prepare(`
+      SELECT * FROM approvals
+      WHERE task_id = ? AND status = 'approved'
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `).get(taskId) as any;
+    return Boolean(approval);
   }
 }

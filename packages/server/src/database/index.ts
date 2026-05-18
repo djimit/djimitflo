@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { schema } from './schema';
+import { runMigrations } from './migrate';
 
 // Get the monorepo root (3 levels up from packages/server/src)
 const MONOREPO_ROOT = process.cwd().includes('/packages/server')
@@ -36,6 +37,7 @@ export function initializeDatabase(): Database.Database {
   // Run schema
   console.log('📋 Applying database schema...');
   db.exec(schema);
+  runMigrations(db);
   
   console.log('✅ Database initialized');
   

@@ -1,25 +1,24 @@
 import { useState } from 'react';
-import type { Approval } from '@djimitflo/shared';
+import type { ApprovalRequest } from '@djimitflo/shared';
 import { ApprovalStatus } from '@djimitflo/shared';
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface ApprovalCardProps {
-  approval: Approval;
+  approval: ApprovalRequest;
+  onUpdated?: (approval: ApprovalRequest) => void;
 }
 
-export function ApprovalCard({ approval }: ApprovalCardProps) {
+export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
   const [status, setStatus] = useState(approval.status);
   const [processing, setProcessing] = useState(false);
 
   const handleApprove = async () => {
     setProcessing(true);
     try {
-      await api.approveRequest(approval.id, {
-        approval_id: approval.id,
-        approved: true,
-      });
+      const updated = await api.approveRequestExplicit(approval.id);
       setStatus(ApprovalStatus.APPROVED);
+      onUpdated?.(updated);
     } catch (error) {
       console.error('Failed to approve:', error);
       alert('Failed to approve request');
@@ -34,12 +33,9 @@ export function ApprovalCard({ approval }: ApprovalCardProps) {
 
     setProcessing(true);
     try {
-      await api.approveRequest(approval.id, {
-        approval_id: approval.id,
-        approved: false,
-        reason,
-      });
+      const updated = await api.denyRequestExplicit(approval.id, reason);
       setStatus(ApprovalStatus.DENIED);
+      onUpdated?.(updated);
     } catch (error) {
       console.error('Failed to deny:', error);
       alert('Failed to deny request');

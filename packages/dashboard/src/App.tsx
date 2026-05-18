@@ -6,6 +6,9 @@ import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { AgentsPage } from './pages/AgentsPage';
+import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
+import { PolicyCenterPage } from './pages/PolicyCenterPage';
+import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
 import { useStore } from './lib/store';
 import { api } from './lib/api';
 
@@ -42,6 +45,9 @@ export function App() {
               <Route index element={<DashboardPage />} />
               <Route path="tasks" element={<TasksPage />} />
               <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+              <Route path="approvals" element={<ApprovalQueuePage />} />
+              <Route path="policies" element={<PolicyCenterPage />} />
+              <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
               <Route path="agents" element={<AgentsPage />} />
             </Route>
           </Routes>

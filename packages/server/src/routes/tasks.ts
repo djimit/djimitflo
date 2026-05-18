@@ -81,6 +81,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         title,
         description,
         priority = TaskPriority.MEDIUM,
+        risk_level,
         execution_mode = ExecutionMode.REVIEW_ONLY,
         agent_id = null,
         parent_task_id = null,
@@ -109,7 +110,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         description,
         TaskStatus.PENDING,
         priority,
-        RiskLevel.LOW, // Default, will be calculated
+        risk_level || RiskLevel.LOW,
         execution_mode,
         agent_id,
         parent_task_id,
@@ -265,15 +266,17 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       }
       
       // Start execution (non-blocking)
-      executionEngine.executeTask(id, executor as ExecutorKind).catch((error) => {
-        console.error(`Task execution failed for ${id}:`, error);
-      });
+      const result = await executionEngine.executeTask(id, executor as ExecutorKind);
       
-      // Return immediately with queued status
       res.json({
-        message: 'Task execution started',
+        message: result.status === 'awaiting_approval'
+          ? 'Task is awaiting approval before execution'
+          : result.status === 'denied'
+          ? 'Task execution denied by policy'
+          : 'Task execution started',
         task_id: id,
         executor,
+        ...result,
       });
     } catch (error) {
       next(error);

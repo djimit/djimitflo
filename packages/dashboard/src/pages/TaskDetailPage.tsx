@@ -3,19 +3,22 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
-import type { Task, ExecutionEvent, Approval } from '@djimitflo/shared';
+import { TaskStatus, WebSocketEventType } from '@djimitflo/shared';
+import type { Task, ExecutionEvent, ApprovalRequest, ExecutionEventPayload, ApprovalEventPayload, WebSocketMessage } from '@djimitflo/shared';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { ApprovalCard } from '../components/ApprovalCard';
+import { useWebSocket } from '../hooks/useWebSocket';
 
 export function TaskDetailPage() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const tasks = useStore((state) => state.tasks);
   const agents = useStore((state) => state.agents);
+  const { subscribe } = useWebSocket();
   
   const [task, setTask] = useState<Task | null>(null);
   const [executionEvents, setExecutionEvents] = useState<ExecutionEvent[]>([]);
-  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -50,13 +53,56 @@ export function TaskDetailPage() {
     loadTaskDetails();
   }, [taskId, tasks]);
 
+  useEffect(() => {
+    if (!taskId) {
+      return;
+    }
+
+    const unsubExecution = subscribe(WebSocketEventType.EXECUTION_EVENT, (message: WebSocketMessage) => {
+      const payload = message.payload as ExecutionEventPayload;
+      if (payload.event.task_id !== taskId) {
+        return;
+      }
+      setExecutionEvents((current) => {
+        const next = current.filter((event) => event.id !== payload.event.id);
+        return [payload.event, ...next];
+      });
+    });
+
+    const handleApprovalEvent = (message: WebSocketMessage) => {
+      const payload = message.payload as ApprovalEventPayload;
+      if (payload.approval.task_id !== taskId) {
+        return;
+      }
+      setApprovals((current) => {
+        const next = current.filter((approval) => approval.id !== payload.approval.id);
+        return [payload.approval as ApprovalRequest, ...next];
+      });
+    };
+
+    const unsubRequested = subscribe(WebSocketEventType.APPROVAL_REQUESTED, handleApprovalEvent);
+    const unsubApproved = subscribe(WebSocketEventType.APPROVAL_GRANTED, handleApprovalEvent);
+    const unsubDenied = subscribe(WebSocketEventType.APPROVAL_DENIED, handleApprovalEvent);
+
+    return () => {
+      unsubExecution();
+      unsubRequested();
+      unsubApproved();
+      unsubDenied();
+    };
+  }, [subscribe, taskId]);
+
   const handleExecute = async () => {
     if (!taskId) return;
     
     setExecuting(true);
     try {
-      await api.executeTask(taskId, 'opencode');
-      // Task status will be updated via WebSocket
+      const result = await api.executeTask(taskId, 'opencode');
+      if (result.status === 'awaiting_approval') {
+        setTask((prev) => prev ? { ...prev, status: TaskStatus.AWAITING_APPROVAL } : prev);
+      } else if (result.status === 'denied') {
+        setTask((prev) => prev ? { ...prev, status: TaskStatus.CANCELLED } : prev);
+      }
     } catch (error) {
       console.error('Failed to execute task:', error);
       alert(`Failed to execute task: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -156,6 +202,12 @@ export function TaskDetailPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
+            {task.status === 'awaiting_approval' && (
+              <span className="flex items-center gap-2 px-4 py-2 bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg">
+                <AlertTriangle className="w-4 h-4" />
+                Awaiting Approval
+              </span>
+            )}
             {(task.status === 'pending' || task.status === 'paused' || task.status === 'queued') && (
               <button 
                 onClick={handleExecute}
@@ -268,7 +320,13 @@ export function TaskDetailPage() {
               </h2>
               <div className="space-y-3">
                 {approvals.map((approval) => (
-                  <ApprovalCard key={approval.id} approval={approval} />
+                  <ApprovalCard
+                    key={approval.id}
+                    approval={approval}
+                    onUpdated={(updated) => {
+                      setApprovals((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -306,6 +364,14 @@ function getStatusConfig(status: string) {
     awaiting_approval: {
       icon: <AlertTriangle className="w-5 h-5 text-status-paused" />,
       color: 'bg-status-paused/10 text-status-paused border-status-paused/20',
+    },
+    cancelled: {
+      icon: <XCircle className="w-5 h-5 text-foreground-muted" />,
+      color: 'bg-background-elevated text-foreground-muted border-border',
+    },
+    denied: {
+      icon: <XCircle className="w-5 h-5 text-status-error" />,
+      color: 'bg-status-error/10 text-status-error border-status-error/20',
     },
   };
   return configs[status] || configs.pending;

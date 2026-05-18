@@ -3,6 +3,10 @@
  */
 
 import type {
+  ApprovalRequest,
+  ApprovalPolicy,
+  ExecutionPolicy,
+  RiskAssessment,
   Task,
   TaskCreateInput,
   TaskUpdateInput,
@@ -65,7 +69,7 @@ class ApiClient {
     });
   }
 
-  async executeTask(id: string, executor: 'mock' | 'opencode' = 'opencode'): Promise<{ message: string; task_id: string; executor: string }> {
+  async executeTask(id: string, executor: 'mock' | 'opencode' = 'opencode'): Promise<{ message: string; task_id: string; executor: string; status: string; approvalId?: string; reason?: string }> {
     return this.request(`/tasks/${id}/execute`, {
       method: 'POST',
       body: JSON.stringify({ executor }),
@@ -103,14 +107,80 @@ class ApiClient {
   }
 
   // Approvals
-  async getApprovals(taskId: string): Promise<{ approvals: Approval[] }> {
+  async getApprovals(taskId: string): Promise<{ approvals: ApprovalRequest[] }> {
     return this.request(`/tasks/${taskId}/approvals`);
+  }
+
+  async getAllApprovals(status?: string): Promise<{ approvals: ApprovalRequest[] }> {
+    const query = status ? `?status=${status}` : '';
+    return this.request(`/approvals${query}`);
+  }
+
+  async getApproval(approvalId: string): Promise<ApprovalRequest> {
+    return this.request(`/approvals/${approvalId}`);
   }
 
   async approveRequest(approvalId: string, decision: ApprovalDecision): Promise<Approval> {
     return this.request(`/approvals/${approvalId}`, {
       method: 'PATCH',
       body: JSON.stringify(decision),
+    });
+  }
+
+  async approveRequestExplicit(approvalId: string, reason?: string): Promise<ApprovalRequest> {
+    return this.request(`/approvals/${approvalId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async denyRequestExplicit(approvalId: string, reason: string): Promise<ApprovalRequest> {
+    return this.request(`/approvals/${approvalId}/deny`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async getPolicies(): Promise<{ policies: ExecutionPolicy[] }> {
+    return this.request('/policies');
+  }
+
+  async createPolicy(input: Partial<ApprovalPolicy>): Promise<ExecutionPolicy> {
+    return this.request('/policies', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async updatePolicy(id: string, input: Partial<ApprovalPolicy>): Promise<ExecutionPolicy> {
+    return this.request(`/policies/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async assessCommand(command: string, workspacePath?: string): Promise<{ assessment: RiskAssessment }> {
+    return this.request('/risk/command', {
+      method: 'POST',
+      body: JSON.stringify({ command, workspacePath }),
+    });
+  }
+
+  async assessTask(task: Task, executorKind = 'opencode'): Promise<{ assessment: RiskAssessment }> {
+    return this.request('/risk/task', {
+      method: 'POST',
+      body: JSON.stringify({ task, executorKind }),
+    });
+  }
+
+  async getMCPPermissions(): Promise<{ permissions: Array<Record<string, unknown>> }> {
+    return this.request('/mcp/permissions');
+  }
+
+  async updateMCPPermission(toolId: string, input: Record<string, unknown>): Promise<{ permission: Record<string, unknown> }> {
+    return this.request(`/mcp/permissions/${toolId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
     });
   }
 

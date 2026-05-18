@@ -4,7 +4,7 @@
 
 import { Task } from './task';
 import { ExecutionEvent } from './execution';
-import { Approval } from './policy';
+import { Approval, ExecutionPolicy, RiskAssessment } from './policy';
 import { Agent } from './agent';
 import { MCPServer, MCPTool } from './mcp';
 import { AuditEvent } from './audit';
@@ -35,6 +35,13 @@ export enum WebSocketEventType {
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
   APPROVAL_EXPIRED = 'approval.expired',
+  EXECUTION_PAUSED_FOR_APPROVAL = 'execution.paused_for_approval',
+  EXECUTION_RESUMED_AFTER_APPROVAL = 'execution.resumed_after_approval',
+  EXECUTION_DENIED_BY_POLICY = 'execution.denied_by_policy',
+  RISK_DETECTED = 'risk.detected',
+  POLICY_CREATED = 'policy.created',
+  POLICY_UPDATED = 'policy.updated',
+  POLICY_VIOLATION = 'policy.violation',
   
   // Agent events
   AGENT_CREATED = 'agent.created',
@@ -66,6 +73,16 @@ export interface ExecutionEventPayload {
 
 export interface ApprovalEventPayload {
   approval: Approval;
+}
+
+export interface PolicyEventPayload {
+  policy: ExecutionPolicy;
+}
+
+export interface RiskEventPayload {
+  assessment: RiskAssessment;
+  task_id?: string;
+  event_id?: string;
 }
 
 export interface AgentEventPayload {

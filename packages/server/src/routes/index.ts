@@ -9,6 +9,8 @@ import { createAgentRoutes } from './agents';
 import { createMCPRoutes } from './mcp';
 import { createApprovalRoutes } from './approvals';
 import type { ExecutionEngine } from '../execution/execution-engine';
+import { createPolicyRoutes } from './policies';
+import { createRiskRoutes } from './risk';
 
 export function createRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
   const router = Router();
@@ -16,7 +18,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine): R
   // API version
   router.get('/version', (_req, res) => {
     res.json({
-      version: '0.1.0',
+      version: '0.4.0',
       name: 'Djimitflo API',
     });
   });
@@ -25,7 +27,9 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine): R
   router.use('/tasks', createTaskRoutes(db, executionEngine));
   router.use('/agents', createAgentRoutes(db));
   router.use('/mcp', createMCPRoutes(db));
-  router.use('/approvals', createApprovalRoutes(db));
+  router.use('/approvals', createApprovalRoutes(db, executionEngine));
+  router.use('/policies', createPolicyRoutes(db));
+  router.use('/risk', createRiskRoutes(db));
   
   return router;
 }

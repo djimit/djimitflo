@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap } from 'lucide-react';
 
 export function Layout() {
   const location = useLocation();
@@ -44,6 +44,24 @@ export function Layout() {
             label="Agents"
             active={isActive('/agents')}
           />
+          <NavLink
+            to="/approvals"
+            icon={<CheckSquare className="w-5 h-5" />}
+            label="Approvals"
+            active={isActive('/approvals')}
+          />
+          <NavLink
+            to="/policies"
+            icon={<Shield className="w-5 h-5" />}
+            label="Policies"
+            active={isActive('/policies')}
+          />
+          <NavLink
+            to="/mcp-permissions"
+            icon={<PlugZap className="w-5 h-5" />}
+            label="MCP Permissions"
+            active={isActive('/mcp-permissions')}
+          />
         </nav>
         
         {/* Footer */}
@@ -55,7 +73,7 @@ export function Layout() {
             active={isActive('/settings')}
           />
           <div className="mt-4 text-xs text-foreground-muted">
-            v0.1.0 • {new Date().getFullYear()}
+            v0.4.2 • {new Date().getFullYear()}
           </div>
         </div>
       </aside>

@@ -2,7 +2,7 @@
  * Policy-related types (sandbox and approval policies)
  */
 
-import { ID, Timestamps, ApprovalStatus, RiskLevel } from './common';
+import { ID, Timestamps, ApprovalStatus, RiskLevel, PolicyDecision, ActionType } from './common';
 
 export interface SandboxPolicy extends Timestamps {
   id: ID;
@@ -42,6 +42,13 @@ export interface ApprovalPolicy extends Timestamps {
   description: string;
   enabled: boolean;
   priority: number; // Higher = evaluated first
+  action_type?: ActionType | null;
+  decision?: PolicyDecision;
+  match_pattern?: string | null;
+  protected_paths?: string[];
+  allowed_tools?: string[];
+  blocked_tools?: string[];
+  require_reason?: boolean;
   
   // Conditions
   risk_levels: RiskLevel[];
@@ -64,6 +71,13 @@ export interface Approval extends Timestamps {
   execution_event_id: ID | null;
   status: ApprovalStatus;
   risk_level: RiskLevel;
+  action_type?: ActionType | null;
+  title?: string | null;
+  description?: string | null;
+  command?: string | null;
+  tool_name?: string | null;
+  target_path?: string | null;
+  policy_id?: ID | null;
   
   // Request details
   request_type: ApprovalRequestType;
@@ -75,8 +89,66 @@ export interface Approval extends Timestamps {
   approved_at: string | null;
   denied_at: string | null;
   denial_reason: string | null;
+  decided_at?: string | null;
+  decided_by?: string | null;
+  decision_reason?: string | null;
   expires_at: string | null;
   
+  metadata: Record<string, unknown>;
+}
+
+export interface ExecutionPolicy extends Timestamps {
+  id: ID;
+  name: string;
+  description: string;
+  enabled: boolean;
+  priority: number;
+  action_type: ActionType;
+  risk_level: RiskLevel;
+  risk_levels: RiskLevel[];
+  decision: PolicyDecision;
+  match_pattern: string | null;
+  protected_paths: string[];
+  allowed_tools: string[];
+  blocked_tools: string[];
+  require_reason: boolean;
+  metadata: Record<string, unknown>;
+}
+
+export interface ApprovalRequest extends Timestamps {
+  id: ID;
+  task_id: ID;
+  execution_event_id: ID | null;
+  action_type: ActionType | null;
+  title: string | null;
+  description: string | null;
+  command: string | null;
+  tool_name: string | null;
+  target_path: string | null;
+  risk_level: RiskLevel;
+  status: ApprovalStatus;
+  requested_at: string;
+  decided_at: string | null;
+  decided_by: string | null;
+  decision_reason: string | null;
+  expires_at: string | null;
+  policy_id: ID | null;
+  request_type: ApprovalRequestType;
+  request_message: string;
+  request_data: Record<string, unknown>;
+  approved_by: string | null;
+  approved_at: string | null;
+  denied_at: string | null;
+  denial_reason: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface RiskAssessment {
+  action_type: ActionType;
+  risk_level: RiskLevel;
+  matched_rules: string[];
+  explanation: string;
+  recommended_decision: PolicyDecision;
   metadata: Record<string, unknown>;
 }
 
@@ -116,6 +188,13 @@ export interface ApprovalPolicyCreateInput {
   description: string;
   enabled?: boolean;
   priority?: number;
+  action_type?: ActionType;
+  decision?: PolicyDecision;
+  match_pattern?: string;
+  protected_paths?: string[];
+  allowed_tools?: string[];
+  blocked_tools?: string[];
+  require_reason?: boolean;
   risk_levels?: RiskLevel[];
   tool_patterns?: string[];
   file_patterns?: string[];

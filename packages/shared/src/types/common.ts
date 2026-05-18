@@ -80,7 +80,22 @@ export enum ApprovalStatus {
   APPROVED = 'approved',
   DENIED = 'denied',
   EXPIRED = 'expired',
+  CANCELLED = 'cancelled',
 }
+
+export type PolicyDecision = 'allow' | 'deny' | 'require_approval';
+
+export type ActionType =
+  | 'command'
+  | 'file_read'
+  | 'file_write'
+  | 'file_delete'
+  | 'network_access'
+  | 'mcp_tool_call'
+  | 'process_spawn'
+  | 'git_operation'
+  | 'task_execution'
+  | 'unknown';
 
 // MCP-related enums
 export enum MCPServerStatus {
@@ -105,10 +120,17 @@ export enum AuditEventType {
   MCP_TOOL_CALLED = 'mcp.tool.called',
   POLICY_UPDATED = 'policy.updated',
   CONFIG_CHANGED = 'config.changed',
+  APPROVAL_REQUESTED = 'approval.requested',
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
   FILE_MODIFIED = 'file.modified',
   SHELL_EXECUTED = 'shell.executed',
+  EXECUTION_PAUSED = 'execution.paused',
+  EXECUTION_RESUMED = 'execution.resumed',
+  EXECUTION_DENIED = 'execution.denied',
+  POLICY_CREATED = 'policy.created',
+  POLICY_VIOLATION = 'policy.violation',
+  MCP_PERMISSION_CHANGED = 'mcp.permission.changed',
 }
 
 // Base timestamp fields
