@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle, FileSearch } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import { TaskStatus, WebSocketEventType } from '@djimitflo/shared';
@@ -228,6 +228,13 @@ export function TaskDetailPage() {
                 {cancelling ? 'Cancelling...' : 'Cancel'}
               </button>
             )}
+            <Link
+              to={`/tasks/${taskId}/review`}
+              className="flex items-center gap-2 px-4 py-2 bg-background-elevated text-foreground-secondary border border-border rounded-lg hover:bg-accent/10 hover:text-accent hover:border-accent/20 transition-colors"
+            >
+              <FileSearch className="w-4 h-4" />
+              Review
+            </Link>
           </div>
         </div>
       </div>

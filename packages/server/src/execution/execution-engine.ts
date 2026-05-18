@@ -22,6 +22,8 @@ import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
+import { EvidenceService } from '../services/evidence-service';
+import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
@@ -38,6 +40,7 @@ export class ExecutionEngine {
   private policyDecisionService: PolicyDecisionService;
   private auditService: AuditService;
   private approvalService: ApprovalService;
+  private evidenceService: EvidenceService;
   
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
@@ -48,6 +51,7 @@ export class ExecutionEngine {
     this.policyDecisionService = new PolicyDecisionService(db);
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
+    this.evidenceService = new EvidenceService(db);
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -111,6 +115,15 @@ export class ExecutionEngine {
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
     if (evaluation.decision === 'deny') {
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.POLICY_DECISION,
+        severity: EvidenceSeverity.CRITICAL,
+        title: 'Execution denied by policy',
+        summary: evaluation.explanation,
+        details: { assessment, matchingPolicies: evaluation.matchingPolicies.map((p) => p.id), decision: 'deny' },
+        source: 'policy',
+      });
       this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
       this.persistEvent({
         task_id: taskId,
@@ -137,6 +150,15 @@ export class ExecutionEngine {
     }
 
     if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId)) {
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.RISK_ASSESSMENT,
+        severity: EvidenceSeverity.WARNING,
+        title: 'Execution requires approval',
+        summary: evaluation.explanation,
+        details: { assessment, matchingPolicies: evaluation.matchingPolicies.map((p) => p.id), decision: 'require_approval' },
+        source: 'policy',
+      });
       const approval = this.approvalService.createApproval({
         task: parsedTask,
         assessment,
@@ -174,6 +196,16 @@ export class ExecutionEngine {
     
     // Update task status to queued
     this.updateTaskStatus(taskId, TaskStatus.QUEUED);
+
+    this.evidenceService.captureEvidence({
+      task_id: taskId,
+      evidence_type: EvidenceType.EXECUTION_SUMMARY,
+      severity: EvidenceSeverity.INFO,
+      title: `Task execution started (${evaluation.decision})`,
+      summary: `Risk: ${assessment.risk_level}. Policy decision: ${evaluation.decision}. Executor: ${executorKind}.`,
+      details: { riskLevel: assessment.risk_level, policyDecision: evaluation.decision, executorKind },
+      source: 'system',
+    });
     
     try {
       // Start execution
@@ -209,6 +241,15 @@ export class ExecutionEngine {
   async handleApprovalDecision(approvalId: string, approved: boolean, reason?: string): Promise<ExecuteTaskResult | null> {
     const approval = this.approvalService.decideApproval(approvalId, approved, reason);
     if (!approved) {
+      this.evidenceService.captureEvidence({
+        task_id: approval.task_id,
+        approval_id: approvalId,
+        evidence_type: EvidenceType.APPROVAL_DECISION,
+        severity: EvidenceSeverity.WARNING,
+        title: 'Approval denied',
+        summary: reason || 'Approval denied',
+        source: 'approval',
+      });
       this.updateTaskStatus(approval.task_id, TaskStatus.CANCELLED);
       this.persistEvent({
         task_id: approval.task_id,
@@ -220,6 +261,15 @@ export class ExecutionEngine {
       return { status: 'denied', reason: reason || 'Approval denied' };
     }
 
+    this.evidenceService.captureEvidence({
+      task_id: approval.task_id,
+      approval_id: approvalId,
+      evidence_type: EvidenceType.APPROVAL_DECISION,
+      severity: EvidenceSeverity.INFO,
+      title: 'Approval granted',
+      summary: 'Approval granted. Resuming execution.',
+      source: 'approval',
+    });
     this.persistEvent({
       task_id: approval.task_id,
       event_type: ExecutionEventType.APPROVAL_GRANTED,
@@ -375,6 +425,16 @@ export class ExecutionEngine {
         execution_time_ms: executionTimeMs,
         token_usage: result.metrics?.tokenUsage || null,
       });
+
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.EXECUTION_SUMMARY,
+        severity: EvidenceSeverity.INFO,
+        title: 'Task completed successfully',
+        summary: `Completed in ${executionTimeMs}ms${result.metrics?.tokenUsage ? `, ${result.metrics.tokenUsage} tokens` : ''}.`,
+        details: { durationMs: executionTimeMs, tokenUsage: result.metrics?.tokenUsage },
+        source: 'executor',
+      });
       
       // Broadcast completion
       this.wsService.broadcast({
@@ -386,6 +446,16 @@ export class ExecutionEngine {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: completedAt,
         execution_time_ms: executionTimeMs,
+      });
+
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.ERROR,
+        severity: EvidenceSeverity.ERROR,
+        title: 'Task execution failed',
+        summary: `Failed after ${executionTimeMs}ms.`,
+        details: { durationMs: executionTimeMs },
+        source: 'executor',
       });
       
       // Broadcast failure

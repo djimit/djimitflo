@@ -18,3 +18,4 @@ export * from './repository';
 export * from './instruction';
 export * from './config';
 export * from './websocket';
+export * from './evidence';

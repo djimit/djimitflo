@@ -229,11 +229,93 @@ function seedDefaultPolicies(db: BetterSqlite3Database) {
   }
 }
 
+function createPhase43Tables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS execution_evidence (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      execution_event_id TEXT,
+      approval_id TEXT,
+      evidence_type TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      details TEXT,
+      source TEXT NOT NULL,
+      captured_at TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (execution_event_id) REFERENCES execution_events(id) ON DELETE SET NULL,
+      FOREIGN KEY (approval_id) REFERENCES approvals(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_evidence_task_id ON execution_evidence(task_id);
+    CREATE INDEX IF NOT EXISTS idx_evidence_type ON execution_evidence(evidence_type);
+    CREATE INDEX IF NOT EXISTS idx_evidence_severity ON execution_evidence(severity);
+
+    CREATE TABLE IF NOT EXISTS execution_summaries (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL UNIQUE,
+      executor_kind TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      duration_ms INTEGER,
+      final_status TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      policy_decision TEXT NOT NULL,
+      approval_required INTEGER NOT NULL DEFAULT 0,
+      approval_granted INTEGER,
+      event_count INTEGER DEFAULT 0,
+      error_count INTEGER DEFAULT 0,
+      warning_count INTEGER DEFAULT 0,
+      evidence_count INTEGER DEFAULT 0,
+      tool_call_count INTEGER DEFAULT 0,
+      files_changed TEXT NOT NULL DEFAULT '[]',
+      commands_executed TEXT NOT NULL DEFAULT '[]',
+      artifacts_created TEXT NOT NULL DEFAULT '[]',
+      token_usage INTEGER,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_summary_task_id ON execution_summaries(task_id);
+    CREATE INDEX IF NOT EXISTS idx_summary_status ON execution_summaries(final_status);
+
+    CREATE TABLE IF NOT EXISTS file_changes (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      execution_event_id TEXT,
+      file_path TEXT NOT NULL,
+      change_type TEXT NOT NULL,
+      before_hash TEXT,
+      after_hash TEXT,
+      before_size INTEGER,
+      after_size INTEGER,
+      diff TEXT,
+      risk_level TEXT NOT NULL,
+      detected_at TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+      FOREIGN KEY (execution_event_id) REFERENCES execution_events(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_file_changes_task_id ON file_changes(task_id);
+    CREATE INDEX IF NOT EXISTS idx_file_changes_path ON file_changes(file_path);
+  `);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
   createPhase42Tables(db);
   seedDefaultPolicies(db);
+  createPhase43Tables(db);
 }
 
 if (require.main === module) {

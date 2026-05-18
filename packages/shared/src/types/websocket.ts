@@ -8,6 +8,7 @@ import { Approval, ExecutionPolicy, RiskAssessment } from './policy';
 import { Agent } from './agent';
 import { MCPServer, MCPTool } from './mcp';
 import { AuditEvent } from './audit';
+import { ExecutionEvidence } from './evidence';
 
 // WebSocket message envelope
 export interface WebSocketMessage<T = unknown> {
@@ -56,6 +57,11 @@ export enum WebSocketEventType {
   
   // Audit events
   AUDIT_EVENT = 'audit.event',
+  
+  // Evidence events
+  EVIDENCE_CAPTURED = 'evidence.captured',
+  SUMMARY_GENERATED = 'summary.generated',
+  FILE_CHANGE_DETECTED = 'file_change.detected',
   
   // System events
   SYSTEM_HEALTH = 'system.health',
@@ -115,4 +121,12 @@ export interface SystemErrorPayload {
   error: string;
   stack?: string;
   timestamp: string;
+}
+
+export interface EvidenceEventPayload {
+  evidence: ExecutionEvidence;
+}
+
+export interface SummaryEventPayload {
+  summary: import('./evidence').ExecutionSummary;
 }

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText } from 'lucide-react';
 
 export function Layout() {
   const location = useLocation();
@@ -62,6 +62,18 @@ export function Layout() {
             label="MCP Permissions"
             active={isActive('/mcp-permissions')}
           />
+          <NavLink
+            to="/observability"
+            icon={<BarChart3 className="w-5 h-5" />}
+            label="Observability"
+            active={isActive('/observability')}
+          />
+          <NavLink
+            to="/audit"
+            icon={<ScrollText className="w-5 h-5" />}
+            label="Audit Trail"
+            active={isActive('/audit')}
+          />
         </nav>
         
         {/* Footer */}
@@ -73,7 +85,7 @@ export function Layout() {
             active={isActive('/settings')}
           />
           <div className="mt-4 text-xs text-foreground-muted">
-            v0.4.2 • {new Date().getFullYear()}
+            v0.4.3 • {new Date().getFullYear()}
           </div>
         </div>
       </aside>
