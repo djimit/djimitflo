@@ -5,7 +5,14 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { WebSocketMessage, WebSocketEventType } from '@djimitflo/shared';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
+function getDefaultWsUrl(): string {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3001';
+  return `${protocol}//${host}/ws`;
+}
+
+const WS_URL = getDefaultWsUrl();
 
 type MessageHandler = (message: WebSocketMessage) => void;
 

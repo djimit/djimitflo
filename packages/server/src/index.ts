@@ -7,6 +7,8 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
@@ -17,7 +19,7 @@ import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
 
 const PORT = process.env.PORT || 3001;
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '0.0.0.0';
 
 async function main() {
   console.log('🚀 Starting Djimitflo Server...');
@@ -67,6 +69,30 @@ async function main() {
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth));
   
+  // Serve dashboard static files (Docker/production)
+  const dashboardPath = process.env.DASHBOARD_PATH || join(__dirname, '../../dashboard/dist');
+  if (existsSync(dashboardPath)) {
+    console.log(`🖥️  Serving dashboard from ${dashboardPath}`);
+    app.use(express.static(dashboardPath));
+    
+    // SPA fallback: serve index.html for non-API, non-WebSocket GET requests
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path === '/health') {
+        return next();
+      }
+      const acceptHeader = req.headers.accept || '';
+      if (req.method === 'GET' && acceptHeader.includes('text/html')) {
+        res.sendFile(join(dashboardPath, 'index.html'), (err) => {
+          if (err) next(err);
+        });
+        return;
+      }
+      next();
+    });
+  } else {
+    console.log('📱 Dashboard not found at', dashboardPath, '— running in API-only mode');
+  }
+  
   // Error handler (must be last)
   app.use(errorHandler);
   
@@ -74,7 +100,9 @@ async function main() {
   httpServer.listen(Number(PORT), HOST as string, () => {
     console.log(`✅ Djimitflo Server running on http://${HOST}:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://${HOST}:${PORT}/ws`);
-    console.log(`📊 Dashboard: http://localhost:5173`);
+    if (existsSync(dashboardPath)) {
+      console.log(`📊 Dashboard: http://localhost:${PORT}`);
+    }
   });
   
   // Graceful shutdown

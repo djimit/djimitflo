@@ -87,6 +87,17 @@ npm run dev:dashboard
 - **WebSocket**: ws://localhost:3001/ws
 - **Health Check**: http://localhost:3001/health
 
+### Docker Deployment
+
+See [docs/deployment.md](docs/deployment.md) for full Docker deployment instructions.
+
+```bash
+# Quick start with Docker
+cp .env.docker.example .env.docker
+# Edit .env.docker — set JWT_SECRET and bootstrap admin credentials
+docker compose up -d
+```
+
 ## Project Structure
 
 ```
@@ -234,7 +245,7 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
 - [x] Diff panel in ReviewPage with expandable diff viewer
 
-### Phase 5: Integration Contract Stabilization & Auth (In Progress)
+### Phase 5: Integration Contract Stabilization, Auth & Deployment (In Progress)
 - [x] OpenCode executor CLI flags corrected (--dir, --format json, --dangerously-skip-permissions, --agent)
 - [x] Structured JSON event parsing with heuristic fallback and evidence warnings
 - [x] Safety guardrail: OPENCODE_SKIP_PERMISSIONS defaults to false, audit event on bypass
@@ -244,11 +255,12 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Protected API routes — all operational routes require authentication
 - [x] Audit actor attribution — authenticated user ID recorded in audit/evidence events
 - [x] Frontend login flow, protected routes, role-aware sidebar
-- [ ] Authentication & authorization
+- [x] Docker deployment packaging (Dockerfile, docker-compose, entrypoint, health check)
+- [x] Static serving + SPA fallback with safe Accept-header guard
+- [x] Production-ready defaults (HOST=0.0.0.0, relative API base, dynamic WebSocket URL)
 - [ ] Multi-user support
 - [ ] Backup & restore
 - [ ] Export & reporting
-- [ ] Docker deployment
 
 ## Technology Stack
 
@@ -284,6 +296,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.2 In Progress (Authentication & Authorization)
-**Version**: 0.5.2
+**Status**: Phase 5.3 Complete (Docker Deployment)
+**Version**: 0.5.3
 **Last Updated**: May 2026
