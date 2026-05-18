@@ -12,8 +12,8 @@ FROM node:20-bookworm AS deps
 
 WORKDIR /app
 
-# Copy package manifests
-COPY package.json package-lock.json ./
+# Copy package manifests and root config
+COPY package.json package-lock.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/dashboard/package.json packages/dashboard/
