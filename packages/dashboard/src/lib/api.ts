@@ -65,6 +65,19 @@ class ApiClient {
     });
   }
 
+  async executeTask(id: string, executor: 'mock' | 'opencode' = 'opencode'): Promise<{ message: string; task_id: string; executor: string }> {
+    return this.request(`/tasks/${id}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ executor }),
+    });
+  }
+
+  async cancelTask(id: string): Promise<{ message: string; task_id: string }> {
+    return this.request(`/tasks/${id}/cancel`, {
+      method: 'POST',
+    });
+  }
+
   // Agents
   async getAgents(): Promise<{ agents: Agent[] }> {
     return this.request('/agents');

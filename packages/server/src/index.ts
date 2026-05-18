@@ -12,6 +12,7 @@ import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
+import { ExecutionEngine } from './execution/execution-engine';
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || 'localhost';
@@ -43,20 +44,23 @@ async function main() {
     });
   });
   
-  // API routes
-  app.use('/api', createRoutes(db));
-  
-  // Error handler (must be last)
-  app.use(errorHandler);
-  
-  // Create HTTP server
+  // Create HTTP server (needed for WebSocket)
   const httpServer = createServer(app);
   
   // Create WebSocket server
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  new WebSocketService(wss);
-  
+  const wsService = new WebSocketService(wss);
   console.log('🔌 WebSocket server initialized');
+  
+  // Create execution engine
+  const executionEngine = new ExecutionEngine(db, wsService);
+  console.log('⚙️  Execution engine initialized');
+  
+  // API routes
+  app.use('/api', createRoutes(db, executionEngine));
+  
+  // Error handler (must be last)
+  app.use(errorHandler);
   
   // Start server
   httpServer.listen(PORT, () => {

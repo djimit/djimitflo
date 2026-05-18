@@ -8,8 +8,9 @@ import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
 import { createMCPRoutes } from './mcp';
 import { createApprovalRoutes } from './approvals';
+import type { ExecutionEngine } from '../execution/execution-engine';
 
-export function createRoutes(db: Database): Router {
+export function createRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
   const router = Router();
   
   // API version
@@ -21,7 +22,7 @@ export function createRoutes(db: Database): Router {
   });
   
   // Mount route modules
-  router.use('/tasks', createTaskRoutes(db));
+  router.use('/tasks', createTaskRoutes(db, executionEngine));
   router.use('/agents', createAgentRoutes(db));
   router.use('/mcp', createMCPRoutes(db));
   router.use('/approvals', createApprovalRoutes(db));

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Pause, XCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import type { Task, ExecutionEvent, Approval } from '@djimitflo/shared';
@@ -17,6 +17,8 @@ export function TaskDetailPage() {
   const [executionEvents, setExecutionEvents] = useState<ExecutionEvent[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
+  const [executing, setExecuting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (!taskId) return;
@@ -47,6 +49,40 @@ export function TaskDetailPage() {
 
     loadTaskDetails();
   }, [taskId, tasks]);
+
+  const handleExecute = async () => {
+    if (!taskId) return;
+    
+    setExecuting(true);
+    try {
+      await api.executeTask(taskId, 'opencode');
+      // Task status will be updated via WebSocket
+    } catch (error) {
+      console.error('Failed to execute task:', error);
+      alert(`Failed to execute task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!taskId) return;
+    
+    if (!confirm('Are you sure you want to cancel this task?')) {
+      return;
+    }
+    
+    setCancelling(true);
+    try {
+      await api.cancelTask(taskId);
+      // Task status will be updated via WebSocket
+    } catch (error) {
+      console.error('Failed to cancel task:', error);
+      alert(`Failed to cancel task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -120,22 +156,24 @@ export function TaskDetailPage() {
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            {task.status === 'running' && (
-              <button className="flex items-center gap-2 px-4 py-2 bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg hover:bg-status-paused/20 transition-colors">
-                <Pause className="w-4 h-4" />
-                Pause
-              </button>
-            )}
-            {(task.status === 'pending' || task.status === 'paused') && (
-              <button className="flex items-center gap-2 px-4 py-2 bg-status-running/10 text-status-running border border-status-running/20 rounded-lg hover:bg-status-running/20 transition-colors">
+            {(task.status === 'pending' || task.status === 'paused' || task.status === 'queued') && (
+              <button 
+                onClick={handleExecute}
+                disabled={executing}
+                className="flex items-center gap-2 px-4 py-2 bg-status-running/10 text-status-running border border-status-running/20 rounded-lg hover:bg-status-running/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Play className="w-4 h-4" />
-                Start
+                {executing ? 'Starting...' : 'Execute'}
               </button>
             )}
-            {task.status === 'running' && (
-              <button className="flex items-center gap-2 px-4 py-2 bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20 transition-colors">
+            {(task.status === 'running' || task.status === 'queued') && (
+              <button 
+                onClick={handleCancel}
+                disabled={cancelling}
+                className="flex items-center gap-2 px-4 py-2 bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <XCircle className="w-4 h-4" />
-                Cancel
+                {cancelling ? 'Cancelling...' : 'Cancel'}
               </button>
             )}
           </div>

@@ -7,8 +7,10 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
+import type { ExecutionEngine } from '../execution/execution-engine';
+import type { ExecutorKind } from '../execution/types';
 
-export function createTaskRoutes(db: Database): Router {
+export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
   const router = Router();
   
   // GET /api/tasks - List all tasks
@@ -236,6 +238,69 @@ export function createTaskRoutes(db: Database): Router {
       }));
       
       res.json({ approvals: parsed });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/tasks/:id/execute - Execute a task
+  router.post('/:id/execute', async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { executor = 'opencode' } = req.body; // Default to opencode executor
+      
+      if (!executionEngine) {
+        throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
+      }
+      
+      // Check if task exists
+      const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+      if (!task) {
+        throw createError(404, 'Task not found', 'TASK_NOT_FOUND');
+      }
+      
+      // Check if task is already running
+      if (executionEngine.isTaskRunning(id)) {
+        throw createError(409, 'Task is already running', 'TASK_RUNNING');
+      }
+      
+      // Start execution (non-blocking)
+      executionEngine.executeTask(id, executor as ExecutorKind).catch((error) => {
+        console.error(`Task execution failed for ${id}:`, error);
+      });
+      
+      // Return immediately with queued status
+      res.json({
+        message: 'Task execution started',
+        task_id: id,
+        executor,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/tasks/:id/cancel - Cancel a running task
+  router.post('/:id/cancel', async (req, res, next) => {
+    try {
+      const { id } = req.params;
+      
+      if (!executionEngine) {
+        throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
+      }
+      
+      // Check if task is running
+      if (!executionEngine.isTaskRunning(id)) {
+        throw createError(409, 'Task is not running', 'TASK_NOT_RUNNING');
+      }
+      
+      // Cancel execution
+      await executionEngine.cancelTask(id);
+      
+      res.json({
+        message: 'Task cancelled',
+        task_id: id,
+      });
     } catch (error) {
       next(error);
     }
