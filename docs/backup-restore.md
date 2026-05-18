@@ -23,7 +23,7 @@ Each backup is a `.tar.gz` archive containing:
 ```json
 {
   "backupVersion": "1.0",
-  "appVersion": "0.5.5",
+  "appVersion": "0.5.8",
   "createdAt": "2026-05-18T19:33:59.000Z",
   "databasePath": "/data/djimitflo.sqlite",
   "tableCounts": { "tasks": 5, "agents": 2, ... },
@@ -215,9 +215,15 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 # 4. Restart the server
 docker compose restart djimitflo
 
-# 5. Verify the restore completed
+# 5. Verify the restore completed (task-scoped audit trail)
 curl -H "Authorization: Bearer $TOKEN" \
-  https://your-server/api/audit-events?event_type=restore_completed
+  "https://your-server/api/evidence/audit-trail/:taskId"
+
+# Or verify via admin audit export
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"format":"json","includeAudit":true,"dateFrom":"2026-01-01T00:00:00Z"}' \
+  https://your-server/api/exports/audit
 ```
 
 ### Manual Recovery (Emergency)

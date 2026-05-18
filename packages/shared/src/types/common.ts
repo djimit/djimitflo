@@ -147,6 +147,10 @@ export enum AuditEventType {
   BACKUP_RESTORE_COMPLETED = 'backup.restore_completed',
   BACKUP_RESTORE_FAILED = 'backup.restore_failed',
   BACKUP_PRE_RESTORE_CREATED = 'backup.pre_restore_created',
+  EXPORT_CREATED = 'export.created',
+  EXPORT_DENIED = 'export.denied',
+  AUTH_LOGIN = 'auth.login',
+  AUTH_LOGOUT = 'auth.logout',
 }
 
 // Base timestamp fields

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Clock, Shield, FileText, GitBranch } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { ArrowLeft, CheckCircle, XCircle, AlertTriangle, Clock, Shield, FileText, GitBranch, Download } from 'lucide-react';
 import { useParams, Link } from 'react-router-dom';
 import type { Task, ExecutionSummary, ExecutionEvidence, FileChange, AuditTrailEntry } from '@djimitflo/shared';
+import { ExportFormat } from '@djimitflo/shared';
 import { api } from '../lib/api';
 
 export function ReviewPage() {
@@ -23,6 +24,20 @@ export function ReviewPage() {
       setAuditTrail(data.audit_trail);
     }).finally(() => setLoading(false));
   }, [taskId]);
+
+  const [exporting, setExporting] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (loading) {
     return (
@@ -53,6 +68,38 @@ export function ReviewPage() {
         <div className="flex-1">
           <h1 className="text-3xl font-bold text-foreground">Execution Review</h1>
           <p className="text-foreground-secondary mt-1">{task.title} &middot; {task.id.slice(0, 8)}</p>
+        </div>
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            disabled={!!exporting}
+            className="flex items-center gap-2 px-3 py-2 bg-background-elevated border border-border rounded-lg hover:bg-background-tertiary transition-colors text-sm font-medium text-foreground disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? `Exporting ${exporting}...` : 'Export'}
+          </button>
+          {showExportMenu && (
+            <div className="absolute right-0 mt-1 bg-background-elevated border border-border rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+              {[
+                { format: ExportFormat.JSON, label: 'JSON' },
+                { format: ExportFormat.CSV, label: 'CSV' },
+                { format: ExportFormat.MARKDOWN, label: 'Markdown' },
+              ].map(({ format, label }) => (
+                <button
+                  key={format}
+                  onClick={() => {
+                    setShowExportMenu(false);
+                    setExporting(label);
+                    api.exportTask(taskId!, format).finally(() => setExporting(null));
+                  }}
+                  disabled={!!exporting}
+                  className="w-full text-left px-4 py-2 text-sm hover:bg-background-secondary disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

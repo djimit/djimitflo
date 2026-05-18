@@ -1,10 +1,10 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-let _version: string = '0.5.6';
+let _version: string = '0.5.8';
 
 export function getAppVersion(): string {
-  if (_version !== '0.5.6') return _version;
+  if (_version !== '0.5.8') return _version;
   try {
     const pkgPath = join(__dirname, '../../package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));

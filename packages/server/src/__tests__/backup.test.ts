@@ -43,7 +43,7 @@ describe('BackupService', () => {
 
       expect(result.filename).toMatch(/^backup-\d{8}-\d{6}\.tar\.gz$/);
       expect(result.manifest.backupVersion).toBe('1.0');
-      expect(result.manifest.appVersion).toBe('0.5.6');
+      expect(result.manifest.appVersion).toBe('0.5.8');
       expect(result.manifest.tableCounts).toBeDefined();
       expect(result.manifest.databaseSha256).toBeDefined();
       expect(result.manifest.warnings).toContain('This backup contains password hashes and governance evidence. Treat as confidential.');
@@ -98,7 +98,7 @@ describe('BackupService', () => {
 
       expect(metadata).not.toBeNull();
       expect(metadata!.filename).toBe(result.filename);
-      expect(metadata!.manifest.appVersion).toBe('0.5.6');
+      expect(metadata!.manifest.appVersion).toBe('0.5.8');
     });
 
     it('returns null for nonexistent backup', () => {

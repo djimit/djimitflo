@@ -48,7 +48,7 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // GET /api/mcp/tools - List all MCP tools
-  router.get('/tools', requireAuth, (req, res, next) => {
+  router.get('/tools', requireAuth, requirePermission('read:repository'), (req, res, next) => {
     try {
       const { server_id } = req.query;
 
@@ -76,7 +76,7 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.get('/permissions', requireAuth, (_req, res, next) => {
+  router.get('/permissions', requireAuth, requirePermission('read:repository'), (_req, res, next) => {
     try {
       const permissions = db.prepare(`
         SELECT p.*, t.name as tool_name, t.server_id, t.description as tool_description

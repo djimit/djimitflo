@@ -154,11 +154,12 @@ djimitflo/
 - `GET /api/repositories/:id/agents-md` — AGENTS.md files and issues
 - `POST /api/repositories/:id/agents-md/validate` — Validate AGENTS.md governance
 - `GET /api/repositories/:id/agents-md/effective` — Effective instruction stack
+- `GET /api/repositories/:id/file-changes` — Repository file changes (admin only)
 
 ### Diffs (Phase 4.4)
-- `GET /api/diff/tasks/:taskId/diff` — Task diff with file changes and risk levels
-- `GET /api/diff/tasks/:taskId/file-changes` — File changes for a task
-- `GET /api/diff/tasks/:taskId/snapshots` — Pre/post execution git snapshots
+- `GET /api/tasks/:taskId/diff` — Task diff with file changes and risk levels
+- `GET /api/tasks/:taskId/file-changes` — File changes for a task
+- `GET /api/tasks/:taskId/snapshots` — Pre/post execution git snapshots
 
 ### Evidence & Observability
 - `GET /api/evidence/task/:taskId` — Execution evidence chain
@@ -205,6 +206,17 @@ djimitflo/
 - `GET /api/backups/:filename/download` — Download backup archive
 - `POST /api/backups/:filename/validate` — Validate backup integrity
 - `POST /api/backups/:filename/restore` — Stage backup for restore (requires restart)
+
+### Exports (Phase 5.6)
+- `POST /api/exports/task/:taskId` — Export task governance evidence pack (JSON/CSV/Markdown)
+- `POST /api/exports/evidence/:taskId` — Export evidence for a task
+- `POST /api/exports/audit` — Export global audit events (admin only)
+- `POST /api/exports/repository/:repositoryId` — Export repository metadata
+- `POST /api/exports/report/summary` — Export operational summary (admin only)
+
+### Version & Health (public)
+- `GET /api/version` — API version info
+- `GET /health` — Health check
 
 ## Database Schema
 
@@ -274,7 +286,7 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
 - [x] Diff panel in ReviewPage with expandable diff viewer
 
-### Phase 5: Integration Contract Stabilization, Auth & Deployment (In Progress)
+### Phase 5: Integration Contract Stabilization, Auth & Deployment (✅ COMPLETE)
 - [x] OpenCode executor CLI flags corrected (--dir, --format json, --dangerously-skip-permissions, --agent)
 - [x] Structured JSON event parsing with heuristic fallback and evidence warnings
 - [x] Safety guardrail: OPENCODE_SKIP_PERMISSIONS defaults to false, audit event on bypass
@@ -297,7 +309,7 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] MCP server secret redaction (env, command, args, url) for non-admin users
 - [x] Legacy NULL-owned tasks visible to admin only
 - [x] Backup & restore
-- [ ] Export & reporting
+- [x] Export & reporting
 
 ## Technology Stack
 
@@ -333,6 +345,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.5.1 Complete (WebSocket Authentication & Event Scoping)
-**Version**: 0.5.6
+**Status**: Phase 5.7 Complete (Production Readiness Hardening)
+**Version**: 0.5.8
 **Last Updated**: May 2026

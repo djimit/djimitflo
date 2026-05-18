@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/shared",
-  "version": "0.5.6",
+  "version": "0.5.8",
   "private": true,
   "description": "Shared types and utilities for Djimitflo",
   "main": "./dist/index.js",

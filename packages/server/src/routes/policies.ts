@@ -23,9 +23,10 @@ function parsePolicy(row: any) {
 
 export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
-  router.get('/', (_req, res, next) => {
+  router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
       const policies = db.prepare('SELECT * FROM approval_policies ORDER BY priority DESC, created_at DESC').all();
       res.json({ policies: (policies as any[]).map(parsePolicy) });
@@ -34,7 +35,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
     }
   });
 
-  router.get('/:id', (req, res, next) => {
+  router.get('/:id', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
     try {
       const policy = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
       if (!policy) {

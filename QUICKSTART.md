@@ -36,8 +36,13 @@ export JWT_SECRET=your-jwt-secret-key
 Or copy the example env file:
 
 ```bash
-cp .env.example .env
-# Edit .env with your credentials
+# For local development:
+cp packages/server/.env.example packages/server/.env
+# Edit packages/server/.env with your credentials
+
+# For Docker deployment:
+cp .env.docker.example .env.docker
+# Edit .env.docker — set JWT_SECRET and bootstrap credentials
 ```
 
 ### 3. Start the Server
@@ -166,6 +171,7 @@ npm run dev  # Server will re-initialize and bootstrap admin
 - [docs/security.md](docs/security.md) — Security hardening notes
 - [docs/deployment.md](docs/deployment.md) — Docker deployment
 - [docs/backup-restore.md](docs/backup-restore.md) — Backup and restore
+- [docs/export-reporting.md](docs/export-reporting.md) — Export and reporting
 - [PHASE5_SUMMARY.md](PHASE5_SUMMARY.md) — Phase 5 changelog
 
 ---

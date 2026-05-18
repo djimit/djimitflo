@@ -1,5 +1,7 @@
 # Djimitflo - Phase 3 Completion Summary
 
+> **HISTORICAL SNAPSHOT** — Written for v0.3.0. Current version is v0.5.8. Some statements may be outdated.
+
 ## Status: ✅ COMPLETE
 
 **Completion Date**: May 18, 2026  

@@ -1,9 +1,12 @@
 # Djimitflo - Phase 5 Summary
 
-## Status: ✅ COMPLETE (5.1–5.5)
+> **HISTORICAL SNAPSHOT** — Written for v0.5.5. Current version is v0.5.8. Some statements may be outdated. See README.md for current status.
 
-**Version**: 0.5.5  
-**Build Status**: All packages building, 141 tests passing  
+## Status: ✅ COMPLETE (5.1–5.6)
+
+**Version**: 0.5.5 (at time of writing)  
+**Current Version**: 0.5.8  
+**Build Status**: All packages building, tests passing  
 **Last Updated**: May 2026
 
 ---
@@ -160,11 +163,11 @@ Phase 5 transformed Djimitflo from a single-user development tool into a product
 
 ## Known Limitations
 
-- **WebSocket authentication**: Connections have no auth; all clients receive all events (security gap)
+- **WebSocket authentication**: Implemented in Phase 5.5.1 — connections require JWT token via query string, expired tokens are disconnected, broadcasts are ownership-scoped
 - **No refresh tokens**: Users must re-authenticate after JWT expiry
 - **No password reset**: Not yet implemented
 - **No user management UI**: Admin creation via environment variables only
-- **No export/reporting**: Phase 5 incomplete item, deferred
+- **Export & reporting**: Implemented in Phase 5.6 — 5 export endpoints with JSON/CSV/Markdown formats, redaction, and audit logging
 - **Legacy NULL-owned tasks**: Admin-only visibility; operator/viewers cannot access pre-5.5 tasks without ownership
 
 ---
@@ -190,9 +193,10 @@ Phase 5 transformed Djimitflo from a single-user development tool into a product
 - `docs/deployment.md` — Docker deployment
 - `docs/security.md` — Security hardening notes
 - `docs/integrations.md` — OpenCode/Codex/Ruflo compatibility
-- `README.md` — Phase 5.5 status, version 0.5.5
+- `README.md` — Current project status and version
 
 ---
 
-**Status**: Phase 5 Complete ✅  
-**Next**: Export & reporting, WebSocket auth, user management UI
+**Status**: Phase 5 Complete ✅ (see historical note at top — this document was written for v0.5.5)  
+**Completed since**: Phase 5.5.1 (WebSocket Auth), Phase 5.6 (Export & Reporting), Phase 5.7 (Production Readiness)  
+**Remaining**: No user management UI, no refresh tokens

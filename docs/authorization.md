@@ -99,6 +99,37 @@ MCP server secrets (environment variables containing API keys, tokens) are fully
 
 Backup endpoints remain **admin-only** (`manage:backups` permission). No changes from Phase 5.4.
 
+### Policy Reads
+
+Policy read endpoints (`GET /api/policies`, `GET /api/policies/:id`) require `read:evidence` permission. All roles (admin, operator, viewer) have this permission, so policy configuration is visible to all authenticated users. Mutations (create, update, delete) require `manage:config` (admin-only).
+
+### Agent Reads
+
+Agent list and detail endpoints (`GET /api/agents`, `GET /api/agents/:id`) require `read:evidence` permission. All authenticated roles can list and view agents.
+
+### MCP Tool/Permission Reads
+
+MCP tool and permission list endpoints (`GET /api/mcp/tools`, `GET /api/mcp/permissions`) require `read:repository` permission. MCP server details are already redacted for non-admin users. Mutations require `manage:config` (admin-only).
+
+### Exports
+
+| Endpoint | Admin | Operator | Viewer |
+|----------|-------|----------|--------|
+| `POST /exports/task/:taskId` | All tasks | Own tasks only | Own tasks (redacted) |
+| `POST /exports/evidence/:taskId` | All tasks | Own tasks only | Own tasks (redacted) |
+| `POST /exports/audit` | Yes | No (403) | No (403) |
+| `POST /exports/repository/:repoId` | Full detail | Redacted (path=null, metadata=null) | Redacted |
+| `POST /exports/report/summary` | Yes | No (403) | No (403) |
+
+**Export redaction for non-admin:**
+- Repository `path` and `metadata` → `null`
+- File change `diff` content → `null`
+- Task `metadata` → removed when `includeMetadata: false`
+- Secrets (password_hash, jwt_secret, etc.) → never included in any export
+- CSV cells starting with `=`, `+`, `-`, `@` → prefixed with `'`
+
+All export attempts (successful and denied) generate audit events (`export.created`, `export.denied`).
+
 ## Error Convention
 
 | Status Code | Meaning | Example |
@@ -180,6 +211,7 @@ ws://host/ws?token=<JWT>
 | 4001 | Authentication required — no token provided |
 | 4002 | Invalid token — verification failed or user inactive |
 | 4003 | Token expired — JWT has expired |
+| 4004 | Forbidden — insufficient permissions |
 | 4004 | Forbidden — insufficient permissions |
 
 ### Event Scoping Rules

@@ -5,12 +5,15 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createAgentRoutes(db: Database): Router {
+export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
-  
+  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+
   // GET /api/agents - List all agents
-  router.get('/', (_req, res, next) => {
+  router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
       const agents = db.prepare('SELECT * FROM agents ORDER BY created_at DESC').all();
       
@@ -27,7 +30,7 @@ export function createAgentRoutes(db: Database): Router {
   });
   
   // GET /api/agents/:id - Get agent by ID
-  router.get('/:id', (req, res, next) => {
+  router.get('/:id', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
     try {
       const { id } = req.params;
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;

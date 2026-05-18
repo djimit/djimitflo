@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle, FileSearch } from 'lucide-react';
+import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle, FileSearch, Download } from 'lucide-react';
 import { useStore } from '../lib/store';
 import { api } from '../lib/api';
-import { TaskStatus, WebSocketEventType } from '@djimitflo/shared';
+import { TaskStatus, WebSocketEventType, ExportFormat } from '@djimitflo/shared';
 import type { Task, ExecutionEvent, ApprovalRequest, ExecutionEventPayload, ApprovalEventPayload, WebSocketMessage } from '@djimitflo/shared';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
 import { ApprovalCard } from '../components/ApprovalCard';
@@ -22,6 +22,19 @@ export function TaskDetailPage() {
   const [loading, setLoading] = useState(true);
   const [executing, setExecuting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (!taskId) return;
@@ -235,6 +248,38 @@ export function TaskDetailPage() {
               <FileSearch className="w-4 h-4" />
               Review
             </Link>
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => setShowExportMenu(!showExportMenu)}
+                disabled={!!exporting}
+                className="flex items-center gap-2 px-4 py-2 bg-background-elevated text-foreground-secondary border border-border rounded-lg hover:bg-accent/10 hover:text-accent hover:border-accent/20 transition-colors disabled:opacity-50"
+              >
+                <Download className="w-4 h-4" />
+                {exporting ? `Exporting...` : 'Export'}
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 mt-1 bg-background-elevated border border-border rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+                  {[
+                    { format: ExportFormat.JSON, label: 'JSON' },
+                    { format: ExportFormat.CSV, label: 'CSV' },
+                    { format: ExportFormat.MARKDOWN, label: 'Markdown' },
+                  ].map(({ format, label }) => (
+                    <button
+                      key={format}
+                      onClick={() => {
+                        setShowExportMenu(false);
+                        setExporting(label);
+                        api.exportTask(taskId!, format).finally(() => setExporting(null));
+                      }}
+                      disabled={!!exporting}
+                      className="w-full text-left px-4 py-2 text-sm hover:bg-background-secondary disabled:opacity-50"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

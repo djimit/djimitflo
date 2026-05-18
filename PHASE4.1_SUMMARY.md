@@ -1,5 +1,7 @@
 # Phase 4.1 Summary: OpenCode CLI Integration
 
+> **HISTORICAL SNAPSHOT** — Written for v0.4.0. Current version is v0.5.8. Some statements may be outdated.
+
 **Status:** ✅ Complete  
 **Date:** May 18, 2026  
 **Duration:** ~2 hours  

@@ -3,10 +3,31 @@
 ## Authentication
 
 - Passwords are hashed with bcryptjs (cost factor 12)
-- JWT tokens are signed with RS256-equivalent HMAC-SHA256
+- JWT tokens are signed with HMAC-SHA256 (HS256)
 - Tokens expire after configurable duration (default: 24h)
 - Generic error messages on login failure (no account enumeration)
 - Password hashes are never returned through API responses
+
+## Rate Limiting
+
+- Login endpoint (`POST /api/auth/login`) is rate-limited to 10 failed attempts per IP per 15 minutes
+- Successful login resets the rate limit counter for that IP
+- Rate-limited requests receive HTTP 429 with a generic message that does not disclose whether the email exists
+- Rate limiting is in-memory and single-instance only — not horizontally scalable
+- For multi-instance deployments, Redis-backed rate limiting is recommended
+
+## Security Headers
+
+All API responses include the following security headers:
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| X-Content-Type-Options | nosniff | Prevents MIME type sniffing |
+| X-Frame-Options | DENY | Prevents clickjacking via iframes |
+| Referrer-Policy | strict-origin-when-cross-origin | Limits referrer information leakage |
+| X-XSS-Protection | 0 | Disables legacy XSS filter (modern browsers don't need it) |
+
+**Content-Security-Policy** is not yet set. The Vite-built dashboard uses inline styles (Tailwind) which require careful CSP configuration. CSP is planned for a future phase with nonce-based headers.
 
 ## Authorization
 
@@ -54,6 +75,17 @@
 
 - `SECURITY_OVERRIDE` AuditEventType records when OpenCode permission bypass is enabled
 - `OPENCODE_SKIP_PERMISSIONS` defaults to `false`; requires explicit opt-in
+
+## Export Security
+
+- Exports enforce the same RBAC and ownership rules as the API — no bypass
+- Task-scoped exports (404 for inaccessible tasks) follow the same "hide existence" convention
+- Global audit and summary exports are admin-only to prevent cross-user data leakage
+- Repository path and metadata are redacted to null for non-admin users
+- File change diffs are redacted for non-admin users
+- Secrets (password hashes, JWT secret, bootstrap password) are never included in exports
+- CSV exports protect against formula injection by prefixing cells starting with `=`, `+`, `-`, `@` with a single quote
+- All export attempts (successful and denied) are recorded in the audit trail with `export.created` and `export.denied` events
 
 ## Known Limitations
 

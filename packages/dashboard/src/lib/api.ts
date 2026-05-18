@@ -25,6 +25,8 @@ import type {
   RepositoryScanResult,
   RepositoryHealthFinding,
   AgentsMdIssue,
+  ExportFormat,
+  ExportRequest,
 } from '@djimitflo/shared';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
@@ -329,6 +331,66 @@ class ApiClient {
 
   async getTaskSnapshots(taskId: string): Promise<{ snapshots: any[] }> {
     return this.request(`/tasks/${taskId}/snapshots`);
+  }
+
+  // Exports
+  private async exportDownload(endpoint: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    const url = `${API_BASE}${endpoint}`;
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ format, ...options }),
+    });
+
+    if (response.status === 401) {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.location.href = '/login';
+      throw new Error('Session expired');
+    }
+    if (response.status === 403) throw new Error('Access denied');
+    if (response.status === 404) throw new Error('Not found');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(error.message || error.error?.message || `Export failed: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition') || '';
+    const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+    const filename = filenameMatch ? filenameMatch[1] : `export.${format}`;
+
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+  }
+
+  async exportTask(taskId: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    return this.exportDownload(`/exports/task/${taskId}`, format, options);
+  }
+
+  async exportEvidence(taskId: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    return this.exportDownload(`/exports/evidence/${taskId}`, format, options);
+  }
+
+  async exportAudit(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    return this.exportDownload('/exports/audit', format, options);
+  }
+
+  async exportRepository(repositoryId: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    return this.exportDownload(`/exports/repository/${repositoryId}`, format, options);
+  }
+
+  async exportSummaryReport(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
+    return this.exportDownload('/exports/report/summary', format, options);
   }
 }
 

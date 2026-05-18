@@ -16,8 +16,11 @@ import { createObservabilityRoutes } from './observability';
 import { createRepositoryRoutes, createDiffRoutes } from './repositories';
 import { createAuthRoutes } from './auth';
 import type { AuthService } from '../services/auth-service';
+import { AuditService } from '../services/audit-service';
+import { securityHeaders } from '../middleware/security-headers';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
+import { createExportRoutes } from './exports';
 import { getAppVersion } from '../utils/version';
 
 export function createRoutes(db: Database, executionEngine?: ExecutionEngine, authService?: AuthService, auth?: AuthMiddleware): Router {
@@ -28,6 +31,10 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   }
 
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
+  const auditService = new AuditService(db);
+
+  // Security headers
+  router.use(securityHeaders);
 
   // API version (public)
   router.get('/version', (_req, res) => {
@@ -38,11 +45,11 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   });
 
   // Auth routes (public + protected)
-  router.use('/auth', createAuthRoutes(authService!, auth!));
+  router.use('/auth', createAuthRoutes(authService!, auth!, auditService));
 
   // Protected routes
   router.use('/tasks', requireAuth, createTaskRoutes(db, executionEngine, auth));
-  router.use('/agents', requireAuth, createAgentRoutes(db));
+  router.use('/agents', requireAuth, createAgentRoutes(db, auth));
   router.use('/mcp', requireAuth, createMCPRoutes(db, auth));
   router.use('/approvals', requireAuth, createApprovalRoutes(db, executionEngine, auth));
   router.use('/policies', requireAuth, createPolicyRoutes(db, auth));
@@ -52,6 +59,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
+  router.use('/exports', requireAuth, createExportRoutes(db, auth!));
   
   return router;
 }

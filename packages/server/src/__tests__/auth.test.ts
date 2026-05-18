@@ -193,4 +193,19 @@ describe('AuthService', () => {
       expect(authService.hasPermission(UserRole.VIEWER, 'approve:task')).toBe(false);
     });
   });
+
+  describe('logout idempotency', () => {
+    it('generateToken and verifyToken work correctly for logout flow', () => {
+      process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL = 'logout-test@example.com';
+      process.env.AUTH_BOOTSTRAP_ADMIN_PASSWORD = 'LogoutPass123!';
+      const service = new AuthService(db);
+      service.bootstrapAdmin();
+      const user = service.findUserByEmail('logout-test@example.com');
+      expect(user).not.toBeNull();
+      const token = service.generateToken(user!);
+      const decoded = service.verifyToken(token);
+      expect(decoded).not.toBeNull();
+      expect(decoded!.sub).toBe(user!.id);
+    });
+  });
 });
