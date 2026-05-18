@@ -19,6 +19,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'delete:task',
     'manage:config',
     'manage:users',
+    'manage:backups',
   ],
   [UserRole.OPERATOR]: [
     'read:evidence',

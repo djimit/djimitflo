@@ -17,6 +17,8 @@ import { createRepositoryRoutes, createDiffRoutes } from './repositories';
 import { createAuthRoutes } from './auth';
 import type { AuthService } from '../services/auth-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { createBackupRoutes } from './backup';
+import { getAppVersion } from '../utils/version';
 
 export function createRoutes(db: Database, executionEngine?: ExecutionEngine, authService?: AuthService, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -30,7 +32,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   // API version (public)
   router.get('/version', (_req, res) => {
     res.json({
-      version: '0.5.2',
+      version: getAppVersion(),
       name: 'Djimitflo API',
     });
   });
@@ -49,6 +51,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/observability', requireAuth, createObservabilityRoutes(db));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db));
+  router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   
   return router;
 }

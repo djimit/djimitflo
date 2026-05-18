@@ -13,6 +13,13 @@ if [ ! -d "/data" ]; then
   mkdir -p /data
 fi
 
+# Ensure backup directory exists
+BACKUP_DIR="${BACKUP_DIR:-/data/backups}"
+if [ ! -d "$BACKUP_DIR" ]; then
+  echo "Creating backup directory: $BACKUP_DIR"
+  mkdir -p "$BACKUP_DIR"
+fi
+
 # Validate JWT_SECRET in production
 if [ "$NODE_ENV" = "production" ] && [ -z "$JWT_SECRET" ]; then
   echo "FATAL: JWT_SECRET is required in production. Set it in your .env.docker file."

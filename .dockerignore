@@ -13,6 +13,9 @@ dist
 coverage
 .DS_Store
 *.log
+*.backup
+*.tar.gz
+.data/backups/
 docs/*.md
 .vscode
 .idea

@@ -179,6 +179,14 @@ djimitflo/
 - `GET /api/mcp/servers` — List MCP servers
 - `GET /api/mcp/tools` — List MCP tools
 
+### Backups (admin only)
+- `POST /api/backups` — Create backup
+- `GET /api/backups` — List backups
+- `GET /api/backups/:filename` — Get backup metadata
+- `GET /api/backups/:filename/download` — Download backup archive
+- `POST /api/backups/:filename/validate` — Validate backup integrity
+- `POST /api/backups/:filename/restore` — Stage backup for restore (requires restart)
+
 ## Database Schema
 
 Djimitflo uses SQLite with 20+ tables across 4 phases:
@@ -259,7 +267,7 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Static serving + SPA fallback with safe Accept-header guard
 - [x] Production-ready defaults (HOST=0.0.0.0, relative API base, dynamic WebSocket URL)
 - [ ] Multi-user support
-- [ ] Backup & restore
+- [x] Backup & restore
 - [ ] Export & reporting
 
 ## Technology Stack
@@ -296,6 +304,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.3 Complete (Docker Deployment)
-**Version**: 0.5.3
+**Status**: Phase 5.4 Complete (Backup & Restore)
+**Version**: 0.5.4
 **Last Updated**: May 2026

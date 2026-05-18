@@ -49,6 +49,9 @@ curl http://localhost:3001/health
 | `PORT` | `3001` | Server port |
 | `HOST` | `0.0.0.0` | Server bind address |
 
+| `BACKUP_DIR` | `<DATA_DIR>/backups` or `/data/backups` in Docker | Directory for backup archives |
+| `DJIMITFLO_HOST_PORT` | `3001` | Docker host port mapping (in docker-compose.yml) |
+
 ### Optional (OpenCode Execution)
 
 OpenCode is **not installed** in the Docker image by default. To enable it:
@@ -66,13 +69,35 @@ SQLite data is stored at `DB_PATH` (default: `/data/djimitflo.sqlite`).
 
 Docker Compose mounts a named volume `djimitflo-data` at `/data`. This persists across container restarts.
 
-### Backup
+### Backup & Restore
 
-> **Warning**: Backup/restore is not yet automated (planned for Phase 5.4). To back up manually:
-> ```bash
-> docker compose exec djimitflo cp /data/djimitflo.sqlite /data/djimitflo.sqlite.backup
-> docker compose cp djimitflo:/data/djimitflo.sqlite.backup ./backup.sqlite
-> ```
+Djimitflo includes admin-only backup and restore via the REST API. Backups are consistent SQLite snapshots packaged as `.tar.gz` archives.
+
+See [docs/backup-restore.md](backup-restore.md) for full documentation.
+
+Quick reference:
+
+```bash
+# Create backup
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3001/api/backups
+
+# List backups
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3001/api/backups
+
+# Validate a backup
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3001/api/backups/backup-YYYYMMDD-HHMMSS.tar.gz/validate
+
+# Stage a restore (requires restart)
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm":"RESTORE"}' \
+  http://localhost:3001/api/backups/backup-YYYYMMDD-HHMMSS.tar.gz/restore
+```
+
+Backups are stored in `BACKUP_DIR` (default: `/data/backups` in Docker, `<data-dir>/backups` in development).
 
 ### Migrations
 

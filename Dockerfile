@@ -90,6 +90,7 @@ ENV HOST=0.0.0.0
 ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
+ENV BACKUP_DIR=/data/backups
 
 # Expose port
 EXPOSE 3001

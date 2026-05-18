@@ -140,6 +140,13 @@ export enum AuditEventType {
   REPOSITORY_HEALTH_FINDING = 'repository.health_finding',
   DIRTY_TREE_EXECUTION = 'execution.dirty_tree',
   SECURITY_OVERRIDE = 'security.override',
+  BACKUP_CREATED = 'backup.created',
+  BACKUP_VALIDATED = 'backup.validated',
+  BACKUP_DOWNLOADED = 'backup.downloaded',
+  BACKUP_RESTORE_STARTED = 'backup.restore_started',
+  BACKUP_RESTORE_COMPLETED = 'backup.restore_completed',
+  BACKUP_RESTORE_FAILED = 'backup.restore_failed',
+  BACKUP_PRE_RESTORE_CREATED = 'backup.pre_restore_created',
 }
 
 // Base timestamp fields

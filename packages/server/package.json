@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/server",
-  "version": "0.1.0",
+  "version": "0.5.4",
   "private": true,
   "description": "Djimitflo backend server (Express + TypeScript + SQLite)",
   "main": "./dist/index.js",
@@ -22,6 +22,7 @@
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.3",
+    "tar-stream": "^2.2.0",
     "ws": "^8.16.0",
     "zod": "^3.23.8"
   },
@@ -32,6 +33,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.11.0",
+    "@types/tar-stream": "^2.2.3",
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",
     "typescript": "^5.7.0",
