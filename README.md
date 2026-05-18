@@ -189,7 +189,7 @@ djimitflo/
 
 ## Database Schema
 
-Djimitflo uses SQLite with 20+ tables across 4 phases:
+Djimitflo uses SQLite with 20+ tables across 5 phases:
 
 **Core**: `tasks`, `agents`, `execution_events`, `task_artifacts`, `mcp_servers`, `mcp_tools`, `repositories`, `audit_events`, `config`
 
@@ -198,6 +198,8 @@ Djimitflo uses SQLite with 20+ tables across 4 phases:
 **Phase 4.3 — Evidence & observability**: `execution_evidence`, `execution_summaries`, `file_changes`
 
 **Phase 4.4 — Repository intelligence**: `repository_scans`, `repository_health_findings`, `agents_md_files`, `agents_md_issues`, `task_repository_snapshots`
+
+**Phase 5 — Auth & ownership**: `users`, `tasks.created_by/owner_user_id/updated_by`, `repositories.added_by`, `approvals.requested_by`
 
 ## Design System
 

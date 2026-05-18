@@ -6,6 +6,7 @@ Get up and running with Djimitflo in 60 seconds.
 
 - Node.js 18+
 - npm 9+
+- (Optional) Docker for containerized deployment
 
 ## Installation
 
@@ -22,169 +23,113 @@ npm install
 npm run build
 ```
 
-### 2. Seed the Database
+### 2. Configure Admin Account
+
+Set environment variables before first startup:
 
 ```bash
-npm run db:seed --workspace=@djimitflo/server
+export AUTH_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+export AUTH_BOOTSTRAP_ADMIN_PASSWORD=your-secure-password
+export JWT_SECRET=your-jwt-secret-key
 ```
 
-This creates:
-- ✅ 4 AI agents (CodeReviewer, TestRunner, DeploymentBot, DocGenerator)
-- ✅ 6 sample tasks across different states
-- ✅ SQLite database at `.data/djimitflo.sqlite`
+Or copy the example env file:
 
-## Running the Application
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
 
-### Option 1: Start Everything (Recommended)
+### 3. Start the Server
 
 ```bash
 npm run dev
 ```
 
 This starts both:
-- 🔧 Backend server on `http://localhost:3001`
-- 🎨 Frontend dashboard on `http://localhost:5173`
+- Backend server on `http://localhost:3001`
+- Frontend dashboard on `http://localhost:5173`
 
-### Option 2: Start Individually
+### 4. Login
 
-```bash
-# Terminal 1: Backend
-npm run dev:server
+Open `http://localhost:5173` and login with your bootstrap admin credentials.
 
-# Terminal 2: Frontend
-npm run dev:dashboard
-```
-
-## Access the Dashboard
-
-Open your browser:
-```
-http://localhost:5173
-```
-
-## What You'll See
-
-### Dashboard Page
-- **System Overview**: Active tasks, completed, failed, queued
-- **Health Metrics**: Uptime, memory usage, active agents
-- **Recent Activity**: Live task updates
-- **Connection Status**: Green dot = WebSocket connected
-
-### Tasks Page
-- **6 Seeded Tasks**: Code review, testing, deployment, etc.
-- **Search & Filter**: Find tasks by name or status
-- **Create New Task**: Click "+ New Task" button
-- **Real-time Updates**: Tasks update instantly via WebSocket
-
-### Agents Page
-- **4 Configured Agents**: Each with capabilities and metrics
-- **Success Rates**: Visual progress bars
-- **Current Tasks**: See what each agent is working on
-- **Status Indicators**: Active, idle, error, offline
-
-## Testing the Flow
-
-### Create a New Task
-
-1. Go to **Tasks** page
-2. Click **"+ New Task"**
-3. Fill in:
-   - Title: "Test my new feature"
-   - Description: "Verify the login flow works"
-   - Priority: High
-   - Execution Mode: Review Only
-   - Agent: CodeReviewer
-4. Click **"Create Task"**
-5. ✨ Task appears immediately in the list!
-
-### Check Real-time Updates
-
-1. Open browser DevTools → Network tab → WS
-2. See WebSocket connection to `ws://localhost:3001/ws`
-3. Create a task
-4. See WebSocket message: `{"type":"task.created",...}`
-5. Task appears in UI without refresh!
-
-## API Endpoints
-
-Try these in your browser or with `curl`:
+## Docker Deployment
 
 ```bash
-# Health check
-curl http://localhost:3001/health
+cp .env.docker.example .env.docker
+# Edit .env.docker — set JWT_SECRET and bootstrap admin credentials
+docker compose up -d
+```
 
-# List all tasks
-curl http://localhost:3001/api/tasks
+See [docs/deployment.md](docs/deployment.md) for full Docker instructions.
 
-# List all agents
-curl http://localhost:3001/api/agents
+## Access
 
-# Get API version
-curl http://localhost:3001/api/version
+- **Dashboard**: http://localhost:5173
+- **API**: http://localhost:3001/api
+- **WebSocket**: ws://localhost:3001/ws
+- **Health Check**: http://localhost:3001/health
 
-# Create a task
-curl -X POST http://localhost:3001/api/tasks \
+## User Roles
+
+Djimitflo uses role-based access control:
+
+| Role | Capabilities |
+|------|-------------|
+| **Admin** | Full access: manage users, backups, observability, all tasks |
+| **Operator** | Create/execute tasks, approve requests, scan repositories |
+| **Viewer** | Read-only: view tasks, evidence, repositories (with redacted secrets) |
+
+Tasks are ownership-scoped: operators and viewers only see their own tasks. Admins see all.
+
+## API Usage with Authentication
+
+All API endpoints (except `/health` and `/api/auth/login`) require a JWT token:
+
+```bash
+# Login to get a token
+TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "title": "API Test Task",
-    "description": "Testing the API",
-    "priority": "medium"
-  }'
+  -d '{"email":"admin@example.com","password":"your-password"}' \
+  | jq -r '.token')
+
+# Use the token for authenticated requests
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/tasks
+
+# List repositories (path/metadata redacted for non-admin)
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/repositories
+
+# Admin-only: observability metrics
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/observability/metrics
 ```
 
-## Database
-
-### Location
-```
-/Users/dlandman/djimitflo/.data/djimitflo.sqlite
-```
-
-### Inspect with SQLite
-
-```bash
-sqlite3 .data/djimitflo.sqlite
-
-sqlite> .tables
-sqlite> SELECT * FROM tasks;
-sqlite> SELECT * FROM agents;
-sqlite> .quit
-```
-
-### Re-seed Database
-
-```bash
-# Clear and re-seed
-rm .data/djimitflo.sqlite*
-npm run db:seed --workspace=@djimitflo/server
-```
-
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 djimitflo/
 ├── packages/
-│   ├── shared/           # TypeScript types
-│   ├── server/           # Express backend
-│   └── dashboard/        # React frontend
-└── .data/                # SQLite database
+│   ├── shared/           # TypeScript types and schemas
+│   ├── server/           # Express + SQLite backend
+│   └── dashboard/        # React + Vite + Tailwind frontend
+├── docs/                 # Documentation
+├── .data/                # SQLite database (auto-created)
+└── package.json
 ```
 
 ### Key Files
 
 - **Backend entry**: `packages/server/src/index.ts`
 - **Frontend entry**: `packages/dashboard/src/main.tsx`
-- **Database schema**: `packages/server/src/database/schema.ts`
+- **Auth middleware**: `packages/server/src/middleware/auth.ts`
+- **Auth service**: `packages/server/src/services/auth-service.ts`
+- **Authorization**: `packages/server/src/services/authorization-service.ts`
+- **Database migrations**: `packages/server/src/database/migrate.ts`
 - **API routes**: `packages/server/src/routes/`
-- **React pages**: `packages/dashboard/src/pages/`
-- **State store**: `packages/dashboard/src/lib/store.ts`
-- **API client**: `packages/dashboard/src/lib/api.ts`
 
-### Build for Production
+## Build for Production
 
 ```bash
-# Build all packages
 npm run build
 
 # Start production server
@@ -196,54 +141,33 @@ npm run start --workspace=@djimitflo/server
 ### Port Already in Use
 
 ```bash
-# Kill process on port 3001
 lsof -ti:3001 | xargs kill -9
-
-# Kill process on port 5173
 lsof -ti:5173 | xargs kill -9
 ```
 
-### Database Locked
+### Reset Database
 
 ```bash
-# Close any SQLite connections
-pkill -9 sqlite3
-
-# Remove lock files
-rm .data/*.sqlite-shm .data/*.sqlite-wal
+rm .data/djimitflo.sqlite*
+npm run dev  # Server will re-initialize and bootstrap admin
 ```
 
 ### WebSocket Not Connecting
 
-1. Check backend is running: `curl http://localhost:3001/health`
-2. Check browser console for errors
-3. Verify `.env.local` settings:
-   ```
-   VITE_API_BASE=http://localhost:3001/api
-   VITE_WS_URL=ws://localhost:3001/ws
-   ```
+1. Check backend: `curl http://localhost:3001/health`
+2. Verify `.env.local` or `.env` settings
+3. Check browser console for auth errors (token may have expired)
 
-### TypeScript Errors
+## Documentation
 
-```bash
-# Re-build shared package
-npm run build --workspace=@djimitflo/shared
-
-# Check for errors
-npm run type-check --workspace=@djimitflo/server
-npm run type-check --workspace=@djimitflo/dashboard
-```
-
-## Next Steps
-
-- 📖 Read the full [README.md](README.md)
-- 🎯 Check [PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) for features
-- 🚀 Explore Phase 3 features (coming soon)
-
-## Support
-
-Questions or issues? Contact: Dennis Landman (DjimIT Consulting)
+- [README.md](README.md) — Full project overview
+- [docs/authorization.md](docs/authorization.md) — RBAC and ownership model
+- [docs/auth.md](docs/auth.md) — Authentication details
+- [docs/security.md](docs/security.md) — Security hardening notes
+- [docs/deployment.md](docs/deployment.md) — Docker deployment
+- [docs/backup-restore.md](docs/backup-restore.md) — Backup and restore
+- [PHASE5_SUMMARY.md](PHASE5_SUMMARY.md) — Phase 5 changelog
 
 ---
 
-**Happy Orchestrating! 🚀**
+**Happy Orchestrating!**
