@@ -10,6 +10,8 @@ import { WebSocketServer } from 'ws';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { createAuthMiddleware } from './middleware/auth';
+import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
@@ -24,6 +26,12 @@ async function main() {
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
   
+  // Initialize auth
+  const authService = new AuthService(db);
+  authService.bootstrapAdmin();
+  const auth = createAuthMiddleware(authService);
+  console.log('🔐 Authentication initialized');
+  
   // Create Express app
   const app = express();
   
@@ -35,7 +43,7 @@ async function main() {
   app.use(express.json());
   app.use(requestLogger);
   
-  // Health check
+  // Health check (public)
   app.get('/health', (_req, res) => {
     res.json({
       status: 'healthy',
@@ -57,13 +65,13 @@ async function main() {
   console.log('⚙️  Execution engine initialized');
   
   // API routes
-  app.use('/api', createRoutes(db, executionEngine));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth));
   
   // Error handler (must be last)
   app.use(errorHandler);
   
   // Start server
-  httpServer.listen(PORT, () => {
+  httpServer.listen(Number(PORT), HOST as string, () => {
     console.log(`✅ Djimitflo Server running on http://${HOST}:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://${HOST}:${PORT}/ws`);
     console.log(`📊 Dashboard: http://localhost:5173`);

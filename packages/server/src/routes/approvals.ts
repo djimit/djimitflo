@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { ExecutionEngine } from '../execution/execution-engine';
+import type { AuthMiddleware } from '../middleware/auth';
 
 function parseApproval(approval: any) {
   return {
@@ -15,8 +16,9 @@ function parseApproval(approval: any) {
   };
 }
 
-export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
+export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
   const router = Router();
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   router.get('/', (req, res, next) => {
     try {
@@ -50,7 +52,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
   });
 
   // PATCH /api/approvals/:id - Backward-compatible approve or deny a request
-  router.patch('/:id', async (req, res, next) => {
+  router.patch('/:id', requirePermission('approve:task'), async (req, res, next) => {
     try {
       const { id } = req.params;
       const { approved, reason } = req.body;
@@ -68,7 +70,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     }
   });
 
-  router.post('/:id/approve', async (req, res, next) => {
+  router.post('/:id/approve', requirePermission('approve:task'), async (req, res, next) => {
     try {
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
@@ -81,7 +83,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     }
   });
 
-  router.post('/:id/deny', async (req, res, next) => {
+  router.post('/:id/deny', requirePermission('approve:task'), async (req, res, next) => {
     try {
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');

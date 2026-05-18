@@ -4,11 +4,13 @@ import { RepositoryScanner } from '../services/repository-scanner';
 import { AgentsMdValidator } from '../services/agents-md-validator';
 import { DiffCaptureService } from '../services/diff-capture';
 import { createError } from '../middleware/error-handler';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createRepositoryRoutes(db: Database): Router {
+export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const scanner = new RepositoryScanner(db);
   const agentsMdValidator = new AgentsMdValidator();
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   router.get('/', (_req: Request, res: Response, next: NextFunction) => {
     try {
@@ -25,7 +27,7 @@ export function createRepositoryRoutes(db: Database): Router {
     } catch (error) { next(error); }
   });
 
-  router.post('/scan', (req: Request, res: Response, next: NextFunction) => {
+  router.post('/scan', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
       const { path } = req.body;
       if (!path) throw createError(400, 'Path is required', 'INVALID_INPUT');
@@ -34,7 +36,7 @@ export function createRepositoryRoutes(db: Database): Router {
     } catch (error) { next(error); }
   });
 
-  router.post('/:id/rescan', (req: Request, res: Response, next: NextFunction) => {
+  router.post('/:id/rescan', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
       const repository = scanner.getRepository(req.params.id);
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');

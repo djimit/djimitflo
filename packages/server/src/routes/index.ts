@@ -14,29 +14,41 @@ import { createRiskRoutes } from './risk';
 import { createEvidenceRoutes } from './evidence';
 import { createObservabilityRoutes } from './observability';
 import { createRepositoryRoutes, createDiffRoutes } from './repositories';
+import { createAuthRoutes } from './auth';
+import type { AuthService } from '../services/auth-service';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
+export function createRoutes(db: Database, executionEngine?: ExecutionEngine, authService?: AuthService, auth?: AuthMiddleware): Router {
   const router = Router();
   
-  // API version
+  if (!authService || !auth) {
+    console.warn('WARNING: Running without authentication. All routes are unprotected.');
+  }
+
+  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
+
+  // API version (public)
   router.get('/version', (_req, res) => {
     res.json({
-      version: '0.4.4',
+      version: '0.5.2',
       name: 'Djimitflo API',
     });
   });
-  
-  // Mount route modules
-  router.use('/tasks', createTaskRoutes(db, executionEngine));
-  router.use('/agents', createAgentRoutes(db));
-  router.use('/mcp', createMCPRoutes(db));
-  router.use('/approvals', createApprovalRoutes(db, executionEngine));
-  router.use('/policies', createPolicyRoutes(db));
-  router.use('/risk', createRiskRoutes(db));
-  router.use('/evidence', createEvidenceRoutes(db));
-  router.use('/observability', createObservabilityRoutes(db));
-  router.use('/repositories', createRepositoryRoutes(db));
-  router.use('/', createDiffRoutes(db));
+
+  // Auth routes (public + protected)
+  router.use('/auth', createAuthRoutes(authService!, auth!));
+
+  // Protected routes
+  router.use('/tasks', requireAuth, createTaskRoutes(db, executionEngine, auth));
+  router.use('/agents', requireAuth, createAgentRoutes(db));
+  router.use('/mcp', requireAuth, createMCPRoutes(db, auth));
+  router.use('/approvals', requireAuth, createApprovalRoutes(db, executionEngine, auth));
+  router.use('/policies', requireAuth, createPolicyRoutes(db, auth));
+  router.use('/risk', requireAuth, createRiskRoutes(db, auth));
+  router.use('/evidence', requireAuth, createEvidenceRoutes(db));
+  router.use('/observability', requireAuth, createObservabilityRoutes(db));
+  router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
+  router.use('/', requireAuth, createDiffRoutes(db));
   
   return router;
 }

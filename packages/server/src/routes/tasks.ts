@@ -9,10 +9,12 @@ import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel } from '@djimitflo/s
 import { randomUUID } from 'crypto';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutorKind } from '../execution/types';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine): Router {
+export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
   const router = Router();
-  
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+
   // GET /api/tasks - List all tasks
   router.get('/', (req, res, next) => {
     try {
@@ -75,7 +77,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
   
   // POST /api/tasks - Create new task
-  router.post('/', (req, res, next) => {
+  router.post('/', requirePermission('create:task'), (req, res, next) => {
     try {
       const {
         title,
@@ -97,6 +99,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       
       const id = randomUUID();
       const now = new Date().toISOString();
+      const actorId = (req as any).user?.sub;
+      const enrichedMetadata = { ...metadata, createdBy: actorId };
       
       db.prepare(`
         INSERT INTO tasks (
@@ -117,7 +121,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         repository_id,
         instruction_profile_id,
         JSON.stringify(tags),
-        JSON.stringify(metadata),
+        JSON.stringify(enrichedMetadata),
         now,
         now
       );
@@ -135,7 +139,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
   
   // PATCH /api/tasks/:id - Update task
-  router.patch('/:id', (req, res, next) => {
+  router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -181,7 +185,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
   
   // DELETE /api/tasks/:id - Delete task
-  router.delete('/:id', (req, res, next) => {
+  router.delete('/:id', requirePermission('delete:task'), (req, res, next) => {
     try {
       const { id } = req.params;
       
@@ -245,7 +249,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
 
   // POST /api/tasks/:id/execute - Execute a task
-  router.post('/:id/execute', async (req, res, next) => {
+  router.post('/:id/execute', requirePermission('execute:task'), async (req, res, next) => {
     try {
       const { id } = req.params;
       const { executor = 'opencode' } = req.body; // Default to opencode executor
@@ -284,7 +288,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
 
   // POST /api/tasks/:id/cancel - Cancel a running task
-  router.post('/:id/cancel', async (req, res, next) => {
+  router.post('/:id/cancel', requirePermission('execute:task'), async (req, res, next) => {
     try {
       const { id } = req.params;
       

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { WebSocketProvider } from './components/WebSocketProvider';
 import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
@@ -14,14 +15,15 @@ import { ReviewPage } from './pages/ReviewPage';
 import { AuditPage } from './pages/AuditPage';
 import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
+import { LoginPage } from './pages/LoginPage';
 import { useStore } from './lib/store';
+import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
 
   useEffect(() => {
-    // Load initial data
     async function loadData() {
       try {
         const [tasksRes, agentsRes] = await Promise.all([
@@ -41,28 +43,39 @@ function DataLoader({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
+  const { restoreSession } = useAuthStore();
+
+  useEffect(() => {
+    restoreSession();
+  }, [restoreSession]);
+
   return (
     <BrowserRouter>
-      <WebSocketProvider>
-        <DataLoader>
-          <Routes>
-            <Route path="/" element={<Layout />}>
-              <Route index element={<DashboardPage />} />
-              <Route path="tasks" element={<TasksPage />} />
-              <Route path="tasks/:taskId" element={<TaskDetailPage />} />
-              <Route path="approvals" element={<ApprovalQueuePage />} />
-              <Route path="policies" element={<PolicyCenterPage />} />
-              <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
-              <Route path="observability" element={<ObservabilityPage />} />
-              <Route path="tasks/:taskId/review" element={<ReviewPage />} />
-              <Route path="audit" element={<AuditPage />} />
-              <Route path="repositories" element={<RepositoriesPage />} />
-              <Route path="repositories/:id" element={<RepositoryDetailPage />} />
-              <Route path="agents" element={<AgentsPage />} />
-            </Route>
-          </Routes>
-        </DataLoader>
-      </WebSocketProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={
+          <ProtectedRoute>
+            <WebSocketProvider>
+              <DataLoader>
+                <Layout />
+              </DataLoader>
+            </WebSocketProvider>
+          </ProtectedRoute>
+        }>
+          <Route index element={<DashboardPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="approvals" element={<ApprovalQueuePage />} />
+          <Route path="policies" element={<PolicyCenterPage />} />
+          <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
+          <Route path="observability" element={<ObservabilityPage />} />
+          <Route path="tasks/:taskId/review" element={<ReviewPage />} />
+          <Route path="audit" element={<AuditPage />} />
+          <Route path="repositories" element={<RepositoriesPage />} />
+          <Route path="repositories/:id" element={<RepositoryDetailPage />} />
+          <Route path="agents" element={<AgentsPage />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }

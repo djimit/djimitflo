@@ -438,6 +438,23 @@ function createPhase44Tables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'file_changes', fileChangeColumns);
 }
 
+function createPhase52Tables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'operator', 'viewer')),
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+  `);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -445,6 +462,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   seedDefaultPolicies(db);
   createPhase43Tables(db);
   createPhase44Tables(db);
+  createPhase52Tables(db);
 }
 
 if (require.main === module) {

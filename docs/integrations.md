@@ -54,6 +54,7 @@ Each integration has an evidence trail:
 - OpenCode AGENTS.md injection into execution context not yet supported
 - Codex integration requires CLI/SDK/API contract capture first
 - Ruflo integration would require Claude Code runtime dependency
+- All OpenCode/execution API endpoints now require JWT authentication (Phase 5.2)
 
 ## Next Steps
 

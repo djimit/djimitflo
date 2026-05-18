@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { createError } from '../middleware/error-handler';
+import type { AuthMiddleware } from '../middleware/auth';
 
 function parsePolicy(row: any) {
   const riskLevels = JSON.parse(row.risk_levels || '[]');
@@ -20,8 +21,9 @@ function parsePolicy(row: any) {
   };
 }
 
-export function createPolicyRoutes(db: Database): Router {
+export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   router.get('/', (_req, res, next) => {
     try {
@@ -44,7 +46,7 @@ export function createPolicyRoutes(db: Database): Router {
     }
   });
 
-  router.post('/', (req, res, next) => {
+  router.post('/', requirePermission('manage:config'), (req, res, next) => {
     try {
       const id = randomUUID();
       const now = new Date().toISOString();
@@ -86,7 +88,7 @@ export function createPolicyRoutes(db: Database): Router {
     }
   });
 
-  router.patch('/:id', (req, res, next) => {
+  router.patch('/:id', requirePermission('manage:config'), (req, res, next) => {
     try {
       const existing = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
       if (!existing) {
@@ -129,7 +131,7 @@ export function createPolicyRoutes(db: Database): Router {
     }
   });
 
-  router.delete('/:id', (req, res, next) => {
+  router.delete('/:id', requirePermission('manage:config'), (req, res, next) => {
     try {
       const result = db.prepare('DELETE FROM approval_policies WHERE id = ?').run(req.params.id);
       if (result.changes === 0) {

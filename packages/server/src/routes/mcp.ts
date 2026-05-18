@@ -4,9 +4,11 @@
 
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createMCPRoutes(db: Database): Router {
+export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   
   // GET /api/mcp/servers - List all MCP servers
   router.get('/servers', (_req, res, next) => {
@@ -69,7 +71,7 @@ export function createMCPRoutes(db: Database): Router {
     }
   });
 
-  router.patch('/permissions/:toolId', (req, res, next) => {
+  router.patch('/permissions/:toolId', requirePermission('manage:config'), (req, res, next) => {
     try {
       const { toolId } = req.params;
       const tool = db.prepare('SELECT * FROM mcp_tools WHERE id = ?').get(toolId) as any;

@@ -12,7 +12,8 @@ Djimitflo is a production-grade UX/UI control plane for managing AI agent workfl
 - **Task Management** — Create, track, and manage agent execution with approval gates
 - **Agent Monitoring** — Track agent status, capabilities, and performance metrics
 - **Security-First** — Default-deny policies, risk assessment, and approval workflows
-- **Audit Trail** — Comprehensive logging of all agent actions and decisions
+- **Audit Trail** — Comprehensive logging of all agent actions and decisions with actor attribution
+- **Authentication & Authorization** — JWT authentication, role-based access control (admin/operator/viewer), protected routes
 - **WebSocket Updates** — Real-time task and execution event streaming
 - **MCP Integration** — Manage Model Context Protocol servers and tools
 - **Repository Intelligence** — Git-aware scanning, stack detection, health scoring, AGENTS.md governance (Phase 4.4)
@@ -116,6 +117,11 @@ djimitflo/
 ```
 
 ## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` — Login with email and password (public)
+- `GET /api/auth/me` — Get current authenticated user (requires auth)
+- `POST /api/auth/logout` — Logout (stateless, public)
 
 ### Tasks
 - `GET /api/tasks` — List tasks
@@ -228,11 +234,16 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
 - [x] Diff panel in ReviewPage with expandable diff viewer
 
-### Phase 5: Integration Contract Stabilization & Production (In Progress)
+### Phase 5: Integration Contract Stabilization & Auth (In Progress)
 - [x] OpenCode executor CLI flags corrected (--dir, --format json, --dangerously-skip-permissions, --agent)
 - [x] Structured JSON event parsing with heuristic fallback and evidence warnings
 - [x] Safety guardrail: OPENCODE_SKIP_PERMISSIONS defaults to false, audit event on bypass
 - [x] Compatibility documentation (OpenCode partially verified, Codex not implemented, Ruflo conceptually mapped)
+- [x] JWT authentication with bcryptjs password hashing (cost factor 12)
+- [x] Role-based authorization (admin, operator, viewer) with permission-gated routes
+- [x] Protected API routes — all operational routes require authentication
+- [x] Audit actor attribution — authenticated user ID recorded in audit/evidence events
+- [x] Frontend login flow, protected routes, role-aware sidebar
 - [ ] Authentication & authorization
 - [ ] Multi-user support
 - [ ] Backup & restore
@@ -273,6 +284,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.1 In Progress (Integration Contract Stabilization)
-**Version**: 0.5.1
+**Status**: Phase 5.2 In Progress (Authentication & Authorization)
+**Version**: 0.5.2
 **Last Updated**: May 2026

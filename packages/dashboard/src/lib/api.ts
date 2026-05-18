@@ -29,20 +29,38 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:3001/api';
 
+const AUTH_TOKEN_KEY = 'djimitflo_auth_token';
+
 class ApiClient {
+  private getToken(): string | null {
+    return localStorage.getItem(AUTH_TOKEN_KEY);
+  }
+
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
+    const token = this.getToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options?.headers as Record<string, string>,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
+      headers,
     });
+
+    if (response.status === 401) {
+      localStorage.removeItem(AUTH_TOKEN_KEY);
+      window.location.href = '/login';
+      throw new Error('Session expired');
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(error.message || `API error: ${response.status}`);
+      throw new Error(error.message || error.error?.message || `API error: ${response.status}`);
     }
 
     return response.json();
