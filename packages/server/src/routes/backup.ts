@@ -85,7 +85,7 @@ export function createBackupRoutes(db: Database.Database, auth: AuthMiddleware):
       res.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Restore staging failed';
-      const status = message.includes('confirmation') ? 400 : message.includes('not found') ? 404 : message.includes('validation failed') ? 400 : 500;
+      const status = message.includes('confirmation') ? 400 : message.includes('not found') ? 404 : message.includes('validation failed') ? 400 : message.includes('Invalid') ? 400 : 500;
       res.status(status).json({ error: { message, code: 'BACKUP_RESTORE_FAILED' } });
     }
   });

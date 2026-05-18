@@ -521,7 +521,11 @@ export class BackupService {
       extract.on('finish', () => resolve(extracted));
       extract.on('error', reject);
 
-      createReadStream(archivePath).pipe(gunzip).pipe(extract);
+      const fileStream = createReadStream(archivePath);
+      fileStream.on('error', (err) => reject(err));
+      gunzip.on('error', (err) => reject(err));
+
+      fileStream.pipe(gunzip).pipe(extract);
     });
   }
 
