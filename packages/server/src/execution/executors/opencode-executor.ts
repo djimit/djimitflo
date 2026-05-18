@@ -21,9 +21,11 @@ interface ParsedOutput {
 export class OpenCodeExecutor implements TaskExecutor {
   readonly kind: ExecutorKind = 'opencode';
   private readonly opencodePath: string;
+  private readonly executionTimeoutMs: number;
   
-  constructor(opencodePath: string = '/Users/dlandman/.opencode/bin/opencode') {
-    this.opencodePath = opencodePath;
+  constructor(opencodePath?: string) {
+    this.opencodePath = opencodePath || process.env.OPENCODE_BIN_PATH || '/Users/dlandman/.opencode/bin/opencode';
+    this.executionTimeoutMs = parseInt(process.env.OPENCODE_EXECUTION_TIMEOUT_MS || '600000', 10);
   }
   
   canExecute(_task: Task): boolean {
@@ -54,6 +56,19 @@ export class OpenCodeExecutor implements TaskExecutor {
       });
       
       childProcess = child;
+
+      // Timeout: kill process if it exceeds the configured limit
+      const timeoutHandle = setTimeout(() => {
+        if (child && !child.killed) {
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (child && !child.killed) {
+              child.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+        emitter.emit('error', new Error(`OpenCode execution timed out after ${this.executionTimeoutMs}ms`));
+      }, this.executionTimeoutMs);
       
       // Handle stdout
       child.stdout?.on('data', (data) => {
@@ -69,6 +84,7 @@ export class OpenCodeExecutor implements TaskExecutor {
       
       // Handle process exit
       child.on('close', (code) => {
+        clearTimeout(timeoutHandle);
         emitter.emit('exit', code);
       });
       

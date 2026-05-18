@@ -6,8 +6,20 @@ interface ValidationRule {
   title: string;
   description: string;
   severity: 'info' | 'warning' | 'error' | 'critical';
-  check: (content: string, filePath: string) => AgentsMdIssue | null;
+  check: (content: string, file: AgentsMdFile) => AgentsMdIssue | null;
   recommendation: string;
+}
+
+function issue(rule: ValidationRule, file: AgentsMdFile): AgentsMdIssue {
+  return {
+    id: randomUUID(),
+    fileId: file.id,
+    severity: rule.severity,
+    ruleId: rule.id,
+    title: rule.title,
+    description: rule.description,
+    recommendation: rule.recommendation,
+  };
 }
 
 const VALIDATION_RULES: ValidationRule[] = [
@@ -16,11 +28,11 @@ const VALIDATION_RULES: ValidationRule[] = [
     title: 'Missing test command',
     description: 'AGENTS.md does not specify how to run tests.',
     severity: 'warning',
-    recommendation: 'Add a section like "## Commands\\n- Test: `npm test`"',
-    check: (content) => {
+    recommendation: 'Add a section like "## Commands\n- Test: `npm test`"',
+    check: (content, file) => {
       const lower = content.toLowerCase();
-      if (!lower.includes('test') && !lower.includes('spec') && !lower.includes('vitest') && !lower.includes('jest')) return null;
-      return null;
+      if (lower.includes('test') || lower.includes('spec') || lower.includes('vitest') || lower.includes('jest')) return null;
+      return issue(VALIDATION_RULES[0], file);
     },
   },
   {
@@ -29,10 +41,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md does not specify how to build the project.',
     severity: 'info',
     recommendation: 'Add build commands to help agents understand the project workflow.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if (lower.includes('build') || lower.includes('compile') || lower.includes('npm run build') || lower.includes('make')) return null;
-      return null;
+      return issue(VALIDATION_RULES[1], file);
     },
   },
   {
@@ -41,10 +53,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md does not define protected paths or files agents should not modify.',
     severity: 'warning',
     recommendation: 'Add a "## Protected Paths" section listing files agents must not modify (e.g., .env, secrets, CI configs).',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if (lower.includes('protected') || lower.includes('do not modify') || lower.includes('never edit') || lower.includes('read-only') || lower.includes('sensitive')) return null;
-      return null;
+      return issue(VALIDATION_RULES[2], file);
     },
   },
   {
@@ -53,10 +65,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md does not specify how to determine task completion.',
     severity: 'info',
     recommendation: 'Add "## Done Criteria" specifying what constitutes a completed task.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if (lower.includes('done') || lower.includes('complete') || lower.includes('finish') || lower.includes('success criteria')) return null;
-      return null;
+      return issue(VALIDATION_RULES[3], file);
     },
   },
   {
@@ -65,10 +77,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md does not specify review or approval requirements.',
     severity: 'info',
     recommendation: 'Add guidance on when changes require human review.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if (lower.includes('review') || lower.includes('approval') || lower.includes('approve') || lower.includes('sign off')) return null;
-      return null;
+      return issue(VALIDATION_RULES[4], file);
     },
   },
   {
@@ -77,10 +89,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md grants unrestricted shell access without constraints.',
     severity: 'error',
     recommendation: 'Specify which commands are allowed and which require approval.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if ((lower.includes('any command') || lower.includes('full access') || lower.includes('unrestricted')) && !lower.includes('approval') && !lower.includes('with caution')) {
-        return null;
+        return issue(VALIDATION_RULES[5], file);
       }
       return null;
     },
@@ -91,10 +103,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md contains instructions to bypass approval workflows.',
     severity: 'critical',
     recommendation: 'Remove instructions that tell agents to skip or ignore approval processes.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
       if (lower.includes('skip approval') || lower.includes('ignore approval') || lower.includes('bypass approval') || lower.includes('no approval needed')) {
-        return null;
+        return issue(VALIDATION_RULES[6], file);
       }
       return null;
     },
@@ -105,10 +117,10 @@ const VALIDATION_RULES: ValidationRule[] = [
     description: 'AGENTS.md instructs agents to reveal or log secrets.',
     severity: 'critical',
     recommendation: 'Remove any instructions that ask agents to display, log, or expose secret values.',
-    check: (content) => {
+    check: (content, file) => {
       const lower = content.toLowerCase();
-      if (lower.includes('show me the secret') || lower.includes('print the password') || lower.includes('log the api key') || lower.includes('echo $') && lower.includes('key')) {
-        return null;
+      if (lower.includes('show me the secret') || lower.includes('print the password') || lower.includes('log the api key') || (lower.includes('echo $') && lower.includes('key'))) {
+        return issue(VALIDATION_RULES[7], file);
       }
       return null;
     },
@@ -121,60 +133,10 @@ export class AgentsMdValidator {
     const content = file.content || '';
 
     for (const rule of VALIDATION_RULES) {
-      const result = rule.check(content, file.relativePath);
-      if (result === null) {
-        issues.push({
-          id: randomUUID(),
-          fileId: file.id,
-          severity: rule.severity,
-          ruleId: rule.id,
-          title: rule.title,
-          description: rule.description,
-          recommendation: rule.recommendation,
-        });
+      const result = rule.check(content, file);
+      if (result !== null) {
+        issues.push(result);
       }
-    }
-
-    if (!content.includes('test') && !content.includes('Test')) {
-      const existing = issues.find(i => i.ruleId === 'missing-test-command');
-      if (!existing) {
-        issues.push({
-          id: randomUUID(),
-          fileId: file.id,
-          severity: 'warning',
-          ruleId: 'missing-test-command',
-          title: 'Missing test command',
-          description: 'AGENTS.md does not specify how to run tests.',
-          recommendation: 'Add a section like "## Commands\\n- Test: `npm test`"',
-        });
-      }
-    }
-
-    if (!content.includes('build') && !content.includes('Build')) {
-      const existing = issues.find(i => i.ruleId === 'missing-build-command');
-      if (!existing) {
-        issues.push({
-          id: randomUUID(),
-          fileId: file.id,
-          severity: 'info',
-          ruleId: 'missing-build-command',
-          title: 'Missing build command',
-          description: 'AGENTS.md does not specify how to build the project.',
-          recommendation: 'Add build commands to help agents understand the project workflow.',
-        });
-      }
-    }
-
-    if (!content.includes('protected') && !content.includes('Protected') && !content.includes('do not') && !content.includes('Do not') && !content.includes('never') && !content.includes('Never')) {
-      issues.push({
-        id: randomUUID(),
-        fileId: file.id,
-        severity: 'warning',
-        ruleId: 'missing-security-boundaries',
-        title: 'Missing security boundaries',
-        description: 'AGENTS.md does not define protected paths or files agents should not modify.',
-        recommendation: 'Add a "## Protected Paths" section listing sensitive files.',
-      });
     }
 
     return issues;
