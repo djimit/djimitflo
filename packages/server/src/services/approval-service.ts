@@ -99,7 +99,7 @@ export class ApprovalService {
     return approval;
   }
 
-  decideApproval(id: string, approved: boolean, reason?: string): ApprovalRequest {
+  decideApproval(id: string, approved: boolean, decidedBy: string, reason?: string): ApprovalRequest {
     const approval = this.getApproval(id);
     if (!approval) {
       throw new Error('Approval not found');
@@ -125,12 +125,12 @@ export class ApprovalService {
       WHERE id = ?
     `).run(
       status,
-      'user',
+      decidedBy,
       approved ? now : null,
       approved ? null : now,
       approved ? null : (reason || 'No reason provided'),
       now,
-      'user',
+      decidedBy,
       reason || null,
       now,
       id

@@ -58,6 +58,14 @@ class ApiClient {
       throw new Error('Session expired');
     }
 
+    if (response.status === 403) {
+      throw new Error('Access denied');
+    }
+
+    if (response.status === 404) {
+      throw new Error('Not found');
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
       throw new Error(error.message || error.error?.message || `API error: ${response.status}`);

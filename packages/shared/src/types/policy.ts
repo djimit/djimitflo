@@ -85,13 +85,14 @@ export interface Approval extends Timestamps {
   request_data: Record<string, unknown>;
   
   // Response
-  approved_by: string | null; // User ID or "system"
+  approved_by: string | null;
   approved_at: string | null;
   denied_at: string | null;
   denial_reason: string | null;
   decided_at?: string | null;
   decided_by?: string | null;
   decision_reason?: string | null;
+  requested_by?: string | null;
   expires_at: string | null;
   
   metadata: Record<string, unknown>;

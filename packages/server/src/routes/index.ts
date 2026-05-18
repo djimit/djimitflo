@@ -47,10 +47,10 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/approvals', requireAuth, createApprovalRoutes(db, executionEngine, auth));
   router.use('/policies', requireAuth, createPolicyRoutes(db, auth));
   router.use('/risk', requireAuth, createRiskRoutes(db, auth));
-  router.use('/evidence', requireAuth, createEvidenceRoutes(db));
-  router.use('/observability', requireAuth, createObservabilityRoutes(db));
+  router.use('/evidence', requireAuth, createEvidenceRoutes(db, auth!));
+  router.use('/observability', requireAuth, createObservabilityRoutes(db, auth!));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
-  router.use('/', requireAuth, createDiffRoutes(db));
+  router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   
   return router;

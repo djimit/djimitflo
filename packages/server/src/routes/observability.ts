@@ -1,12 +1,16 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { EvidenceService } from '../services/evidence-service';
+import type { AuthMiddleware } from '../middleware/auth';
 
-export function createObservabilityRoutes(db: Database): Router {
+export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
   const evidenceService = new EvidenceService(db);
+  const requireAuth = auth.requireAuth;
+  const requireAdmin = auth.requirePermission('manage:config');
 
-  router.get('/metrics', (_req: Request, res: Response, next: NextFunction) => {
+  // GET /observability/metrics — admin-only
+  router.get('/metrics', requireAuth, requireAdmin, (_req: Request, res: Response, next: NextFunction) => {
     try {
       const metrics = evidenceService.getObservabilityMetrics();
       res.json(metrics);
@@ -15,7 +19,8 @@ export function createObservabilityRoutes(db: Database): Router {
     }
   });
 
-  router.get('/risk-trends', (req: Request, res: Response, next: NextFunction) => {
+  // GET /observability/risk-trends — admin-only
+  router.get('/risk-trends', requireAuth, requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
       const days = parseInt(req.query.days as string) || 30;
 
@@ -36,7 +41,8 @@ export function createObservabilityRoutes(db: Database): Router {
     }
   });
 
-  router.get('/policy-stats', (_req: Request, res: Response, next: NextFunction) => {
+  // GET /observability/policy-stats — admin-only
+  router.get('/policy-stats', requireAuth, requireAdmin, (_req: Request, res: Response, next: NextFunction) => {
     try {
       const policyStats = db.prepare(`
         SELECT
@@ -73,7 +79,8 @@ export function createObservabilityRoutes(db: Database): Router {
     }
   });
 
-  router.get('/execution-activity', (req: Request, res: Response, next: NextFunction) => {
+  // GET /observability/execution-activity — admin-only
+  router.get('/execution-activity', requireAuth, requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
       const hours = parseInt(req.query.hours as string) || 24;
 

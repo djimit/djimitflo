@@ -266,7 +266,15 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Docker deployment packaging (Dockerfile, docker-compose, entrypoint, health check)
 - [x] Static serving + SPA fallback with safe Accept-header guard
 - [x] Production-ready defaults (HOST=0.0.0.0, relative API base, dynamic WebSocket URL)
-- [ ] Multi-user support
+- [x] Multi-user ownership model (task, repository, approval ownership with visibility rules)
+- [x] AuthorizationService with role-based and ownership-aware access control
+- [x] Task ownership enforcement (created_by, owner_user_id, updated_by)
+- [x] Approval actor attribution (decided_by, approved_by, requested_by using authenticated user IDs)
+- [x] Evidence and review access scoped to underlying task ownership
+- [x] Observability endpoints admin-only
+- [x] Repository path/metadata redaction for non-admin users
+- [x] MCP server secret redaction (env, command, args, url) for non-admin users
+- [x] Legacy NULL-owned tasks visible to admin only
 - [x] Backup & restore
 - [ ] Export & reporting
 
@@ -304,6 +312,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.4 Complete (Backup & Restore)
-**Version**: 0.5.4
+**Status**: Phase 5.5 Complete (Multi-User Ownership Model)
+**Version**: 0.5.5
 **Last Updated**: May 2026

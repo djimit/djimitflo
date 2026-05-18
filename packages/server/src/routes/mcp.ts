@@ -1,63 +1,82 @@
-/**
- * MCP (Model Context Protocol) routes
- */
-
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import { AuthTokenPayload } from '@djimitflo/shared';
+import { AuthorizationService } from '../services/authorization-service';
 import type { AuthMiddleware } from '../middleware/auth';
+
+function sanitizeMCPServer(server: any, isAdmin: boolean): any {
+  if (isAdmin) return server;
+  return {
+    ...server,
+    command: null,
+    args: [],
+    env: {},
+    url: null,
+  };
+}
 
 export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  
+
+  function getUser(req: any): AuthTokenPayload {
+    return (req as any).user;
+  }
+
   // GET /api/mcp/servers - List all MCP servers
-  router.get('/servers', (_req, res, next) => {
+  router.get('/servers', requireAuth, (req, res, next) => {
     try {
+      const user = getUser(req);
+      const isAdmin = AuthorizationService.isAdmin(user);
       const servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all();
-      
-      const parsed = servers.map((server: any) => ({
-        ...server,
-        args: JSON.parse(server.args || '[]'),
-        env: JSON.parse(server.env || '{}'),
-        metadata: JSON.parse(server.metadata || '{}'),
-      }));
-      
+
+      const parsed = servers.map((server: any) => {
+        const result = {
+          ...server,
+          args: JSON.parse(server.args || '[]'),
+          env: JSON.parse(server.env || '{}'),
+          metadata: JSON.parse(server.metadata || '{}'),
+        };
+        return sanitizeMCPServer(result, isAdmin);
+      });
+
       res.json({ servers: parsed });
     } catch (error) {
       next(error);
     }
   });
-  
+
   // GET /api/mcp/tools - List all MCP tools
-  router.get('/tools', (req, res, next) => {
+  router.get('/tools', requireAuth, (req, res, next) => {
     try {
       const { server_id } = req.query;
-      
+
       let query = 'SELECT * FROM mcp_tools';
       const params: any[] = [];
-      
+
       if (server_id) {
         query += ' WHERE server_id = ?';
         params.push(server_id);
       }
-      
+
       query += ' ORDER BY created_at DESC';
-      
+
       const tools = db.prepare(query).all(...params);
-      
+
       const parsed = tools.map((tool: any) => ({
         ...tool,
         input_schema: JSON.parse(tool.input_schema || '{}'),
         metadata: JSON.parse(tool.metadata || '{}'),
       }));
-      
+
       res.json({ tools: parsed });
     } catch (error) {
       next(error);
     }
   });
 
-  router.get('/permissions', (_req, res, next) => {
+  router.get('/permissions', requireAuth, (_req, res, next) => {
     try {
       const permissions = db.prepare(`
         SELECT p.*, t.name as tool_name, t.server_id, t.description as tool_description
@@ -115,6 +134,6 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
       next(error);
     }
   });
-  
+
   return router;
 }

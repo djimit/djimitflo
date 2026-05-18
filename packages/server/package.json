@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/server",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "description": "Djimitflo backend server (Express + TypeScript + SQLite)",
   "main": "./dist/index.js",

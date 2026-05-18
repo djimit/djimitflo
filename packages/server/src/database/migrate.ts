@@ -455,6 +455,32 @@ function createPhase52Tables(db: BetterSqlite3Database) {
   `);
 }
 
+function createPhase55Tables(db: BetterSqlite3Database) {
+  const taskOwnerColumns: ColumnSpec[] = [
+    { name: 'created_by', definition: 'TEXT' },
+    { name: 'owner_user_id', definition: 'TEXT' },
+    { name: 'updated_by', definition: 'TEXT' },
+  ];
+  addMissingColumns(db, 'tasks', taskOwnerColumns);
+
+  const repoColumns: ColumnSpec[] = [
+    { name: 'added_by', definition: 'TEXT' },
+  ];
+  addMissingColumns(db, 'repositories', repoColumns);
+
+  const approvalColumns55: ColumnSpec[] = [
+    { name: 'requested_by', definition: 'TEXT' },
+  ];
+  addMissingColumns(db, 'approvals', approvalColumns55);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by);
+    CREATE INDEX IF NOT EXISTS idx_tasks_owner_user_id ON tasks(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_repositories_added_by ON repositories(added_by);
+    CREATE INDEX IF NOT EXISTS idx_approvals_requested_by ON approvals(requested_by);
+  `);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -463,6 +489,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createPhase43Tables(db);
   createPhase44Tables(db);
   createPhase52Tables(db);
+  createPhase55Tables(db);
 }
 
 if (require.main === module) {

@@ -33,6 +33,9 @@ export interface Repository extends Timestamps {
   has_agents_md: boolean;
   health_score: number | null;
   
+  // Ownership
+  added_by: string | null;
+  
   metadata: Record<string, unknown>;
 }
 

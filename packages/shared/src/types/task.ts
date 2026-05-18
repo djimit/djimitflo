@@ -32,6 +32,11 @@ export interface Task extends Timestamps {
   // Metrics
   execution_time_ms: number | null;
   token_usage: number | null;
+
+  // Ownership
+  created_by: string | null;
+  owner_user_id: string | null;
+  updated_by: string | null;
   
   // Metadata
   tags: string[];
@@ -69,6 +74,7 @@ export interface TaskCreateInput {
   instruction_profile_id?: ID;
   tags?: string[];
   metadata?: Record<string, unknown>;
+  created_by?: string;
 }
 
 export interface TaskUpdateInput {

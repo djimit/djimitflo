@@ -247,8 +247,8 @@ export class ExecutionEngine {
     }
   }
 
-  async handleApprovalDecision(approvalId: string, approved: boolean, reason?: string): Promise<ExecuteTaskResult | null> {
-    const approval = this.approvalService.decideApproval(approvalId, approved, reason);
+  async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
+    const approval = this.approvalService.decideApproval(approvalId, approved, decidedBy || 'system', reason);
     if (!approved) {
       this.evidenceService.captureEvidence({
         task_id: approval.task_id,

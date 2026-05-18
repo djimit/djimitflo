@@ -89,6 +89,7 @@ export function TasksPage() {
                 priority={task.priority}
                 agent={agent?.name || 'Unassigned'}
                 progress={progress}
+                owner={task.owner_user_id || task.created_by}
               />
             );
           })
@@ -114,9 +115,10 @@ interface TaskCardProps {
   priority: string;
   agent: string;
   progress: number;
+  owner?: string | null;
 }
 
-function TaskCard({ id, title, description, status, priority, agent, progress }: TaskCardProps) {
+function TaskCard({ id, title, description, status, priority, agent, progress, owner }: TaskCardProps) {
   const statusColors: Record<string, string> = {
     running: 'bg-status-running/10 text-status-running border-status-running/20',
     queued: 'bg-status-paused/10 text-status-paused border-status-paused/20',
@@ -151,6 +153,7 @@ function TaskCard({ id, title, description, status, priority, agent, progress }:
             </span>
           </div>
           <p className="text-sm text-foreground-secondary line-clamp-2">{description}</p>
+          {owner && <p className="text-xs text-foreground-muted mt-1">Owner: {owner}</p>}
         </div>
       </div>
       

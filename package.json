@@ -1,6 +1,6 @@
 {
   "name": "djimitflo",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "description": "Codex-native agent orchestration control plane for serious engineering teams",
   "author": "Dennis Landman",
