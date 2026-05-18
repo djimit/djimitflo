@@ -39,11 +39,16 @@ Three roles with hierarchical permissions:
 
 **Authenticated (any role):**
 - `GET /api/auth/me`
-- `GET /api/tasks`, `GET /api/tasks/:id`
+- `GET /api/tasks`, `GET /api/tasks/:id` (ownership-filtered for non-admin)
+- `GET /api/tasks/:id/events`, `GET /api/tasks/:id/approvals` (ownership-filtered)
 - `GET /api/agents`, `GET /api/agents/:id`
-- `GET /api/evidence/*`
-- `GET /api/repositories`, `GET /api/repositories/:id/*`
-- `GET /api/audits`, `GET /api/policies`
+- `GET /api/evidence/*` (ownership-filtered by underlying task)
+- `GET /api/repositories`, `GET /api/repositories/:id` (path/metadata redacted for non-admin)
+- `GET /api/repositories/:id/health`, `GET /api/repositories/:id/agents-md/*` (requires scan:repository)
+- `GET /api/approvals`, `GET /api/approvals/:id` (ownership-filtered by underlying task)
+- `GET /api/policies`
+- `GET /api/mcp/servers`, `GET /api/mcp/tools`, `GET /api/mcp/permissions`
+- `GET /api/diff/tasks/:taskId/*` (ownership-filtered by underlying task)
 
 **Admin-only (requiring `manage:config`):**
 - `GET /api/observability/*`
@@ -61,6 +66,11 @@ Three roles with hierarchical permissions:
 | `POST /api/tasks/:id/cancel` | `execute:task` |
 | `POST /api/approvals/:id/approve` | `approve:task` |
 | `POST /api/approvals/:id/deny` | `approve:task` |
+| `POST /api/approvals/:id/cancel` | `approve:task` |
+| `PATCH /api/approvals/:id` | `approve:task` |
+| `GET /api/repositories/:id/health` | `scan:repository` |
+| `GET /api/repositories/:id/agents-md` | `scan:repository` |
+| `POST /api/repositories/:id/agents-md/validate` | `scan:repository` |
 | `POST /api/repositories/scan` | `scan:repository` |
 | `POST /api/repositories/:id/rescan` | `scan:repository` |
 | `POST /api/policies` | `manage:config` |

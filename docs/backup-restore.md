@@ -23,7 +23,7 @@ Each backup is a `.tar.gz` archive containing:
 ```json
 {
   "backupVersion": "1.0",
-  "appVersion": "0.5.3",
+  "appVersion": "0.5.5",
   "createdAt": "2026-05-18T19:33:59.000Z",
   "databasePath": "/data/djimitflo.sqlite",
   "tableCounts": { "tasks": 5, "agents": 2, ... },
@@ -34,7 +34,9 @@ Each backup is a `.tar.gz` archive containing:
   "hostname": "server-01",
   "notes": [],
   "warnings": [
-    "This backup contains password hashes and governance evidence. Treat as confidential."
+    "This backup contains password hashes and governance evidence. Treat as confidential.",
+    "Environment secrets (JWT_SECRET, etc.) are NOT included. Store separately.",
+    "Repository working trees are NOT included."
   ]
 }
 ```
@@ -57,7 +59,7 @@ POST /api/backups
 
 Creates a new backup. Returns immediately with metadata.
 
-**Response** (`200`):
+**Response** (`201`):
 ```json
 {
   "filename": "backup-20260518-193359.tar.gz",

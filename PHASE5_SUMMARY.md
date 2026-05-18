@@ -118,11 +118,11 @@ Phase 5 transformed Djimitflo from a single-user development tool into a product
 - `evidence.ts` — Auth parameter; all task-scoped endpoints check `canReadTask`
 - `observability.ts` — All 4 endpoints admin-only via `requirePermission('manage:config')`
 - `repositories.ts` — `sanitizeRepository` nullifies `path` and `metadata` for non-admin; `added_by` set on scan; health/agents-md/validate require `scan:repository`; file-changes admin-only
-- `mcp.ts` — All GET routes require `requireAuth`; `sanitizeMCPServer` nullifies `command`, `args`, `env`, `url` for non-admin
+- `mcp.ts` — All GET routes require `requireAuth`; `sanitizeMCPServer` redacts for non-admin (`command`: null, `args`: [], `env`: {}, `url`: null)
 
 **Approval Actor Attribution**:
 - `requested_by` — Actor who triggered creation, fallback: `task.owner_user_id || task.created_by || 'system'`
-- `decided_by` — `req.user.sub` (authenticated user who approved/denied)
+- `decided_by` — `req.user.sub` with fallback to `'system'`
 - `approved_by` — Set to `decided_by` on approval
 
 **Frontend**:
@@ -174,10 +174,10 @@ Phase 5 transformed Djimitflo from a single-user development tool into a product
 | Test Suite | Count | Status |
 |-----------|-------|--------|
 | auth.test.ts | 20 | ✅ |
-| backup.test.ts | 8 | ✅ |
+| backup.test.ts | 23 | ✅ |
 | authorization.test.ts | 32 | ✅ |
-| risk-classifier.test.ts | 8 | ✅ |
-| execution-engine.test.ts | (subset) | ✅ |
+| opencode-executor.test.ts | 44 | ✅ |
+| agents-md-validator.test.ts | 22 | ✅ |
 | **Total** | **141** | **✅ All passing** |
 
 ---

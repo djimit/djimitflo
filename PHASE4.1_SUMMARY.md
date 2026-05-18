@@ -92,11 +92,12 @@ WebSocket broadcast
 ```typescript
 [
   'run',
-  '--cwd', workingDirectory,  // optional
-  '--model', modelName,        // optional
-  '--temperature', '0.7',      // optional
-  '--max-tokens', '4000',      // optional
-  taskDescription              // the actual prompt
+  '--format', 'json',               // structured JSON output (default)
+  '--dir', workingDirectory,         // optional (--dir, NOT --cwd)
+  '--model', modelName,              // optional
+  '--agent', agentName,             // optional
+  '--dangerously-skip-permissions', // optional (default: false, audit on bypass)
+  taskDescription                    // the actual prompt
 ]
 ```
 
@@ -139,8 +140,8 @@ Central service that manages execution lifecycle, event persistence, and WebSock
    - Handles session cleanup on completion/cancellation
 
 **Methods:**
-- `executeTask(taskId, executorKind)` - Start execution
-- `cancelTask(taskId)` - Cancel running task
+- `executeTask(taskId, executorKind)` - Start execution (returns status + optional approvalId)
+- `cancelTask(taskId)` - Cancel running task (on ExecutionSession)
 - `isTaskRunning(taskId)` - Check execution status
 - `getSession(taskId)` - Get active session
 
@@ -195,11 +196,14 @@ Wired ExecutionEngine into Express app with proper initialization order.
 **Initialization Sequence:**
 ```typescript
 1. initializeDatabase()
-2. createServer(app)
-3. WebSocketServer + WebSocketService
-4. ExecutionEngine(db, wsService)  // ← NEW
-5. createRoutes(db, executionEngine)  // ← Updated
-6. Start HTTP server
+2. new AuthService(db) + bootstrapAdmin()
+3. createAuthMiddleware(authService)            // Phase 5 addition
+4. createServer(app)
+5. WebSocketServer + WebSocketService
+6. ExecutionEngine(db, wsService)
+7. createRoutes(db, executionEngine, authService, auth)  // 4 params (added auth in Phase 5)
+8. Static dashboard serving                      // Phase 5.3 addition
+9. Start HTTP server
 ```
 
 **Startup Log:**

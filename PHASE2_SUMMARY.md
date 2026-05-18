@@ -150,7 +150,7 @@ Phase 2 focused on **bringing the UI to life** with live data integration, WebSo
 
 ## File Changes Summary
 
-### New Files Created (10)
+### New Files Created (7)
 1. `packages/dashboard/src/lib/api.ts` - API client
 2. `packages/dashboard/src/lib/store.ts` - Zustand store
 3. `packages/dashboard/src/hooks/useWebSocket.ts` - WebSocket hook
@@ -159,7 +159,7 @@ Phase 2 focused on **bringing the UI to life** with live data integration, WebSo
 6. `packages/server/src/database/seed.ts` - Database seeding
 7. `PHASE2_SUMMARY.md` - This file
 
-### Modified Files (5)
+### Modified Files (6)
 1. `packages/dashboard/src/App.tsx` - Added providers and data loading
 2. `packages/dashboard/src/pages/DashboardPage.tsx` - Live data integration
 3. `packages/dashboard/src/pages/TasksPage.tsx` - Live data + task creation modal

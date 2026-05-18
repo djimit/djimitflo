@@ -135,10 +135,13 @@ djimitflo/
 - `POST /api/auth/logout` — Logout (stateless, public)
 
 ### Tasks
-- `GET /api/tasks` — List tasks
-- `GET /api/tasks/:id` — Get task by ID
-- `POST /api/tasks` — Create task
-- `PATCH /api/tasks/:id` — Update task
+- `GET /api/tasks` — List tasks (ownership-filtered for non-admin)
+- `GET /api/tasks/:id` — Get task by ID (404 if inaccessible)
+- `POST /api/tasks` — Create task (sets created_by, owner_user_id)
+- `PATCH /api/tasks/:id` — Update task (sets updated_by)
+- `DELETE /api/tasks/:id` — Delete task (admin only)
+- `GET /api/tasks/:id/events` — Execution events for a task
+- `GET /api/tasks/:id/approvals` — Approval requests for a task
 - `POST /api/tasks/:id/execute` — Execute task (with risk assessment and policy gating)
 - `POST /api/tasks/:id/cancel` — Cancel running task
 
@@ -153,31 +156,47 @@ djimitflo/
 - `GET /api/repositories/:id/agents-md/effective` — Effective instruction stack
 
 ### Diffs (Phase 4.4)
-- `GET /api/tasks/:taskId/diff` — Task diff with file changes and risk levels
-- `GET /api/tasks/:taskId/file-changes` — File changes for a task
-- `GET /api/tasks/:taskId/snapshots` — Pre/post execution git snapshots
+- `GET /api/diff/tasks/:taskId/diff` — Task diff with file changes and risk levels
+- `GET /api/diff/tasks/:taskId/file-changes` — File changes for a task
+- `GET /api/diff/tasks/:taskId/snapshots` — Pre/post execution git snapshots
 
 ### Evidence & Observability
 - `GET /api/evidence/task/:taskId` — Execution evidence chain
 - `GET /api/evidence/summary/:taskId` — Execution summary
 - `GET /api/evidence/review/:taskId` — Full review package (task, summary, evidence, file changes, audit trail)
-- `GET /api/observability/metrics` — System metrics
-- `GET /api/observability/risk-trends` — Risk level trends
-- `GET /api/observability/policy-stats` — Policy decision statistics
+- `GET /api/evidence/file-changes/:taskId` — File changes for evidence
+- `GET /api/evidence/audit-trail/:taskId` — Audit trail for a task
+- `GET /api/observability/metrics` — System metrics (admin only)
+- `GET /api/observability/risk-trends` — Risk level trends (admin only)
+- `GET /api/observability/policy-stats` — Policy decision statistics (admin only)
+- `GET /api/observability/execution-activity` — Execution activity (admin only)
 
 ### Approvals & Policies
+- `GET /api/approvals` — List approvals (ownership-filtered for non-admin)
+- `GET /api/approvals/:id` — Get approval by ID
+- `PATCH /api/approvals/:id` — Approve or deny (backward-compatible)
 - `POST /api/approvals/:id/approve` — Approve a request
 - `POST /api/approvals/:id/deny` — Deny a request
+- `POST /api/approvals/:id/cancel` — Cancel a pending approval
 - `POST /api/policies` — Create approval policy
 - `GET /api/policies` — List policies
+- `GET /api/policies/:id` — Get policy by ID
+- `PATCH /api/policies/:id` — Update policy
+- `DELETE /api/policies/:id` — Delete policy
 
 ### Agents
 - `GET /api/agents` — List agents
 - `GET /api/agents/:id` — Get agent by ID
 
+### Risk Assessment
+- `POST /api/risk/command` — Classify command risk level
+- `POST /api/risk/task` — Assess task risk level
+
 ### MCP
-- `GET /api/mcp/servers` — List MCP servers
+- `GET /api/mcp/servers` — List MCP servers (secrets redacted for non-admin)
 - `GET /api/mcp/tools` — List MCP tools
+- `GET /api/mcp/permissions` — List MCP tool permissions
+- `PATCH /api/mcp/permissions/:toolId` — Update MCP tool permissions (admin only)
 
 ### Backups (admin only)
 - `POST /api/backups` — Create backup
