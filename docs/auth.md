@@ -27,6 +27,7 @@ Three roles with hierarchical permissions:
 | `delete:task` | ✓ | — | — |
 | `manage:config` | ✓ | — | — |
 | `manage:users` | ✓ | — | — |
+| `manage:backups` | ✓ | — | — |
 
 ### Protected Routes
 
@@ -41,9 +42,14 @@ Three roles with hierarchical permissions:
 - `GET /api/tasks`, `GET /api/tasks/:id`
 - `GET /api/agents`, `GET /api/agents/:id`
 - `GET /api/evidence/*`
-- `GET /api/observability/*`
 - `GET /api/repositories`, `GET /api/repositories/:id/*`
 - `GET /api/audits`, `GET /api/policies`
+
+**Admin-only (requiring `manage:config`):**
+- `GET /api/observability/*`
+
+**Admin-only (requiring `manage:backups`):**
+- `POST /api/backups`, `GET /api/backups`, `POST /api/backups/:filename/restore`
 
 **Permission-gated:**
 | Route | Required Permission |
@@ -115,12 +121,13 @@ The `audit_events.user_id` column was already present in Phase 4.2. Starting fro
 - **No refresh tokens**: After token expiry, user must re-authenticate
 - **No password reset**: Not yet implemented
 - **No user management UI**: Admin creation is via environment variables only
-- **No multi-tenancy**: All users share the same data scope
+- **No multi-tenancy**: Users see only their own tasks; admin sees all (see [authorization.md](./authorization.md))
 
 ## Future Roadmap
 
 - Password reset flow
 - Refresh tokens
 - OIDC/SSO integration
-- Multi-user and organizational scoping
+- Organization/workspace model for team isolation
 - User management UI
+- WebSocket authentication and event scoping

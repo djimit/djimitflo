@@ -15,6 +15,7 @@ export interface CreateApprovalInput {
   targetPath?: string;
   policyId?: string;
   metadata?: Record<string, unknown>;
+  requestedBy?: string;
 }
 
 export class ApprovalService {
@@ -50,8 +51,8 @@ export class ApprovalService {
       INSERT INTO approvals (
         id, task_id, execution_event_id, status, risk_level, action_type, title, description,
         command, tool_name, target_path, policy_id, request_type, request_message, request_data,
-        expires_at, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        expires_at, metadata, requested_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.task.id,
@@ -73,6 +74,7 @@ export class ApprovalService {
       }),
       expiresAt,
       JSON.stringify(input.metadata || {}),
+      input.requestedBy || input.task.owner_user_id || input.task.created_by || 'system',
       now,
       now
     );
@@ -167,6 +169,7 @@ export class ApprovalService {
       tool_name: row.tool_name || null,
       target_path: row.target_path || null,
       policy_id: row.policy_id || null,
+      requested_by: row.requested_by || null,
       requested_at: row.created_at,
       decided_at: row.decided_at || row.approved_at || row.denied_at || null,
       decided_by: row.decided_by || row.approved_by || null,
