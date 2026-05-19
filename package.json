@@ -12,12 +12,12 @@
     "dev": "npm-run-all --parallel dev:server dev:dashboard",
     "dev:server": "npm run dev --workspace=@djimitflo/server",
     "dev:dashboard": "npm run dev --workspace=@djimitflo/dashboard",
-    "build": "npm run build --workspaces",
+    "build": "npm run build:shared && npm run build:server && npm run build:dashboard",
+    "build:shared": "npm run build --workspace=@djimitflo/shared",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "npm run test --workspaces",
-    "lint": "npm run lint --workspaces",
-    "type-check": "npm run type-check --workspaces",
+    "type-check": "npm run build:shared && npm run type-check --workspaces",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
   },
   "devDependencies": {

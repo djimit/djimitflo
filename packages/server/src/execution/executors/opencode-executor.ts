@@ -116,6 +116,14 @@ export class OpenCodeExecutor implements TaskExecutor {
   }
 
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
+    const workingDirectory = options?.workingDirectory;
+    if (!workingDirectory) {
+      throw new Error(
+        'OpenCodeExecutor requires an explicit working directory. ' +
+        'Associate the task with a repository before executing it.',
+      );
+    }
+
     const sessionId = randomUUID();
     const startedAt = new Date();
 
@@ -127,11 +135,10 @@ export class OpenCodeExecutor implements TaskExecutor {
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
-      const cwd = options?.workingDirectory || process.cwd();
       const env = { ...process.env, ...options?.environment };
 
       const child = spawn(this.opencodePath, args, {
-        cwd,
+        cwd: workingDirectory,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
       });

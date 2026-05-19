@@ -61,7 +61,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
       }
 
-      await executionEngine.handleApprovalDecision(id, Boolean(approved), reason);
+      await executionEngine.handleApprovalDecision(id, Boolean(approved), reason, req.user?.sub);
 
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as any;
       res.json(parseApproval(updated));
@@ -75,7 +75,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
       }
-      await executionEngine.handleApprovalDecision(req.params.id, true, req.body.reason);
+      await executionEngine.handleApprovalDecision(req.params.id, true, req.body.reason, req.user?.sub);
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(req.params.id) as any;
       res.json(parseApproval(updated));
     } catch (error) {
@@ -88,7 +88,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
       }
-      await executionEngine.handleApprovalDecision(req.params.id, false, req.body.reason);
+      await executionEngine.handleApprovalDecision(req.params.id, false, req.body.reason, req.user?.sub);
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(req.params.id) as any;
       res.json(parseApproval(updated));
     } catch (error) {
@@ -96,7 +96,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     }
   });
 
-  router.post('/:id/cancel', (req, res, next) => {
+  router.post('/:id/cancel', requirePermission('approve:task'), (req, res, next) => {
     try {
       const { id } = req.params;
       const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as any;

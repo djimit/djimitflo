@@ -5,11 +5,18 @@
 import { Router, Request, Response } from 'express';
 import { AuthService } from '../services/auth-service';
 import { AuthMiddleware } from '../middleware/auth';
+import { createRateLimiter } from '../middleware/rate-limit';
 
 export function createAuthRoutes(authService: AuthService, auth: AuthMiddleware): Router {
   const router = Router();
 
-  router.post('/login', (req: Request, res: Response) => {
+  const loginRateLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: 'Too many login attempts. Please try again later.',
+  });
+
+  router.post('/login', loginRateLimiter, (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {

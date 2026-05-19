@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import { join, relative } from 'path';
-import { execSync } from 'child_process';
+import { runGit } from './git-utils';
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import type { Repository, GitStatusResult, StackDetection, RepositoryHealth, HealthScoreDriver, RepositoryHealthFinding, RepositoryScanResult, AgentsMdFile } from '@djimitflo/shared';
@@ -163,23 +163,24 @@ export class RepositoryScanner {
         return { isGitRepository: false, currentBranch: null, defaultBranch: null, isClean: true, stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0, aheadBehind: null, headCommit: null, headCommitMessage: null };
       }
 
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommitMessage = execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const currentBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath);
+      const headCommit = runGit(['rev-parse', 'HEAD'], repoPath);
+      const headCommitMessage = runGit(['log', '-1', '--format=%s'], repoPath);
 
       let defaultBranch: string | null = null;
       try {
-        defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|^refs/remotes/origin/||"', { cwd: repoPath, encoding: 'utf-8' }).trim() || null;
+        const symbolicRef = runGit(['symbolic-ref', 'refs/remotes/origin/HEAD'], repoPath);
+        defaultBranch = symbolicRef.replace(/^refs\/remotes\/origin\//, '') || null;
       } catch { defaultBranch = null; }
       if (!defaultBranch) {
         try {
-          const remoteHeads = execSync('git ls-remote --symref origin HEAD 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim();
+          const remoteHeads = runGit(['ls-remote', '--symref', 'origin', 'HEAD'], repoPath);
           const match = remoteHeads.match(/refs\/heads\/(\S+)/);
           if (match) defaultBranch = match[1];
         } catch { defaultBranch = null; }
       }
 
-      const porcelainStatus = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const porcelainStatus = runGit(['status', '--porcelain'], repoPath);
       const statusLines = porcelainStatus ? porcelainStatus.split('\n').filter(Boolean) : [];
       const stagedFiles = statusLines.filter((l: string) => /^[MADRC]/.test(l)).length;
       const modifiedFiles = statusLines.filter((l: string) => /^\s?[MADRC]/.test(l) || /^[MADRC]\s/.test(l)).length;
@@ -188,7 +189,7 @@ export class RepositoryScanner {
 
       let aheadBehind: { ahead: number; behind: number } | null = null;
       try {
-        const abRaw = execSync('git rev-list --left-right --count HEAD...@{u} 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim();
+        const abRaw = runGit(['rev-list', '--left-right', '--count', 'HEAD...@{u}'], repoPath);
         const [ahead, behind] = abRaw.split(/\s+/).map(Number);
         aheadBehind = { ahead, behind };
       } catch { aheadBehind = null; }
