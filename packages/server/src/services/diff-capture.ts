@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { runGit } from './git-utils';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'better-sqlite3';
@@ -214,9 +214,9 @@ export class DiffCaptureService {
   private getGitStatus(repoPath: string): { isGitRepository: boolean; currentBranch: string | null; isClean: boolean; stagedFiles: number; modifiedFiles: number; untrackedFiles: number; headCommit: string | null; headCommitMessage: string | null } | null {
     try {
       if (!existsSync(join(repoPath, '.git'))) return null;
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const porcelain = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const currentBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath);
+      const headCommit = runGit(['rev-parse', 'HEAD'], repoPath);
+      const porcelain = runGit(['status', '--porcelain'], repoPath);
       const lines = porcelain ? porcelain.split('\n').filter(Boolean) : [];
       return {
         isGitRepository: true,
@@ -226,7 +226,7 @@ export class DiffCaptureService {
         modifiedFiles: lines.filter((l: string) => /^\s?[MADRC]/.test(l) || /^[MADRC]\s/.test(l)).length,
         untrackedFiles: lines.filter((l: string) => /^\?\?/.test(l)).length,
         headCommit,
-        headCommitMessage: execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8' }).trim(),
+        headCommitMessage: runGit(['log', '-1', '--format=%s'], repoPath),
       };
     } catch {
       return null;
@@ -241,10 +241,27 @@ export class DiffCaptureService {
       if (preCommit) {
         diffTarget = preCommit;
       } else {
-        try { diffTarget = execSync('git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim(); } catch { diffTarget = 'HEAD~1'; }
+        try {
+          diffTarget = runGit(['merge-base', 'HEAD', 'main'], repoPath);
+        } catch {
+          try {
+            diffTarget = runGit(['merge-base', 'HEAD', 'master'], repoPath);
+          } catch {
+            diffTarget = 'HEAD~1';
+          }
+        }
       }
 
-      const nameStatus = execSync(`git diff --name-status ${diffTarget} 2>/dev/null || git diff --name-status HEAD~1`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+      let nameStatus: string;
+      try {
+        nameStatus = runGit(['diff', '--name-status', diffTarget], repoPath);
+      } catch {
+        try {
+          nameStatus = runGit(['diff', '--name-status', 'HEAD~1'], repoPath);
+        } catch {
+          nameStatus = '';
+        }
+      }
       const statusLines = nameStatus ? nameStatus.split('\n').filter(Boolean) : [];
 
       for (const line of statusLines) {
@@ -252,16 +269,16 @@ export class DiffCaptureService {
         const filePath = pathParts.join('\t');
         let diff: string | null = null;
         try {
-          diff = execSync(`git diff ${diffTarget} -- "${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8', maxBuffer: 1024 * 1024 }).trim() || null;
+          diff = runGit(['diff', diffTarget, '--', filePath], repoPath) || null;
         } catch { diff = null; }
 
         let beforeHash: string | null = null;
         let afterHash: string | null = null;
         try {
-          if (status !== 'A') beforeHash = execSync(`git rev-parse ${diffTarget}:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+          if (status !== 'A') beforeHash = runGit(['rev-parse', `${diffTarget}:${filePath}`], repoPath) || null;
         } catch { beforeHash = null; }
         try {
-          if (status !== 'D') afterHash = execSync(`git rev-parse HEAD:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+          if (status !== 'D') afterHash = runGit(['rev-parse', `HEAD:${filePath}`], repoPath) || null;
         } catch { afterHash = null; }
 
         const statusMap: Record<string, FileChangeInput['change_type']> = { A: 'created', M: 'modified', D: 'deleted', R: 'renamed', C: 'modified' };

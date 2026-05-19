@@ -3,8 +3,45 @@ import type { Database } from 'better-sqlite3';
 import { RepositoryScanner } from '../services/repository-scanner';
 import { AgentsMdValidator } from '../services/agents-md-validator';
 import { DiffCaptureService } from '../services/diff-capture';
+import { resolve, sep } from 'path';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
+
+/**
+ * Repository scans read whatever filesystem path they are given. When
+ * DJIMITFLO_ALLOWED_REPO_ROOTS is set (comma-separated absolute paths), scan
+ * targets are restricted to those roots; otherwise scanning is unrestricted
+ * and a one-time warning is logged.
+ */
+function getAllowedRepoRoots(): string[] {
+  return (process.env.DJIMITFLO_ALLOWED_REPO_ROOTS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => resolve(entry));
+}
+
+let warnedAboutOpenScan = false;
+
+function resolveAllowedScanPath(rawPath: string): string {
+  const resolved = resolve(rawPath);
+  const roots = getAllowedRepoRoots();
+  if (roots.length === 0) {
+    if (!warnedAboutOpenScan) {
+      warnedAboutOpenScan = true;
+      console.warn(
+        'WARNING: DJIMITFLO_ALLOWED_REPO_ROOTS is not set. Repository scans can ' +
+        'target any directory on the host. Set it to restrict scannable paths.',
+      );
+    }
+    return resolved;
+  }
+  const allowed = roots.some((root) => resolved === root || resolved.startsWith(root + sep));
+  if (!allowed) {
+    throw createError(403, `Path is outside the allowed repository roots: ${resolved}`, 'PATH_NOT_ALLOWED');
+  }
+  return resolved;
+}
 
 export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -30,8 +67,8 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
   router.post('/scan', requirePermission('scan:repository'), (req: Request, res: Response, next: NextFunction) => {
     try {
       const { path } = req.body;
-      if (!path) throw createError(400, 'Path is required', 'INVALID_INPUT');
-      const result = scanner.scan(path);
+      if (!path || typeof path !== 'string') throw createError(400, 'Path is required', 'INVALID_INPUT');
+      const result = scanner.scan(resolveAllowedScanPath(path));
       res.json(result);
     } catch (error) { next(error); }
   });
@@ -40,7 +77,7 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
     try {
       const repository = scanner.getRepository(req.params.id);
       if (!repository) throw createError(404, 'Repository not found', 'REPOSITORY_NOT_FOUND');
-      const result = scanner.scan(repository.path);
+      const result = scanner.scan(resolveAllowedScanPath(repository.path));
       res.json(result);
     } catch (error) { next(error); }
   });
