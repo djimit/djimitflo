@@ -334,7 +334,7 @@ describe('OpenCodeExecutor', () => {
       const original = process.env.OPENCODE_BIN_PATH;
       delete process.env.OPENCODE_BIN_PATH;
       const defaultExecutor = new OpenCodeExecutor();
-      expect((defaultExecutor as any).opencodePath).toBe('/Users/dlandman/.opencode/bin/opencode');
+      expect((defaultExecutor as any).opencodePath).toBe('opencode');
       if (original !== undefined) process.env.OPENCODE_BIN_PATH = original;
     });
 

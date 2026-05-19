@@ -105,7 +105,7 @@ export class OpenCodeExecutor implements TaskExecutor {
   private readonly outputFormat: 'json' | 'default';
 
   constructor(opencodePath?: string) {
-    this.opencodePath = opencodePath || process.env.OPENCODE_BIN_PATH || '/Users/dlandman/.opencode/bin/opencode';
+    this.opencodePath = opencodePath || process.env.OPENCODE_BIN_PATH || 'opencode';
     this.executionTimeoutMs = parseInt(process.env.OPENCODE_EXECUTION_TIMEOUT_MS || '600000', 10);
     this.skipPermissions = process.env.OPENCODE_SKIP_PERMISSIONS === 'true';
     this.outputFormat = (process.env.OPENCODE_OUTPUT_FORMAT as 'json' | 'default') || 'json';
