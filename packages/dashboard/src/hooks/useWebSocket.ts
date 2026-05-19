@@ -5,14 +5,26 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { WebSocketMessage, WebSocketEventType } from '@djimitflo/shared';
 
-function getDefaultWsUrl(): string {
+const AUTH_TOKEN_KEY = 'djimitflo_auth_token';
+
+function getWsBaseUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3001';
   return `${protocol}//${host}/ws`;
 }
 
-const WS_URL = getDefaultWsUrl();
+/**
+ * Builds the WebSocket URL with the JWT appended as a `token` query parameter.
+ * The server rejects connections without a valid token.
+ */
+function buildWsUrl(): string {
+  const base = getWsBaseUrl();
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) : null;
+  if (!token) return base;
+  const separator = base.includes('?') ? '&' : '?';
+  return `${base}${separator}token=${encodeURIComponent(token)}`;
+}
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
@@ -28,10 +40,10 @@ export function useWebSocket() {
     }
 
     isConnecting.current = true;
-    console.log('[WebSocket] Connecting to', WS_URL);
+    console.log('[WebSocket] Connecting...');
 
     try {
-      const socket = new WebSocket(WS_URL);
+      const socket = new WebSocket(buildWsUrl());
 
       socket.onopen = () => {
         console.log('[WebSocket] Connected');

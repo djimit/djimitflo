@@ -3,6 +3,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 import {
   ApprovalRequestType,
   AuditEventType,
@@ -100,6 +102,11 @@ export class ExecutionEngine {
       metadata: JSON.parse(task.metadata || '{}'),
     };
 
+    // Resolve the directory the executor will run in. Agents must never run in
+    // the server's own process directory — they run inside the task's
+    // associated repository (throws if the repository is misconfigured).
+    const workingDirectory = this.resolveWorkingDirectory(parsedTask);
+
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
@@ -115,7 +122,7 @@ export class ExecutionEngine {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
 
-    const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
+    const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, workingDirectory);
     const evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
@@ -218,7 +225,7 @@ export class ExecutionEngine {
     
     try {
       // Start execution
-      const session = await executor.start(parsedTask);
+      const session = await executor.start(parsedTask, { workingDirectory });
       this.activeSessions.set(taskId, session);
       
       // Update task status to running
@@ -247,8 +254,8 @@ export class ExecutionEngine {
     }
   }
 
-  async handleApprovalDecision(approvalId: string, approved: boolean, reason?: string): Promise<ExecuteTaskResult | null> {
-    const approval = this.approvalService.decideApproval(approvalId, approved, reason);
+  async handleApprovalDecision(approvalId: string, approved: boolean, reason?: string, actorId?: string): Promise<ExecuteTaskResult | null> {
+    const approval = this.approvalService.decideApproval(approvalId, approved, reason, actorId);
     if (!approved) {
       this.evidenceService.captureEvidence({
         task_id: approval.task_id,
@@ -547,6 +554,33 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+  }
+
+  /**
+   * Resolves the absolute directory an executor should run in: the path of the
+   * task's associated repository. Returns undefined for tasks with no
+   * repository (the executor decides whether that is acceptable). Throws if a
+   * repository is referenced but cannot be located on disk.
+   */
+  private resolveWorkingDirectory(task: Task): string | undefined {
+    if (!task.repository_id) {
+      return undefined;
+    }
+    const repo = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(task.repository_id) as
+      | { path?: string }
+      | undefined;
+    if (!repo || !repo.path) {
+      const error = new Error(`Repository ${task.repository_id} not found for task ${task.id}.`) as Error & { status?: number };
+      error.status = 422;
+      throw error;
+    }
+    const resolvedPath = resolve(repo.path);
+    if (!existsSync(resolvedPath)) {
+      const error = new Error(`Repository path does not exist on disk: ${resolvedPath}`) as Error & { status?: number };
+      error.status = 422;
+      throw error;
+    }
+    return resolvedPath;
   }
 
   private persistRiskAssessment(taskId: string, assessment: any, subject: string): string {

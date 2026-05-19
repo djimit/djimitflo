@@ -99,7 +99,7 @@ export class ApprovalService {
     return approval;
   }
 
-  decideApproval(id: string, approved: boolean, reason?: string): ApprovalRequest {
+  decideApproval(id: string, approved: boolean, reason?: string, actorId: string = 'system'): ApprovalRequest {
     const approval = this.getApproval(id);
     if (!approval) {
       throw new Error('Approval not found');
@@ -125,12 +125,12 @@ export class ApprovalService {
       WHERE id = ?
     `).run(
       status,
-      'user',
+      actorId,
       approved ? now : null,
       approved ? null : now,
       approved ? null : (reason || 'No reason provided'),
       now,
-      'user',
+      actorId,
       reason || null,
       now,
       id
@@ -142,6 +142,7 @@ export class ApprovalService {
       action: approved ? 'approval_granted' : 'approval_denied',
       resource_type: 'approval',
       resource_id: id,
+      user_id: actorId,
       task_id: updated.task_id,
       risk_level: updated.risk_level,
       metadata: { reason: reason || null },
