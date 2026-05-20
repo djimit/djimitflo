@@ -10,7 +10,6 @@ import { UserRole, ROLE_PERMISSIONS, type User, type AuthTokenPayload } from '@d
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_JWT_EXPIRES_IN = '24h';
-const DEV_SECRET = 'dev-secret-do-not-use-in-production';
 
 export class AuthService {
   private db: Database;
@@ -25,8 +24,8 @@ export class AuthService {
         console.error('FATAL: JWT_SECRET is required in production. Server cannot start.');
         process.exit(1);
       }
-      console.warn('WARNING: JWT_SECRET not set. Using development secret. Do not use in production.');
-      this.jwtSecret = DEV_SECRET;
+      console.warn('WARNING: JWT_SECRET not set. Using generated development secret. Do not use in production.');
+      this.jwtSecret = randomUUID();
     } else {
       this.jwtSecret = secret;
     }
