@@ -4,7 +4,6 @@
 
 import type { Database } from 'better-sqlite3';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
 import {
   ApprovalRequestType,
   AuditEventType,
@@ -26,6 +25,7 @@ import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
+import { resolveAllowedRepoPath } from '../services/repo-path-policy';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -560,7 +560,8 @@ export class ExecutionEngine {
    * Resolves the absolute directory an executor should run in: the path of the
    * task's associated repository. Returns undefined for tasks with no
    * repository (the executor decides whether that is acceptable). Throws if a
-   * repository is referenced but cannot be located on disk.
+   * repository is referenced but cannot be located on disk, or if its path is
+   * outside the allowed repository roots.
    */
   private resolveWorkingDirectory(task: Task): string | undefined {
     if (!task.repository_id) {
@@ -574,7 +575,7 @@ export class ExecutionEngine {
       error.status = 422;
       throw error;
     }
-    const resolvedPath = resolve(repo.path);
+    const resolvedPath = resolveAllowedRepoPath(repo.path);
     if (!existsSync(resolvedPath)) {
       const error = new Error(`Repository path does not exist on disk: ${resolvedPath}`) as Error & { status?: number };
       error.status = 422;

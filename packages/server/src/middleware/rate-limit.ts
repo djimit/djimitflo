@@ -21,16 +21,22 @@ export interface RateLimitOptions {
 export function createRateLimiter(options: RateLimitOptions) {
   const buckets = new Map<string, Bucket>();
 
+  // Periodically evict expired buckets so the map cannot grow unbounded.
+  // unref() ensures this timer never keeps the process alive on shutdown.
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [key, bucket] of buckets) {
+      if (bucket.resetAt <= now) buckets.delete(key);
+    }
+  }, options.windowMs);
+  sweep.unref();
+
   return (req: Request, res: Response, next: NextFunction): void => {
     const now = Date.now();
     const key = req.ip || req.socket.remoteAddress || 'unknown';
 
     let bucket = buckets.get(key);
     if (!bucket || bucket.resetAt <= now) {
-      // Drop expired buckets opportunistically to bound memory growth.
-      for (const [k, b] of buckets) {
-        if (b.resetAt <= now) buckets.delete(k);
-      }
       bucket = { count: 0, resetAt: now + options.windowMs };
       buckets.set(key, bucket);
     }
