@@ -16,6 +16,7 @@ import {
 import { TaskExecutor, ExecutionSession, ExecutorKind } from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
+import { CodexExecutor } from './executors/codex-executor';
 import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
@@ -61,6 +62,7 @@ export class ExecutionEngine {
     // Register default executors
     this.registerExecutor(new MockExecutor());
     this.registerExecutor(new OpenCodeExecutor());
+    this.registerExecutor(new CodexExecutor());
   }
   
   /**
