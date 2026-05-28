@@ -1,5 +1,7 @@
 # Copilot Instructions — djimitflo
 
+> See root `.github/copilot-instructions.md` for global conventions.
+
 Codex-native agent orchestration control plane. Monorepo with server and dashboard workspaces.
 
 ## Commands
