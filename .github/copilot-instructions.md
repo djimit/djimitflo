@@ -52,3 +52,10 @@ packages/shared/
 - **Vite** for dashboard bundling.
 - **Vitest** for testing.
 - **Workspace dependencies** managed via npm workspaces (requires npm >= 9).
+
+## Browser Testing
+
+Playwright MCP is configured in `.vscode/mcp.json`. Install first:
+```bash
+npm install -g @playwright/mcp
+```
