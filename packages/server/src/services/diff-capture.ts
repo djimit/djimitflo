@@ -7,6 +7,9 @@ import { RiskLevel, EvidenceSeverity, EvidenceType } from '@djimitflo/shared';
 import type { DiffRiskAssessment, RepositorySnapshot, FileChange, FileChangeInput } from '@djimitflo/shared';
 import { EvidenceService } from './evidence-service';
 
+// Secret detection patterns used to redact sensitive data from diffs.
+// These are regex patterns that match known secret formats (API keys, tokens, etc.)
+// for redaction purposes only — they do NOT contain any actual secrets.
 const SECRET_PATTERNS = [
   /(?:password|passwd|pwd)\s*[:=]\s*\S+/i,
   /(?:api[_-]?key|apikey)\s*[:=]\s*\S+/i,
