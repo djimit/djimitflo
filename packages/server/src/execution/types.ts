@@ -122,6 +122,8 @@ export interface ExecutorOptions {
   skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
   format?: 'json' | 'default'; // output format (default: json for structured parsing)
   approvalCallback?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
+  sessionId?: string; // OpenCode session ID for continuity
+  continueSession?: boolean; // resume existing session with --continue flag
 }
 
 /**

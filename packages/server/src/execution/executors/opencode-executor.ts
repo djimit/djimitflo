@@ -116,7 +116,7 @@ export class OpenCodeExecutor implements TaskExecutor {
   }
 
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
-    const sessionId = randomUUID();
+    const sessionId = options?.sessionId || randomUUID();
     const startedAt = new Date();
 
     const args = this.buildOpenCodeArgs(task, options);
@@ -218,6 +218,14 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     if (options?.agentKind) {
       args.push('--agent', options.agentKind);
+    }
+
+    if (options?.continueSession) {
+      args.push('--continue');
+    }
+
+    if (options?.sessionId) {
+      args.push('--session', options.sessionId);
     }
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;

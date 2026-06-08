@@ -13,7 +13,7 @@ import {
   TaskStatus,
   WebSocketEventType,
 } from '@djimitflo/shared';
-import { TaskExecutor, ExecutionSession, ExecutorKind } from './types';
+import { TaskExecutor, ExecutionSession, ExecutorKind, ExecutorOptions } from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
@@ -217,17 +217,24 @@ export class ExecutionEngine {
     // Capture pre-execution git snapshot if task has a repository
     const repositoryId = parsedTask.repository_id || task.repository_id;
     this.capturePreExecutionDiff(taskId, repositoryId);
-    
+
+    // Build executor options with session continuity support
+    const executorOptions: ExecutorOptions = {};
+    if (task.session_id) {
+      executorOptions.sessionId = task.session_id;
+      executorOptions.continueSession = true;
+    }
+
     try {
       // Start execution
-      const session = await executor.start(parsedTask);
+      const session = await executor.start(parsedTask, executorOptions);
       this.activeSessions.set(taskId, session);
-      
+
       // Update task status to running
       this.updateTaskStatus(taskId, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
       });
-      
+
       // Process event stream in background
       this.processEventStream(session).catch((error) => {
         console.error(`Error processing event stream for task ${taskId}:`, error);
@@ -348,11 +355,23 @@ export class ExecutionEngine {
    * Process event stream from execution session
    */
   private async processEventStream(session: ExecutionSession): Promise<void> {
+    let sessionIdPersisted = false;
     try {
       for await (const event of session.events) {
         // Persist event to database
         const eventId = this.persistEvent(event);
-        
+
+        // Capture session ID from TASK_STARTED events for OpenCode
+        if (!sessionIdPersisted && event.event_type === ExecutionEventType.TASK_STARTED) {
+          const openCodeSessionId = event.metadata?.sessionID as string | undefined;
+          const isOpencode = event.metadata?.executor === 'opencode';
+          if (openCodeSessionId && isOpencode) {
+            this.db.prepare('UPDATE tasks SET session_id = ? WHERE id = ?').run(openCodeSessionId, session.taskId);
+            sessionIdPersisted = true;
+            console.log(`INFO: OpenCode session ${openCodeSessionId} captured for task ${session.taskId}`);
+          }
+        }
+
         // Broadcast via WebSocket
         this.broadcastExecutionEvent(session.taskId, eventId, event);
       }

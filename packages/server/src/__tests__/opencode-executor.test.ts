@@ -166,6 +166,49 @@ describe('OpenCodeExecutor', () => {
     });
   });
 
+  describe('buildOpenCodeArgs — session continuity', () => {
+    it('includes --session when sessionId option is provided', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const options: ExecutorOptions = { sessionId: 'ses_abc123' };
+      const args = (executor as any).buildOpenCodeArgs(task, options);
+      expect(args).toContain('--session');
+      expect(args[args.indexOf('--session') + 1]).toBe('ses_abc123');
+    });
+
+    it('includes --continue when continueSession is true', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const options: ExecutorOptions = { continueSession: true };
+      const args = (executor as any).buildOpenCodeArgs(task, options);
+      expect(args).toContain('--continue');
+    });
+
+    it('includes both --continue and --session when both are provided', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const options: ExecutorOptions = { sessionId: 'ses_xyz789', continueSession: true };
+      const args = (executor as any).buildOpenCodeArgs(task, options);
+      expect(args).toContain('--continue');
+      expect(args).toContain('--session');
+      expect(args[args.indexOf('--session') + 1]).toBe('ses_xyz789');
+    });
+
+    it('omits session flags when neither option is provided', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const args = (executor as any).buildOpenCodeArgs(task, {});
+      expect(args).not.toContain('--session');
+      expect(args).not.toContain('--continue');
+    });
+
+    it('places session flags before task description', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const options: ExecutorOptions = { sessionId: 'ses_test', continueSession: true };
+      const args = (executor as any).buildOpenCodeArgs(task, options);
+      const sessionIndex = args.indexOf('--session');
+      const descriptionIndex = args.length - 1;
+      expect(sessionIndex).toBeGreaterThan(0);
+      expect(sessionIndex).toBeLessThan(descriptionIndex);
+    });
+  });
+
   describe('parseJsonEvent — structured JSON parsing', () => {
     it('parses step_start event', () => {
       const line = JSON.stringify({ type: 'step_start', sessionID: 'ses_123', timestamp: 1234, part: { type: 'step-start', id: 'prt_1', messageID: 'msg_1', sessionID: 'ses_123' } });

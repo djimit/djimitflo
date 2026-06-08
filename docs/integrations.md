@@ -18,6 +18,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - Structured JSON output (`--format json`) produces NDJSON event stream
 - Permission bypass (`--dangerously-skip-permissions`) available with safety guardrails
 - Working directory (`--dir`), model selection (`--model`), and agent selection (`--agent`) all verified
+- Session continuity (`--continue`, `--session`) now supported for long-running task retries
 - See [docs/opencode.md](./opencode.md) for full details
 
 **Not yet verified**: Long-running task execution with Djimitflo policy engine end-to-end
@@ -51,7 +52,7 @@ Each integration has an evidence trail:
 
 ## Known Limitations
 
-- OpenCode session continuity (`--continue`, `--session`) not yet supported
+- OpenCode session continuity (`--continue`, `--session`) now supported
 - OpenCode MCP integration during execution not yet supported
 - OpenCode AGENTS.md injection into execution context not yet supported
 - Codex integration requires CLI/SDK/API contract capture first
@@ -63,4 +64,3 @@ Each integration has an evidence trail:
 1. End-to-end test: Execute a real task via Djimitflo policy engine → OpenCode executor → verify event stream
 2. Capture Codex CLI contract (if Codex CLI is available)
 3. Evaluate Ruflo hooks pattern for pre/post execution lifecycle
-4. Session continuity support for OpenCode (`--continue`, `--session`)

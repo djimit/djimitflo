@@ -481,6 +481,17 @@ function createPhase55Tables(db: BetterSqlite3Database) {
   `);
 }
 
+function createPhase56SessionContinuity(db: BetterSqlite3Database) {
+  const sessionColumns: ColumnSpec[] = [
+    { name: 'session_id', definition: 'TEXT' },
+  ];
+  addMissingColumns(db, 'tasks', sessionColumns);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
+  `);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -490,6 +501,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createPhase44Tables(db);
   createPhase52Tables(db);
   createPhase55Tables(db);
+  createPhase56SessionContinuity(db);
 }
 
 if (require.main === module) {

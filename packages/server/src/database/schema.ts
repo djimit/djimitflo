@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   token_usage INTEGER,
   tags TEXT, -- JSON array
   metadata TEXT, -- JSON object
+  session_id TEXT, -- OpenCode session ID for continuity
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL,
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_agent_id ON tasks(agent_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_session_id ON tasks(session_id);
 
 -- Agents table
 CREATE TABLE IF NOT EXISTS agents (
