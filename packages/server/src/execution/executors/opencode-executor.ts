@@ -168,7 +168,7 @@ export class OpenCodeExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, options?.systemPrompt);
     const result = this.createResultPromise(task, emitter);
 
     const session: ExecutionSession = {
@@ -225,7 +225,12 @@ export class OpenCodeExecutor implements TaskExecutor {
       args.push('--dangerously-skip-permissions');
     }
 
-    args.push(task.description);
+    // Prepend AGENTS.md context to task description
+    let prompt = task.description;
+    if (options?.systemPrompt) {
+      prompt = `[CONTEXT FROM AGENTS.md]\n${options.systemPrompt}\n[END CONTEXT]\n\n${task.description}`;
+    }
+    args.push(prompt);
 
     return args;
   }
@@ -365,16 +370,29 @@ export class OpenCodeExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    systemPrompt?: string,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
     yield {
       task_id: task.id,
       event_type: ExecutionEventType.TASK_STARTED,
-      message: 'OpenCode execution started',
+      message: systemPrompt 
+        ? `OpenCode execution started with AGENTS.md context (${systemPrompt.length} chars)` 
+        : 'OpenCode execution started',
       level: LogLevel.INFO,
-      metadata: { executor: 'opencode', skip_permissions: skipPerms, output_format: this.outputFormat },
+      metadata: { executor: 'opencode', skip_permissions: skipPerms, output_format: this.outputFormat, agents_md_injected: !!systemPrompt },
     };
+
+    if (systemPrompt) {
+      yield {
+        task_id: task.id,
+        event_type: ExecutionEventType.LOG,
+        level: LogLevel.INFO,
+        message: 'AGENTS.md context injected into executor session',
+        metadata: { agents_md_files_injected: systemPrompt.split('\n\n---\n\n').length },
+      };
+    }
 
     if (skipPerms) {
       yield {

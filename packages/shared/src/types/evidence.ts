@@ -22,6 +22,7 @@ export enum EvidenceType {
   POST_EXECUTION_GIT_STATUS = 'post_execution_git_status',
   DIFF_SUMMARY = 'diff_summary',
   REPOSITORY_HEALTH_FINDING = 'repository_health_finding',
+  SYSTEM_CONFIG = 'system_config',
 }
 
 export enum EvidenceSeverity {

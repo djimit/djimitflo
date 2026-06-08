@@ -122,6 +122,15 @@ export interface ExecutorOptions {
   skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
   format?: 'json' | 'default'; // output format (default: json for structured parsing)
   approvalCallback?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
+  systemPrompt?: string; // AGENTS.md context to prepend to task description
+  mcpServers?: MCPServerConfig[]; // MCP servers to configure (best-effort passthrough)
+}
+
+export interface MCPServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
 }
 
 /**

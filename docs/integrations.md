@@ -18,6 +18,8 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - Structured JSON output (`--format json`) produces NDJSON event stream
 - Permission bypass (`--dangerously-skip-permissions`) available with safety guardrails
 - Working directory (`--dir`), model selection (`--model`), and agent selection (`--agent`) all verified
+- **AGENTS.md injection**: Repository governance files are loaded via `GET /api/repositories/:id/agents-md/effective` and prepended to task prompts with `[CONTEXT FROM AGENTS.md]` delimiters
+- **MCP passthrough**: Configured via `ExecutorOptions.mcpServers` (best-effort, falls back to environment variables)
 - See [docs/opencode.md](./opencode.md) for full details
 
 **Not yet verified**: Long-running task execution with Djimitflo policy engine end-to-end
@@ -29,6 +31,8 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - Structured NDJSON output (`--format json`) with event types `step-start`, `tool`, `text`, `step-finish`
 - Permission bypass available via `CODEX_SKIP_PERMISSIONS=true` environment variable
 - Binary resolved from `CODEX_BIN_PATH` environment variable, default: `codex`
+- **AGENTS.md injection**: Same as OpenCode - repository governance files are prepended to task prompts
+- **MCP passthrough**: Configured via `ExecutorOptions.mcpServers` (best-effort, falls back to environment variables)
 - CLI contract anticipated but not yet verified against live binary
 - See [docs/codex.md](./codex.md) for details
 
@@ -52,15 +56,12 @@ Each integration has an evidence trail:
 ## Known Limitations
 
 - OpenCode session continuity (`--continue`, `--session`) not yet supported
-- OpenCode MCP integration during execution not yet supported
-- OpenCode AGENTS.md injection into execution context not yet supported
 - Codex integration requires CLI/SDK/API contract capture first
-- Ruflo integration would require Claude Code runtime dependency
 - All OpenCode/execution API endpoints now require JWT authentication (Phase 5.2)
 
 ## Next Steps
 
-1. End-to-end test: Execute a real task via Djimitflo policy engine → OpenCode executor → verify event stream
+1. End-to-end test: Execute a real task via Djimitflo policy engine → OpenCode executor → verify event stream and AGENTS.md injection
 2. Capture Codex CLI contract (if Codex CLI is available)
 3. Evaluate Ruflo hooks pattern for pre/post execution lifecycle
 4. Session continuity support for OpenCode (`--continue`, `--session`)

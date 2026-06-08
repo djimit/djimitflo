@@ -14,13 +14,13 @@ export class MockExecutor implements TaskExecutor {
     return true;
   }
   
-  async start(task: Task, _options?: ExecutorOptions): Promise<ExecutionSession> {
+  async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();
     let cancelled = false;
     
     // Create event stream generator
-    const events = this.createEventStream(task, () => cancelled);
+    const events = this.createEventStream(task, () => cancelled, options?.systemPrompt);
     
     // Create result promise
     const result = this.createResultPromise(task, () => cancelled);
@@ -43,21 +43,34 @@ export class MockExecutor implements TaskExecutor {
     return session;
   }
   
-  /**
-   * Generate a stream of fake execution events
-   */
+/**
+    * Generate a stream of fake execution events
+    */
   private async *createEventStream(
     task: Task,
-    isCancelled: () => boolean
+    isCancelled: () => boolean,
+    systemPrompt?: string,
   ): AsyncIterable<ExecutionEventCreateInput> {
-    // Task started event
+    // Task started event with AGENTS.md context info
     yield {
       task_id: task.id,
       event_type: ExecutionEventType.TASK_STARTED,
-      message: 'Task execution started with mock executor',
+      message: systemPrompt 
+        ? `Task execution started with AGENTS.md context (${systemPrompt.length} chars)` 
+        : 'Task execution started with mock executor',
       level: LogLevel.INFO,
-      metadata: { executor: 'mock' },
+      metadata: { executor: 'mock', agents_md_injected: !!systemPrompt },
     };
+
+    if (systemPrompt) {
+      yield {
+        task_id: task.id,
+        event_type: ExecutionEventType.LOG,
+        level: LogLevel.INFO,
+        message: 'AGENTS.md context injected into executor session',
+        metadata: { },
+      };
+    }
     
     await this.sleep(500);
     if (isCancelled()) return;

@@ -166,6 +166,27 @@ describe('OpenCodeExecutor', () => {
     });
   });
 
+  describe('buildOpenCodeArgs — systemPrompt (AGENTS.md injection)', () => {
+    it('prepends AGENTS.md context with delimiters to task description', () => {
+      const task = makeTask({ description: 'fix the bug' });
+      const options: ExecutorOptions = { systemPrompt: '# Repo Rules\n- Use npm test' };
+      const args = (executor as any).buildOpenCodeArgs(task, options);
+      expect(args[args.length - 1]).toBe('[CONTEXT FROM AGENTS.md]\n# Repo Rules\n- Use npm test\n[END CONTEXT]\n\nfix the bug');
+    });
+
+    it('uses task description as-is when systemPrompt is not provided', () => {
+      const task = makeTask({ description: 'fix the bug' });
+      const args = (executor as any).buildOpenCodeArgs(task, {});
+      expect(args[args.length - 1]).toBe('fix the bug');
+    });
+
+    it('handles empty systemPrompt gracefully', () => {
+      const task = makeTask({ description: 'fix the bug' });
+      const args = (executor as any).buildOpenCodeArgs(task, { systemPrompt: '' });
+      expect(args[args.length - 1]).toBe('fix the bug');
+    });
+  });
+
   describe('parseJsonEvent — structured JSON parsing', () => {
     it('parses step_start event', () => {
       const line = JSON.stringify({ type: 'step_start', sessionID: 'ses_123', timestamp: 1234, part: { type: 'step-start', id: 'prt_1', messageID: 'msg_1', sessionID: 'ses_123' } });

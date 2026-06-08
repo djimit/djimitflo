@@ -1,6 +1,6 @@
 /**
- * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
- */
+  * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
+  */
 
 import type { Database } from 'better-sqlite3';
 import {
@@ -18,6 +18,8 @@ import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
 import { WebSocketService } from '../services/websocket-service';
+import { RepositoryScanner } from '../services/repository-scanner';
+import { AgentsMdValidator } from '../services/agents-md-validator';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
@@ -41,10 +43,12 @@ export class ExecutionEngine {
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
-  private auditService: AuditService;
   private approvalService: ApprovalService;
+  private auditService: AuditService;
   private evidenceService: EvidenceService;
   private diffCaptureService: DiffCaptureService;
+  private scanner: RepositoryScanner;
+  private agentsMdValidator: AgentsMdValidator;
   
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
@@ -58,6 +62,8 @@ export class ExecutionEngine {
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
     this.diffCaptureService = new DiffCaptureService(db);
+    this.scanner = new RepositoryScanner(db);
+    this.agentsMdValidator = new AgentsMdValidator();
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -216,11 +222,31 @@ export class ExecutionEngine {
 
     // Capture pre-execution git snapshot if task has a repository
     const repositoryId = parsedTask.repository_id || task.repository_id;
+    
+    // Build AGENTS.md system prompt if repository has AGENTS.md files
+    let systemPrompt: string | undefined;
+    if (repositoryId) {
+      try {
+        const agentsMdFiles = this.scanner.getAgentsMdFiles(repositoryId);
+        if (agentsMdFiles.length > 0) {
+          const stack = this.agentsMdValidator.getEffectiveStack(repositoryId, agentsMdFiles, '/');
+          if (stack.files.length > 0) {
+            systemPrompt = stack.files
+              .map(f => f.content || '')
+              .filter(c => c.length > 0)
+              .join('\n\n---\n\n');
+          }
+        }
+      } catch (agentsMdError) {
+        console.error(`Failed to load AGENTS.md stack for task ${taskId}:`, agentsMdError);
+      }
+    }
+    
     this.capturePreExecutionDiff(taskId, repositoryId);
     
     try {
-      // Start execution
-      const session = await executor.start(parsedTask);
+      // Start execution with AGENTS.md context
+      const session = await executor.start(parsedTask, { systemPrompt });
       this.activeSessions.set(taskId, session);
       
       // Update task status to running
@@ -609,6 +635,38 @@ export class ExecutionEngine {
         task_id: taskId,
         metadata: { preSnapshotId: preSnapshot?.id ?? null, isClean: preSnapshot?.isClean },
       });
+
+      // Load and log AGENTS.md stack as SYSTEM_CONFIG evidence
+      try {
+        const agentsMdFiles = this.scanner.getAgentsMdFiles(repositoryId);
+        const stack = this.agentsMdValidator.getEffectiveStack(repositoryId, agentsMdFiles, '/');
+        
+        if (stack.files.length > 0) {
+          const effectiveInstructions = stack.files
+            .map(f => f.content || '')
+            .filter(c => c.length > 0)
+            .join('\n\n---\n\n');
+          
+          this.evidenceService.captureEvidence({
+            task_id: taskId,
+            evidence_type: EvidenceType.SYSTEM_CONFIG,
+            severity: EvidenceSeverity.INFO,
+            title: 'AGENTS.md instructions injected into executor context',
+            summary: `${stack.files.length} AGENTS.md file(s) loaded for repository guidance.`,
+            details: { 
+              files: stack.files.map(f => ({ path: f.relativePath, appliesToPath: f.appliesToPath })),
+              instructionsLength: effectiveInstructions.length,
+            },
+            source: 'system',
+            metadata: { 
+              agentsMdInstructionStack: effectiveInstructions,
+              filesInjected: stack.files.length,
+            },
+          });
+        }
+      } catch (agentsMdError) {
+        console.error(`Failed to load AGENTS.md stack for task ${taskId}:`, agentsMdError);
+      }
     } catch (error) {
       console.error(`Failed to capture pre-execution snapshot for task ${taskId}:`, error);
     }
