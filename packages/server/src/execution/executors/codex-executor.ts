@@ -5,10 +5,10 @@
  *   codex exec [--format json] [--dir <path>] [--model <model>] <prompt>
  *
  * JSON event stream (NDJSON, one JSON object per line):
- *   { "type": "step_start",  ... }
- *   { "type": "tool_use",    ... }
- *   { "type": "text",        ... }
- *   { "type": "step_finish", ... }
+ *   { "type": "step-start", ... }
+ *   { "type": "tool",       ... }
+ *   { "type": "text",       ... }
+ *   { "type": "step-finish",... }
  *
  * Falls back to heuristic parsing if Codex does not produce valid JSON.
  */
@@ -182,6 +182,15 @@ export class CodexExecutor implements TaskExecutor {
   }
 
   // ── CLI argument construction ───────────────────────────────────────────────
+  //
+  // Two likely CLI invocations, controlled by env vars:
+  //   `codex exec [--format json] [--dir <path>] [--model <model>] <prompt>`
+  //     — OpenAI Codex CLI (default binary: `codex`, override with CODEX_BIN_PATH)
+  //   `kilo run [--format json] [--dir <path>] [--model <model>] <prompt>`
+  //     — Kilo CLI (default binary: `kilo`, override with CODEX_BIN_PATH,
+  //       alternative subcommand via CODEX_SUBCOMMAND, default: `exec`)
+  //
+  // Both produce the same structured NDJSON event stream (step-start/tool/text/step-finish).
 
   private buildCodexArgs(task: Task, options?: ExecutorOptions): string[] {
     const args: string[] = ['exec'];
@@ -229,7 +238,7 @@ export class CodexExecutor implements TaskExecutor {
     const part = event.part ?? (event as unknown as Record<string, unknown>);
 
     switch (event.type) {
-      case 'step_start':
+      case 'step-start':
         return {
           task_id: taskId,
           event_type: ExecutionEventType.TASK_STARTED,
@@ -242,7 +251,7 @@ export class CodexExecutor implements TaskExecutor {
           },
         };
 
-      case 'tool_use': {
+      case 'tool': {
         const state = (part as Record<string, unknown>)?.state as Record<string, unknown> | undefined;
         return {
           task_id: taskId,
@@ -272,7 +281,7 @@ export class CodexExecutor implements TaskExecutor {
         };
       }
 
-      case 'step_finish': {
+      case 'step-finish': {
         const reason = ((part as Record<string, unknown>)?.reason as string) || 'unknown';
         const isSuccess = reason === 'stop' || reason === 'complete';
         return {
