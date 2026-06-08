@@ -153,7 +153,7 @@ export class CodexExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, options?.systemPrompt);
     const result = this.createResultPromise(task, emitter);
 
     const session: ExecutionSession = {
@@ -182,15 +182,15 @@ export class CodexExecutor implements TaskExecutor {
   }
 
   // ── CLI argument construction ───────────────────────────────────────────────
-  //
-  // Two likely CLI invocations, controlled by env vars:
-  //   `codex exec [--format json] [--dir <path>] [--model <model>] <prompt>`
-  //     — OpenAI Codex CLI (default binary: `codex`, override with CODEX_BIN_PATH)
-  //   `kilo run [--format json] [--dir <path>] [--model <model>] <prompt>`
-  //     — Kilo CLI (default binary: `kilo`, override with CODEX_BIN_PATH,
-  //       alternative subcommand via CODEX_SUBCOMMAND, default: `exec`)
-  //
-  // Both produce the same structured NDJSON event stream (step-start/tool/text/step-finish).
+//
+   // Two likely CLI invocations, controlled by env vars:
+   //   `codex exec [--format json] [--dir <path>] [--model <model>] <prompt>`
+   //     — OpenAI Codex CLI (default binary: `codex`, override with CODEX_BIN_PATH)
+   //   `kilo run [--format json] [--dir <path>] [--model <model>] <prompt>`
+   //     — Kilo CLI (default binary: `kilo`, override with CODEX_BIN_PATH,
+   //       alternative subcommand via CODEX_SUBCOMMAND, default: `exec`)
+   //
+   // Both produce the same structured NDJSON event stream (step-start/tool/text/step-finish).
 
   private buildCodexArgs(task: Task, options?: ExecutorOptions): string[] {
     const args: string[] = ['exec'];
@@ -213,7 +213,20 @@ export class CodexExecutor implements TaskExecutor {
       args.push('--dangerously-skip-permissions');
     }
 
-    args.push(task.description);
+    // Build prompt with optional AGENTS.md context injection
+    let prompt = task.description;
+    if (options?.systemPrompt) {
+      prompt = `[CONTEXT FROM AGENTS.md]\n${options.systemPrompt}\n[END CONTEXT]\n\n${task.description}`;
+    }
+
+    // Best-effort MCP server configuration via environment variables
+    // Codex can pick up MCP config from environment or config files
+    // This is best-effort - if CLI supports MCP flags, they would be added here
+    if (options?.mcpServers && options.mcpServers.length > 0) {
+      console.log(`[MCP] ${options.mcpServers.length} MCP server(s) configured for Codex executor (best-effort passthrough)`);
+    }
+
+    args.push(prompt);
 
     return args;
   }
@@ -363,6 +376,7 @@ export class CodexExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    systemPrompt?: string,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
@@ -373,6 +387,16 @@ export class CodexExecutor implements TaskExecutor {
       level: LogLevel.INFO,
       metadata: { executor: 'codex', skip_permissions: skipPerms, output_format: this.outputFormat },
     };
+
+    if (systemPrompt) {
+      yield {
+        task_id: task.id,
+        event_type: ExecutionEventType.LOG,
+        message: `[CONTEXT FROM AGENTS.md] Injected ${systemPrompt.length} characters of AGENTS.md instructions into executor context.`,
+        level: LogLevel.INFO,
+        metadata: { agts_md_injected: true, context_chars: systemPrompt.length },
+      };
+    }
 
     if (skipPerms) {
       yield {

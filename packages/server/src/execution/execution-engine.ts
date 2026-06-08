@@ -1,6 +1,6 @@
 /**
- * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
- */
+  * Execution engine - orchestrates task execution, event persistence, and WebSocket broadcasting
+  */
 
 import type { Database } from 'better-sqlite3';
 import {
@@ -13,7 +13,7 @@ import {
   TaskStatus,
   WebSocketEventType,
 } from '@djimitflo/shared';
-import { TaskExecutor, ExecutionSession, ExecutorKind } from './types';
+import { TaskExecutor, ExecutionSession, ExecutorKind, ExecutorOptions } from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
@@ -26,6 +26,8 @@ import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
+import { RepositoryScanner } from '../services/repository-scanner';
+import { AgentsMdValidator } from '../services/agents-md-validator';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
@@ -38,13 +40,15 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
-  private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
+  private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null; effectiveInstructions?: string }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
   private diffCaptureService: DiffCaptureService;
+  private repositoryScanner: RepositoryScanner;
+  private agentsMdValidator: AgentsMdValidator;
   
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
@@ -58,6 +62,8 @@ export class ExecutionEngine {
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
     this.diffCaptureService = new DiffCaptureService(db);
+    this.repositoryScanner = new RepositoryScanner(db);
+    this.agentsMdValidator = new AgentsMdValidator();
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -204,6 +210,15 @@ export class ExecutionEngine {
     // Update task status to queued
     this.updateTaskStatus(taskId, TaskStatus.QUEUED);
 
+    // Load AGENTS.md effective instructions and MCP servers for the repository
+    const repositoryId = parsedTask.repository_id || task.repository_id;
+    let repositoryPath: string | undefined;
+    if (repositoryId) {
+      const repo = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(repositoryId) as any;
+      repositoryPath = repo?.path;
+    }
+    const executorOptions: ExecutorOptions = await this.buildExecutorOptions(repositoryId, repositoryPath);
+
     this.evidenceService.captureEvidence({
       task_id: taskId,
       evidence_type: EvidenceType.EXECUTION_SUMMARY,
@@ -215,12 +230,11 @@ export class ExecutionEngine {
     });
 
     // Capture pre-execution git snapshot if task has a repository
-    const repositoryId = parsedTask.repository_id || task.repository_id;
-    this.capturePreExecutionDiff(taskId, repositoryId);
-    
+    this.capturePreExecutionDiff(taskId, repositoryId, executorOptions.systemPrompt);
+
     try {
-      // Start execution
-      const session = await executor.start(parsedTask);
+      // Start execution with AGENTS.md context and MCP config
+      const session = await executor.start(parsedTask, executorOptions);
       this.activeSessions.set(taskId, session);
       
       // Update task status to running
@@ -577,6 +591,54 @@ export class ExecutionEngine {
     return id;
   }
 
+  // ── AGENTS.md and MCP Options Builder ───────────────────────────────────────────
+
+  async buildExecutorOptions(repositoryId: string | null | undefined, repositoryPath?: string): Promise<ExecutorOptions> {
+    const options: ExecutorOptions = {};
+
+    if (!repositoryId) return options;
+
+    const repo = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(repositoryId) as any;
+    if (!repo) return options;
+
+    const repoPath = repositoryPath || repo.path;
+    if (!repoPath) return options;
+
+    // Load AGENTS.md effective instructions
+    try {
+      const agentsMdFiles = this.repositoryScanner.getAgentsMdFiles(repositoryId);
+      const effectiveStack = this.agentsMdValidator.getEffectiveStack(repositoryId, agentsMdFiles, '/');
+
+      if (effectiveStack.files.length > 0) {
+        const instructions = effectiveStack.files
+          .map((f) => `# ${f.relativePath}\n\n${f.content || ''}`)
+          .join('\n\n---\n\n');
+        options.systemPrompt = instructions;
+      }
+    } catch (error) {
+      console.error(`Failed to load AGENTS.md for repository ${repositoryId}:`, error);
+    }
+
+    // Load MCP servers from database (best-effort)
+    try {
+      const mcpServers = this.db.prepare('SELECT * FROM mcp_servers WHERE status = ?').all('running') as any[];
+      if (mcpServers.length > 0) {
+        options.mcpServers = mcpServers.map((s) => ({
+          name: s.name,
+          command: s.command,
+          args: s.args ? JSON.parse(s.args) : undefined,
+          env: s.env ? JSON.parse(s.env) : undefined,
+        }));
+      }
+    } catch (error) {
+      console.error(`Failed to load MCP servers for repository ${repositoryId}:`, error);
+    }
+
+    return options;
+  }
+
+  // ── Diff Capture ───────────────────────────────────────────────────────────────
+
   private hasApprovedStart(taskId: string): boolean {
     const approval = this.db.prepare(`
       SELECT * FROM approvals
@@ -587,7 +649,7 @@ export class ExecutionEngine {
     return Boolean(approval);
   }
 
-  private capturePreExecutionDiff(taskId: string, repositoryId: string | null | undefined): void {
+  private capturePreExecutionDiff(taskId: string, repositoryId: string | null | undefined, effectiveInstructions?: string): void {
     if (!repositoryId) return;
 
     const repo = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(repositoryId) as any;
@@ -599,6 +661,7 @@ export class ExecutionEngine {
         repositoryId,
         repositoryPath: repo.path,
         preSnapshotId: preSnapshot?.id ?? null,
+        effectiveInstructions,
       });
 
       this.auditService.record({
@@ -609,6 +672,19 @@ export class ExecutionEngine {
         task_id: taskId,
         metadata: { preSnapshotId: preSnapshot?.id ?? null, isClean: preSnapshot?.isClean },
       });
+
+      // Capture AGENTS.md effective instructions as SYSTEM_CONFIG evidence
+      if (effectiveInstructions && effectiveInstructions.length > 0) {
+        this.evidenceService.captureEvidence({
+          task_id: taskId,
+          evidence_type: EvidenceType.SYSTEM_CONFIG,
+          severity: EvidenceSeverity.INFO,
+          title: 'AGENTS.md context injected into execution',
+          summary: `Injected ${effectiveInstructions.length} characters of AGENTS.md instructions into executor context.`,
+          details: { characters: effectiveInstructions.length, source: 'AGENTS.md' },
+          source: 'system',
+        });
+      }
     } catch (error) {
       console.error(`Failed to capture pre-execution snapshot for task ${taskId}:`, error);
     }
