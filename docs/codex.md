@@ -1,8 +1,8 @@
 # Codex Integration Status
 
-## Current Status: Not Implemented
+## Current Status: Implemented — CLI contract unverified against live binary
 
-The `ExecutorKind = 'codex'` type exists in `types.ts` but there is no `CodexExecutor` implementation. This is intentional — adding a stub without a working CLI contract would overclaim capability.
+`CodexExecutor` exists in `packages/server/src/execution/executors/codex-executor.ts` and is registered in `execution-engine.ts`. The executor spawns a Codex-compatible CLI process and parses its structured NDJSON output.
 
 ## What Codex Provides
 
@@ -15,29 +15,22 @@ Codex (by OpenAI) offers:
 - Review/ship workflow
 - Session management and continuity
 
-## Integration Paths
+## CLI Contract
 
-There are three potential paths for Codex integration:
+The executor invokes the binary as:
 
-### Codex CLI
+```bash
+codex exec --format json --dir <path> --model <model> <prompt>
+```
 
-If Codex provides a CLI with structured output (similar to `opencode run --format json`), an executor could be built that spawns the Codex CLI and parses its output. The CLI contract would need to be captured and verified first.
+- Binary: resolved from `CODEX_BIN_PATH` env var, defaulting to `codex` on PATH.
+- Output: NDJSON stream with event types `step-start`, `tool`, `text`, `step-finish`.
+- Permissions: `--dangerously-skip-permissions` is passed when `CODEX_SKIP_PERMISSIONS=true`.
 
-### Codex SDK
+## Remaining Work
 
-If Codex provides a programmatic SDK (Node.js/TypeScript), the executor could use the SDK directly instead of spawning a process. This would allow richer integration (worktree management, review flow, etc.) but requires dependency management.
-
-### Codex API
-
-If Codex exposes an HTTP API, the executor could make HTTP requests instead of spawning processes. This would enable remote execution and multi-user scenarios.
-
-## Required Future Work
-
-1. **CLI contract capture** — Run `codex --help`, `codex run --help`, etc. to document available flags
-2. **Structured output verification** — Confirm whether Codex supports JSON output format
-3. **CodexExecutor implementation** — Spawn process or call SDK based on contract
-4. **Review/ship flow mapping** — Map Codex review concepts to Djimitflo's approval workflow
-5. **Worktree management** — Integrate Codex worktree patterns with Djimitflo's repository intelligence
-6. **Permission model mapping** — Map Codex permission prompts to Djimitflo's policy engine
-
-No timeline commitment — this document serves as a roadmap only.
+1. **Live binary verification** — confirm CLI flags and event shape against an installed Codex CLI.
+2. **Structured output verification** — capture real NDJSON samples from the binary.
+3. **Review/ship flow mapping** — map Codex review concepts to Djimitflo's approval workflow.
+4. **Worktree management** — integrate Codex worktree patterns with Djimitflo's repository intelligence.
+5. **Permission model mapping** — map Codex permission prompts to Djimitflo's policy engine.
