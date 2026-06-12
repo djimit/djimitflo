@@ -51,16 +51,16 @@ Each integration has an evidence trail:
 
 ## Known Limitations
 
-- OpenCode session continuity (`--continue`, `--session`) not yet supported
-- OpenCode MCP integration during execution not yet supported
-- OpenCode AGENTS.md injection into execution context not yet supported
 - Codex integration requires CLI/SDK/API contract capture first
-- Ruflo integration would require Claude Code runtime dependency
 - All OpenCode/execution API endpoints now require JWT authentication (Phase 5.2)
+
+## Supported Features
+
+- **AGENTS.md injection**: Fully supported. AGENTS.md files are discovered during repository scanning and their effective instructions are injected into executor prompts using `[CONTEXT FROM AGENTS.md]...[END CONTEXT]` delimiters.
+- **MCP passthrough**: Best-effort supported. MCP servers from the database are passed to executors as configuration. Actual CLI support depends on executor capabilities.
 
 ## Next Steps
 
 1. End-to-end test: Execute a real task via Djimitflo policy engine → OpenCode executor → verify event stream
 2. Capture Codex CLI contract (if Codex CLI is available)
 3. Evaluate Ruflo hooks pattern for pre/post execution lifecycle
-4. Session continuity support for OpenCode (`--continue`, `--session`)

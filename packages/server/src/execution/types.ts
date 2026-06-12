@@ -111,6 +111,16 @@ export interface TaskExecutor {
 }
 
 /**
+ * MCP server configuration for executor passthrough
+ */
+export interface MCPServerConfig {
+  name: string;
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+/**
  * Executor configuration options
  */
 export interface ExecutorOptions {
@@ -122,6 +132,8 @@ export interface ExecutorOptions {
   skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
   format?: 'json' | 'default'; // output format (default: json for structured parsing)
   approvalCallback?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
+  systemPrompt?: string; // AGENTS.md content to prepend to task prompt
+  mcpServers?: MCPServerConfig[]; // MCP servers to configure (best-effort passthrough)
 }
 
 /**

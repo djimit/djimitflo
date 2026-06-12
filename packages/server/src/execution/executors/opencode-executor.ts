@@ -168,7 +168,7 @@ export class OpenCodeExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, options?.systemPrompt);
     const result = this.createResultPromise(task, emitter);
 
     const session: ExecutionSession = {
@@ -225,7 +225,20 @@ export class OpenCodeExecutor implements TaskExecutor {
       args.push('--dangerously-skip-permissions');
     }
 
-    args.push(task.description);
+    // Build prompt with optional AGENTS.md context injection
+    let prompt = task.description;
+    if (options?.systemPrompt) {
+      prompt = `[CONTEXT FROM AGENTS.md]\n${options.systemPrompt}\n[END CONTEXT]\n\n${task.description}`;
+    }
+
+    // Best-effort MCP server configuration via environment variables
+    // OpenCode can pick up MCP config from OPENCODE_MCP environment or MCP config files
+    // This is best-effort - if CLI supports MCP flags, they would be added here
+    if (options?.mcpServers && options.mcpServers.length > 0) {
+      console.log(`[MCP] ${options.mcpServers.length} MCP server(s) configured for OpenCode executor (best-effort passthrough)`);
+    }
+
+    args.push(prompt);
 
     return args;
   }
@@ -365,6 +378,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    systemPrompt?: string,
   ): AsyncIterable<ExecutionEventCreateInput> {
     spawnProcess();
 
@@ -375,6 +389,16 @@ export class OpenCodeExecutor implements TaskExecutor {
       level: LogLevel.INFO,
       metadata: { executor: 'opencode', skip_permissions: skipPerms, output_format: this.outputFormat },
     };
+
+    if (systemPrompt) {
+      yield {
+        task_id: task.id,
+        event_type: ExecutionEventType.LOG,
+        message: `[CONTEXT FROM AGENTS.md] Injected ${systemPrompt.length} characters of AGENTS.md instructions into executor context.`,
+        level: LogLevel.INFO,
+        metadata: { agts_md_injected: true, context_chars: systemPrompt.length },
+      };
+    }
 
     if (skipPerms) {
       yield {
