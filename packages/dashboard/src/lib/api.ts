@@ -38,7 +38,7 @@ class ApiClient {
     return localStorage.getItem(AUTH_TOKEN_KEY);
   }
 
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -391,6 +391,21 @@ class ApiClient {
 
   async exportSummaryReport(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
     return this.exportDownload('/exports/report/summary', format, options);
+  }
+
+  // Usage stubs
+  async getUsageQuotas(): Promise<{ quotas: any[] }> {
+    return this.request('/usage/quotas');
+  }
+
+  async getUsageTokens(params?: { group_by?: string }): Promise<{ total_tokens: number; total_cost: number; breakdown: any[] }> {
+    const query = params?.group_by ? `?group_by=${params.group_by}` : '';
+    return this.request(`/usage/tokens${query}`);
+  }
+
+  async getUsageRecent(limit?: number): Promise<{ logs: any[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/usage/recent${query}`);
   }
 }
 

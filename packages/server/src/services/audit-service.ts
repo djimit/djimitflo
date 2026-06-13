@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { AuditEventCreateInput, AuditEventType, RiskLevel } from '@djimitflo/shared';
+import { AuditEventCreateInput, AuditEventType, RiskLevel, type AuditQuery, type AuditEvent } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
 
 export class AuditService {
@@ -48,5 +48,43 @@ export class AuditService {
       risk_level: RiskLevel.HIGH,
       metadata,
     });
+  }
+
+  query(input: AuditQuery): { events: AuditEvent[]; total: number } {
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (input.event_types?.length) {
+      conditions.push(`event_type IN (${input.event_types.map(() => '?').join(',')})`);
+      params.push(...input.event_types);
+    }
+    if (input.user_id) { conditions.push('user_id = ?'); params.push(input.user_id); }
+    if (input.agent_id) { conditions.push('agent_id = ?'); params.push(input.agent_id); }
+    if (input.task_id) { conditions.push('task_id = ?'); params.push(input.task_id); }
+    if (input.resource_type) { conditions.push('resource_type = ?'); params.push(input.resource_type); }
+    if (input.risk_level) { conditions.push('risk_level = ?'); params.push(input.risk_level); }
+    if (input.from_date) { conditions.push('timestamp >= ?'); params.push(input.from_date); }
+    if (input.to_date) { conditions.push('timestamp <= ?'); params.push(input.to_date); }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = input.limit ?? 50;
+    const offset = input.offset ?? 0;
+
+    const countRow = this.db.prepare(`SELECT COUNT(*) as count FROM audit_events ${where}`).get(...params) as { count: number };
+    const rows = this.db.prepare(`SELECT * FROM audit_events ${where} ORDER BY timestamp DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+
+    return {
+      events: rows.map((r: any) => this.sanitizeAuditEvent(r)),
+      total: countRow.count,
+    };
+  }
+
+  sanitizeAuditEvent(row: any): AuditEvent {
+    return {
+      ...row,
+      before: row.before ? JSON.parse(row.before) : null,
+      after: row.after ? JSON.parse(row.after) : null,
+      metadata: row.metadata ? JSON.parse(row.metadata) : null,
+    };
   }
 }

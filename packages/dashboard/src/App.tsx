@@ -7,12 +7,14 @@ import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
 import { AgentsPage } from './pages/AgentsPage';
+import { SwarmOverviewPage } from './pages/SwarmOverviewPage';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { PolicyCenterPage } from './pages/PolicyCenterPage';
 import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { AuditPage } from './pages/AuditPage';
+import { UsagePage } from './pages/UsagePage';
 import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { LoginPage } from './pages/LoginPage';
@@ -65,15 +67,17 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="agents" element={<AgentsPage />} />
+          <Route path="swarm" element={<SwarmOverviewPage />} />
           <Route path="approvals" element={<ApprovalQueuePage />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
           <Route path="audit" element={<AuditPage />} />
+          <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
-          <Route path="agents" element={<AgentsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

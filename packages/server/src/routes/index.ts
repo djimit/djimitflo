@@ -20,6 +20,9 @@ import { AuditService } from '../services/audit-service';
 import { securityHeaders } from '../middleware/security-headers';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
+import { createAuditRoutes } from './audit';
+import { createUsageRoutes } from './usage';
+import { createDiscussionRoutes } from "./discussions";
 import { createExportRoutes } from './exports';
 import { getAppVersion } from '../utils/version';
 
@@ -58,6 +61,10 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/observability', requireAuth, createObservabilityRoutes(db, auth!));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));
+  router.use('/audit', requireAuth, createAuditRoutes(db, auditService, auth));
+  router.use('/discussions', requireAuth, createDiscussionRoutes(db, auth));
+  router.use('/usage', requireAuth, createUsageRoutes(db, auth));
+
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   router.use('/exports', requireAuth, createExportRoutes(db, auth!));
   
