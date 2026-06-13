@@ -24,6 +24,7 @@ import { createAuditRoutes } from './audit';
 import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from "./discussions";
 import { createExportRoutes } from './exports';
+import { createLearningRoutes } from './learning';
 import { getAppVersion } from '../utils/version';
 
 export function createRoutes(db: Database, executionEngine?: ExecutionEngine, authService?: AuthService, auth?: AuthMiddleware): Router {
@@ -64,6 +65,7 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/audit', requireAuth, createAuditRoutes(db, auditService, auth));
   router.use('/discussions', requireAuth, createDiscussionRoutes(db, auth));
   router.use('/usage', requireAuth, createUsageRoutes(db, auth));
+  router.use('/learning', requireAuth, createLearningRoutes(db, auth));
 
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   router.use('/exports', requireAuth, createExportRoutes(db, auth!));

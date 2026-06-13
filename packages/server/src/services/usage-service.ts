@@ -145,16 +145,23 @@ export class UsageService {
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO token_usage_log (id, task_id, agent_id, provider, model, prompt_tokens, completion_tokens, cache_read_tokens, cache_create_tokens, cost, duration_ms, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO token_usage_log (id, task_id, discussion_id, agent_id, model, task_type, prompt_tokens, completion_tokens, total_tokens, cost_estimate, metadata, created_at, updated_at, provider, cache_read_tokens, cache_create_tokens, cost, duration_ms, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.task_id || null,
+      null,
       input.agent_id || null,
-      input.provider,
       input.model,
+      'task',
       input.prompt_tokens,
       input.completion_tokens,
+      input.prompt_tokens + input.completion_tokens,
+      input.cost,
+      null,
+      now,
+      now,
+      input.provider,
       input.cache_read_tokens || 0,
       input.cache_create_tokens || 0,
       input.cost,
@@ -163,5 +170,66 @@ export class UsageService {
     );
 
     return id;
+  }
+
+  batchInsertLogs(logs: Array<{
+    id: string;
+    task_id?: string;
+    agent_id?: string;
+    model?: string;
+    task_type?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    latency_ms?: number;
+    created_at?: string;
+  }>) {
+    const stmt = this.db.prepare(`
+      INSERT INTO token_usage_log (
+        id, task_id, discussion_id, agent_id, model, task_type,
+        prompt_tokens, completion_tokens, total_tokens,
+        cost_estimate, metadata, created_at, updated_at,
+        provider, cache_read_tokens, cache_create_tokens, cost, duration_ms, timestamp
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `);
+
+    let count = 0;
+    const now = new Date().toISOString();
+
+    const insert = this.db.transaction((items) => {
+      for (const log of items) {
+        try {
+          stmt.run(
+            log.id,
+            null,
+            null,  // discussion_id
+            null,  // agent_id
+            log.model || 'unknown',
+            (log.task_type && log.task_type !== 'default') ? log.task_type : 'task',
+            log.prompt_tokens || 0,
+            log.completion_tokens || 0,
+            log.total_tokens || 0,
+            0.0,   // cost_estimate
+            null,  // metadata
+            log.created_at || now,
+            now,   // updated_at
+            (log.task_type && log.task_type !== 'default') ? log.task_type : 'swarm',  // provider
+            0,     // cache_read_tokens
+            0,     // cache_create_tokens
+            0,     // cost
+            log.latency_ms || null,    // duration_ms
+            log.created_at || now,     // timestamp
+          );
+          count++;
+        } catch (e) {
+          console.error('Insert error:', e);
+        }
+      }
+    });
+
+    insert(logs);
+    return count;
   }
 }
