@@ -16,6 +16,7 @@ import { AuditPage } from './pages/AuditPage';
 import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { LoginPage } from './pages/LoginPage';
+import { UsagePage } from './pages/UsagePage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -74,6 +75,7 @@ export function App() {
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="usage" element={<UsagePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

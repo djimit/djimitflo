@@ -16,6 +16,7 @@
     "db:seed": "tsx src/database/seed.ts"
   },
   "dependencies": {
+    "@djimitflo/telegram": "workspace:*",
     "@djimitflo/shared": "*",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",

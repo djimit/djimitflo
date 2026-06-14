@@ -392,6 +392,22 @@ class ApiClient {
   async exportSummaryReport(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
     return this.exportDownload('/exports/report/summary', format, options);
   }
+
+  async getUsageQuotas(): Promise<{ quotas: any[] }> {
+    return this.request('/usage/quotas');
+  }
+
+  async getUsageTokens(params?: { group_by?: string; days?: number }): Promise<{ total_tokens: number; total_cost: number; breakdown: any[] }> {
+    const q = new URLSearchParams();
+    if (params?.group_by) q.set('group_by', params.group_by);
+    if (params?.days) q.set('days', String(params.days));
+    const qs = q.toString() ? `?${q}` : '';
+    return this.request(`/usage/tokens${qs}`);
+  }
+
+  async getUsageRecent(limit = 20): Promise<{ logs: any[] }> {
+    return this.request(`/usage/recent?limit=${limit}`);
+  }
 }
 
 export const api = new ApiClient();

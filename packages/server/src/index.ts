@@ -17,6 +17,7 @@ import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
+import { TelegramGatewayService, TelegramBotConfig } from '@djimitflo/telegram';
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -67,7 +68,42 @@ async function main() {
   console.log('⚙️  Execution engine initialized');
   
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));
+
+  // Telegram gateway bootstrap (config via env TELEGRAM_BOTS_CONFIG as JSON)
+  try {
+    const raw = process.env.TELEGRAM_BOTS_CONFIG;
+    if (raw) {
+      const configs = JSON.parse(raw) as TelegramBotConfig[];
+      const tg = new TelegramGatewayService(configs, {
+        createTask: async (prompt, machineId) => {
+          const id = crypto.randomUUID();
+          db.prepare(
+            `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
+          ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
+          return id;
+        },
+        getStatus: async (machineId) => {
+          const count = (db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status IN ('pending','queued','running') AND created_by = ?").get(machineId) as any).c;
+          const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(machineId) as any;
+          return `Machine ${machineId}: ${count} actieve/pending tasks. Status: ${agent?.status || 'unknown'}`;
+        },
+      });
+      tg.startAll();
+    } else {
+      console.log('ℹ️ TELEGRAM_BOTS_CONFIG niet gezet — Telegram gateway is uitgeschakeld');
+    }
+  } catch (e) {
+    console.warn('⚠️ Telegram gateway init fout:', e);
+  }
+
+  // Schedule daily heartbeat window (03:00–06:00) — jittered per process start
+  try {
+    const jitterMinutes = Math.floor(Math.random() * 180); // 0..179 minutes
+    const targetHour = 3 + Math.floor(jitterMinutes / 60);
+    const targetMinute = jitterMinutes % 60;
+    console.log(`🫀 Heartbeat window scheduled daily at ~${targetHour.toString().padStart(2,'0')}:${targetMinute.toString().padStart(2,'0')}`);
+  } catch {}
   
   // Serve dashboard static files (Docker/production)
   const dashboardPath = process.env.DASHBOARD_PATH || join(__dirname, '../../dashboard/dist');

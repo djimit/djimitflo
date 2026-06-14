@@ -5,6 +5,8 @@
 import BetterSqlite3 from 'better-sqlite3';
 import { join } from 'path';
 import type { Database as BetterSqlite3Database } from 'better-sqlite3';
+import { createPhase56Tables } from './migrate-phase56';
+import { seedMCPServers } from './seed-mcp-servers';
 
 type ColumnSpec = {
   name: string;
@@ -481,6 +483,39 @@ function createPhase55Tables(db: BetterSqlite3Database) {
   `);
 }
 
+function createMessageTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      from_agent_id TEXT NOT NULL,
+      to_agent_id TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('task_delegation', 'status_update', 'knowledge_share', 'alert')),
+      payload TEXT NOT NULL DEFAULT '{}',
+      priority TEXT NOT NULL DEFAULT 'low' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
+      read_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (from_agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_from_agent_id ON messages(from_agent_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_to_agent_id ON messages(to_agent_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_read_at ON messages(read_at);
+    CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+  `);
+}
+
+// Added in telegram-swarm: extend agents with machine/telegram/okf fields
+const agentColumnsTelegramSwarm: ColumnSpec[] = [
+  { name: 'telegram_bot_id', definition: 'TEXT' },
+  { name: 'telegram_bot_name', definition: 'TEXT' },
+  { name: 'machine_ip', definition: 'TEXT' },
+  { name: 'agent_type', definition: 'TEXT' }, // 'hermes' | 'openclaw' | 'deerflow'
+  { name: 'host_machine_id', definition: 'TEXT' },
+  { name: 'okf_concept_path', definition: 'TEXT' },
+  { name: 'last_heartbeat_at', definition: 'TEXT' },
+];
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -490,6 +525,11 @@ export function runMigrations(db: BetterSqlite3Database) {
   createPhase44Tables(db);
   createPhase52Tables(db);
   createPhase55Tables(db);
+  createPhase56Tables(db);
+  createMessageTables(db);
+  seedMCPServers(db);
+  // Ensure agents table has telegram/machine/okf columns
+  addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
 }
 
 if (require.main === module) {

@@ -63,6 +63,7 @@ export enum WebSocketEventType {
   AGENT_CREATED = 'agent.created',
   AGENT_UPDATED = 'agent.updated',
   AGENT_STATUS_CHANGED = 'agent.status_changed',
+  MESSAGE_SENT = 'message.sent',
   
   // MCP events
   MCP_SERVER_DISCOVERED = 'mcp.server.discovered',

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -81,6 +81,12 @@ export function Layout() {
             icon={<FolderGit className="w-5 h-5" />}
             label="Repositories"
             active={isActive('/repositories')}
+          />
+          <NavLink
+            to="/usage"
+            icon={<DollarSign className="w-5 h-5" />}
+            label="Usage"
+            active={isActive('/usage')}
           />
         </nav>
         

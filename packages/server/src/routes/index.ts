@@ -21,9 +21,18 @@ import { securityHeaders } from '../middleware/security-headers';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
 import { createExportRoutes } from './exports';
+import { createMessageRoutes } from './messages';
+import { createUsageRoutes } from './usage';
 import { getAppVersion } from '../utils/version';
+import type { WebSocketService } from '../services/websocket-service';
 
-export function createRoutes(db: Database, executionEngine?: ExecutionEngine, authService?: AuthService, auth?: AuthMiddleware): Router {
+export function createRoutes(
+  db: Database,
+  executionEngine?: ExecutionEngine,
+  authService?: AuthService,
+  auth?: AuthMiddleware,
+  wsService?: WebSocketService
+): Router {
   const router = Router();
   
   if (!authService || !auth) {
@@ -60,6 +69,8 @@ export function createRoutes(db: Database, executionEngine?: ExecutionEngine, au
   router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   router.use('/exports', requireAuth, createExportRoutes(db, auth!));
+  router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
+  router.use('/usage', requireAuth, createUsageRoutes(db));
   
   return router;
 }
