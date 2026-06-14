@@ -17,6 +17,8 @@ import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
+import { SwarmPage } from './pages/SwarmPage';
+import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -75,7 +77,9 @@ export function App() {
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="swarm" element={<SwarmPage />} />
           <Route path="usage" element={<UsagePage />} />
+          <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
