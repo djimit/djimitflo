@@ -25,6 +25,8 @@ import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
+import { MemorySyncService } from '../services/memory-sync-service';
+import { ReasoningBankService } from '../services/reasoning-bank-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -45,7 +47,17 @@ export class ExecutionEngine {
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
   private diffCaptureService: DiffCaptureService;
-  
+  private memorySyncService?: MemorySyncService;
+  private reasoningBankService?: ReasoningBankService;
+
+  setMemorySyncService(service: MemorySyncService): void {
+    this.memorySyncService = service;
+  }
+
+  setReasoningBankService(service: ReasoningBankService): void {
+    this.reasoningBankService = service;
+  }
+
   constructor(db: Database, wsService: WebSocketService) {
     this.db = db;
     this.wsService = wsService;
@@ -456,6 +468,19 @@ export class ExecutionEngine {
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
       });
+
+      // Trigger memory sync (OKF + UAMS + Qdrant) after successful completion
+      if (this.memorySyncService) {
+        this.memorySyncService.onTaskCompleted(taskId).catch((err: any) => {
+          console.warn(`Memory sync failed for task ${taskId}:`, err?.message || err);
+        });
+      }
+      // Trigger reasoning bank (OKF memory + Qdrant reasoning collection)
+      if (this.reasoningBankService) {
+        this.reasoningBankService.recordReasoning(taskId).catch((err: any) => {
+          console.warn(`Reasoning bank failed for task ${taskId}:`, err?.message || err);
+        });
+      }
     } else if (result.status === 'failed') {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: completedAt,

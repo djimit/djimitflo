@@ -102,5 +102,58 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
     }
   });
 
+  // GET /exports/training — leakage-free JSONL training dataset
+  router.get('/training', requireAuth, (req: Request, res: Response): void => {
+    try {
+      const user = getUser(req);
+      if (user.role !== 'admin') {
+        res.status(403).json({ error: { message: 'Admin required', code: 'FORBIDDEN' } });
+        return;
+      }
+
+      const tasks = db.prepare(`
+        SELECT t.id, t.title, t.description, t.status, t.created_by, t.completed_at, t.created_at,
+               a.agent_type, a.name as agent_name,
+               ap.status as approval_status, ap.decided_by, ap.denial_reason
+        FROM tasks t
+        LEFT JOIN agents a ON t.agent_id = a.id
+        LEFT JOIN (
+          SELECT task_id, status, decided_by, denial_reason,
+                 ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY created_at DESC) as rn
+          FROM approvals
+        ) ap ON t.id = ap.task_id AND ap.rn = 1
+        WHERE t.status IN ('completed', 'failed') OR ap.status IS NOT NULL
+        ORDER BY t.created_at DESC
+      `).all() as any[];
+
+      const lines = tasks.map((t: any) => {
+        const outcome = t.approval_status === 'approved' ? 'approved'
+          : t.approval_status === 'denied' ? 'denied'
+          : t.status === 'completed' ? 'auto_completed' : 'unknown';
+
+        return JSON.stringify({
+          task_id: t.id,
+          title: t.title,
+          machine_id: t.created_by || 'unknown',
+          agent_type: t.agent_type || 'unknown',
+          skill_used: null,
+          output_excerpt: (t.description || '').slice(0, 500),
+          outcome,
+          denial_reason: t.denial_reason || undefined,
+          completed_at: t.completed_at || undefined,
+          created_at: t.created_at,
+        });
+      });
+
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Content-Disposition', 'attachment; filename="training-export.jsonl"');
+      res.send(lines.join('\n'));
+      return;
+    } catch (error) {
+      handleError(res, error);
+      return;
+    }
+  });
+
   return router;
 }

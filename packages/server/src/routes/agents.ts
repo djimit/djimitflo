@@ -6,11 +6,13 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
+import { AgentRegistryService } from '../services/agent-registry-service';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const agentRegistry = new AgentRegistryService();
 
   // GET /api/agents - List all agents
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
@@ -49,7 +51,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
   
-  // POST /api/agents/:id/heartbeat - Update agent heartbeat and metadata
+  // POST /api/agents/:id/heartbeat - Update agent heartbeat, metadata, and OKF concept
   router.post('/:id/heartbeat', requireAuth, requirePermission('write:evidence'), (req, res, next) => {
     try {
       const { id } = req.params;
@@ -66,6 +68,38 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       db.prepare(
         `UPDATE agents SET status = COALESCE(?, status), metadata = ?, last_heartbeat_at = ? WHERE id = ?`
       ).run(status ?? agent.status, JSON.stringify(mergedMeta), now, id);
+
+      // Write OKF agent concept + regenerate index
+      try {
+        agentRegistry.writeAgentConcept({
+          id: agent.id,
+          name: agent.name,
+          description: agent.description || '',
+          machineIp: agent.machine_ip || agent.metadata?.machine_ip || 'unknown',
+          agentType: agent.agent_type || 'unknown',
+          hostMachineId: agent.host_machine_id || agent.name,
+          capabilities: JSON.parse(agent.capabilities || '[]'),
+          lastSeen: now,
+          status: status ?? agent.status,
+          metadata: mergedMeta,
+        });
+        agentRegistry.regenerateIndex(
+          db.prepare('SELECT * FROM agents WHERE last_heartbeat_at IS NOT NULL').all().map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            description: a.description || '',
+            machineIp: a.machine_ip || 'unknown',
+            agentType: a.agent_type || 'unknown',
+            hostMachineId: a.host_machine_id || a.name,
+            capabilities: JSON.parse(a.capabilities || '[]'),
+            lastSeen: a.last_heartbeat_at || now,
+            status: a.status,
+            metadata: JSON.parse(a.metadata || '{}'),
+          }))
+        );
+      } catch (okfErr: any) {
+        console.warn(`OKF agent concept write failed for ${id}:`, okfErr?.message || okfErr);
+      }
 
       res.json({ ok: true, agent_id: id, status: status ?? agent.status, last_heartbeat_at: now });
     } catch (error) {

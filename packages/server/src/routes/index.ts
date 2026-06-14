@@ -22,6 +22,8 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
 import { createExportRoutes } from './exports';
 import { createMessageRoutes } from './messages';
+import { createMemoryRoutes } from './memory';
+import { createSkillRoutes } from './skills';
 import { createUsageRoutes } from './usage';
 import { getAppVersion } from '../utils/version';
 import type { WebSocketService } from '../services/websocket-service';
@@ -70,6 +72,8 @@ export function createRoutes(
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   router.use('/exports', requireAuth, createExportRoutes(db, auth!));
   router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
+  router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
+  router.use('/skills', requireAuth, createSkillRoutes(db, auth));
   router.use('/usage', requireAuth, createUsageRoutes(db));
   
   return router;

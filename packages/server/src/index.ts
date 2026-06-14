@@ -17,7 +17,11 @@ import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
-import { TelegramGatewayService, TelegramBotConfig } from '@djimitflo/telegram';
+import { MemorySyncService } from './services/memory-sync-service';
+import { ReasoningBankService } from './services/reasoning-bank-service';
+// Telegram gateway is optional; dynamic require used to avoid hard coupling
+type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
+
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -66,6 +70,14 @@ async function main() {
   // Create execution engine
   const executionEngine = new ExecutionEngine(db, wsService);
   console.log('⚙️  Execution engine initialized');
+
+  // Memory sync service
+  const memorySync = new MemorySyncService(db);
+  executionEngine.setMemorySyncService(memorySync);
+
+  // Reasoning bank service
+  const reasoningBank = new ReasoningBankService(db);
+  executionEngine.setReasoningBankService(reasoningBank);
   
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));
@@ -75,15 +87,17 @@ async function main() {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
     if (raw) {
       const configs = JSON.parse(raw) as TelegramBotConfig[];
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { TelegramGatewayService } = require('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
       const tg = new TelegramGatewayService(configs, {
-        createTask: async (prompt, machineId) => {
+        createTask: async (prompt: string, machineId: string) => {
           const id = crypto.randomUUID();
           db.prepare(
             `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
           ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
           return id;
         },
-        getStatus: async (machineId) => {
+        getStatus: async (machineId: string) => {
           const count = (db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status IN ('pending','queued','running') AND created_by = ?").get(machineId) as any).c;
           const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(machineId) as any;
           return `Machine ${machineId}: ${count} actieve/pending tasks. Status: ${agent?.status || 'unknown'}`;

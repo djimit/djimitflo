@@ -20,6 +20,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'manage:config',
     'manage:users',
     'manage:backups',
+    'write:evidence',
+    'write:agents',
+    'write:skills',
   ],
   [UserRole.OPERATOR]: [
     'read:evidence',
@@ -28,6 +31,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'create:task',
     'execute:task',
     'approve:task',
+    'write:evidence',
+    'write:agents',
+    'write:skills',
   ],
   [UserRole.VIEWER]: [
     'read:evidence',
