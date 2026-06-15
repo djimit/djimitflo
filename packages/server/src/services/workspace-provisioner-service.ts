@@ -31,6 +31,7 @@ interface MachineConfig {
   agentType: 'hermes' | 'openclaw' | 'deerflow';
   botName: string;
   capabilities: string[];
+  sshUser?: string; // optional per-machine SSH user (e.g., 'home', 'dlandman')
 }
 
 function generateToolsMd(cfg: MachineConfig): string {
@@ -110,9 +111,10 @@ export class WorkspaceProvisionerService {
 
   deliverViaSsh(cfg: MachineConfig, remotePath: string): { command: string; files: Record<string, string> } {
     const { dir, files } = this.provision(cfg);
+    const userPrefix = cfg.sshUser ? `${cfg.sshUser}@` : '';
     const commands: string[] = [`mkdir -p ${remotePath}`];
     for (const name of Object.keys(files)) {
-      commands.push(`scp ${path.join(dir, name)} ${cfg.ip}:${remotePath}/${name}`);
+      commands.push(`scp ${path.join(dir, name)} ${userPrefix}${cfg.ip}:${remotePath}/${name}`);
     }
     return { command: commands.join(' && '), files };
   }
