@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { initializeDatabase } from './database';
@@ -19,9 +20,8 @@ import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
 import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
-// Telegram gateway is optional; dynamic require used to avoid hard coupling
-type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
+type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -71,18 +71,15 @@ async function main() {
   const executionEngine = new ExecutionEngine(db, wsService);
   console.log('⚙️  Execution engine initialized');
 
-  // Memory sync service
   const memorySync = new MemorySyncService(db);
   executionEngine.setMemorySyncService(memorySync);
 
-  // Reasoning bank service
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
   
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));
 
-  // Telegram gateway bootstrap (config via env TELEGRAM_BOTS_CONFIG as JSON)
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
     if (raw) {
@@ -91,7 +88,7 @@ async function main() {
       const { TelegramGatewayService } = require('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
       const tg = new TelegramGatewayService(configs, {
         createTask: async (prompt: string, machineId: string) => {
-          const id = crypto.randomUUID();
+          const id = randomUUID();
           db.prepare(
             `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
           ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
@@ -111,17 +108,19 @@ async function main() {
     console.warn('⚠️ Telegram gateway init fout:', e);
   }
 
-  // Schedule daily heartbeat window (03:00–06:00) — jittered per process start
   try {
-    const jitterMinutes = Math.floor(Math.random() * 180); // 0..179 minutes
+    const jitterMinutes = Math.floor(Math.random() * 180);
     const targetHour = 3 + Math.floor(jitterMinutes / 60);
     const targetMinute = jitterMinutes % 60;
-    console.log(`🫀 Heartbeat window scheduled daily at ~${targetHour.toString().padStart(2,'0')}:${targetMinute.toString().padStart(2,'0')}`);
+    console.log(`🫀 Heartbeat window scheduled daily at ~${targetHour.toString().padStart(2, '0')}:${targetMinute.toString().padStart(2, '0')}`);
   } catch {}
   
   // Serve dashboard static files (Docker/production)
   const dashboardPath = process.env.DASHBOARD_PATH || join(__dirname, '../../dashboard/dist');
-  if (existsSync(dashboardPath)) {
+  const serveDashboard = process.env.DASHBOARD_SERVE_ENABLED !== 'false';
+  if (!serveDashboard) {
+    console.log('📱 Dashboard serving disabled — running in API-only mode');
+  } else if (existsSync(dashboardPath)) {
     console.log(`🖥️  Serving dashboard from ${dashboardPath}`);
     app.use(express.static(dashboardPath));
     
@@ -150,7 +149,7 @@ async function main() {
   httpServer.listen(Number(PORT), HOST as string, () => {
     console.log(`✅ Djimitflo Server running on http://${HOST}:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://${HOST}:${PORT}/ws`);
-    if (existsSync(dashboardPath)) {
+    if (serveDashboard && existsSync(dashboardPath)) {
       console.log(`📊 Dashboard: http://localhost:${PORT}`);
     }
   });

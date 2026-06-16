@@ -1,18 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect } from 'vitest';
 import { WorkspaceProvisionerService } from '../services/workspace-provisioner-service';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-
-const TEST_OUTPUT = path.join(__dirname, '__test_workspaces__');
 
 describe('WorkspaceProvisionerService', () => {
   let service: WorkspaceProvisionerService;
+  let testOutput: string;
 
   beforeEach(() => {
-    if (fs.existsSync(TEST_OUTPUT)) {
-      fs.rmSync(TEST_OUTPUT, { recursive: true });
-    }
-    service = new WorkspaceProvisionerService(TEST_OUTPUT);
+    testOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-workspaces-'));
+    service = new WorkspaceProvisionerService(testOutput);
+  });
+
+  afterEach(() => {
+    fs.rmSync(testOutput, { recursive: true, force: true });
   });
 
   it('provision generates all 5 identity files', () => {

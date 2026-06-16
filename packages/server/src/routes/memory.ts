@@ -7,7 +7,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { ContextInjectionService } from '../services/context-injection-service';
 
-export function createMemoryRoutes(_db: Database, auth?: AuthMiddleware): Router {
+export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -18,6 +18,12 @@ export function createMemoryRoutes(_db: Database, auth?: AuthMiddleware): Router
     const query = (req.query.q as string || '').trim();
     if (!query) {
       res.json({ results: [], total: 0 });
+      return;
+    }
+
+    const localResults = searchPromotedMemory(db, query);
+    if (localResults.length > 0) {
+      res.json({ results: localResults, total: localResults.length, source: 'promoted_memory_fallback' });
       return;
     }
 
@@ -39,4 +45,43 @@ export function createMemoryRoutes(_db: Database, auth?: AuthMiddleware): Router
   });
 
   return router;
+}
+
+function searchPromotedMemory(db: Database, query: string): Array<Record<string, unknown>> {
+  const terms = query
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3)
+    .slice(0, 8);
+  if (terms.length === 0) {
+    return [];
+  }
+  let rows: any[] = [];
+  try {
+    rows = db.prepare(`
+      SELECT * FROM memory_candidates
+      WHERE promotion_status = 'promoted'
+      ORDER BY updated_at DESC
+      LIMIT 50
+    `).all() as any[];
+  } catch {
+    return [];
+  }
+  return rows
+    .map((row) => ({
+      row,
+      score: terms.filter((term) => `${row.title} ${row.content}`.toLowerCase().includes(term)).length,
+    }))
+    .filter((hit) => hit.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((hit) => ({
+      title: hit.row.title,
+      excerpt: String(hit.row.content).slice(0, 200),
+      trust_level: 'validated',
+      memory_type: hit.row.memory_type,
+      source_ref: hit.row.source_ref || undefined,
+      score: hit.score,
+    }));
 }

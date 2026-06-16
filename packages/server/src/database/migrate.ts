@@ -516,6 +516,273 @@ const agentColumnsTelegramSwarm: ColumnSpec[] = [
   { name: 'last_heartbeat_at', definition: 'TEXT' },
 ];
 
+function createAgenticLoopTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goals (
+      id TEXT PRIMARY KEY,
+      objective TEXT NOT NULL,
+      constraints_json TEXT NOT NULL DEFAULT '[]',
+      acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      budget_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL CHECK(status IN ('created', 'decomposed', 'running', 'blocked', 'completed', 'failed', 'cancelled')),
+      owner_user_id TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_goals_status ON goals(status);
+    CREATE INDEX IF NOT EXISTS idx_goals_owner_user_id ON goals(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_goals_created_at ON goals(created_at);
+
+    CREATE TABLE IF NOT EXISTS loop_runs (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT,
+      loop_name TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK(mode IN ('closed', 'open')),
+      status TEXT NOT NULL CHECK(status IN ('created', 'planning', 'running', 'verifying', 'blocked', 'completed', 'failed', 'escalated', 'cancelled')),
+      repository_path TEXT,
+      state_file TEXT,
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      plan_json TEXT NOT NULL DEFAULT '{}',
+      gates_json TEXT NOT NULL DEFAULT '[]',
+      next_actions_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_goal_id ON loop_runs(goal_id);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_name ON loop_runs(loop_name);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_created_at ON loop_runs(created_at);
+
+    CREATE TABLE IF NOT EXISTS loop_events (
+      id TEXT PRIMARY KEY,
+      loop_run_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      level TEXT NOT NULL CHECK(level IN ('debug', 'info', 'warning', 'error', 'critical')),
+      message TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_loop_events_loop_run_id ON loop_events(loop_run_id);
+    CREATE INDEX IF NOT EXISTS idx_loop_events_event_type ON loop_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_loop_events_created_at ON loop_events(created_at);
+
+    CREATE TABLE IF NOT EXISTS worker_leases (
+      id TEXT PRIMARY KEY,
+      loop_run_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard')),
+      runtime TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('prepared', 'running', 'completed', 'failed', 'cancelled')),
+      finding_id TEXT,
+      worktree_path TEXT,
+      branch_name TEXT,
+      budget_json TEXT NOT NULL DEFAULT '{}',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_worker_leases_loop_run_id ON worker_leases(loop_run_id);
+    CREATE INDEX IF NOT EXISTS idx_worker_leases_role ON worker_leases(role);
+    CREATE INDEX IF NOT EXISTS idx_worker_leases_status ON worker_leases(status);
+
+    CREATE TABLE IF NOT EXISTS work_items (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      source TEXT NOT NULL,
+      source_ref TEXT,
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      value_score INTEGER NOT NULL DEFAULT 50 CHECK(value_score >= 0 AND value_score <= 100),
+      confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+      status TEXT NOT NULL CHECK(status IN ('candidate', 'triaged', 'planned', 'leased', 'blocked', 'done', 'discarded')),
+      recommended_loop TEXT,
+      assigned_agent_id TEXT,
+      assigned_runtime TEXT,
+      parent_goal_id TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (assigned_agent_id) REFERENCES agents(id) ON DELETE SET NULL,
+      FOREIGN KEY (parent_goal_id) REFERENCES goals(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(status);
+    CREATE INDEX IF NOT EXISTS idx_work_items_source_ref ON work_items(source, source_ref);
+    CREATE INDEX IF NOT EXISTS idx_work_items_recommended_loop ON work_items(recommended_loop);
+    CREATE INDEX IF NOT EXISTS idx_work_items_created_at ON work_items(created_at);
+
+    CREATE TABLE IF NOT EXISTS memory_candidates (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      memory_type TEXT NOT NULL CHECK(memory_type IN ('operational_memory', 'engineering_rule', 'policy_rule')),
+      source_ref TEXT,
+      status TEXT NOT NULL CHECK(status IN ('candidate', 'review_required', 'rejected', 'promoted')),
+      promotion_status TEXT NOT NULL CHECK(promotion_status IN ('proposed', 'blocked_pending_review', 'blocked_pending_human', 'rejected', 'promoted')),
+      human_required INTEGER NOT NULL DEFAULT 0,
+      sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive', 'secret_detected')),
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_candidates_status ON memory_candidates(status);
+    CREATE INDEX IF NOT EXISTS idx_memory_candidates_source_ref ON memory_candidates(source_ref);
+    CREATE INDEX IF NOT EXISTS idx_memory_candidates_created_at ON memory_candidates(created_at);
+
+    CREATE TABLE IF NOT EXISTS specialist_panels (
+      id TEXT PRIMARY KEY,
+      topic TEXT NOT NULL,
+      question TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('planned', 'reviewing', 'consensus_ready', 'backlog_created', 'goal_created', 'cancelled')),
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      panel_json TEXT NOT NULL DEFAULT '[]',
+      context_json TEXT NOT NULL DEFAULT '{}',
+      consensus_json TEXT NOT NULL DEFAULT '{}',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_specialist_panels_status ON specialist_panels(status);
+    CREATE INDEX IF NOT EXISTS idx_specialist_panels_risk_class ON specialist_panels(risk_class);
+    CREATE INDEX IF NOT EXISTS idx_specialist_panels_created_at ON specialist_panels(created_at);
+
+    CREATE TABLE IF NOT EXISTS specialist_reviews (
+      id TEXT PRIMARY KEY,
+      panel_id TEXT NOT NULL,
+      specialist_id TEXT NOT NULL,
+      specialist_title TEXT NOT NULL,
+      stance TEXT NOT NULL CHECK(stance IN ('support', 'oppose', 'uncertain', 'needs_evidence')),
+      confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      recommendations_json TEXT NOT NULL DEFAULT '[]',
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      limitations TEXT,
+      status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'rejected')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE CASCADE,
+      UNIQUE(panel_id, specialist_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_specialist_reviews_panel_id ON specialist_reviews(panel_id);
+    CREATE INDEX IF NOT EXISTS idx_specialist_reviews_specialist_id ON specialist_reviews(specialist_id);
+    CREATE INDEX IF NOT EXISTS idx_specialist_reviews_stance ON specialist_reviews(stance);
+
+    CREATE TABLE IF NOT EXISTS agent_trace_spans (
+      id TEXT PRIMARY KEY,
+      trace_id TEXT NOT NULL,
+      parent_span_id TEXT,
+      loop_run_id TEXT,
+      work_item_id TEXT,
+      span_type TEXT NOT NULL CHECK(span_type IN ('goal', 'loop', 'worker', 'tool', 'memory', 'eval', 'capability', 'checkpoint', 'reflection')),
+      name TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ok', 'error', 'running', 'skipped', 'blocked')),
+      evidence_ref TEXT,
+      started_at TEXT,
+      ended_at TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (parent_span_id) REFERENCES agent_trace_spans(id) ON DELETE SET NULL,
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE SET NULL,
+      FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_trace_id ON agent_trace_spans(trace_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_parent_span_id ON agent_trace_spans(parent_span_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_loop_run_id ON agent_trace_spans(loop_run_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_span_type ON agent_trace_spans(span_type);
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_status ON agent_trace_spans(status);
+    CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_created_at ON agent_trace_spans(created_at);
+
+    CREATE TABLE IF NOT EXISTS loop_checkpoints (
+      id TEXT PRIMARY KEY,
+      loop_run_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      state_json TEXT NOT NULL,
+      gates_json TEXT NOT NULL DEFAULT '[]',
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      leases_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_loop_checkpoints_loop_run_id ON loop_checkpoints(loop_run_id);
+    CREATE INDEX IF NOT EXISTS idx_loop_checkpoints_created_at ON loop_checkpoints(created_at);
+
+    CREATE TABLE IF NOT EXISTS agent_eval_runs (
+      id TEXT PRIMARY KEY,
+      suite_name TEXT NOT NULL,
+      target_type TEXT NOT NULL CHECK(target_type IN ('memory', 'skill', 'swarm', 'loop', 'capability')),
+      target_ref TEXT,
+      status TEXT NOT NULL CHECK(status IN ('passed', 'failed', 'needs_review')),
+      score REAL NOT NULL CHECK(score >= 0 AND score <= 1),
+      scorecard_json TEXT NOT NULL DEFAULT '{}',
+      findings_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_suite_name ON agent_eval_runs(suite_name);
+    CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_target_type ON agent_eval_runs(target_type);
+    CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_status ON agent_eval_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_created_at ON agent_eval_runs(created_at);
+
+    CREATE TABLE IF NOT EXISTS capability_tokens (
+      id TEXT PRIMARY KEY,
+      token_ref TEXT NOT NULL UNIQUE,
+      subject_agent_id TEXT,
+      scopes_json TEXT NOT NULL DEFAULT '[]',
+      allowed_actions_json TEXT NOT NULL DEFAULT '[]',
+      denied_actions_json TEXT NOT NULL DEFAULT '[]',
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      status TEXT NOT NULL CHECK(status IN ('active', 'pending_approval', 'revoked', 'expired')),
+      approved_by TEXT,
+      expires_at TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_capability_tokens_subject_agent_id ON capability_tokens(subject_agent_id);
+    CREATE INDEX IF NOT EXISTS idx_capability_tokens_status ON capability_tokens(status);
+    CREATE INDEX IF NOT EXISTS idx_capability_tokens_risk_class ON capability_tokens(risk_class);
+    CREATE INDEX IF NOT EXISTS idx_capability_tokens_expires_at ON capability_tokens(expires_at);
+
+    CREATE TABLE IF NOT EXISTS reflection_candidates (
+      id TEXT PRIMARY KEY,
+      source_type TEXT NOT NULL CHECK(source_type IN ('trace', 'eval', 'loop', 'memory', 'skill', 'panel')),
+      source_ref TEXT NOT NULL,
+      lesson TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('candidate', 'review_required', 'rejected', 'promoted')),
+      sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive')),
+      human_required INTEGER NOT NULL DEFAULT 0,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reflection_candidates_source ON reflection_candidates(source_type, source_ref);
+    CREATE INDEX IF NOT EXISTS idx_reflection_candidates_status ON reflection_candidates(status);
+    CREATE INDEX IF NOT EXISTS idx_reflection_candidates_sensitivity ON reflection_candidates(sensitivity);
+    CREATE INDEX IF NOT EXISTS idx_reflection_candidates_created_at ON reflection_candidates(created_at);
+  `);
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -530,6 +797,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   seedMCPServers(db);
   // Ensure agents table has telegram/machine/okf columns
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
+  createAgenticLoopTables(db);
 }
 
 if (require.main === module) {

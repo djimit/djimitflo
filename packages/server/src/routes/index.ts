@@ -24,8 +24,12 @@ import { createExportRoutes } from './exports';
 import { createMessageRoutes } from './messages';
 import { createMemoryRoutes } from './memory';
 import { createSkillRoutes } from './skills';
-import { createUsageRoutes } from './usage';
 import { getAppVersion } from '../utils/version';
+import { createUsageRoutes } from './usage';
+import { createGoalRoutes } from './goals';
+import { createLoopRoutes } from './loops';
+import { createWorkItemRoutes } from './work-items';
+import { createSwarmRoutes } from './swarms';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -67,6 +71,11 @@ export function createRoutes(
   router.use('/risk', requireAuth, createRiskRoutes(db, auth));
   router.use('/evidence', requireAuth, createEvidenceRoutes(db, auth!));
   router.use('/observability', requireAuth, createObservabilityRoutes(db, auth!));
+  router.use('/usage', requireAuth, createUsageRoutes(db));
+  router.use('/goals', requireAuth, createGoalRoutes(db, auth));
+  router.use('/loops', requireAuth, createLoopRoutes(db, auth));
+  router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));
+  router.use('/swarms', requireAuth, createSwarmRoutes(db, auth));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
@@ -74,7 +83,6 @@ export function createRoutes(
   router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
   router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
   router.use('/skills', requireAuth, createSkillRoutes(db, auth));
-  router.use('/usage', requireAuth, createUsageRoutes(db));
   
   return router;
 }

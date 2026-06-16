@@ -15,6 +15,8 @@ import { ReviewPage } from './pages/ReviewPage';
 import { AuditPage } from './pages/AuditPage';
 import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
+import { GoalsLoopsPage } from './pages/GoalsLoopsPage';
+import { SwarmResourcesPage } from './pages/SwarmResourcesPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
 import { SwarmPage } from './pages/SwarmPage';
@@ -76,6 +78,8 @@ export function App() {
           <Route path="audit" element={<AuditPage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
+          <Route path="goals-loops" element={<GoalsLoopsPage />} />
+          <Route path="swarm-resources" element={<SwarmResourcesPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="swarm" element={<SwarmPage />} />
           <Route path="usage" element={<UsagePage />} />
