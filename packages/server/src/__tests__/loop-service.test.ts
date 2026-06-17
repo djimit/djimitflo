@@ -40,7 +40,12 @@ async function startApp() {
 
 function installFakeCodex(lines: string[]) {
   const fakeCodexPath = path.join(tempDir, 'fake-codex.js');
-  fs.writeFileSync(fakeCodexPath, ['#!/usr/bin/env node', ...lines, ''].join('\n'));
+  fs.writeFileSync(fakeCodexPath, [
+    '#!/usr/bin/env node',
+    'if (process.argv.includes("--help")) { console.log("Usage: codex exec [OPTIONS] [PROMPT]\\n      --json\\n      --cd <DIR>"); process.exit(0); }',
+    ...lines,
+    '',
+  ].join('\n'));
   fs.chmodSync(fakeCodexPath, 0o755);
   process.env.CODEX_BIN_PATH = fakeCodexPath;
   return fakeCodexPath;
@@ -327,8 +332,9 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(new Set(makers.map((lease: any) => lease.worktree_path)).size).toBe(2);
     for (const maker of makers) {
       expect(fs.existsSync(maker.worktree_path)).toBe(true);
-      expect(fs.existsSync(path.join(maker.worktree_path, 'LOOP_WORK.md'))).toBe(true);
-      expect(maker.metadata.assignment_packet_file).toBe(path.join(maker.worktree_path, 'ASSIGNMENT_PACKET.json'));
+      expect(fs.existsSync(path.join(maker.worktree_path, '.djimitflo', 'LOOP_WORK.md'))).toBe(true);
+      expect(fs.existsSync(path.join(maker.worktree_path, 'LOOP_WORK.md'))).toBe(false);
+      expect(maker.metadata.assignment_packet_file).toBe(path.join(maker.worktree_path, '.djimitflo', 'ASSIGNMENT_PACKET.json'));
       expect(fs.existsSync(maker.metadata.assignment_packet_file)).toBe(true);
       const packet = JSON.parse(fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8'));
       expect(packet).toMatchObject({
@@ -427,9 +433,11 @@ describe('doc-drift-and-small-fix-loop', () => {
   it('executes a codex maker lease, captures output, and enforces diff threshold', async () => {
     installFakeCodex([
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'if (!process.argv.includes("--json")) { console.error("missing --json"); process.exit(2); }',
+      'if (!process.argv.includes("--cd")) { console.error("missing --cd"); process.exit(2); }',
       'const fs = require("fs");',
       'const path = require("path");',
-      'const dir = process.argv[process.argv.indexOf("--dir") + 1];',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
@@ -514,7 +522,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const postCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(postCheckerVerifyResponse.status).toBe(200);
     const postCheckerVerified = await postCheckerVerifyResponse.json() as any;
-    expect(postCheckerVerified.run.status).toBe('verifying');
+    expect(postCheckerVerified.run.status).toBe('ready_for_human_merge');
     expect(postCheckerVerified.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'diff_threshold_all_makers', status: 'pass' }),
       expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),
@@ -600,12 +608,58 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ span_type: 'worker', status: 'ok' }),
     ]));
 
+    const checksResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/run-checks`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
+    });
+    expect(checksResponse.status).toBe(200);
+
+    const checker = continued.leases.find((lease: any) => lease.role === 'checker');
+    const checkerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-checker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: checker.id, runtime: 'mock', timeout_ms: 10_000 }),
+    });
+    expect(checkerResponse.status).toBe(200);
+    const checkerExecuted = await checkerResponse.json() as any;
+    expect(checkerExecuted.lease).toMatchObject({
+      id: checker.id,
+      runtime: 'mock',
+      status: 'completed',
+      metadata: {
+        runtime_adapter: 'mock',
+        verdict: 'accepted',
+        runtime_usage: {
+          total_tokens: 3,
+          usage_source: 'runtime_stdout',
+        },
+      },
+    });
+    expect(checkerExecuted.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'checker_runtime_exit_zero', status: 'pass' }),
+      expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),
+      expect.objectContaining({ name: 'checker_read_only_contract', status: 'pass' }),
+    ]));
+    expect(fs.existsSync(checkerExecuted.stdout_path)).toBe(true);
+
+    const verifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
+    expect(verifyResponse.status).toBe(200);
+    const verified = await verifyResponse.json() as any;
+    expect(verified.run.status).toBe('ready_for_human_merge');
+    expect(verified.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),
+      expect.objectContaining({ name: 'tests_lint_typecheck', status: 'pass' }),
+    ]));
+
     const traceRows = db.prepare('SELECT * FROM agent_trace_spans WHERE trace_id = ? ORDER BY created_at ASC').all(executed.trace.trace_id) as any[];
     const checkpointRows = db.prepare('SELECT * FROM loop_checkpoints WHERE loop_run_id = ? ORDER BY created_at ASC').all(run.id) as any[];
     expect(traceRows.length).toBeGreaterThanOrEqual(2);
     expect(checkpointRows.map((row) => row.id)).toEqual(expect.arrayContaining([
       executed.checkpoint_before.id,
       executed.checkpoint_after.id,
+      checkerExecuted.checkpoint_before.id,
+      checkerExecuted.checkpoint_after.id,
     ]));
   });
 
@@ -664,7 +718,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
       'const fs = require("fs");',
       'const path = require("path");',
-      'const dir = process.argv[process.argv.indexOf("--dir") + 1];',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'const replacement = dir.includes("-retry-1") ? "Setup is fully documented." : "Setup draft documented."; ',
@@ -772,7 +826,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const verifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(verifyResponse.status).toBe(200);
     const verified = await verifyResponse.json() as any;
-    expect(verified.run.status).toBe('verifying');
+    expect(verified.run.status).toBe('ready_for_human_merge');
     expect(verified.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'maker_checker_separation', status: 'pass' }),
       expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),
@@ -847,7 +901,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
       'const fs = require("fs");',
       'const path = require("path");',
-      'const dir = process.argv[process.argv.indexOf("--dir") + 1];',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup draft documented."));',
@@ -997,7 +1051,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
       'const fs = require("fs");',
       'const path = require("path");',
-      'const dir = process.argv[process.argv.indexOf("--dir") + 1];',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
@@ -1119,7 +1173,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
       'const fs = require("fs");',
       'const path = require("path");',
-      'const dir = process.argv[process.argv.indexOf("--dir") + 1];',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document auth policy", "Auth policy is documented."));',

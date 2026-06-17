@@ -136,7 +136,22 @@ export type LoopCatalogItem = {
   stop_conditions: string[];
   status: string;
   gates: string[];
-  runtimes: Record<string, { available: boolean; command: string | null; version?: string; reason?: string }>;
+  runtimes: Record<string, RuntimeContract>;
+};
+
+export type RuntimeContract = {
+  runtime: string;
+  available: boolean;
+  command: string | null;
+  version?: string;
+  status: 'ok' | 'drifted' | 'unavailable';
+  cwd_flag?: string;
+  json_flag?: string | string[];
+  supports_json_events: boolean;
+  supports_usage_parsing: boolean;
+  supports_timeout_kill: boolean;
+  evidence: string[];
+  reason?: string;
 };
 
 export type WorkerLeaseRecord = {
@@ -221,6 +236,20 @@ export type SwarmRealityStatus = {
     load_average: number[];
     uptime_seconds: number;
   };
+  fleet_pools: Array<{
+    runtime: string;
+    available: boolean;
+    prepared_leases: number;
+    queued_leases: number;
+    running_leases: number;
+    completed_24h: number;
+    failed_24h: number;
+    tokens_used_24h: number;
+    tokens_per_successful_worker: number | null;
+    recommended_concurrency: number;
+    blocked_capacity_reasons: string[];
+    queue_depth_by_risk: Record<string, number>;
+  }>;
   reality_check: {
     agent_count_is_registry_only: boolean;
     active_execution_requires_runtime_evidence: boolean;
@@ -230,6 +259,7 @@ export type SwarmRealityStatus = {
 export type SchedulerTickResult = {
   created_work_items: WorkItemRecord[];
   planned_work_items: WorkItemRecord[];
+  prepared_work_items: WorkItemRecord[];
   skipped_existing: number;
   inspected_loop_runs: number;
   leases_created: number;
@@ -636,6 +666,10 @@ class ApiClient {
     return this.request('/loops/catalog');
   }
 
+  async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
+    return this.request('/loops/runtime-contracts');
+  }
+
   async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
     return this.request(`/loops/runs/${runId}/review-bundle`);
   }
@@ -660,6 +694,13 @@ class ApiClient {
 
   async executeWorker(runId: string, leaseId: string, input: { timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
     return this.request(`/loops/runs/${runId}/execute-worker`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, ...input }),
+    });
+  }
+
+  async executeChecker(runId: string, leaseId: string, input: { runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
+    return this.request(`/loops/runs/${runId}/execute-checker`, {
       method: 'POST',
       body: JSON.stringify({ lease_id: leaseId, ...input }),
     });
@@ -714,7 +755,7 @@ class ApiClient {
     return this.request('/swarms/status');
   }
 
-  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean } = {}): Promise<SchedulerTickResult> {
+  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
     return this.request('/swarms/scheduler/tick', {
       method: 'POST',
       body: JSON.stringify(input),

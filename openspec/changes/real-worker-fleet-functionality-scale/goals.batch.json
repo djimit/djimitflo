@@ -1,0 +1,479 @@
+{
+  "schema_version": 1,
+  "change": "real-worker-fleet-functionality-scale",
+  "mode": "register_goals_first_then_scale_fleet_under_gates",
+  "execution_policy": {
+    "auto_create_goals": true,
+    "auto_decompose_goals": true,
+    "auto_start_loops": false,
+    "auto_spawn_workers": false,
+    "requires_operator_approval_before_continue": true,
+    "requires_human_merge_approval": true,
+    "capacity_visibility_required": true,
+    "scale_execution_requires_operator_approval": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G12.1-runtime-contract-harness",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Add a runtime contract harness so Codex/OpenCode worker adapters are probed and validated before real worker execution.",
+          "constraints": [
+            "Do not spawn a real worker when adapter contract is drifted or unavailable.",
+            "Keep Codex/OpenCode as runtime adapters; do not add Ruflo runtime dependency.",
+            "Do not store secrets or bearer tokens in probe output."
+          ],
+          "acceptance_criteria": [
+            "Codex probe proves current CLI supports exec --json --cd before execution.",
+            "OpenCode probe proves current CLI supports run --format json --dir before execution.",
+            "Drifted fake runtime blocks execute-worker before spawn and records an actionable gate.",
+            "Runtime contract status is exposed through API and dashboard-readable metadata."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 120000,
+            "max_tokens_per_worker": 40000,
+            "max_wall_clock_seconds": 1800,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.1",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.2-token-budget-reduction",
+      "depends_on": [
+        "G12.1-runtime-contract-harness"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Reduce token burn for small closed-loop workers using a low-context worker profile and token efficiency metrics.",
+          "constraints": [
+            "Do not hide runtime usage; parse and report real usage.",
+            "Small low-risk doc fixes must have conservative default token ceilings.",
+            "Any profile change that weakens policy or security boundaries requires review."
+          ],
+          "acceptance_criteria": [
+            "Worker lease metadata records tokens_per_diff_line and tokens_per_successful_worker.",
+            "A low-risk doc loop can enforce max_tokens_per_worker from real runtime usage.",
+            "Dashboard exposes token efficiency without raw stdout inspection.",
+            "Over-budget worker execution blocks additional leases."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 50000,
+            "max_wall_clock_seconds": 2400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.2",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.3-checker-worker-bridge",
+      "depends_on": [
+        "G12.1-runtime-contract-harness"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Add an independent checker worker execution bridge that reviews maker output through a read-only lease and writes verdict evidence.",
+          "constraints": [
+            "Checker must not mutate files.",
+            "Checker cannot be the same lease as the maker.",
+            "Checker output is advisory until deterministic gates also pass.",
+            "High-risk scopes still require security checker or human gate."
+          ],
+          "acceptance_criteria": [
+            "POST /api/loops/runs/:id/execute-checker executes a prepared checker lease.",
+            "Checker receives maker diff, assignment packet, stdout/stderr and deterministic check evidence.",
+            "Checker stdout/stderr, runtime usage, checkpoints and trace spans are persisted.",
+            "Accepted checker verdict moves a run toward verification; rejected verdict blocks or requests revision."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 3600,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.3",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.4-control-artifact-isolation",
+      "depends_on": [
+        "G12.3-checker-worker-bridge"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Move worker control artifacts into an ignored .djimitflo control directory so worktree status and diff gates show only patch output.",
+          "constraints": [
+            "Historical assignment packets must remain readable.",
+            "Review bundles must still expose work instruction and packet paths.",
+            "Control artifact movement must not hide real source changes."
+          ],
+          "acceptance_criteria": [
+            "Prepared maker worktree has no untracked LOOP_WORK.md or ASSIGNMENT_PACKET.json at repo root.",
+            "Control files live under .djimitflo/ and are ignored in worker git status.",
+            "Diff threshold gates count patch files only.",
+            "Review bundle still links assignment packet and work instructions."
+          ],
+          "risk_class": "low",
+          "budget": {
+            "max_tokens": 90000,
+            "max_tokens_per_worker": 30000,
+            "max_wall_clock_seconds": 1800,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.4",
+            "recommended_loop": "doc-drift-and-small-fix-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.5-runtime-warning-gate",
+      "depends_on": [
+        "G12.1-runtime-contract-harness"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Parse runtime stdout/stderr warnings into structured lease metadata, gates and dashboard telemetry.",
+          "constraints": [
+            "Warnings may not leak secrets.",
+            "Low-risk warning handling should be advisory by default.",
+            "High-risk trust-boundary warnings must block completion."
+          ],
+          "acceptance_criteria": [
+            "Plugin hook parse warnings are captured as runtime_warnings.",
+            "Skill context budget warnings are captured as runtime_warnings.",
+            "Warning classes are visible in review bundle and dashboard.",
+            "High-risk warning policy can block completion without blocking low-risk advisory runs."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 100000,
+            "max_tokens_per_worker": 35000,
+            "max_wall_clock_seconds": 2400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.5",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.6-auto-verify-closure",
+      "depends_on": [
+        "G12.2-token-budget-reduction",
+        "G12.3-checker-worker-bridge",
+        "G12.4-control-artifact-isolation",
+        "G12.5-runtime-warning-gate"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Close the worker loop by automatically running deterministic checks and checker/security gates before marking output ready for human merge.",
+          "constraints": [
+            "Maker success alone cannot complete mutating work.",
+            "Do not merge, push or deploy automatically.",
+            "High-risk scopes require security checker pass.",
+            "Completion must preserve stdout/stderr, trace, checkpoint and gate evidence."
+          ],
+          "acceptance_criteria": [
+            "Loop status supports ready_for_human_merge.",
+            "Maker completion triggers deterministic checks before checker pass is accepted.",
+            "Checker pass plus deterministic gates moves mutating work to ready_for_human_merge.",
+            "High-risk runs remain blocked without security checker verdict.",
+            "End-to-end live smoke proves maker, checker, gates, traces, checkpoints, artifacts and real token usage."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.6",
+            "recommended_loop": "security-regression-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.7-dashboard-operator-flow",
+      "depends_on": [
+        "G12.1-runtime-contract-harness",
+        "G12.2-token-budget-reduction",
+        "G12.3-checker-worker-bridge",
+        "G12.5-runtime-warning-gate",
+        "G12.6-auto-verify-closure"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Expose runtime contract status, warning gates, token efficiency and maker/checker actions in the dashboard operator flow.",
+          "constraints": [
+            "Dashboard must not expose secrets or bearer tokens.",
+            "Dashboard actions must call the same guarded API routes as CLI automation.",
+            "Dashboard must distinguish prepared, running, verifying and ready_for_human_merge."
+          ],
+          "acceptance_criteria": [
+            "Dashboard shows runtime contract cards for Codex and OpenCode.",
+            "Dashboard shows runtime warning count and token efficiency per worker.",
+            "Dashboard can run prepared maker and checker leases without bypassing gates.",
+            "Dashboard build passes."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 140000,
+            "max_tokens_per_worker": 45000,
+            "max_wall_clock_seconds": 3000,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.7",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.8-end-to-end-real-smoke",
+      "depends_on": [
+        "G12.6-auto-verify-closure",
+        "G12.7-dashboard-operator-flow"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Run the final end-to-end real worker smoke on temp DB/temp repo proving maker, checker, deterministic gates, traces, checkpoints, artifacts and budget handling.",
+          "constraints": [
+            "Use temp DB and temp repository for smoke.",
+            "Do not touch production/default Djimitflo database.",
+            "Do not inspect or print secrets.",
+            "Stop temporary servers and prove no listener remains."
+          ],
+          "acceptance_criteria": [
+            "Live Codex maker smoke exits zero and stores artifacts under .data/agent-evidence.",
+            "Live checker smoke exits zero or records actionable runtime contract failure.",
+            "Runtime token usage is parsed from real runtime output and enforced by token gate.",
+            "Trace spans and before/after checkpoints exist for maker and checker.",
+            "Temporary server is stopped and port is free after smoke."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 320000,
+            "max_tokens_per_worker": 120000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 1,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.8",
+            "recommended_loop": "doc-drift-and-small-fix-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.9-worker-pool-and-queue-model",
+      "depends_on": [
+        "G12.1-runtime-contract-harness",
+        "G12.3-checker-worker-bridge"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Add a visible worker pool and queue model for Codex/OpenCode fleets so Djimitflo can scale beyond one active worker while preserving leases, budgets and worktree isolation.",
+          "constraints": [
+            "Worker pool scaling must be bounded by CPU, memory, runtime availability, token budgets and repository worktree limits.",
+            "Prepared leases, queued leases and running leases must be counted separately.",
+            "No automatic worker spawn without operator approval or an explicit scheduler policy."
+          ],
+          "acceptance_criteria": [
+            "API exposes queue_depth, prepared_leases, running_leases, available_capacity and blocked_capacity_reasons per runtime.",
+            "Scheduler can select the next executable lease without exceeding configured concurrency limits.",
+            "Worker pool metrics distinguish Codex, OpenCode, mock and manual leases.",
+            "Dashboard shows worker pool capacity and queue pressure at a glance."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 3600,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.9",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.10-fleet-scale-dashboard-cockpit",
+      "depends_on": [
+        "G12.2-token-budget-reduction",
+        "G12.7-dashboard-operator-flow",
+        "G12.9-worker-pool-and-queue-model"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Make the full fleet state visible in the dashboard: topology, queue, throughput, budgets, bottlenecks, warnings, artifacts and next safe actions.",
+          "constraints": [
+            "Dashboard must show operational truth, not planned architecture only.",
+            "Dashboard must not expose secrets or raw bearer tokens.",
+            "Every displayed scale claim must be backed by API data, runtime evidence or explicit unknown state."
+          ],
+          "acceptance_criteria": [
+            "Dashboard shows fleet topology from goal -> loop -> lease -> runtime -> artifact -> gate.",
+            "Dashboard shows throughput metrics: completed workers, failed workers, average runtime, token burn and tokens per useful diff.",
+            "Dashboard shows bottlenecks: no runtime, budget exhausted, blocked gates, missing checker, missing human approval.",
+            "Dashboard offers explicit next safe actions for prepared maker/checker leases."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 4200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.10",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.11-workstation-resource-aware-scaling",
+      "depends_on": [
+        "G12.9-worker-pool-and-queue-model"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Use workstation resource signals to determine safe worker concurrency and prevent overload while maximizing useful throughput.",
+          "constraints": [
+            "Concurrency must degrade when free memory, CPU load, runtime availability or token budget is constrained.",
+            "The MacBook dashboard may observe and control; the workstation remains the execution node.",
+            "Resource-aware scheduling must be explainable in dashboard and API responses."
+          ],
+          "acceptance_criteria": [
+            "API exposes recommended_concurrency by runtime with reasoned capacity limits.",
+            "Scheduler refuses new running workers when resource thresholds are exceeded and records why.",
+            "Dashboard shows workstation capacity, current load, recommended concurrency and blocked scaling reasons.",
+            "A smoke test can simulate low capacity and prove new workers are not started."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 50000,
+            "max_wall_clock_seconds": 3600,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.11",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G12.12-backlog-to-fleet-execution-flow",
+      "depends_on": [
+        "G12.6-auto-verify-closure",
+        "G12.9-worker-pool-and-queue-model",
+        "G12.10-fleet-scale-dashboard-cockpit"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/api/goals",
+        "body": {
+          "objective": "Connect backlog, goals, loops and worker pools into a controlled scale execution flow that can process many bounded work items with evidence and review gates.",
+          "constraints": [
+            "Backlog projection can create goals and prepared leases, but running workers requires capacity and policy approval.",
+            "Each work item must preserve source reference, value score, risk class and evidence trail.",
+            "Completion must update backlog status without hiding failed or rejected worker output."
+          ],
+          "acceptance_criteria": [
+            "Triaged backlog items can be converted into goals, loop runs and prepared maker/checker leases in batches.",
+            "Fleet execution can process multiple independent low-risk items in separate worktrees under concurrency limits.",
+            "Dashboard shows backlog-to-worker progress and preserves failed/rejected artifacts.",
+            "End-to-end smoke proves at least two prepared worker paths can be visible and schedulable without file conflicts."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 320000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "real-worker-fleet-functionality-scale",
+            "phase": "T12.12",
+            "recommended_loop": "repo-maintenance-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    }
+  ]
+}

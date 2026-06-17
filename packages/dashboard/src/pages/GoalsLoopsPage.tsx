@@ -379,6 +379,7 @@ export function GoalsLoopsPage() {
                         : api.submitCheckerVerdict(selectedRun.id, lease.id, 'needs_revision', 'Needs revision from dashboard'))}
                       onRetry={() => void runAction(`retry-${lease.id}`, () => api.retryLoopRun(selectedRun.id, lease.id, runtime))}
                       onExecute={() => void runAction(`execute-worker-${lease.id}`, () => api.executeWorker(selectedRun.id, lease.id, { timeout_ms: 120_000, diff_max_lines: 200 }))}
+                      onExecuteChecker={() => void runAction(`execute-checker-${lease.id}`, () => api.executeChecker(selectedRun.id, lease.id, { runtime: runtime === 'manual' ? 'mock' : runtime, timeout_ms: 120_000 }))}
                       busy={actionId !== null}
                     />
                   )) : (
@@ -480,6 +481,7 @@ function GateRow({ gate }: { gate: LoopGate }) {
 function LeaseRow({
   lease,
   onExecute,
+  onExecuteChecker,
   onAccept,
   onNeedsRevision,
   onRetry,
@@ -487,6 +489,7 @@ function LeaseRow({
 }: {
   lease: WorkerLeaseRecord;
   onExecute: () => void;
+  onExecuteChecker: () => void;
   onAccept: () => void;
   onNeedsRevision: () => void;
   onRetry: () => void;
@@ -494,7 +497,13 @@ function LeaseRow({
 }) {
   const canVerdict = (lease.role === 'checker' || lease.role === 'security_checker') && lease.status === 'prepared';
   const canExecute = lease.role === 'maker' && lease.status === 'prepared' && lease.runtime !== 'manual';
+  const canExecuteChecker = lease.role === 'checker' && lease.status === 'prepared';
   const canRetry = lease.role === 'maker' && lease.status === 'failed';
+  const runtimeUsage = lease.metadata.runtime_usage as { total_tokens?: number } | undefined;
+  const efficiency = lease.metadata.token_efficiency as { tokens_per_diff_line?: number | null } | undefined;
+  const warnings = Array.isArray(lease.metadata.runtime_warnings) ? lease.metadata.runtime_warnings : [];
+  const hasArtifacts = typeof lease.metadata.stdout_path === 'string' && lease.metadata.stdout_path.length > 0;
+  const hasExecutionMetrics = Boolean(runtimeUsage?.total_tokens || typeof efficiency?.tokens_per_diff_line === 'number' || warnings.length > 0 || hasArtifacts);
   return (
     <div className="rounded border border-border bg-background p-3">
       <div className="flex items-center justify-between gap-2">
@@ -506,12 +515,26 @@ function LeaseRow({
         <span className="truncate">Finding: {lease.finding_id?.slice(0, 8) || 'none'}</span>
         <span className="truncate">Branch: {lease.branch_name || 'none'}</span>
       </div>
-      {(canExecute || canVerdict || canRetry) && (
+      {hasExecutionMetrics && (
+        <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 text-xs text-foreground-tertiary">
+          <span className="truncate">Tokens: {runtimeUsage?.total_tokens ?? 'unknown'}</span>
+          <span className="truncate">Tokens/diff: {typeof efficiency?.tokens_per_diff_line === 'number' ? efficiency.tokens_per_diff_line.toFixed(0) : 'n/a'}</span>
+          <span className="truncate">Warnings: {warnings.length}</span>
+          <span className="truncate">Artifacts: {hasArtifacts ? 'yes' : 'no'}</span>
+        </div>
+      )}
+      {(canExecute || canExecuteChecker || canVerdict || canRetry) && (
         <div className="mt-3 flex flex-wrap gap-2">
           {canExecute && (
             <button onClick={onExecute} disabled={busy} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">
               <Play className="h-3 w-3" />
-              Run
+              Run Maker
+            </button>
+          )}
+          {canExecuteChecker && (
+            <button onClick={onExecuteChecker} disabled={busy} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">
+              <Play className="h-3 w-3" />
+              Run Checker
             </button>
           )}
           {canVerdict && (

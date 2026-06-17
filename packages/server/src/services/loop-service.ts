@@ -7,10 +7,10 @@ import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } fr
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
-type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled';
+type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled';
 type GateStatus = 'pass' | 'fail' | 'skipped';
 type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
-type LoopName =
+export type LoopName =
   | 'doc-drift-and-small-fix-loop'
   | 'repo-maintenance-loop'
   | 'skill-quality-loop'
@@ -167,6 +167,10 @@ interface ExecuteMakerInput {
   diff_max_lines?: number;
 }
 
+interface ExecuteCheckerInput extends ExecuteMakerInput {
+  runtime?: 'codex' | 'opencode' | 'mock';
+}
+
 interface ExecuteWorkerResult {
   run: LoopRunRecord;
   lease: WorkerLeaseRecord;
@@ -181,6 +185,21 @@ interface ExecuteWorkerResult {
     edges: Array<{ from: string; to: string }>;
     roots: TraceSpanRecord[];
   };
+}
+
+interface RuntimeContract {
+  runtime: 'manual' | 'mock' | 'codex' | 'opencode';
+  available: boolean;
+  command: string | null;
+  version?: string;
+  status: 'ok' | 'drifted' | 'unavailable';
+  cwd_flag?: string;
+  json_flag?: string | string[];
+  supports_json_events: boolean;
+  supports_usage_parsing: boolean;
+  supports_timeout_kill: boolean;
+  evidence: string[];
+  reason?: string;
 }
 
 interface CheckerVerdictInput {
@@ -226,6 +245,18 @@ const EXCLUDED_DIRS = new Set([
   '.turbo',
   'agent-evidence',
 ]);
+
+const MONOREPO_ROOT = process.cwd().includes('/packages/server')
+  ? path.resolve(process.cwd(), '../..')
+  : process.cwd();
+
+const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
+  ? path.resolve(process.env.LOOP_EVIDENCE_ROOT)
+  : path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+
+const CONTROL_DIR = '.djimitflo';
+const LOOP_WORK_FILE = 'LOOP_WORK.md';
+const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
 
 const LOOP_CONTRACTS: LoopContract[] = [
   {
@@ -340,7 +371,7 @@ export class LoopService {
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
 
-  constructor(db: Database, evidenceRoot = path.resolve(process.cwd(), 'agent-evidence', 'agentic-control-loop-fleet')) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
@@ -670,10 +701,12 @@ export class LoopService {
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
       const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
+      this.ensureWorktreeControlIgnore(worktreePath);
       this.writeWorkAssignment(worktreePath, run, finding, runtime);
       const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime);
 
       const makerLeaseId = randomUUID();
+      const assignmentFile = this.workAssignmentPath(worktreePath);
       this.insertWorkerLease({
         id: makerLeaseId,
         loopRunId: run.id,
@@ -683,7 +716,7 @@ export class LoopService {
         worktreePath,
         branchName,
         metadata: {
-          assignment_file: path.join(worktreePath, 'LOOP_WORK.md'),
+          assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
         },
         now,
@@ -884,8 +917,10 @@ export class LoopService {
     const retryAttempt = usedRetries + 1;
     const branchName = this.branchNameFor(run.id, finding.id, retryAttempt);
     const worktreePath = this.createWorktree(run.repository_path, run.id, `${finding.id}-retry-${retryAttempt}`, branchName);
-    this.writeWorkAssignment(worktreePath, run, finding, runtime);
-    const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime, retryAttempt);
+      this.ensureWorktreeControlIgnore(worktreePath);
+      this.writeWorkAssignment(worktreePath, run, finding, runtime);
+      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime, retryAttempt);
+      const assignmentFile = this.workAssignmentPath(worktreePath);
 
     const now = new Date().toISOString();
     const retryMakerLeaseId = randomUUID();
@@ -898,7 +933,7 @@ export class LoopService {
       worktreePath,
       branchName,
       metadata: {
-        assignment_file: path.join(worktreePath, 'LOOP_WORK.md'),
+        assignment_file: assignmentFile,
         assignment_packet_file: assignmentPacketFile,
         retry_of_maker_lease_id: maker.id,
         retry_root_maker_lease_id: retryRootMakerLeaseId,
@@ -993,8 +1028,8 @@ export class LoopService {
       },
       {
         name: 'assignment_file_present',
-        status: activeMakerLeases.every((lease) => lease.worktree_path && fs.existsSync(path.join(lease.worktree_path, 'LOOP_WORK.md'))) ? 'pass' : 'fail',
-        evidence: 'Every maker worktree must contain LOOP_WORK.md.',
+        status: activeMakerLeases.every((lease) => fs.existsSync(this.resolveWorkAssignmentPath(lease))) ? 'pass' : 'fail',
+        evidence: 'Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md.',
       },
       {
         name: 'diff_threshold_all_makers',
@@ -1035,7 +1070,11 @@ export class LoopService {
       },
     ];
 
-    const status: LoopRunStatus = gates.some((gate) => gate.status === 'fail') ? 'blocked' : 'verifying';
+    const status: LoopRunStatus = gates.some((gate) => gate.status === 'fail')
+      ? 'blocked'
+      : completedMakerLeases.length > 0
+        ? 'ready_for_human_merge'
+        : 'verifying';
     this.db.prepare(`
       UPDATE loop_runs
       SET status = ?, gates_json = ?, updated_at = ?
@@ -1312,8 +1351,17 @@ export class LoopService {
 
     this.updateWorkerLeaseStatus(makerLease.id, 'running', { started_at: new Date().toISOString() });
 
+    const contract = this.getRuntimeContract(makerLease.runtime);
+    if (!contract.available || contract.status !== 'ok') {
+      this.updateWorkerLeaseStatus(makerLease.id, 'failed', {
+        runtime_contract: contract,
+        runtime_contract_failed_at: new Date().toISOString(),
+      });
+      throw new Error('RUNTIME_CONTRACT_DRIFTED');
+    }
+
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
-    const prompt = fs.readFileSync(path.join(makerLease.worktree_path, 'LOOP_WORK.md'), 'utf8');
+    const prompt = fs.readFileSync(this.resolveWorkAssignmentPath(makerLease), 'utf8');
     const { command, args } = this.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path, prompt);
     const result = spawnSync(command, args, {
       cwd: makerLease.worktree_path,
@@ -1336,7 +1384,9 @@ export class LoopService {
     const exitStatus = typeof result.status === 'number' ? result.status : null;
     const timedOut = Boolean(result.error && ((result.error as any).code === 'ETIMEDOUT' || result.error.message.includes('ETIMEDOUT')));
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
+    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || result.error?.message || '');
     const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id);
+    const efficiency = this.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
     const gates: LoopGate[] = [
       {
@@ -1367,6 +1417,9 @@ export class LoopService {
       exit_status: exitStatus,
       timed_out: timedOut,
       runtime_adapter: makerLease.runtime,
+      runtime_contract: contract,
+      runtime_warnings: runtimeWarnings,
+      token_efficiency: efficiency,
     };
     if (runtimeUsage) {
       metadataPatch.runtime_usage = runtimeUsage;
@@ -1396,6 +1449,8 @@ export class LoopService {
       stdout_path: stdoutPath,
       stderr_path: stderrPath,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_warnings: runtimeWarnings,
+      token_efficiency: efficiency,
     });
 
     if (tokenBudget.exhausted) {
@@ -1505,6 +1560,213 @@ export class LoopService {
     };
   }
 
+  executeChecker(id: string, input: ExecuteCheckerInput = {}): ExecuteWorkerResult {
+    const run = this.getLoopRun(id);
+    const leases = this.listWorkerLeases(run.id);
+    const checker = input.lease_id
+      ? leases.find((candidate) => candidate.id === input.lease_id)
+      : leases.find((candidate) => candidate.role === 'checker' && candidate.status === 'prepared');
+
+    if (!checker) {
+      throw new Error('CHECKER_LEASE_NOT_FOUND');
+    }
+    if (checker.role !== 'checker') {
+      throw new Error('LEASE_NOT_CHECKER');
+    }
+
+    const makerLeaseId = checker.metadata.maker_lease_id as string | undefined;
+    if (!makerLeaseId) {
+      throw new Error('CHECKER_MAKER_LINK_MISSING');
+    }
+    const maker = leases.find((lease) => lease.id === makerLeaseId);
+    if (!maker || maker.status !== 'completed') {
+      throw new Error('CHECKER_MAKER_NOT_COMPLETED');
+    }
+    if (!maker.worktree_path || !fs.existsSync(maker.worktree_path)) {
+      throw new Error('MAKER_WORKTREE_NOT_FOUND');
+    }
+
+    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'mock' : 'mock');
+    this.updateWorkerLeaseRuntime(checker.id, runtime);
+    const contract = this.getRuntimeContract(runtime);
+    if (!contract.available || contract.status !== 'ok') {
+      this.updateWorkerLeaseStatus(checker.id, 'failed', {
+        runtime_adapter: runtime,
+        runtime_contract: contract,
+        runtime_contract_failed_at: new Date().toISOString(),
+      });
+      throw new Error('RUNTIME_CONTRACT_DRIFTED');
+    }
+
+    const traceId = `loop-${run.id}-checker-${checker.id}`;
+    const checkpointBefore = this.assurance.createCheckpoint({
+      loop_run_id: run.id,
+      label: `before checker ${checker.id}`,
+      metadata: {
+        worker_lease_id: checker.id,
+        maker_lease_id: maker.id,
+        worker_role: checker.role,
+        worker_runtime: runtime,
+        phase: 'before_checker_execution',
+      },
+    });
+    this.patchWorkerLeaseMetadata(checker.id, {
+      checkpoint_before_id: checkpointBefore.id,
+      trace_id: traceId,
+      runtime_adapter: runtime,
+    });
+
+    this.assurance.createTraceSpan({
+      trace_id: traceId,
+      loop_run_id: run.id,
+      span_type: 'worker',
+      name: `${checker.role}:${runtime}:spawn`,
+      status: 'running',
+      evidence_ref: `loop:${run.id}/checker:${checker.id}`,
+      metadata: {
+        worker_lease_id: checker.id,
+        maker_lease_id: maker.id,
+        role: checker.role,
+        runtime,
+        checkpoint_before_id: checkpointBefore.id,
+      },
+    });
+
+    this.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
+
+    const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
+    const prompt = this.buildCheckerPrompt(run, maker, checker);
+    const { command, args } = runtime === 'mock'
+      ? this.buildMockCheckerCommand(maker.worktree_path, prompt)
+      : this.buildRuntimeCommand(runtime, maker.worktree_path, prompt);
+    const result = spawnSync(command, args, {
+      cwd: maker.worktree_path,
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      env: process.env,
+      maxBuffer: 5 * 1024 * 1024,
+    });
+
+    const outputDir = path.join(this.evidenceRoot, run.id, 'checker-output', checker.id);
+    fs.mkdirSync(outputDir, { recursive: true });
+    const stdoutPath = path.join(outputDir, 'stdout.log');
+    const stderrPath = path.join(outputDir, 'stderr.log');
+    fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
+    fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
+
+    const exitStatus = typeof result.status === 'number' ? result.status : null;
+    const timedOut = Boolean(result.error && ((result.error as any).code === 'ETIMEDOUT' || result.error.message.includes('ETIMEDOUT')));
+    const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
+    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || result.error?.message || '');
+    const verdict = exitStatus === 0 && !timedOut
+      ? this.extractCheckerVerdict(result.stdout || '')
+      : 'insufficient_evidence';
+
+    this.updateWorkerLeaseStatus(checker.id, exitStatus === 0 && !timedOut ? 'completed' : 'failed', {
+      verdict,
+      notes: this.extractCheckerNotes(result.stdout || '') || `Checker runtime ${exitStatus === 0 && !timedOut ? 'completed' : 'failed'}.`,
+      maker_lease_id: maker.id,
+      completed_at: new Date().toISOString(),
+      stdout_path: stdoutPath,
+      stderr_path: stderrPath,
+      exit_status: exitStatus,
+      timed_out: timedOut,
+      runtime_adapter: runtime,
+      runtime_contract: contract,
+      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_warnings: runtimeWarnings,
+    });
+
+    const gates: LoopGate[] = [
+      {
+        name: 'checker_runtime_exit_zero',
+        status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
+        evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}`,
+      },
+      {
+        name: 'checker_verdict',
+        status: verdict === 'accepted' ? 'pass' : 'fail',
+        evidence: `checker verdict=${verdict}`,
+      },
+      {
+        name: 'checker_read_only_contract',
+        status: 'pass',
+        evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.',
+      },
+    ];
+
+    const failed = gates.some((gate) => gate.status === 'fail');
+    const existingRun = this.getLoopRun(run.id);
+    const mergedGates = this.mergeGates(existingRun.gates, gates);
+    this.db.prepare(`
+      UPDATE loop_runs
+      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      failed ? 'blocked' : 'verifying',
+      JSON.stringify(mergedGates),
+      JSON.stringify(failed ? ['Inspect checker output and retry, split, or revise'] : ['Run verify gates before completion']),
+      new Date().toISOString(),
+      run.id
+    );
+
+    this.recordLoopEvent(run.id, 'checker_executed', failed ? 'warning' : 'info', `Checker lease ${checker.id} ${failed ? 'failed gates' : 'completed'}.`, {
+      checker_lease_id: checker.id,
+      maker_lease_id: maker.id,
+      verdict,
+      gates,
+      stdout_path: stdoutPath,
+      stderr_path: stderrPath,
+      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_warnings: runtimeWarnings,
+    });
+
+    this.assurance.createTraceSpan({
+      trace_id: traceId,
+      loop_run_id: run.id,
+      span_type: 'worker',
+      name: `${checker.role}:${runtime}:completion`,
+      status: failed ? 'error' : 'ok',
+      evidence_ref: stdoutPath,
+      metadata: {
+        worker_lease_id: checker.id,
+        maker_lease_id: maker.id,
+        role: checker.role,
+        runtime,
+        stdout_path: stdoutPath,
+        stderr_path: stderrPath,
+        gates,
+        verdict,
+      },
+    });
+
+    const checkpointAfter = this.assurance.createCheckpoint({
+      loop_run_id: run.id,
+      label: `after checker ${checker.id}`,
+      metadata: {
+        worker_lease_id: checker.id,
+        maker_lease_id: maker.id,
+        worker_role: checker.role,
+        worker_runtime: runtime,
+        phase: 'after_checker_execution',
+      },
+    });
+    this.patchWorkerLeaseMetadata(checker.id, {
+      checkpoint_after_id: checkpointAfter.id,
+    });
+
+    return {
+      run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'checker_execution_failed') : this.getLoopRun(run.id),
+      lease: this.listWorkerLeases(run.id).find((candidate) => candidate.id === checker.id)!,
+      gates,
+      stdout_path: stdoutPath,
+      stderr_path: stderrPath,
+      checkpoint_before: checkpointBefore,
+      checkpoint_after: checkpointAfter,
+      trace: this.assurance.getTrace(traceId),
+    };
+  }
+
   getCatalog() {
     return {
       loops: LOOP_CONTRACTS.map((contract) => ({
@@ -1520,12 +1782,23 @@ export class LoopService {
           'wall_clock_budget',
         ],
         runtimes: {
-          manual: this.probeRuntime('manual'),
-          mock: this.probeRuntime('mock'),
-          codex: this.probeRuntime('codex'),
-          opencode: this.probeRuntime('opencode'),
+          manual: this.getRuntimeContract('manual'),
+          mock: this.getRuntimeContract('mock'),
+          codex: this.getRuntimeContract('codex'),
+          opencode: this.getRuntimeContract('opencode'),
         },
       })),
+    };
+  }
+
+  getRuntimeContracts(): { runtimes: Record<string, RuntimeContract> } {
+    return {
+      runtimes: {
+        manual: this.getRuntimeContract('manual'),
+        mock: this.getRuntimeContract('mock'),
+        codex: this.getRuntimeContract('codex'),
+        opencode: this.getRuntimeContract('opencode'),
+      },
     };
   }
 
@@ -2306,7 +2579,7 @@ export class LoopService {
     if (runtime === 'codex') {
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
-        args: ['exec', '--format', 'json', '--dir', worktreePath, prompt],
+        args: ['exec', '--json', '--cd', worktreePath, prompt],
       };
     }
     if (runtime === 'opencode') {
@@ -2319,21 +2592,53 @@ export class LoopService {
   }
 
   private assertRuntimeAvailable(runtime: string): void {
-    const probe = this.probeRuntime(runtime);
+    const probe = this.getRuntimeContract(runtime);
     if (!probe.available) {
       throw new Error('RUNTIME_UNAVAILABLE');
     }
   }
 
-  private probeRuntime(runtime: string): { available: boolean; command: string | null; version?: string; reason?: string } {
+  private getRuntimeContract(runtime: string): RuntimeContract {
     if (runtime === 'manual') {
-      return { available: true, command: null, version: 'manual' };
+      return {
+        runtime: 'manual',
+        available: true,
+        command: null,
+        version: 'manual',
+        status: 'ok',
+        supports_json_events: false,
+        supports_usage_parsing: false,
+        supports_timeout_kill: false,
+        evidence: ['manual runtime requires human execution'],
+      };
     }
     if (runtime === 'mock') {
-      return { available: true, command: process.execPath, version: 'mock-runtime' };
+      return {
+        runtime: 'mock',
+        available: true,
+        command: process.execPath,
+        version: 'mock-runtime',
+        status: 'ok',
+        cwd_flag: 'argv',
+        json_flag: 'stdout-json',
+        supports_json_events: true,
+        supports_usage_parsing: true,
+        supports_timeout_kill: true,
+        evidence: ['deterministic in-process mock runtime'],
+      };
     }
     if (runtime !== 'codex' && runtime !== 'opencode') {
-      return { available: false, command: null, reason: 'unsupported runtime' };
+      return {
+        runtime: 'manual',
+        available: false,
+        command: null,
+        status: 'unavailable',
+        supports_json_events: false,
+        supports_usage_parsing: false,
+        supports_timeout_kill: false,
+        evidence: [],
+        reason: 'unsupported runtime',
+      };
     }
     const command = runtime === 'codex'
       ? process.env.CODEX_BIN_PATH || 'codex'
@@ -2345,15 +2650,96 @@ export class LoopService {
       maxBuffer: 512 * 1024,
     });
     if (result.error) {
-      return { available: false, command, reason: result.error.message };
+      return {
+        runtime,
+        available: false,
+        command,
+        status: 'unavailable',
+        supports_json_events: false,
+        supports_usage_parsing: false,
+        supports_timeout_kill: true,
+        evidence: [],
+        reason: result.error.message,
+      };
     }
     if (result.status !== 0) {
-      return { available: false, command, reason: result.stderr || `exit ${result.status}` };
+      return {
+        runtime,
+        available: false,
+        command,
+        status: 'unavailable',
+        supports_json_events: false,
+        supports_usage_parsing: false,
+        supports_timeout_kill: true,
+        evidence: [],
+        reason: result.stderr || `exit ${result.status}`,
+      };
     }
+    const helpResult = spawnSync(command, runtime === 'codex' ? ['exec', '--help'] : ['run', '--help'], {
+      encoding: 'utf8',
+      timeout: timeoutMs,
+      maxBuffer: 512 * 1024,
+    });
+    const help = `${helpResult.stdout || ''}\n${helpResult.stderr || ''}`;
+    const evidence = [
+      (result.stdout || result.stderr || '').trim(),
+      help.split(/\r?\n/).slice(0, 20).join('\n'),
+    ].filter(Boolean);
+    const hasJsonFlag = runtime === 'codex'
+      ? help.includes('--json')
+      : help.includes('--format');
+    const hasCwdFlag = runtime === 'codex'
+      ? help.includes('--cd')
+      : help.includes('--dir');
+    const drifted = !hasJsonFlag || !hasCwdFlag;
     return {
-      available: true,
+      runtime,
+      available: !drifted,
       command,
       version: (result.stdout || result.stderr || '').trim() || 'unknown',
+      status: drifted ? 'drifted' : 'ok',
+      cwd_flag: runtime === 'codex' ? '--cd' : '--dir',
+      json_flag: runtime === 'codex' ? '--json' : ['--format', 'json'],
+      supports_json_events: !drifted,
+      supports_usage_parsing: !drifted,
+      supports_timeout_kill: true,
+      evidence,
+      ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : ''].filter(Boolean).join(', ')}` } : {}),
+    };
+  }
+
+  private extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
+    const text = `${stdout}\n${stderr}`;
+    const warnings: Array<Record<string, unknown>> = [];
+    const patterns: Array<{ pattern: RegExp; class_name: string; severity: 'advisory' | 'warning' | 'blocking' }> = [
+      { pattern: /failed to parse plugin hooks config[^\n]*/i, class_name: 'plugin_hook_config_parse', severity: 'warning' },
+      { pattern: /Skill descriptions were shortened[^\n]*/i, class_name: 'skill_context_budget', severity: 'advisory' },
+      { pattern: /fail to delete session[^\n]*/i, class_name: 'runtime_session_cleanup', severity: 'advisory' },
+      { pattern: /structured output unavailable[^\n]*/i, class_name: 'structured_output_unavailable', severity: 'warning' },
+      { pattern: /unknown field|unexpected argument[^\n]*/i, class_name: 'runtime_contract_warning', severity: 'warning' },
+    ];
+    for (const item of patterns) {
+      const match = text.match(item.pattern);
+      if (match?.[0]) {
+        warnings.push({
+          class_name: item.class_name,
+          severity: item.severity,
+          message: match[0].slice(0, 500),
+        });
+      }
+    }
+    return warnings;
+  }
+
+  private calculateWorkerEfficiency(runtimeUsage: RuntimeUsage | null, diffLines: number): Record<string, unknown> {
+    if (!runtimeUsage) {
+      return { usage_source: 'unknown' };
+    }
+    return {
+      total_tokens: runtimeUsage.total_tokens,
+      diff_lines: diffLines,
+      tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null,
+      tokens_per_successful_worker: runtimeUsage.total_tokens,
     };
   }
 
@@ -2436,7 +2822,55 @@ export class LoopService {
     }
   }
 
+  private controlDir(worktreePath: string): string {
+    return path.join(worktreePath, CONTROL_DIR);
+  }
+
+  private workAssignmentPath(worktreePath: string): string {
+    return path.join(this.controlDir(worktreePath), LOOP_WORK_FILE);
+  }
+
+  private assignmentPacketPath(worktreePath: string): string {
+    return path.join(this.controlDir(worktreePath), ASSIGNMENT_PACKET_FILE);
+  }
+
+  private ensureControlDir(worktreePath: string): string {
+    const dir = this.controlDir(worktreePath);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  private ensureWorktreeControlIgnore(worktreePath: string): void {
+    try {
+      const excludePath = this.git(worktreePath, ['rev-parse', '--git-path', 'info/exclude']).trim();
+      const absoluteExcludePath = path.isAbsolute(excludePath) ? excludePath : path.join(worktreePath, excludePath);
+      const current = fs.existsSync(absoluteExcludePath) ? fs.readFileSync(absoluteExcludePath, 'utf8') : '';
+      if (!current.split(/\r?\n/).includes(`${CONTROL_DIR}/`)) {
+        fs.mkdirSync(path.dirname(absoluteExcludePath), { recursive: true });
+        fs.appendFileSync(absoluteExcludePath, `${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${CONTROL_DIR}/\n`, 'utf8');
+      }
+    } catch {
+      // The control directory is still useful even when git excludes cannot be updated.
+    }
+  }
+
+  private resolveWorkAssignmentPath(lease: WorkerLeaseRecord): string {
+    const metadataPath = typeof lease.metadata.assignment_file === 'string' ? lease.metadata.assignment_file : null;
+    if (metadataPath && fs.existsSync(metadataPath)) {
+      return metadataPath;
+    }
+    if (lease.worktree_path) {
+      const currentPath = this.workAssignmentPath(lease.worktree_path);
+      if (fs.existsSync(currentPath)) {
+        return currentPath;
+      }
+      return path.join(lease.worktree_path, LOOP_WORK_FILE);
+    }
+    return '';
+  }
+
   private writeWorkAssignment(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string): void {
+    this.ensureControlDir(worktreePath);
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2465,11 +2899,12 @@ export class LoopService {
       '- Checker approval is required before completion.',
       '',
     ].join('\n');
-    fs.writeFileSync(path.join(worktreePath, 'LOOP_WORK.md'), content, 'utf8');
+    fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
   private writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number): string {
-    const packetPath = path.join(worktreePath, 'ASSIGNMENT_PACKET.json');
+    this.ensureControlDir(worktreePath);
+    const packetPath = this.assignmentPacketPath(worktreePath);
     const contract = (run.metadata.contract && typeof run.metadata.contract === 'object')
       ? run.metadata.contract as Record<string, unknown>
       : {};
@@ -2515,6 +2950,98 @@ export class LoopService {
     return packetPath;
   }
 
+  private buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
+    const worktreePath = maker.worktree_path || '';
+    const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
+      ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
+      : '';
+    const stdoutPath = typeof maker.metadata.stdout_path === 'string' ? maker.metadata.stdout_path : '';
+    const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
+    const checks = JSON.stringify(maker.metadata.deterministic_checks || [], null, 2);
+    return [
+      `# ${run.loop_name} Checker Assignment`,
+      '',
+      `Loop run: ${run.id}`,
+      `Checker lease: ${checker.id}`,
+      `Maker lease: ${maker.id}`,
+      '',
+      'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+      'Review the maker output using the evidence below.',
+      '',
+      'Return a concise verdict. Prefer JSON on one line:',
+      '{"verdict":"accepted|needs_revision|rejected|insufficient_evidence","notes":"...","usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+      '',
+      '## Assignment Packet',
+      assignmentPacket || 'No assignment packet available.',
+      '',
+      '## Maker Diff',
+      diff || 'No diff available.',
+      '',
+      '## Deterministic Checks',
+      checks,
+      '',
+      '## Maker Artifacts',
+      `stdout_path: ${stdoutPath || 'missing'}`,
+      `stderr_path: ${stderrPath || 'missing'}`,
+      '',
+    ].join('\n');
+  }
+
+  private buildMockCheckerCommand(_worktreePath: string, _prompt: string): { command: string; args: string[] } {
+    const script = [
+      'console.log(JSON.stringify({ verdict: "accepted", notes: "mock checker accepted maker output", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
+    ].join('\n');
+    return {
+      command: process.execPath,
+      args: ['-e', script],
+    };
+  }
+
+  private extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
+    for (const line of stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        const verdict = String(parsed.verdict || parsed.checker_verdict || '').trim();
+        if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
+          return verdict as CheckerVerdictInput['verdict'];
+        }
+      } catch {
+        continue;
+      }
+    }
+    if (/\baccepted\b/i.test(stdout)) return 'accepted';
+    if (/needs[_ -]?revision/i.test(stdout)) return 'needs_revision';
+    if (/\brejected\b/i.test(stdout)) return 'rejected';
+    return 'insufficient_evidence';
+  }
+
+  private extractCheckerNotes(stdout: string): string {
+    for (const line of stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('{')) continue;
+      try {
+        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+        if (typeof parsed.notes === 'string') {
+          return parsed.notes;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return stdout.trim().slice(0, 1_000);
+  }
+
+  private mergeGates(existing: LoopGate[], patch: LoopGate[]): LoopGate[] {
+    const byName = new Map(existing.map((gate) => [gate.name, gate]));
+    for (const gate of patch) {
+      byName.set(gate.name, gate);
+    }
+    return Array.from(byName.values());
+  }
+
   private insertWorkerLease(input: {
     id: string;
     loopRunId: string;
@@ -2555,6 +3082,11 @@ export class LoopService {
     };
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
+  }
+
+  private updateWorkerLeaseRuntime(id: string, runtime: string): void {
+    this.db.prepare('UPDATE worker_leases SET runtime = ?, updated_at = ? WHERE id = ?')
+      .run(runtime, new Date().toISOString(), id);
   }
 
   private patchWorkerLeaseMetadata(id: string, metadataPatch: Record<string, unknown>): void {

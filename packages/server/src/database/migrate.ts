@@ -13,6 +13,8 @@ type ColumnSpec = {
   definition: string;
 };
 
+const LOOP_RUN_STATUSES = "'created', 'planning', 'running', 'verifying', 'ready_for_human_merge', 'blocked', 'completed', 'failed', 'escalated', 'cancelled'";
+
 const approvalColumns: ColumnSpec[] = [
   { name: 'action_type', definition: "TEXT" },
   { name: 'title', definition: "TEXT" },
@@ -48,6 +50,29 @@ function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns
     if (!existing.has(column.name)) {
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.definition}`);
     }
+  }
+}
+
+function tableSql(db: BetterSqlite3Database, tableName: string): string | null {
+  const row = db.prepare(`
+    SELECT sql FROM sqlite_master
+    WHERE type = 'table' AND name = ?
+  `).get(tableName) as { sql?: string } | undefined;
+  return row?.sql || null;
+}
+
+function insertRows(db: BetterSqlite3Database, tableName: string, rows: Array<Record<string, unknown>>) {
+  if (rows.length === 0) {
+    return;
+  }
+  const columns = Object.keys(rows[0]);
+  const placeholders = columns.map(() => '?').join(', ');
+  const insert = db.prepare(`
+    INSERT INTO ${tableName} (${columns.join(', ')})
+    VALUES (${placeholders})
+  `);
+  for (const row of rows) {
+    insert.run(...columns.map((column) => row[column]));
   }
 }
 
@@ -541,7 +566,7 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       goal_id TEXT,
       loop_name TEXT NOT NULL,
       mode TEXT NOT NULL CHECK(mode IN ('closed', 'open')),
-      status TEXT NOT NULL CHECK(status IN ('created', 'planning', 'running', 'verifying', 'blocked', 'completed', 'failed', 'escalated', 'cancelled')),
+      status TEXT NOT NULL CHECK(status IN (${LOOP_RUN_STATUSES})),
       repository_path TEXT,
       state_file TEXT,
       findings_json TEXT NOT NULL DEFAULT '[]',
@@ -783,6 +808,141 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
   `);
 }
 
+function ensureLoopRunsReadyStatus(db: BetterSqlite3Database) {
+  const sql = tableSql(db, 'loop_runs');
+  if (!sql || sql.includes('ready_for_human_merge')) {
+    return;
+  }
+
+  const loopRuns = db.prepare('SELECT * FROM loop_runs').all() as Array<Record<string, unknown>>;
+  const loopEvents = tableSql(db, 'loop_events') ? db.prepare('SELECT * FROM loop_events').all() as Array<Record<string, unknown>> : [];
+  const workerLeases = tableSql(db, 'worker_leases') ? db.prepare('SELECT * FROM worker_leases').all() as Array<Record<string, unknown>> : [];
+  const traceSpans = tableSql(db, 'agent_trace_spans') ? db.prepare('SELECT * FROM agent_trace_spans').all() as Array<Record<string, unknown>> : [];
+  const checkpoints = tableSql(db, 'loop_checkpoints') ? db.prepare('SELECT * FROM loop_checkpoints').all() as Array<Record<string, unknown>> : [];
+
+  const foreignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec(`
+      DROP TABLE IF EXISTS loop_checkpoints;
+      DROP TABLE IF EXISTS agent_trace_spans;
+      DROP TABLE IF EXISTS worker_leases;
+      DROP TABLE IF EXISTS loop_events;
+      DROP TABLE IF EXISTS loop_runs;
+
+      CREATE TABLE loop_runs (
+        id TEXT PRIMARY KEY,
+        goal_id TEXT,
+        loop_name TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK(mode IN ('closed', 'open')),
+        status TEXT NOT NULL CHECK(status IN (${LOOP_RUN_STATUSES})),
+        repository_path TEXT,
+        state_file TEXT,
+        findings_json TEXT NOT NULL DEFAULT '[]',
+        plan_json TEXT NOT NULL DEFAULT '{}',
+        gates_json TEXT NOT NULL DEFAULT '[]',
+        next_actions_json TEXT NOT NULL DEFAULT '[]',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT,
+        FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_goal_id ON loop_runs(goal_id);
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_loop_name ON loop_runs(loop_name);
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);
+      CREATE INDEX IF NOT EXISTS idx_loop_runs_created_at ON loop_runs(created_at);
+
+      CREATE TABLE loop_events (
+        id TEXT PRIMARY KEY,
+        loop_run_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        level TEXT NOT NULL CHECK(level IN ('debug', 'info', 'warning', 'error', 'critical')),
+        message TEXT NOT NULL,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_loop_events_loop_run_id ON loop_events(loop_run_id);
+      CREATE INDEX IF NOT EXISTS idx_loop_events_event_type ON loop_events(event_type);
+      CREATE INDEX IF NOT EXISTS idx_loop_events_created_at ON loop_events(created_at);
+
+      CREATE TABLE worker_leases (
+        id TEXT PRIMARY KEY,
+        loop_run_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard')),
+        runtime TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('prepared', 'running', 'completed', 'failed', 'cancelled')),
+        finding_id TEXT,
+        worktree_path TEXT,
+        branch_name TEXT,
+        budget_json TEXT NOT NULL DEFAULT '{}',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT,
+        FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_worker_leases_loop_run_id ON worker_leases(loop_run_id);
+      CREATE INDEX IF NOT EXISTS idx_worker_leases_status ON worker_leases(status);
+      CREATE INDEX IF NOT EXISTS idx_worker_leases_role ON worker_leases(role);
+
+      CREATE TABLE agent_trace_spans (
+        id TEXT PRIMARY KEY,
+        trace_id TEXT NOT NULL,
+        parent_span_id TEXT,
+        loop_run_id TEXT,
+        work_item_id TEXT,
+        span_type TEXT NOT NULL CHECK(span_type IN ('goal', 'loop', 'worker', 'tool', 'memory', 'eval', 'capability', 'checkpoint', 'reflection')),
+        name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('ok', 'error', 'running', 'skipped', 'blocked')),
+        evidence_ref TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (parent_span_id) REFERENCES agent_trace_spans(id) ON DELETE SET NULL,
+        FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE SET NULL,
+        FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_trace_id ON agent_trace_spans(trace_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_parent_span_id ON agent_trace_spans(parent_span_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_loop_run_id ON agent_trace_spans(loop_run_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_span_type ON agent_trace_spans(span_type);
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_status ON agent_trace_spans(status);
+      CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_created_at ON agent_trace_spans(created_at);
+
+      CREATE TABLE loop_checkpoints (
+        id TEXT PRIMARY KEY,
+        loop_run_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        state_json TEXT NOT NULL,
+        gates_json TEXT NOT NULL DEFAULT '[]',
+        findings_json TEXT NOT NULL DEFAULT '[]',
+        leases_json TEXT NOT NULL DEFAULT '[]',
+        metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_loop_checkpoints_loop_run_id ON loop_checkpoints(loop_run_id);
+      CREATE INDEX IF NOT EXISTS idx_loop_checkpoints_created_at ON loop_checkpoints(created_at);
+    `);
+
+    insertRows(db, 'loop_runs', loopRuns);
+    insertRows(db, 'loop_events', loopEvents);
+    insertRows(db, 'worker_leases', workerLeases);
+    insertRows(db, 'agent_trace_spans', traceSpans);
+    insertRows(db, 'loop_checkpoints', checkpoints);
+  } finally {
+    db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+  }
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -798,6 +958,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   // Ensure agents table has telegram/machine/okf columns
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
   createAgenticLoopTables(db);
+  ensureLoopRunsReadyStatus(db);
 }
 
 if (require.main === module) {

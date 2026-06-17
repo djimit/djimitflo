@@ -181,6 +181,44 @@ export function SwarmResourcesPage() {
       </div>
 
       <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Fleet Cockpit</h2>
+          <p className="mt-1 text-sm text-foreground-secondary">Runtime pools, queue pressure, recommended concurrency, throughput and blocked capacity reasons.</p>
+        </div>
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+          {status?.fleet_pools?.length ? status.fleet_pools.map((pool) => (
+            <div key={pool.runtime} className="rounded border border-border bg-background p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-semibold text-foreground">{pool.runtime}</div>
+                <StatusBadge status={pool.available ? 'available' : 'blocked'} />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <SmallStat label="Prepared" value={pool.prepared_leases} />
+                <SmallStat label="Running" value={pool.running_leases} />
+                <SmallStat label="Done 24h" value={pool.completed_24h} />
+                <SmallStat label="Failed 24h" value={pool.failed_24h} />
+                <SmallStat label="Rec. Conc." value={pool.recommended_concurrency} />
+                <SmallStat label="Tokens 24h" value={pool.tokens_used_24h} />
+              </div>
+              <div className="mt-3 text-xs text-foreground-tertiary">
+                Tokens/success: {pool.tokens_per_successful_worker == null ? 'n/a' : pool.tokens_per_successful_worker.toFixed(0)}
+              </div>
+              <div className="mt-2 text-xs text-foreground-tertiary">
+                Queue risk: {Object.entries(pool.queue_depth_by_risk || {}).map(([risk, count]) => `${risk}:${count}`).join(', ') || 'none'}
+              </div>
+              {pool.blocked_capacity_reasons.length > 0 && (
+                <div className="mt-3 rounded border border-status-error/20 bg-status-error/10 p-2 text-xs text-status-error">
+                  {pool.blocked_capacity_reasons.join(', ')}
+                </div>
+              )}
+            </div>
+          )) : (
+            <p className="text-sm text-foreground-secondary">No fleet pool data available.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
         <div className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Agent Assurance Harness</h2>
@@ -257,7 +295,7 @@ export function SwarmResourcesPage() {
           </div>
           {tickResult && (
             <div className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-foreground-secondary">
-              Scheduler inspected {tickResult.inspected_loop_runs} loop run(s), created {tickResult.created_work_items.length} backlog candidate(s), planned {tickResult.planned_work_items.length} work item(s), skipped {tickResult.skipped_existing} duplicate(s), and created {tickResult.leases_created} lease(s).
+              Scheduler inspected {tickResult.inspected_loop_runs} loop run(s), created {tickResult.created_work_items.length} backlog candidate(s), planned {tickResult.planned_work_items.length} work item(s), prepared {tickResult.prepared_work_items.length} work item(s), skipped {tickResult.skipped_existing} duplicate(s), and created {tickResult.leases_created} lease(s).
             </div>
           )}
         </section>

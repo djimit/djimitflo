@@ -34,6 +34,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'MANUAL_MAKER_REQUIRES_HUMAN') throw createError(409, 'manual maker leases require human execution', 'MANUAL_MAKER_REQUIRES_HUMAN');
   if (message === 'MAKER_RUNTIME_UNSUPPORTED') throw createError(400, 'maker runtime is unsupported', 'MAKER_RUNTIME_UNSUPPORTED');
   if (message === 'RUNTIME_UNAVAILABLE') throw createError(409, 'requested runtime is unavailable', 'RUNTIME_UNAVAILABLE');
+  if (message === 'RUNTIME_CONTRACT_DRIFTED') throw createError(409, 'requested runtime contract is drifted or unavailable', 'RUNTIME_CONTRACT_DRIFTED');
   if (message === 'CHECKER_VERDICT_REQUIRED') throw createError(400, 'checker verdict is required', 'CHECKER_VERDICT_REQUIRED');
   if (message === 'CHECKER_VERDICT_INVALID') throw createError(400, 'checker verdict is invalid', 'CHECKER_VERDICT_INVALID');
   if (message === 'CHECKER_LEASE_NOT_FOUND') throw createError(404, 'checker lease not found', 'CHECKER_LEASE_NOT_FOUND');
@@ -60,6 +61,14 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
     try {
       res.json(loopService.getCatalog());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/runtime-contracts', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(loopService.getRuntimeContracts());
     } catch (error) {
       next(error);
     }
@@ -199,6 +208,18 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
   router.post('/runs/:id/execute-worker', requirePermission('create:task'), (req, res, next) => {
     try {
       res.json(loopService.executeWorker(req.params.id, req.body || {}));
+    } catch (error) {
+      try {
+        mapLoopServiceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/runs/:id/execute-checker', requirePermission('create:task'), (req, res, next) => {
+    try {
+      res.json(loopService.executeChecker(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);

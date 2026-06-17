@@ -3,8 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
+import path from 'path';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
+import { execFileSync } from 'child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { createWorkItemRoutes } from '../routes/work-items';
@@ -122,11 +124,19 @@ describe('workstation swarm resource plan', () => {
     db.prepare(`
       INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('loop-1', 'doc-drift-and-small-fix-loop', 'closed', 'running', '[]', '{}', '[]', '[]', '{}', recent, recent);
+    `).run('loop-1', 'doc-drift-and-small-fix-loop', 'closed', 'ready_for_human_merge', '[]', '{}', '[]', '[]', '{"risk_class":"low"}', recent, recent);
     db.prepare(`
       INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run('lease-1', 'loop-1', 'maker', 'codex', 'running', '{"pid":123,"artifact_path":"agent-evidence/loop-1/worker-output"}', recent, recent);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('lease-2', 'loop-1', 'maker', 'mock', 'prepared', '{}', recent, recent);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('lease-3', 'loop-1', 'checker', 'mock', 'completed', '{"runtime_usage":{"total_tokens":12}}', recent, recent);
     db.prepare(`
       INSERT INTO work_items (id, title, description, source, risk_class, value_score, confidence, status, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -138,12 +148,25 @@ describe('workstation swarm resource plan', () => {
 
     expect(status.registry_agent_count).toBe(2);
     expect(status.live_agent_count).toBe(1);
-    expect(status.worker_lease_count).toBe(1);
+    expect(status.worker_lease_count).toBe(2);
     expect(status.active_execution_count).toBe(1);
     expect(status.task_count.open_work_items).toBe(1);
     expect(status.task_count.open_loop_runs).toBe(1);
     expect(status.stale_agents).toEqual([expect.objectContaining({ id: 'agent-stale' })]);
     expect(status.reality_check.agent_count_is_registry_only).toBe(true);
+    const mockPool = status.fleet_pools.find((pool: any) => pool.runtime === 'mock');
+    expect(mockPool).toMatchObject({
+      prepared_leases: 1,
+      queued_leases: 1,
+      running_leases: 0,
+      completed_24h: 1,
+      failed_24h: 0,
+      tokens_used_24h: 12,
+      tokens_per_successful_worker: 12,
+      queue_depth_by_risk: { low: 1 },
+    });
+    expect(mockPool.available).toEqual(expect.any(Boolean));
+    expect(mockPool.recommended_concurrency).toBeGreaterThanOrEqual(0);
   });
 
   it('scheduler tick projects loop findings into backlog candidates without leasing workers', async () => {
@@ -357,6 +380,83 @@ describe('workstation swarm resource plan', () => {
       risk_class: 'medium',
       status: 'created',
     });
+  });
+
+  it('scheduler can prepare planned backlog candidates into worker leases without starting workers', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-scheduler-repo-'));
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-scheduler-worktrees-'));
+    const previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
+    try {
+      fs.writeFileSync(path.join(repo, 'README.md'), 'TODO: document setup\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
+      execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'scheduler@example.invalid'], { cwd: repo });
+      execFileSync('git', ['config', 'user.name', 'Scheduler Test'], { cwd: repo });
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: repo });
+      execFileSync('git', ['commit', '-m', 'Initial scheduler repo'], { cwd: repo, stdio: 'ignore' });
+
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'wi-prepare',
+        'Prepare doc fix worker',
+        'Prepare a bounded doc-drift worker lease.',
+        'test',
+        'test:prepare',
+        'low',
+        75,
+        0.8,
+        'triaged',
+        'doc-drift-and-small-fix-loop',
+        JSON.stringify({ repository_path: repo }),
+        now,
+        now
+      );
+
+      const response = await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ max_items: 5, plan_triaged: true, prepare_planned: true, runtime: 'mock' }),
+      });
+      expect(response.status).toBe(200);
+      const tick = await response.json() as any;
+      expect(tick.planned_work_items).toHaveLength(1);
+      expect(tick.prepared_work_items).toHaveLength(1);
+      expect(tick.prepared_work_items[0]).toMatchObject({
+        id: 'wi-prepare',
+        status: 'leased',
+        assigned_runtime: 'mock',
+      });
+      expect(tick.prepared_work_items[0].metadata.loop_run_id).toEqual(expect.any(String));
+      expect(tick.leases_created).toBe(2);
+
+      const leases = db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(tick.prepared_work_items[0].metadata.loop_run_id) as any[];
+      expect(leases).toHaveLength(2);
+      const maker = leases.find((lease) => lease.role === 'maker');
+      expect(maker).toMatchObject({ runtime: 'mock', status: 'prepared' });
+      const makerMetadata = JSON.parse(maker.metadata);
+      expect(fs.existsSync(makerMetadata.assignment_file)).toBe(true);
+      expect(makerMetadata.assignment_file).toContain(`${path.sep}.djimitflo${path.sep}LOOP_WORK.md`);
+
+      const statusResponse = await fetch(`${baseUrl}/swarms/status`);
+      const status = await statusResponse.json() as any;
+      const mockPool = status.fleet_pools.find((pool: any) => pool.runtime === 'mock');
+      expect(mockPool).toMatchObject({
+        prepared_leases: 1,
+        queued_leases: 1,
+      });
+    } finally {
+      if (previousWorktreeRoot) {
+        process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
+      } else {
+        delete process.env.LOOP_WORKTREE_ROOT;
+      }
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
   });
 
   it('exposes specialist catalog and rejects unknown or unsafe high-risk panels', async () => {
