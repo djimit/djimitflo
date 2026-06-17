@@ -196,6 +196,18 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
+  router.post('/runs/:id/execute-worker', requirePermission('create:task'), (req, res, next) => {
+    try {
+      res.json(loopService.executeWorker(req.params.id, req.body || {}));
+    } catch (error) {
+      try {
+        mapLoopServiceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
   router.post('/runs/:id/checker-verdict', requirePermission('create:task'), (req, res, next) => {
     try {
       res.json(loopService.submitCheckerVerdict(req.params.id, req.body || {}));

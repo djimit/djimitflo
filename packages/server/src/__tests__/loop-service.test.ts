@@ -541,6 +541,124 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(bundle.state_content).toContain('doc-drift-and-small-fix-loop');
   });
 
+  it('executes a prepared worker through the spawn bridge with mock runtime, traces, checkpoints, and artifacts', async () => {
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'mock' }),
+    });
+    expect(continueResponse.status).toBe(201);
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+    expect(maker).toMatchObject({ runtime: 'mock', status: 'prepared' });
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-worker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, diff_max_lines: 20, timeout_ms: 10_000 }),
+    });
+
+    expect(executeResponse.status).toBe(200);
+    const executed = await executeResponse.json() as any;
+    expect(executed.lease).toMatchObject({
+      id: maker.id,
+      status: 'completed',
+      metadata: {
+        runtime_adapter: 'mock',
+        checkpoint_before_id: expect.any(String),
+        checkpoint_after_id: expect.any(String),
+        trace_id: expect.any(String),
+        runtime_usage: {
+          total_tokens: 3,
+          usage_source: 'runtime_stdout',
+        },
+      },
+    });
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'maker_runtime_exit_zero', status: 'pass' }),
+      expect.objectContaining({ name: 'diff_under_threshold', status: 'pass' }),
+    ]));
+    expect(fs.existsSync(executed.stdout_path)).toBe(true);
+    expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('mock worker completed');
+    expect(executed.checkpoint_before.id).toBe(executed.lease.metadata.checkpoint_before_id);
+    expect(executed.checkpoint_after.id).toBe(executed.lease.metadata.checkpoint_after_id);
+    expect(executed.checkpoint_before.leases.find((lease: any) => lease.id === maker.id).status).toBe('prepared');
+    expect(executed.checkpoint_after.leases.find((lease: any) => lease.id === maker.id).status).toBe('completed');
+    expect(executed.trace.spans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ span_type: 'worker', status: 'running' }),
+      expect.objectContaining({ span_type: 'worker', status: 'ok' }),
+    ]));
+
+    const traceRows = db.prepare('SELECT * FROM agent_trace_spans WHERE trace_id = ? ORDER BY created_at ASC').all(executed.trace.trace_id) as any[];
+    const checkpointRows = db.prepare('SELECT * FROM loop_checkpoints WHERE loop_run_id = ? ORDER BY created_at ASC').all(run.id) as any[];
+    expect(traceRows.length).toBeGreaterThanOrEqual(2);
+    expect(checkpointRows.map((row) => row.id)).toEqual(expect.arrayContaining([
+      executed.checkpoint_before.id,
+      executed.checkpoint_after.id,
+    ]));
+  });
+
+  it('marks spawned worker execution failed on timeout while preserving trace and checkpoint evidence', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'setTimeout(() => {}, 10_000);',
+    ]);
+
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-worker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 1_000 }),
+    });
+
+    expect(executeResponse.status).toBe(200);
+    const executed = await executeResponse.json() as any;
+    expect(executed.lease.status).toBe('failed');
+    expect(executed.lease.metadata).toMatchObject({
+      timed_out: true,
+      runtime_adapter: 'codex',
+      checkpoint_before_id: expect.any(String),
+      checkpoint_after_id: expect.any(String),
+    });
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'maker_runtime_exit_zero', status: 'fail' }),
+    ]));
+    expect(executed.trace.spans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ span_type: 'worker', status: 'running' }),
+      expect.objectContaining({ span_type: 'worker', status: 'error' }),
+    ]));
+    expect(executed.run.status).toBe('blocked');
+  });
+
   it('retries a maker after checker revision and verifies only the active maker chain', async () => {
     installFakeCodex([
       'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',

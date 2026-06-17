@@ -222,3 +222,28 @@ Het systeem SHALL capability token references uitgeven met expliciete scopes, de
 - **WHEN** een low-risk capability wordt uitgegeven
 - **THEN** retourneert Djimitflo een `token_ref`
 - **AND** bewaart Djimitflo geen bearer secret in response metadata
+
+### Requirement: Prepared workers can be spawned by the real worker bridge
+
+Het systeem SHALL prepared non-manual maker leases kunnen uitvoeren via een worker spawn bridge die runtime output, artifacts, budget gates, trace spans en checkpoints persistent vastlegt.
+
+#### Scenario: Mock runtime proves the bridge without external CLIs
+
+- **WHEN** een prepared maker lease runtime `mock` heeft
+- **THEN** kan Djimitflo `/api/loops/runs/:id/execute-worker` aanroepen
+- **AND** gaat de lease via `running` naar `completed`
+- **AND** bewaart Djimitflo stdout, stderr, runtime usage, before checkpoint, after checkpoint en worker trace spans
+
+#### Scenario: Codex or OpenCode timeout is failed evidence
+
+- **WHEN** een Codex of OpenCode worker runtime langer loopt dan het configured timeout budget
+- **THEN** markeert Djimitflo de worker lease als `failed`
+- **AND** markeert Djimitflo de runtime exit gate als failed
+- **AND** bewaart Djimitflo timeout, stdout/stderr paths, checkpoints en error trace span voor review
+
+#### Scenario: Dashboard can start a prepared worker
+
+- **WHEN** een loop-run prepared maker leases heeft met runtime Codex, OpenCode of mock
+- **THEN** toont het dashboard een run action voor die lease
+- **AND** roept de action `/api/loops/runs/:id/execute-worker` aan
+- **AND** refreshed het dashboard daarna de review bundle

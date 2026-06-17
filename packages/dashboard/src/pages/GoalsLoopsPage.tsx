@@ -378,6 +378,7 @@ export function GoalsLoopsPage() {
                         ? api.submitSecurityVerdict(selectedRun.id, lease.id, 'needs_revision', 'Needs revision from dashboard')
                         : api.submitCheckerVerdict(selectedRun.id, lease.id, 'needs_revision', 'Needs revision from dashboard'))}
                       onRetry={() => void runAction(`retry-${lease.id}`, () => api.retryLoopRun(selectedRun.id, lease.id, runtime))}
+                      onExecute={() => void runAction(`execute-worker-${lease.id}`, () => api.executeWorker(selectedRun.id, lease.id, { timeout_ms: 120_000, diff_max_lines: 200 }))}
                       busy={actionId !== null}
                     />
                   )) : (
@@ -478,18 +479,21 @@ function GateRow({ gate }: { gate: LoopGate }) {
 
 function LeaseRow({
   lease,
+  onExecute,
   onAccept,
   onNeedsRevision,
   onRetry,
   busy,
 }: {
   lease: WorkerLeaseRecord;
+  onExecute: () => void;
   onAccept: () => void;
   onNeedsRevision: () => void;
   onRetry: () => void;
   busy: boolean;
 }) {
   const canVerdict = (lease.role === 'checker' || lease.role === 'security_checker') && lease.status === 'prepared';
+  const canExecute = lease.role === 'maker' && lease.status === 'prepared' && lease.runtime !== 'manual';
   const canRetry = lease.role === 'maker' && lease.status === 'failed';
   return (
     <div className="rounded border border-border bg-background p-3">
@@ -502,8 +506,14 @@ function LeaseRow({
         <span className="truncate">Finding: {lease.finding_id?.slice(0, 8) || 'none'}</span>
         <span className="truncate">Branch: {lease.branch_name || 'none'}</span>
       </div>
-      {(canVerdict || canRetry) && (
+      {(canExecute || canVerdict || canRetry) && (
         <div className="mt-3 flex flex-wrap gap-2">
+          {canExecute && (
+            <button onClick={onExecute} disabled={busy} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">
+              <Play className="h-3 w-3" />
+              Run
+            </button>
+          )}
           {canVerdict && (
             <>
               <button onClick={onAccept} disabled={busy} className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50">Accept</button>

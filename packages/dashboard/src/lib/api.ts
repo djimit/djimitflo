@@ -171,6 +171,17 @@ export type LoopReviewBundle = {
   state_content: string | null;
 };
 
+export type ExecuteWorkerResult = {
+  run: LoopRunRecord;
+  lease: WorkerLeaseRecord;
+  gates: LoopGate[];
+  stdout_path: string;
+  stderr_path: string;
+  checkpoint_before: Record<string, unknown>;
+  checkpoint_after: Record<string, unknown>;
+  trace: Record<string, unknown>;
+};
+
 export type WorkItemRecord = {
   id: string;
   title: string;
@@ -640,10 +651,17 @@ class ApiClient {
     return this.startLoop({ loop_name: 'doc-drift-and-small-fix-loop', ...input });
   }
 
-  async continueLoopRun(runId: string, input: { max_assignments?: number; runtime?: 'manual' | 'codex' | 'opencode' } = {}): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[] }> {
+  async continueLoopRun(runId: string, input: { max_assignments?: number; runtime?: 'manual' | 'codex' | 'opencode' | 'mock' } = {}): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[] }> {
     return this.request(`/loops/runs/${runId}/continue`, {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+  }
+
+  async executeWorker(runId: string, leaseId: string, input: { timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
+    return this.request(`/loops/runs/${runId}/execute-worker`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, ...input }),
     });
   }
 
@@ -655,7 +673,7 @@ class ApiClient {
     return this.request(`/loops/runs/${runId}/step`, { method: 'POST' });
   }
 
-  async retryLoopRun(runId: string, makerLeaseId: string, runtime: 'manual' | 'codex' | 'opencode' = 'manual'): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord }> {
+  async retryLoopRun(runId: string, makerLeaseId: string, runtime: 'manual' | 'codex' | 'opencode' | 'mock' = 'manual'): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord }> {
     return this.request(`/loops/runs/${runId}/retry`, {
       method: 'POST',
       body: JSON.stringify({ maker_lease_id: makerLeaseId, runtime }),

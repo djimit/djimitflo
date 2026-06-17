@@ -191,3 +191,23 @@ Validation:
 - [x] High-risk capability scopes require explicit approval.
 - [x] Capability responses expose token references, not bearer secrets.
 - [x] Security-sensitive reflection lessons become review-required candidates.
+
+## Phase 11: Real Worker Spawn Bridge
+
+- [x] T11.1 Add `/api/loops/runs/:id/execute-worker` as the generic worker execution bridge.
+- [x] T11.2 Add runtime adapter dispatch for Codex, OpenCode and deterministic mock workers.
+- [x] T11.3 Preserve maker lease lifecycle `prepared -> running -> completed|failed`.
+- [x] T11.4 Capture stdout, stderr, exit status, timeout state, diff size and runtime token usage.
+- [x] T11.5 Write causal worker trace spans for spawn and completion/failure.
+- [x] T11.6 Write loop checkpoints before and after worker execution.
+- [x] T11.7 Enforce timeout, diff threshold, no-merge and token budget gates.
+- [x] T11.8 Add dashboard action to run prepared non-manual maker leases.
+
+Validation:
+
+- [x] Mock runtime execution completes a prepared worker lease and stores artifacts.
+- [x] Worker execution writes before/after checkpoints with lease status evidence.
+- [x] Worker execution writes trace spans with running and ok/error status.
+- [x] Runtime usage is parsed from stdout and stored on the worker lease.
+- [x] Timed-out Codex execution marks the lease failed and blocks the loop.
+- [x] Dashboard build includes the worker run action.

@@ -3,6 +3,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { execFileSync, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
+import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -140,12 +141,12 @@ interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
-  runtime?: 'codex' | 'opencode' | 'manual';
+  runtime?: 'codex' | 'opencode' | 'manual' | 'mock';
 }
 
 interface RetryLoopInput {
   maker_lease_id?: string;
-  runtime?: 'codex' | 'opencode' | 'manual';
+  runtime?: 'codex' | 'opencode' | 'manual' | 'mock';
   max_retries?: number;
 }
 
@@ -164,6 +165,22 @@ interface ExecuteMakerInput {
   lease_id?: string;
   timeout_ms?: number;
   diff_max_lines?: number;
+}
+
+interface ExecuteWorkerResult {
+  run: LoopRunRecord;
+  lease: WorkerLeaseRecord;
+  gates: LoopGate[];
+  stdout_path: string;
+  stderr_path: string;
+  checkpoint_before: CheckpointRecord;
+  checkpoint_after: CheckpointRecord;
+  trace: {
+    trace_id: string;
+    spans: TraceSpanRecord[];
+    edges: Array<{ from: string; to: string }>;
+    roots: TraceSpanRecord[];
+  };
 }
 
 interface CheckerVerdictInput {
@@ -321,10 +338,12 @@ const LOOP_CONTRACTS: LoopContract[] = [
 export class LoopService {
   private db: Database;
   private evidenceRoot: string;
+  private assurance: AgentAssuranceService;
 
   constructor(db: Database, evidenceRoot = path.resolve(process.cwd(), 'agent-evidence', 'agentic-control-loop-fleet')) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
+    this.assurance = new AgentAssuranceService(db);
   }
 
   createGoal(input: GoalCreateInput, ownerUserId?: string): GoalRecord {
@@ -1315,7 +1334,7 @@ export class LoopService {
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = typeof result.status === 'number' ? result.status : null;
-    const timedOut = Boolean(result.error && result.error.message.includes('ETIMEDOUT'));
+    const timedOut = Boolean(result.error && ((result.error as any).code === 'ETIMEDOUT' || result.error.message.includes('ETIMEDOUT')));
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
     const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id);
 
@@ -1347,6 +1366,7 @@ export class LoopService {
       diff_max_lines: diffMaxLines,
       exit_status: exitStatus,
       timed_out: timedOut,
+      runtime_adapter: makerLease.runtime,
     };
     if (runtimeUsage) {
       metadataPatch.runtime_usage = runtimeUsage;
@@ -1396,6 +1416,95 @@ export class LoopService {
     };
   }
 
+  executeWorker(id: string, input: ExecuteMakerInput = {}): ExecuteWorkerResult {
+    const run = this.getLoopRun(id);
+    const leases = this.listWorkerLeases(run.id);
+    const lease = input.lease_id
+      ? leases.find((candidate) => candidate.id === input.lease_id)
+      : leases.find((candidate) => candidate.role === 'maker' && candidate.status === 'prepared');
+
+    if (!lease) {
+      throw new Error('MAKER_LEASE_NOT_FOUND');
+    }
+    if (lease.role !== 'maker') {
+      throw new Error('LEASE_NOT_MAKER');
+    }
+
+    const traceId = `loop-${run.id}-worker-${lease.id}`;
+    const checkpointBefore = this.assurance.createCheckpoint({
+      loop_run_id: run.id,
+      label: `before worker ${lease.id}`,
+      metadata: {
+        worker_lease_id: lease.id,
+        worker_role: lease.role,
+        worker_runtime: lease.runtime,
+        phase: 'before_worker_execution',
+      },
+    });
+    this.patchWorkerLeaseMetadata(lease.id, {
+      checkpoint_before_id: checkpointBefore.id,
+      trace_id: traceId,
+      runtime_adapter: lease.runtime,
+    });
+
+    this.assurance.createTraceSpan({
+      trace_id: traceId,
+      loop_run_id: run.id,
+      span_type: 'worker',
+      name: `${lease.role}:${lease.runtime}:spawn`,
+      status: 'running',
+      evidence_ref: `loop:${run.id}/worker:${lease.id}`,
+      metadata: {
+        worker_lease_id: lease.id,
+        role: lease.role,
+        runtime: lease.runtime,
+        checkpoint_before_id: checkpointBefore.id,
+      },
+    });
+
+    const execution = this.executeMaker(id, input);
+    const finalStatus = execution.lease.status === 'completed' ? 'ok' : 'error';
+    this.assurance.createTraceSpan({
+      trace_id: traceId,
+      loop_run_id: run.id,
+      span_type: 'worker',
+      name: `${lease.role}:${lease.runtime}:completion`,
+      status: finalStatus,
+      evidence_ref: execution.stdout_path,
+      metadata: {
+        worker_lease_id: lease.id,
+        role: lease.role,
+        runtime: lease.runtime,
+        stdout_path: execution.stdout_path,
+        stderr_path: execution.stderr_path,
+        gates: execution.gates,
+      },
+    });
+
+    const checkpointAfter = this.assurance.createCheckpoint({
+      loop_run_id: run.id,
+      label: `after worker ${lease.id}`,
+      metadata: {
+        worker_lease_id: lease.id,
+        worker_role: lease.role,
+        worker_runtime: lease.runtime,
+        phase: 'after_worker_execution',
+      },
+    });
+    this.patchWorkerLeaseMetadata(lease.id, {
+      checkpoint_after_id: checkpointAfter.id,
+    });
+
+    return {
+      ...execution,
+      run: this.getLoopRun(run.id),
+      lease: this.listWorkerLeases(run.id).find((candidate) => candidate.id === lease.id)!,
+      checkpoint_before: checkpointBefore,
+      checkpoint_after: checkpointAfter,
+      trace: this.assurance.getTrace(traceId),
+    };
+  }
+
   getCatalog() {
     return {
       loops: LOOP_CONTRACTS.map((contract) => ({
@@ -1412,6 +1521,7 @@ export class LoopService {
         ],
         runtimes: {
           manual: this.probeRuntime('manual'),
+          mock: this.probeRuntime('mock'),
           codex: this.probeRuntime('codex'),
           opencode: this.probeRuntime('opencode'),
         },
@@ -2182,6 +2292,17 @@ export class LoopService {
   }
 
   private buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string): { command: string; args: string[] } {
+    if (runtime === 'mock') {
+      const script = [
+        'const dir = process.argv[1];',
+        'console.log("mock worker completed");',
+        'console.log(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
+      ].join('\n');
+      return {
+        command: process.execPath,
+        args: ['-e', script, worktreePath],
+      };
+    }
     if (runtime === 'codex') {
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
@@ -2207,6 +2328,9 @@ export class LoopService {
   private probeRuntime(runtime: string): { available: boolean; command: string | null; version?: string; reason?: string } {
     if (runtime === 'manual') {
       return { available: true, command: null, version: 'manual' };
+    }
+    if (runtime === 'mock') {
+      return { available: true, command: process.execPath, version: 'mock-runtime' };
     }
     if (runtime !== 'codex' && runtime !== 'opencode') {
       return { available: false, command: null, reason: 'unsupported runtime' };
@@ -2431,6 +2555,19 @@ export class LoopService {
     };
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
+  }
+
+  private patchWorkerLeaseMetadata(id: string, metadataPatch: Record<string, unknown>): void {
+    const existing = this.db.prepare('SELECT status, metadata FROM worker_leases WHERE id = ?').get(id) as { status?: WorkerLeaseRecord['status']; metadata?: string } | undefined;
+    if (!existing?.status) {
+      throw new Error('MAKER_LEASE_NOT_FOUND');
+    }
+    const metadata = {
+      ...JSON.parse(existing.metadata || '{}'),
+      ...metadataPatch,
+    };
+    this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(metadata), new Date().toISOString(), id);
   }
 
   private listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
