@@ -459,6 +459,206 @@ describe('workstation swarm resource plan', () => {
     }
   });
 
+  it('worker pool runner drains allowed low-risk maker and checker leases with trace evidence', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-repo-'));
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-worktrees-'));
+    const previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
+    try {
+      fs.writeFileSync(path.join(repo, 'README.md'), 'TODO: document setup\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({
+        scripts: {
+          test: 'node -e "process.exit(0)"',
+          lint: 'node -e "process.exit(0)"',
+          'type-check': 'node -e "process.exit(0)"',
+        },
+      }, null, 2));
+      execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'runner@example.invalid'], { cwd: repo });
+      execFileSync('git', ['config', 'user.name', 'Runner Test'], { cwd: repo });
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: repo });
+      execFileSync('git', ['commit', '-m', 'Initial runner repo'], { cwd: repo, stdio: 'ignore' });
+
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'wi-runner',
+        'Run bounded doc worker',
+        'Prepare and run a bounded doc worker.',
+        'test',
+        'test:runner',
+        'low',
+        82,
+        0.85,
+        'triaged',
+        'doc-drift-and-small-fix-loop',
+        JSON.stringify({ repository_path: repo }),
+        now,
+        now
+      );
+      const tickResponse = await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ max_items: 5, plan_triaged: true, prepare_planned: true, runtime: 'mock' }),
+      });
+      const tick = await tickResponse.json() as any;
+      const loopRunId = tick.prepared_work_items[0].metadata.loop_run_id;
+
+      const planResponse = await fetch(`${baseUrl}/swarms/worker-pool/plan`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true }),
+      });
+      expect(planResponse.status).toBe(200);
+      const plan = await planResponse.json() as any;
+      expect(plan.eligible_count).toBeGreaterThanOrEqual(1);
+      expect(plan.decisions).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'maker', eligible: true, next_action: 'execute_maker' }),
+      ]));
+
+      const drainResponse = await fetch(`${baseUrl}/swarms/worker-pool/drain`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true, max_workers: 2, timeout_ms: 10_000, diff_max_lines: 20 }),
+      });
+      expect(drainResponse.status).toBe(200);
+      const drain = await drainResponse.json() as any;
+      expect(drain.started).toHaveLength(2);
+      expect(drain.started.map((item: any) => item.decision.next_action)).toEqual(['execute_maker', 'execute_checker']);
+
+      const leases = db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(loopRunId) as any[];
+      expect(leases).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'maker', runtime: 'mock', status: 'completed' }),
+        expect.objectContaining({ role: 'checker', runtime: 'mock', status: 'completed' }),
+      ]));
+      const spans = db.prepare('SELECT * FROM agent_trace_spans WHERE loop_run_id = ? AND name LIKE ?').all(loopRunId, 'worker-pool:%') as any[];
+      expect(spans.length).toBeGreaterThanOrEqual(4);
+      const events = db.prepare('SELECT event_type FROM loop_events WHERE loop_run_id = ?').all(loopRunId) as any[];
+      expect(events.map((event) => event.event_type)).toEqual(expect.arrayContaining(['worker_pool_worker_started']));
+    } finally {
+      if (previousWorktreeRoot) {
+        process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
+      } else {
+        delete process.env.LOOP_WORKTREE_ROOT;
+      }
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('worker pool runner blocks high-risk leases without explicit high-risk allowance', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-high-risk-repo-'));
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-high-risk-worktrees-'));
+    const previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
+    try {
+      fs.writeFileSync(path.join(repo, 'README.md'), 'TODO: document auth token policy\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
+      execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'runner@example.invalid'], { cwd: repo });
+      execFileSync('git', ['config', 'user.name', 'Runner Test'], { cwd: repo });
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: repo });
+      execFileSync('git', ['commit', '-m', 'Initial high risk repo'], { cwd: repo, stdio: 'ignore' });
+
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        'wi-runner-high',
+        'Run high risk auth worker',
+        'Prepare a high-risk auth worker.',
+        'test',
+        'test:runner-high',
+        'high',
+        90,
+        0.8,
+        'triaged',
+        'doc-drift-and-small-fix-loop',
+        JSON.stringify({ repository_path: repo }),
+        now,
+        now
+      );
+      await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ max_items: 5, plan_triaged: true, prepare_planned: true, runtime: 'mock' }),
+      });
+
+      const planResponse = await fetch(`${baseUrl}/swarms/worker-pool/plan`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true }),
+      });
+      const plan = await planResponse.json() as any;
+      expect(plan.eligible_count).toBe(0);
+      expect(plan.decisions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          role: 'maker',
+          eligible: false,
+          blocked_reasons: expect.arrayContaining(['high_risk_requires_security_or_human_gate']),
+        }),
+      ]));
+
+      const startResponse = await fetch(`${baseUrl}/swarms/worker-pool/start-next`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true }),
+      });
+      expect(startResponse.status).toBe(200);
+      const start = await startResponse.json() as any;
+      expect(start.action).toBe('blocked');
+    } finally {
+      if (previousWorktreeRoot) {
+        process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
+      } else {
+        delete process.env.LOOP_WORKTREE_ROOT;
+      }
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('worker pool runner stops a prepared lease without deleting evidence', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'loop-stop-worker',
+      'doc-drift-and-small-fix-loop',
+      'closed',
+      'running',
+      '/repo',
+      '[]',
+      '{}',
+      '[]',
+      '[]',
+      JSON.stringify({ risk_class: 'low' }),
+      now,
+      now
+    );
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('lease-stop-worker', 'loop-stop-worker', 'maker', 'mock', 'prepared', '{"stdout_path":"agent-evidence/stdout.log"}', now, now);
+
+    const stopResponse = await fetch(`${baseUrl}/swarms/worker-pool/stop/lease-stop-worker`, { method: 'POST' });
+    expect(stopResponse.status).toBe(200);
+    const stopped = await stopResponse.json() as any;
+    expect(stopped.lease).toMatchObject({
+      id: 'lease-stop-worker',
+      status: 'cancelled',
+      metadata: {
+        stdout_path: 'agent-evidence/stdout.log',
+        stopped_by_runner: true,
+        stop_mode: 'cancel_prepared',
+      },
+    });
+  });
+
   it('exposes specialist catalog and rejects unknown or unsafe high-risk panels', async () => {
     const catalogResponse = await fetch(`${baseUrl}/swarms/specialists/catalog`);
     expect(catalogResponse.status).toBe(200);

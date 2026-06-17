@@ -265,6 +265,41 @@ export type SchedulerTickResult = {
   leases_created: number;
 };
 
+export type WorkerPoolDecision = {
+  lease_id: string;
+  loop_run_id: string;
+  role: string;
+  runtime: string;
+  effective_runtime: string;
+  status: string;
+  risk_class: string;
+  eligible: boolean;
+  blocked_reasons: string[];
+  next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+};
+
+export type WorkerPoolPlanResult = {
+  decisions: WorkerPoolDecision[];
+  eligible_count: number;
+  blocked_count: number;
+  running_count: number;
+  max_workers: number;
+  capacity_snapshot: SwarmRealityStatus['resource_snapshot'];
+};
+
+export type WorkerPoolStartResult = {
+  action: 'started' | 'blocked';
+  decision: WorkerPoolDecision | null;
+  plan: WorkerPoolPlanResult;
+  execution?: ExecuteWorkerResult;
+};
+
+export type WorkerPoolDrainResult = {
+  action: 'drained';
+  started: WorkerPoolStartResult[];
+  final_plan: WorkerPoolPlanResult;
+};
+
 export type MemoryCandidateRecord = {
   id: string;
   title: string;
@@ -757,6 +792,27 @@ class ApiClient {
 
   async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
     return this.request('/swarms/scheduler/tick', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async planWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
+    return this.request('/swarms/worker-pool/plan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async startNextWorker(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolStartResult> {
+    return this.request('/swarms/worker-pool/start-next', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async drainWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolDrainResult> {
+    return this.request('/swarms/worker-pool/drain', {
       method: 'POST',
       body: JSON.stringify(input),
     });

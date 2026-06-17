@@ -62,6 +62,13 @@ function mapAssuranceError(error: unknown): never {
   throw error;
 }
 
+function mapWorkerPoolError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'WORKER_LEASE_NOT_FOUND') throw createError(404, 'Worker lease not found', 'WORKER_LEASE_NOT_FOUND');
+  if (message === 'WORKER_LEASE_NOT_STOPPABLE') throw createError(409, 'Worker lease is not stoppable', 'WORKER_LEASE_NOT_STOPPABLE');
+  throw error;
+}
+
 export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -83,6 +90,54 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
       res.json(service.tickScheduler(req.body || {}));
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.post('/worker-pool/plan', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(service.planWorkerPool(req.body || {}));
+    } catch (error) {
+      try {
+        mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/worker-pool/start-next', requirePermission('create:task'), (req, res, next) => {
+    try {
+      res.json(service.startNextWorker(req.body || {}));
+    } catch (error) {
+      try {
+        mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/worker-pool/drain', requirePermission('create:task'), (req, res, next) => {
+    try {
+      res.json(service.drainWorkerPool(req.body || {}));
+    } catch (error) {
+      try {
+        mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/worker-pool/stop/:leaseId', requirePermission('create:task'), (req, res, next) => {
+    try {
+      res.json(service.stopWorkerLease(req.params.leaseId));
+    } catch (error) {
+      try {
+        mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
     }
   });
 

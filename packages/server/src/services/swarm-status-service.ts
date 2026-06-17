@@ -1,10 +1,14 @@
 import os from 'os';
+import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
-import { LoopService, type LoopName } from './loop-service';
+import { LoopService, type LoopName, type WorkerLeaseRecord } from './loop-service';
+import { AgentAssuranceService } from './agent-assurance-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
+type WorkerRuntime = 'codex' | 'opencode' | 'mock' | 'manual';
+type RunnerLeaseRole = 'maker' | 'checker' | 'security_checker' | 'planner' | 'memory_curator' | 'governance_guard';
 const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
 const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
   'doc-drift-and-small-fix-loop',
@@ -69,13 +73,60 @@ export interface SchedulerTickResult {
   leases_created: number;
 }
 
+export interface WorkerPoolPlanInput {
+  runtime?: WorkerRuntime;
+  checker_runtime?: Exclude<WorkerRuntime, 'manual'>;
+  max_workers?: number;
+  timeout_ms?: number;
+  diff_max_lines?: number;
+  allow_high_risk?: boolean;
+  ignore_capacity?: boolean;
+}
+
+export interface WorkerPoolDecision {
+  lease_id: string;
+  loop_run_id: string;
+  role: RunnerLeaseRole;
+  runtime: string;
+  effective_runtime: string;
+  status: string;
+  risk_class: string;
+  eligible: boolean;
+  blocked_reasons: string[];
+  next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+}
+
+export interface WorkerPoolPlanResult {
+  decisions: WorkerPoolDecision[];
+  eligible_count: number;
+  blocked_count: number;
+  running_count: number;
+  max_workers: number;
+  capacity_snapshot: SwarmRealityStatus['resource_snapshot'];
+}
+
+export interface WorkerPoolStartResult {
+  action: 'started' | 'blocked';
+  decision: WorkerPoolDecision | null;
+  plan: WorkerPoolPlanResult;
+  execution?: unknown;
+}
+
+export interface WorkerPoolDrainResult {
+  action: 'drained';
+  started: WorkerPoolStartResult[];
+  final_plan: WorkerPoolPlanResult;
+}
+
 export class SwarmStatusService {
   private workItems: WorkItemService;
   private loops: LoopService;
+  private assurance: AgentAssuranceService;
 
   constructor(private db: Database, private options: SwarmStatusOptions = {}) {
     this.workItems = new WorkItemService(db);
     this.loops = new LoopService(db);
+    this.assurance = new AgentAssuranceService(db);
   }
 
   getStatus(): SwarmRealityStatus {
@@ -171,8 +222,8 @@ export class SwarmStatusService {
       if (runtime !== 'manual' && runtime !== 'mock' && !this.runtimeCommandAvailable(runtime)) {
         blocked.push('runtime_unavailable');
       }
-      if (freeMemoryRatio < 0.1) blocked.push('low_free_memory');
-      if (load > resourceSnapshot.cpu_threads) blocked.push('high_cpu_load');
+      if (freeMemoryRatio < 0.05) blocked.push('low_free_memory');
+      if (load > resourceSnapshot.cpu_threads * 1.5) blocked.push('high_cpu_load');
       const baseConcurrency = runtime === 'manual' ? 0 : Math.max(1, Math.floor(resourceSnapshot.cpu_threads / 4));
       const recommended = blocked.length > 0 ? 0 : Math.max(0, baseConcurrency - running.length);
       const queueDepthByRisk = prepared.reduce((acc, row) => {
@@ -211,6 +262,133 @@ export class SwarmStatusService {
     } catch {
       return false;
     }
+  }
+
+  planWorkerPool(input: WorkerPoolPlanInput = {}): WorkerPoolPlanResult {
+    const status = this.getStatus();
+    const pools = new Map(status.fleet_pools.map((pool) => [pool.runtime, pool]));
+    const rows = this.workerPoolRows(input.runtime);
+    const decisions = rows.map((row) => this.workerPoolDecision(row, pools, input));
+    const maxWorkers = Math.max(1, Math.min(Number(input.max_workers || 1), 20));
+    return {
+      decisions,
+      eligible_count: decisions.filter((decision) => decision.eligible).length,
+      blocked_count: decisions.filter((decision) => !decision.eligible && decision.status === 'prepared').length,
+      running_count: decisions.filter((decision) => decision.status === 'running').length,
+      max_workers: maxWorkers,
+      capacity_snapshot: status.resource_snapshot,
+    };
+  }
+
+  startNextWorker(input: WorkerPoolPlanInput = {}): WorkerPoolStartResult {
+    const plan = this.planWorkerPool({ ...input, max_workers: 1 });
+    const decision = plan.decisions.find((candidate) => candidate.eligible) || null;
+    if (!decision) {
+      this.recordRunnerDecision('worker_pool_start_blocked', null, 'warning', { reason: 'no_eligible_leases', plan });
+      return { action: 'blocked', decision, plan };
+    }
+
+    const traceId = `worker-pool-${decision.loop_run_id}-${decision.lease_id}-${Date.now()}`;
+    this.assurance.createTraceSpan({
+      trace_id: traceId,
+      loop_run_id: decision.loop_run_id,
+      span_type: 'worker',
+      name: `worker-pool:${decision.next_action}:start`,
+      status: 'running',
+      evidence_ref: `worker_lease:${decision.lease_id}`,
+      metadata: { decision },
+    });
+
+    try {
+      const execution = decision.next_action === 'execute_checker'
+        ? this.loops.executeChecker(decision.loop_run_id, {
+          lease_id: decision.lease_id,
+          runtime: decision.effective_runtime as Exclude<WorkerRuntime, 'manual'>,
+          timeout_ms: input.timeout_ms,
+        })
+        : this.loops.executeWorker(decision.loop_run_id, {
+          lease_id: decision.lease_id,
+          timeout_ms: input.timeout_ms,
+          diff_max_lines: input.diff_max_lines,
+        });
+
+      this.assurance.createTraceSpan({
+        trace_id: traceId,
+        loop_run_id: decision.loop_run_id,
+        span_type: 'worker',
+        name: `worker-pool:${decision.next_action}:complete`,
+        status: 'ok',
+        evidence_ref: `worker_lease:${decision.lease_id}`,
+        metadata: { decision },
+      });
+      this.recordRunnerDecision('worker_pool_worker_started', decision.loop_run_id, 'info', { decision, trace_id: traceId });
+      return { action: 'started', decision, plan, execution };
+    } catch (error) {
+      this.assurance.createTraceSpan({
+        trace_id: traceId,
+        loop_run_id: decision.loop_run_id,
+        span_type: 'worker',
+        name: `worker-pool:${decision.next_action}:failed`,
+        status: 'error',
+        evidence_ref: `worker_lease:${decision.lease_id}`,
+        metadata: { decision, error: error instanceof Error ? error.message : String(error) },
+      });
+      this.recordRunnerDecision('worker_pool_worker_failed', decision.loop_run_id, 'warning', {
+        decision,
+        trace_id: traceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  drainWorkerPool(input: WorkerPoolPlanInput = {}): WorkerPoolDrainResult {
+    const maxWorkers = Math.max(1, Math.min(Number(input.max_workers || 1), 20));
+    const started: WorkerPoolStartResult[] = [];
+    for (let index = 0; index < maxWorkers; index += 1) {
+      const result = this.startNextWorker({ ...input, max_workers: 1 });
+      if (result.action !== 'started') {
+        break;
+      }
+      started.push(result);
+    }
+    return {
+      action: 'drained',
+      started,
+      final_plan: this.planWorkerPool(input),
+    };
+  }
+
+  stopWorkerLease(leaseId: string): { lease: WorkerLeaseRecord; event: { event_type: string; level: string; message: string } } {
+    const row = this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(leaseId) as any;
+    if (!row) {
+      throw new Error('WORKER_LEASE_NOT_FOUND');
+    }
+    if (!['prepared', 'running'].includes(row.status)) {
+      throw new Error('WORKER_LEASE_NOT_STOPPABLE');
+    }
+    const now = new Date().toISOString();
+    const metadata = {
+      ...JSON.parse(row.metadata || '{}'),
+      stopped_by_runner: true,
+      stopped_at: now,
+      stop_mode: row.status === 'running' ? 'best_effort_no_process_handle' : 'cancel_prepared',
+    };
+    this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
+      .run('cancelled', JSON.stringify(metadata), now, leaseId);
+    this.recordRunnerDecision('worker_pool_worker_stopped', row.loop_run_id, 'warning', {
+      lease_id: leaseId,
+      previous_status: row.status,
+      stop_mode: metadata.stop_mode,
+    });
+    return {
+      lease: this.parseWorkerLease(this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(leaseId)),
+      event: {
+        event_type: 'worker_pool_worker_stopped',
+        level: 'warning',
+        message: `Worker lease ${leaseId} stopped by worker pool runner.`,
+      },
+    };
   }
 
   tickScheduler(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): SchedulerTickResult {
@@ -354,6 +532,116 @@ export class SwarmStatusService {
   private loopNameForWorkItem(item: WorkItemRecord): LoopName {
     const candidate = String(item.recommended_loop || item.metadata.recommended_loop || '').trim();
     return SUPPORTED_LOOP_NAMES.has(candidate as LoopName) ? candidate as LoopName : DEFAULT_LOOP_NAME;
+  }
+
+  private workerPoolRows(runtime?: WorkerRuntime): any[] {
+    const rows = this.db.prepare(`
+      SELECT
+        wl.*,
+        lr.status AS run_status,
+        lr.gates_json AS run_gates_json,
+        lr.metadata AS run_metadata,
+        lr.goal_id AS goal_id,
+        g.risk_class AS goal_risk_class
+      FROM worker_leases wl
+      JOIN loop_runs lr ON lr.id = wl.loop_run_id
+      LEFT JOIN goals g ON g.id = lr.goal_id
+      WHERE wl.status IN ('prepared', 'running')
+      ORDER BY wl.created_at ASC
+    `).all() as any[];
+    if (!runtime) {
+      return rows;
+    }
+    return rows.filter((row) => this.effectiveRuntime(row, { runtime, checker_runtime: runtime === 'manual' ? undefined : runtime }) === runtime);
+  }
+
+  private workerPoolDecision(row: any, pools: Map<string, SwarmRealityStatus['fleet_pools'][number]>, input: WorkerPoolPlanInput): WorkerPoolDecision {
+    const role = row.role as RunnerLeaseRole;
+    const effectiveRuntime = this.effectiveRuntime(row, input);
+    const runMetadata = JSON.parse(row.run_metadata || '{}');
+    const riskClass = String(row.goal_risk_class || runMetadata.risk_class || 'low');
+    const gates = JSON.parse(row.run_gates_json || '[]') as Array<{ name?: string; status?: string }>;
+    const pool = pools.get(effectiveRuntime);
+    const blocked: string[] = [];
+
+    if (row.status === 'running') blocked.push('already_running');
+    if (row.status !== 'prepared') blocked.push('lease_not_prepared');
+    if (!['maker', 'checker'].includes(role)) blocked.push(`${role}_requires_human_or_specialized_runner`);
+    if (effectiveRuntime === 'manual') blocked.push(role === 'checker' ? 'manual_checker_runtime_required' : 'manual_runtime_requires_human');
+    if (['high', 'critical'].includes(riskClass) && !input.allow_high_risk) blocked.push('high_risk_requires_security_or_human_gate');
+    if (['blocked', 'escalated', 'cancelled', 'completed', 'failed'].includes(String(row.run_status))) blocked.push(`loop_status_${row.run_status}`);
+    if (gates.some((gate) => gate.status === 'fail')) blocked.push('failed_gate_present');
+    if (!pool) {
+      blocked.push('runtime_pool_missing');
+    } else if (!input.ignore_capacity) {
+      blocked.push(...pool.blocked_capacity_reasons);
+      if (pool.recommended_concurrency <= 0) blocked.push('concurrency_exhausted');
+    }
+    if (role === 'checker') {
+      const metadata = JSON.parse(row.metadata || '{}');
+      const makerLeaseId = metadata.maker_lease_id;
+      const maker = makerLeaseId ? this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(makerLeaseId) as { status?: string } | undefined : null;
+      if (!makerLeaseId) blocked.push('checker_maker_link_missing');
+      if (makerLeaseId && maker?.status !== 'completed') blocked.push('checker_maker_not_completed');
+    }
+
+    const blockedReasons = [...new Set(blocked)];
+    return {
+      lease_id: row.id,
+      loop_run_id: row.loop_run_id,
+      role,
+      runtime: row.runtime,
+      effective_runtime: effectiveRuntime,
+      status: row.status,
+      risk_class: riskClass,
+      eligible: blockedReasons.length === 0,
+      blocked_reasons: blockedReasons,
+      next_action: blockedReasons.length > 0
+        ? (['high_risk_requires_security_or_human_gate', 'manual_runtime_requires_human', 'manual_checker_runtime_required'].some((reason) => blockedReasons.includes(reason)) ? 'human_review' : 'wait')
+        : role === 'checker' ? 'execute_checker' : 'execute_maker',
+    };
+  }
+
+  private effectiveRuntime(row: any, input: WorkerPoolPlanInput): WorkerRuntime {
+    if (row.role === 'checker' && row.runtime === 'manual' && input.checker_runtime) {
+      return input.checker_runtime;
+    }
+    return row.runtime as WorkerRuntime;
+  }
+
+  private parseWorkerLease(row: any): WorkerLeaseRecord {
+    return {
+      id: row.id,
+      loop_run_id: row.loop_run_id,
+      role: row.role,
+      runtime: row.runtime,
+      status: row.status,
+      finding_id: row.finding_id || null,
+      worktree_path: row.worktree_path || null,
+      branch_name: row.branch_name || null,
+      budget: JSON.parse(row.budget_json || '{}'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private recordRunnerDecision(eventType: string, loopRunId: string | null, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', metadata: Record<string, unknown>) {
+    if (!loopRunId) {
+      return;
+    }
+    this.db.prepare(`
+      INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      loopRunId,
+      eventType,
+      level,
+      `Worker pool runner recorded ${eventType}.`,
+      JSON.stringify(metadata),
+      new Date().toISOString()
+    );
   }
 
   private titleForFinding(loopName: string, finding: Record<string, any>): string {

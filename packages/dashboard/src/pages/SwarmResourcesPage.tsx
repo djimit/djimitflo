@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bot, BrainCircuit, CheckCircle2, Database, Network, Play, RefreshCw, ServerCog, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type AgentAssuranceSummary, type MemoryCandidateRecord, type SchedulerTickResult, type SpecialistPanelRecord, type SpecialistProfile, type SwarmRealityStatus, type WorkItemRecord } from '../lib/api';
+import { api, type AgentAssuranceSummary, type MemoryCandidateRecord, type SchedulerTickResult, type SpecialistPanelRecord, type SpecialistProfile, type SwarmRealityStatus, type WorkItemRecord, type WorkerPoolDrainResult, type WorkerPoolPlanResult, type WorkerPoolStartResult } from '../lib/api';
 
 type ReviewDraft = {
   specialist_id: string;
@@ -24,6 +24,8 @@ export function SwarmResourcesPage() {
   const [panelRisk, setPanelRisk] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({});
   const [tickResult, setTickResult] = useState<SchedulerTickResult | null>(null);
+  const [workerPoolPlan, setWorkerPoolPlan] = useState<WorkerPoolPlanResult | null>(null);
+  const [workerPoolResult, setWorkerPoolResult] = useState<WorkerPoolStartResult | WorkerPoolDrainResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,24 @@ export function SwarmResourcesPage() {
   async function runScheduler() {
     const result = await api.runSchedulerTick({ max_items: 10, plan_triaged: true });
     setTickResult(result);
+  }
+
+  async function planWorkerPool() {
+    const result = await api.planWorkerPool({ checker_runtime: 'mock' });
+    setWorkerPoolPlan(result);
+    setWorkerPoolResult(null);
+  }
+
+  async function startNextWorker() {
+    const result = await api.startNextWorker({ checker_runtime: 'mock', timeout_ms: 120_000, diff_max_lines: 200 });
+    setWorkerPoolResult(result);
+    setWorkerPoolPlan(result.plan);
+  }
+
+  async function drainWorkerPool() {
+    const result = await api.drainWorkerPool({ checker_runtime: 'mock', max_workers: 2, timeout_ms: 120_000, diff_max_lines: 200 });
+    setWorkerPoolResult(result);
+    setWorkerPoolPlan(result.final_plan);
   }
 
   async function createPanel() {
@@ -214,6 +234,76 @@ export function SwarmResourcesPage() {
             </div>
           )) : (
             <p className="text-sm text-foreground-secondary">No fleet pool data available.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Worker Pool Runner</h2>
+            <p className="mt-1 text-sm text-foreground-secondary">Policy-gated plan, start-next and bounded drain for prepared worker leases.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void runAction('worker-plan', planWorkerPool)}
+              disabled={actionId !== null}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              <Workflow className="h-4 w-4" />
+              Plan
+            </button>
+            <button
+              onClick={() => void runAction('worker-start-next', startNextWorker)}
+              disabled={actionId !== null}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" />
+              Start Next
+            </button>
+            <button
+              onClick={() => void runAction('worker-drain', drainWorkerPool)}
+              disabled={actionId !== null}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent/30 text-sm text-accent hover:bg-accent/10 disabled:opacity-50"
+            >
+              <Network className="h-4 w-4" />
+              Drain 2
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <SmallStat label="Eligible" value={workerPoolPlan?.eligible_count ?? 0} />
+          <SmallStat label="Blocked" value={workerPoolPlan?.blocked_count ?? 0} />
+          <SmallStat label="Running" value={workerPoolPlan?.running_count ?? 0} />
+          <SmallStat label="Max Start" value={workerPoolPlan?.max_workers ?? 0} />
+        </div>
+        {workerPoolResult && (
+          <div className="rounded border border-accent/20 bg-accent/5 p-3 text-sm text-foreground-secondary">
+            {'started' in workerPoolResult
+              ? `Worker pool drained ${workerPoolResult.started.length} worker(s).`
+              : `Worker pool ${workerPoolResult.action}${workerPoolResult.decision ? ` ${workerPoolResult.decision.role}:${workerPoolResult.decision.lease_id.slice(0, 8)}` : ''}.`}
+          </div>
+        )}
+        <div className="space-y-2">
+          {workerPoolPlan?.decisions.length ? workerPoolPlan.decisions.slice(0, 8).map((decision) => (
+            <div key={decision.lease_id} className="rounded border border-border bg-background p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium text-foreground">{decision.role} · {decision.effective_runtime}</div>
+                <StatusBadge status={decision.eligible ? 'eligible' : 'blocked'} />
+              </div>
+              <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-foreground-secondary">
+                <span className="truncate">Lease: {decision.lease_id.slice(0, 8)}</span>
+                <span className="truncate">Risk: {decision.risk_class}</span>
+                <span className="truncate">Action: {decision.next_action}</span>
+              </div>
+              {decision.blocked_reasons.length > 0 && (
+                <div className="mt-2 text-xs text-status-warning">
+                  {decision.blocked_reasons.join(', ')}
+                </div>
+              )}
+            </div>
+          )) : (
+            <p className="text-sm text-foreground-secondary">No worker-pool plan loaded.</p>
           )}
         </div>
       </section>
