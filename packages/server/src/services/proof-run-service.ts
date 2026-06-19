@@ -11,6 +11,18 @@ type ProofRunRuntime = 'mock' | 'codex' | 'opencode';
 
 const PROOF_RUN_RUNTIMES: ReadonlyArray<ProofRunRuntime> = ['mock', 'codex', 'opencode'];
 
+/**
+ * Per-worker spawn timeout for REAL runtimes (codex/opencode). A real agent
+ * legitimately explores the repo (multiple read tool-calls) before editing, so
+ * the 120s default used for the instant mock runtime is too tight and causes a
+ * spurious maker timeout. Capped at 600_000 by executeMaker/executeChecker.
+ * Operator-tunable via PROOF_RUN_RUNTIME_TIMEOUT_MS.
+ */
+const REAL_RUNTIME_TIMEOUT_MS = Math.max(
+  60_000,
+  Math.min(Number(process.env.PROOF_RUN_RUNTIME_TIMEOUT_MS || 300_000), 600_000),
+);
+
 export interface ProofRunSummary {
   id: string;
   status: ProofRunStatus;
@@ -583,7 +595,7 @@ export class ProofRunService {
 
       await this.loops.executeWorker(loopRunId, {
         lease_id: makerPrepared.id,
-        timeout_ms: 120_000,
+        timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
         diff_max_lines: 200,
         skip_permissions: skipPermissions,
       });
@@ -602,7 +614,7 @@ export class ProofRunService {
       const checkerResult = await this.loops.executeChecker(loopRunId, {
         lease_id: checkerPrepared.id,
         runtime,
-        timeout_ms: 120_000,
+        timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
         skip_permissions: skipPermissions,
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
