@@ -4,12 +4,14 @@ import { WebSocketEventType, type WebSocketMessage } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { AgentAssuranceService } from '../services/agent-assurance-service';
+import { CsSkillSwarmHarnessService } from '../services/cs-skill-swarm-harness-service';
 import { MemoryCandidateService } from '../services/memory-candidate-service';
 import { ProofRunService, type ProofRunSummary } from '../services/proof-run-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import type { WebSocketService } from '../services/websocket-service';
+import { createSpawnRoutes } from './spawns';
 
 function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
@@ -95,6 +97,12 @@ function mapProofRunError(error: unknown): never {
   throw error;
 }
 
+function mapCsSkillSwarmHarnessError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'CS_SKILL_SWARM_RUNTIME_INVALID') throw createError(400, 'Unsupported CS skill swarm runtime', 'CS_SKILL_SWARM_RUNTIME_INVALID');
+  throw error;
+}
+
   function mapSwarmIntelligenceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'SWARM_INTELLIGENCE_SECRET_DETECTED') throw createError(400, 'swarm intelligence payload appears to contain a secret', 'SWARM_INTELLIGENCE_SECRET_DETECTED');
@@ -136,6 +144,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   const specialistPanels = new SpecialistPanelService(db);
   const intelligence = new SwarmIntelligenceService(db);
   const proofRuns = new ProofRunService(db);
+  const csSkillSwarmHarness = new CsSkillSwarmHarnessService(db);
+
+  // Nested spawn control endpoint (P1): POST /spawns/root, POST /spawns,
+  // GET /spawns/:id/status. A spawned runtime child curls back here. The parent
+  // /swarms mount already applies requireAuth; the child-spawn gate is the
+  // scoped spawn token validated in NestedSpawnService.requestSpawn.
+  router.use('/spawns', createSpawnRoutes(db, auth, wsService));
 
   router.get('/status', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -195,6 +210,18 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     } catch (error) {
       try {
         mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/cs-skill-intelligence/run', requirePermission('write:swarm_action'), async (req, res, next) => {
+    try {
+      res.status(201).json(await csSkillSwarmHarness.run(req.body || {}));
+    } catch (error) {
+      try {
+        mapCsSkillSwarmHarnessError(error);
       } catch (mapped) {
         next(mapped);
       }

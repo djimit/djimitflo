@@ -747,6 +747,10 @@ export class SwarmStatusService {
       metadata: JSON.parse(row.metadata || '{}'),
       created_at: row.created_at,
       updated_at: row.updated_at,
+      parent_lease_id: row.parent_lease_id ?? null,
+      spawn_tree_id: row.spawn_tree_id ?? null,
+      depth: typeof row.depth === 'number' ? row.depth : Number(row.depth ?? 0),
+      spawned_by_agent_id: row.spawned_by_agent_id ?? null,
     };
   }
 

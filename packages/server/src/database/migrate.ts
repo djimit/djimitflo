@@ -539,6 +539,67 @@ function createMessageTables(db: BetterSqlite3Database) {
   `);
 }
 
+// Nested swarm spawning (P1): worker_leases gain a parent/tree/depth lineage so a
+// spawned child lease can itself spawn children. Additive — the role CHECK stays;
+// nested leases reuse the existing WorkerRole (a spawned maker is still a `maker`).
+const nestedWorkerLeaseColumns: ColumnSpec[] = [
+  { name: 'parent_lease_id', definition: 'TEXT' },          // FK self-ref worker_leases(id); null for roots
+  { name: 'spawn_tree_id', definition: 'TEXT' },           // shared by every lease in one spawn tree (== root id)
+  { name: 'depth', definition: 'INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0)' },
+  { name: 'spawned_by_agent_id', definition: 'TEXT' },     // audit: which sub-agent process requested the spawn
+];
+
+function createNestedSpawnTables(db: BetterSqlite3Database) {
+  // Additive lineage columns on the existing worker_leases table.
+  addMissingColumns(db, 'worker_leases', nestedWorkerLeaseColumns);
+
+  db.exec(`
+    -- Audit + budget ledger for nested spawns. Normalized out of lease metadata so
+    -- it is queryable and so the cycle guard (prompt_digest + ancestry) is durable.
+    CREATE TABLE IF NOT EXISTS sub_agent_spawns (
+      id TEXT PRIMARY KEY,
+      spawn_tree_id TEXT NOT NULL,
+      parent_lease_id TEXT,                  -- nullable: the root has no parent
+      child_lease_id TEXT,                   -- nullable: a gated_out spawn created no child lease
+      requested_by_lease_id TEXT NOT NULL,  -- the lease whose runtime asked to spawn
+      depth INTEGER NOT NULL CHECK(depth >= 0),
+      runtime TEXT NOT NULL,
+      requested_role TEXT NOT NULL,
+      prompt_digest TEXT NOT NULL,          -- sha256(role|prompt|capability_ids) — dedup + cycle guard
+      status TEXT NOT NULL CHECK(status IN ('requested', 'gated_out', 'prepared', 'running', 'completed', 'failed', 'cancelled')),
+      reject_reason TEXT,                   -- 'depth_budget_exceeded' | 'cycle_detected' | 'capability_not_live' | 'token_budget_exceeded' | 'wall_budget_exceeded' | 'concurrency_exceeded'
+      token_budget_grant INTEGER,
+      wall_budget_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (parent_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+      FOREIGN KEY (child_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+      FOREIGN KEY (requested_by_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_tree ON sub_agent_spawns(spawn_tree_id);
+    CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_parent ON sub_agent_spawns(parent_lease_id);
+    CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_status ON sub_agent_spawns(status);
+
+    -- Cumulative per-tree budget. The root lease id == spawn_trees.id. Operator-
+    -- armed (SPAWN_DEPTH_BUDGET env, default 0 = nested spawning off, default-deny).
+    CREATE TABLE IF NOT EXISTS spawn_trees (
+      id TEXT PRIMARY KEY,                  -- == root lease id
+      depth_budget INTEGER NOT NULL,        -- operator cap; default SPAWN_DEPTH_BUDGET env (0 = off)
+      total_token_budget INTEGER NOT NULL,
+      consumed_tokens INTEGER NOT NULL DEFAULT 0,
+      total_wall_budget_ms INTEGER NOT NULL,
+      consumed_wall_ms INTEGER NOT NULL DEFAULT 0,
+      max_concurrent_children INTEGER NOT NULL,  -- per-tree in-flight cap (default min(recommended_concurrency, 4))
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      status TEXT NOT NULL DEFAULT 'open',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_spawn_trees_status ON spawn_trees(status);
+  `);
+}
+
 // Added in telegram-swarm: extend agents with machine/telegram/okf fields
 const agentColumnsTelegramSwarm: ColumnSpec[] = [
   { name: 'telegram_bot_id', definition: 'TEXT' },
@@ -1074,6 +1135,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
   createAgenticLoopTables(db);
   createSwarmIntelligenceTables(db);
+  createNestedSpawnTables(db);
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);

@@ -11,7 +11,7 @@ type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
 type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
 type GateStatus = 'pass' | 'fail' | 'skipped';
-type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
+export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
 export type LoopName =
   | 'doc-drift-and-small-fix-loop'
   | 'repo-maintenance-loop'
@@ -120,6 +120,11 @@ export interface WorkerLeaseRecord {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  // Nested-spawn lineage (P1). Null/0 for root leases created by continueLoopRun.
+  parent_lease_id: string | null;
+  spawn_tree_id: string | null;
+  depth: number;
+  spawned_by_agent_id: string | null;
 }
 
 interface LoopEventRecord {
@@ -2962,6 +2967,136 @@ export class LoopService {
   }
 
   /**
+   * Materialize a nested child worker lease (P1). This is the server-side half of
+   * nested spawning: NestedSpawnService has already run the depth/cycle/budget/
+   * capability gates; this method creates the real git worktree, writes the
+   * assignment (optionally with a Nested Spawn Control block so this child can
+   * itself spawn), and inserts a worker_leases row carrying the parent/tree/depth
+   * lineage. Reuses the existing spawn-bridge primitives (createWorktree,
+   * writeWorkAssignment, writeAssignmentPacket, insertWorkerLease) unchanged.
+   *
+   * NOTE on no-theater: this creates a real worktree + a real lease row. Whether
+   * the child *process* actually runs and self-spawns depends on the runtime —
+   * mock echoes (no self-spawn); codex/claude shell out to the control endpoint.
+   * The spawning primitive + audit are real regardless of runtime.
+   */
+  prepareNestedLease(input: {
+    loopRunId: string;
+    role: WorkerRole;
+    runtime: string;
+    prompt: string;
+    capabilityIds?: string[];
+    parentLeaseId: string | null;
+    spawnTreeId: string;
+    depth: number;
+    spawnedByAgentId?: string | null;
+    allowNestedSpawn: boolean;
+    controlUrl?: string;
+    spawnToken?: string;
+    depthBudget: number;
+    leaseId?: string;
+  }): { leaseId: string; worktreePath: string; assignmentPath: string; assignmentPacketPath: string } {
+    const run = this.getLoopRun(input.loopRunId);
+    if (!run.repository_path) {
+      throw new Error('NESTED_SPAWN_NO_REPOSITORY');
+    }
+    // Pre-generated lease id lets createRoot keep the spawn_trees.id == root lease
+    // id invariant and mint a spawn token scoped to that exact id before this call.
+    const leaseId = input.leaseId ?? randomUUID();
+    const findingId = `nested-spawn-${leaseId.slice(0, 12)}`;
+    const branchName = `agent/nested/${input.spawnTreeId.slice(0, 8)}/d${input.depth}-${leaseId.slice(0, 8)}`;
+    const worktreePath = this.createWorktree(run.repository_path, run.id, findingId, branchName);
+    this.ensureWorktreeControlIgnore(worktreePath);
+
+    const finding: LoopFinding = {
+      id: findingId,
+      type: 'nested_spawn_task',
+      severity: 'info',
+      file: '<nested-spawn>',
+      message: input.prompt,
+      evidence: `parent_lease=${input.parentLeaseId ?? 'root'} depth=${input.depth} tree=${input.spawnTreeId}`,
+      suggested_fix: input.prompt,
+    };
+
+    const nestedSpawnControl = input.allowNestedSpawn
+      ? this.buildNestedSpawnControlBlock({
+          leaseId,
+          spawnTreeId: input.spawnTreeId,
+          depth: input.depth,
+          depthBudget: input.depthBudget,
+          controlUrl: input.controlUrl,
+          spawnToken: input.spawnToken,
+        })
+      : undefined;
+
+    this.writeWorkAssignment(worktreePath, run, finding, input.runtime, { nestedSpawnControl });
+    const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, input.runtime);
+    const assignmentFile = this.workAssignmentPath(worktreePath);
+
+    const now = new Date().toISOString();
+    this.insertWorkerLease({
+      id: leaseId,
+      loopRunId: run.id,
+      role: input.role,
+      runtime: input.runtime,
+      findingId,
+      worktreePath,
+      branchName,
+      metadata: {
+        assignment_file: assignmentFile,
+        assignment_packet_file: assignmentPacketFile,
+        allow_nested_spawn: input.allowNestedSpawn,
+        spawn_tree_id: input.spawnTreeId,
+        parent_lease_id: input.parentLeaseId,
+        depth: input.depth,
+        capability_ids: input.capabilityIds ?? [],
+        nested_spawn: true,
+      },
+      now,
+      parentLeaseId: input.parentLeaseId,
+      spawnTreeId: input.spawnTreeId,
+      depth: input.depth,
+      spawnedByAgentId: input.spawnedByAgentId ?? null,
+    });
+
+    return { leaseId, worktreePath, assignmentPath: assignmentFile, assignmentPacketPath: assignmentPacketFile };
+  }
+
+  /**
+   * Build the `## Nested Spawn Control` markdown block injected into a child's
+   * assignment when that child is permitted to spawn its own sub-agents. The
+   * block tells the runtime exactly how to shell out to the control endpoint
+   * using its scoped token, and reminds it of the depth budget + cycle rule.
+   */
+  private buildNestedSpawnControlBlock(input: {
+    leaseId: string;
+    spawnTreeId: string;
+    depth: number;
+    depthBudget: number;
+    controlUrl?: string;
+    spawnToken?: string;
+  }): string {
+    const url = input.controlUrl || '$DJIMITFLO_CONTROL_URL';
+    const token = input.spawnToken ? '<redacted>' : '$DJIMITFLO_SPAWN_TOKEN';
+    return [
+      '## Nested Spawn Control',
+      '',
+      `You are permitted to spawn sub-agents (your depth: ${input.depth}, tree depth budget: ${input.depthBudget}).`,
+      `Your lease id: ${input.leaseId}. Spawn tree: ${input.spawnTreeId}.`,
+      '',
+      'To spawn a child, POST to the control endpoint (token forwarded as $DJIMITFLO_SPAWN_TOKEN):',
+      '```sh',
+      `curl -sS -X POST "${url}" \\`,
+      `  -H "X-Spawn-Token: ${token}" -H "Content-Type: application/json" \\`,
+      `  -d '{"requested_by_lease_id":"${input.leaseId}","parent_lease_id":"${input.leaseId}","spawn_tree_id":"${input.spawnTreeId}","role":"maker","runtime":"mock","prompt":"<sub-task>"}'`,
+      '```',
+      'Poll a child status: GET $DJIMITFLO_CONTROL_URL/<child_lease_id>/status',
+      'Each child gets a tighter token/wall budget. Do not spawn cycles: the same prompt + role on your ancestry is rejected.',
+      '',
+    ].join('\n');
+  }
+
+  /**
    * realpath that never throws — falls back to a normalized absolute path when
    * the target does not exist yet (e.g. a freshly resolved worktree path).
    */
@@ -2996,6 +3131,9 @@ export class LoopService {
     'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
     'TMPDIR', 'TMP', 'TEMP',
     'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH',
+    // Nested-spawn control channel (P1): the child runtime uses these to call back
+    // into the server to spawn its own sub-agents. The token is scoped + expiring.
+    'DJIMITFLO_CONTROL_URL', 'DJIMITFLO_SPAWN_TOKEN',
     'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT',
     'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'MISTRAL_API_KEY', 'DEEPSEEK_API_KEY',
     'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
@@ -3435,7 +3573,13 @@ export class LoopService {
     return '';
   }
 
-  private writeWorkAssignment(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string): void {
+  private writeWorkAssignment(
+    worktreePath: string,
+    run: LoopRunRecord,
+    finding: LoopFinding,
+    runtime: string,
+    options: { nestedSpawnControl?: string } = {}
+  ): void {
     this.ensureControlDir(worktreePath);
     const content = [
       `# ${run.loop_name} Assignment`,
@@ -3464,6 +3608,11 @@ export class LoopService {
       '- Run relevant deterministic checks before handing off to checker.',
       '- Checker approval is required before completion.',
       '',
+      // Nested-spawn control block (P1). Only injected when this lease is itself
+      // permitted to spawn sub-agents (operator-armed, depth within budget). This
+      // is the single path a runtime child uses to spawn children: it shells out
+      // to the control endpoint with its scoped token. See prepareNestedLease.
+      ...(options.nestedSpawnControl ? [options.nestedSpawnControl, ''] : []),
     ].join('\n');
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
@@ -3618,12 +3767,19 @@ export class LoopService {
     branchName: string | null;
     metadata: Record<string, unknown>;
     now: string;
+    // Nested-spawn lineage (P1). Optional: legacy continueLoopRun callers omit
+    // these and get a root lease (parent=null, depth=0, no tree).
+    parentLeaseId?: string | null;
+    spawnTreeId?: string | null;
+    depth?: number;
+    spawnedByAgentId?: string | null;
   }): void {
     this.db.prepare(`
       INSERT INTO worker_leases (
         id, loop_run_id, role, runtime, status, finding_id, worktree_path,
-        branch_name, budget_json, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        branch_name, budget_json, metadata, created_at, updated_at,
+        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.loopRunId,
@@ -3636,7 +3792,11 @@ export class LoopService {
       JSON.stringify({ max_runtime_minutes: 30, max_retries: 1 }),
       JSON.stringify(input.metadata),
       input.now,
-      input.now
+      input.now,
+      input.parentLeaseId ?? null,
+      input.spawnTreeId ?? null,
+      input.depth ?? 0,
+      input.spawnedByAgentId ?? null
     );
   }
 
@@ -3676,6 +3836,10 @@ export class LoopService {
     return this.parseWorkerLease(row);
   }
 
+  getWorkerLeasePublic(id: string): WorkerLeaseRecord {
+    return this.getWorkerLease(id);
+  }
+
   private parseWorkerLease(row: any): WorkerLeaseRecord {
     return {
       id: row.id,
@@ -3690,6 +3854,10 @@ export class LoopService {
       metadata: JSON.parse(row.metadata || '{}'),
       created_at: row.created_at,
       updated_at: row.updated_at,
+      parent_lease_id: row.parent_lease_id ?? null,
+      spawn_tree_id: row.spawn_tree_id ?? null,
+      depth: typeof row.depth === 'number' ? row.depth : Number(row.depth ?? 0),
+      spawned_by_agent_id: row.spawned_by_agent_id ?? null,
     };
   }
 

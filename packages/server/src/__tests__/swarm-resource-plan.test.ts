@@ -548,6 +548,71 @@ describe('workstation swarm resource plan', () => {
     }
   });
 
+  it('runs the CS Skill Intelligence live swarm harness with interacting agents and evidence', async () => {
+    const response = await fetch(`${baseUrl}/swarms/cs-skill-intelligence/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ runtime: 'local' }),
+    });
+
+    expect(response.status).toBe(201);
+    const result = await response.json() as any;
+    expect(result).toMatchObject({
+      status: 'completed',
+      runtime: 'local',
+      swarms_started: 5,
+      swarms_completed: 5,
+      agents_started: 14,
+      agents_completed: 14,
+    });
+    expect(result.interaction_edges.length).toBeGreaterThanOrEqual(13);
+    expect(result.checkpoints.map((checkpoint: any) => checkpoint.label)).toEqual([
+      'cs-skill-swarm:prepared',
+      'cs-skill-swarm:completed',
+    ]);
+
+    const leases = db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(result.loop_run_id) as any[];
+    expect(leases).toHaveLength(14);
+    expect(leases.every((lease) => lease.runtime === 'local' && lease.status === 'completed')).toBe(true);
+    const leaseMetadata = leases.map((lease) => JSON.parse(lease.metadata || '{}'));
+    expect(new Set(leaseMetadata.map((metadata) => metadata.swarm_id)).size).toBe(5);
+    expect(new Set(leaseMetadata.map((metadata) => metadata.agent_id)).size).toBe(14);
+    expect(leaseMetadata.every((metadata) => metadata.child_process_started === true)).toBe(true);
+    expect(leaseMetadata.every((metadata) => Number.isInteger(metadata.child_pid) && metadata.child_pid > 0)).toBe(true);
+    expect(leaseMetadata).toEqual(expect.arrayContaining([
+      expect.objectContaining({ agent_id: 'source_ingestor', swarm_id: 'ingest' }),
+      expect.objectContaining({ agent_id: 'qdrant_projector', swarm_id: 'projection' }),
+      expect.objectContaining({ agent_id: 'promotion_gate_reviewer', swarm_id: 'assurance' }),
+    ]));
+
+    const spans = db.prepare('SELECT name, status, metadata FROM agent_trace_spans WHERE trace_id = ? ORDER BY created_at ASC').all(result.trace_id) as any[];
+    expect(spans.length).toBeGreaterThanOrEqual(34);
+    expect(spans.map((span) => span.name)).toEqual(expect.arrayContaining([
+      'cs-skill-swarm:harness:start',
+      'cs-skill-swarm:ingest:start',
+      'cs-skill-swarm:agent:source_ingestor:start',
+      'cs-skill-swarm:agent:source_ingestor:complete',
+      'cs-skill-swarm:interaction:source_ingestor:to:source_auditor',
+      'cs-skill-swarm:harness:complete',
+    ]));
+
+    const checkpoints = db.prepare('SELECT label FROM loop_checkpoints WHERE loop_run_id = ? ORDER BY created_at ASC').all(result.loop_run_id) as any[];
+    expect(checkpoints.map((checkpoint) => checkpoint.label)).toEqual([
+      'cs-skill-swarm:prepared',
+      'cs-skill-swarm:completed',
+    ]);
+
+    const run = db.prepare('SELECT status, metadata FROM loop_runs WHERE id = ?').get(result.loop_run_id) as any;
+    expect(run.status).toBe('completed');
+    expect(JSON.parse(run.metadata || '{}')).toMatchObject({
+      live_harness: true,
+      swarms_started: 5,
+      agents_started: 14,
+      live_process_agents: 14,
+      promotion_requires_human_gate: true,
+    });
+  });
+
   it('worker pool runner blocks high-risk leases without explicit high-risk allowance', async () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-high-risk-repo-'));
     const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-high-risk-worktrees-'));

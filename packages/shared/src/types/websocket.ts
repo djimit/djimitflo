@@ -81,7 +81,13 @@ export enum WebSocketEventType {
 
   // Proof run events
   PROOF_RUN_UPDATED = 'proof_run.updated',
-  
+
+  // Nested swarm spawn events (P1): a child spawning is observable end-to-end.
+  SWARM_SPAWN_REQUESTED = 'swarm.spawn.requested',
+  SWARM_SPAWN_PREPARED = 'swarm.spawn.prepared',
+  SWARM_SPAWN_COMPLETED = 'swarm.spawn.completed',
+  SWARM_SPAWN_GATED_OUT = 'swarm.spawn.gated_out',
+
   // System events
   SYSTEM_HEALTH = 'system.health',
   SYSTEM_ERROR = 'system.error',
@@ -156,4 +162,18 @@ export interface ProofRunEventPayload {
   passed: boolean;
   rollback_safe: boolean;
   runtime: 'mock' | 'codex' | 'opencode';
+}
+
+// Nested swarm spawn event payload (SWARM_SPAWN_*). `status` mirrors the
+// sub_agent_spawns row: a gated-out spawn carries its reject_reason.
+export interface SwarmSpawnEventPayload {
+  spawn_id: string;
+  spawn_tree_id: string;
+  parent_lease_id: string | null;
+  child_lease_id: string | null;
+  depth: number;
+  runtime: string;
+  role: string;
+  status: 'requested' | 'prepared' | 'completed' | 'gated_out';
+  reject_reason?: string;
 }
