@@ -18,7 +18,7 @@
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces",
-    "type-check": "npm run type-check --workspaces",
+    "type-check": "npm run build --workspace=@djimitflo/shared && npm run type-check --workspaces",
     "swarm:proof": "npm run swarm:proof --workspace=@djimitflo/server",
     "demo:proof": "npm run demo:proof --workspace=@djimitflo/server",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
