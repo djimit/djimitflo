@@ -409,6 +409,21 @@ const LOOP_CONTRACTS: LoopContract[] = [
 
 export class LoopService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
+  /**
+   * RuntimeSemaphore (P2): a single chokepoint bounding how many runtime child
+   * processes may be alive at once. Both the serial fleet (drainWorkerPool, which
+   * remains ordered) and the DAG harness route every spawn through
+   * executeRuntimeCommand, so this one limiter enforces real bounded concurrency
+   * across the whole control plane without touching the serial stop/cancel
+   * invariants. Limit defaults to 4 and is operator-tunable via
+   * RUNTIME_MAX_CONCURRENCY. (The plan proposed feeding this from
+   * swarm-status.fleetPools().recommended_concurrency; that coupling is deferred
+   * to avoid a circular dependency — LoopService does not import SwarmStatusService.)
+   */
+  private static readonly runtimeSemaphore: {
+    active: Set<string>;
+    queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }>;
+  } = { active: new Set(), queue: [] };
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
@@ -3889,6 +3904,77 @@ export class LoopService {
     LoopService.runtimeLeases.delete(leaseId);
   }
 
+  /**
+   * Current semaphore limit. Read fresh on every acquire so an operator can tune
+   * RUNTIME_MAX_CONCURRENCY at runtime. Default 4 bounds a greedy subtree without
+   * starving the rest of the fleet; the per-tree sub-limiter
+   * (spawn_trees.max_concurrent_children) further bounds any one swarm.
+   */
+  private runtimeSemaphoreLimit(): number {
+    const raw = process.env.RUNTIME_MAX_CONCURRENCY;
+    if (raw === undefined || raw === null || raw.trim() === '') return 4;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 4;
+  }
+
+  /**
+   * Acquire a runtime permit, awaiting if the concurrency cap is reached. A
+   * queued waiter is rejectable via cancelRuntimePermit (used by stop), so a
+   * lease stopped before it ever spawns does not hang the queue.
+   */
+  private acquireRuntimePermit(leaseId: string): Promise<void> {
+    const sem = LoopService.runtimeSemaphore;
+    if (sem.active.has(leaseId)) return Promise.resolve();
+    if (sem.active.size < this.runtimeSemaphoreLimit()) {
+      sem.active.add(leaseId);
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      sem.queue.push({ leaseId, resolve, reject });
+    });
+  }
+
+  /**
+   * Release a permit and admit the next queued waiter. Idempotent — safe to call
+   * on every exit path of executeRuntimeCommand.
+   */
+  private releaseRuntimePermit(leaseId: string): void {
+    const sem = LoopService.runtimeSemaphore;
+    if (sem.active.has(leaseId)) {
+      sem.active.delete(leaseId);
+      const next = sem.queue.shift();
+      if (next) {
+        sem.active.add(next.leaseId);
+        next.resolve();
+      }
+    } else {
+      // Not active — maybe still queued (e.g. spawn threw after acquire). Remove
+      // the queued waiter without admitting a replacement; release() of an active
+      // slot below will admit the next.
+      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
+      if (idx >= 0) sem.queue.splice(idx, 1);
+    }
+  }
+
+  /**
+   * Cancel a permit acquisition for a lease that was stopped before it could
+   * spawn. Rejects the queued waiter so executeRuntimeCommand rejects promptly;
+   * no active slot is freed (the lease never held one).
+   */
+  private cancelRuntimePermit(leaseId: string): void {
+    const sem = LoopService.runtimeSemaphore;
+    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
+    if (idx >= 0) {
+      const [waiter] = sem.queue.splice(idx, 1);
+      waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED'));
+    }
+  }
+
+  /** Test/diagnostic: how many runtime children are live right now. */
+  public runtimeConcurrencyInUse(): number {
+    return LoopService.runtimeSemaphore.active.size;
+  }
+
   private getRuntimeLease(leaseId: string): RuntimeProcessHandle | null {
     return LoopService.runtimeLeases.get(leaseId) || null;
   }
@@ -3919,6 +4005,10 @@ export class LoopService {
       this.assertWithinWorktreeRoot(options.cwd);
     }
 
+    // P2: bound live runtime children. A lease stopped while queued here will
+    // have its acquire rejected (cancelRuntimePermit) and never spawn.
+    await this.acquireRuntimePermit(leaseId);
+
     return new Promise<RuntimeExecutionResult>((resolve, reject) => {
       let stdout = '';
       let stderr = '';
@@ -3939,11 +4029,13 @@ export class LoopService {
           stdio: ['ignore', 'pipe', 'pipe'],
         });
       } catch (error) {
+        this.releaseRuntimePermit(leaseId);
         reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
 
       if (!child.pid) {
+        this.releaseRuntimePermit(leaseId);
         reject(new Error('RUNTIME_PROCESS_START_FAILED'));
         return;
       }
@@ -3968,6 +4060,7 @@ export class LoopService {
         if (settled) return;
         settled = true;
         this.clearRuntimeLease(leaseId);
+        this.releaseRuntimePermit(leaseId);
         resolve({
           exitCode,
           signal,
@@ -3996,6 +4089,7 @@ export class LoopService {
 
       child.on('error', (error) => {
         this.clearRuntimeLease(leaseId);
+        this.releaseRuntimePermit(leaseId);
         if (!settled) {
           settled = true;
           reject(error);
@@ -4016,6 +4110,10 @@ export class LoopService {
   public stopWorkerLeaseRuntime(leaseId: string): RuntimeStopResult {
     const runtimeLease = this.getRuntimeLease(leaseId);
     if (!runtimeLease) {
+      // No live process handle: the lease may still be queued at the semaphore
+      // (stopped before it ever spawned). Cancel its permit so executeRuntimeCommand
+      // rejects promptly instead of hanging the queue.
+      this.cancelRuntimePermit(leaseId);
       return { stopMode: 'best_effort_no_process_handle', killAttempted: false };
     }
 
