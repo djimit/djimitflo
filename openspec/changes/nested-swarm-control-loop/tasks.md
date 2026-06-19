@@ -41,3 +41,18 @@
 - [x] Isolate `proof-run-service` tests: per-test temp git repo (`process.cwd()`), per-test `LOOP_WORKTREE_ROOT`/`LOOP_EVIDENCE_ROOT`.
 - [x] Map `PROOF_RUN_RUNTIME_FAILED` -> stable `503` in `mapProofRunError`.
 - [x] Add unit tests for `createWorktree` lock-retry-then-success, non-lock no-retry, and the 503 mapping.
+
+## G17.7 Discussion Turn Protocol (L4 Part 2)
+
+- [x] Add a `discussion_turns` table (ordered `turn_index`, nullable `parent_turn_id`, `status` CHECK `open|committed|superseded`, FK cascade) to `schema.ts` so it applies on every boot via `CREATE TABLE IF NOT EXISTS`.
+- [x] Add `DiscussionTurnService` (`appendTurn`, `listTurns`, `computeNextTurn`, `setTurnStatus`) with computed-on-read round-robin next-speaker selection over `discussions.metadata.participants`.
+- [x] Add turn routes to `routes/discussions.ts`: `POST /:id/turns` (`create:task`, broadcasts `DISCUSSION_TURN_ADDED`), `GET /:id/turns`, `POST /:id/tick` (`write:swarm_action`, returns the next-speaker hint only), `PATCH /:id/turns/:turnId` (`create:task`, broadcasts `DISCUSSION_TURN_COMMITTED` on commit).
+- [x] Wire `wsService` into `createDiscussionRoutes` and add `DISCUSSION_TURN_ADDED` / `DISCUSSION_TURN_COMMITTED` to the `WebSocketEventType` enum.
+- [x] Add a route + service test (`discussion-turns.test.ts`) covering append, non-participant refusal, one-open-turn gate, tick round-robin + awaiting-commit, commit/supersede transitions, reply threading, permission gating, and a `computeNextTurn` unit test.
+
+## G17.8 Tasks-Path Executor Parity
+
+- [x] Add `ClaudeExecutor`, `GeminiExecutor`, `EditorExecutor` (`cline`) classes mirroring `CodexExecutor` (bin/timeout/skip env, `spawn`, SIGTERM->5s->SIGKILL, NDJSON + heuristic-fallback parsing).
+- [x] Build per-runtime argv reusing the proven `buildRuntimeCommand` shapes (`claude -p <prompt> --output-format json`, `gemini -p <prompt> -o json`, `cline --json --auto-approve <bool> -c <worktree> --thinking <t>`), with `--dangerously-skip-permissions` / `-y` / `--auto-approve true` gated by the per-executor `*_SKIP_PERMISSIONS` env.
+- [x] Register the three executors in `ExecutionEngine` via the open/closed `registerExecutor` map (no switch); they inherit the existing `execute:task` + risk-classifier + approval-policy gates.
+- [x] Add arg-shape tests for each executor plus one fake-bin smoke proving `start()` yields a `completed` result on exit 0.

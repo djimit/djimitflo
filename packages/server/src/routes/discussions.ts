@@ -7,6 +7,33 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import { randomUUID } from 'crypto';
 import type { AuthMiddleware } from '../middleware/auth';
+import type { WebSocketService } from '../services/websocket-service';
+import { WebSocketEventType } from '@djimitflo/shared';
+import { DiscussionTurnService } from '../services/discussion-turn-service';
+
+function mapDiscussionTurnError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  switch (message) {
+    case 'DISCUSSION_NOT_FOUND':
+      throw createError(404, 'discussion not found', 'DISCUSSION_NOT_FOUND');
+    case 'DISCUSSION_NOT_OPEN':
+      throw createError(409, 'discussion is not open', 'DISCUSSION_NOT_OPEN');
+    case 'AGENT_NOT_IN_DISCUSSION':
+      throw createError(403, 'agent is not a participant in this discussion', 'AGENT_NOT_IN_DISCUSSION');
+    case 'OPEN_TURN_PENDING':
+      throw createError(409, 'an open turn is already pending; commit or supersede it first', 'OPEN_TURN_PENDING');
+    case 'INVALID_PARENT_TURN':
+      throw createError(400, 'parent turn not found or not committed', 'INVALID_PARENT_TURN');
+    case 'TURN_NOT_FOUND':
+      throw createError(404, 'turn not found in this discussion', 'TURN_NOT_FOUND');
+    case 'INVALID_TURN_STATUS':
+      throw createError(400, 'invalid turn status transition', 'INVALID_TURN_STATUS');
+    case 'TURN_INPUT_REQUIRED':
+      throw createError(400, 'agent_id and content are required', 'INVALID_INPUT');
+    default:
+      throw error;
+  }
+}
 
 function loadDiscussionOr404(db: any, id: string, res: any): any | null {
   const discussion = db.prepare('SELECT * FROM discussions WHERE id = ?').get(id);
@@ -39,9 +66,18 @@ function parseVote(vote: any): any {
   };
 }
 
-export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const turns = new DiscussionTurnService(db);
+
+  function broadcastTurn(
+    eventType: WebSocketEventType.DISCUSSION_TURN_ADDED | WebSocketEventType.DISCUSSION_TURN_COMMITTED,
+    payload: unknown,
+  ): void {
+    if (!wsService) return;
+    wsService.broadcastToAuthenticated({ type: eventType, payload, timestamp: new Date().toISOString() } as any);
+  }
 
 
   // GET /api/discussions - List all discussions
@@ -445,6 +481,72 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware): Rou
       });
     } catch (error) {
       next(error);
+    }
+  });
+
+  // POST /api/discussions/:id/turns - Append a turn (one open turn at a time)
+  router.post('/:id/turns', requirePermission('create:task'), (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const { agent_id, content, parent_turn_id } = req.body || {};
+      const turn = turns.appendTurn(id, { agent_id, content, parent_turn_id: parent_turn_id ?? null });
+      broadcastTurn(WebSocketEventType.DISCUSSION_TURN_ADDED, { discussion_id: id, turn });
+      res.status(201).json(turn);
+    } catch (error) {
+      try {
+        mapDiscussionTurnError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  // GET /api/discussions/:id/turns - List turns ordered by turn_index
+  router.get('/:id/turns', (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const discussion = loadDiscussionOr404(db, id, res);
+      if (!discussion) return;
+      res.json({ turns: turns.listTurns(id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/discussions/:id/tick - Computed-on-read next-speaker hint
+  router.post('/:id/tick', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      const { id } = req.params;
+      const hint = turns.computeNextTurn(id);
+      res.json({ discussion_id: id, ...hint });
+    } catch (error) {
+      try {
+        mapDiscussionTurnError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  // PATCH /api/discussions/:id/turns/:turnId - Commit or supersede a turn
+  router.patch('/:id/turns/:turnId', requirePermission('create:task'), (req, res, next) => {
+    try {
+      const { id, turnId } = req.params;
+      const { status } = req.body || {};
+      if (status !== 'committed' && status !== 'superseded') {
+        throw createError(400, "status must be 'committed' or 'superseded'", 'INVALID_INPUT');
+      }
+      const updated = turns.setTurnStatus(id, turnId, status);
+      if (status === 'committed') {
+        broadcastTurn(WebSocketEventType.DISCUSSION_TURN_COMMITTED, { discussion_id: id, turn: updated });
+      }
+      res.json(updated);
+    } catch (error) {
+      try {
+        mapDiscussionTurnError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
     }
   });
 

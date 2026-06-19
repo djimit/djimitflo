@@ -92,7 +92,7 @@ export function createRoutes(
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/audit', requireAuth, createAuditRoutes(db, auditService, auth));
-  router.use('/discussions', requireAuth, createDiscussionRoutes(db, auth));
+  router.use('/discussions', requireAuth, createDiscussionRoutes(db, auth, wsService));
   router.use('/usage', requireAuth, createUsageRoutes(db, auth));
   router.use('/learning', requireAuth, createLearningRoutes(db, auth));
 

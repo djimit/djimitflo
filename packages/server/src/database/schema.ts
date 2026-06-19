@@ -381,6 +381,28 @@ CREATE INDEX IF NOT EXISTS idx_discussion_votes_proposal_id ON discussion_votes(
 CREATE INDEX IF NOT EXISTS idx_discussion_votes_agent_id ON discussion_votes(agent_id);
 CREATE INDEX IF NOT EXISTS idx_discussion_votes_vote ON discussion_votes(vote);
 
+-- Discussion turns table (ordered, multi-round turn protocol on top of discussions)
+CREATE TABLE IF NOT EXISTS discussion_turns (
+  id TEXT PRIMARY KEY,
+  discussion_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL,
+  parent_turn_id TEXT,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'committed', 'superseded')),
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON object
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_turn_id) REFERENCES discussion_turns(id) ON DELETE SET NULL,
+  UNIQUE(discussion_id, turn_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_discussion_id ON discussion_turns(discussion_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_agent_id ON discussion_turns(agent_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_parent_turn_id ON discussion_turns(parent_turn_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_status ON discussion_turns(status);
+
 -- Token usage log table
 CREATE TABLE IF NOT EXISTS token_usage_log (
   id TEXT PRIMARY KEY,

@@ -98,6 +98,8 @@ export enum WebSocketEventType {
   VOTE_CAST = 'discussion.vote_cast',
   CONSENSUS_REACHED = 'discussion.consensus_reached',
   CONSENSUS_FAILED = 'discussion.consensus_failed',
+  DISCUSSION_TURN_ADDED = 'discussion.turn_added',
+  DISCUSSION_TURN_COMMITTED = 'discussion.turn_committed',
   LEARNING_CAPTURED = 'learning.captured',
   TOKEN_USAGE_LOGGED = 'token_usage.logged',
 }
