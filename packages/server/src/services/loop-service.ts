@@ -3189,7 +3189,8 @@ export class LoopService {
   private static readonly RUNTIME_ENV_ALLOWLIST = [
     'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
     'TMPDIR', 'TMP', 'TEMP',
-    'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH',
+    'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH', 'CLAUDE_BIN_PATH', 'GEMINI_BIN_PATH', 'CLINE_BIN_PATH',
+    'DJIMITFLO_CLAUDE_MODEL', 'DJIMITFLO_GEMINI_MODEL', 'DJIMITFLO_CLINE_MODEL', 'DJIMITFLO_CLINE_THINKING',
     // Nested-spawn control channel (P1): the child runtime uses these to call back
     // into the server to spawn its own sub-agents. The token is scoped + expiring.
     'DJIMITFLO_CONTROL_URL', 'DJIMITFLO_SPAWN_TOKEN',

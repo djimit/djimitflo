@@ -15,6 +15,7 @@
 
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
+import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -56,7 +57,7 @@ export class EditorExecutor implements TaskExecutor {
 
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
-      const env = { ...process.env, ...options?.environment };
+      const env = buildExecutorEnv(options?.environment);
 
       const child = spawn(this.clinePath, args, {
         cwd,
