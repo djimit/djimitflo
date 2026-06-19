@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { initializeDatabase } from './database';
@@ -17,9 +18,24 @@ import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
+import { MemorySyncService } from './services/memory-sync-service';
+import { ReasoningBankService } from './services/reasoning-bank-service';
+import { LoopService } from './services/loop-service';
+
+type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
+
+// L1: derive a default nested-spawn control URL so a runtime child (running on the
+// same host) can call back to POST /api/swarms/spawns without operator config.
+// 0.0.0.0 is a bind address, not a dial address — children dial the loopback.
+// Operators override DJIMITFLO_CONTROL_URL explicitly (e.g. for Docker, where the
+// child may need the container's reachable address rather than 127.0.0.1).
+if (!process.env.DJIMITFLO_CONTROL_URL) {
+  const dialHost = HOST === '0.0.0.0' || HOST === 'localhost' ? '127.0.0.1' : HOST;
+  process.env.DJIMITFLO_CONTROL_URL = `http://${dialHost}:${PORT}/api/swarms/spawns`;
+}
 
 async function main() {
   console.log('🚀 Starting Djimitflo Server...');
@@ -27,7 +43,19 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
-  
+
+  // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
+  // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.
+  try {
+    const recovery = new LoopService(db).recoverInterruptedRuns();
+    if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
+      console.log(
+        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
+      );
+    }
+  } catch (error) {
+    console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
   // Initialize auth
   const authService = new AuthService(db);
   authService.bootstrapAdmin();
@@ -65,13 +93,56 @@ async function main() {
   // Create execution engine
   const executionEngine = new ExecutionEngine(db, wsService);
   console.log('⚙️  Execution engine initialized');
+
+  const memorySync = new MemorySyncService(db);
+  executionEngine.setMemorySyncService(memorySync);
+
+  const reasoningBank = new ReasoningBankService(db);
+  executionEngine.setReasoningBankService(reasoningBank);
   
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));
+
+  try {
+    const raw = process.env.TELEGRAM_BOTS_CONFIG;
+    if (raw) {
+      const configs = JSON.parse(raw) as TelegramBotConfig[];
+      const { TelegramGatewayService } = require('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
+      const tg = new TelegramGatewayService(configs, {
+        createTask: async (prompt: string, machineId: string) => {
+          const id = randomUUID();
+          db.prepare(
+            `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
+          ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
+          return id;
+        },
+        getStatus: async (machineId: string) => {
+          const count = (db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status IN ('pending','queued','running') AND created_by = ?").get(machineId) as any).c;
+          const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(machineId) as any;
+          return `Machine ${machineId}: ${count} actieve/pending tasks. Status: ${agent?.status || 'unknown'}`;
+        },
+      });
+      tg.startAll().catch((e: any) => console.warn('⚠️ Telegram startAll fout:', e?.message || e));
+    } else {
+      console.log('ℹ️ TELEGRAM_BOTS_CONFIG niet gezet — Telegram gateway is uitgeschakeld');
+    }
+  } catch (e) {
+    console.warn('⚠️ Telegram gateway init fout:', e);
+  }
+
+  try {
+    const jitterMinutes = Math.floor(Math.random() * 180);
+    const targetHour = 3 + Math.floor(jitterMinutes / 60);
+    const targetMinute = jitterMinutes % 60;
+    console.log(`🫀 Heartbeat window scheduled daily at ~${targetHour.toString().padStart(2, '0')}:${targetMinute.toString().padStart(2, '0')}`);
+  } catch {}
   
   // Serve dashboard static files (Docker/production)
   const dashboardPath = process.env.DASHBOARD_PATH || join(__dirname, '../../dashboard/dist');
-  if (existsSync(dashboardPath)) {
+  const serveDashboard = process.env.DASHBOARD_SERVE_ENABLED !== 'false';
+  if (!serveDashboard) {
+    console.log('📱 Dashboard serving disabled — running in API-only mode');
+  } else if (existsSync(dashboardPath)) {
     console.log(`🖥️  Serving dashboard from ${dashboardPath}`);
     app.use(express.static(dashboardPath));
     
@@ -100,7 +171,7 @@ async function main() {
   httpServer.listen(Number(PORT), HOST as string, () => {
     console.log(`✅ Djimitflo Server running on http://${HOST}:${PORT}`);
     console.log(`🔌 WebSocket server running on ws://${HOST}:${PORT}/ws`);
-    if (existsSync(dashboardPath)) {
+    if (serveDashboard && existsSync(dashboardPath)) {
       console.log(`📊 Dashboard: http://localhost:${PORT}`);
     }
   });

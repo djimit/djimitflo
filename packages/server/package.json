@@ -11,11 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint .",
     "db:migrate": "tsx src/database/migrate.ts",
-    "db:seed": "tsx src/database/seed.ts"
+    "db:seed": "tsx src/database/seed.ts",
+    "swarm:proof": "tsx src/scripts/swarm-proof-run.ts",
+    "demo:proof": "tsx src/scripts/swarm-demo-proof.ts"
   },
   "dependencies": {
+    "@djimitflo/telegram": "*",
     "@djimitflo/shared": "*",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.7.0",

@@ -63,6 +63,7 @@ export enum WebSocketEventType {
   AGENT_CREATED = 'agent.created',
   AGENT_UPDATED = 'agent.updated',
   AGENT_STATUS_CHANGED = 'agent.status_changed',
+  MESSAGE_SENT = 'message.sent',
   
   // MCP events
   MCP_SERVER_DISCOVERED = 'mcp.server.discovered',
@@ -77,7 +78,16 @@ export enum WebSocketEventType {
   EVIDENCE_CAPTURED = 'evidence.captured',
   SUMMARY_GENERATED = 'summary.generated',
   FILE_CHANGE_DETECTED = 'file_change.detected',
-  
+
+  // Proof run events
+  PROOF_RUN_UPDATED = 'proof_run.updated',
+
+  // Nested swarm spawn events (P1): a child spawning is observable end-to-end.
+  SWARM_SPAWN_REQUESTED = 'swarm.spawn.requested',
+  SWARM_SPAWN_PREPARED = 'swarm.spawn.prepared',
+  SWARM_SPAWN_COMPLETED = 'swarm.spawn.completed',
+  SWARM_SPAWN_GATED_OUT = 'swarm.spawn.gated_out',
+
   // System events
   SYSTEM_HEALTH = 'system.health',
   SYSTEM_ERROR = 'system.error',
@@ -88,6 +98,8 @@ export enum WebSocketEventType {
   VOTE_CAST = 'discussion.vote_cast',
   CONSENSUS_REACHED = 'discussion.consensus_reached',
   CONSENSUS_FAILED = 'discussion.consensus_failed',
+  DISCUSSION_TURN_ADDED = 'discussion.turn_added',
+  DISCUSSION_TURN_COMMITTED = 'discussion.turn_committed',
   LEARNING_CAPTURED = 'learning.captured',
   TOKEN_USAGE_LOGGED = 'token_usage.logged',
 }
@@ -153,4 +165,26 @@ export interface EvidenceEventPayload {
 
 export interface SummaryEventPayload {
   summary: import('./evidence').ExecutionSummary;
+}
+
+export interface ProofRunEventPayload {
+  id: string;
+  status: 'completed' | 'rolled_back';
+  passed: boolean;
+  rollback_safe: boolean;
+  runtime: 'mock' | 'codex' | 'opencode';
+}
+
+// Nested swarm spawn event payload (SWARM_SPAWN_*). `status` mirrors the
+// sub_agent_spawns row: a gated-out spawn carries its reject_reason.
+export interface SwarmSpawnEventPayload {
+  spawn_id: string;
+  spawn_tree_id: string;
+  parent_lease_id: string | null;
+  child_lease_id: string | null;
+  depth: number;
+  runtime: string;
+  role: string;
+  status: 'requested' | 'prepared' | 'completed' | 'gated_out';
+  reject_reason?: string;
 }

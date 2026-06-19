@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { User, UserRole } from '@djimitflo/shared';
 import { ROLE_PERMISSIONS } from '@djimitflo/shared';
 
-const AUTH_TOKEN_KEY = 'djimitflo_auth_token';
+const AUTH_SESSION_KEY = 'djimitflo_auth_session';
 
 interface AuthState {
   user: User | null;
@@ -18,14 +18,14 @@ interface AuthState {
 
 async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const API_BASE = import.meta.env.VITE_API_BASE || '/api';
-  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  const token = localStorage.getItem(AUTH_SESSION_KEY);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   const response = await fetch(`${API_BASE}${endpoint}`, { ...options, headers: { ...headers, ...options?.headers } });
   if (response.status === 401) {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_SESSION_KEY);
     window.location.href = '/login';
     throw new Error('Session expired');
   }
@@ -38,8 +38,8 @@ async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
-  token: localStorage.getItem(AUTH_TOKEN_KEY),
-  isAuthenticated: !!localStorage.getItem(AUTH_TOKEN_KEY),
+  token: localStorage.getItem(AUTH_SESSION_KEY),
+  isAuthenticated: !!localStorage.getItem(AUTH_SESSION_KEY),
   isLoading: false,
   error: null,
 
@@ -50,7 +50,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      localStorage.setItem(AUTH_TOKEN_KEY, result.token);
+      localStorage.setItem(AUTH_SESSION_KEY, result.token);
       set({
         user: result.user,
         token: result.token,
@@ -68,12 +68,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_SESSION_KEY);
     set({ user: null, token: null, isAuthenticated: false, error: null });
   },
 
   restoreSession: async () => {
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const token = localStorage.getItem(AUTH_SESSION_KEY);
     if (!token) {
       set({ isAuthenticated: false, user: null, token: null });
       return;
@@ -82,7 +82,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const result = await apiRequest<{ user: User }>('/auth/me');
       set({ user: result.user, token, isAuthenticated: true, isLoading: false });
     } catch {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_SESSION_KEY);
       set({ user: null, token: null, isAuthenticated: false });
     }
   },

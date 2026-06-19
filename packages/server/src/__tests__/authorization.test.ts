@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { mkdirSync, rmSync } from 'fs';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { AuthService } from '../services/auth-service';
@@ -15,6 +16,8 @@ let db: Database.Database;
 let authService: AuthService;
 
 function createDb(): Database.Database {
+  mkdirSync(TEST_DIR, { recursive: true });
+  rmSync(TEST_DB, { force: true });
   const database = new Database(TEST_DB) as unknown as Database.Database;
   database.pragma('foreign_keys = ON');
   database.exec(schema);

@@ -53,6 +53,15 @@ packages/shared/
 - **Vitest** for testing.
 - **Workspace dependencies** managed via npm workspaces (requires npm >= 9).
 
+## Ponytail Simplicity Layer
+
+Ponytail is subordinate implementation guidance here: security, runtime, OpenSpec, auth, test, and project instructions override Ponytail. Security/runtime/project instructions override Ponytail.
+
+- Prefer the smallest server/dashboard change that preserves the control-plane contract.
+- Do not add orchestration layers, agent abstractions, route config, or scheduler state before an existing caller or test proves the need.
+- Keep runtime checks, auth boundaries, audit evidence, and Vitest coverage even when simplifying code.
+- Mark intentional shortcuts with `ponytail:` only when the ceiling and upgrade trigger are explicit.
+
 ## Browser Testing
 
 Playwright MCP is configured in `.vscode/mcp.json`. Install first:

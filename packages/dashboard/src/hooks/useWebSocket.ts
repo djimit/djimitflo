@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import type { WebSocketMessage, WebSocketEventType } from '@djimitflo/shared';
 import { WS_CLOSE_CODES } from '@djimitflo/shared';
 
-const AUTH_TOKEN_KEY = 'djimitflo_auth_token';
+const AUTH_SESSION_KEY = 'djimitflo_auth_session';
 
 function getDefaultWsUrl(): string {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -34,7 +34,7 @@ export function useWebSocket(isAuthenticated: boolean) {
       return;
     }
 
-    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const token = localStorage.getItem(AUTH_SESSION_KEY);
     if (!token) {
       return;
     }

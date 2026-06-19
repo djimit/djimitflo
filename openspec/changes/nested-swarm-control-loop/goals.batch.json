@@ -1,0 +1,304 @@
+{
+  "change": "nested-swarm-control-loop",
+  "policy": {
+    "auto_spawn_workers": false,
+    "auto_start_loops": false,
+    "auto_promote_memory": false,
+    "requires_mock_e2e_before_real_runtime": true,
+    "high_risk_requires_security_checker": true,
+    "high_risk_requires_human_approval": true,
+    "dashboard_must_distinguish_registry_from_active_execution": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G17.1-real-http-control-loop",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Make the mock runtime a real HTTP control-loop client: mint a per-child scoped spawn token and inject control identity env, let a spawned child self-spawn a sub-agent over POST /api/swarms/spawns and poll the child status, and prove it end to end including a control-plane-outage non-fatal path.",
+          "constraints": [
+            "The spawn token is scoped to the lease and spawn tree, minted from a shared HMAC secret in a leaf module.",
+            "A control-plane outage is non-fatal: the child exits 0, creates no child, and holds no runtime semaphore permit.",
+            "Do not bypass the spawn route with an in-process shortcut.",
+            "No real tokens consumed in the e2e; fake/mock runtimes only."
+          ],
+          "acceptance_criteria": [
+            "The spawned process env carries DJIMITFLO_CONTROL_URL, a scoped DJIMITFLO_SPAWN_TOKEN, DJIMITFLO_LEASE_ID, DJIMITFLO_SPAWN_TREE_ID, and DJIMITFLO_DEPTH.",
+            "A mock root self-spawns a child over HTTP and the child a grandchild with correct worker_lease parentage/tree/depth.",
+            "Exactly two HTTP-spawned children are observed in the e2e.",
+            "A control-plane-outage e2e asserts the mock exits 0, creates no child, and holds no permit."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 200000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.1",
+            "recommended_loop": "nested-control-loop-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.2-per-depth-budget-ceiling-and-depth-floor",
+      "depends_on": ["G17.1-real-http-control-loop"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Bound spawn depth and budget: grant each spawned child a bounded token/wall grant capped per depth inside a tree-wide hard bound, arm allow_nested_spawn cooperatively when depth < depth_budget, and keep a depth_budget_exceeded backstop gate for non-cooperative runtimes.",
+          "constraints": [
+            "Per-depth caps (SPAWN_PER_DEPTH_TOKEN_CAP / SPAWN_PER_DEPTH_WALL_CAP_MS) sit inside the tree-wide hard bound.",
+            "A non-cooperative runtime attempting depth + 1 beyond depth_budget is rejected with a gated-out response, not a worker failure.",
+            "The depth-floor child is disarmed and runs echo-only.",
+            "Do not relax the tree-wide hard budget to accommodate deeper trees."
+          ],
+          "acceptance_criteria": [
+            "Each prepared child receives a bounded token and wall grant capped per depth.",
+            "Cumulative tree consumption stays within total_token_budget / total_wall_budget_ms.",
+            "The depth-floor child is not armed, runs echo-only, exits 0, and creates no great-grandchild.",
+            "A depth_budget_exceeded gated-out response is a legitimate terminal state."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.2",
+            "recommended_loop": "depth-budget-guard-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.3-token-or-user-auth",
+      "depends_on": ["G17.2-per-depth-budget-ceiling-and-depth-floor"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Authorize spawn mutations with either a user JWT or a scoped spawn token, while keeping root creation operator-only via write:swarm_action.",
+          "constraints": [
+            "A token-only caller can POST /spawns but cannot POST /spawns/root.",
+            "No-credential callers receive 401 AUTH_REQUIRED; malformed bearers receive 401 AUTH_INVALID without falling through to spawn-token auth.",
+            "Do not broaden root creation permissions.",
+            "The spawn token must remain scoped to a lease and spawn tree."
+          ],
+          "acceptance_criteria": [
+            "Spawn routes mount with requireAuthOrSpawnToken so a user JWT OR a scoped spawn token authorizes POST /spawns.",
+            "POST /spawns/root is operator-only via write:swarm_action; a token-only caller gets 401.",
+            "An e2e asserts token-only POST /spawns -> 201, no-header -> 401 AUTH_REQUIRED, malformed bearer -> 401 AUTH_INVALID, and token-only POST /spawns/root -> 401."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.3",
+            "recommended_loop": "spawn-auth-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.4-skill-injection-l4-mvp",
+      "depends_on": ["G17.3-token-or-user-auth"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Inject a spawned child's validated LIVE capability manifest as read-only metadata into its env and assignment packet, granting no new authority.",
+          "constraints": [
+            "Only LIVE capabilities (live_route_allowed) are serialized; a missing or non-live capability is silently skipped, not an error.",
+            "The manifest is read-only metadata and grants no new authority.",
+            "The manifest returns undefined when empty so no env line is injected for capability-less children.",
+            "Do not execute capabilities inside the injection path."
+          ],
+          "acceptance_criteria": [
+            "LoopService.buildCapabilityManifest serializes only LIVE capabilities as a compact JSON manifest with id, kind, owner, version, status, risk_ceiling, allowed_actions, forbidden_actions, and required_evidence.",
+            "buildNestedSpawnEnv sets DJIMITFLO_CAPABILITIES and writeAssignmentPacket writes a capabilities field carrying the manifest.",
+            "The mock runtime logs capabilities=<count> so injection is observable.",
+            "An e2e registers a live capability, binds it to the root, runs the maker, and asserts the env line capabilities=1 and the packet carries the manifest."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.4",
+            "recommended_loop": "skill-injection-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.5-new-loop-runtimes-l4-mvp",
+      "depends_on": ["G17.4-skill-injection-l4-mvp"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Add claude, gemini, and editor (=cline) as loop runtimes with the same headless contract and default-deny security gates as codex and opencode, and probe their runtime contracts via fake binaries.",
+          "constraints": [
+            "The bypass flag (--dangerously-skip-permissions / -y / --auto-approve true) is added ONLY when RUNTIME_ALLOW_SKIP_PERMISSIONS=true.",
+            "Runtime contracts probe --version and the runtime help subcommand and mark drifted with an actionable reason when a required flag is missing.",
+            "Real runtime smoke runs are manual/optional; the suite proves the path with fake binaries.",
+            "Do not weaken the env allowlist, cwd boundary, or semaphore gates for the new runtimes."
+          ],
+          "acceptance_criteria": [
+            "buildRuntimeCommand gains claude/gemini/editor branches with the correct headless args and skip-permissions/model toggles.",
+            "getRuntimeContract generalizes to a probe table covering all five real runtimes and marks drifted when the json/cwd/headless flag is missing.",
+            "RuntimeContract.runtime, getRuntimeContracts(), fleet pools, runtimeCommandAvailable, WorkerRuntime, tickScheduler, RuntimeKind/VALID_RUNTIMES, the spawn error message, ExecutorKind, and loop input runtime unions are extended.",
+            "Unit tests cover the three buildRuntimeCommand branches and the available/drifted/unavailable probes, plus a fake-claude self-spawn e2e proving a non-mock runtime follows the control loop and the spawn route accepts runtime: 'claude'."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.5",
+            "recommended_loop": "new-runtime-fleet-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.6-flake-hardening",
+      "depends_on": ["G17.5-new-loop-runtimes-l4-mvp"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Harden the parallel-load flake deterministically: retry git worktree add on transient lock errors, isolate proof-run-service tests, and map runtime/worktree failures to a stable error code.",
+          "constraints": [
+            "Lock-class git errors are retried a bounded number of times with backoff; non-lock errors are not retried.",
+            "proof-run-service tests use per-test temp git repos and per-test LOOP_WORKTREE_ROOT/LOOP_EVIDENCE_ROOT.",
+            "PROOF_RUN_RUNTIME_FAILED maps to a stable 503, never a bare 500 INTERNAL_ERROR.",
+            "Do not mask non-transient failures as retriable."
+          ],
+          "acceptance_criteria": [
+            "createWorktree retries lock-class git errors (worktree.lock / index.lock / another git process / File exists) up to a bounded number of attempts and re-throws WORKTREE_CREATE_FAILED only after retries exhaust.",
+            "proof-run-service tests are isolated per test and deterministic under parallel runs.",
+            "PROOF_RUN_RUNTIME_FAILED -> stable 503 in mapProofRunError.",
+            "Unit tests cover lock-retry-then-success, non-lock no-retry, and the 503 mapping."
+          ],
+          "risk_class": "low",
+          "budget": {
+            "max_tokens": 120000,
+            "max_tokens_per_worker": 50000,
+            "max_wall_clock_seconds": 3600,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.6",
+            "recommended_loop": "flake-hardening-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.7-discussion-turn-protocol",
+      "depends_on": ["G17.6-flake-hardening"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Extend the discussions substrate with ordered multi-round turns and a computed-on-read next-speaker selector that returns a hint only and spawns nothing.",
+          "constraints": [
+            "Only one open turn may be pending at a time; replies via parent_turn_id are allowed only to a committed turn.",
+            "The next-speaker selector is computed-on-read (no scheduler table); tick returns a hint only and spawns nothing.",
+            "Turn writes are gated by create:task and tick by write:swarm_action; reads are open to authenticated.",
+            "Non-participants are rejected when metadata.participants is non-empty."
+          ],
+          "acceptance_criteria": [
+            "A discussion_turns table (ordered turn_index, nullable parent_turn_id, status CHECK open|committed|superseded, FK cascade) is added to schema.ts and applies on every boot via CREATE TABLE IF NOT EXISTS.",
+            "DiscussionTurnService provides appendTurn, listTurns, computeNextTurn (round-robin over metadata.participants), and setTurnStatus with valid open->committed|superseded and committed->superseded transitions.",
+            "Turn routes POST /:id/turns, GET /:id/turns, POST /:id/tick, PATCH /:id/turns/:turnId are wired with correct permissions and broadcast DISCUSSION_TURN_ADDED / DISCUSSION_TURN_COMMITTED.",
+            "A route + service test covers append, non-participant refusal, one-open-turn gate, tick round-robin + awaiting-commit, commit/supersede, reply threading, permission gating, and a computeNextTurn unit test."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.7",
+            "recommended_loop": "discussion-turn-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G17.8-tasks-path-executor-parity",
+      "depends_on": ["G17.7-discussion-turn-protocol"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Register claude, gemini, and editor (cline) as ExecutionEngine executors that inherit the existing tasks-path gates and the established spawn/parse contract, mirroring CodexExecutor.",
+          "constraints": [
+            "Executors register via the open/closed registerExecutor map (no switch) and inherit the existing execute:task + risk-classifier + approval-policy gates.",
+            "Skip-permissions / model toggles are controlled by the per-executor *_SKIP_PERMISSIONS env gate (the pre-existing tasks-path posture), not the loop path's runtime allowlist.",
+            "Argv reuses the proven buildRuntimeCommand shapes for claude/gemini/editor.",
+            "Native per-CLI streaming-event schema mapping is deferred; parsing is best-effort NDJSON + heuristic fallback + exit code."
+          ],
+          "acceptance_criteria": [
+            "ClaudeExecutor, GeminiExecutor, and EditorExecutor classes mirror CodexExecutor (bin/timeout/skip env, spawn, SIGTERM->5s->SIGKILL, NDJSON + heuristic-fallback parsing).",
+            "buildClaudeArgs / buildGeminiArgs / buildEditorArgs emit claude -p <prompt> --output-format json, gemini -p <prompt> -o json, and cline --json --auto-approve <bool> -c <worktree> --thinking <t> <prompt> respectively, with the bypass flag gated by the per-executor env.",
+            "The three executors are registered in ExecutionEngine and executeTask for those kinds passes through the same gates as opencode and codex.",
+            "Arg-shape tests cover each executor plus one fake-bin smoke proving start() yields a completed result on exit 0."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "nested-swarm-control-loop",
+            "phase": "G17.8",
+            "recommended_loop": "tasks-executor-parity-loop"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -63,6 +63,25 @@ CREATE TABLE IF NOT EXISTS agents (
 CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
 CREATE INDEX IF NOT EXISTS idx_agents_name ON agents(name);
 
+-- Agent messages table
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  from_agent_id TEXT NOT NULL,
+  to_agent_id TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('task_delegation', 'status_update', 'knowledge_share', 'alert')),
+  payload TEXT NOT NULL DEFAULT '{}',
+  priority TEXT NOT NULL DEFAULT 'low' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
+  read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (from_agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+  FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_from_agent_id ON messages(from_agent_id);
+CREATE INDEX IF NOT EXISTS idx_messages_to_agent_id ON messages(to_agent_id);
+CREATE INDEX IF NOT EXISTS idx_messages_read_at ON messages(read_at);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+
 -- Execution events table
 CREATE TABLE IF NOT EXISTS execution_events (
   id TEXT PRIMARY KEY,
@@ -361,6 +380,28 @@ CREATE TABLE IF NOT EXISTS discussion_votes (
 CREATE INDEX IF NOT EXISTS idx_discussion_votes_proposal_id ON discussion_votes(proposal_id);
 CREATE INDEX IF NOT EXISTS idx_discussion_votes_agent_id ON discussion_votes(agent_id);
 CREATE INDEX IF NOT EXISTS idx_discussion_votes_vote ON discussion_votes(vote);
+
+-- Discussion turns table (ordered, multi-round turn protocol on top of discussions)
+CREATE TABLE IF NOT EXISTS discussion_turns (
+  id TEXT PRIMARY KEY,
+  discussion_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL,
+  parent_turn_id TEXT,
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'committed', 'superseded')),
+  metadata TEXT NOT NULL DEFAULT '{}', -- JSON object
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (discussion_id) REFERENCES discussions(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_turn_id) REFERENCES discussion_turns(id) ON DELETE SET NULL,
+  UNIQUE(discussion_id, turn_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_discussion_id ON discussion_turns(discussion_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_agent_id ON discussion_turns(agent_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_parent_turn_id ON discussion_turns(parent_turn_id);
+CREATE INDEX IF NOT EXISTS idx_discussion_turns_status ON discussion_turns(status);
 
 -- Token usage log table
 CREATE TABLE IF NOT EXISTS token_usage_log (

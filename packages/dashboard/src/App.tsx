@@ -14,10 +14,15 @@ import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
 import { ObservabilityPage } from './pages/ObservabilityPage';
 import { ReviewPage } from './pages/ReviewPage';
 import { AuditPage } from './pages/AuditPage';
-import { UsagePage } from './pages/UsagePage';
 import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
+import { GoalsLoopsPage } from './pages/GoalsLoopsPage';
+import { SwarmResourcesPage } from './pages/SwarmResourcesPage';
+import { SwarmMissionControlPage } from './pages/SwarmMissionControlPage';
+import { ProofRunDetailPage } from './pages/ProofRunDetailPage';
 import { LoginPage } from './pages/LoginPage';
+import { UsagePage } from './pages/UsagePage';
+import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -78,6 +83,11 @@ export function App() {
           <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
+          <Route path="goals-loops" element={<GoalsLoopsPage />} />
+          <Route path="swarm-resources" element={<SwarmResourcesPage />} />
+          <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
+          <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
+          <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

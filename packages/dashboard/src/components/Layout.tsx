@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, Brain } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -48,7 +48,7 @@ export function Layout() {
           />
           <NavLink
             to="/swarm"
-            icon={<Brain className="w-5 h-5" />}
+            icon={<Cpu className="w-5 h-5" />}
             label="Swarm"
             active={isActive('/swarm')}
           />
@@ -87,6 +87,36 @@ export function Layout() {
             icon={<FolderGit className="w-5 h-5" />}
             label="Repositories"
             active={isActive('/repositories')}
+          />
+          <NavLink
+            to="/goals-loops"
+            icon={<Workflow className="w-5 h-5" />}
+            label="Goals & Loops"
+            active={isActive('/goals-loops')}
+          />
+          <NavLink
+            to="/usage"
+            icon={<DollarSign className="w-5 h-5" />}
+            label="Usage"
+            active={isActive('/usage')}
+          />
+          <NavLink
+            to="/workstation-urls"
+            icon={<Network className="w-5 h-5" />}
+            label="Workstation URLs"
+            active={isActive('/workstation-urls')}
+          />
+          <NavLink
+            to="/swarm-resources"
+            icon={<Network className="w-5 h-5" />}
+            label="Swarm Resources"
+            active={isActive('/swarm-resources')}
+          />
+          <NavLink
+            to="/swarm-mission-control"
+            icon={<BrainCircuit className="w-5 h-5" />}
+            label="Mission Control"
+            active={isActive('/swarm-mission-control')}
           />
         </nav>
         

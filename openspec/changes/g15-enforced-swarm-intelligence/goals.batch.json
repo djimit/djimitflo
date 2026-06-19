@@ -1,0 +1,405 @@
+{
+  "change": "g15-enforced-swarm-intelligence",
+  "policy": {
+    "auto_spawn_workers": false,
+    "auto_start_loops": false,
+    "auto_promote_memory": false,
+    "requires_mock_e2e_before_real_runtime": true,
+    "high_risk_requires_security_checker": true,
+    "high_risk_requires_human_approval": true,
+    "dashboard_must_distinguish_registry_from_active_execution": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G15.1-security-boundary-provenance-baseline",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Close G14 security boundary gaps before expanding swarm autonomy: constrain OKF paths, add scoped permissions, reject secret-like payloads, derive runtime node labels from config or heartbeat and validate evidence refs.",
+          "constraints": [
+            "No arbitrary filesystem path may influence OKF drift or sync.",
+            "Do not persist secret-like payload values.",
+            "Do not hardcode MacBook or workstation identity in service logic.",
+            "Do not broaden existing permissions as a shortcut."
+          ],
+          "acceptance_criteria": [
+            "OKF drift/sync accepts configured root ids or canonical allowlisted roots only.",
+            "Capability, claim, governance, runner-manifest and swarm-action writes use scoped permissions.",
+            "Claims, evidence, traces, manifests and memory candidates share the same sensitive-payload rejection path.",
+            "Mission Control node labels come from runtime node config or heartbeat-derived inventory.",
+            "Tests cover path escape, scoped permission refusal, safe sensitive-payload rejection and node label fallback."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.1",
+            "recommended_loop": "security-boundary-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.2-capability-promotion-router-enforcement",
+      "depends_on": [
+        "G15.1-security-boundary-provenance-baseline"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Make capability contracts enforce worker routing: split candidate creation from validated promotion, hard-fail eval threshold misses and route worker selection through validated eligible capabilities.",
+          "constraints": [
+            "Draft and candidate capabilities remain advisory only.",
+            "Eval score below threshold is a hard failure.",
+            "High and critical capability promotion requires security and human approval refs.",
+            "Worker routing must record blocked reasons."
+          ],
+          "acceptance_criteria": [
+            "Capability promotion requires owner, version, allowed actions, forbidden actions, risk ceiling, eval threshold, removal strategy, eval refs and evidence refs.",
+            "Below-threshold capability eval fails even when other checklist fields pass.",
+            "startNextWorker and drain selection refuse draft, candidate, disabled, over-risk or below-threshold capabilities.",
+            "Tests cover successful low-risk routing and refused ineligible routing cases."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 240000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.2",
+            "recommended_loop": "capability-router-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.3-governance-enforcement-layer",
+      "depends_on": [
+        "G15.2-capability-promotion-router-enforcement"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build and integrate an enforcement decision layer for loop verify, loop complete, start-next, drain, stop, kill and memory promotion.",
+          "constraints": [
+            "Do not trust request-supplied governance pass booleans.",
+            "Resolve persisted maker, checker, security checker, quorum and human approval refs.",
+            "Keep ready_for_human_merge, human_approved and completed distinct.",
+            "Every allow, block, advisory and human-required decision writes trace evidence."
+          ],
+          "acceptance_criteria": [
+            "verifyLoopRun and completeLoopRun call the enforcement layer.",
+            "startNextWorker, drainWorkerPool, stop and kill call the enforcement layer before mutation.",
+            "Memory promotion calls the enforcement layer and blocks policy/security/autonomy promotion without human review refs.",
+            "Tests cover spoofed payload refusal, missing quorum block, missing human approval block and low-risk allowed path."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 280000,
+            "max_tokens_per_worker": 100000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.3",
+            "recommended_loop": "governance-enforcement-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.4-claim-ledger-v2-evidence-provenance",
+      "depends_on": [
+        "G15.3-governance-enforcement-layer"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Replace coarse claim contradiction logic with typed claims, explicit support/refine/contradict edges and resolvable evidence provenance.",
+          "constraints": [
+            "Same-subject claims are not automatically contradictions.",
+            "Claims cannot influence routing, backlog, dashboard decisions or memory without resolvable evidence refs.",
+            "Specialist review claims start as proposed unless supported by evidence.",
+            "Sensitive evidence must be rejected or redacted before persistence."
+          ],
+          "acceptance_criteria": [
+            "Claims include subject_ref, predicate, object, scope, confidence, validity window, status, source ref, sensitivity and evidence refs.",
+            "Ledger supports explicit supports, refines and contradicts relationships.",
+            "Specialist review to claim extraction stores proposed typed claims with panel/review refs.",
+            "Tests cover multiple supported facts on one subject, explicit contradiction, unsupported claim, expired claim and sensitive evidence rejection."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 100000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.4",
+            "recommended_loop": "evidence-ledger-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.5-evidence-graph-lineage-resolver",
+      "depends_on": [
+        "G15.4-claim-ledger-v2-evidence-provenance"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build a permission-filtered evidence graph resolver from specialist panel to memory candidate and back from worker lease to all governing facts.",
+          "constraints": [
+            "Graph traversal must respect caller permissions.",
+            "Restricted sensitive records must not leak via labels or counts.",
+            "Missing edges must be explicit gaps, not invented lineage.",
+            "Dashboard summaries must link to resolvable refs."
+          ],
+          "acceptance_criteria": [
+            "Graph edges cover panel, review, claim, backlog item, goal, loop run, worker lease, trace span, checkpoint, runner manifest and memory candidate.",
+            "APIs support forward and reverse traversal with permission filtering.",
+            "Review bundles can include evidence graph summaries.",
+            "Tests cover panel-to-memory lineage, lease-to-claim reverse lookup, missing edge handling and permission-filtered output."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.5",
+            "recommended_loop": "evidence-graph-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.6-runner-manifest-auto-write",
+      "depends_on": [
+        "G15.5-evidence-graph-lineage-resolver"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Move runner manifests from manual API assertions to append-only evidence written automatically by runner action paths.",
+          "constraints": [
+            "Public APIs may request actions but may not assert completed runner facts.",
+            "Each manifest requires real loop, lease when applicable, actor, enforcement decision, capacity snapshot and budget snapshot refs.",
+            "Execution actions require before and after checkpoint refs.",
+            "Runtime stdout, stderr, artifacts and parsed usage must be attached when available."
+          ],
+          "acceptance_criteria": [
+            "Runner writes manifests for plan, start, skip, stop, kill, timeout, failure, completion and drain summary.",
+            "Direct spoofed completed manifest writes are refused.",
+            "Worker execution attaches stdout/stderr/artifact refs, usage parse result, trace refs and checkpoint refs.",
+            "Tests cover auto-written manifests, spoof refusal, timeout, killed worker and completion."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 100000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.6",
+            "recommended_loop": "worker-runner-evidence-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.7-capacity-governor-live-scheduler",
+      "depends_on": [
+        "G15.6-runner-manifest-auto-write"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Turn Capacity Governor v2 from preview into a live scheduler with fair-share queue selection, runtime concurrency, budget gates, stop/kill handling and circuit breakers.",
+          "constraints": [
+            "Starting a worker requires both scheduler eligibility and enforcement allow.",
+            "Token, wall-clock, retry, failure and concurrency budgets are hard gates.",
+            "Stop/kill must preserve runtime evidence.",
+            "Repeated failures must block further drain for affected queue, runtime or capability."
+          ],
+          "acceptance_criteria": [
+            "Scheduler uses queue classes, fair-share weights, queue age and starvation protection.",
+            "Runtime concurrency slots are enforced per adapter and risk class.",
+            "Budget snapshots and selected/blocked reasons are written to traces and manifests.",
+            "Codex/OpenCode adapters expose process-aware stop/kill behavior or explicit unavailable blocked reason.",
+            "Tests cover fair-share ordering, exhausted budgets, repeated failure breaker, runtime unavailable and stop/kill evidence."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 320000,
+            "max_tokens_per_worker": 120000,
+            "max_wall_clock_seconds": 10800,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.7",
+            "recommended_loop": "capacity-scheduler-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.8-okf-skill-sync-hypothesis-workbench",
+      "depends_on": [
+        "G15.7-capacity-governor-live-scheduler"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Sync OKF skills into capability candidates and add hypothesis workbench entities with evidence plans, falsification signals, stop conditions and specialist profile versions.",
+          "constraints": [
+            "OKF sync is dry-run by default.",
+            "Apply requires scoped permission and allowlisted root.",
+            "Synced skills remain advisory until validated by eval and approval evidence.",
+            "Hypothesis projection does not start workers."
+          ],
+          "acceptance_criteria": [
+            "OKF skill roots index into capability candidates with path, owner, version, actions, gates and validation refs.",
+            "Validated synced skills become route-eligible only within risk ceiling and allowed actions.",
+            "Specialist profile id and version are stored on panel reviews.",
+            "Hypotheses store evidence plan, falsification signal, stop condition, owner capability and projection state.",
+            "Tests cover dry-run sync, apply permission, draft advisory behavior, profile version persistence and hypothesis stop conditions."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 240000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.8",
+            "recommended_loop": "skill-memory-sync-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.9-mission-control-drillthrough-actions",
+      "depends_on": [
+        "G15.8-okf-skill-sync-hypothesis-workbench"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Upgrade Mission Control from observability surface to evidence-backed drill-through and enforcement-gated operator action cockpit.",
+          "constraints": [
+            "Mission Control is not a source of truth.",
+            "Every mutating dashboard action must call enforcement.",
+            "Disabled actions must show exact blocked reasons.",
+            "Active execution requires runtime evidence."
+          ],
+          "acceptance_criteria": [
+            "Dashboard drills into capabilities, claims, panels, backlog items, goals, loops, leases, traces, checkpoints, manifests and memory candidates.",
+            "Gated actions exist for capability promotion, claim resolution, panel projection, goal creation, start-next, drain, stop/kill and manifest review.",
+            "UI separates cockpit, execution node, registry state, prepared leases and active runtime evidence.",
+            "Mission Control avoids duplicate runtime status probes inside one request.",
+            "Dashboard tests cover drill-through, disabled blocked actions, runtime-node labels and active-execution truth."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.9",
+            "recommended_loop": "mission-control-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G15.10-end-to-end-scenario-runtime-smoke",
+      "depends_on": [
+        "G15.9-mission-control-drillthrough-actions"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Prove enforced swarm intelligence end to end with mock runtime first, then bounded Codex and OpenCode runtime smokes with evidence, budgets, artifacts, traces, checkpoints and dashboard proof.",
+          "constraints": [
+            "Mock runtime scenario must pass before real runtime smoke.",
+            "Real runtime smoke is bounded and low-risk.",
+            "No merge, push, deploy, high-risk unattended execution or automatic policy memory promotion.",
+            "If Codex or OpenCode is unavailable, record an explicit blocked reason instead of pretending success."
+          ],
+          "acceptance_criteria": [
+            "Mock scenario creates question, hypothesis, panel, claims, backlog item, goal, prepared lease, scheduler plan, worker run, checker result, manifests, traces, checkpoints, memory candidate and dashboard proof.",
+            "Every mutating step in the scenario has an enforcement decision.",
+            "Codex smoke records stdout, stderr, artifact refs, parsed usage, budgets, traces and checkpoints.",
+            "OpenCode smoke records the same evidence or a clear runtime-unavailable blocked reason.",
+            "Change evidence file stores ids, endpoints, runtime status, budget outcomes and remaining risks."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 300000,
+            "max_tokens_per_worker": 120000,
+            "max_wall_clock_seconds": 10800,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g15-enforced-swarm-intelligence",
+            "phase": "G15.10",
+            "recommended_loop": "end-to-end-swarm-smoke-loop",
+            "security_checker_required": true,
+            "real_runtime_smoke_after_mock_only": true
+          }
+        }
+      }
+    }
+  ]
+}

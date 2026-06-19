@@ -2,7 +2,7 @@
  * Codex CLI executor — spawns 'codex exec' process and streams structured events
  *
  * CLI contract (anticipated; verified against actual binary when available):
- *   codex exec [--format json] [--dir <path>] [--model <model>] <prompt>
+ *   codex exec [--json] [--cd <path>] [--model <model>] <prompt>
  *
  * JSON event stream (NDJSON, one JSON object per line):
  *   { "type": "step-start", ... }
@@ -15,6 +15,7 @@
 
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
+import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -113,7 +114,7 @@ export class CodexExecutor implements TaskExecutor {
 
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
-      const env = { ...process.env, ...options?.environment };
+      const env = buildExecutorEnv(options?.environment);
 
       const child = spawn(this.codexPath, args, {
         cwd,
@@ -197,11 +198,11 @@ export class CodexExecutor implements TaskExecutor {
 
     const format = options?.format ?? this.outputFormat;
     if (format === 'json') {
-      args.push('--format', 'json');
+      args.push('--json');
     }
 
     if (options?.workingDirectory) {
-      args.push('--dir', options.workingDirectory);
+      args.push('--cd', options.workingDirectory);
     }
 
     if (options?.model) {
@@ -210,7 +211,7 @@ export class CodexExecutor implements TaskExecutor {
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
     if (skipPerms) {
-      args.push('--dangerously-skip-permissions');
+      args.push('--dangerously-bypass-approvals-and-sandbox');
     }
 
     args.push(task.description);

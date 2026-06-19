@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel, AuthTokenPayload } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
+import { ContextInjectionService } from '../services/context-injection-service';
 import { randomUUID } from 'crypto';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutorKind } from '../execution/types';
@@ -35,6 +36,7 @@ function parseTask(task: any): any {
 export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const contextInjector = new ContextInjectionService();
 
   function getUser(req: any): AuthTokenPayload {
     return (req as any).user;
@@ -103,7 +105,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   });
 
   // POST /api/tasks - Create new task
-  router.post('/', requirePermission('create:task'), (req, res, next) => {
+  router.post('/', requirePermission('create:task'), async (req, res, next) => {
     try {
       const {
         title,
@@ -118,6 +120,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         instruction_profile_id = null,
         tags = [],
         metadata = {},
+        use_swarm_context = true,
       } = req.body;
 
       if (!title || !description) {
@@ -127,7 +130,16 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       const id = randomUUID();
       const now = new Date().toISOString();
       const actorId = (req as any).user?.sub;
-      const enrichedMetadata = { ...metadata, createdBy: actorId };
+
+      // Inject swarm context (Qdrant + OKF) if enabled
+      let swarmContext = '';
+      try {
+        swarmContext = await contextInjector.injectContext(`${title} ${description}`, use_swarm_context);
+      } catch (e: any) {
+        console.warn('Context injection failed:', e?.message || e);
+      }
+
+      const enrichedMetadata = { ...metadata, createdBy: actorId, swarm_context: swarmContext || undefined };
 
       db.prepare(`
         INSERT INTO tasks (

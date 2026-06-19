@@ -7,7 +7,7 @@ import { Task, ExecutionEventCreateInput } from '@djimitflo/shared';
 /**
  * Executor kinds supported by the system
  */
-export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'custom';
+export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'claude' | 'gemini' | 'editor' | 'custom';
 
 /**
  * Execution session status

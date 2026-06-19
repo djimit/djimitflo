@@ -1,0 +1,162 @@
+{
+  "change": "commit-workstation-smoke-and-policy-runner",
+  "policy": {
+    "auto_spawn_workers": false,
+    "auto_start_loops": false,
+    "commit_requires_operator_review": true,
+    "real_runtime_smoke_requires_temp_db": true,
+    "runner_execution_requires_policy_gate": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G13.1-scoped-commit-gate",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Create a scoped commit for the validated real-worker/fleet control-plane work without staging unrelated local env drift.",
+          "constraints": [
+            "Do not stage secrets, local env files, generated outputs or unrelated dirty files.",
+            "Preserve exact post-commit worktree status.",
+            "Run validation before committing."
+          ],
+          "acceptance_criteria": [
+            "git diff --check passes.",
+            "git diff --cached --stat contains only intended files.",
+            "Commit hash is recorded.",
+            "Remaining dirty/untracked files are listed separately."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 50000,
+            "max_tokens_per_worker": 25000,
+            "max_wall_clock_seconds": 1800,
+            "max_maker_workers": 1,
+            "max_retries": 0
+          },
+          "metadata": {
+            "openspec_change": "commit-workstation-smoke-and-policy-runner",
+            "phase": "T13.1",
+            "recommended_loop": "repo-maintenance-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G13.2-workstation-live-smoke",
+      "depends_on": [
+        "G13.1-scoped-commit-gate"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Run workstation live smoke for committed runtime contracts, swarm status, fleet cockpit and Goals/Loops worker controls.",
+          "constraints": [
+            "MacBook dashboard is cockpit only; workstation remains execution node.",
+            "Do not start workers unless explicitly requested.",
+            "Capture endpoint responses and dashboard route evidence."
+          ],
+          "acceptance_criteria": [
+            "/api/loops/runtime-contracts returns Codex/OpenCode status.",
+            "/api/swarms/status returns fleet_pools with prepared/running/completed separation.",
+            "Dashboard Fleet Cockpit matches API data.",
+            "Scheduler safe tick can run without starting workers."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 80000,
+            "max_tokens_per_worker": 30000,
+            "max_wall_clock_seconds": 2400,
+            "max_maker_workers": 1,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "commit-workstation-smoke-and-policy-runner",
+            "phase": "T13.2",
+            "recommended_loop": "doc-drift-and-small-fix-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G13.3-real-codex-opencode-smoke",
+      "depends_on": [
+        "G13.2-workstation-live-smoke"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Run bounded real Codex/OpenCode maker/checker smoke on temp DB/temp repo with artifacts, traces, checkpoints and token evidence.",
+          "constraints": [
+            "Use temp DB and temp repo only.",
+            "Do not merge, push or deploy.",
+            "Runtime contract drift must block before spawn.",
+            "Hard timeout and token budgets are required."
+          ],
+          "acceptance_criteria": [
+            "Codex smoke completes or blocks with actionable contract evidence.",
+            "OpenCode smoke completes or blocks with actionable contract evidence.",
+            "Successful smoke reaches ready_for_human_merge after checks and checker verdict.",
+            "Trace spans, checkpoints, stdout/stderr and token usage evidence are recorded."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 3600,
+            "max_maker_workers": 1,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "commit-workstation-smoke-and-policy-runner",
+            "phase": "T13.3",
+            "recommended_loop": "doc-drift-and-small-fix-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G13.4-policy-gated-worker-pool-runner",
+      "depends_on": [
+        "G13.3-real-codex-opencode-smoke"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build the policy-gated worker pool runner that can plan, start-next, drain and stop prepared workers under capacity and risk gates.",
+          "constraints": [
+            "Planning must not start workers.",
+            "High-risk work requires security or human gate.",
+            "Runner must respect runtime availability, recommended concurrency, token budget and wall-clock budget.",
+            "No merge, push, deploy, secret mutation or data deletion."
+          ],
+          "acceptance_criteria": [
+            "Runner plan lists eligible, blocked and running leases with reasons.",
+            "start-next starts at most one allowed prepared lease.",
+            "drain starts only allowed leases up to recommended concurrency.",
+            "Dashboard shows blocked policy/capacity reasons.",
+            "Tests cover low-risk allowed, high-risk blocked, runtime unavailable, low capacity, token exhausted and timeout stop."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "commit-workstation-smoke-and-policy-runner",
+            "phase": "T13.4",
+            "recommended_loop": "repo-maintenance-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    }
+  ]
+}

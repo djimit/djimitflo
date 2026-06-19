@@ -31,11 +31,508 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
-const AUTH_TOKEN_KEY = 'djimitflo_auth_token';
+const AUTH_SESSION_KEY = 'djimitflo_auth_session';
+
+type UsageQuota = {
+  provider: string;
+  tier: string;
+  is_active: boolean;
+  tokens_used_hourly: number;
+  tokens_used_daily: number;
+  tokens_used_weekly: number;
+  tokens_used_monthly: number;
+  quota_hourly: number | null;
+  quota_daily: number | null;
+  quota_weekly: number | null;
+  quota_monthly: number | null;
+  cost_total: number;
+  cost_per_1k_prompt: number | null;
+  cost_per_1k_completion: number | null;
+  rate_limit_rpm: number | null;
+  rate_limit_rpd: number | null;
+};
+
+type UsageBreakdown = {
+  date: string;
+  tokens: number;
+  cost: number;
+};
+
+type UsageLog = {
+  id: string;
+  timestamp: string;
+  provider: string;
+  model: string;
+  task_id: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cost: number;
+};
+
+export type GoalRecord = {
+  id: string;
+  objective: string;
+  constraints: string[];
+  acceptance_criteria: string[];
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  budget: Record<string, unknown>;
+  status: string;
+  owner_user_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LoopFinding = {
+  id: string;
+  type: string;
+  severity: 'info' | 'warning';
+  file: string;
+  line?: number;
+  message: string;
+  evidence: string;
+  suggested_fix: string;
+  parent_finding_id?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type LoopGate = {
+  name: string;
+  status: 'pass' | 'fail' | 'skipped';
+  evidence: string;
+};
+
+export type LoopRunRecord = {
+  id: string;
+  goal_id: string | null;
+  loop_name: string;
+  mode: 'closed' | 'open';
+  status: string;
+  repository_path: string | null;
+  state_file: string | null;
+  findings: LoopFinding[];
+  plan: Record<string, unknown>;
+  gates: LoopGate[];
+  next_actions: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+};
+
+export type LoopCatalogItem = {
+  name: string;
+  title: string;
+  description: string;
+  mode: 'closed';
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  trigger: string[];
+  context_sources: string[];
+  actions_allowed: string[];
+  actions_forbidden: string[];
+  verification: string[];
+  state: string[];
+  escalation: string[];
+  stop_conditions: string[];
+  status: string;
+  gates: string[];
+  runtimes: Record<string, RuntimeContract>;
+};
+
+export type RuntimeContract = {
+  runtime: string;
+  available: boolean;
+  command: string | null;
+  version?: string;
+  status: 'ok' | 'drifted' | 'unavailable';
+  cwd_flag?: string;
+  json_flag?: string | string[];
+  supports_json_events: boolean;
+  supports_usage_parsing: boolean;
+  supports_timeout_kill: boolean;
+  evidence: string[];
+  reason?: string;
+};
+
+export type WorkerLeaseRecord = {
+  id: string;
+  loop_run_id: string;
+  role: string;
+  runtime: string;
+  status: string;
+  finding_id: string | null;
+  worktree_path: string | null;
+  branch_name: string | null;
+  budget: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LoopEventRecord = {
+  id: string;
+  loop_run_id: string;
+  event_type: string;
+  level: string;
+  message: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type LoopReviewBundle = {
+  run: LoopRunRecord;
+  leases: WorkerLeaseRecord[];
+  events: LoopEventRecord[];
+  state_content: string | null;
+};
+
+export type ExecuteWorkerResult = {
+  run: LoopRunRecord;
+  lease: WorkerLeaseRecord;
+  gates: LoopGate[];
+  stdout_path: string;
+  stderr_path: string;
+  checkpoint_before: Record<string, unknown>;
+  checkpoint_after: Record<string, unknown>;
+  trace: Record<string, unknown>;
+};
+
+export type WorkItemRecord = {
+  id: string;
+  title: string;
+  description: string;
+  source: string;
+  source_ref: string | null;
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  value_score: number;
+  confidence: number;
+  status: 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
+  recommended_loop: string | null;
+  assigned_agent_id: string | null;
+  assigned_runtime: string | null;
+  parent_goal_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SwarmRealityStatus = {
+  registry_agent_count: number;
+  live_agent_count: number;
+  worker_lease_count: number;
+  active_execution_count: number;
+  task_count: {
+    open_work_items: number;
+    open_loop_runs: number;
+    open_tasks: number;
+    total: number;
+  };
+  backlog_count: Record<string, number>;
+  stale_agents: Array<{ id: string; name: string; status: string; last_active_at: string | null }>;
+  resource_snapshot: {
+    cpu_threads: number;
+    total_memory_bytes: number;
+    free_memory_bytes: number;
+    load_average: number[];
+    uptime_seconds: number;
+  };
+  fleet_pools: Array<{
+    runtime: string;
+    available: boolean;
+    prepared_leases: number;
+    queued_leases: number;
+    running_leases: number;
+    completed_24h: number;
+    failed_24h: number;
+    tokens_used_24h: number;
+    tokens_per_successful_worker: number | null;
+    recommended_concurrency: number;
+    blocked_capacity_reasons: string[];
+    queue_depth_by_risk: Record<string, number>;
+  }>;
+  reality_check: {
+    agent_count_is_registry_only: boolean;
+    active_execution_requires_runtime_evidence: boolean;
+  };
+};
+
+export type SchedulerTickResult = {
+  created_work_items: WorkItemRecord[];
+  planned_work_items: WorkItemRecord[];
+  prepared_work_items: WorkItemRecord[];
+  skipped_existing: number;
+  inspected_loop_runs: number;
+  leases_created: number;
+};
+
+export type WorkerPoolDecision = {
+  lease_id: string;
+  loop_run_id: string;
+  role: string;
+  runtime: string;
+  effective_runtime: string;
+  status: string;
+  risk_class: string;
+  eligible: boolean;
+  blocked_reasons: string[];
+  next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+};
+
+export type WorkerPoolPlanResult = {
+  decisions: WorkerPoolDecision[];
+  eligible_count: number;
+  blocked_count: number;
+  running_count: number;
+  max_workers: number;
+  capacity_snapshot: SwarmRealityStatus['resource_snapshot'];
+};
+
+export type WorkerPoolStartResult = {
+  action: 'started' | 'blocked';
+  decision: WorkerPoolDecision | null;
+  plan: WorkerPoolPlanResult;
+  execution?: ExecuteWorkerResult;
+};
+
+export type WorkerPoolDrainResult = {
+  action: 'drained';
+  started: WorkerPoolStartResult[];
+  final_plan: WorkerPoolPlanResult;
+};
+
+export type MemoryCandidateRecord = {
+  id: string;
+  title: string;
+  content: string;
+  memory_type: 'operational_memory' | 'engineering_rule' | 'policy_rule';
+  source_ref: string | null;
+  status: 'candidate' | 'review_required' | 'rejected' | 'promoted';
+  promotion_status: 'proposed' | 'blocked_pending_review' | 'blocked_pending_human' | 'rejected' | 'promoted';
+  human_required: boolean;
+  sensitivity: 'normal' | 'security_sensitive' | 'secret_detected';
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpecialistProfile = {
+  id: string;
+  title: string;
+  domains: string[];
+  default_questions: string[];
+  required_evidence: string[];
+  forbidden_claims: string[];
+  output_schema: string[];
+};
+
+export type SpecialistReviewRecord = {
+  id: string;
+  panel_id: string;
+  specialist_id: string;
+  specialist_title: string;
+  stance: 'support' | 'oppose' | 'uncertain' | 'needs_evidence';
+  confidence: number;
+  findings: string[];
+  recommendations: string[];
+  evidence_refs: string[];
+  limitations: string | null;
+  status: 'draft' | 'submitted' | 'rejected';
+  created_at: string;
+  updated_at: string;
+};
+
+export type SpecialistConsensus = {
+  required_reviews: number;
+  submitted_reviews: number;
+  support_count: number;
+  oppose_count: number;
+  uncertain_count: number;
+  needs_evidence_count: number;
+  average_confidence: number;
+  consensus_level: 'strong' | 'weak' | 'blocked' | 'no_consensus';
+  decision: 'goal' | 'backlog' | 'needs_more_evidence' | 'blocked';
+  dissent: Array<Pick<SpecialistReviewRecord, 'specialist_id' | 'specialist_title' | 'stance' | 'limitations'>>;
+  next_actions: string[];
+};
+
+export type SpecialistPanelRecord = {
+  id: string;
+  topic: string;
+  question: string;
+  status: 'planned' | 'reviewing' | 'consensus_ready' | 'backlog_created' | 'goal_created' | 'cancelled';
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  panel: SpecialistProfile[];
+  context: Record<string, unknown>;
+  consensus: SpecialistConsensus;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  reviews?: SpecialistReviewRecord[];
+};
+
+export type AgentEvalRunRecord = {
+  id: string;
+  suite_name: string;
+  target_type: 'memory' | 'skill' | 'swarm' | 'loop' | 'capability';
+  target_ref: string | null;
+  status: 'passed' | 'failed' | 'needs_review';
+  score: number;
+  scorecard: Record<string, unknown>;
+  findings: unknown[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type AgentAssuranceSummary = {
+  trace_count: number;
+  trace_span_count: number;
+  checkpoint_count: number;
+  eval_run_count: number;
+  active_capability_count: number;
+  pending_capability_count: number;
+  reflection_review_required_count: number;
+  latest_evals: AgentEvalRunRecord[];
+  guardrails: {
+    external_writes_from_evals: number;
+    capability_sensitive_material_stored?: boolean;
+    replay_copies_worker_leases: boolean;
+    [key: string]: unknown;
+  };
+};
+
+export type SwarmCapabilityRecord = {
+  id: string;
+  kind: 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
+  owner: string;
+  version: string;
+  status: 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
+  risk_ceiling: 'low' | 'medium' | 'high' | 'critical';
+  input_schema_ref: string;
+  output_schema_ref: string;
+  allowed_actions: string[];
+  forbidden_actions: string[];
+  required_evidence: string[];
+  eval_score: number;
+  eval_threshold: number;
+  cost_model: Record<string, unknown>;
+  removal_strategy: string;
+  latest_validation_report: string | null;
+  metadata: Record<string, unknown>;
+  live_route_allowed: boolean;
+  blocked_reasons: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClaimLedgerRecord = {
+  id: string;
+  claim: string;
+  claim_type: 'observation' | 'hypothesis' | 'decision' | 'memory' | 'capability' | 'backlog' | 'policy';
+  subject_ref: string;
+  evidence_refs: string[];
+  confidence: number;
+  status: 'proposed' | 'supported' | 'contradicted' | 'resolved' | 'rejected' | 'promoted' | 'review_required';
+  verified_by_gate: string | null;
+  invalidated_by: string | null;
+  created_from: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CapacityPlanV2Result = WorkerPoolPlanResult & {
+  queue_classes: Record<string, number>;
+  fair_share_order: string[];
+  audit_manifest_preview: Array<{
+    decision_id: string;
+    lease_id: string;
+    action: 'start' | 'skip';
+    policy_version: string;
+    blocked_reasons: string[];
+    queue_class: string;
+  }>;
+};
+
+export type RunnerManifestRecord = {
+  id: string;
+  decision_id: string;
+  lease_id: string | null;
+  loop_run_id: string | null;
+  action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+  policy_version: string;
+  runtime_contract: Record<string, unknown>;
+  capacity_snapshot: Record<string, unknown>;
+  budget_snapshot: Record<string, unknown>;
+  gate_refs: string[];
+  blocked_reasons: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ProofRunSummary = {
+  id: string;
+  status: 'completed' | 'rolled_back';
+  runtime: 'mock' | 'codex' | 'opencode';
+  created_at: string | null;
+  completed_at: string | null;
+  rollback_safe: boolean;
+  counts: Record<string, number>;
+  artifact_refs: {
+    goal: string | null;
+    loop_run: string | null;
+    worker_leases: string[];
+    panel: string | null;
+    memory_candidate: string | null;
+    [key: string]: string | string[] | null;
+  };
+  minimums: Record<string, number>;
+  passed: boolean;
+  missing: Record<string, number>;
+  narrative: string[];
+};
+
+export type SwarmMissionControl = {
+  execution_node: {
+    cockpit: string;
+    workers_run_on: string;
+    active_execution_requires_runtime_evidence: boolean;
+  };
+  swarm_truth: {
+    registry_agent_count: number;
+    live_agent_count: number;
+    prepared_leases: number;
+    running_leases: number;
+    active_execution_count: number;
+    registry_is_not_execution: boolean;
+  };
+  capability_health: {
+    total: number;
+    validated: number;
+    routable: number;
+    blocked: number;
+  };
+  claim_health: {
+    total: number;
+    proposed: number;
+    supported: number;
+    contradicted: number;
+    review_required: number;
+  };
+  specialist_panels: {
+    total: number;
+    consensus_ready: number;
+    blocked_or_needs_evidence: number;
+  };
+  capacity: CapacityPlanV2Result;
+  latest_runner_manifests: RunnerManifestRecord[];
+  latest_proof_run: ProofRunSummary | null;
+  next_safe_actions: string[];
+};
 
 class ApiClient {
   private getToken(): string | null {
-    return localStorage.getItem(AUTH_TOKEN_KEY);
+    return localStorage.getItem(AUTH_SESSION_KEY);
   }
 
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -55,7 +552,7 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_SESSION_KEY);
       window.location.href = '/login';
       throw new Error('Session expired');
     }
@@ -285,6 +782,316 @@ class ApiClient {
     return this.request(`/observability/execution-activity${query}`);
   }
 
+  // Usage
+  async getUsageQuotas(): Promise<{ quotas: UsageQuota[] }> {
+    return this.request('/usage/quotas');
+  }
+
+  async getUsageTokens(params?: { group_by?: 'hour' | 'day'; days?: number }): Promise<{
+    total_tokens: number;
+    total_cost: number;
+    breakdown: UsageBreakdown[];
+  }> {
+    const query = new URLSearchParams();
+    if (params?.group_by) query.set('group_by', params.group_by);
+    if (params?.days) query.set('days', String(params.days));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return this.request(`/usage/tokens${suffix}`);
+  }
+
+  async getUsageRecent(limit?: number): Promise<{ logs: UsageLog[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/usage/recent${query}`);
+  }
+
+  // Goals and loops
+  async getGoals(): Promise<{ goals: GoalRecord[] }> {
+    return this.request('/goals');
+  }
+
+  async createGoal(input: {
+    objective: string;
+    constraints?: string[];
+    acceptance_criteria: string[];
+    risk_class?: 'low' | 'medium' | 'high' | 'critical';
+    budget?: Record<string, unknown>;
+  }): Promise<GoalRecord> {
+    return this.request('/goals', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
+    return this.request('/loops/runs');
+  }
+
+  async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {
+    return this.request('/loops/catalog');
+  }
+
+  async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
+    return this.request('/loops/runtime-contracts');
+  }
+
+  async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
+    return this.request(`/loops/runs/${runId}/review-bundle`);
+  }
+
+  async startLoop(input: { loop_name: string; repository_path: string; goal_id?: string; max_findings?: number }): Promise<LoopRunRecord> {
+    return this.request('/loops/start', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async startDocDriftLoop(input: { repository_path: string; goal_id?: string; max_findings?: number }): Promise<LoopRunRecord> {
+    return this.startLoop({ loop_name: 'doc-drift-and-small-fix-loop', ...input });
+  }
+
+  async continueLoopRun(runId: string, input: { max_assignments?: number; runtime?: 'manual' | 'codex' | 'opencode' | 'mock' } = {}): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[] }> {
+    return this.request(`/loops/runs/${runId}/continue`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async executeWorker(runId: string, leaseId: string, input: { timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
+    return this.request(`/loops/runs/${runId}/execute-worker`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, ...input }),
+    });
+  }
+
+  async executeChecker(runId: string, leaseId: string, input: { runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
+    return this.request(`/loops/runs/${runId}/execute-checker`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, ...input }),
+    });
+  }
+
+  async verifyLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] }> {
+    return this.request(`/loops/runs/${runId}/verify`, { method: 'POST' });
+  }
+
+  async stepLoopRun(runId: string): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; decision: string; next_actions: string[] }> {
+    return this.request(`/loops/runs/${runId}/step`, { method: 'POST' });
+  }
+
+  async retryLoopRun(runId: string, makerLeaseId: string, runtime: 'manual' | 'codex' | 'opencode' | 'mock' = 'manual'): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord }> {
+    return this.request(`/loops/runs/${runId}/retry`, {
+      method: 'POST',
+      body: JSON.stringify({ maker_lease_id: makerLeaseId, runtime }),
+    });
+  }
+
+  async splitLoopFinding(runId: string, input: { finding_id: string; reason: string; children: Array<{ message: string; suggested_fix: string }> }): Promise<{ run: LoopRunRecord; parent: LoopFinding; children: LoopFinding[]; leases: WorkerLeaseRecord[] }> {
+    return this.request(`/loops/runs/${runId}/split`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async submitCheckerVerdict(runId: string, leaseId: string, verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence', notes?: string): Promise<{ run: LoopRunRecord; checker: WorkerLeaseRecord }> {
+    return this.request(`/loops/runs/${runId}/checker-verdict`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),
+    });
+  }
+
+  async submitSecurityVerdict(runId: string, leaseId: string, verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence', notes?: string): Promise<{ run: LoopRunRecord; security_checker: WorkerLeaseRecord }> {
+    return this.request(`/loops/runs/${runId}/security-verdict`, {
+      method: 'POST',
+      body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),
+    });
+  }
+
+  async completeLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[] }> {
+    return this.request(`/loops/runs/${runId}/complete`, { method: 'POST' });
+  }
+
+  async stopLoopRun(runId: string): Promise<{ run: LoopRunRecord; events: LoopEventRecord[] }> {
+    return this.request(`/loops/runs/${runId}/stop`, { method: 'POST' });
+  }
+
+  // Workstation swarm resources
+  async getSwarmStatus(): Promise<SwarmRealityStatus> {
+    return this.request('/swarms/status');
+  }
+
+  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
+    return this.request('/swarms/scheduler/tick', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async planWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
+    return this.request('/swarms/worker-pool/plan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async startNextWorker(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolStartResult> {
+    return this.request('/swarms/worker-pool/start-next', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async drainWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolDrainResult> {
+    return this.request('/swarms/worker-pool/drain', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getWorkItems(params?: { status?: string; limit?: number }): Promise<{ work_items: WorkItemRecord[] }> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set('status', params.status);
+    if (params?.limit) query.set('limit', String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return this.request(`/work-items${suffix}`);
+  }
+
+  async updateWorkItem(id: string, input: Partial<Pick<WorkItemRecord, 'status' | 'assigned_runtime' | 'recommended_loop'>>): Promise<WorkItemRecord> {
+    return this.request(`/work-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async convertWorkItemToGoal(id: string): Promise<{ work_item: WorkItemRecord; goal_id: string }> {
+    return this.request(`/work-items/${id}/convert-to-goal`, { method: 'POST' });
+  }
+
+  async getMemoryCandidates(limit?: number): Promise<{ candidates: MemoryCandidateRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/memory/candidates${query}`);
+  }
+
+  async promoteMemoryCandidate(id: string): Promise<{ candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> }> {
+    return this.request(`/swarms/memory/candidates/${id}/promote`, {
+      method: 'POST',
+      body: JSON.stringify({ sinks: ['okf'], approved_by: 'dashboard' }),
+    });
+  }
+
+  async getSpecialistCatalog(): Promise<{ specialists: SpecialistProfile[] }> {
+    return this.request('/swarms/specialists/catalog');
+  }
+
+  async getSpecialistPanels(limit?: number): Promise<{ panels: SpecialistPanelRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/specialist-panels${query}`);
+  }
+
+  async createSpecialistPanel(input: {
+    topic: string;
+    question: string;
+    risk_class?: 'low' | 'medium' | 'high' | 'critical';
+    specialist_ids?: string[];
+    context?: Record<string, unknown>;
+  }): Promise<SpecialistPanelRecord> {
+    return this.request('/swarms/specialist-panels', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async submitSpecialistReview(panelId: string, input: {
+    specialist_id: string;
+    stance: 'support' | 'oppose' | 'uncertain' | 'needs_evidence';
+    confidence: number;
+    findings?: string[];
+    recommendations?: string[];
+    evidence_refs?: string[];
+    limitations?: string;
+  }): Promise<SpecialistPanelRecord> {
+    return this.request(`/swarms/specialist-panels/${panelId}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async projectSpecialistPanelToBacklog(panelId: string): Promise<{ panel: SpecialistPanelRecord; work_item: WorkItemRecord; created: boolean }> {
+    return this.request(`/swarms/specialist-panels/${panelId}/backlog`, { method: 'POST' });
+  }
+
+  async getAssuranceSummary(): Promise<AgentAssuranceSummary> {
+    return this.request('/swarms/assurance/summary');
+  }
+
+  async runAssuranceEval(input: {
+    suite_name: string;
+    target_type: 'memory' | 'skill' | 'swarm' | 'loop' | 'capability';
+    target_ref?: string;
+  }): Promise<AgentEvalRunRecord> {
+    return this.request('/swarms/assurance/evals/run', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getSwarmMissionControl(): Promise<SwarmMissionControl> {
+    return this.request('/swarms/intelligence/mission-control');
+  }
+
+  async createProofRun(runtime: 'mock' | 'codex' | 'opencode' = 'mock'): Promise<ProofRunSummary> {
+    return this.request('/swarms/proof-runs', {
+      method: 'POST',
+      body: JSON.stringify({ runtime }),
+    });
+  }
+
+  async getLatestProofRun(): Promise<ProofRunSummary> {
+    return this.request('/swarms/proof-runs/latest');
+  }
+
+  async getProofRun(id: string): Promise<ProofRunSummary> {
+    return this.request(`/swarms/proof-runs/${id}`);
+  }
+
+  async rollbackProofRun(id: string): Promise<ProofRunSummary> {
+    return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
+  }
+
+  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/intelligence/capabilities${query}`);
+  }
+
+  async getSwarmClaims(limit?: number): Promise<{ claims: ClaimLedgerRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/intelligence/claims${query}`);
+  }
+
+  async planCapacityV2(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<CapacityPlanV2Result> {
+    return this.request('/swarms/intelligence/capacity/plan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async evaluateSwarmGovernance(input: {
+    risk_class?: 'low' | 'medium' | 'high' | 'critical';
+    mutating?: boolean;
+    maker_pass?: boolean;
+    checker_pass?: boolean;
+    security_checker_pass?: boolean;
+    quorum_count?: number;
+    quorum_required?: number;
+    runtime_warnings?: string[];
+    human_approval_ref?: string;
+    ready_for_human_merge?: boolean;
+  }): Promise<{ status: string; blocked_reasons: string[]; gates: Record<string, string>; completion_state: string }> {
+    return this.request('/swarms/intelligence/governance/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   // Repositories
   async getRepositories(): Promise<{ repositories: Repository[] }> {
     return this.request('/repositories');
@@ -347,7 +1154,7 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      localStorage.removeItem(AUTH_TOKEN_KEY);
+      localStorage.removeItem(AUTH_SESSION_KEY);
       window.location.href = '/login';
       throw new Error('Session expired');
     }
@@ -393,20 +1200,6 @@ class ApiClient {
     return this.exportDownload('/exports/report/summary', format, options);
   }
 
-  // Usage stubs
-  async getUsageQuotas(): Promise<{ quotas: any[] }> {
-    return this.request('/usage/quotas');
-  }
-
-  async getUsageTokens(params?: { group_by?: string }): Promise<{ total_tokens: number; total_cost: number; breakdown: any[] }> {
-    const query = params?.group_by ? `?group_by=${params.group_by}` : '';
-    return this.request(`/usage/tokens${query}`);
-  }
-
-  async getUsageRecent(limit?: number): Promise<{ logs: any[] }> {
-    const query = limit ? `?limit=${limit}` : '';
-    return this.request(`/usage/recent${query}`);
-  }
 }
 
 export const api = new ApiClient();
