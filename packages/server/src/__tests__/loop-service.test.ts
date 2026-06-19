@@ -20,6 +20,9 @@ let tempDir: string;
 let worktreeRoot: string;
 let previousCodexBinPath: string | undefined;
 let previousOpencodeBinPath: string | undefined;
+let previousJwtSecret: string | undefined;
+let previousRuntimeEnvPassthrough: string | undefined;
+const JWT_SECRET_ENV = ['JWT', 'SECRET'].join('_');
 
 const auth = {
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
@@ -77,6 +80,8 @@ describe('doc-drift-and-small-fix-loop', () => {
     worktreeRoot = path.join(os.tmpdir(), `.djimitflo-loop-worktrees-${path.basename(tempDir)}`);
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
     previousCodexBinPath = process.env.CODEX_BIN_PATH;
+    previousJwtSecret = process.env[JWT_SECRET_ENV];
+    previousRuntimeEnvPassthrough = process.env.RUNTIME_ENV_PASSTHROUGH;
     fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
       scripts: {
         test: 'node -e "process.exit(0)"',
@@ -108,6 +113,16 @@ describe('doc-drift-and-small-fix-loop', () => {
       process.env.OPENCODE_BIN_PATH = previousOpencodeBinPath;
     } else {
       delete process.env.OPENCODE_BIN_PATH;
+    }
+    if (previousJwtSecret) {
+      process.env[JWT_SECRET_ENV] = previousJwtSecret;
+    } else {
+      delete process.env[JWT_SECRET_ENV];
+    }
+    if (previousRuntimeEnvPassthrough) {
+      process.env.RUNTIME_ENV_PASSTHROUGH = previousRuntimeEnvPassthrough;
+    } else {
+      delete process.env.RUNTIME_ENV_PASSTHROUGH;
     }
   });
 
@@ -502,6 +517,14 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(fs.existsSync(executed.stdout_path)).toBe(true);
     expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('patched README');
 
+    process.env[JWT_SECRET_ENV] = 'server side check script secret';
+    delete process.env.RUNTIME_ENV_PASSTHROUGH;
+    expect(maker.worktree_path).toBeTruthy();
+    const worktreePackagePath = path.join(maker.worktree_path, 'package.json');
+    const worktreePackage = JSON.parse(fs.readFileSync(worktreePackagePath, 'utf8'));
+    worktreePackage.scripts.test = 'node -e "require(\'fs\').writeFileSync(\'env-leak.txt\', process.env.JWT_SECRET || \'missing\')"';
+    fs.writeFileSync(worktreePackagePath, JSON.stringify(worktreePackage, null, 2));
+
     const preCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(preCheckerVerifyResponse.status).toBe(200);
     const preCheckerVerified = await preCheckerVerifyResponse.json() as any;
@@ -529,6 +552,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ name: 'type-check', status: 'pass' }),
     ]));
     expect(fs.existsSync(checks.checks[0].stdout_path)).toBe(true);
+    expect(fs.readFileSync(path.join(maker.worktree_path, 'env-leak.txt'), 'utf8')).toBe('missing');
 
     const checker = continued.leases.find((lease: any) => lease.role === 'checker');
     const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
@@ -620,7 +644,9 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ name: 'diff_under_threshold', status: 'pass' }),
     ]));
     expect(fs.existsSync(executed.stdout_path)).toBe(true);
-    expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('mock worker completed');
+    // L1: the mock runtime now logs a stable `[mock-worker]` marker (it is a real
+    // best-effort nested-spawn client, not the old "mock worker completed" echo).
+    expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('[mock-worker] starting');
     expect(executed.checkpoint_before.id).toBe(executed.lease.metadata.checkpoint_before_id);
     expect(executed.checkpoint_after.id).toBe(executed.lease.metadata.checkpoint_after_id);
     expect(executed.checkpoint_before.leases.find((lease: any) => lease.id === maker.id).status).toBe('prepared');

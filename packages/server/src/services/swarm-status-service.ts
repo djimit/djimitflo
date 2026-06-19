@@ -8,10 +8,19 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
-type WorkerRuntime = 'codex' | 'opencode' | 'mock' | 'manual';
+type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
 type GovernanceRiskClass = 'low' | 'medium' | 'high' | 'critical';
 type RunnerLeaseRole = 'maker' | 'checker' | 'security_checker' | 'planner' | 'memory_curator' | 'governance_guard';
 const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
+
+// Process-wide cache for runtime binary probes. `getStatus()` / `fleetPools()`
+// is called repeatedly (e.g. several times per worker-pool drain), and each
+// `runtimeCommandAvailable` does a synchronous `execFileSync --version` — some
+// CLIs (gemini ~0.6s, cline ~0.4s) are slow enough that probing on every call
+// makes the fleet-status path seconds slower. Cache the result per binary for
+// a short TTL so each binary is probed at most once per window, process-wide.
+const RUNTIME_BIN_CACHE_TTL_MS = 30_000;
+const runtimeBinCache = new Map<string, { available: boolean; expiresAt: number }>();
 const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
   'doc-drift-and-small-fix-loop',
   'repo-maintenance-loop',
@@ -205,7 +214,7 @@ export class SwarmStatusService {
       LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id
       WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
     `).all() as any[];
-    const runtimes = ['codex', 'opencode', 'mock', 'manual'];
+    const runtimes = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'mock', 'manual'];
     const load = resourceSnapshot.load_average[0] || 0;
     const freeMemoryRatio = resourceSnapshot.total_memory_bytes > 0
       ? resourceSnapshot.free_memory_bytes / resourceSnapshot.total_memory_bytes
@@ -254,18 +263,28 @@ export class SwarmStatusService {
   }
 
   private runtimeCommandAvailable(runtime: string): boolean {
-    const command = runtime === 'codex'
-      ? process.env.CODEX_BIN_PATH || 'codex'
-      : runtime === 'opencode'
-        ? process.env.OPENCODE_BIN_PATH || 'opencode'
-        : '';
-    if (!command) return true;
+    const BIN_ENV: Record<string, { env: string; defaultBin: string }> = {
+      codex: { env: 'CODEX_BIN_PATH', defaultBin: 'codex' },
+      opencode: { env: 'OPENCODE_BIN_PATH', defaultBin: 'opencode' },
+      claude: { env: 'CLAUDE_BIN_PATH', defaultBin: 'claude' },
+      gemini: { env: 'GEMINI_BIN_PATH', defaultBin: 'gemini' },
+      editor: { env: 'CLINE_BIN_PATH', defaultBin: 'cline' },
+    };
+    const cfg = BIN_ENV[runtime];
+    if (!cfg) return true; // mock/manual do not need an external binary
+    const command = process.env[cfg.env] || cfg.defaultBin;
+    const cached = runtimeBinCache.get(command);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.available;
+    }
+    let available = true;
     try {
       execFileSync(command, ['--version'], { stdio: 'ignore', timeout: 1_000 });
-      return true;
     } catch {
-      return false;
+      available = false;
     }
+    runtimeBinCache.set(command, { available, expiresAt: Date.now() + RUNTIME_BIN_CACHE_TTL_MS });
+    return available;
   }
 
   planWorkerPool(input: WorkerPoolPlanInput = {}): WorkerPoolPlanResult {
@@ -513,7 +532,7 @@ export class SwarmStatusService {
     };
   }
 
-  tickScheduler(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): SchedulerTickResult {
+  tickScheduler(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): SchedulerTickResult {
     const maxItems = Math.max(1, Math.min(Number(input.max_items || 10), 100));
     const planned = input.plan_triaged ? this.planTriagedWorkItems(maxItems) : [];
     const prepared = input.prepare_planned ? this.preparePlannedWorkItems(input, maxItems) : [];
@@ -588,7 +607,7 @@ export class SwarmStatusService {
   }
 
   private preparePlannedWorkItems(
-    input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number },
+    input: { runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number },
     maxItems: number
   ): WorkItemRecord[] {
     const candidates = this.workItems.list({ status: 'planned', limit: maxItems });

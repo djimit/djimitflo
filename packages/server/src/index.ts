@@ -27,6 +27,16 @@ type TelegramBotConfig = { token: string; machineId: string; agentType: string; 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// L1: derive a default nested-spawn control URL so a runtime child (running on the
+// same host) can call back to POST /api/swarms/spawns without operator config.
+// 0.0.0.0 is a bind address, not a dial address — children dial the loopback.
+// Operators override DJIMITFLO_CONTROL_URL explicitly (e.g. for Docker, where the
+// child may need the container's reachable address rather than 127.0.0.1).
+if (!process.env.DJIMITFLO_CONTROL_URL) {
+  const dialHost = HOST === '0.0.0.0' || HOST === 'localhost' ? '127.0.0.1' : HOST;
+  process.env.DJIMITFLO_CONTROL_URL = `http://${dialHost}:${PORT}/api/swarms/spawns`;
+}
+
 async function main() {
   console.log('🚀 Starting Djimitflo Server...');
   

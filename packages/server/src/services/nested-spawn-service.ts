@@ -27,18 +27,23 @@
  * exercised the same way regardless of runtime, which is what the tests cover.
  */
 
-import { createHash, createHmac, randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { WebSocketEventType, type WebSocketMessage, type SwarmSpawnEventPayload } from '@djimitflo/shared';
 import { LoopService, type WorkerLeaseRecord, type WorkerRole } from './loop-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import type { WebSocketService } from './websocket-service';
+import {
+  mintSpawnToken as mintScopedSpawnToken,
+  validateSpawnToken as validateScopedSpawnToken,
+  resolveSpawnTokenSecret,
+} from './spawn-token';
 
-type RuntimeKind = 'codex' | 'opencode' | 'manual' | 'mock';
+type RuntimeKind = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'mock';
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 
 const RISK_RANK: Record<RiskClass, number> = { low: 0, medium: 1, high: 2, critical: 3 };
-const VALID_RUNTIMES: RuntimeKind[] = ['codex', 'opencode', 'manual', 'mock'];
+const VALID_RUNTIMES: RuntimeKind[] = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'manual', 'mock'];
 const VALID_ROLES: WorkerRole[] = ['planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard'];
 
 export interface SpawnTreeRecord {
@@ -130,7 +135,6 @@ const DEFAULT_DEPTH_BUDGET = 0; // OFF by default (default-deny).
 const DEFAULT_TOKEN_BUDGET = 200_000;
 const DEFAULT_WALL_BUDGET_MS = 600_000;
 const DEFAULT_MAX_CONCURRENT_CHILDREN = 4;
-const TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes — a child lease's spawn window.
 
 export class NestedSpawnService {
   private readonly db: Database;
@@ -145,10 +149,7 @@ export class NestedSpawnService {
     this.loops = loops;
     this.intelligence = options.intelligence ?? new SwarmIntelligenceService(db);
     this.wsService = options.wsService;
-    this.secret = options.secret
-      || process.env.DJIMITFLO_SPAWN_TOKEN_SECRET
-      || process.env.JWT_SECRET
-      || 'djimitflo-nested-spawn-dev-secret';
+    this.secret = options.secret || resolveSpawnTokenSecret();
     this.controlUrl = options.controlUrl
       || process.env.DJIMITFLO_CONTROL_URL
       || '';
@@ -295,10 +296,14 @@ export class NestedSpawnService {
     if (remainingWall <= 0) {
       return this.gateOut(spawnId, input, depth, promptDigest, 'wall_budget_exceeded', now);
     }
-    const perDepthTokenCap = Math.max(1, Math.floor(tree.total_token_budget / (tree.depth_budget + 1)));
-    const perDepthWallCap = Math.max(1_000, Math.floor(tree.total_wall_budget_ms / (tree.depth_budget + 1)));
-    const tokenGrant = Math.min(remainingTokens, perDepthTokenCap);
-    const wallGrant = Math.min(remainingWall, perDepthWallCap);
+    // Per-depth grant is a configurable ceiling (NOT total/(depth_budget+1), which
+    // exhausted both budgets at exactly depth_budget+1 children). The cumulative
+    // total_token_budget / total_wall_budget_ms (checked above) is the hard
+    // tree-wide bound; the ceiling just stops one child grabbing the whole tree.
+    const perDepthTokenCeiling = this.envInt('SPAWN_PER_DEPTH_TOKEN_CAP', 50_000);
+    const perDepthWallCeiling = this.envInt('SPAWN_PER_DEPTH_WALL_CAP_MS', 120_000);
+    const tokenGrant = Math.min(remainingTokens, Math.max(1, perDepthTokenCeiling));
+    const wallGrant = Math.min(remainingWall, Math.max(1_000, perDepthWallCeiling));
 
     // 5. Capability routing: each bound capability must be live and must not forbid
     //    this action, and the tree risk must be within the capability's risk ceiling.
@@ -392,13 +397,19 @@ export class NestedSpawnService {
     };
   }
 
-  getSpawnStatus(childLeaseId: string): { child_lease_id: string; status: string; reject_reason: string | null; depth: number; runtime: string; role: string } {
+  getSpawnStatus(
+    childLeaseId: string,
+    opts: { token?: string; internal?: boolean } = { internal: true }
+  ): { child_lease_id: string; status: string; reject_reason: string | null; depth: number; runtime: string; role: string } {
     const row = this.db.prepare(`
-      SELECT status, reject_reason, depth, runtime, requested_role, child_lease_id
+      SELECT status, reject_reason, depth, runtime, requested_role, child_lease_id, spawn_tree_id
       FROM sub_agent_spawns WHERE child_lease_id = ?
       ORDER BY created_at DESC LIMIT 1
     `).get(childLeaseId) as any;
     if (!row) throw new Error('SPAWN_NOT_FOUND');
+    if (!opts.internal && (!opts.token || !this.validateSpawnToken(opts.token, childLeaseId, row.spawn_tree_id))) {
+      throw new Error('SPAWN_TOKEN_INVALID');
+    }
     return {
       child_lease_id: row.child_lease_id,
       status: row.status,
@@ -435,30 +446,11 @@ export class NestedSpawnService {
 
   /** Mint a scoped, expiring spawn token (HMAC). Never printed except by the caller. */
   mintSpawnToken(leaseId: string, spawnTreeId: string): string {
-    const expiresAt = Date.now() + TOKEN_TTL_MS;
-    const payload = `${leaseId}|${spawnTreeId}|${expiresAt}`;
-    const payloadB64 = Buffer.from(payload, 'utf8').toString('base64url');
-    const sig = createHmac('sha256', this.secret).update(payloadB64).digest('base64url');
-    return `${payloadB64}.${sig}`;
+    return mintScopedSpawnToken(this.secret, leaseId, spawnTreeId);
   }
 
   validateSpawnToken(token: string, expectedLeaseId: string, expectedTreeId: string): boolean {
-    const parts = token.split('.');
-    if (parts.length !== 2) return false;
-    const [payloadB64, sig] = parts;
-    const expected = createHmac('sha256', this.secret).update(payloadB64).digest('base64url');
-    if (sig.length !== expected.length || !this.constTimeEq(sig, expected)) return false;
-    let payload: string;
-    try {
-      payload = Buffer.from(payloadB64, 'base64url').toString('utf8');
-    } catch {
-      return false;
-    }
-    const [leaseId, treeId, expiresAtStr] = payload.split('|');
-    if (leaseId !== expectedLeaseId || treeId !== expectedTreeId) return false;
-    const expiresAt = Number(expiresAtStr);
-    if (!Number.isFinite(expiresAt) || expiresAt < Date.now()) return false;
-    return true;
+    return validateScopedSpawnToken(this.secret, token, expectedLeaseId, expectedTreeId);
   }
 
   // --- internal helpers ---
@@ -613,13 +605,6 @@ export class NestedSpawnService {
   private emit(type: WebSocketEventType, payload: SwarmSpawnEventPayload): void {
     if (!this.wsService) return;
     this.wsService.broadcastToAuthenticated({ type, payload, timestamp: new Date().toISOString() } as WebSocketMessage);
-  }
-
-  private constTimeEq(a: string, b: string): boolean {
-    if (a.length !== b.length) return false;
-    let diff = 0;
-    for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-    return diff === 0;
   }
 
   private envInt(name: string, fallback: number): number {

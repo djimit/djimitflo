@@ -9,6 +9,7 @@ import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { NestedSpawnService } from '../services/nested-spawn-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { resolveSpawnTokenSecret } from '../services/spawn-token';
 
 interface Harness {
   db: Database.Database;
@@ -81,6 +82,8 @@ describe('nested-spawn-service (P1 gates)', () => {
     delete process.env.SPAWN_TREE_TOKEN_BUDGET;
     delete process.env.SPAWN_TREE_WALL_BUDGET_MS;
     delete process.env.SPAWN_TREE_MAX_CONCURRENT_CHILDREN;
+    delete process.env.SPAWN_PER_DEPTH_TOKEN_CAP;
+    delete process.env.SPAWN_PER_DEPTH_WALL_CAP_MS;
   });
 
   afterEach(() => {
@@ -145,9 +148,12 @@ describe('nested-spawn-service (P1 gates)', () => {
   });
 
   it('token budget: deeper spawns are gated once the tree budget is exhausted', () => {
-    // depth_budget=5 makes the wall per-depth cap loose enough that the token
-    // cap (tokenBudget=2, perDepthTokenCap=max(1,floor(2/6))=1) is the binding
-    // constraint: 2 children consume 2 tokens, the 3rd is gated.
+    // depth_budget=5 makes the depth gate loose; the token cap is the binding
+    // constraint. With tokenBudget=2 and a per-depth ceiling of 1 token per child,
+    // 2 children consume 2 tokens (grant=1 each), and the 3rd is gated by the
+    // cumulative token_budget_exceeded (remaining=0). The small ceiling keeps the
+    // per-child grant below the tree total so multiple children fit.
+    process.env.SPAWN_PER_DEPTH_TOKEN_CAP = '1';
     const h = setupHarness({ depthBudget: 5, tokenBudget: 2, maxConcurrent: 20 });
     try {
       const root = (h as any).root;
@@ -157,6 +163,43 @@ describe('nested-spawn-service (P1 gates)', () => {
       const c3 = spawnChild(h, root.root_lease_id, { prompt: 't3' });
       expect(c3.status).toBe('gated_out');
       expect(c3.reject_reason).toBe('token_budget_exceeded');
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('L2 ceiling: per-depth grant is a configurable ceiling, not total/(depth+1)', () => {
+    // total=200000 + default ceiling 50000 → 4 depth-1 children (50k each), then
+    // the cumulative total binds and the 5th is gated. The OLD formula
+    // total/(depth_budget+1)=200000/3=66666 would have granted ~66k each and
+    // exhausted at depth_budget+1=3 children; the ceiling lets real swarm sizes
+    // use the full tree budget across many small children.
+    const h = setupHarness({ depthBudget: 2, tokenBudget: 200_000 });
+    try {
+      const root = (h as any).root;
+      const grants: number[] = [];
+      for (let i = 0; i < 4; i += 1) {
+        const c = spawnChild(h, root.root_lease_id, { prompt: `ceiling-child-${i}` });
+        expect(c.status).toBe('prepared');
+        expect(c.token_budget_grant).toBe(50_000);
+        grants.push(c.token_budget_grant);
+      }
+      const fifth = spawnChild(h, root.root_lease_id, { prompt: 'ceiling-child-5' });
+      expect(fifth.status).toBe('gated_out');
+      expect(fifth.reject_reason).toBe('token_budget_exceeded');
+    } finally {
+      cleanup(h);
+    }
+  });
+
+  it('L2 ceiling: SPAWN_PER_DEPTH_TOKEN_CAP lowers the per-child grant', () => {
+    process.env.SPAWN_PER_DEPTH_TOKEN_CAP = '30000';
+    const h = setupHarness({ depthBudget: 2, tokenBudget: 200_000 });
+    try {
+      const root = (h as any).root;
+      const c = spawnChild(h, root.root_lease_id, { prompt: 'small-ceiling-child' });
+      expect(c.status).toBe('prepared');
+      expect(c.token_budget_grant).toBe(30_000);
     } finally {
       cleanup(h);
     }
@@ -254,6 +297,13 @@ describe('nested-spawn-service (P1 gates)', () => {
     } finally {
       cleanup(h);
     }
+  });
+
+  it('spawn token secret fails closed in production when no secret is configured', () => {
+    delete process.env.DJIMITFLO_SPAWN_TOKEN_SECRET;
+    delete process.env.JWT_SECRET;
+    process.env.NODE_ENV = 'production';
+    expect(() => resolveSpawnTokenSecret()).toThrow(/SPAWN_TOKEN_SECRET_REQUIRED/);
   });
 
   it('getSpawnStatus returns the prepared row for a child lease', () => {

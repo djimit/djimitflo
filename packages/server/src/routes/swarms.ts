@@ -11,7 +11,6 @@ import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import type { WebSocketService } from '../services/websocket-service';
-import { createSpawnRoutes } from './spawns';
 
 function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
@@ -94,6 +93,13 @@ function mapProofRunError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'PROOF_RUN_NOT_FOUND') throw createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
   if (message === 'PROOF_RUN_RUNTIME_UNSUPPORTED') throw createError(400, 'Unsupported proof runtime', 'PROOF_RUN_RUNTIME_UNSUPPORTED');
+  // A real runtime/worktree failure (e.g. git worktree lock contention under
+  // concurrent fleet operation) — transient infrastructure, not a client error.
+  // Map to a stable 503 so it is observable and distinguishable from a bare 500
+  // INTERNAL_ERROR fall-through.
+  if (message.startsWith('PROOF_RUN_RUNTIME_FAILED')) throw createError(503, 'Proof run runtime execution failed', 'PROOF_RUN_RUNTIME_FAILED');
+  if (message === 'PROOF_RUN_VERIFICATION_BLOCKED') throw createError(422, 'Proof run verification blocked', 'PROOF_RUN_VERIFICATION_BLOCKED');
+  if (message === 'PROOF_RUN_COMPLETE_FAILED') throw createError(500, 'Proof run completion failed', 'PROOF_RUN_COMPLETE_FAILED');
   throw error;
 }
 
@@ -145,12 +151,6 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   const intelligence = new SwarmIntelligenceService(db);
   const proofRuns = new ProofRunService(db);
   const csSkillSwarmHarness = new CsSkillSwarmHarnessService(db);
-
-  // Nested spawn control endpoint (P1): POST /spawns/root, POST /spawns,
-  // GET /spawns/:id/status. A spawned runtime child curls back here. The parent
-  // /swarms mount already applies requireAuth; the child-spawn gate is the
-  // scoped spawn token validated in NestedSpawnService.requestSpawn.
-  router.use('/spawns', createSpawnRoutes(db, auth, wsService));
 
   router.get('/status', requirePermission('read:evidence'), (_req, res, next) => {
     try {

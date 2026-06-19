@@ -33,6 +33,7 @@ import { createGoalRoutes } from './goals';
 import { createLoopRoutes } from './loops';
 import { createWorkItemRoutes } from './work-items';
 import { createSwarmRoutes } from './swarms';
+import { createSpawnRoutes } from './spawns';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -49,6 +50,13 @@ export function createRoutes(
   }
 
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
+  // L3: the nested-spawn control endpoint admits EITHER a user JWT OR a scoped
+  // spawn token (X-Spawn-Token) so a runtime child with no user session can still
+  // POST /spawns and poll /spawns/:id/status. Mounted BEFORE /swarms (Express
+  // matches in registration order) so the specific path wins over the generic
+  // requireAuth mount. POST /spawns/root still requires write:swarm_action inside
+  // the router, so a token-only child cannot create roots.
+  const requireAuthOrSpawnToken = auth?.requireAuthOrSpawnToken ?? ((_req: any, _res: any, next: any) => next());
   const auditService = new AuditService(db);
 
   // Security headers
@@ -77,6 +85,9 @@ export function createRoutes(
   router.use('/goals', requireAuth, createGoalRoutes(db, auth));
   router.use('/loops', requireAuth, createLoopRoutes(db, auth));
   router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));
+  // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
+  // generic /swarms requireAuth mount so children can reach it with a spawn token.
+  router.use('/swarms/spawns', requireAuthOrSpawnToken, createSpawnRoutes(db, auth, wsService));
   router.use('/swarms', requireAuth, createSwarmRoutes(db, auth, wsService));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));

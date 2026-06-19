@@ -6,6 +6,7 @@ import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
+import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -148,12 +149,12 @@ interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
-  runtime?: 'codex' | 'opencode' | 'manual' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'mock';
 }
 
 interface RetryLoopInput {
   maker_lease_id?: string;
-  runtime?: 'codex' | 'opencode' | 'manual' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'mock';
   max_retries?: number;
 }
 
@@ -182,7 +183,7 @@ interface ExecuteMakerInput {
 }
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
-  runtime?: 'codex' | 'opencode' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock';
 }
 
 interface ExecuteWorkerResult {
@@ -202,7 +203,7 @@ interface ExecuteWorkerResult {
 }
 
 interface RuntimeContract {
-  runtime: 'manual' | 'mock' | 'codex' | 'opencode';
+  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor';
   available: boolean;
   command: string | null;
   version?: string;
@@ -428,6 +429,14 @@ export class LoopService {
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
+  /**
+   * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
+   * resolved from the same env chain as NestedSpawnService so a token minted here
+   * validates at the spawn endpoint. LoopService only MINTS (never validates) —
+   * validation stays in NestedSpawnService.requestSpawn over HTTP. This avoids a
+   * LoopService → NestedSpawnService cycle (token logic lives in ./spawn-token).
+   */
+  private spawnTokenSecret: string | undefined;
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
   private readonly runtimeContractCacheMs = Math.max(
     500,
@@ -1491,7 +1500,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: process.env,
+        env: this.buildRuntimeEnv(),
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
@@ -1616,6 +1625,7 @@ export class LoopService {
       timeoutMs,
       enforceCwdBoundary: makerLease.runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
+      env: this.buildNestedSpawnEnv(makerLease) ?? undefined,
     });
 
     const outputDir = path.join(this.evidenceRoot, run.id, 'worker-output', makerLease.id);
@@ -1897,7 +1907,7 @@ export class LoopService {
       throw new Error('MAKER_WORKTREE_NOT_FOUND');
     }
 
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'mock' : 'mock');
+    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' : 'mock');
     const runtimeContract = this.getRuntimeContract(runtime);
     this.recordWorkerManifest({
       decisionId: this.makeManifestDecisionId(run.id, checker.id, 'start'),
@@ -1991,6 +2001,7 @@ export class LoopService {
       timeoutMs,
       enforceCwdBoundary: runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
+      env: this.buildNestedSpawnEnv(checker) ?? undefined,
     });
 
     const outputDir = path.join(this.evidenceRoot, run.id, 'checker-output', checker.id);
@@ -2175,6 +2186,9 @@ export class LoopService {
         mock: this.getRuntimeContract('mock'),
         codex: this.getRuntimeContract('codex'),
         opencode: this.getRuntimeContract('opencode'),
+        claude: this.getRuntimeContract('claude'),
+        gemini: this.getRuntimeContract('gemini'),
+        editor: this.getRuntimeContract('editor'),
       },
     };
   }
@@ -2973,12 +2987,41 @@ export class LoopService {
     if (fs.existsSync(worktreePath)) {
       return worktreePath;
     }
-    try {
-      this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
-    } catch (error) {
-      throw new Error(`WORKTREE_CREATE_FAILED: ${error instanceof Error ? error.message : String(error)}`);
+    // `git worktree add` takes the source repo's worktree lock. Under concurrent
+    // fleet operation (or parallel test forks that share a source repo) a sibling
+    // git process may briefly hold .git/worktree.lock; retry a few times before
+    // giving up so a transient lock race does not fail a worker lease.
+    const MAX_ATTEMPTS = 3;
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      try {
+        this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
+        return worktreePath;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < MAX_ATTEMPTS && LoopService.isGitLockError(lastError)) {
+          this.sleepSync(250 * attempt);
+          continue;
+        }
+        throw new Error(`WORKTREE_CREATE_FAILED: ${lastError.message}`);
+      }
     }
-    return worktreePath;
+    throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
+  }
+
+  private static isGitLockError(error: Error): boolean {
+    const m = error.message.toLowerCase();
+    return m.includes('worktree.lock') || m.includes('index.lock') || m.includes('another git process') || m.includes('file exists');
+  }
+
+  private sleepSync(ms: number): void {
+    try {
+      const buf = new SharedArrayBuffer(4);
+      Atomics.wait(new Int32Array(buf), 0, 0, ms);
+    } catch {
+      const end = Date.now() + ms;
+      while (Date.now() < end) { /* SharedArrayBuffer unavailable: busy-wait fallback */ }
+    }
   }
 
   /**
@@ -3045,7 +3088,8 @@ export class LoopService {
       : undefined;
 
     this.writeWorkAssignment(worktreePath, run, finding, input.runtime, { nestedSpawnControl });
-    const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, input.runtime);
+    const capsManifest = this.buildCapabilityManifest(input.capabilityIds);
+    const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, input.runtime, undefined, capsManifest);
     const assignmentFile = this.workAssignmentPath(worktreePath);
 
     const now = new Date().toISOString();
@@ -3172,6 +3216,83 @@ export class LoopService {
   }
 
   /**
+   * Mint the scoped spawn token a nested child needs to call back and spawn its
+   * own sub-agents (L1). Returns undefined when the lease is not nested-spawn-armed
+   * (no spawn_tree_id, or metadata.allow_nested_spawn !== true), so non-nested
+   * leases get no token and behave exactly as before. The token is scoped to
+   * (lease.id, lease.spawn_tree_id) — exactly what requestSpawn validates against
+   * when the child later POSTs with requested_by_lease_id = its own lease id.
+   * Never persisted: lives only in the child's process env and expires with the TTL.
+   */
+  private mintLeaseSpawnToken(lease: WorkerLeaseRecord): string | undefined {
+    if (!lease.spawn_tree_id) return undefined;
+    const allow = lease.metadata?.allow_nested_spawn;
+    if (allow !== true) return undefined;
+    if (this.spawnTokenSecret === undefined) this.spawnTokenSecret = resolveSpawnTokenSecret();
+    return mintSpawnToken(this.spawnTokenSecret, lease.id, lease.spawn_tree_id);
+  }
+
+  /**
+   * Build the per-child env for a nested-spawn-armed lease (L1): the static
+   * buildRuntimeEnv() (PATH/HOME/model keys etc.) MERGED with the child's identity
+   * and control channel. Returns undefined when the lease is not armed, so
+   * executeRuntimeCommand falls back to buildRuntimeEnv() unchanged for ordinary
+   * loops. CRITICAL: must return the MERGED env — executeRuntimeCommand uses
+   * `options.env || buildRuntimeEnv()` (override, not merge), so returning only the
+   * DJIMITFLO_* vars would strip PATH/HOME and break codex/opencode.
+   */
+  private buildNestedSpawnEnv(lease: WorkerLeaseRecord): NodeJS.ProcessEnv | undefined {
+    const token = this.mintLeaseSpawnToken(lease);
+    if (!token || !lease.spawn_tree_id) return undefined;
+    const env: NodeJS.ProcessEnv = {
+      ...this.buildRuntimeEnv(),
+      DJIMITFLO_CONTROL_URL: process.env.DJIMITFLO_CONTROL_URL || '',
+      DJIMITFLO_SPAWN_TOKEN: token,
+      DJIMITFLO_LEASE_ID: lease.id,
+      DJIMITFLO_SPAWN_TREE_ID: lease.spawn_tree_id,
+      DJIMITFLO_DEPTH: String(lease.depth),
+    };
+    // L4 skill injection: deliver the lease's validated capability manifest to
+    // the child as read-only env metadata. Only LIVE capabilities (server-side
+    // gated) are included; this grants the child no new authority — it still
+    // self-spawns under the same depth/cycle/budget/capability gates.
+    const capsManifest = this.buildCapabilityManifest(lease.metadata?.capability_ids);
+    if (capsManifest) env.DJIMITFLO_CAPABILITIES = capsManifest;
+    return env;
+  }
+
+  /**
+   * Serialize a child's validated capabilities (L4 skill injection) into a
+   * compact JSON manifest of LIVE capabilities only. Returns undefined when the
+   * lease has no capability_ids or none are live. Read-only metadata: it
+   * reflects server-side gating, it does not extend the child's authority.
+   */
+  private buildCapabilityManifest(capabilityIds: unknown): string | undefined {
+    if (!Array.isArray(capabilityIds) || capabilityIds.length === 0) return undefined;
+    const entries: Array<Record<string, unknown>> = [];
+    for (const id of capabilityIds) {
+      try {
+        const cap = this.intelligence.getCapability(String(id));
+        if (!cap || !cap.live_route_allowed) continue;
+        entries.push({
+          id: cap.id,
+          kind: cap.kind,
+          owner: cap.owner,
+          version: cap.version,
+          status: cap.status,
+          risk_ceiling: cap.risk_ceiling,
+          allowed_actions: cap.allowed_actions,
+          forbidden_actions: cap.forbidden_actions,
+          required_evidence: cap.required_evidence,
+        });
+      } catch {
+        // capability missing/not found — skip it
+      }
+    }
+    return entries.length > 0 ? JSON.stringify(entries) : undefined;
+  }
+
+  /**
    * Boundary check: a real runtime's cwd must live inside a worktree root (the
    * configured LOOP_WORKTREE_ROOT, the default repo-parent worktrees dir, or —
    * for tests — the system tmpdir). Refuses to spawn an autonomous runtime
@@ -3195,10 +3316,72 @@ export class LoopService {
 
   private buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string, skipPermissions = false): { command: string; args: string[] } {
     if (runtime === 'mock') {
+      // L1: the mock runtime is now a REAL (best-effort) nested-spawn control-loop
+      // client, not just an echo stub. When the lease is nested-spawn-armed, the
+      // child's env (injected by buildNestedSpawnEnv) carries DJIMITFLO_CONTROL_URL
+      // + a scoped DJIMITFLO_SPAWN_TOKEN + its own lease/tree/depth identity. The
+      // script POSTs to the control endpoint to spawn exactly one sub-agent, then
+      // polls that child's status — exercising the same HTTP path a codex/claude
+      // child would. The server-side gates (depth/budget/cycle/concurrency) are the
+      // real backstop: a depth-floor child gets a `gated_out` response, which is a
+      // legitimate terminal state, not a failure.
+      //
+      // Self-spawn is BEST-EFFORT and NON-FATAL: the mock's "work" is echo, which
+      // always succeeds (exit 0), and the spawn callback is a side-channel. A
+      // control-plane outage (dead port, timeout, non-2xx) is logged but does NOT
+      // fail the worker — this avoids wedging a runtime semaphore permit on a slow
+      // control plane and matches the existing "mock always completed" semantics.
+      // The spawn-tree ledger (sub_agent_spawns rows) is the real proof the loop ran.
+      //
+      // Uses the global `fetch` (Node 18+, available in both CJS and ESM) rather
+      // than `require('http')` so the script works inside a `"type":"module"`
+      // worktree (where `require` is undefined). Guards on typeof fetch so older
+      // nodes degrade to echo-only.
       const script = [
         'const dir = process.argv[1];',
-        'console.log("mock worker completed");',
+        'const log = (m) => console.log("[mock-worker] " + m);',
+        'log("starting");',
         'console.log(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
+        'const caps = process.env.DJIMITFLO_CAPABILITIES;',
+        'let capsCount = 0; try { capsCount = caps ? JSON.parse(caps).length : 0; } catch (e) {}',
+        'log("capabilities=" + capsCount);',
+        'const url = process.env.DJIMITFLO_CONTROL_URL;',
+        'const token = process.env.DJIMITFLO_SPAWN_TOKEN;',
+        'const leaseId = process.env.DJIMITFLO_LEASE_ID;',
+        'const treeId = process.env.DJIMITFLO_SPAWN_TREE_ID;',
+        'const depth = process.env.DJIMITFLO_DEPTH;',
+        'if (!url || !token || !leaseId || !treeId || typeof fetch !== "function") {',
+        '  log("no control env / no fetch; echo-only");',
+        '  log("dir=" + dir);',
+        '} else {',
+        '  log("lease=" + leaseId + " tree=" + treeId + " depth=" + depth + " -> self-spawn via " + url);',
+        '  const body = JSON.stringify({ requested_by_lease_id: leaseId, parent_lease_id: leaseId, spawn_tree_id: treeId, role: "maker", runtime: "mock", prompt: "mock child of " + leaseId });',
+        '  const ctrl = new AbortController();',
+        '  const to = setTimeout(() => ctrl.abort(), 5000);',
+        '  fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Spawn-Token": token }, body, signal: ctrl.signal })',
+        '    .then((res) => res.text().then((text) => ({ status: res.status, text })))',
+        '    .then(({ status, text }) => {',
+        '      clearTimeout(to);',
+        '      log("spawn POST status=" + status + " body=" + text);',
+        '      let childId = null;',
+        '      let childToken = null;',
+        '      try { const parsed = JSON.parse(text); childId = parsed.child_lease_id || null; childToken = parsed.control_token || null; } catch (e) {}',
+        '      if (status >= 200 && status < 300 && childId && childToken) {',
+        '        return fetch(url + "/" + childId + "/status", { headers: { "X-Spawn-Token": childToken } })',
+        '          .then((s) => s.text())',
+        '          .then((st) => log("child status body=" + st));',
+        '      }',
+        '      if (status >= 200 && status < 300 && childId) {',
+        '        log("child status token unavailable at depth floor");',
+        '      }',
+        '      if (status >= 400 && status < 500 && text.indexOf("gated_out") >= 0) {',
+        '        log("child gated_out (legitimate terminal state at depth floor)");',
+        '      } else if (status >= 400) {',
+        '        log("control-plane error status=" + status + " (non-fatal; echo work already done)");',
+        '      }',
+        '    })',
+        '    .catch((e) => { clearTimeout(to); log("control-plane call failed: " + (e && e.message || e) + " (non-fatal)"); });',
+        '}',
       ].join('\n');
       return {
         command: process.execPath,
@@ -3220,6 +3403,47 @@ export class LoopService {
         : ['run', '--format', 'json', '--dir', worktreePath, prompt];
       return {
         command: process.env.OPENCODE_BIN_PATH || 'opencode',
+        args,
+      };
+    }
+    if (runtime === 'claude') {
+      // claude CLI headless: inherits the worktree as cwd via spawn (no --cd flag).
+      // --output-format json for parseable usage/verdict; --dangerously-skip-permissions
+      // is the approval/sandbox bypass, armed only via RUNTIME_ALLOW_SKIP_PERMISSIONS.
+      const args = ['-p', prompt, '--output-format', 'json'];
+      if (skipPermissions) args.push('--dangerously-skip-permissions');
+      const model = process.env.DJIMITFLO_CLAUDE_MODEL;
+      if (model) args.push('--model', model);
+      return {
+        command: process.env.CLAUDE_BIN_PATH || 'claude',
+        args,
+      };
+    }
+    if (runtime === 'gemini') {
+      // gemini CLI headless: inherits the worktree as cwd via spawn. -o json for
+      // parseable output; -y is the auto-approve bypass (armed only via the gate).
+      const args = ['-p', prompt, '-o', 'json'];
+      if (skipPermissions) args.push('-y');
+      const model = process.env.DJIMITFLO_GEMINI_MODEL;
+      if (model) args.push('-m', model);
+      return {
+        command: process.env.GEMINI_BIN_PATH || 'gemini',
+        args,
+      };
+    }
+    if (runtime === 'editor') {
+      // editor runtime = the cline CLI (autonomous AI editor-agent). cline uses its
+      // own -c <worktree> cwd flag (spawn also sets cwd=worktree; redundant, safe).
+      // --auto-approve reflects skipPermissions: true only when the operator has
+      // armed RUNTIME_ALLOW_SKIP_PERMISSIONS — without it cline cannot run fully
+      // headless (it would wait on interactive approval). See known limitations.
+      const args = ['--json', '--auto-approve', skipPermissions ? 'true' : 'false', '-c', worktreePath];
+      args.push('--thinking', process.env.DJIMITFLO_CLINE_THINKING || 'medium');
+      const model = process.env.DJIMITFLO_CLINE_MODEL;
+      if (model) args.push('-m', model);
+      args.push(prompt);
+      return {
+        command: process.env.CLINE_BIN_PATH || 'cline',
         args,
       };
     }
@@ -3262,7 +3486,21 @@ export class LoopService {
         evidence: ['deterministic in-process mock runtime'],
       };
     }
-    if (runtime !== 'codex' && runtime !== 'opencode') {
+    // Real runtime probes: each entry describes how to locate the binary, which
+    // help subcommand lists its flags, and which flags must be present for the
+    // loop's headless contract (a json/output flag + a cwd mechanism + a
+    // headless prompt flag). claude/gemini inherit the worktree as cwd via spawn
+    // (cwdFlag null → always "present"); codex/opencode/editor carry an explicit
+    // --cd/--dir/-c flag. `editor` maps to the cline CLI (autonomous editor-agent).
+    const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string }> = {
+      codex: { binEnv: 'CODEX_BIN_PATH', defaultBin: 'codex', helpArgs: ['exec', '--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '--cd', headlessFlag: '--json' },
+      opencode: { binEnv: 'OPENCODE_BIN_PATH', defaultBin: 'opencode', helpArgs: ['run', '--help'], jsonFlag: '--format', jsonFlagHelp: '--format', cwdFlag: '--dir', headlessFlag: '--format' },
+      claude: { binEnv: 'CLAUDE_BIN_PATH', defaultBin: 'claude', helpArgs: ['--help'], jsonFlag: '--output-format', jsonFlagHelp: '--output-format', cwdFlag: null, headlessFlag: '-p' },
+      gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
+      editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
+    };
+    const probe = PROBES[runtime];
+    if (!probe) {
       return {
         runtime: 'manual',
         available: false,
@@ -3275,9 +3513,8 @@ export class LoopService {
         reason: 'unsupported runtime',
       };
     }
-    const command = runtime === 'codex'
-      ? process.env.CODEX_BIN_PATH || 'codex'
-      : process.env.OPENCODE_BIN_PATH || 'opencode';
+    const typedRuntime = runtime as RuntimeContract['runtime'];
+    const command = process.env[probe.binEnv] || probe.defaultBin;
     const cacheKey = `${runtime}::${command}`;
     const cached = this.runtimeContractCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
@@ -3291,7 +3528,7 @@ export class LoopService {
     });
     if (result.error) {
       return {
-        runtime,
+        runtime: typedRuntime,
         available: false,
         command,
         status: 'unavailable',
@@ -3304,7 +3541,7 @@ export class LoopService {
     }
     if (result.status !== 0) {
       return {
-        runtime,
+        runtime: typedRuntime,
         available: false,
         command,
         status: 'unavailable',
@@ -3315,7 +3552,7 @@ export class LoopService {
         reason: result.stderr || `exit ${result.status}`,
       };
     }
-    const helpResult = spawnSync(command, runtime === 'codex' ? ['exec', '--help'] : ['run', '--help'], {
+    const helpResult = spawnSync(command, probe.helpArgs, {
       encoding: 'utf8',
       timeout: timeoutMs,
       maxBuffer: 512 * 1024,
@@ -3326,26 +3563,23 @@ export class LoopService {
       help.split(/\r?\n/).slice(0, 20).join('\n'),
     ].filter(Boolean);
     const lowerHelp = help.toLowerCase();
-    const hasJsonFlag = runtime === 'codex'
-      ? lowerHelp.includes('--json')
-      : lowerHelp.includes('--format');
-    const hasCwdFlag = runtime === 'codex'
-      ? lowerHelp.includes('--cd')
-      : lowerHelp.includes('--dir');
-    const drifted = !hasJsonFlag || !hasCwdFlag;
+    const hasJsonFlag = lowerHelp.includes(probe.jsonFlagHelp.toLowerCase());
+    const hasCwdFlag = probe.cwdFlag ? lowerHelp.includes(probe.cwdFlag) : true;
+    const hasHeadlessFlag = lowerHelp.includes(probe.headlessFlag.toLowerCase());
+    const drifted = !hasJsonFlag || !hasCwdFlag || !hasHeadlessFlag;
     const contract: RuntimeContract = {
-      runtime,
+      runtime: typedRuntime,
       available: !drifted,
       command,
       version: (result.stdout || result.stderr || '').trim() || 'unknown',
       status: drifted ? 'drifted' : 'ok',
-      cwd_flag: runtime === 'codex' ? '--cd' : '--dir',
-      json_flag: runtime === 'codex' ? '--json' : ['--format', 'json'],
+      ...(probe.cwdFlag ? { cwd_flag: probe.cwdFlag } : {}),
+      json_flag: probe.jsonFlag === '--format' ? ['--format', 'json'] : probe.jsonFlag,
       supports_json_events: !drifted,
       supports_usage_parsing: !drifted,
       supports_timeout_kill: true,
       evidence,
-      ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : ''].filter(Boolean).join(', ')}` } : {}),
+      ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
     };
     this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
     return contract;
@@ -3632,7 +3866,7 @@ export class LoopService {
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
-  private writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number): string {
+  private writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
     this.ensureControlDir(worktreePath);
     const packetPath = this.assignmentPacketPath(worktreePath);
     const contract = (run.metadata.contract && typeof run.metadata.contract === 'object')
@@ -3649,6 +3883,9 @@ export class LoopService {
       retry_attempt: retryAttempt || 0,
       repository_path: run.repository_path,
       worktree_path: worktreePath,
+      // L4 skill injection: the validated capability manifest (read-only
+      // metadata) when this lease was armed with capabilities.
+      capabilities: capabilitiesManifest ? JSON.parse(capabilitiesManifest) : [],
       finding: {
         id: finding.id,
         type: finding.type,

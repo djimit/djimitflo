@@ -6,8 +6,9 @@
  *   - POST /api/swarms/spawns/root  — operator-armed: creates the swarm root
  *     lease + spawn_trees row (requires write:swarm_action).
  *   - POST /api/swarms/spawns       — child spawn: gated by a scoped spawn
- *     token (X-Spawn-Token header). Internal/orchestrator callers omit the token
- *     and pass `internal: true` in the body.
+ *     token (X-Spawn-Token header). Same-process orchestrators may call
+ *     NestedSpawnService.requestSpawn({ ... }, { internal: true }) directly;
+ *     the HTTP route never trusts a request-body `internal` flag.
  *   - GET  /api/swarms/spawns/:id/status — a child polls its own spawn status.
  *
  * The token gate lives in NestedSpawnService.requestSpawn; these routes only
@@ -26,7 +27,7 @@ function mapSpawnError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   switch (message) {
     case 'SPAWN_PROMPT_REQUIRED': throw createError(400, 'prompt is required', 'SPAWN_PROMPT_REQUIRED');
-    case 'SPAWN_RUNTIME_INVALID': throw createError(400, 'runtime is invalid (codex|opencode|manual|mock)', 'SPAWN_RUNTIME_INVALID');
+    case 'SPAWN_RUNTIME_INVALID': throw createError(400, 'runtime is invalid (codex|opencode|claude|gemini|editor|manual|mock)', 'SPAWN_RUNTIME_INVALID');
     case 'SPAWN_ROLE_INVALID': throw createError(400, 'role is invalid', 'SPAWN_ROLE_INVALID');
     case 'SPAWN_TREE_NOT_FOUND': throw createError(404, 'spawn tree not found', 'SPAWN_TREE_NOT_FOUND');
     case 'SPAWN_TREE_CLOSED': throw createError(409, 'spawn tree is closed', 'SPAWN_TREE_CLOSED');
@@ -34,6 +35,7 @@ function mapSpawnError(error: unknown): never {
     case 'PARENT_LEASE_NOT_FOUND': throw createError(404, 'parent lease not found', 'PARENT_LEASE_NOT_FOUND');
     case 'SPAWN_NOT_FOUND': throw createError(404, 'spawn not found', 'SPAWN_NOT_FOUND');
     case 'SPAWN_TOKEN_INVALID': throw createError(401, 'spawn token is invalid, expired, or not scoped to this lease/tree', 'SPAWN_TOKEN_INVALID');
+    case 'SPAWN_TOKEN_SECRET_REQUIRED': throw createError(500, 'spawn token secret is required in production', 'SPAWN_TOKEN_SECRET_REQUIRED');
     case 'NESTED_SPAWN_NO_REPOSITORY': throw createError(409, 'loop run has no repository_path; cannot create worktree', 'NESTED_SPAWN_NO_REPOSITORY');
     default: throw error;
   }
@@ -80,11 +82,10 @@ export function createSpawnRoutes(db: Database, auth?: AuthMiddleware, wsService
       if (!body.parent_lease_id) throw createError(400, 'parent_lease_id is required', 'SPAWN_PARENT_REQUIRED');
       if (!body.requested_by_lease_id) throw createError(400, 'requested_by_lease_id is required', 'SPAWN_REQUESTER_REQUIRED');
       // A child spawning its own children presents its token in the X-Spawn-Token
-      // header. Internal/orchestrator callers set body.internal=true to bypass
-      // (same-process trust — the operator already armed the tree at root time).
+      // header. HTTP callers never get the same-process `internal` bypass; that
+      // bypass is reserved for direct service calls by trusted orchestrator code.
       const token = typeof req.get('X-Spawn-Token') === 'string' ? req.get('X-Spawn-Token') as string : undefined;
-      const isInternal = body.internal === true;
-      if (!isInternal && !token) throw createError(401, 'X-Spawn-Token header is required', 'SPAWN_TOKEN_INVALID');
+      if (!token) throw createError(401, 'X-Spawn-Token header is required', 'SPAWN_TOKEN_INVALID');
       const result = spawns.requestSpawn(
         {
           spawn_tree_id: body.spawn_tree_id,
@@ -96,7 +97,7 @@ export function createSpawnRoutes(db: Database, auth?: AuthMiddleware, wsService
           capability_ids: body.capability_ids,
           token,
         },
-        { internal: isInternal }
+        { internal: false }
       );
       res.status(result.status === 'prepared' ? 201 : 200).json(result);
     } catch (error) {
@@ -111,7 +112,8 @@ export function createSpawnRoutes(db: Database, auth?: AuthMiddleware, wsService
   // GET /api/swarms/spawns/:id/status — child polls its own spawn status.
   router.get('/:id/status', (req, res, next) => {
     try {
-      res.json(spawns.getSpawnStatus(req.params.id));
+      const token = typeof req.get('X-Spawn-Token') === 'string' ? req.get('X-Spawn-Token') as string : undefined;
+      res.json(spawns.getSpawnStatus(req.params.id, { token, internal: Boolean(req.user) }));
     } catch (error) {
       try {
         mapSpawnError(error);
