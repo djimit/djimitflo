@@ -91,6 +91,15 @@ export enum WebSocketEventType {
   // System events
   SYSTEM_HEALTH = 'system.health',
   SYSTEM_ERROR = 'system.error',
+
+  // Discussion events
+  DISCUSSION_CREATED = 'discussion.created',
+  PROPOSAL_ADDED = 'discussion.proposal_added',
+  VOTE_CAST = 'discussion.vote_cast',
+  CONSENSUS_REACHED = 'discussion.consensus_reached',
+  CONSENSUS_FAILED = 'discussion.consensus_failed',
+  LEARNING_CAPTURED = 'learning.captured',
+  TOKEN_USAGE_LOGGED = 'token_usage.logged',
 }
 
 // Event payloads

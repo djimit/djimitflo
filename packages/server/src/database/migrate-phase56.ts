@@ -1,4 +1,12 @@
 import type BetterSqlite3 from 'better-sqlite3';
+
+function addColumnIfMissing(db: BetterSqlite3.Database, table: string, column: string, definition: string) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((existing) => existing.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function createPhase56Tables(db: BetterSqlite3.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS provider_configs (
@@ -36,7 +44,16 @@ export function createPhase56Tables(db: BetterSqlite3.Database) {
       duration_ms INTEGER,
       timestamp TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
 
+  addColumnIfMissing(db, 'token_usage_log', 'provider', "TEXT NOT NULL DEFAULT 'unknown'");
+  addColumnIfMissing(db, 'token_usage_log', 'cache_read_tokens', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(db, 'token_usage_log', 'cache_create_tokens', 'INTEGER NOT NULL DEFAULT 0');
+  addColumnIfMissing(db, 'token_usage_log', 'cost', 'REAL NOT NULL DEFAULT 0');
+  addColumnIfMissing(db, 'token_usage_log', 'duration_ms', 'INTEGER');
+  addColumnIfMissing(db, 'token_usage_log', 'timestamp', 'TEXT');
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_token_usage_task ON token_usage_log(task_id);
     CREATE INDEX IF NOT EXISTS idx_token_usage_agent ON token_usage_log(agent_id);
     CREATE INDEX IF NOT EXISTS idx_token_usage_provider ON token_usage_log(provider);

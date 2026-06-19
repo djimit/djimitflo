@@ -535,7 +535,7 @@ class ApiClient {
     return localStorage.getItem(AUTH_SESSION_KEY);
   }
 
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
     const token = this.getToken();
     const headers: Record<string, string> = {
@@ -1199,6 +1199,7 @@ class ApiClient {
   async exportSummaryReport(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
     return this.exportDownload('/exports/report/summary', format, options);
   }
+
 }
 
 export const api = new ApiClient();

@@ -110,6 +110,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       const {
         title,
         description,
+        status,
         priority = TaskPriority.MEDIUM,
         risk_level,
         execution_mode = ExecutionMode.REVIEW_ONLY,
@@ -150,7 +151,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         id,
         title,
         description,
-        TaskStatus.PENDING,
+        (status || TaskStatus.PENDING),
         priority,
         risk_level || RiskLevel.LOW,
         execution_mode,
@@ -189,7 +190,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       }
 
       const updates = req.body;
-      const allowed = ['title', 'description', 'status', 'priority', 'tags', 'metadata'];
+      const allowed = ['title', 'description', 'status', 'priority', 'tags', 'metadata', 'token_usage', 'execution_time_ms', 'started_at', 'completed_at', 'failed_at'];
       const setClauses: string[] = [];
       const params: any[] = [];
 

@@ -1,105 +1,74 @@
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import type { AuthMiddleware } from '../middleware/auth';
+import { UsageService } from '../services/usage-service';
+import { createError } from '../middleware/error-handler';
 
-export function createUsageRoutes(db: Database): Router {
+export function createUsageRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const usageService = new UsageService(db);
+  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
-  // GET /usage/quotas — provider_configs with aggregated token usage
-  router.get('/quotas', (_req: Request, res: Response, next: NextFunction) => {
+  // GET /api/usage/tokens — query token usage
+  router.get('/tokens', requirePermission('manage:config'), (req, res, next) => {
     try {
-      const quotas = db.prepare(`
-        SELECT
-          pc.provider,
-          pc.subscription_tier AS tier,
-          pc.is_active,
-          pc.token_quota_hourly AS quota_hourly,
-          pc.token_quota_daily AS quota_daily,
-          pc.token_quota_weekly AS quota_weekly,
-          pc.token_quota_monthly AS quota_monthly,
-          pc.rate_limit_rpm,
-          pc.rate_limit_rpd,
-          pc.cost_per_1k_prompt_tokens AS cost_per_1k_prompt,
-          pc.cost_per_1k_completion_tokens AS cost_per_1k_completion,
-          COALESCE(SUM(CASE WHEN tul.timestamp >= datetime('now', '-1 hour')  THEN tul.prompt_tokens + tul.completion_tokens ELSE 0 END), 0) AS tokens_used_hourly,
-          COALESCE(SUM(CASE WHEN tul.timestamp >= datetime('now', '-1 day')   THEN tul.prompt_tokens + tul.completion_tokens ELSE 0 END), 0) AS tokens_used_daily,
-          COALESCE(SUM(CASE WHEN tul.timestamp >= datetime('now', '-7 days')  THEN tul.prompt_tokens + tul.completion_tokens ELSE 0 END), 0) AS tokens_used_weekly,
-          COALESCE(SUM(CASE WHEN tul.timestamp >= datetime('now', '-30 days') THEN tul.prompt_tokens + tul.completion_tokens ELSE 0 END), 0) AS tokens_used_monthly,
-          COALESCE(SUM(tul.cost), 0) AS cost_total
-        FROM provider_configs pc
-        LEFT JOIN token_usage_log tul ON tul.provider = pc.provider
-        GROUP BY pc.provider
-        ORDER BY pc.provider
-      `).all() as any[];
-
-      res.json({ quotas });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // GET /usage/tokens?group_by=day — aggregated token usage
-  router.get('/tokens', (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const groupBy = req.query.group_by as string || 'day';
-      const days = parseInt(req.query.days as string) || 30;
-
-      const dateFn = groupBy === 'hour'
-        ? `strftime('%Y-%m-%dT%H:00', timestamp)`
-        : `DATE(timestamp)`;
-
-      const breakdown = db.prepare(`
-        SELECT
-          ${dateFn} AS date,
-          SUM(prompt_tokens + completion_tokens) AS tokens,
-          SUM(cost) AS cost
-        FROM token_usage_log
-        WHERE timestamp >= datetime('now', '-' || ? || ' days')
-        GROUP BY ${dateFn}
-        ORDER BY date ASC
-      `).all(days) as any[];
-
-      const totals = db.prepare(`
-        SELECT
-          COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-          COALESCE(SUM(cost), 0) AS total_cost
-        FROM token_usage_log
-        WHERE timestamp >= datetime('now', '-' || ? || ' days')
-      `).get(days) as any;
-
-      res.json({
-        total_tokens: totals.total_tokens,
-        total_cost: totals.total_cost,
-        breakdown,
+      const result = usageService.getTokenUsage({
+        provider: req.query.provider as string,
+        model: req.query.model as string,
+        agent_id: req.query.agent_id as string,
+        from: req.query.from as string,
+        to: req.query.to as string,
+        group_by: req.query.group_by as string,
       });
-    } catch (error) {
-      next(error);
+      res.json(result);
+    } catch (err) { next(err); }
+  });
+
+  // POST /api/usage/tokens — batch insert from swarm outbox
+  router.post('/tokens', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { logs } = req.body;
+      if (!Array.isArray(logs) || logs.length === 0) {
+        throw createError(400, 'logs array required', 'INVALID_INPUT');
+      }
+      const inserted = usageService.batchInsertLogs(logs);
+      res.status(201).json({ inserted, count: logs.length });
+    } catch (err) {
+      next(err);
     }
   });
 
-  // GET /usage/recent?limit=20 — recent token usage log entries
-  router.get('/recent', (req: Request, res: Response, next: NextFunction) => {
+  router.get('/costs', requirePermission('manage:config'), (req, res, next) => {
     try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 20, 200);
+      const result = usageService.getCosts({
+        provider: req.query.provider as string,
+        from: req.query.from as string,
+        to: req.query.to as string,
+      });
+      res.json(result);
+    } catch (err) { next(err); }
+  });
 
-      const logs = db.prepare(`
-        SELECT
-          tul.id,
-          tul.timestamp,
-          tul.provider,
-          tul.model,
-          tul.task_id,
-          tul.prompt_tokens,
-          tul.completion_tokens,
-          tul.cost
-        FROM token_usage_log tul
-        ORDER BY tul.timestamp DESC
-        LIMIT ?
-      `).all(limit) as any[];
+  router.get('/quotas', requirePermission('manage:config'), (_req, res, next) => {
+    try {
+      const quotas = usageService.getQuotas();
+      res.json({ quotas });
+    } catch (err) { next(err); }
+  });
 
+  router.get('/available-models', requirePermission('manage:config'), (_req, res, next) => {
+    try {
+      const models = usageService.getAvailableModels();
+      res.json({ models });
+    } catch (err) { next(err); }
+  });
+
+  router.get('/recent', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const limit = parseInt(req.query.limit as string, 10) || 20;
+      const logs = usageService.getRecentLogs(limit);
       res.json({ logs });
-    } catch (error) {
-      next(error);
-    }
+    } catch (err) { next(err); }
   });
 
   return router;

@@ -9,7 +9,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 | Integration | Status | CLI Verified | JSON Output | Structured Events | Permission Bypass |
 |-------------|--------|-------------|-------------|-------------------|-------------------|
 | **OpenCode** | Partially verified | Yes (1.15.4) | Yes (NDJSON) | Yes | Yes (`--dangerously-skip-permissions`) |
-| **Codex** | Not implemented | No | No | No | No |
+| **Codex** | Implemented | No (contract anticipated) | Yes (NDJSON, same format as OpenCode) | Yes (step-start/tool/text/step-finish) | Yes (`CODEX_SKIP_PERMISSIONS` env var) |
 | **Ruflo** | Conceptually mapped | N/A | N/A | N/A | N/A |
 
 ## OpenCode (Partially Verified)
@@ -22,13 +22,15 @@ Djimitflo integrates with external AI agent execution backends. This document su
 
 **Not yet verified**: Long-running task execution with Djimitflo policy engine end-to-end
 
-## Codex (Not Implemented)
+## Codex (Implemented, unverified)
 
-- `ExecutorKind = 'codex'` exists in types but no `CodexExecutor` class
-- Three potential integration paths: CLI, SDK, API
-- CLI contract not yet captured
-- Adding a stub without a working contract would overclaim capability
-- See [docs/codex.md](./codex.md) for roadmap
+- `ExecutorKind = 'codex'` and `CodexExecutor` class exists in `packages/server/src/execution/executors/codex-executor.ts`
+- Registered in `execution-engine.ts`
+- Structured NDJSON output (`--format json`) with event types `step-start`, `tool`, `text`, `step-finish`
+- Permission bypass available via `CODEX_SKIP_PERMISSIONS=true` environment variable
+- Binary resolved from `CODEX_BIN_PATH` environment variable, default: `codex`
+- CLI contract anticipated but not yet verified against live binary
+- See [docs/codex.md](./codex.md) for details
 
 ## Ruflo (Conceptually Mapped)
 
@@ -44,7 +46,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 Each integration has an evidence trail:
 
 - **OpenCode**: `opencode run --help` output, JSON event samples, live binary test results
-- **Codex**: None (documented as not implemented)
+- **Codex**: Structured event samples documented; live binary verification pending
 - **Ruflo**: Concept mapping table, GitHub README references, zero code dependency
 
 ## Known Limitations
