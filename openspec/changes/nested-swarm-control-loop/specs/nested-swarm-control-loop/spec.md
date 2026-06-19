@@ -127,3 +127,50 @@ Djimitflo SHALL retry `git worktree add` on transient git lock errors before fai
 - **WHEN** a proof run fails with `PROOF_RUN_RUNTIME_FAILED`
 - **THEN** the route returns `503` with the `PROOF_RUN_RUNTIME_FAILED` code
 - **AND** does not return a bare `500 INTERNAL_ERROR`
+
+### Requirement: Discussions support ordered multi-round turns with a computed-on-read next speaker
+
+Djimitflo SHALL extend the `discussions` substrate with ordered, multi-round turns and a computed-on-read next-speaker selector that returns a hint only and spawns nothing.
+
+#### Scenario: An ordered turn is appended to an open discussion
+
+- **WHEN** a participant calls `POST /api/discussions/:id/turns` with `agent_id` and `content`
+- **THEN** a turn row is created with a monotonic `turn_index`, `status = 'open'`, and the discussion's WS clients receive `DISCUSSION_TURN_ADDED`
+- **AND** a turn from a non-participant is rejected (403) when `metadata.participants` is non-empty
+
+#### Scenario: Only one open turn is pending at a time
+
+- **WHEN** a participant appends a turn while another turn is still `open`
+- **THEN** the append is rejected with `OPEN_TURN_PENDING`
+- **AND** a reply (`parent_turn_id`) is allowed only to a committed turn
+
+#### Scenario: The next speaker is computed on read via round-robin
+
+- **WHEN** an operator calls `POST /api/discussions/:id/tick` (gated by `write:swarm_action`)
+- **THEN** the response returns `next_agent_id = participants[committedTurnCount % len]` and `awaiting_commit = true` while a turn is open
+- **AND** committing a turn via `PATCH .../turns/:turnId` broadcasts `DISCUSSION_TURN_COMMITTED` and advances the next-speaker selection on the following tick
+
+### Requirement: The tasks path supports claude, gemini, and editor executors
+
+Djimitflo SHALL register `claude`, `gemini`, and `editor` (the `cline` autonomous editor-agent) as `ExecutionEngine` executors that inherit the existing tasks-path gates and the established spawn/parse contract.
+
+#### Scenario: Headless executors are registered and inherit tasks-path gates
+
+- **WHEN** `ExecutionEngine` starts
+- **THEN** `claude`, `gemini`, and `editor` executors are registered via the open/closed `registerExecutor` map (no switch)
+- **AND** `executeTask` for those kinds passes through the same `execute:task` permission, risk classifier, and approval-policy gates as `opencode` and `codex`
+
+#### Scenario: Executor argv matches the proven loop-runtime shapes
+
+- **WHEN** `ClaudeExecutor.buildClaudeArgs` builds a command
+- **THEN** it emits `claude -p <prompt> --output-format json` with `--dangerously-skip-permissions` only when armed
+- **WHEN** `GeminiExecutor.buildGeminiArgs` builds a command
+- **THEN** it emits `gemini -p <prompt> -o json` with `-y` only when armed
+- **WHEN** `EditorExecutor.buildEditorArgs` builds a command
+- **THEN** it emits `cline --json --auto-approve <bool> -c <worktree> --thinking <t> <prompt>`
+
+#### Scenario: A fake-binary executor run completes on exit 0
+
+- **WHEN** `start()` is invoked against a fake binary that exits 0
+- **THEN** the executor emits `TASK_STARTED` and `TASK_COMPLETED` events and yields a `completed` result
+- **AND** the skip-permissions / model toggles are controlled by the per-executor env gate, not the loop path's runtime allowlist
