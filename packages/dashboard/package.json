@@ -11,7 +11,7 @@
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit",
-    "lint": "eslint src --ext .ts,.tsx"
+    "lint": "eslint ."
   },
   "dependencies": {
     "@djimitflo/shared": "*",

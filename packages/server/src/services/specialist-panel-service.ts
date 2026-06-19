@@ -11,6 +11,7 @@ type ConsensusDecision = 'goal' | 'backlog' | 'needs_more_evidence' | 'blocked';
 
 export interface SpecialistProfile {
   id: string;
+  version?: string;
   title: string;
   domains: string[];
   default_questions: string[];
@@ -176,6 +177,76 @@ const SPECIALIST_CATALOG: SpecialistProfile[] = [
     default_questions: ['Which quantities are measured instead of inferred?', 'What budget or conservation rule bounds the process?'],
     required_evidence: ['measurement', 'budget', 'load or capacity signal'],
     forbidden_claims: ['Unlimited scaling claims.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'mathematician',
+    version: '1.0.0',
+    title: 'Mathematician',
+    domains: ['mathematics', 'optimization', 'invariants', 'formal models'],
+    default_questions: ['Which invariant bounds this system?', 'Which scoring or optimization rule is falsifiable?'],
+    required_evidence: ['formal invariant', 'counterexample check', 'measurable score'],
+    forbidden_claims: ['A consensus verdict presented as mathematical proof.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'physicist',
+    version: '1.0.0',
+    title: 'Physicist',
+    domains: ['systems dynamics', 'resource limits', 'measurement', 'stability'],
+    default_questions: ['Which resource quantity bounds execution?', 'Which feedback loop is unstable under load?'],
+    required_evidence: ['measurement', 'budget', 'load or capacity signal'],
+    forbidden_claims: ['Unlimited scaling claims.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'biologist',
+    version: '1.0.0',
+    title: 'Biologist',
+    domains: ['adaptation', 'resilience', 'feedback ecology', 'selection pressure'],
+    default_questions: ['Which adaptation loop could run away?', 'Where is resilience measured rather than assumed?'],
+    required_evidence: ['feedback signal', 'selection pressure', 'containment mechanism'],
+    forbidden_claims: ['Biological metaphor presented as validation evidence.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'psychologist',
+    version: '1.0.0',
+    title: 'Psychologist',
+    domains: ['cognitive load', 'operator trust', 'decision fatigue', 'attention'],
+    default_questions: ['Where can the operator misunderstand agent state?', 'Which intervention point prevents over-trust?'],
+    required_evidence: ['operator-facing state', 'decision pressure', 'feedback timing'],
+    forbidden_claims: ['Trust improvement without operator-facing evidence.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'philosopher',
+    version: '1.0.0',
+    title: 'Philosopher',
+    domains: ['epistemology', 'definitions', 'ethics', 'accountability'],
+    default_questions: ['What would count as knowing here?', 'Which claim is underdefined or ethically loaded?'],
+    required_evidence: ['definition boundary', 'uncertainty statement', 'accountability owner'],
+    forbidden_claims: ['Self-awareness or truth claims beyond observable state.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'product_strategist',
+    version: '1.0.0',
+    title: 'Product Strategist',
+    domains: ['value scoring', 'backlog shaping', 'operator workflow', 'adoption'],
+    default_questions: ['Which work item has the highest validated leverage?', 'What should be deferred despite being interesting?'],
+    required_evidence: ['value score', 'user impact', 'risk tradeoff'],
+    forbidden_claims: ['Priority claims without value and risk evidence.'],
+    output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
+  },
+  {
+    id: 'data_scientist',
+    version: '1.0.0',
+    title: 'Data Scientist',
+    domains: ['metrics', 'experiments', 'statistical validity', 'evaluation'],
+    default_questions: ['Which metric proves improvement?', 'Is the sample sufficient to trust the conclusion?'],
+    required_evidence: ['metric definition', 'baseline', 'sample or fixture'],
+    forbidden_claims: ['Performance improvement without baseline comparison.'],
     output_schema: ['stance', 'confidence', 'findings', 'recommendations', 'evidence_refs', 'limitations'],
   },
 ];

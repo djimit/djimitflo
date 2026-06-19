@@ -1,0 +1,350 @@
+{
+  "change": "next-level-swarm-skills-specialists",
+  "policy": {
+    "auto_spawn_workers": false,
+    "auto_start_loops": false,
+    "auto_promote_memory": false,
+    "high_risk_requires_security_reviewer": true,
+    "dashboard_must_distinguish_registry_from_active_execution": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G14.1-swarm-intelligence-kernel",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build the Swarm Intelligence Kernel that links goals, loop-runs, panels, claims, capabilities and worker leases while separating registry state from active execution.",
+          "constraints": [
+            "Active execution requires runtime evidence.",
+            "Do not count registry agents, taskCount or prepared leases as running workers.",
+            "No automatic worker start during model creation."
+          ],
+          "acceptance_criteria": [
+            "State model supports observed, hypothesized, planned, queued, prepared, running, checking, ready_for_human_merge, completed, blocked, rejected and escalated.",
+            "Illegal transitions are rejected.",
+            "Swarm status distinguishes registry_agent_count, live_agent_count, prepared_leases, running_leases and active_execution_count."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 140000,
+            "max_tokens_per_worker": 60000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.1",
+            "recommended_loop": "architecture-control-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.2-capability-registry-skill-contracts",
+      "depends_on": [
+        "G14.1-swarm-intelligence-kernel"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build a typed capability registry for skills, specialist agents, runtime adapters, deterministic harnesses, memory sources and dashboard actions.",
+          "constraints": [
+            "Draft and candidate capabilities are advisory only.",
+            "Validated capabilities may route live workers only within risk ceiling.",
+            "Every capability needs a removal strategy."
+          ],
+          "acceptance_criteria": [
+            "Capability contracts include allowed actions, forbidden actions, required evidence, risk ceiling, eval threshold and removal strategy.",
+            "Routing refuses draft, disabled, over-risk or below-threshold capabilities.",
+            "Tests cover skill contract failure and live-routing refusal."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.2",
+            "recommended_loop": "skill-quality-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.3-specialist-council-hypothesis-workbench",
+      "depends_on": [
+        "G14.2-capability-registry-skill-contracts"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build specialist councils and a hypothesis workbench for bounded multi-disciplinary reasoning, dissent capture and backlog projection.",
+          "constraints": [
+            "Specialist profiles are bounded contracts, not ungoverned personas.",
+            "High-risk panels require security_reviewer.",
+            "Panel-to-backlog projection must not start workers."
+          ],
+          "acceptance_criteria": [
+            "Catalog includes mathematician, physicist, biologist, psychologist, behavioral_scientist, philosopher, security_reviewer, systems_architect, product_strategist and data_scientist.",
+            "Panel consensus preserves support, oppose, uncertain, needs_evidence and dissent.",
+            "Hypotheses include evidence plan, falsification signal and stop condition."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.3",
+            "recommended_loop": "hypothesis-workbench-loop",
+            "specialist_panel_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.4-evidence-graph-claim-ledger",
+      "depends_on": [
+        "G14.3-specialist-council-hypothesis-workbench"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build an evidence graph and claim ledger linking goals, loop-runs, worker leases, panels, capabilities, sources, claims, decisions, memory candidates and trace spans.",
+          "constraints": [
+            "Unsupported claims remain proposed.",
+            "Contradictions must be visible.",
+            "Policy memory requires human review.",
+            "Secret-like evidence is rejected before persistence."
+          ],
+          "acceptance_criteria": [
+            "Claims support proposed, supported, contradicted, resolved, rejected and promoted states.",
+            "Evidence graph supports lineage from backlog to panel to goal to lease to memory candidate.",
+            "Tests cover contradiction links, secret-like rejection and policy memory review gate."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.4",
+            "recommended_loop": "memory-governance-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.5-capacity-governor-v2",
+      "depends_on": [
+        "G14.4-evidence-graph-claim-ledger"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build Capacity Governor v2 with queue classes, fair-share scheduling, runtime concurrency, token budget, wall-clock budget, failure budget and kill handling.",
+          "constraints": [
+            "Planning must explain eligible and blocked work before starts.",
+            "Fair-share scheduling must prevent one queue class from starving others.",
+            "Kill handling must preserve stdout, stderr, trace and checkpoint evidence.",
+            "High-risk work remains security/human-gated."
+          ],
+          "acceptance_criteria": [
+            "Runner plan groups work by queue class, runtime, risk and age.",
+            "Blocked leases include policy, runtime, capacity, token, wall-clock, failure-budget or gate reason.",
+            "Tests cover fair-share ordering, exhausted budgets, repeated failures, runtime unavailable and killed worker evidence."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 280000,
+            "max_tokens_per_worker": 100000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.5",
+            "recommended_loop": "worker-pool-runner-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.6-evaluation-harness",
+      "depends_on": [
+        "G14.5-capacity-governor-v2"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build evaluation harnesses for skill contracts, specialist outputs, memory retrieval, routing decisions, worker outcomes and dashboard truth.",
+          "constraints": [
+            "Deterministic gates override advisory LLM evals.",
+            "Eval scorecards must include evidence refs.",
+            "Known-bad fixtures must fail."
+          ],
+          "acceptance_criteria": [
+            "Skill contract eval blocks invalid or over-risk capabilities.",
+            "Specialist output eval counts unsupported claims.",
+            "Dashboard truth eval fails if prepared leases are labeled as active execution.",
+            "Routing eval records why each capability was selected or blocked."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.6",
+            "recommended_loop": "assurance-eval-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.7-mission-control-dashboard",
+      "depends_on": [
+        "G14.6-evaluation-harness"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build Mission Control dashboard views for swarm truth, capacity, specialist councils, skill catalog, claim ledger, evidence graph and next safe action.",
+          "constraints": [
+            "Dashboard must label MacBook cockpit versus workstation execution node.",
+            "Actions for non-validated capabilities must be disabled.",
+            "Decision lineage must link backlog, panel, reviews, evidence, goal and leases."
+          ],
+          "acceptance_criteria": [
+            "Mission Control shows registry, active execution, queue depth, capacity, budgets and blocked reasons.",
+            "Specialist Council view shows panel state, consensus, dissent and evidence refs.",
+            "Skill Catalog view shows status, eval score, risk ceiling, allowed actions and blocked reason.",
+            "Claim Ledger view filters contradicted, review-required and promoted claims."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.7",
+            "recommended_loop": "dashboard-mission-control-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.8-decision-governance-harness",
+      "depends_on": [
+        "G14.7-mission-control-dashboard"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build the decision governance harness for evaluator quorum, split-decision eligibility, audit manifests, replay lineage, runtime warning gates, circuit breakers and merge-ready closure semantics.",
+          "constraints": [
+            "Quorum is a hard gate for high-risk or disputed work.",
+            "Split-decision must be policy-eligible and must not create leases.",
+            "Runner start, skip, fail, stop and kill decisions require audit manifests.",
+            "Replay branches must not copy historical worker leases.",
+            "ready_for_human_merge is not completed for mutating work."
+          ],
+          "acceptance_criteria": [
+            "High-risk work with missing quorum remains blocked.",
+            "Split request is denied unless too-large, repeated-failure or checker-recommended evidence exists.",
+            "Runner decisions include decision id, policy version, runtime contract, capacity snapshot, budget snapshot and gate refs.",
+            "Replay run references source checkpoint and starts with zero leases.",
+            "Circuit breaker blocks repeated OpenCode timeouts or maker/checker failures with evidence preserved."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.8",
+            "recommended_loop": "decision-governance-loop",
+            "security_checker_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G14.9-end-to-end-swarm-scenario-smoke",
+      "depends_on": [
+        "G14.8-decision-governance-harness"
+      ],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Run an end-to-end bounded swarm scenario from question to specialist panel to backlog to goal to prepared leases to policy-gated worker run to evidence graph and memory candidate.",
+          "constraints": [
+            "Start with mock runtime before Codex/OpenCode.",
+            "No merge, push or deploy.",
+            "No automatic durable memory promotion.",
+            "Record endpoint, dashboard, trace, artifact, budget and remaining-risk evidence."
+          ],
+          "acceptance_criteria": [
+            "Scenario proves question intake, hypothesis, specialist panel, consensus, backlog projection, goal creation and prepared leases.",
+            "Policy-gated low-risk execution completes with maker/checker evidence.",
+            "Evidence graph links every step.",
+            "Dashboard shows active execution only when runtime evidence exists.",
+            "Smoke evidence records runtime status, token usage, wall-clock usage, artifacts and blocked high-risk paths."
+          ],
+          "risk_class": "high",
+          "budget": {
+            "max_tokens": 320000,
+            "max_tokens_per_worker": 110000,
+            "max_wall_clock_seconds": 10800,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "next-level-swarm-skills-specialists",
+            "phase": "G14.9",
+            "recommended_loop": "closed-loop-swarm-smoke",
+            "security_checker_required": true
+          }
+        }
+      }
+    }
+  ]
+}

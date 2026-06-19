@@ -75,7 +75,7 @@ export function createRoutes(
   router.use('/goals', requireAuth, createGoalRoutes(db, auth));
   router.use('/loops', requireAuth, createLoopRoutes(db, auth));
   router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));
-  router.use('/swarms', requireAuth, createSwarmRoutes(db, auth));
+  router.use('/swarms', requireAuth, createSwarmRoutes(db, auth, wsService));
   router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
   router.use('/', requireAuth, createDiffRoutes(db, auth));
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));

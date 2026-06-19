@@ -17,6 +17,8 @@ import { RepositoriesPage } from './pages/RepositoriesPage';
 import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { GoalsLoopsPage } from './pages/GoalsLoopsPage';
 import { SwarmResourcesPage } from './pages/SwarmResourcesPage';
+import { SwarmMissionControlPage } from './pages/SwarmMissionControlPage';
+import { ProofRunDetailPage } from './pages/ProofRunDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
 import { SwarmPage } from './pages/SwarmPage';
@@ -80,6 +82,8 @@ export function App() {
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
           <Route path="goals-loops" element={<GoalsLoopsPage />} />
           <Route path="swarm-resources" element={<SwarmResourcesPage />} />
+          <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
+          <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="swarm" element={<SwarmPage />} />
           <Route path="usage" element={<UsagePage />} />

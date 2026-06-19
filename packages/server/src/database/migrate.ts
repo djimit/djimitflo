@@ -13,7 +13,7 @@ type ColumnSpec = {
   definition: string;
 };
 
-const LOOP_RUN_STATUSES = "'created', 'planning', 'running', 'verifying', 'ready_for_human_merge', 'blocked', 'completed', 'failed', 'escalated', 'cancelled'";
+const LOOP_RUN_STATUSES = "'created', 'planning', 'running', 'verifying', 'ready_for_human_merge', 'blocked', 'completed', 'failed', 'escalated', 'cancelled', 'interrupted'";
 
 const approvalColumns: ColumnSpec[] = [
   { name: 'action_type', definition: "TEXT" },
@@ -36,6 +36,15 @@ const approvalPolicyColumns: ColumnSpec[] = [
   { name: 'allowed_tools', definition: "TEXT NOT NULL DEFAULT '[]'" },
   { name: 'blocked_tools', definition: "TEXT NOT NULL DEFAULT '[]'" },
   { name: 'require_reason', definition: "INTEGER NOT NULL DEFAULT 0" },
+];
+
+const swarmClaimColumns: ColumnSpec[] = [
+  { name: 'predicate', definition: 'TEXT' },
+  { name: 'object', definition: 'TEXT' },
+  { name: 'scope', definition: 'TEXT' },
+  { name: 'contradicts_ref', definition: 'TEXT' },
+  { name: 'supports_ref', definition: 'TEXT' },
+  { name: 'valid_until', definition: 'TEXT' },
 ];
 
 function getColumns(db: BetterSqlite3Database, tableName: string): Set<string> {
@@ -808,12 +817,118 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
   `);
 }
 
+function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS swarm_capabilities (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK(kind IN ('skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action')),
+      owner TEXT NOT NULL,
+      version TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('draft', 'candidate', 'validated', 'deprecated', 'disabled')),
+      risk_ceiling TEXT NOT NULL CHECK(risk_ceiling IN ('low', 'medium', 'high', 'critical')),
+      input_schema_ref TEXT NOT NULL,
+      output_schema_ref TEXT NOT NULL,
+      allowed_actions_json TEXT NOT NULL DEFAULT '[]',
+      forbidden_actions_json TEXT NOT NULL DEFAULT '[]',
+      required_evidence_json TEXT NOT NULL DEFAULT '[]',
+      eval_score REAL NOT NULL DEFAULT 0 CHECK(eval_score >= 0 AND eval_score <= 1),
+      eval_threshold REAL NOT NULL DEFAULT 0.75 CHECK(eval_threshold >= 0 AND eval_threshold <= 1),
+      cost_model_json TEXT NOT NULL DEFAULT '{}',
+      removal_strategy TEXT NOT NULL,
+      latest_validation_report TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_kind ON swarm_capabilities(kind);
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_status ON swarm_capabilities(status);
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_risk ON swarm_capabilities(risk_ceiling);
+
+    CREATE TABLE IF NOT EXISTS swarm_claims (
+      id TEXT PRIMARY KEY,
+      claim TEXT NOT NULL,
+      claim_type TEXT NOT NULL CHECK(claim_type IN ('observation', 'hypothesis', 'decision', 'memory', 'capability', 'backlog', 'policy')),
+      subject_ref TEXT NOT NULL,
+      predicate TEXT,
+      object TEXT,
+      scope TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      confidence REAL NOT NULL DEFAULT 0 CHECK(confidence >= 0 AND confidence <= 1),
+      valid_until TEXT,
+      status TEXT NOT NULL CHECK(status IN ('proposed', 'supported', 'contradicted', 'resolved', 'rejected', 'promoted', 'review_required')),
+      supports_ref TEXT,
+      contradicts_ref TEXT,
+      verified_by_gate TEXT,
+      invalidated_by TEXT,
+      created_from TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (invalidated_by) REFERENCES swarm_claims(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_subject_ref ON swarm_claims(subject_ref);
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_status ON swarm_claims(status);
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_claim_type ON swarm_claims(claim_type);
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_scope ON swarm_claims(scope);
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_predicate ON swarm_claims(predicate);
+    CREATE INDEX IF NOT EXISTS idx_swarm_claims_object ON swarm_claims(object);
+
+    CREATE TABLE IF NOT EXISTS swarm_evidence_edges (
+      id TEXT PRIMARY KEY,
+      from_ref TEXT NOT NULL,
+      to_ref TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_evidence_edges_from ON swarm_evidence_edges(from_ref);
+    CREATE INDEX IF NOT EXISTS idx_swarm_evidence_edges_to ON swarm_evidence_edges(to_ref);
+
+    CREATE TABLE IF NOT EXISTS swarm_runner_manifests (
+      id TEXT PRIMARY KEY,
+      decision_id TEXT NOT NULL UNIQUE,
+      lease_id TEXT,
+      loop_run_id TEXT,
+      action TEXT NOT NULL CHECK(action IN ('plan', 'start', 'skip', 'fail', 'stop', 'kill', 'complete')),
+      policy_version TEXT NOT NULL,
+      runtime_contract_json TEXT NOT NULL DEFAULT '{}',
+      capacity_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      budget_snapshot_json TEXT NOT NULL DEFAULT '{}',
+      gate_refs_json TEXT NOT NULL DEFAULT '[]',
+      blocked_reasons_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_lease ON swarm_runner_manifests(lease_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_loop ON swarm_runner_manifests(loop_run_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_action ON swarm_runner_manifests(action);
+  `);
+}
+
 function ensureLoopRunsReadyStatus(db: BetterSqlite3Database) {
   const sql = tableSql(db, 'loop_runs');
   if (!sql || sql.includes('ready_for_human_merge')) {
     return;
   }
+  rebuildLoopTables(db);
+}
 
+// Add the 'interrupted' loop-run status (set by recoverInterruptedRuns on restart)
+// to the CHECK constraint on existing databases. Fresh databases already get it
+// via LOOP_RUN_STATUSES in createAgenticLoopTables.
+function ensureLoopRunsInterruptedStatus(db: BetterSqlite3Database) {
+  const sql = tableSql(db, 'loop_runs');
+  if (!sql || sql.includes("'interrupted'")) {
+    return;
+  }
+  rebuildLoopTables(db);
+}
+
+function rebuildLoopTables(db: BetterSqlite3Database) {
   const loopRuns = db.prepare('SELECT * FROM loop_runs').all() as Array<Record<string, unknown>>;
   const loopEvents = tableSql(db, 'loop_events') ? db.prepare('SELECT * FROM loop_events').all() as Array<Record<string, unknown>> : [];
   const workerLeases = tableSql(db, 'worker_leases') ? db.prepare('SELECT * FROM worker_leases').all() as Array<Record<string, unknown>> : [];
@@ -958,7 +1073,10 @@ export function runMigrations(db: BetterSqlite3Database) {
   // Ensure agents table has telegram/machine/okf columns
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
   createAgenticLoopTables(db);
+  createSwarmIntelligenceTables(db);
+  addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
+  ensureLoopRunsInterruptedStatus(db);
 }
 
 if (require.main === module) {

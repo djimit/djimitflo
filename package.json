@@ -16,14 +16,18 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "npm run test --workspaces",
+    "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces",
     "type-check": "npm run type-check --workspaces",
+    "swarm:proof": "npm run swarm:proof --workspace=@djimitflo/server",
+    "demo:proof": "npm run demo:proof --workspace=@djimitflo/server",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
   },
   "devDependencies": {
+    "eslint": "^9.39.4",
     "npm-run-all": "^4.1.5",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.61.1"
   },
   "engines": {
     "node": ">=18.0.0",

@@ -193,9 +193,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/execute-maker', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/execute-maker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.executeMaker(req.params.id, req.body || {}));
+      res.json(await loopService.executeMaker(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -205,9 +205,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/execute-worker', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/execute-worker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.executeWorker(req.params.id, req.body || {}));
+      res.json(await loopService.executeWorker(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);
@@ -217,9 +217,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/execute-checker', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/execute-checker', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.executeChecker(req.params.id, req.body || {}));
+      res.json(await loopService.executeChecker(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);

@@ -20,6 +20,7 @@ import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
 import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
+import { LoopService } from './services/loop-service';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -32,7 +33,19 @@ async function main() {
   // Initialize database
   console.log('📦 Initializing database...');
   const db = initializeDatabase();
-  
+
+  // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
+  // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.
+  try {
+    const recovery = new LoopService(db).recoverInterruptedRuns();
+    if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
+      console.log(
+        `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
+      );
+    }
+  } catch (error) {
+    console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
   // Initialize auth
   const authService = new AuthService(db);
   authService.bootstrapAdmin();
@@ -84,7 +97,6 @@ async function main() {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
     if (raw) {
       const configs = JSON.parse(raw) as TelegramBotConfig[];
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { TelegramGatewayService } = require('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
       const tg = new TelegramGatewayService(configs, {
         createTask: async (prompt: string, machineId: string) => {

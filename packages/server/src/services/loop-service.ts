@@ -1,13 +1,15 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { execFileSync, spawnSync } from 'child_process';
+import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
+import { SwarmIntelligenceService } from './swarm-intelligence-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
-type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled';
+type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
 type GateStatus = 'pass' | 'fail' | 'skipped';
 type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
 export type LoopName =
@@ -231,9 +233,36 @@ interface RuntimeUsage {
   usage_source: 'runtime_stdout';
 }
 
+interface RuntimeExecutionResult {
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  timedOutAt?: string;
+  stdout: string;
+  stderr: string;
+  runtimePid?: number;
+}
+
+interface RuntimeStopResult {
+  stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle';
+  killAttempted: boolean;
+}
+
+interface RuntimeProcessHandle {
+  child: ChildProcess;
+  leaseId: string;
+  command: string;
+  args: string[];
+  startedAt: string;
+  timeoutHandle?: NodeJS.Timeout;
+}
+
+type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
 const DEFAULT_MAX_FINDINGS = 50;
 const MAX_MARKDOWN_FILE_BYTES = 250_000;
+const LOOP_RUNTIME_MANIFEST_POLICY_VERSION = 'loop-runtime-bridge-v1';
 const EXCLUDED_DIRS = new Set([
   '.git',
   'node_modules',
@@ -367,14 +396,167 @@ const LOOP_CONTRACTS: LoopContract[] = [
 ];
 
 export class LoopService {
+  private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
+  private intelligence: SwarmIntelligenceService;
+  private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
+  private readonly runtimeContractCacheMs = Math.max(
+    500,
+    Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000),
+  );
 
   constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
+    this.intelligence = new SwarmIntelligenceService(db);
+  }
+
+  /**
+   * Recover in-flight work orphaned by a server crash/restart. Live worker child
+   * processes do not survive a restart, so any loop_run still in an active status
+   * and any worker_lease still 'running' (with no live child) are now orphaned: mark
+   * the run 'interrupted' and the lease 'failed', recording the reason, so the
+   * fleet no longer reports them as active. The run can then be retried via
+   * retryLoopRun. Safe to call at any time: leases whose child is still genuinely
+   * live (present in the in-memory runtimeLeases map) and their runs are left alone.
+   * Also prunes stale, orphaned worktrees. Idempotent.
+   */
+  recoverInterruptedRuns(): { interruptedRuns: number; failedLeases: number; prunedWorktrees: number } {
+    const now = new Date().toISOString();
+    const liveLeaseIds = new Set(LoopService.runtimeLeases.keys());
+
+    // Fail 'running' leases whose child process is gone (not in the live map).
+    const orphanedLeases = this.db.prepare(
+      `SELECT id, metadata FROM worker_leases WHERE status = 'running'`,
+    ).all() as Array<{ id: string; metadata: string }>;
+    const updateLease = this.db.prepare(
+      `UPDATE worker_leases SET status = 'failed', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+    );
+    let failedLeases = 0;
+    for (const lease of orphanedLeases) {
+      if (liveLeaseIds.has(lease.id)) continue;
+      const metadata = {
+        ...(JSON.parse(lease.metadata || '{}') as Record<string, unknown>),
+        failed_reason: 'server_restart',
+        failed_at: now,
+      };
+      updateLease.run(JSON.stringify(metadata), lease.id);
+      failedLeases += 1;
+    }
+
+    // Runs in an active status whose worker leases are all non-live are orphaned.
+    const liveRunIds = new Set<string>();
+    if (liveLeaseIds.size > 0) {
+      const placeholders = Array.from(liveLeaseIds).map(() => '?').join(',');
+      const rows = this.db
+        .prepare(`SELECT DISTINCT loop_run_id FROM worker_leases WHERE id IN (${placeholders})`)
+        .all(...liveLeaseIds) as Array<{ loop_run_id: string }>;
+      for (const row of rows) liveRunIds.add(row.loop_run_id);
+    }
+    const activeRuns = this.db.prepare(
+      `SELECT id, metadata FROM loop_runs WHERE status IN ('running', 'verifying', 'planning')`,
+    ).all() as Array<{ id: string; metadata: string }>;
+    const updateRun = this.db.prepare(
+      `UPDATE loop_runs SET status = 'interrupted', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+    );
+    let interruptedRuns = 0;
+    for (const run of activeRuns) {
+      if (liveRunIds.has(run.id)) continue;
+      const metadata = {
+        ...(JSON.parse(run.metadata || '{}') as Record<string, unknown>),
+        interrupted_reason: 'server_restart',
+        interrupted_at: now,
+      };
+      updateRun.run(JSON.stringify(metadata), run.id);
+      interruptedRuns += 1;
+    }
+
+    const prunedWorktrees = this.pruneOrphanedWorktrees();
+    return { interruptedRuns, failedLeases, prunedWorktrees };
+  }
+
+  /**
+   * Remove worktree directories on disk that are no longer needed: those whose
+   * worker lease is terminal (completed/failed/cancelled/interrupted) or has no
+   * lease at all, and that are older than the grace period. Worktrees for in-flight
+   * leases (prepared/running) are always kept. Returns the number pruned.
+   * Set dryRun to count without deleting. Grace period defaults to
+   * LOOP_WORKTREE_MAX_AGE_HOURS (24h).
+   */
+  pruneOrphanedWorktrees(options?: { maxAgeHours?: number; dryRun?: boolean }): number {
+    const maxAgeHours = options?.maxAgeHours ?? Number(process.env.LOOP_WORKTREE_MAX_AGE_HOURS ?? 24);
+    const dryRun = options?.dryRun ?? false;
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    if (!worktreeRoot || !fs.existsSync(worktreeRoot)) return 0;
+
+    const rows = this.db
+      .prepare(`SELECT worktree_path, status FROM worker_leases WHERE worktree_path IS NOT NULL`)
+      .all() as Array<{ worktree_path: string; status: string }>;
+    const statusByPath = new Map<string, string>();
+    for (const row of rows) statusByPath.set(row.worktree_path, row.status);
+    const ACTIVE_LEASE = new Set(['prepared', 'running']);
+
+    const maxAgeMs = Math.max(0, maxAgeHours) * 3_600_000;
+    const nowMs = Date.now();
+    let pruned = 0;
+
+    let runDirs: string[];
+    try {
+      runDirs = fs.readdirSync(worktreeRoot);
+    } catch {
+      return 0;
+    }
+    for (const runDirName of runDirs) {
+      const runDir = path.join(worktreeRoot, runDirName);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(runDir);
+      } catch {
+        continue;
+      }
+      if (!stat.isDirectory()) continue;
+
+      let findingDirs: string[];
+      try {
+        findingDirs = fs.readdirSync(runDir);
+      } catch {
+        continue;
+      }
+      for (const findingDirName of findingDirs) {
+        const wtPath = path.join(runDir, findingDirName);
+        try {
+          stat = fs.statSync(wtPath);
+        } catch {
+          continue;
+        }
+        if (!stat.isDirectory()) continue;
+
+        const leaseStatus = statusByPath.get(wtPath);
+        if (leaseStatus && ACTIVE_LEASE.has(leaseStatus)) continue; // in-flight — keep
+        if (nowMs - stat.mtimeMs < maxAgeMs) continue; // within grace window — keep
+
+        if (!dryRun) {
+          try {
+            fs.rmSync(wtPath, { recursive: true, force: true });
+          } catch {
+            continue;
+          }
+        }
+        pruned += 1;
+      }
+
+      if (!dryRun) {
+        try {
+          if (fs.readdirSync(runDir).length === 0) fs.rmdirSync(runDir);
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    return pruned;
   }
 
   createGoal(input: GoalCreateInput, ownerUserId?: string): GoalRecord {
@@ -488,6 +670,9 @@ export class LoopService {
     const contract = this.getLoopContract(input.loop_name || LOOP_NAME);
     const goal = input.goal_id ? this.getGoal(input.goal_id) : null;
     const repositoryPath = this.resolveRepositoryPath(input.repository_path || process.cwd());
+    const runRiskClass: RiskClass = (goal?.risk_class === 'high' || goal?.risk_class === 'critical' || goal?.risk_class === 'medium' || goal?.risk_class === 'low')
+      ? goal.risk_class
+      : contract.risk_class;
     const maxFindings = Math.max(1, Math.min(input.max_findings || DEFAULT_MAX_FINDINGS, 200));
     const runId = randomUUID();
     const now = new Date().toISOString();
@@ -543,7 +728,7 @@ export class LoopService {
         dry_run: true,
         workers_leased: 0,
         mutating_actions: false,
-        risk_class: contract.risk_class,
+        risk_class: runRiskClass,
         contract,
       }),
       now,
@@ -1325,7 +1510,7 @@ export class LoopService {
     };
   }
 
-  executeMaker(id: string, input: ExecuteMakerInput = {}): { run: LoopRunRecord; lease: WorkerLeaseRecord; gates: LoopGate[]; stdout_path: string; stderr_path: string } {
+  async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; gates: LoopGate[]; stdout_path: string; stderr_path: string }> {
     const run = this.getLoopRun(id);
     this.assertWallClockBudgetAvailable(run);
     const leases = this.listWorkerLeases(run.id);
@@ -1349,10 +1534,45 @@ export class LoopService {
       throw new Error('MANUAL_MAKER_REQUIRES_HUMAN');
     }
 
+    const manifestContract = this.getRuntimeContract(makerLease.runtime);
+    this.recordWorkerManifest({
+      decisionId: this.makeManifestDecisionId(run.id, makerLease.id, 'start'),
+      loopRunId: run.id,
+      leaseId: makerLease.id,
+      action: 'start',
+      runtimeContract: manifestContract,
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: this.currentBudgetSnapshot(run),
+      gateRefs: ['runtime_contract'],
+      blockedReasons: [],
+      metadata: {
+        worker_role: makerLease.role,
+        worker_runtime: makerLease.runtime,
+        started_from: 'executeMaker',
+      },
+    });
+
     this.updateWorkerLeaseStatus(makerLease.id, 'running', { started_at: new Date().toISOString() });
 
     const contract = this.getRuntimeContract(makerLease.runtime);
     if (!contract.available || contract.status !== 'ok') {
+      this.recordWorkerManifest({
+        decisionId: this.makeManifestDecisionId(run.id, makerLease.id, 'fail'),
+        loopRunId: run.id,
+        leaseId: makerLease.id,
+        action: 'fail',
+        runtimeContract: contract,
+        capacitySnapshot: this.currentCapacitySnapshot(),
+        budgetSnapshot: this.currentBudgetSnapshot(run),
+        gateRefs: ['runtime_contract'],
+        blockedReasons: ['runtime_contract_drift'],
+        metadata: {
+          worker_role: makerLease.role,
+          worker_runtime: makerLease.runtime,
+          reason: 'runtime_contract_unavailable_or_drifted',
+          started_from: 'executeMaker',
+        },
+      });
       this.updateWorkerLeaseStatus(makerLease.id, 'failed', {
         runtime_contract: contract,
         runtime_contract_failed_at: new Date().toISOString(),
@@ -1363,11 +1583,9 @@ export class LoopService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.resolveWorkAssignmentPath(makerLease), 'utf8');
     const { command, args } = this.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path, prompt);
-    const result = spawnSync(command, args, {
+    const result = await this.executeRuntimeCommand(makerLease.id, command, args, {
       cwd: makerLease.worktree_path,
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      env: process.env,
+      timeoutMs,
       maxBuffer: 5 * 1024 * 1024,
     });
 
@@ -1376,15 +1594,15 @@ export class LoopService {
     const stdoutPath = path.join(outputDir, 'stdout.log');
     const stderrPath = path.join(outputDir, 'stderr.log');
     fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
-    fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
+    fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
 
     const diff = this.git(makerLease.worktree_path, ['diff', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
-    const exitStatus = typeof result.status === 'number' ? result.status : null;
-    const timedOut = Boolean(result.error && ((result.error as any).code === 'ETIMEDOUT' || result.error.message.includes('ETIMEDOUT')));
+    const exitStatus = result.exitCode;
+    const timedOut = result.timedOut;
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
-    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || result.error?.message || '');
+    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id);
     const efficiency = this.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
@@ -1408,6 +1626,8 @@ export class LoopService {
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');
+    const completionStatus = failed ? 'failed' : 'completed';
+    const wasCancelled = this.isWorkerLeaseCancelled(makerLease.id);
     const metadataPatch: Record<string, unknown> = {
       completed_at: new Date().toISOString(),
       stdout_path: stdoutPath,
@@ -1418,6 +1638,10 @@ export class LoopService {
       timed_out: timedOut,
       runtime_adapter: makerLease.runtime,
       runtime_contract: contract,
+      runtime_pid: result.runtimePid,
+      runtime_signal: result.signal,
+      runtime_timed_out: result.timedOut,
+      runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings,
       token_efficiency: efficiency,
     };
@@ -1427,9 +1651,86 @@ export class LoopService {
       metadataPatch.runtime_usage = { usage_source: 'unknown' };
     }
 
-    this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {
-      ...metadataPatch,
+    if (wasCancelled) {
+      this.patchWorkerLeaseMetadata(makerLease.id, {
+        ...metadataPatch,
+        runtime_was_cancelled: true,
+      });
+    } else {
+      this.updateWorkerLeaseStatus(makerLease.id, completionStatus, {
+        ...metadataPatch,
+      });
+    }
+
+    this.db.prepare(`
+      UPDATE loop_runs
+      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      wasCancelled ? this.getLoopRun(run.id).status : (failed ? 'blocked' : 'verifying'),
+      JSON.stringify(gates),
+      JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
+      new Date().toISOString(),
+      run.id
+    );
+
+    this.recordLoopEvent(run.id, 'maker_executed', failed ? 'warning' : 'info', `Maker lease ${makerLease.id} ${failed ? 'failed gates' : wasCancelled ? 'stopped' : 'completed'}.`, {
+      lease_id: makerLease.id,
+      gates,
+      stdout_path: stdoutPath,
+      stderr_path: stderrPath,
+      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_warnings: runtimeWarnings,
+      token_efficiency: efficiency,
+      runtime_cancelled: wasCancelled,
     });
+
+    if (tokenBudget.exhausted) {
+      this.recordLoopEvent(run.id, 'loop_budget_exhausted', 'warning', 'Token budget exhausted by maker runtime usage.', {
+        budget_type: 'tokens',
+        lease_id: makerLease.id,
+        runtime_usage: runtimeUsage,
+        token_budget: tokenBudget.budget,
+      });
+    }
+
+    this.recordWorkerManifest({
+      decisionId: this.makeManifestDecisionId(run.id, makerLease.id, failed ? 'fail' : 'complete'),
+      loopRunId: run.id,
+      leaseId: makerLease.id,
+      action: wasCancelled ? 'stop' : failed ? 'fail' : 'complete',
+      runtimeContract: contract,
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: this.currentBudgetSnapshot(run, runtimeUsage),
+      gateRefs: gates.map((gate) => gate.name),
+      blockedReasons: gates.filter((gate) => gate.status === 'fail').map((gate) => `${gate.name}: ${gate.evidence}`),
+      metadata: {
+        worker_role: makerLease.role,
+        worker_runtime: makerLease.runtime,
+        exit_status: exitStatus,
+        timed_out: timedOut,
+        diff_lines: diffLines,
+        diff_threshold_lines: diffMaxLines,
+        runtime_pid: result.runtimePid,
+        runtime_signal: result.signal,
+        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+        runtime_warnings: runtimeWarnings,
+        token_efficiency: efficiency,
+        started_from: 'executeMaker',
+        run_canceled: wasCancelled,
+      },
+    });
+
+    const completedLease = this.getWorkerLease(makerLease.id);
+    if (!wasCancelled && completionStatus === 'completed') {
+      return {
+        run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'maker_execution_failed') : this.getLoopRun(run.id),
+        lease: completedLease,
+        gates,
+        stdout_path: stdoutPath,
+        stderr_path: stderrPath,
+      };
+    }
 
     this.db.prepare(`
       UPDATE loop_runs
@@ -1443,35 +1744,16 @@ export class LoopService {
       run.id
     );
 
-    this.recordLoopEvent(run.id, 'maker_executed', failed ? 'warning' : 'info', `Maker lease ${makerLease.id} ${failed ? 'failed gates' : 'completed'}.`, {
-      lease_id: makerLease.id,
-      gates,
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      runtime_warnings: runtimeWarnings,
-      token_efficiency: efficiency,
-    });
-
-    if (tokenBudget.exhausted) {
-      this.recordLoopEvent(run.id, 'loop_budget_exhausted', 'warning', 'Token budget exhausted by maker runtime usage.', {
-        budget_type: 'tokens',
-        lease_id: makerLease.id,
-        runtime_usage: runtimeUsage,
-        token_budget: tokenBudget.budget,
-      });
-    }
-
     return {
-      run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'maker_execution_failed') : this.getLoopRun(run.id),
-      lease: this.listWorkerLeases(run.id).find((lease) => lease.id === makerLease.id)!,
+      run: this.getLoopRun(run.id),
+      lease: completedLease,
       gates,
       stdout_path: stdoutPath,
       stderr_path: stderrPath,
     };
   }
 
-  executeWorker(id: string, input: ExecuteMakerInput = {}): ExecuteWorkerResult {
+  async executeWorker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const lease = input.lease_id
@@ -1517,7 +1799,7 @@ export class LoopService {
       },
     });
 
-    const execution = this.executeMaker(id, input);
+    const execution = await this.executeMaker(id, input);
     const finalStatus = execution.lease.status === 'completed' ? 'ok' : 'error';
     this.assurance.createTraceSpan({
       trace_id: traceId,
@@ -1560,7 +1842,7 @@ export class LoopService {
     };
   }
 
-  executeChecker(id: string, input: ExecuteCheckerInput = {}): ExecuteWorkerResult {
+  async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const checker = input.lease_id
@@ -1587,12 +1869,47 @@ export class LoopService {
     }
 
     const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'mock' : 'mock');
+    const runtimeContract = this.getRuntimeContract(runtime);
+    this.recordWorkerManifest({
+      decisionId: this.makeManifestDecisionId(run.id, checker.id, 'start'),
+      loopRunId: run.id,
+      leaseId: checker.id,
+      action: 'start',
+      runtimeContract,
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: this.currentBudgetSnapshot(run),
+      gateRefs: ['runtime_contract'],
+      blockedReasons: [],
+      metadata: {
+        worker_role: checker.role,
+        worker_runtime: runtime,
+        maker_lease_id: checker.metadata.maker_lease_id,
+        started_from: 'executeChecker',
+      },
+    });
     this.updateWorkerLeaseRuntime(checker.id, runtime);
-    const contract = this.getRuntimeContract(runtime);
-    if (!contract.available || contract.status !== 'ok') {
+    if (!runtimeContract.available || runtimeContract.status !== 'ok') {
+      this.recordWorkerManifest({
+        decisionId: this.makeManifestDecisionId(run.id, checker.id, 'fail'),
+        loopRunId: run.id,
+        leaseId: checker.id,
+        action: 'fail',
+        runtimeContract,
+        capacitySnapshot: this.currentCapacitySnapshot(),
+        budgetSnapshot: this.currentBudgetSnapshot(run),
+        gateRefs: ['runtime_contract'],
+        blockedReasons: ['runtime_contract_drift'],
+        metadata: {
+          worker_role: checker.role,
+          worker_runtime: runtime,
+          maker_lease_id: checker.metadata.maker_lease_id,
+          reason: 'runtime_contract_unavailable_or_drifted',
+          started_from: 'executeChecker',
+        },
+      });
       this.updateWorkerLeaseStatus(checker.id, 'failed', {
         runtime_adapter: runtime,
-        runtime_contract: contract,
+        runtime_contract: runtimeContract,
         runtime_contract_failed_at: new Date().toISOString(),
       });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
@@ -1639,10 +1956,9 @@ export class LoopService {
     const { command, args } = runtime === 'mock'
       ? this.buildMockCheckerCommand(maker.worktree_path, prompt)
       : this.buildRuntimeCommand(runtime, maker.worktree_path, prompt);
-    const result = spawnSync(command, args, {
+    const result = await this.executeRuntimeCommand(checker.id, command, args, {
       cwd: maker.worktree_path,
-      encoding: 'utf8',
-      timeout: timeoutMs,
+      timeoutMs,
       env: process.env,
       maxBuffer: 5 * 1024 * 1024,
     });
@@ -1652,12 +1968,12 @@ export class LoopService {
     const stdoutPath = path.join(outputDir, 'stdout.log');
     const stderrPath = path.join(outputDir, 'stderr.log');
     fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
-    fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
+    fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
 
-    const exitStatus = typeof result.status === 'number' ? result.status : null;
-    const timedOut = Boolean(result.error && ((result.error as any).code === 'ETIMEDOUT' || result.error.message.includes('ETIMEDOUT')));
+    const exitStatus = result.exitCode;
+    const timedOut = result.timedOut;
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
-    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || result.error?.message || '');
+    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut
       ? this.extractCheckerVerdict(result.stdout || '')
       : 'insufficient_evidence';
@@ -1671,8 +1987,12 @@ export class LoopService {
       stderr_path: stderrPath,
       exit_status: exitStatus,
       timed_out: timedOut,
+      runtime_pid: result.runtimePid,
+      runtime_signal: result.signal,
+      runtime_timed_out: result.timedOut,
+      runtime_timed_out_at: result.timedOutAt,
       runtime_adapter: runtime,
-      runtime_contract: contract,
+      runtime_contract: runtimeContract,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
       runtime_warnings: runtimeWarnings,
     });
@@ -1719,6 +2039,33 @@ export class LoopService {
       stderr_path: stderrPath,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
       runtime_warnings: runtimeWarnings,
+    });
+
+    this.recordWorkerManifest({
+      decisionId: this.makeManifestDecisionId(run.id, checker.id, failed ? 'fail' : 'complete'),
+      loopRunId: run.id,
+      leaseId: checker.id,
+      action: failed ? 'fail' : 'complete',
+      runtimeContract,
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: this.currentBudgetSnapshot(run),
+      gateRefs: gates.map((gate) => gate.name),
+      blockedReasons: gates.filter((gate) => gate.status === 'fail').map((gate) => `${gate.name}: ${gate.evidence}`),
+      metadata: {
+        worker_role: checker.role,
+        worker_runtime: runtime,
+        maker_lease_id: maker.id,
+        verdict,
+        runtime_pid: result.runtimePid,
+        runtime_signal: result.signal,
+        runtime_timed_out: result.timedOut,
+        runtime_timed_out_at: result.timedOutAt,
+        exit_status: exitStatus,
+        timed_out: timedOut,
+        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+        runtime_warnings: runtimeWarnings,
+        started_from: 'executeChecker',
+      },
     });
 
     this.assurance.createTraceSpan({
@@ -2024,8 +2371,12 @@ export class LoopService {
       }
       try {
         const parsed = JSON.parse(trimmed);
-        const usage = parsed.usage || parsed.response?.usage || parsed.token_usage;
-        const normalized = this.normalizeRuntimeUsage(usage);
+        const normalized = this.normalizeRuntimeUsage(
+          parsed.usage
+            || parsed.response?.usage
+            || parsed.token_usage
+            || parsed
+        );
         if (normalized) {
           return normalized;
         }
@@ -2041,19 +2392,55 @@ export class LoopService {
       return null;
     }
     const usage = input as Record<string, unknown>;
-    const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens);
-    const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens);
+    const tokenAlias = this.normalizeTokenAlias(usage);
+    const promptTokens = Number(
+      usage.prompt_tokens ?? usage.input_tokens ??
+      tokenAlias.prompt ?? tokenAlias.input ?? usage.input ??
+      usage.prompt,
+    );
+    const completionTokens = Number(
+      usage.completion_tokens ?? usage.output_tokens ??
+      tokenAlias.completion ?? tokenAlias.output ?? usage.output ??
+      usage.completion,
+    );
     const explicitTotal = Number(usage.total_tokens);
     const calculatedTotal = (Number.isFinite(promptTokens) ? promptTokens : 0) + (Number.isFinite(completionTokens) ? completionTokens : 0);
-    const totalTokens = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : calculatedTotal;
-    if (!Number.isFinite(totalTokens) || totalTokens <= 0) {
+    const explicitTotalValue = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : calculatedTotal;
+    const aliasTotal = Number(tokenAlias.total);
+    const resolvedTotal = Number.isFinite(explicitTotalValue) && explicitTotalValue > 0 ? explicitTotalValue : aliasTotal;
+    if (!Number.isFinite(resolvedTotal) || resolvedTotal <= 0) {
       return null;
     }
     return {
       ...(Number.isFinite(promptTokens) && promptTokens >= 0 ? { prompt_tokens: promptTokens } : {}),
       ...(Number.isFinite(completionTokens) && completionTokens >= 0 ? { completion_tokens: completionTokens } : {}),
-      total_tokens: totalTokens,
+      total_tokens: resolvedTotal,
       usage_source: 'runtime_stdout',
+    };
+  }
+
+  private normalizeTokenAlias(usage: Record<string, unknown>): {
+    prompt?: number;
+    completion?: number;
+    input?: number;
+    output?: number;
+    total?: number;
+  } {
+    const tokenUsage = usage.tokens || usage.token_usage || usage.tokenUsage;
+    if (!tokenUsage || typeof tokenUsage !== 'object') {
+      return {};
+    }
+    const tokens = tokenUsage as Record<string, unknown>;
+    const toNumber = (value: unknown): number | undefined => {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    return {
+      ...(toNumber(tokens.prompt ?? tokens.input_tokens) !== undefined ? { prompt: toNumber(tokens.prompt ?? tokens.input_tokens) } : {}),
+      ...(toNumber(tokens.completion ?? tokens.output_tokens) !== undefined ? { completion: toNumber(tokens.completion ?? tokens.output_tokens) } : {}),
+      ...(toNumber(tokens.input ?? tokens.prompt) !== undefined ? { input: toNumber(tokens.input ?? tokens.prompt) } : {}),
+      ...(toNumber(tokens.output ?? tokens.completion) !== undefined ? { output: toNumber(tokens.output ?? tokens.completion) } : {}),
+      ...(toNumber(tokens.total) !== undefined ? { total: toNumber(tokens.total) } : {}),
     };
   }
 
@@ -2643,6 +3030,11 @@ export class LoopService {
     const command = runtime === 'codex'
       ? process.env.CODEX_BIN_PATH || 'codex'
       : process.env.OPENCODE_BIN_PATH || 'opencode';
+    const cacheKey = `${runtime}::${command}`;
+    const cached = this.runtimeContractCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.contract;
+    }
     const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS || 1_000), 5_000));
     const result = spawnSync(command, ['--version'], {
       encoding: 'utf8',
@@ -2685,14 +3077,15 @@ export class LoopService {
       (result.stdout || result.stderr || '').trim(),
       help.split(/\r?\n/).slice(0, 20).join('\n'),
     ].filter(Boolean);
+    const lowerHelp = help.toLowerCase();
     const hasJsonFlag = runtime === 'codex'
-      ? help.includes('--json')
-      : help.includes('--format');
+      ? lowerHelp.includes('--json')
+      : lowerHelp.includes('--format');
     const hasCwdFlag = runtime === 'codex'
-      ? help.includes('--cd')
-      : help.includes('--dir');
+      ? lowerHelp.includes('--cd')
+      : lowerHelp.includes('--dir');
     const drifted = !hasJsonFlag || !hasCwdFlag;
-    return {
+    const contract: RuntimeContract = {
       runtime,
       available: !drifted,
       command,
@@ -2706,6 +3099,8 @@ export class LoopService {
       evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : ''].filter(Boolean).join(', ')}` } : {}),
     };
+    this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
+    return contract;
   }
 
   private extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
@@ -2741,6 +3136,82 @@ export class LoopService {
       tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null,
       tokens_per_successful_worker: runtimeUsage.total_tokens,
     };
+  }
+
+  private makeManifestDecisionId(loopRunId: string, leaseId: string | null, action: RuntimeManifestAction): string {
+    return `${loopRunId}:${leaseId || 'unknown'}:${action}:${Date.now()}:${randomUUID().slice(0, 10)}`;
+  }
+
+  private currentCapacitySnapshot() {
+    return {
+      cpu_threads: os.cpus().length,
+      total_memory_bytes: os.totalmem(),
+      free_memory_bytes: os.freemem(),
+      load_average: os.loadavg(),
+      uptime_seconds: os.uptime(),
+      environment: {
+        node_version: process.version,
+        pid: process.pid,
+      },
+    };
+  }
+
+  private currentBudgetSnapshot(run: LoopRunRecord, runtimeUsage?: RuntimeUsage | null): Record<string, unknown> {
+    const tokenBudget = this.getTokenBudget(run);
+    const wallClockBudget = this.getWallClockBudget(run);
+    const failureThreshold = this.getFailureThreshold(run);
+    const usedTokens = this.sumRuntimeTokens(this.listWorkerLeases(run.id));
+    const runAgeMs = Math.max(0, Date.now() - Date.parse(run.created_at));
+    const latestRuntimeTokens = runtimeUsage?.total_tokens;
+    return {
+      token_budget: tokenBudget,
+      wall_clock_budget: wallClockBudget,
+      failure_threshold: failureThreshold,
+      runtime_loop_age_ms: runAgeMs,
+      used_runtime_tokens: usedTokens,
+      last_worker_total_tokens: latestRuntimeTokens ?? null,
+      budget_aware: tokenBudget.maxTokens || wallClockBudget.maxRuntimeMs ? true : false,
+    };
+  }
+
+  private recordWorkerManifest(input: {
+    decisionId: string;
+    loopRunId: string;
+    leaseId: string | null;
+    action: RuntimeManifestAction;
+    runtimeContract: RuntimeContract | null;
+    capacitySnapshot: Record<string, unknown>;
+    budgetSnapshot: Record<string, unknown>;
+    gateRefs: string[];
+    blockedReasons: string[];
+    metadata: Record<string, unknown>;
+  }) {
+    if (!input.loopRunId) {
+      return;
+    }
+    try {
+      this.intelligence.createRunnerManifest({
+        decision_id: input.decisionId,
+        lease_id: input.leaseId,
+        loop_run_id: input.loopRunId,
+        action: input.action,
+        policy_version: LOOP_RUNTIME_MANIFEST_POLICY_VERSION,
+        runtime_contract: (input.runtimeContract as unknown as Record<string, unknown>) || {},
+        capacity_snapshot: input.capacitySnapshot,
+        budget_snapshot: input.budgetSnapshot,
+        gate_refs: input.gateRefs,
+        blocked_reasons: input.blockedReasons,
+        metadata: input.metadata,
+      });
+    } catch {
+      // Manifest persistence is best-effort for evidence completeness; keep loop execution deterministic.
+      this.recordLoopEvent(input.loopRunId, 'worker_manifest_error', 'warning', 'Runner manifest persistence failed for worker action.', {
+        decision_id: input.decisionId,
+        action: input.action,
+        lease_id: input.leaseId,
+        loop_run_id: input.loopRunId,
+      });
+    }
   }
 
   private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
@@ -3102,9 +3573,16 @@ export class LoopService {
       .run(JSON.stringify(metadata), new Date().toISOString(), id);
   }
 
-  private listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
-    const rows = this.db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
-    return rows.map((row) => ({
+  private getWorkerLease(id: string): WorkerLeaseRecord {
+    const row = this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(id) as any | undefined;
+    if (!row) {
+      throw new Error('MAKER_LEASE_NOT_FOUND');
+    }
+    return this.parseWorkerLease(row);
+  }
+
+  private parseWorkerLease(row: any): WorkerLeaseRecord {
+    return {
       id: row.id,
       loop_run_id: row.loop_run_id,
       role: row.role,
@@ -3117,7 +3595,196 @@ export class LoopService {
       metadata: JSON.parse(row.metadata || '{}'),
       created_at: row.created_at,
       updated_at: row.updated_at,
-    }));
+    };
+  }
+
+  private registerRuntimeLease(
+    leaseId: string,
+    child: ChildProcess,
+    command: string,
+    args: string[],
+    timeoutHandle?: NodeJS.Timeout
+  ): void {
+    LoopService.runtimeLeases.set(leaseId, {
+      child,
+      leaseId,
+      command,
+      args,
+      startedAt: new Date().toISOString(),
+      timeoutHandle,
+    });
+  }
+
+  private clearRuntimeLease(leaseId: string): void {
+    const lease = LoopService.runtimeLeases.get(leaseId);
+    if (!lease) {
+      return;
+    }
+    if (lease.timeoutHandle) {
+      clearTimeout(lease.timeoutHandle);
+    }
+    LoopService.runtimeLeases.delete(leaseId);
+  }
+
+  private getRuntimeLease(leaseId: string): RuntimeProcessHandle | null {
+    return LoopService.runtimeLeases.get(leaseId) || null;
+  }
+
+  public isWorkerLeaseCancelled(leaseId: string): boolean {
+    const lease = this.getWorkerLease(leaseId);
+    const stopped = lease.metadata.stop_requested_at;
+    const wasStopped = lease.metadata.stopped_by_runner || lease.metadata.runtime_was_cancelled;
+    return Boolean(stopped || wasStopped || lease.status === 'cancelled');
+  }
+
+  private async executeRuntimeCommand(
+    leaseId: string,
+    command: string,
+    args: string[],
+    options: {
+      cwd?: string;
+      env?: NodeJS.ProcessEnv;
+      timeoutMs?: number;
+      maxBuffer?: number;
+    } = {}
+  ): Promise<RuntimeExecutionResult> {
+    const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
+    const timeoutMs = options.timeoutMs || 120_000;
+
+    return new Promise<RuntimeExecutionResult>((resolve, reject) => {
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+      let timedOutAt: string | undefined;
+      let timedOutHandled = false;
+      let exitCode: number | null = null;
+      let signal: string | null = null;
+      let settled = false;
+
+      const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
+      let timeoutHandle: NodeJS.Timeout | undefined;
+      let child: ChildProcess;
+      try {
+        child = spawn(command, args, {
+          cwd: options.cwd,
+          env: options.env || process.env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+
+      if (!child.pid) {
+        reject(new Error('RUNTIME_PROCESS_START_FAILED'));
+        return;
+      }
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          if (!timedOutHandled) {
+            timedOut = true;
+            timedOutAt = new Date().toISOString();
+            timedOutHandled = true;
+            try {
+              child.kill('SIGKILL');
+            } catch {
+              // best effort stop for timeout enforcement.
+            }
+          }
+        }, timeoutMs);
+      }
+
+      this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
+
+      const finalize = () => {
+        if (settled) return;
+        settled = true;
+        this.clearRuntimeLease(leaseId);
+        resolve({
+          exitCode,
+          signal,
+          timedOut,
+          timedOutAt,
+          stdout: safeTrim(stdout),
+          stderr: safeTrim(stderr),
+          runtimePid: child.pid || undefined,
+        });
+      };
+
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => {
+        stdout += chunk;
+        if (stdout.length > maxBuffer) {
+          stdout = stdout.slice(-maxBuffer);
+        }
+      });
+      child.stderr?.on('data', (chunk: string) => {
+        stderr += chunk;
+        if (stderr.length > maxBuffer) {
+          stderr = stderr.slice(-maxBuffer);
+        }
+      });
+
+      child.on('error', (error) => {
+        this.clearRuntimeLease(leaseId);
+        if (!settled) {
+          settled = true;
+          reject(error);
+        }
+      });
+      child.on('close', (code, childSignal) => {
+        exitCode = code === null ? exitCode : code;
+        signal = childSignal || null;
+        if (timedOut && typeof code === 'number' && code === 0) {
+          // keep runtime timeout marker for explicit timeout termination paths.
+          timedOut = true;
+        }
+        finalize();
+      });
+    });
+  }
+
+  public stopWorkerLeaseRuntime(leaseId: string): RuntimeStopResult {
+    const runtimeLease = this.getRuntimeLease(leaseId);
+    if (!runtimeLease) {
+      return { stopMode: 'best_effort_no_process_handle', killAttempted: false };
+    }
+
+    const child = runtimeLease.child;
+    let killAttempted = false;
+    try {
+      if (!child.killed) {
+        child.kill('SIGTERM');
+      }
+      killAttempted = true;
+      this.patchWorkerLeaseMetadata(leaseId, {
+        runtime_stop_requested_at: new Date().toISOString(),
+        runtime_stop_attempted: true,
+        runtime_stop_mode: 'stop',
+      });
+    } catch {
+      killAttempted = false;
+    }
+
+    if (child.killed) {
+      this.clearRuntimeLease(leaseId);
+      return { stopMode: 'stop', killAttempted };
+    }
+
+    try {
+      child.kill('SIGKILL');
+      killAttempted = killAttempted || true;
+      this.clearRuntimeLease(leaseId);
+      return { stopMode: 'kill', killAttempted };
+    } catch {
+      return { stopMode: 'best_effort_no_process_handle', killAttempted };
+    }
+  }
+
+  private listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
+    const rows = this.db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
+    return rows.map((row) => this.parseWorkerLease(row));
   }
 
   private listLoopEvents(loopRunId: string): LoopEventRecord[] {

@@ -1,11 +1,30 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import { WebSocketEventType, type WebSocketMessage } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { AgentAssuranceService } from '../services/agent-assurance-service';
 import { MemoryCandidateService } from '../services/memory-candidate-service';
+import { ProofRunService, type ProofRunSummary } from '../services/proof-run-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
+import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
+import type { WebSocketService } from '../services/websocket-service';
+
+function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
+  if (!wsService) return;
+  wsService.broadcastToAuthenticated({
+    type: WebSocketEventType.PROOF_RUN_UPDATED,
+    payload: {
+      id: summary.id,
+      status: summary.status,
+      passed: summary.passed,
+      rollback_safe: summary.rollback_safe,
+      runtime: summary.runtime,
+    },
+    timestamp: new Date().toISOString(),
+  } as WebSocketMessage);
+}
 
 function mapMemoryCandidateError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -69,13 +88,54 @@ function mapWorkerPoolError(error: unknown): never {
   throw error;
 }
 
-export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
+function mapProofRunError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'PROOF_RUN_NOT_FOUND') throw createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
+  if (message === 'PROOF_RUN_RUNTIME_UNSUPPORTED') throw createError(400, 'Unsupported proof runtime', 'PROOF_RUN_RUNTIME_UNSUPPORTED');
+  throw error;
+}
+
+  function mapSwarmIntelligenceError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'SWARM_INTELLIGENCE_SECRET_DETECTED') throw createError(400, 'swarm intelligence payload appears to contain a secret', 'SWARM_INTELLIGENCE_SECRET_DETECTED');
+  if (message === 'SWARM_CAPABILITY_NOT_FOUND') throw createError(404, 'Capability not found', 'SWARM_CAPABILITY_NOT_FOUND');
+  if (message === 'SWARM_CAPABILITY_ID_REQUIRED') throw createError(400, 'capability id is required', 'SWARM_CAPABILITY_ID_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_KIND_INVALID') throw createError(400, 'capability kind is invalid', 'SWARM_CAPABILITY_KIND_INVALID');
+  if (message === 'SWARM_CAPABILITY_OWNER_REQUIRED') throw createError(400, 'capability owner is required', 'SWARM_CAPABILITY_OWNER_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_VERSION_REQUIRED') throw createError(400, 'capability version is required', 'SWARM_CAPABILITY_VERSION_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_STATUS_INVALID') throw createError(400, 'capability status is invalid', 'SWARM_CAPABILITY_STATUS_INVALID');
+  if (message === 'SWARM_CAPABILITY_RISK_INVALID') throw createError(400, 'capability risk ceiling is invalid', 'SWARM_CAPABILITY_RISK_INVALID');
+  if (message === 'SWARM_CAPABILITY_INPUT_SCHEMA_REQUIRED') throw createError(400, 'capability input schema is required', 'SWARM_CAPABILITY_INPUT_SCHEMA_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_OUTPUT_SCHEMA_REQUIRED') throw createError(400, 'capability output schema is required', 'SWARM_CAPABILITY_OUTPUT_SCHEMA_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_ALLOWED_ACTIONS_REQUIRED') throw createError(400, 'capability allowed actions are required', 'SWARM_CAPABILITY_ALLOWED_ACTIONS_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_FORBIDDEN_ACTIONS_REQUIRED') throw createError(400, 'capability forbidden actions are required', 'SWARM_CAPABILITY_FORBIDDEN_ACTIONS_REQUIRED');
+  if (message === 'SWARM_CAPABILITY_REQUIRED_EVIDENCE_REQUIRED') throw createError(400, 'capability required evidence is required', 'SWARM_CAPABILITY_REQUIRED_EVIDENCE_REQUIRED');
+    if (message === 'SWARM_CAPABILITY_REMOVAL_STRATEGY_REQUIRED') throw createError(400, 'capability removal strategy is required', 'SWARM_CAPABILITY_REMOVAL_STRATEGY_REQUIRED');
+    if (message === 'SWARM_OKF_BASE_FORBIDDEN') throw createError(403, 'OKF base path is not permitted', 'SWARM_OKF_BASE_FORBIDDEN');
+    if (message === 'SWARM_CLAIM_NOT_FOUND') throw createError(404, 'Claim not found', 'SWARM_CLAIM_NOT_FOUND');
+    if (message === 'SWARM_CLAIM_TEXT_REQUIRED') throw createError(400, 'claim text is required', 'SWARM_CLAIM_TEXT_REQUIRED');
+    if (message === 'SWARM_CLAIM_TYPE_INVALID') throw createError(400, 'claim type is invalid', 'SWARM_CLAIM_TYPE_INVALID');
+    if (message === 'SWARM_CLAIM_REF_NOT_FOUND') throw createError(400, 'claim reference not found', 'SWARM_CLAIM_REF_NOT_FOUND');
+    if (message === 'SWARM_CLAIM_SUBJECT_REQUIRED') throw createError(400, 'claim subject_ref is required', 'SWARM_CLAIM_SUBJECT_REQUIRED');
+    if (message === 'SWARM_CLAIM_CREATED_FROM_REQUIRED') throw createError(400, 'claim created_from is required', 'SWARM_CLAIM_CREATED_FROM_REQUIRED');
+    if (message === 'SWARM_CLAIM_VALID_UNTIL_INVALID') throw createError(400, 'claim valid_until timestamp is invalid', 'SWARM_CLAIM_VALID_UNTIL_INVALID');
+    if (message === 'SWARM_EVIDENCE_EDGE_INVALID') throw createError(400, 'evidence edge is invalid', 'SWARM_EVIDENCE_EDGE_INVALID');
+  if (message === 'SWARM_RUNNER_DECISION_ID_REQUIRED') throw createError(400, 'runner decision_id is required', 'SWARM_RUNNER_DECISION_ID_REQUIRED');
+  if (message === 'SWARM_RUNNER_ACTION_INVALID') throw createError(400, 'runner manifest action is invalid', 'SWARM_RUNNER_ACTION_INVALID');
+  if (message === 'SWARM_RUNNER_POLICY_VERSION_REQUIRED') throw createError(400, 'runner policy_version is required', 'SWARM_RUNNER_POLICY_VERSION_REQUIRED');
+  if (message === 'SWARM_GOVERNANCE_RISK_INVALID') throw createError(400, 'governance risk_class is invalid', 'SWARM_GOVERNANCE_RISK_INVALID');
+  throw error;
+}
+
+export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const service = new SwarmStatusService(db);
   const assurance = new AgentAssuranceService(db);
   const memoryCandidates = new MemoryCandidateService(db);
   const specialistPanels = new SpecialistPanelService(db);
+  const intelligence = new SwarmIntelligenceService(db);
+  const proofRuns = new ProofRunService(db);
 
   router.get('/status', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -85,7 +145,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/scheduler/tick', requirePermission('create:task'), (req, res, next) => {
+  router.post('/scheduler/tick', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.json(service.tickScheduler(req.body || {}));
     } catch (error) {
@@ -105,9 +165,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/worker-pool/start-next', requirePermission('create:task'), (req, res, next) => {
+  router.post('/worker-pool/start-next', requirePermission('write:swarm_action'), async (req, res, next) => {
     try {
-      res.json(service.startNextWorker(req.body || {}));
+      res.json(await service.startNextWorker(req.body || {}));
     } catch (error) {
       try {
         mapWorkerPoolError(error);
@@ -117,9 +177,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/worker-pool/drain', requirePermission('create:task'), (req, res, next) => {
+  router.post('/worker-pool/drain', requirePermission('write:swarm_action'), async (req, res, next) => {
     try {
-      res.json(service.drainWorkerPool(req.body || {}));
+      res.json(await service.drainWorkerPool(req.body || {}));
     } catch (error) {
       try {
         mapWorkerPoolError(error);
@@ -129,12 +189,211 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/worker-pool/stop/:leaseId', requirePermission('create:task'), (req, res, next) => {
+  router.post('/worker-pool/stop/:leaseId', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.json(service.stopWorkerLease(req.params.leaseId));
     } catch (error) {
       try {
         mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/intelligence/mission-control', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json({
+        ...intelligence.missionControl(),
+        latest_proof_run: proofRuns.latest(),
+      });
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/proof-runs', requirePermission('write:swarm_action'), async (req, res, next) => {
+    try {
+      const summary = await proofRuns.create(req.body || {});
+      emitProofRunUpdated(wsService, summary);
+      res.status(201).json(summary);
+    } catch (error) {
+      try {
+        mapProofRunError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/proof-runs/latest', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const latest = proofRuns.latest();
+      if (!latest) {
+        throw new Error('PROOF_RUN_NOT_FOUND');
+      }
+      res.json(latest);
+    } catch (error) {
+      try {
+        mapProofRunError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/proof-runs/:id', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(proofRuns.get(req.params.id));
+    } catch (error) {
+      try {
+        mapProofRunError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/proof-runs/:id/rollback', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      const summary = proofRuns.rollback(req.params.id);
+      emitProofRunUpdated(wsService, summary);
+      res.json(summary);
+    } catch (error) {
+      try {
+        mapProofRunError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json({ capabilities: intelligence.listCapabilities(req.query.limit ? Number(req.query.limit) : undefined) });
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      res.status(201).json(intelligence.registerCapability(req.body || {}));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/capabilities/:id/evaluate', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      res.json(intelligence.evaluateCapability(req.params.id));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/intelligence/specialists', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json({ specialists: intelligence.listSpecialistProfiles() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/intelligence/claims', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json({ claims: intelligence.listClaims(req.query.limit ? Number(req.query.limit) : undefined) });
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/claims', requirePermission('write:claim'), (req, res, next) => {
+    try {
+      res.status(201).json(intelligence.createClaim(req.body || {}));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/capacity/plan', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(intelligence.planCapacityV2(req.body || {}));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/intelligence/runner-manifests', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json({ manifests: intelligence.listRunnerManifests(req.query.limit ? Number(req.query.limit) : undefined) });
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/runner-manifests', requirePermission('write:runner_manifest'), (req, res, next) => {
+    try {
+      res.status(201).json(intelligence.createRunnerManifest(req.body || {}));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/intelligence/governance/evaluate', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      res.json(intelligence.evaluateGovernance(req.body || {}));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.get('/intelligence/okf-drift', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(intelligence.okfDriftReport(req.query.okf_base ? String(req.query.okf_base) : undefined));
+    } catch (error) {
+      try {
+        mapSwarmIntelligenceError(error);
       } catch (mapped) {
         next(mapped);
       }
@@ -149,7 +408,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/trace-spans', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/trace-spans', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.createTraceSpan(req.body || {}));
     } catch (error) {
@@ -173,7 +432,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/checkpoints', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/checkpoints', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.createCheckpoint(req.body || {}));
     } catch (error) {
@@ -185,7 +444,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/checkpoints/:id/branch', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/checkpoints/:id/branch', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.branchCheckpoint(req.params.id, req.body || {}));
     } catch (error) {
@@ -197,7 +456,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/evals/run', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/evals/run', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.runEval(req.body || {}));
     } catch (error) {
@@ -217,7 +476,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/capability-tokens', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/capability-tokens', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.issueCapabilityToken(req.body || {}));
     } catch (error) {
@@ -237,7 +496,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/assurance/reflections', requirePermission('create:task'), (req, res, next) => {
+  router.post('/assurance/reflections', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(assurance.createReflection(req.body || {}));
     } catch (error) {
@@ -257,7 +516,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/memory/candidates', requirePermission('create:task'), (req, res, next) => {
+  router.post('/memory/candidates', requirePermission('write:claim'), (req, res, next) => {
     try {
       res.status(201).json(memoryCandidates.create(req.body || {}));
     } catch (error) {
@@ -269,7 +528,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/memory/candidates/:id/promote', requirePermission('create:task'), (req, res, next) => {
+  router.post('/memory/candidates/:id/promote', requirePermission('write:claim'), (req, res, next) => {
     try {
       res.json(memoryCandidates.promote(req.params.id, req.body || {}));
     } catch (error) {
@@ -297,7 +556,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/specialist-panels', requirePermission('create:task'), (req, res, next) => {
+  router.post('/specialist-panels', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(specialistPanels.createPanel(req.body || {}));
     } catch (error) {
@@ -321,7 +580,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/specialist-panels/:id/reviews', requirePermission('create:task'), (req, res, next) => {
+  router.post('/specialist-panels/:id/reviews', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.json(specialistPanels.submitReview(req.params.id, req.body || {}));
     } catch (error) {
@@ -333,7 +592,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.post('/specialist-panels/:id/backlog', requirePermission('create:task'), (req, res, next) => {
+  router.post('/specialist-panels/:id/backlog', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
       res.status(201).json(specialistPanels.projectPanelToBacklog(req.params.id));
     } catch (error) {

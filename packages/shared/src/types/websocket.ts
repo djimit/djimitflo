@@ -78,6 +78,9 @@ export enum WebSocketEventType {
   EVIDENCE_CAPTURED = 'evidence.captured',
   SUMMARY_GENERATED = 'summary.generated',
   FILE_CHANGE_DETECTED = 'file_change.detected',
+
+  // Proof run events
+  PROOF_RUN_UPDATED = 'proof_run.updated',
   
   // System events
   SYSTEM_HEALTH = 'system.health',
@@ -145,4 +148,12 @@ export interface EvidenceEventPayload {
 
 export interface SummaryEventPayload {
   summary: import('./evidence').ExecutionSummary;
+}
+
+export interface ProofRunEventPayload {
+  id: string;
+  status: 'completed' | 'rolled_back';
+  passed: boolean;
+  rollback_safe: boolean;
+  runtime: 'mock' | 'codex' | 'opencode';
 }

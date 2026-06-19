@@ -1,0 +1,386 @@
+{
+  "change": "g16-no-theater-swarm-proof",
+  "policy": {
+    "auto_spawn_workers": true,
+    "auto_start_loops": true,
+    "auto_promote_demo_memory": true,
+    "mode": "accelerated_proof",
+    "requires_mock_proof_before_real_runtime": true,
+    "requires_rollback_proof": true,
+    "minimum_live_output_required": true,
+    "release_actions_require_explicit_operator_command": true,
+    "credential_values_must_not_be_persisted": true
+  },
+  "ordered_goals": [
+    {
+      "key": "G16.1-runtime-contract-repair",
+      "depends_on": [],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Repair Codex/OpenCode runtime contracts so loop-service and execution-engine use the same probed CLI contract before worker execution.",
+          "constraints": [
+            "Codex must use exec --json --cd.",
+            "OpenCode must use run --format json --dir.",
+            "Runtime drift must block execution with explicit evidence.",
+            "Do not start live workers in this goal."
+          ],
+          "acceptance_criteria": [
+            "CodexExecutor uses current Codex flags and has focused tests.",
+            "Shared runtime contract probe covers Codex, OpenCode and mock.",
+            "Runtime contract response includes command, version, required flags, status, reason, evidence and checked_at.",
+            "Tests cover available, drifted and unavailable runtime contracts."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.1",
+            "recommended_loop": "runtime-contract-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.2-enforcement-repair",
+      "depends_on": ["G16.1-runtime-contract-repair"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Implement G15 enforcement repairs: OKF path allowlist, scoped permissions, unspoofable governance refs, runner-owned manifests and typed claim relationships.",
+          "constraints": [
+            "No arbitrary OKF filesystem path.",
+            "No generic create:task permission for intelligence writes.",
+            "No request boolean may satisfy enforceable governance.",
+            "No public API may assert completed runner facts."
+          ],
+          "acceptance_criteria": [
+            "OKF drift and sync accept only configured root ids or allowlisted canonical paths.",
+            "Capabilities, claims, governance, runner manifests and swarm proof actions use scoped permissions.",
+            "Governance enforcement resolves persisted maker/checker/security/quorum/human refs.",
+            "Claim ledger supports typed predicate/object/scope and explicit relationship edges.",
+            "Tests cover path escape, spoofed governance, spoofed manifest and same-subject non-contradiction."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 300000,
+            "max_tokens_per_worker": 120000,
+            "max_wall_clock_seconds": 10800,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.2",
+            "recommended_loop": "governance-enforcement-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.3-opencode-mcp-skills-health",
+      "depends_on": ["G16.2-enforcement-repair"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Add OpenCode MCP and skill health reporting that detects database locks, missing config, per-agent MCP exposure and skill permissions without credential leakage.",
+          "constraints": [
+            "Do not delete or rewrite OpenCode state automatically.",
+            "Do not persist OAuth tokens, API keys or authorization headers.",
+            "Do not globally enable heavy MCP servers as a shortcut."
+          ],
+          "acceptance_criteria": [
+            "OpenCode MCP health reports ok, locked, unconfigured, unavailable or error.",
+            "database is locked is classified with remediation.",
+            "opencode.jsonc inspector reports missing mcp, tools, agent and permission.skill sections.",
+            "Skill permissions and MCP config become capability candidates only.",
+            "Tests cover locked DB output, missing config, per-agent recommendation and credential-value redaction."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 200000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.3",
+            "recommended_loop": "mcp-connector-validation-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.4-openai-capability-descriptors",
+      "depends_on": ["G16.3-opencode-mcp-skills-health"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Model OpenAI Agents SDK, OpenAI Skills and OpenAI MCP/connectors as governed capabilities without pretending they are local workers.",
+          "constraints": [
+            "OpenAI Agents SDK is an orchestration candidate, not an automatic local worker runtime.",
+            "OpenAI Skills are privileged until reviewed.",
+            "Remote MCP/connectors require approval and authorization refs.",
+            "Do not persist raw tokens or authorization headers."
+          ],
+          "acceptance_criteria": [
+            "Capability descriptors exist for OpenAI Agents SDK, OpenAI Skills and OpenAI MCP/connectors.",
+            "Descriptors cannot route local workers without validated adapter proof.",
+            "Remote tool capabilities require approval refs and redacted auth refs.",
+            "Tests cover non-routing candidates and missing approval blocks."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 180000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.4",
+            "recommended_loop": "capability-descriptor-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.5-proof-run-service",
+      "depends_on": ["G16.4-openai-capability-descriptors"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Build the governed proof-run service that creates real live Djimitflo records from capability to panel to claim to goal to loop to worker evidence to memory candidate.",
+          "constraints": [
+            "Every proof-created record must include proof_run_id, rollback_group and demo_record marker.",
+            "Mock runtime must run before real Codex/OpenCode.",
+            "Auto-start the mock proof path so live output is created.",
+            "Release actions require an explicit operator command outside the proof runner.",
+            "Rollback must affect only proof-run demo records."
+          ],
+          "acceptance_criteria": [
+            "Mock proof run creates required minimum records across goals, loop_runs, worker_leases, capabilities, claims, manifests, panels, reviews, work_items, memory_candidates, traces and checkpoints.",
+            "Proof run records missing evidence explicitly.",
+            "Operational demo memory candidate is created and may be marked proof-promoted when rollback-scoped.",
+            "Service tests cover creation, missing evidence, forbidden action guard and rollback scoping."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 360000,
+            "max_tokens_per_worker": 140000,
+            "max_wall_clock_seconds": 14400,
+            "max_maker_workers": 4,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.5",
+            "recommended_loop": "proof-run-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.6-proof-run-api-cli",
+      "depends_on": ["G16.5-proof-run-service"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Expose proof runs through authenticated API and CLI scripts so reviewers can start, inspect and rollback proof output.",
+          "constraints": [
+            "API requires auth and proof-run permission.",
+            "CLI uses accelerated proof defaults.",
+            "Rollback requires proof_run_id.",
+            "Release and deploy are separate explicit operator actions, not part of proof-run automation."
+          ],
+          "acceptance_criteria": [
+            "POST /api/swarms/proof-runs starts mock proof run.",
+            "GET /api/swarms/proof-runs/:id returns status, counts, evidence refs and missing evidence.",
+            "POST /api/swarms/proof-runs/:id/rollback performs scoped rollback.",
+            "npm scripts exist for proof and rollback.",
+            "API tests cover auth, permission, start, inspect and rollback."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 260000,
+            "max_tokens_per_worker": 100000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.6",
+            "recommended_loop": "proof-api-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.7-mission-control-proof-output",
+      "depends_on": ["G16.6-proof-run-api-cli"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Add Mission Control proof output so the dashboard shows live proof-run counts, required minimums, missing evidence, links and rollback state.",
+          "constraints": [
+            "Dashboard is not source of truth.",
+            "Missing evidence must be shown as blocked.",
+            "Registry, prepared leases and active execution stay separate.",
+            "No optimistic passed label without required counts."
+          ],
+          "acceptance_criteria": [
+            "Mission Control includes latest proof run id, status, counts, required counts and missing evidence.",
+            "Dashboard links to goal, loop, leases, claims, panel, traces, checkpoints, manifests and memory candidate.",
+            "Dashboard smoke verifies proof section and blocked state.",
+            "Active execution labels still require runtime evidence."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 220000,
+            "max_tokens_per_worker": 80000,
+            "max_wall_clock_seconds": 7200,
+            "max_maker_workers": 3,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.7",
+            "recommended_loop": "mission-control-proof-loop"
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.8-live-workstation-proof-smoke",
+      "depends_on": ["G16.7-mission-control-proof-output"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Run the live workstation mock proof smoke and capture pre-counts, post-counts, authenticated API output, dashboard proof and rollback evidence.",
+          "constraints": [
+            "Use workstation DB/API as source of truth.",
+            "Do not use in-memory tests as proof of live output.",
+            "Capture rollback evidence.",
+            "Do not touch unrelated dirty worktree files."
+          ],
+          "acceptance_criteria": [
+            "Pre-run counts capture current zero-state for required tables.",
+            "Post-run counts meet every proof-contract minimum.",
+            "Authenticated API returns same proof run id and counts.",
+            "Dashboard proof smoke passes.",
+            "Rollback returns proof-run demo records to zero without deleting unrelated records."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 240000,
+            "max_tokens_per_worker": 90000,
+            "max_wall_clock_seconds": 9000,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.8",
+            "recommended_loop": "live-smoke-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.9-real-runtime-smokes",
+      "depends_on": ["G16.8-live-workstation-proof-smoke"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Run bounded Codex and OpenCode proof smokes after mock proof passes, or record explicit runtime blocked reasons.",
+          "constraints": [
+            "Mock proof must pass first.",
+            "Real runtime smokes remain low-risk and bounded.",
+            "Unavailable, locked or drifted runtime is a valid blocked result only with evidence.",
+            "Proof-run output may auto-create rollback-scoped demo records; release actions remain explicit operator commands."
+          ],
+          "acceptance_criteria": [
+            "Codex smoke records runtime contract, stdout, stderr, artifacts, usage or unknown usage, trace spans and checkpoints.",
+            "OpenCode smoke records the same or an explicit blocked reason.",
+            "Wall-clock, timeout and kill behavior are recorded.",
+            "Mission Control distinguishes mock proof from real runtime smoke."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 300000,
+            "max_tokens_per_worker": 120000,
+            "max_wall_clock_seconds": 10800,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.9",
+            "recommended_loop": "real-runtime-smoke-loop",
+            "proof_reviewer_required": true
+          }
+        }
+      }
+    },
+    {
+      "key": "G16.10-sellable-demo-pack",
+      "depends_on": ["G16.9-real-runtime-smokes"],
+      "api": {
+        "method": "POST",
+        "path": "/goals",
+        "body": {
+          "objective": "Create the sellable demo pack: runbook, proof summary, screenshots/API evidence, caveats, rollback proof and go/no-go checklist.",
+          "constraints": [
+            "Do not market unsupported functionality as active.",
+            "Clearly separate mock proof, real runtime smoke and future external SDK integrations.",
+            "Include caveats for Ruflo inspiration and registry-versus-execution truth."
+          ],
+          "acceptance_criteria": [
+            "Runbook contains exact commands and expected output shapes.",
+            "Proof summary shows before/after counts and dashboard/API evidence.",
+            "Caveats are explicit and non-defensive.",
+            "External reviewer can reproduce the proof run and rollback.",
+            "Go/no-go checklist is complete."
+          ],
+          "risk_class": "medium",
+          "budget": {
+            "max_tokens": 160000,
+            "max_tokens_per_worker": 70000,
+            "max_wall_clock_seconds": 5400,
+            "max_maker_workers": 2,
+            "max_retries": 1
+          },
+          "metadata": {
+            "openspec_change": "g16-no-theater-swarm-proof",
+            "phase": "G16.10",
+            "recommended_loop": "demo-pack-loop"
+          }
+        }
+      }
+    }
+  ]
+}

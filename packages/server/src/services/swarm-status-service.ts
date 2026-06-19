@@ -5,9 +5,11 @@ import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
 import { LoopService, type LoopName, type WorkerLeaseRecord } from './loop-service';
 import { AgentAssuranceService } from './agent-assurance-service';
+import { SwarmIntelligenceService } from './swarm-intelligence-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'mock' | 'manual';
+type GovernanceRiskClass = 'low' | 'medium' | 'high' | 'critical';
 type RunnerLeaseRole = 'maker' | 'checker' | 'security_checker' | 'planner' | 'memory_curator' | 'governance_guard';
 const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
 const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
@@ -122,11 +124,13 @@ export class SwarmStatusService {
   private workItems: WorkItemService;
   private loops: LoopService;
   private assurance: AgentAssuranceService;
+  private intelligence: SwarmIntelligenceService;
 
   constructor(private db: Database, private options: SwarmStatusOptions = {}) {
     this.workItems = new WorkItemService(db);
     this.loops = new LoopService(db);
     this.assurance = new AgentAssuranceService(db);
+    this.intelligence = new SwarmIntelligenceService(db);
   }
 
   getStatus(): SwarmRealityStatus {
@@ -280,11 +284,39 @@ export class SwarmStatusService {
     };
   }
 
-  startNextWorker(input: WorkerPoolPlanInput = {}): WorkerPoolStartResult {
+  async startNextWorker(input: WorkerPoolPlanInput = {}): Promise<WorkerPoolStartResult> {
     const plan = this.planWorkerPool({ ...input, max_workers: 1 });
-    const decision = plan.decisions.find((candidate) => candidate.eligible) || null;
+    const decision = plan.decisions.find((candidate) => candidate.eligible)
+      || plan.decisions.find((candidate) => candidate.status === 'prepared') || null;
     if (!decision) {
       this.recordRunnerDecision('worker_pool_start_blocked', null, 'warning', { reason: 'no_eligible_leases', plan });
+      return { action: 'blocked', decision, plan };
+    }
+
+    if (!decision.eligible) {
+      this.recordWorkerManifest({
+        loopRunId: decision.loop_run_id,
+        leaseId: decision.lease_id,
+        action: 'skip',
+        decisionId: this.makeDecisionManifestId(decision, 'skip'),
+        runtimeContract: this.runtimeContractForLease(decision.effective_runtime),
+        capacitySnapshot: this.currentCapacitySnapshot(),
+        budgetSnapshot: {
+          max_workers: plan.max_workers,
+          timeout_ms: input.timeout_ms,
+          diff_max_lines: input.diff_max_lines,
+        },
+        gateRefs: ['worker_pool_plan'],
+        blockedReasons: decision.blocked_reasons,
+        metadata: {
+          worker_role: decision.role,
+          worker_runtime: decision.effective_runtime,
+          blocked_reason_count: decision.blocked_reasons.length,
+          next_action: decision.next_action,
+          reason: 'worker_pool_decision_blocked',
+        },
+      });
+      this.recordRunnerDecision('worker_pool_worker_blocked', decision.loop_run_id, 'warning', { decision, plan });
       return { action: 'blocked', decision, plan };
     }
 
@@ -298,15 +330,35 @@ export class SwarmStatusService {
       evidence_ref: `worker_lease:${decision.lease_id}`,
       metadata: { decision },
     });
+    this.recordWorkerManifest({
+      loopRunId: decision.loop_run_id,
+      leaseId: decision.lease_id,
+      action: 'start',
+      decisionId: this.makeDecisionManifestId(decision, 'start'),
+      runtimeContract: this.runtimeContractForLease(decision.effective_runtime),
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: {
+        max_workers: plan.max_workers,
+        timeout_ms: input.timeout_ms,
+        diff_max_lines: input.diff_max_lines,
+      },
+      gateRefs: ['worker_pool_start'],
+      blockedReasons: [],
+      metadata: {
+        worker_role: decision.role,
+        worker_runtime: decision.effective_runtime,
+        next_action: decision.next_action,
+      },
+    });
 
     try {
       const execution = decision.next_action === 'execute_checker'
-        ? this.loops.executeChecker(decision.loop_run_id, {
+        ? await this.loops.executeChecker(decision.loop_run_id, {
           lease_id: decision.lease_id,
           runtime: decision.effective_runtime as Exclude<WorkerRuntime, 'manual'>,
           timeout_ms: input.timeout_ms,
         })
-        : this.loops.executeWorker(decision.loop_run_id, {
+        : await this.loops.executeWorker(decision.loop_run_id, {
           lease_id: decision.lease_id,
           timeout_ms: input.timeout_ms,
           diff_max_lines: input.diff_max_lines,
@@ -321,6 +373,27 @@ export class SwarmStatusService {
         evidence_ref: `worker_lease:${decision.lease_id}`,
         metadata: { decision },
       });
+      this.recordWorkerManifest({
+        loopRunId: decision.loop_run_id,
+        leaseId: decision.lease_id,
+        action: 'complete',
+        decisionId: this.makeDecisionManifestId(decision, 'complete'),
+        runtimeContract: this.runtimeContractForLease(decision.effective_runtime),
+        capacitySnapshot: this.currentCapacitySnapshot(),
+        budgetSnapshot: {
+          max_workers: plan.max_workers,
+          timeout_ms: input.timeout_ms,
+          diff_max_lines: input.diff_max_lines,
+        },
+        gateRefs: ['worker_pool_start'],
+        blockedReasons: [],
+        metadata: {
+          worker_role: decision.role,
+          worker_runtime: decision.effective_runtime,
+          next_action: decision.next_action,
+          execution_status: 'completed',
+        },
+      });
       this.recordRunnerDecision('worker_pool_worker_started', decision.loop_run_id, 'info', { decision, trace_id: traceId });
       return { action: 'started', decision, plan, execution };
     } catch (error) {
@@ -333,6 +406,27 @@ export class SwarmStatusService {
         evidence_ref: `worker_lease:${decision.lease_id}`,
         metadata: { decision, error: error instanceof Error ? error.message : String(error) },
       });
+      this.recordWorkerManifest({
+        loopRunId: decision.loop_run_id,
+        leaseId: decision.lease_id,
+        action: 'fail',
+        decisionId: this.makeDecisionManifestId(decision, 'fail'),
+        runtimeContract: this.runtimeContractForLease(decision.effective_runtime),
+        capacitySnapshot: this.currentCapacitySnapshot(),
+        budgetSnapshot: {
+          max_workers: plan.max_workers,
+          timeout_ms: input.timeout_ms,
+          diff_max_lines: input.diff_max_lines,
+        },
+        gateRefs: ['worker_pool_start'],
+        blockedReasons: [error instanceof Error ? error.message : String(error)],
+        metadata: {
+          worker_role: decision.role,
+          worker_runtime: decision.effective_runtime,
+          next_action: decision.next_action,
+          execution_status: 'failed',
+        },
+      });
       this.recordRunnerDecision('worker_pool_worker_failed', decision.loop_run_id, 'warning', {
         decision,
         trace_id: traceId,
@@ -342,11 +436,11 @@ export class SwarmStatusService {
     }
   }
 
-  drainWorkerPool(input: WorkerPoolPlanInput = {}): WorkerPoolDrainResult {
+  async drainWorkerPool(input: WorkerPoolPlanInput = {}): Promise<WorkerPoolDrainResult> {
     const maxWorkers = Math.max(1, Math.min(Number(input.max_workers || 1), 20));
     const started: WorkerPoolStartResult[] = [];
     for (let index = 0; index < maxWorkers; index += 1) {
-      const result = this.startNextWorker({ ...input, max_workers: 1 });
+      const result = await this.startNextWorker({ ...input, max_workers: 1 });
       if (result.action !== 'started') {
         break;
       }
@@ -374,8 +468,36 @@ export class SwarmStatusService {
       stopped_at: now,
       stop_mode: row.status === 'running' ? 'best_effort_no_process_handle' : 'cancel_prepared',
     };
+    let stopResult: { stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle'; killAttempted: boolean } | null = null;
+    if (row.status === 'running') {
+      stopResult = this.loops.stopWorkerLeaseRuntime(leaseId);
+      metadata.stop_mode = stopResult.stopMode;
+      metadata.runtime_stop_attempted = stopResult.killAttempted;
+      metadata.runtime_stop_requested_at = now;
+    }
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run('cancelled', JSON.stringify(metadata), now, leaseId);
+    this.recordWorkerManifest({
+      loopRunId: row.loop_run_id,
+      leaseId,
+      action: 'stop',
+      metadata: {
+        worker_runtime: row.runtime,
+        previous_status: row.status,
+        stop_mode: metadata.stop_mode,
+        stopped_by_runner: true,
+        stopped_at: now,
+      },
+      capacitySnapshot: this.currentCapacitySnapshot(),
+      budgetSnapshot: {
+        stop_requested_at: now,
+        requested_by: 'swarm_status_service',
+      },
+      runtimeContract: this.runtimeContractForLease(String(row.runtime)),
+      decisionId: `stop:${row.loop_run_id}:${leaseId}:${now}`,
+      gateRefs: ['worker_stop_requested'],
+      blockedReasons: [],
+    });
     this.recordRunnerDecision('worker_pool_worker_stopped', row.loop_run_id, 'warning', {
       lease_id: leaseId,
       previous_status: row.status,
@@ -559,7 +681,7 @@ export class SwarmStatusService {
     const role = row.role as RunnerLeaseRole;
     const effectiveRuntime = this.effectiveRuntime(row, input);
     const runMetadata = JSON.parse(row.run_metadata || '{}');
-    const riskClass = String(row.goal_risk_class || runMetadata.risk_class || 'low');
+    const riskClass = this.resolveRiskClass(row, runMetadata);
     const gates = JSON.parse(row.run_gates_json || '[]') as Array<{ name?: string; status?: string }>;
     const pool = pools.get(effectiveRuntime);
     const blocked: string[] = [];
@@ -571,6 +693,8 @@ export class SwarmStatusService {
     if (['high', 'critical'].includes(riskClass) && !input.allow_high_risk) blocked.push('high_risk_requires_security_or_human_gate');
     if (['blocked', 'escalated', 'cancelled', 'completed', 'failed'].includes(String(row.run_status))) blocked.push(`loop_status_${row.run_status}`);
     if (gates.some((gate) => gate.status === 'fail')) blocked.push('failed_gate_present');
+    blocked.push(...this.evaluatePolicyGates(row, runMetadata, gates, riskClass));
+    blocked.push(...this.evaluateCapabilityRouting(row, runMetadata, riskClass, role, effectiveRuntime));
     if (!pool) {
       blocked.push('runtime_pool_missing');
     } else if (!input.ignore_capacity) {
@@ -624,6 +748,113 @@ export class SwarmStatusService {
       created_at: row.created_at,
       updated_at: row.updated_at,
     };
+  }
+
+  private evaluatePolicyGates(
+    row: any,
+    runMetadata: Record<string, unknown>,
+    gates: Array<{ name?: string; status?: string }>,
+    riskClass: GovernanceRiskClass
+  ): string[] {
+    const blocked: string[] = [];
+    const runtimeWarnings = this.toStringArray(runMetadata.runtime_warnings || row.runtime_warnings);
+    if (gates.some((gate) => gate.status === 'fail')) {
+      blocked.push('failed_gate_present');
+    }
+    if (['high', 'critical'].includes(riskClass) && runtimeWarnings.length > 0) {
+      blocked.push('runtime_warning_gate_failed');
+    }
+    return blocked;
+  }
+
+  private evaluateCapabilityRouting(
+    row: any,
+    runMetadata: Record<string, unknown>,
+    riskClass: GovernanceRiskClass,
+    role: RunnerLeaseRole,
+    runtime: string
+  ): string[] {
+    const blocked: string[] = [];
+    const leaseMetadata = this.parseJsonSafe(row.metadata || '{}');
+    const requiredCapabilityIds = this.resolveCapabilityRequirements(runMetadata, leaseMetadata);
+    if (!requiredCapabilityIds.length) {
+      return blocked;
+    }
+
+    const capabilities = requiredCapabilityIds
+      .map((capabilityId) => {
+        try {
+          return this.intelligence.getCapability(capabilityId);
+        } catch {
+          blocked.push(`capability_not_found:${capabilityId}`);
+          return null;
+        }
+      })
+      .filter((capability) => capability !== null);
+
+    for (const capability of capabilities) {
+      if (!capability.live_route_allowed) {
+        blocked.push(`capability_not_live:${capability.id}`);
+      }
+      if (!this.isRiskWithinCapability(riskClass, capability.risk_ceiling)) {
+        blocked.push(`capability_risk_ceiling_exceeded:${capability.id}`);
+      }
+      const action = `${role === 'security_checker' ? 'security_checker' : role}:${runtime}`;
+      if (capability.forbidden_actions.includes(action)) {
+        blocked.push(`capability_forbids_action:${capability.id}:${action}`);
+      }
+    }
+
+    return blocked;
+  }
+
+  private resolveCapabilityRequirements(runMetadata: Record<string, unknown>, leaseMetadata: Record<string, unknown>): string[] {
+    return this.uniqueSortedStrings([
+      ...this.toStringArray(runMetadata.capability_ids),
+      ...this.toStringArray(runMetadata.required_capability_ids),
+      ...this.toStringArray(leaseMetadata.capability_ids),
+      ...this.toStringArray(leaseMetadata.required_capability_ids),
+    ]);
+  }
+
+  private isRiskWithinCapability(riskClass: GovernanceRiskClass, riskCeiling: string): boolean {
+    const ordered: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+    return ordered[riskClass] <= ordered[riskCeiling];
+  }
+
+  private toStringArray(value: unknown): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((candidate) => candidate.trim())
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  private uniqueSortedStrings(values: string[]): string[] {
+    return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort();
+  }
+
+  private parseJsonSafe(raw: string): Record<string, unknown> {
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
+  private makeDecisionManifestId(decision: WorkerPoolDecision, action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete'): string {
+    return `${action}:${decision.loop_run_id}:${decision.lease_id}:${Date.now()}:${Math.floor(Math.random() * 10000)}`;
+  }
+
+  private resolveRiskClass(row: any, runMetadata: Record<string, unknown>): GovernanceRiskClass {
+    const candidate = String(runMetadata.risk_class || row.goal_risk_class || 'low');
+    return candidate === 'medium' || candidate === 'high' || candidate === 'critical' ? candidate : 'low';
   }
 
   private recordRunnerDecision(eventType: string, loopRunId: string | null, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', metadata: Record<string, unknown>) {
@@ -684,5 +915,74 @@ export class SwarmStatusService {
 
   private countRows(query: string): number {
     return ((this.db.prepare(query).get() as any)?.count || 0) as number;
+  }
+
+  private currentCapacitySnapshot() {
+    return {
+      cpu_threads: os.cpus().length,
+      total_memory_bytes: os.totalmem(),
+      free_memory_bytes: os.freemem(),
+      load_average: os.loadavg(),
+      uptime_seconds: os.uptime(),
+    };
+  }
+
+  private runtimeContractForLease(runtime: string) {
+    const command = runtime === 'codex'
+      ? process.env.CODEX_BIN_PATH || 'codex'
+      : runtime === 'opencode'
+        ? process.env.OPENCODE_BIN_PATH || 'opencode'
+        : process.env.OPENCODE_BIN_PATH || process.env.CODEX_BIN_PATH || runtime;
+    return {
+      runtime,
+      command,
+      status: 'manual_probe',
+      available: true,
+      supports_json_events: true,
+      supports_usage_parsing: true,
+      supports_timeout_kill: true,
+    };
+  }
+
+  private recordWorkerManifest(input: {
+    loopRunId: string | null;
+    leaseId: string;
+    action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+    decisionId: string;
+    runtimeContract: Record<string, unknown>;
+    capacitySnapshot: Record<string, unknown>;
+    budgetSnapshot: Record<string, unknown>;
+    gateRefs: string[];
+    blockedReasons: string[];
+    metadata: Record<string, unknown>;
+  }) {
+    if (!input.loopRunId) {
+      return;
+    }
+    try {
+      this.db.prepare(`
+        INSERT INTO swarm_runner_manifests (
+          id, decision_id, lease_id, loop_run_id, action, policy_version,
+          runtime_contract_json, capacity_snapshot_json, budget_snapshot_json,
+          gate_refs_json, blocked_reasons_json, metadata, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        input.decisionId,
+        input.leaseId,
+        input.loopRunId,
+        input.action,
+        'worker-pool-runtime-v1',
+        JSON.stringify(input.runtimeContract),
+        JSON.stringify(input.capacitySnapshot),
+        JSON.stringify(input.budgetSnapshot),
+        JSON.stringify(input.gateRefs),
+        JSON.stringify(input.blockedReasons),
+        JSON.stringify(input.metadata),
+        new Date().toISOString()
+      );
+    } catch {
+      // best-effort evidence write for stop transitions
+    }
   }
 }

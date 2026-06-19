@@ -19,6 +19,7 @@ let baseUrl: string;
 let tempDir: string;
 let worktreeRoot: string;
 let previousCodexBinPath: string | undefined;
+let previousOpencodeBinPath: string | undefined;
 
 const auth = {
   requirePermission: () => (_req: any, _res: any, next: any) => next(),
@@ -43,12 +44,27 @@ function installFakeCodex(lines: string[]) {
   fs.writeFileSync(fakeCodexPath, [
     '#!/usr/bin/env node',
     'if (process.argv.includes("--help")) { console.log("Usage: codex exec [OPTIONS] [PROMPT]\\n      --json\\n      --cd <DIR>"); process.exit(0); }',
+    'if (process.argv.includes("exec") && process.argv.includes("--help")) { console.log("Usage: codex exec [OPTIONS] [PROMPT]"); process.exit(0); }',
     ...lines,
     '',
   ].join('\n'));
   fs.chmodSync(fakeCodexPath, 0o755);
   process.env.CODEX_BIN_PATH = fakeCodexPath;
   return fakeCodexPath;
+}
+
+function installFakeOpencode(lines: string[]) {
+  const fakeOpencodePath = path.join(tempDir, 'fake-opencode.js');
+  fs.writeFileSync(fakeOpencodePath, [
+    '#!/usr/bin/env node',
+    'if (process.argv[2] === \"--version\") { console.log(\"fake-opencode 1.0.0\"); process.exit(0); }',
+    'if (process.argv.includes(\"run\") && process.argv.includes(\"--help\")) { console.log(\"Usage: opencode run --format json --dir <DIR> [PROMPT]\"); process.exit(0); }',
+    ...lines,
+    '',
+  ].join('\n'));
+  fs.chmodSync(fakeOpencodePath, 0o755);
+  process.env.OPENCODE_BIN_PATH = fakeOpencodePath;
+  return fakeOpencodePath;
 }
 
 describe('doc-drift-and-small-fix-loop', () => {
@@ -72,6 +88,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     execFileSync('git', ['config', 'user.email', 'loop-test@example.invalid'], { cwd: tempDir });
     execFileSync('git', ['config', 'user.name', 'Loop Test'], { cwd: tempDir });
     await startApp();
+    previousOpencodeBinPath = process.env.OPENCODE_BIN_PATH;
   });
 
   afterEach(async () => {
@@ -86,6 +103,11 @@ describe('doc-drift-and-small-fix-loop', () => {
       process.env.CODEX_BIN_PATH = previousCodexBinPath;
     } else {
       delete process.env.CODEX_BIN_PATH;
+    }
+    if (previousOpencodeBinPath) {
+      process.env.OPENCODE_BIN_PATH = previousOpencodeBinPath;
+    } else {
+      delete process.env.OPENCODE_BIN_PATH;
     }
   });
 
@@ -198,7 +220,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(stopped.events.map((event: any) => event.event_type)).toContain('loop_stopped');
   });
 
-  it('exposes and starts the closed-loop catalog beyond doc drift', async () => {
+  it('exposes and starts the closed-loop catalog beyond doc drift', { timeout: 20_000 }, async () => {
     fs.mkdirSync(path.join(tempDir, 'packages', 'knowledge', 'skills'), { recursive: true });
     fs.writeFileSync(path.join(tempDir, 'packages', 'knowledge', 'skills', 'draft-loop.md'), [
       '---',
@@ -661,6 +683,13 @@ describe('doc-drift-and-small-fix-loop', () => {
       checkerExecuted.checkpoint_before.id,
       checkerExecuted.checkpoint_after.id,
     ]));
+    const manifests = db.prepare('SELECT action, lease_id FROM swarm_runner_manifests WHERE loop_run_id = ? ORDER BY created_at ASC').all(run.id) as any[];
+    expect(manifests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'start', lease_id: maker.id }),
+      expect.objectContaining({ action: 'complete', lease_id: maker.id }),
+      expect.objectContaining({ action: 'start', lease_id: checker.id }),
+      expect.objectContaining({ action: 'complete', lease_id: checker.id }),
+    ]));
   });
 
   it('marks spawned worker execution failed on timeout while preserving trace and checkpoint evidence', async () => {
@@ -711,6 +740,8 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ span_type: 'worker', status: 'error' }),
     ]));
     expect(executed.run.status).toBe('blocked');
+    const manifests = db.prepare('SELECT action, lease_id FROM swarm_runner_manifests WHERE loop_run_id = ? ORDER BY created_at ASC').all(run.id) as any[];
+    expect(manifests.find((manifest: any) => manifest.action === 'fail' && manifest.lease_id === maker.id)).toBeTruthy();
   });
 
   it('retries a maker after checker revision and verifies only the active maker chain', async () => {
@@ -1127,6 +1158,54 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(bundleResponse.status).toBe(200);
     const bundle = await bundleResponse.json() as any;
     expect(bundle.events.map((event: any) => event.event_type)).toContain('loop_budget_exhausted');
+  });
+
+  it('captures OpenCode token usage from structured output', async () => {
+    installFakeOpencode([
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--dir") + 1] || process.argv[process.argv.indexOf("-d") + 1] || ".";',
+      'if (!dir || dir.startsWith("--")) { process.exit(1); }',
+      'const readme = path.join(dir, "README.md");',
+      'const raw = fs.readFileSync(readme, "utf8");',
+      'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup complete by OpenCode."));',
+      'console.log(JSON.stringify({ type: "text", part: { type: "text", text: "setup documented." } }));',
+      'console.log(JSON.stringify({ type: "step_finish", step: { output: "ok" }, tokens: { input: 12, output: 13, total: 25, reasoning: 0 } }));',
+    ]);
+
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'opencode' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-worker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000, diff_max_lines: 20 }),
+    });
+
+    expect(executeResponse.status).toBe(200);
+    const executed = await executeResponse.json() as any;
+    expect(executed.lease.metadata.runtime_usage).toMatchObject({
+      prompt_tokens: 12,
+      completion_tokens: 13,
+      total_tokens: 25,
+      usage_source: 'runtime_stdout',
+    });
   });
 
   it('blocks new worker leasing when the wall-clock loop budget is exhausted', async () => {

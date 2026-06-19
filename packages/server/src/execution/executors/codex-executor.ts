@@ -2,7 +2,7 @@
  * Codex CLI executor — spawns 'codex exec' process and streams structured events
  *
  * CLI contract (anticipated; verified against actual binary when available):
- *   codex exec [--format json] [--dir <path>] [--model <model>] <prompt>
+ *   codex exec [--json] [--cd <path>] [--model <model>] <prompt>
  *
  * JSON event stream (NDJSON, one JSON object per line):
  *   { "type": "step_start",  ... }
@@ -188,11 +188,11 @@ export class CodexExecutor implements TaskExecutor {
 
     const format = options?.format ?? this.outputFormat;
     if (format === 'json') {
-      args.push('--format', 'json');
+      args.push('--json');
     }
 
     if (options?.workingDirectory) {
-      args.push('--dir', options.workingDirectory);
+      args.push('--cd', options.workingDirectory);
     }
 
     if (options?.model) {
@@ -201,7 +201,7 @@ export class CodexExecutor implements TaskExecutor {
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
     if (skipPerms) {
-      args.push('--dangerously-skip-permissions');
+      args.push('--dangerously-bypass-approvals-and-sandbox');
     }
 
     args.push(task.description);

@@ -401,6 +401,135 @@ export type AgentAssuranceSummary = {
   };
 };
 
+export type SwarmCapabilityRecord = {
+  id: string;
+  kind: 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
+  owner: string;
+  version: string;
+  status: 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
+  risk_ceiling: 'low' | 'medium' | 'high' | 'critical';
+  input_schema_ref: string;
+  output_schema_ref: string;
+  allowed_actions: string[];
+  forbidden_actions: string[];
+  required_evidence: string[];
+  eval_score: number;
+  eval_threshold: number;
+  cost_model: Record<string, unknown>;
+  removal_strategy: string;
+  latest_validation_report: string | null;
+  metadata: Record<string, unknown>;
+  live_route_allowed: boolean;
+  blocked_reasons: string[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClaimLedgerRecord = {
+  id: string;
+  claim: string;
+  claim_type: 'observation' | 'hypothesis' | 'decision' | 'memory' | 'capability' | 'backlog' | 'policy';
+  subject_ref: string;
+  evidence_refs: string[];
+  confidence: number;
+  status: 'proposed' | 'supported' | 'contradicted' | 'resolved' | 'rejected' | 'promoted' | 'review_required';
+  verified_by_gate: string | null;
+  invalidated_by: string | null;
+  created_from: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CapacityPlanV2Result = WorkerPoolPlanResult & {
+  queue_classes: Record<string, number>;
+  fair_share_order: string[];
+  audit_manifest_preview: Array<{
+    decision_id: string;
+    lease_id: string;
+    action: 'start' | 'skip';
+    policy_version: string;
+    blocked_reasons: string[];
+    queue_class: string;
+  }>;
+};
+
+export type RunnerManifestRecord = {
+  id: string;
+  decision_id: string;
+  lease_id: string | null;
+  loop_run_id: string | null;
+  action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+  policy_version: string;
+  runtime_contract: Record<string, unknown>;
+  capacity_snapshot: Record<string, unknown>;
+  budget_snapshot: Record<string, unknown>;
+  gate_refs: string[];
+  blocked_reasons: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ProofRunSummary = {
+  id: string;
+  status: 'completed' | 'rolled_back';
+  runtime: 'mock' | 'codex' | 'opencode';
+  created_at: string | null;
+  completed_at: string | null;
+  rollback_safe: boolean;
+  counts: Record<string, number>;
+  artifact_refs: {
+    goal: string | null;
+    loop_run: string | null;
+    worker_leases: string[];
+    panel: string | null;
+    memory_candidate: string | null;
+    [key: string]: string | string[] | null;
+  };
+  minimums: Record<string, number>;
+  passed: boolean;
+  missing: Record<string, number>;
+  narrative: string[];
+};
+
+export type SwarmMissionControl = {
+  execution_node: {
+    cockpit: string;
+    workers_run_on: string;
+    active_execution_requires_runtime_evidence: boolean;
+  };
+  swarm_truth: {
+    registry_agent_count: number;
+    live_agent_count: number;
+    prepared_leases: number;
+    running_leases: number;
+    active_execution_count: number;
+    registry_is_not_execution: boolean;
+  };
+  capability_health: {
+    total: number;
+    validated: number;
+    routable: number;
+    blocked: number;
+  };
+  claim_health: {
+    total: number;
+    proposed: number;
+    supported: number;
+    contradicted: number;
+    review_required: number;
+  };
+  specialist_panels: {
+    total: number;
+    consensus_ready: number;
+    blocked_or_needs_evidence: number;
+  };
+  capacity: CapacityPlanV2Result;
+  latest_runner_manifests: RunnerManifestRecord[];
+  latest_proof_run: ProofRunSummary | null;
+  next_safe_actions: string[];
+};
+
 class ApiClient {
   private getToken(): string | null {
     return localStorage.getItem(AUTH_SESSION_KEY);
@@ -900,6 +1029,64 @@ class ApiClient {
     target_ref?: string;
   }): Promise<AgentEvalRunRecord> {
     return this.request('/swarms/assurance/evals/run', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getSwarmMissionControl(): Promise<SwarmMissionControl> {
+    return this.request('/swarms/intelligence/mission-control');
+  }
+
+  async createProofRun(runtime: 'mock' | 'codex' | 'opencode' = 'mock'): Promise<ProofRunSummary> {
+    return this.request('/swarms/proof-runs', {
+      method: 'POST',
+      body: JSON.stringify({ runtime }),
+    });
+  }
+
+  async getLatestProofRun(): Promise<ProofRunSummary> {
+    return this.request('/swarms/proof-runs/latest');
+  }
+
+  async getProofRun(id: string): Promise<ProofRunSummary> {
+    return this.request(`/swarms/proof-runs/${id}`);
+  }
+
+  async rollbackProofRun(id: string): Promise<ProofRunSummary> {
+    return this.request(`/swarms/proof-runs/${id}/rollback`, { method: 'POST' });
+  }
+
+  async getSwarmCapabilities(limit?: number): Promise<{ capabilities: SwarmCapabilityRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/intelligence/capabilities${query}`);
+  }
+
+  async getSwarmClaims(limit?: number): Promise<{ claims: ClaimLedgerRecord[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/swarms/intelligence/claims${query}`);
+  }
+
+  async planCapacityV2(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<CapacityPlanV2Result> {
+    return this.request('/swarms/intelligence/capacity/plan', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async evaluateSwarmGovernance(input: {
+    risk_class?: 'low' | 'medium' | 'high' | 'critical';
+    mutating?: boolean;
+    maker_pass?: boolean;
+    checker_pass?: boolean;
+    security_checker_pass?: boolean;
+    quorum_count?: number;
+    quorum_required?: number;
+    runtime_warnings?: string[];
+    human_approval_ref?: string;
+    ready_for_human_merge?: boolean;
+  }): Promise<{ status: string; blocked_reasons: string[]; gates: Record<string, string>; completion_state: string }> {
+    return this.request('/swarms/intelligence/governance/evaluate', {
       method: 'POST',
       body: JSON.stringify(input),
     });

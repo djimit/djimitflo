@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: type-check · lint · build · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (all workspaces)
+        run: npm run type-check
+
+      - name: Lint (all workspaces)
+        run: npm run lint
+
+      - name: Build (all workspaces)
+        run: npm run build
+
+      - name: Test (all workspaces with tests)
+        # Root `test` runs `npm run test --workspaces --if-present`, skipping
+        # workspaces that define no `test` script (e.g. telegram).
+        run: npm test
