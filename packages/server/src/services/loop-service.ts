@@ -167,6 +167,13 @@ interface ExecuteMakerInput {
   lease_id?: string;
   timeout_ms?: number;
   diff_max_lines?: number;
+  /**
+   * Per-task request to run the runtime with approvals/sandbox bypassed so a
+   * non-interactive codex/opencode maker can actually apply writes and exit
+   * zero. This is a REQUEST only: it is honored solely when the operator has
+   * opted in via RUNTIME_ALLOW_SKIP_PERMISSIONS=true. See resolveSkipPermissions.
+   */
+  skip_permissions?: boolean;
 }
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
@@ -1582,10 +1589,12 @@ export class LoopService {
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.resolveWorkAssignmentPath(makerLease), 'utf8');
-    const { command, args } = this.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path, prompt);
+    const skipPermissions = this.resolveSkipPermissions(input.skip_permissions);
+    const { command, args } = this.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path, prompt, skipPermissions);
     const result = await this.executeRuntimeCommand(makerLease.id, command, args, {
       cwd: makerLease.worktree_path,
       timeoutMs,
+      enforceCwdBoundary: makerLease.runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
     });
 
@@ -1610,7 +1619,7 @@ export class LoopService {
       {
         name: 'maker_runtime_exit_zero',
         status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
-        evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}`,
+        evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}, skip_permissions=${skipPermissions}`,
       },
       {
         name: 'diff_under_threshold',
@@ -1953,13 +1962,14 @@ export class LoopService {
 
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = this.buildCheckerPrompt(run, maker, checker);
+    const skipPermissions = this.resolveSkipPermissions(input.skip_permissions);
     const { command, args } = runtime === 'mock'
       ? this.buildMockCheckerCommand(maker.worktree_path, prompt)
-      : this.buildRuntimeCommand(runtime, maker.worktree_path, prompt);
+      : this.buildRuntimeCommand(runtime, maker.worktree_path, prompt, skipPermissions);
     const result = await this.executeRuntimeCommand(checker.id, command, args, {
       cwd: maker.worktree_path,
       timeoutMs,
-      env: process.env,
+      enforceCwdBoundary: runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
     });
 
@@ -2951,7 +2961,86 @@ export class LoopService {
     return worktreePath;
   }
 
-  private buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string): { command: string; args: string[] } {
+  /**
+   * realpath that never throws — falls back to a normalized absolute path when
+   * the target does not exist yet (e.g. a freshly resolved worktree path).
+   */
+  private safeRealpath(target: string): string {
+    try {
+      return fs.realpathSync(target);
+    } catch {
+      return path.resolve(target);
+    }
+  }
+
+  /**
+   * A runtime child may only request approval/sandbox bypass when the operator
+   * has explicitly armed the gate via RUNTIME_ALLOW_SKIP_PERMISSIONS=true.
+   * Default-deny: a missing or unset flag never grants bypass, regardless of
+   * what a caller passes in. This keeps unsandboxed autonomous execution an
+   * intentional, operator-authorized act rather than a silent default.
+   */
+  private resolveSkipPermissions(requested?: boolean): boolean {
+    if (!requested) return false;
+    return process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true';
+  }
+
+  /**
+   * Env allowlist passed to spawned runtime children (codex/opencode). We never
+   * blanket-copy process.env: the server's own secrets (auth keys, DB URLs,
+   * session secrets) stay out of the child. Only standard process env, the
+   * model-provider credentials the runtime legitimately needs, and an explicit
+   * operator passthrough (RUNTIME_ENV_PASSTHROUGH=NAME,NAME) are forwarded.
+   */
+  private static readonly RUNTIME_ENV_ALLOWLIST = [
+    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
+    'TMPDIR', 'TMP', 'TEMP',
+    'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH',
+    'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT',
+    'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'MISTRAL_API_KEY', 'DEEPSEEK_API_KEY',
+    'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
+  ];
+
+  private buildRuntimeEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+      RUNTIME_SANDBOX: '1',
+      DJIMITFLO_RUNTIME_CHILD: '1',
+    };
+    const names = new Set<string>(LoopService.RUNTIME_ENV_ALLOWLIST);
+    const extra = process.env.RUNTIME_ENV_PASSTHROUGH;
+    if (extra) {
+      for (const name of extra.split(',').map((value) => value.trim()).filter(Boolean)) names.add(name);
+    }
+    for (const name of names) {
+      const value = process.env[name];
+      if (value !== undefined) env[name] = value;
+    }
+    return env;
+  }
+
+  /**
+   * Boundary check: a real runtime's cwd must live inside a worktree root (the
+   * configured LOOP_WORKTREE_ROOT, the default repo-parent worktrees dir, or —
+   * for tests — the system tmpdir). Refuses to spawn an autonomous runtime
+   * pointed at an arbitrary directory (the main repo, /etc, …).
+   */
+  private assertWithinWorktreeRoot(cwd: string): void {
+    const resolvedCwd = this.safeRealpath(cwd);
+    const candidates: string[] = [];
+    const configured = process.env.LOOP_WORKTREE_ROOT;
+    if (configured) candidates.push(configured);
+    candidates.push(os.tmpdir());
+    candidates.push(path.resolve(this.safeRealpath(process.cwd()), '..', '.djimitflo-loop-worktrees'));
+    const inside = candidates.some((root) => {
+      const resolvedRoot = this.safeRealpath(root);
+      return resolvedCwd === resolvedRoot || resolvedCwd.startsWith(resolvedRoot + path.sep);
+    });
+    if (!inside) {
+      throw new Error(`RUNTIME_CWD_OUTSIDE_WORKTREE: ${resolvedCwd}`);
+    }
+  }
+
+  private buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string, skipPermissions = false): { command: string; args: string[] } {
     if (runtime === 'mock') {
       const script = [
         'const dir = process.argv[1];',
@@ -2964,15 +3053,21 @@ export class LoopService {
       };
     }
     if (runtime === 'codex') {
+      const args = skipPermissions
+        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
+        : ['exec', '--json', '--cd', worktreePath, prompt];
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
-        args: ['exec', '--json', '--cd', worktreePath, prompt],
+        args,
       };
     }
     if (runtime === 'opencode') {
+      const args = skipPermissions
+        ? ['run', '--dangerously-skip-permissions', '--format', 'json', '--dir', worktreePath, prompt]
+        : ['run', '--format', 'json', '--dir', worktreePath, prompt];
       return {
         command: process.env.OPENCODE_BIN_PATH || 'opencode',
-        args: ['run', '--format', 'json', '--dir', worktreePath, prompt],
+        args,
       };
     }
     throw new Error('MAKER_RUNTIME_UNSUPPORTED');
@@ -3646,10 +3741,15 @@ export class LoopService {
       env?: NodeJS.ProcessEnv;
       timeoutMs?: number;
       maxBuffer?: number;
+      enforceCwdBoundary?: boolean;
     } = {}
   ): Promise<RuntimeExecutionResult> {
     const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
     const timeoutMs = options.timeoutMs || 120_000;
+
+    if (options.enforceCwdBoundary && options.cwd) {
+      this.assertWithinWorktreeRoot(options.cwd);
+    }
 
     return new Promise<RuntimeExecutionResult>((resolve, reject) => {
       let stdout = '';
@@ -3667,7 +3767,7 @@ export class LoopService {
       try {
         child = spawn(command, args, {
           cwd: options.cwd,
-          env: options.env || process.env,
+          env: options.env || this.buildRuntimeEnv(),
           stdio: ['ignore', 'pipe', 'pipe'],
         });
       } catch (error) {

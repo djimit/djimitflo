@@ -14,6 +14,9 @@
  *   npm run demo:proof                          # seed one mock proof run
  *   npm run demo:proof -- seed codex            # seed one REAL codex proof run
  *   npm run demo:proof -- seed opencode         # seed one REAL opencode proof run
+ *   npm run demo:proof -- seed codex --skip-permissions
+ *                                               # REAL codex run with approvals/sandbox
+ *                                               # bypassed (needs RUNTIME_ALLOW_SKIP_PERMISSIONS=true)
  *   npm run demo:proof -- latest                # print the latest proof-run summary
  *   npm run demo:proof -- rollback <id>
  */
@@ -40,10 +43,17 @@ const db = initializeDatabase();
     }
     const runtime = requested as DemoRuntime;
     const isReal = runtime !== 'mock';
+    const skipPermissions = process.argv.includes('--skip-permissions');
     if (isReal) {
-      console.log(`⏳ Running a REAL ${runtime} proof run (spawns maker/checker workers)…`);
+      const bypassNote = skipPermissions
+        ? ' with approvals/sandbox bypass requested'
+        : '';
+      console.log(`⏳ Running a REAL ${runtime} proof run (spawns maker/checker workers)${bypassNote}…`);
+      if (skipPermissions && process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS !== 'true') {
+        console.warn('⚠️  --skip-permissions requested but RUNTIME_ALLOW_SKIP_PERMISSIONS is not "true"; bypass will NOT be applied.');
+      }
     }
-    const summary = await service.create({ runtime });
+    const summary = await service.create({ runtime, skip_permissions: skipPermissions });
     console.log(`✅ Seeded a ${runtime}-runtime proof run into the local database.\n`);
     console.log(`Proof run : ${summary.id}`);
     console.log(`Status    : ${summary.passed ? 'passed (all minimums met)' : 'incomplete'}`);

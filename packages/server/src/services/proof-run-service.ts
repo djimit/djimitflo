@@ -98,8 +98,9 @@ export class ProofRunService {
     this.loops = new LoopService(db);
   }
 
-  async create(input: { runtime?: string } = {}): Promise<ProofRunSummary> {
+  async create(input: { runtime?: string; skip_permissions?: boolean } = {}): Promise<ProofRunSummary> {
     const runtime = this.resolveRuntime(input.runtime);
+    const skipPermissions = input.skip_permissions === true;
 
     const proofRunId = `proof-${Date.now()}-${randomUUID().slice(0, 8)}`;
     const now = new Date().toISOString();
@@ -117,7 +118,7 @@ export class ProofRunService {
       return this.get(proofRunId);
     }
 
-    await this.createRuntimeProofRun(proofRunId, now, traceId, base, runtime);
+    await this.createRuntimeProofRun(proofRunId, now, traceId, base, runtime, skipPermissions);
     return this.get(proofRunId);
   }
 
@@ -471,7 +472,8 @@ export class ProofRunService {
     now: string,
     traceId: string,
     base: Record<string, unknown>,
-    runtime: 'codex' | 'opencode'
+    runtime: 'codex' | 'opencode',
+    skipPermissions: boolean
   ) {
     const goalId = `goal:${proofRunId}`;
     const loopRunId = `loop-${randomUUID()}`;
@@ -583,6 +585,7 @@ export class ProofRunService {
         lease_id: makerPrepared.id,
         timeout_ms: 120_000,
         diff_max_lines: 200,
+        skip_permissions: skipPermissions,
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
       const checks = this.loops.runDeterministicChecks(loopRunId, {
@@ -600,6 +603,7 @@ export class ProofRunService {
         lease_id: checkerPrepared.id,
         runtime,
         timeout_ms: 120_000,
+        skip_permissions: skipPermissions,
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
       if (checkerResult.run.status === 'blocked') {
