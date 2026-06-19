@@ -195,7 +195,7 @@ export function UsagePage() {
             <p className="text-content-secondary text-sm">No usage data yet. Token usage will appear here as agents execute tasks.</p>
           ) : (
             <div className="space-y-1">
-              {data.daily_usage.slice(0, 14).map(d => (
+              {data.daily_usage.slice(-14).map(d => (
                 <div key={d.date} className="flex items-center gap-3">
                   <span className="text-xs text-content-secondary w-20">{d.date.slice(5)}</span>
                   <div className="flex-1 h-4 bg-background-elevated rounded-full overflow-hidden">

@@ -4,6 +4,7 @@ import fs from 'fs';
 
 const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
+const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const COLLECTION_REASONING = 'djimitflo_reasoning';
 
 export class ReasoningBankService {
@@ -88,7 +89,7 @@ export class ReasoningBankService {
       }
 
       // Use MiniLM embedding (matches djimitflo_swarm dimension)
-      const embedRes = await fetch('http://192.168.1.28:11434/api/embeddings', {
+      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'all-MiniLM-L6-v2', prompt: `${task.title} ${task.description}` }),
@@ -125,7 +126,7 @@ export class ReasoningBankService {
 
   async searchReasoning(query: string, limit: number = 5): Promise<any[]> {
     try {
-      const embedRes = await fetch('http://192.168.1.28:11434/api/embeddings', {
+      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'all-MiniLM-L6-v2', prompt: query }),

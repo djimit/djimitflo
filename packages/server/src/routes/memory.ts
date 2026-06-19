@@ -14,34 +14,38 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
   const contextInjector = new ContextInjectionService();
 
   // GET /api/memory/search?q=<query>&limit=<n>
-  router.get('/search', requireAuth, requirePermission('read:evidence'), async (req, res, _next): Promise<void> => {
-    const query = (req.query.q as string || '').trim();
-    if (!query) {
-      res.json({ results: [], total: 0 });
-      return;
+  router.get('/search', requireAuth, requirePermission('read:evidence'), async (req, res, next): Promise<void> => {
+    try {
+      const query = (req.query.q as string || '').trim();
+      if (!query) {
+        res.json({ results: [], total: 0 });
+        return;
+      }
+
+      const localResults = searchPromotedMemory(db, query);
+      if (localResults.length > 0) {
+        res.json({ results: localResults, total: localResults.length, source: 'promoted_memory_fallback' });
+        return;
+      }
+
+      const context = await contextInjector.injectContext(query, true);
+      const results = context
+        ? context.split('### ').slice(1).map((block: string) => {
+            const lines = block.split('\n');
+            const titleLine = lines[0] || '';
+            const trustMatch = titleLine.match(/\[(approved|validated|agent_generated)\]/);
+            return {
+              title: titleLine.replace(/\[.*?\]/, '').trim(),
+              excerpt: lines.slice(1).join(' ').trim().slice(0, 200),
+              trust_level: trustMatch ? trustMatch[1] : undefined,
+            };
+          })
+        : [];
+
+      res.json({ results, total: results.length });
+    } catch (error) {
+      next(error);
     }
-
-    const localResults = searchPromotedMemory(db, query);
-    if (localResults.length > 0) {
-      res.json({ results: localResults, total: localResults.length, source: 'promoted_memory_fallback' });
-      return;
-    }
-
-    const context = await contextInjector.injectContext(query, true);
-    const results = context
-      ? context.split('### ').slice(1).map((block: string) => {
-          const lines = block.split('\n');
-          const titleLine = lines[0] || '';
-          const trustMatch = titleLine.match(/\[(approved|validated|agent_generated)\]/);
-          return {
-            title: titleLine.replace(/\[.*?\]/, '').trim(),
-            excerpt: lines.slice(1).join(' ').trim().slice(0, 200),
-            trust_level: trustMatch ? trustMatch[1] : undefined,
-          };
-        })
-      : [];
-
-    res.json({ results, total: results.length });
   });
 
   return router;

@@ -174,7 +174,7 @@ export class MemoryCandidateService {
   }
 
   private containsSecret(content: string): boolean {
-    return /(api[_-]?key|secret|token|password)\s*=\s*['"]?[A-Za-z0-9_\-]{12,}/i.test(content)
+    return /(api[_-]?key|secret|token|password)\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}/i.test(content)
       || /\bsk-[A-Za-z0-9_\-]{10,}\b/.test(content)
       || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content);
   }

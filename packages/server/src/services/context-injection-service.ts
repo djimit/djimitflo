@@ -3,6 +3,7 @@ import fs from 'fs';
 
 const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
+const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const QDRANT_COLLECTION = 'djimitflo_swarm';
 const OKF_COLLECTION = 'djimit_okf';
 const MAX_CONTEXT_TOKENS = 1500;
@@ -49,7 +50,7 @@ export class ContextInjectionService {
 
   private async searchQdrantSwarm(query: string): Promise<ContextResult[]> {
     try {
-      const embedRes = await fetch('http://192.168.1.28:11434/api/embeddings', {
+      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: query }),
@@ -85,7 +86,7 @@ export class ContextInjectionService {
     const results: ContextResult[] = [];
 
     try {
-      const embedRes = await fetch('http://192.168.1.28:11434/api/embeddings', {
+      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: query }),

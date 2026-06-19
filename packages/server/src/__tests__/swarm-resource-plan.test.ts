@@ -266,7 +266,7 @@ describe('workstation swarm resource plan', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: 'Leaked credential',
-        content: `${fakeKeyName}=${fakeKeyValue}`,
+        content: `"${fakeKeyName}": "${fakeKeyValue}"`,
         memory_type: 'operational_memory',
         source_ref: 'test:secret',
       }),
@@ -955,7 +955,7 @@ describe('workstation swarm resource plan', () => {
         span_type: 'tool',
         name: 'bad trace',
         status: 'error',
-        evidence_ref: `${fakeKeyName}=${fakeKeyValue}`,
+        evidence_ref: `"${fakeKeyName}": "${fakeKeyValue}"`,
       }),
     });
     expect(secretResponse.status).toBe(400);
@@ -1134,7 +1134,7 @@ describe('workstation swarm resource plan', () => {
       body: JSON.stringify({
         source_type: 'trace',
         source_ref: 'trace-secret',
-        lesson: `Store ${'token'}=${'abcdef1234567890'} for future use.`,
+        lesson: `Store ${'token'}: ${'abcdef1234567890'} for future use.`,
       }),
     });
     expect(secretResponse.status).toBe(400);

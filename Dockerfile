@@ -23,10 +23,10 @@ COPY packages/server/package.json packages/server/
 COPY packages/dashboard/package.json packages/dashboard/
 COPY packages/telegram/package.json packages/telegram/
 
-# Install all dependencies (including dev for native modules like better-sqlite3)
+# Install production dependencies only; dist folders are built before docker build.
 # Replace workspace:* with * for npm compatibility
 RUN sed -i 's/"workspace:\*"/"*"/g' packages/server/package.json packages/dashboard/package.json packages/telegram/package.json; \
-    npm install
+    npm install --omit=dev
 
 # Copy pre-built dist directories
 COPY packages/shared/dist packages/shared/dist
