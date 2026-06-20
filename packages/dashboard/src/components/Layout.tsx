@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -93,6 +93,12 @@ export function Layout() {
             icon={<Workflow className="w-5 h-5" />}
             label="Goals & Loops"
             active={isActive('/goals-loops')}
+          />
+          <NavLink
+            to="/fleet-cockpit"
+            icon={<Gauge className="w-5 h-5" />}
+            label="Fleet Cockpit"
+            active={isActive('/fleet-cockpit')}
           />
           <NavLink
             to="/usage"
