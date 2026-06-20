@@ -72,27 +72,21 @@ export function createAuthMiddleware(authService: AuthService) {
     next();
   }
 
-  /**
-   * Authentication path for the nested-spawn control endpoint (L3): a spawned
-   * runtime child has no user session, so it cannot present a Bearer JWT. Instead
-   * it presents a scoped spawn token in the `X-Spawn-Token` header. This
-   * middleware admits EITHER credential:
-   *   - `Authorization: Bearer <jwt>`  → verified, sets req.user (the user path).
-   *     A malformed/expired Bearer returns 401 AUTH_INVALID and does NOT fall
-   *     through to the spawn token — a malformed Bearer is an attack signal, not
-   *     a child, and silently retrying it as a token would mask the failure.
-   *   - `X-Spawn-Token: <scoped token>`  → passes through with req.user UNSET. The
-   *     real scoped validation happens downstream in NestedSpawnService.requestSpawn
-   *     (which checks lease+tree scope + expiry); a bad token surfaces as
-   *     SPAWN_TOKEN_INVALID → 401 via mapSpawnError.
-   *   - neither header  → 401 AUTH_REQUIRED.
-   * Routes that additionally need a user permission (e.g. POST /spawns/root with
-   * write:swarm_action) sit behind requirePermission, which 401s a token-only
-   * caller (req.user unset) — so only operators create roots, never children.
-   */
+  // L3: spawn control middleware — admits either a user JWT or a scoped X-Spawn-Token.
+  // Rejects with AUTH_REQUIRED when neither is present, AUTH_INVALID for a malformed
+  // Bearer. X-Spawn-Token-only requests pass through; the spawn route validates the token.
   function requireAuthOrSpawnToken(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
+    const hasSpawnToken = typeof req.headers['x-spawn-token'] === 'string';
+    if (!authHeader && !hasSpawnToken) {
+      res.status(401).json({ error: { message: 'Authentication required', code: 'AUTH_REQUIRED' } });
+      return;
+    }
+    if (authHeader) {
+      if (!authHeader.startsWith('Bearer ')) {
+        res.status(401).json({ error: { message: 'Invalid or expired token', code: 'AUTH_INVALID' } });
+        return;
+      }
       const token = authHeader.substring(7);
       const payload = authService.verifyToken(token);
       if (!payload) {
@@ -105,15 +99,8 @@ export function createAuthMiddleware(authService: AuthService) {
         return;
       }
       req.user = payload;
-      next();
-      return;
     }
-    if (req.get('X-Spawn-Token')) {
-      // Token-only child: real scope/expiry validation is in the route + service.
-      next();
-      return;
-    }
-    res.status(401).json({ error: { message: 'Authentication required', code: 'AUTH_REQUIRED' } });
+    next();
   }
 
   return { requireAuth, requirePermission, optionalAuth, requireAuthOrSpawnToken };
