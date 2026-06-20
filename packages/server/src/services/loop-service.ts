@@ -2223,6 +2223,14 @@ export class LoopService {
     if (!stat.isDirectory()) {
       throw new Error('REPOSITORY_PATH_NOT_DIRECTORY');
     }
+    // OKF allowlist: accept only configured roots or the implicit repo root
+    // (cwd at startup). OKF_ALLOWED_ROOTS is colon-separated absolute paths.
+    const allowedEnv = process.env.OKF_ALLOWED_ROOTS;
+    if (allowedEnv) {
+      const roots = allowedEnv.split(':').map((r) => path.resolve(r.trim())).filter(Boolean);
+      const ok = roots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+      if (!ok) throw new Error('OKF_PATH_NOT_ALLOWED');
+    }
     return resolved;
   }
 

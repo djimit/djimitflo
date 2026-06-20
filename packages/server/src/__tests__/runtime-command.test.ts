@@ -207,6 +207,42 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
     expect(contract.available).toBe(false);
   });
 
+  it('codex: drifts when --json flag missing from exec help', () => {
+    const bin = writeFakeBin(binDir, 'codex-broken', 'Usage: codex exec --cd <path> <prompt>');
+    process.env.CODEX_BIN_PATH = bin;
+    const loops = new LoopService(db);
+    const contract = (loops as any).getRuntimeContract('codex');
+    expect(contract.status).toBe('drifted');
+    expect(contract.available).toBe(false);
+    expect(contract.reason).toMatch(/json|format/i);
+  });
+
+  it('codex: returns unavailable when binary is missing', () => {
+    process.env.CODEX_BIN_PATH = path.join(binDir, 'does-not-exist-codex');
+    const loops = new LoopService(db);
+    const contract = (loops as any).getRuntimeContract('codex');
+    expect(contract.status).toBe('unavailable');
+    expect(contract.available).toBe(false);
+  });
+
+  it('opencode: drifts when --format flag missing from run help', () => {
+    const bin = writeFakeBin(binDir, 'opencode-broken', 'Usage: opencode run --dir <path> <prompt>');
+    process.env.OPENCODE_BIN_PATH = bin;
+    const loops = new LoopService(db);
+    const contract = (loops as any).getRuntimeContract('opencode');
+    expect(contract.status).toBe('drifted');
+    expect(contract.available).toBe(false);
+    expect(contract.reason).toMatch(/json|format/i);
+  });
+
+  it('opencode: returns unavailable when binary is missing', () => {
+    process.env.OPENCODE_BIN_PATH = path.join(binDir, 'does-not-exist-opencode');
+    const loops = new LoopService(db);
+    const contract = (loops as any).getRuntimeContract('opencode');
+    expect(contract.status).toBe('unavailable');
+    expect(contract.available).toBe(false);
+  });
+
   it('getRuntimeContracts() exposes claude/gemini/editor alongside codex/opencode', () => {
     process.env.CLAUDE_BIN_PATH = path.join(binDir, 'nope');
     process.env.GEMINI_BIN_PATH = path.join(binDir, 'nope');
@@ -218,5 +254,46 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
     }
     expect(runtimes.claude.runtime).toBe('claude');
     expect(runtimes.editor.runtime).toBe('editor');
+  });
+});
+
+describe('OKF path allowlist (G16.2)', () => {
+  let db: Database.Database;
+  const prev = { ...process.env };
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+  });
+
+  afterEach(() => {
+    Object.assign(process.env, prev);
+    for (const k of Object.keys(process.env)) { if (!(k in prev)) delete process.env[k]; }
+  });
+
+  it('accepts a path inside an allowed root', () => {
+    process.env.OKF_ALLOWED_ROOTS = os.tmpdir();
+    const allowed = fs.mkdtempSync(path.join(os.tmpdir(), 'okf-allowed-'));
+    const loops = new LoopService(db);
+    expect(() => (loops as any).resolveRepositoryPath(allowed)).not.toThrow();
+    fs.rmdirSync(allowed);
+  });
+
+  it('rejects a path outside configured roots (path escape)', () => {
+    process.env.OKF_ALLOWED_ROOTS = path.join(os.tmpdir(), 'strict-root');
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'okf-escape-'));
+    const loops = new LoopService(db);
+    expect(() => (loops as any).resolveRepositoryPath(outside)).toThrow('OKF_PATH_NOT_ALLOWED');
+    fs.rmdirSync(outside);
+  });
+
+  it('accepts any path when OKF_ALLOWED_ROOTS is unset', () => {
+    delete process.env.OKF_ALLOWED_ROOTS;
+    const allowed = fs.mkdtempSync(path.join(os.tmpdir(), 'okf-any-'));
+    const loops = new LoopService(db);
+    expect(() => (loops as any).resolveRepositoryPath(allowed)).not.toThrow();
+    fs.rmdirSync(allowed);
   });
 });
