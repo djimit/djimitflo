@@ -20,6 +20,7 @@ import { CodexExecutor } from './executors/codex-executor';
 import { ClaudeExecutor } from './executors/claude-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
+import { PiExecutor } from './executors/pi-executor';
 import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
@@ -81,6 +82,7 @@ export class ExecutionEngine {
     this.registerExecutor(new ClaudeExecutor());
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
+    this.registerExecutor(new PiExecutor());
   }
   
   /**
@@ -238,7 +240,12 @@ export class ExecutionEngine {
     
     try {
       // Start execution
-      const session = await executor.start(parsedTask);
+      // Resolve a working directory from task metadata (operator/loop may pin a worktree);
+      // executors fall back to process.cwd() when undefined (unchanged default behavior).
+      const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as
+        | string
+        | undefined;
+      const session = await executor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
       this.activeSessions.set(taskId, session);
       
       // Update task status to running

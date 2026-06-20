@@ -172,7 +172,7 @@ export interface ProofRunEventPayload {
   status: 'completed' | 'rolled_back';
   passed: boolean;
   rollback_safe: boolean;
-  runtime: 'mock' | 'codex' | 'opencode';
+  runtime: 'mock' | 'codex' | 'opencode' | 'pi';
 }
 
 // Nested swarm spawn event payload (SWARM_SPAWN_*). `status` mirrors the
