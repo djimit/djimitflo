@@ -24,6 +24,11 @@ export interface OpenCodeConfigHealth {
   per_agent_recommendations: string[];
 }
 
+function outputToString(output: string | Buffer | null | undefined): string {
+  if (!output) return '';
+  return typeof output === 'string' ? output : output.toString('utf8');
+}
+
 export class OpenCodeMcpHealthService {
   constructor(private readonly opencodeBin: string = process.env.OPENCODE_BIN_PATH || 'opencode') {}
 
@@ -68,7 +73,9 @@ export class OpenCodeMcpHealthService {
     if (result.error) {
       return { status: 'unavailable', reason: `spawn error: ${result.error.message}` };
     }
-    const combined = (result.stdout || '') + (result.stderr || '');
+    const stdout = outputToString(result.stdout);
+    const stderr = outputToString(result.stderr);
+    const combined = stdout + stderr;
     if (/database is locked/i.test(combined)) {
       return {
         status: 'locked',
@@ -83,9 +90,9 @@ export class OpenCodeMcpHealthService {
       return { status: 'error', reason: `opencode mcp list exited ${result.status}: ${combined.slice(0, 200)}` };
     }
     // Parse server names (one per line, "  name  description" format)
-    const servers = (result.stdout || '').split('\n')
-      .map((l) => l.trim().split(/\s+/)[0])
-      .filter((s) => s && !s.startsWith('#'));
+    const servers = stdout.split('\n')
+      .map((line: string) => line.trim().split(/\s+/)[0])
+      .filter((server: string) => server && !server.startsWith('#'));
     if (servers.length === 0) {
       return { status: 'unconfigured', reason: 'no MCP servers listed', servers: [] };
     }
