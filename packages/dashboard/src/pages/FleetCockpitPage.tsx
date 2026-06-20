@@ -4,12 +4,10 @@ import {
   AlertCircle,
   BarChart3,
   Cpu,
-  Gauge,
   Play,
   RefreshCw,
   TrendingUp,
   Zap,
-  Clock,
   CheckCircle2,
   XCircle,
   AlertTriangle,
@@ -57,38 +55,6 @@ function formatTokens(tokens: number): string {
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
   return String(tokens);
-}
-
-function getStatusColor(status: string): string {
-  switch (status) {
-    case 'prepared':
-    case 'running':
-      return 'text-blue-600';
-    case 'completed':
-      return 'text-green-600';
-    case 'failed':
-      return 'text-red-600';
-    case 'queued':
-      return 'text-amber-600';
-    default:
-      return 'text-gray-600';
-  }
-}
-
-function getStatusBgColor(status: string): string {
-  switch (status) {
-    case 'prepared':
-    case 'running':
-      return 'bg-blue-100';
-    case 'completed':
-      return 'bg-green-100';
-    case 'failed':
-      return 'bg-red-100';
-    case 'queued':
-      return 'bg-amber-100';
-    default:
-      return 'bg-gray-100';
-  }
 }
 
 function getWarningColor(severity: string): string {

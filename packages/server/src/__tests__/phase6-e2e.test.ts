@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { rmSync, mkdirSync } from 'fs';
+import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { AuthService } from '../services/auth-service';
@@ -19,7 +20,7 @@ describe('Phase 6 E2E: Goal → Loop → Execution → Completion', () => {
   let authService: AuthService;
   let userId: string;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // Setup test environment
     if (TEST_DIR) rmSync(TEST_DIR, { recursive: true, force: true });
     mkdirSync(TEST_DIR, { recursive: true });
@@ -28,6 +29,8 @@ describe('Phase 6 E2E: Goal → Loop → Execution → Completion', () => {
     // Initialize database
     db = new BetterSqlite3(TEST_DB);
     db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
     runMigrations(db);
 
     // Initialize services
@@ -35,11 +38,11 @@ describe('Phase 6 E2E: Goal → Loop → Execution → Completion', () => {
     authService = new AuthService(db);
 
     // Create test user
-    const user = await authService.createUser({
-      email: `test-${Date.now()}@example.com`,
-      password: 'test-password-123',
-      role: 'admin',
-    });
+    const user = authService.createUser(
+      `test-${Date.now()}@example.com`,
+      'test-password-123',
+      'admin'
+    );
     userId = user.id;
   });
 
