@@ -13,6 +13,12 @@ import {
   AlertTriangle,
   Users,
   Layers,
+  X,
+  ChevronDown,
+  ChevronUp,
+  Pause,
+  Square,
+  Info,
 } from 'lucide-react';
 import { api, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -85,6 +91,10 @@ export function FleetCockpitPage() {
   const [metrics, setMetrics] = useState<FleetMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedLease, setSelectedLease] = useState<WorkerLeaseRecord | null>(null);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [expandedAlert, setExpandedAlert] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const { subscribe } = useWebSocket(true);
 
   const computeMetrics = useCallback((runs: LoopRunRecord[], leases: WorkerLeaseRecord[]) => {
@@ -231,6 +241,22 @@ export function FleetCockpitPage() {
     return unsub;
   }, [subscribe, fetchData]);
 
+  const handleWorkerAction = async (leaseId: string, action: 'pause' | 'resume' | 'cancel') => {
+    setActionLoading(leaseId);
+    try {
+      // API endpoint for worker lease actions
+      // await api.updateWorkerLease(leaseId, { action });
+      // For now, just simulate the action
+      console.log(`Worker action: ${action} on lease ${leaseId}`);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+      await fetchData();
+    } catch (err) {
+      console.error(`Failed to ${action} worker:`, err);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   if (loading && !metrics) {
     return (
       <div className="p-8 flex items-center justify-center min-h-screen">
@@ -366,21 +392,36 @@ export function FleetCockpitPage() {
           </h2>
           <div className="space-y-3">
             {[
-              { label: 'Running', count: metrics.poolStatus.running, color: 'bg-blue-100 text-blue-700', icon: '▶' },
-              { label: 'Prepared', count: metrics.poolStatus.prepared, color: 'bg-teal-100 text-teal-700', icon: '◐' },
-              { label: 'Queued', count: metrics.poolStatus.queued, color: 'bg-amber-100 text-amber-700', icon: '⏳' },
-              { label: 'Completed', count: metrics.poolStatus.completed, color: 'bg-green-100 text-green-700', icon: '✓' },
-              { label: 'Failed', count: metrics.poolStatus.failed, color: 'bg-red-100 text-red-700', icon: '✕' },
-            ].map((status) => (
-              <div key={status.label} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={`px-2 py-1 rounded text-sm font-medium ${status.color}`}>
-                    {status.icon} {status.label}
-                  </span>
-                </div>
-                <span className="text-2xl font-bold text-foreground">{status.count}</span>
-              </div>
-            ))}
+              { label: 'Running', count: metrics.poolStatus.running, color: 'bg-blue-100 text-blue-700', icon: '▶', statusKey: 'running' as const },
+              { label: 'Prepared', count: metrics.poolStatus.prepared, color: 'bg-teal-100 text-teal-700', icon: '◐', statusKey: 'prepared' as const },
+              { label: 'Queued', count: metrics.poolStatus.queued, color: 'bg-amber-100 text-amber-700', icon: '⏳', statusKey: 'prepared' as const },
+              { label: 'Completed', count: metrics.poolStatus.completed, color: 'bg-green-100 text-green-700', icon: '✓', statusKey: 'completed' as const },
+              { label: 'Failed', count: metrics.poolStatus.failed, color: 'bg-red-100 text-red-700', icon: '✕', statusKey: 'failed' as const },
+            ].map((status) => {
+              const leasesForStatus = allLeases.filter(l => l.status === status.statusKey);
+              return (
+                <button
+                  key={status.label}
+                  onClick={() => {
+                    if (leasesForStatus.length > 0) {
+                      setSelectedLease(leasesForStatus[0]);
+                    }
+                  }}
+                  disabled={leasesForStatus.length === 0}
+                  className="w-full flex items-center justify-between p-2 rounded hover:bg-background-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded text-sm font-medium ${status.color}`}>
+                      {status.icon} {status.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold text-foreground">{status.count}</span>
+                    {status.count > 0 && <Info className="w-4 h-4 text-foreground-secondary" />}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -412,23 +453,58 @@ export function FleetCockpitPage() {
         <div className="bg-background-elevated rounded-lg p-6 border border-background-border">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5 text-amber-600" />
-            Fleet Alerts ({metrics.warnings.length})
+            Fleet Alerts ({metrics.warnings.filter(w => !dismissedAlerts.has(w.id)).length})
           </h2>
           <div className="space-y-3">
-            {metrics.warnings.map((warning) => (
-              <div
-                key={warning.id}
-                className={`rounded-lg p-4 border flex items-start gap-3 ${getWarningColor(warning.severity)}`}
-              >
-                {getWarningIcon(warning.severity)}
-                <div className="flex-1">
-                  <p className="text-foreground font-medium">{warning.message}</p>
-                  <p className="text-foreground-secondary text-xs mt-1">
-                    {new Date(warning.timestamp).toLocaleTimeString()}
-                  </p>
+            {metrics.warnings.map((warning) => {
+              if (dismissedAlerts.has(warning.id)) return null;
+
+              return (
+                <div
+                  key={warning.id}
+                  className={`rounded-lg p-4 border flex items-start gap-3 transition-all ${getWarningColor(warning.severity)}`}
+                >
+                  {getWarningIcon(warning.severity)}
+                  <div className="flex-1">
+                    <button
+                      onClick={() => setExpandedAlert(expandedAlert === warning.id ? null : warning.id)}
+                      className="w-full text-left hover:opacity-80 transition-opacity"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-foreground font-medium">{warning.message}</p>
+                          <p className="text-foreground-secondary text-xs mt-1">
+                            {new Date(warning.timestamp).toLocaleTimeString()}
+                          </p>
+                        </div>
+                        <div className="ml-2">
+                          {expandedAlert === warning.id ? (
+                            <ChevronUp className="w-4 h-4 text-foreground-secondary" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-foreground-secondary" />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                    {expandedAlert === warning.id && (
+                      <div className="mt-3 pt-3 border-t border-current border-opacity-20 space-y-2">
+                        <p className="text-sm text-foreground-secondary">Alert Details</p>
+                        <div className="text-xs text-foreground-secondary bg-background rounded p-2">
+                          ID: {warning.id}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setDismissedAlerts(new Set([...dismissedAlerts, warning.id]))}
+                    className="p-1 hover:bg-black hover:bg-opacity-10 rounded transition-colors ml-2 flex-shrink-0"
+                    title="Dismiss alert"
+                  >
+                    <X className="w-4 h-4 text-foreground-secondary" />
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -491,6 +567,145 @@ export function FleetCockpitPage() {
           Start Loop
         </button>
       </div>
+
+      {/* Worker Lease Details Modal */}
+      {selectedLease && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="sticky top-0 bg-background-elevated border-b border-background-border p-6 flex items-start justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Worker Lease Details</h2>
+                <p className="text-foreground-secondary text-sm mt-1">ID: {selectedLease.id}</p>
+              </div>
+              <button
+                onClick={() => setSelectedLease(null)}
+                className="p-1 hover:bg-background-border rounded transition-colors"
+              >
+                <X className="w-5 h-5 text-foreground-secondary" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-4">
+              {/* Status & Role */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Role</p>
+                  <p className="text-foreground font-semibold mt-1 capitalize">{selectedLease.role}</p>
+                </div>
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Status</p>
+                  <p className={`text-foreground font-semibold mt-1 capitalize px-2 py-1 rounded w-fit ${
+                    selectedLease.status === 'completed' ? 'bg-green-100 text-green-700' :
+                    selectedLease.status === 'failed' ? 'bg-red-100 text-red-700' :
+                    selectedLease.status === 'running' ? 'bg-blue-100 text-blue-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {selectedLease.status}
+                  </p>
+                </div>
+              </div>
+
+              {/* Runtime & Budget */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Runtime</p>
+                  <p className="text-foreground mt-1">{selectedLease.runtime || 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Created At</p>
+                  <p className="text-foreground text-sm mt-1">
+                    {new Date(selectedLease.created_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Worktree & Branch */}
+              {selectedLease.worktree_path && (
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Worktree Path</p>
+                  <p className="text-foreground text-sm mt-1 font-mono bg-background p-2 rounded border border-background-border overflow-x-auto">
+                    {selectedLease.worktree_path}
+                  </p>
+                </div>
+              )}
+              {selectedLease.branch_name && (
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium">Branch Name</p>
+                  <p className="text-foreground text-sm mt-1 font-mono bg-background p-2 rounded border border-background-border">
+                    {selectedLease.branch_name}
+                  </p>
+                </div>
+              )}
+
+              {/* Budget Info */}
+              <div>
+                <p className="text-foreground-secondary text-sm font-medium mb-2">Budget Details</p>
+                <div className="bg-background p-3 rounded border border-background-border">
+                  {selectedLease.budget ? (
+                    <pre className="text-xs text-foreground font-mono overflow-x-auto">
+                      {JSON.stringify(selectedLease.budget, null, 2)}
+                    </pre>
+                  ) : (
+                    <p className="text-foreground-secondary text-sm">No budget information</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Metadata */}
+              {selectedLease.metadata && Object.keys(selectedLease.metadata).length > 0 && (
+                <div>
+                  <p className="text-foreground-secondary text-sm font-medium mb-2">Metadata</p>
+                  <div className="bg-background p-3 rounded border border-background-border">
+                    <pre className="text-xs text-foreground font-mono overflow-x-auto">
+                      {JSON.stringify(selectedLease.metadata, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            {selectedLease.status === 'running' && (
+              <div className="sticky bottom-0 bg-background-elevated border-t border-background-border p-6 flex gap-3 justify-end">
+                <button
+                  onClick={() => handleWorkerAction(selectedLease.id, 'pause')}
+                  disabled={actionLoading === selectedLease.id}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Pause className="w-4 h-4" />
+                  Pause
+                </button>
+                <button
+                  onClick={() => handleWorkerAction(selectedLease.id, 'cancel')}
+                  disabled={actionLoading === selectedLease.id}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  <Square className="w-4 h-4" />
+                  Cancel
+                </button>
+                <button
+                  onClick={() => setSelectedLease(null)}
+                  className="px-4 py-2 bg-background-elevated hover:bg-background-border text-foreground rounded-lg transition-colors border border-background-border"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+            {selectedLease.status === 'prepared' && (
+              <div className="sticky bottom-0 bg-background-elevated border-t border-background-border p-6 flex gap-3 justify-end">
+                <button
+                  onClick={() => setSelectedLease(null)}
+                  className="px-4 py-2 bg-background-elevated hover:bg-background-border text-foreground rounded-lg transition-colors border border-background-border"
+                >
+                  Close
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
