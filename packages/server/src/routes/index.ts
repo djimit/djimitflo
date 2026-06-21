@@ -35,6 +35,7 @@ import { createWorkItemRoutes } from './work-items';
 import { createSwarmRoutes } from './swarms';
 import { createSpawnRoutes } from './spawns';
 import type { WebSocketService } from '../services/websocket-service';
+import { createCapabilityRoutes } from './capabilities';
 
 export function createRoutes(
   db: Database,
@@ -101,6 +102,7 @@ export function createRoutes(
   router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
   router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
   router.use('/skills', requireAuth, createSkillRoutes(db, auth));
-  
+  router.use('/capabilities', requireAuth, createCapabilityRoutes(db));
+
   return router;
 }

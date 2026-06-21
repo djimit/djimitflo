@@ -225,7 +225,7 @@ export class CapabilityRegistry {
   /**
    * Record execution: increment execution count and update last_executed_at.
    */
-  recordExecution(id: string, tokens_used: number): void {
+  recordExecution(id: string, _tokens_used: number): void {
     const capability = this.getById(id);
     if (!capability) {
       throw new Error('CAPABILITY_NOT_FOUND');
