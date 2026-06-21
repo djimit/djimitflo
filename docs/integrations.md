@@ -10,6 +10,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 |-------------|--------|-------------|-------------|-------------------|-------------------|
 | **OpenCode** | Partially verified | Yes (1.15.4) | Yes (NDJSON) | Yes | Yes (`--dangerously-skip-permissions`) |
 | **Codex** | Implemented | No (contract anticipated) | Yes (NDJSON, same format as OpenCode) | Yes (step-start/tool/text/step-finish) | Yes (`CODEX_SKIP_PERMISSIONS` env var) |
+| **Pi** | Implemented (contract verified) | Yes (0.79.8, `--mode json`) | Yes (NDJSON) | Yes (session/agent_*/turn_*/message_*/tool_execution_*) | N/A — Pi has no permission popups; djimitflo is the sole boundary; restrict via `--tools` |
 | **Ruflo** | Conceptually mapped | N/A | N/A | N/A | N/A |
 
 ## OpenCode (Partially Verified)
@@ -32,6 +33,21 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - CLI contract anticipated but not yet verified against live binary
 - See [docs/codex.md](./codex.md) for details
 
+## Pi (Implemented, contract verified)
+
+- `ExecutorKind = 'pi'` and `PiExecutor` class in `packages/server/src/execution/executors/pi-executor.ts`
+- Registered in `execution-engine.ts`
+- Invoked as an external child process: `pi --mode json -p` (no runtime dependency inside djimitflo)
+- Structured NDJSON output with Pi's own event schema (`session`, `agent_start`, `turn_start/end`, `message_start/update/end`, `tool_execution_start/end`, `agent_end`) — see the mapping in [docs/pi.md](./pi.md)
+- Working directory = child-process `cwd` (Pi has no `--dir` flag); model via `--provider`/`--model` (Ollama via `~/.pi/agent/models.json`)
+- **No permission popups / no bypass flag**: Pi runs with the user's permissions; djimitflo's policy engine is the sole approval boundary. Risk is controlled per task via the `PI_TOOLS` allowlist (drop `bash` for low-risk); containerize for `bash`-enabled or sensitive-repo runs
+- Sovereign/zero-egress runs require `PI_OFFLINE=1` + `PI_SKIP_VERSION_CHECK=1` + `PI_TELEMETRY=0` (else Pi phones home to pi.dev at startup)
+- Env knobs: `PI_BIN_PATH`, `PI_EXECUTION_TIMEOUT_MS`, `PI_PROVIDER`, `PI_MODEL`, `PI_TOOLS`, `PI_THINKING`, `PI_NO_CONTEXT_FILES`, `PI_NO_APPROVE`, `PI_NO_EXTENSIONS`, `PI_NO_SKILLS`, `PI_OFFLINE`
+- CLI contract verified 2026-06-20 against Pi 0.79.8 on the workstation (zero-egress Ollama smoke run captured)
+- See [docs/pi.md](./pi.md) for the full contract and live event samples
+
+**Not yet verified**: Long-running task execution through the Djimitflo policy engine end-to-end (Phase 4)
+
 ## Ruflo (Conceptually Mapped)
 
 - No runtime dependency on Ruflo
@@ -47,6 +63,7 @@ Each integration has an evidence trail:
 
 - **OpenCode**: `opencode run --help` output, JSON event samples, live binary test results
 - **Codex**: Structured event samples documented; live binary verification pending
+- **Pi**: `pi --help` output, NDJSON event samples, zero-egress Ollama smoke run (docs/pi.md)
 - **Ruflo**: Concept mapping table, GitHub README references, zero code dependency
 
 ## Known Limitations
@@ -61,6 +78,7 @@ Each integration has an evidence trail:
 ## Next Steps
 
 1. End-to-end test: Execute a real task via Djimitflo policy engine → OpenCode executor → verify event stream
+1b. End-to-end sovereign test: Djimitflo policy engine → Pi executor → local Ollama model (zero egress) → verify event stream, diff snapshot, risk classification, audit trail
 2. Capture Codex CLI contract (if Codex CLI is available)
 3. Evaluate Ruflo hooks pattern for pre/post execution lifecycle
 4. Session continuity support for OpenCode (`--continue`, `--session`)

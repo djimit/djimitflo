@@ -49,5 +49,6 @@ export interface SecurityConfig {
 export interface IntegrationConfig {
   codex_path: string;
   opencode_path: string;
+  pi_path: string;
   mcp_discovery_paths: string[];
 }
