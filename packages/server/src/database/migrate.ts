@@ -882,29 +882,27 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS swarm_capabilities (
       id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK(kind IN ('skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action')),
-      owner TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('skill', 'specialist', 'loop_template')),
+      name TEXT NOT NULL,
       version TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('draft', 'candidate', 'validated', 'deprecated', 'disabled')),
+      owner TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'candidate', 'validated', 'deprecated', 'disabled')),
       risk_ceiling TEXT NOT NULL CHECK(risk_ceiling IN ('low', 'medium', 'high', 'critical')),
-      input_schema_ref TEXT NOT NULL,
-      output_schema_ref TEXT NOT NULL,
-      allowed_actions_json TEXT NOT NULL DEFAULT '[]',
-      forbidden_actions_json TEXT NOT NULL DEFAULT '[]',
-      required_evidence_json TEXT NOT NULL DEFAULT '[]',
-      eval_score REAL NOT NULL DEFAULT 0 CHECK(eval_score >= 0 AND eval_score <= 1),
-      eval_threshold REAL NOT NULL DEFAULT 0.75 CHECK(eval_threshold >= 0 AND eval_threshold <= 1),
-      cost_model_json TEXT NOT NULL DEFAULT '{}',
-      removal_strategy TEXT NOT NULL,
-      latest_validation_report TEXT,
-      metadata TEXT NOT NULL DEFAULT '{}',
+      contract TEXT NOT NULL,
+      eval_score INTEGER,
+      eval_evidence_refs TEXT,
+      allowed_actions TEXT NOT NULL DEFAULT '[]',
+      forbidden_actions TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(kind, name, version)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_kind ON swarm_capabilities(kind);
     CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_status ON swarm_capabilities(status);
-    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_risk ON swarm_capabilities(risk_ceiling);
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_kind ON swarm_capabilities(kind);
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_owner ON swarm_capabilities(owner);
+    CREATE INDEX IF NOT EXISTS idx_swarm_capabilities_name ON swarm_capabilities(name);
 
     CREATE TABLE IF NOT EXISTS swarm_claims (
       id TEXT PRIMARY KEY,
