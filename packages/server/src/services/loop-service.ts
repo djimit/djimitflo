@@ -149,12 +149,12 @@ interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
 }
 
 interface RetryLoopInput {
   maker_lease_id?: string;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
   max_retries?: number;
 }
 
@@ -183,7 +183,7 @@ interface ExecuteMakerInput {
 }
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
 }
 
 interface ExecuteWorkerResult {
@@ -203,7 +203,7 @@ interface ExecuteWorkerResult {
 }
 
 interface RuntimeContract {
-  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor';
+  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi';
   available: boolean;
   command: string | null;
   version?: string;
@@ -1907,7 +1907,7 @@ export class LoopService {
       throw new Error('MAKER_WORKTREE_NOT_FOUND');
     }
 
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' : 'mock');
+    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock' : 'mock');
     const runtimeContract = this.getRuntimeContract(runtime);
     this.recordWorkerManifest({
       decisionId: this.makeManifestDecisionId(run.id, checker.id, 'start'),
@@ -2174,6 +2174,7 @@ export class LoopService {
           mock: this.getRuntimeContract('mock'),
           codex: this.getRuntimeContract('codex'),
           opencode: this.getRuntimeContract('opencode'),
+          pi: this.getRuntimeContract('pi'),
         },
       })),
     };
@@ -2189,6 +2190,7 @@ export class LoopService {
         claude: this.getRuntimeContract('claude'),
         gemini: this.getRuntimeContract('gemini'),
         editor: this.getRuntimeContract('editor'),
+        pi: this.getRuntimeContract('pi'),
       },
     };
   }
@@ -2222,6 +2224,14 @@ export class LoopService {
     const stat = fs.statSync(resolved);
     if (!stat.isDirectory()) {
       throw new Error('REPOSITORY_PATH_NOT_DIRECTORY');
+    }
+    // OKF allowlist: accept only configured roots or the implicit repo root
+    // (cwd at startup). OKF_ALLOWED_ROOTS is colon-separated absolute paths.
+    const allowedEnv = process.env.OKF_ALLOWED_ROOTS;
+    if (allowedEnv) {
+      const roots = allowedEnv.split(':').map((r) => path.resolve(r.trim())).filter(Boolean);
+      const ok = roots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
+      if (!ok) throw new Error('OKF_PATH_NOT_ALLOWED');
     }
     return resolved;
   }
@@ -2419,6 +2429,7 @@ export class LoopService {
           parsed.usage
             || parsed.response?.usage
             || parsed.token_usage
+            || parsed.message?.usage
             || parsed
         );
         if (normalized) {
@@ -2447,7 +2458,7 @@ export class LoopService {
       tokenAlias.completion ?? tokenAlias.output ?? usage.output ??
       usage.completion,
     );
-    const explicitTotal = Number(usage.total_tokens);
+    const explicitTotal = Number(usage.total_tokens ?? usage.totalTokens);
     const calculatedTotal = (Number.isFinite(promptTokens) ? promptTokens : 0) + (Number.isFinite(completionTokens) ? completionTokens : 0);
     const explicitTotalValue = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : calculatedTotal;
     const aliasTotal = Number(tokenAlias.total);
@@ -3448,6 +3459,29 @@ export class LoopService {
         args,
       };
     }
+    if (runtime === 'pi') {
+      // Pi headless: `pi --mode json -p`. Pi uses the spawn cwd as its working
+      // directory (no --dir flag), so the lease worktree is the isolation unit and
+      // Pi's file tools (read/ls/edit/write) are cwd-scoped to it. Pi has NO
+      // permission popups, so skipPermissions maps to no Pi flag — risk control
+      // stays via PI_TOOLS (drop bash for low-risk) + djimitflo approval before
+      // the lease. Sovereign/zero-egress runs require PI_OFFLINE=1 +
+      // PI_SKIP_VERSION_CHECK=1 + PI_TELEMETRY=0 (Pi reads these env vars).
+      const args = ['--mode', 'json', '-p', '--no-session'];
+      if ((process.env.PI_NO_APPROVE ?? '1') === '1') args.push('--no-approve');
+      if (process.env.PI_NO_CONTEXT_FILES === '1') args.push('--no-context-files');
+      if ((process.env.PI_NO_EXTENSIONS ?? '1') === '1') args.push('--no-extensions');
+      if ((process.env.PI_NO_SKILLS ?? '1') === '1') args.push('--no-skills');
+      if (process.env.PI_OFFLINE === '1') args.push('--offline');
+      if (process.env.PI_TOOLS) args.push('--tools', process.env.PI_TOOLS);
+      if (process.env.PI_PROVIDER) args.push('--provider', process.env.PI_PROVIDER);
+      if (process.env.PI_MODEL) args.push('--model', process.env.PI_MODEL);
+      args.push(prompt);
+      return {
+        command: process.env.PI_BIN_PATH || 'pi',
+        args,
+      };
+    }
     throw new Error('MAKER_RUNTIME_UNSUPPORTED');
   }
 
@@ -3499,6 +3533,7 @@ export class LoopService {
       claude: { binEnv: 'CLAUDE_BIN_PATH', defaultBin: 'claude', helpArgs: ['--help'], jsonFlag: '--output-format', jsonFlagHelp: '--output-format', cwdFlag: null, headlessFlag: '-p' },
       gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
       editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
+      pi: { binEnv: 'PI_BIN_PATH', defaultBin: 'pi', helpArgs: ['--help'], jsonFlag: '--mode', jsonFlagHelp: '--mode', cwdFlag: null, headlessFlag: '-p' },
     };
     const probe = PROBES[runtime];
     if (!probe) {
