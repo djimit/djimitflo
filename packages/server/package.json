@@ -27,7 +27,8 @@
     "jsonwebtoken": "^9.0.3",
     "tar-stream": "^2.2.0",
     "ws": "^8.20.1",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@djimitflo/agent-catalog": "*"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

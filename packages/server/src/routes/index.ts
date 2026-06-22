@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
+import { createCatalogRoutes } from './catalog';
 import { createMCPRoutes } from './mcp';
 import { createApprovalRoutes } from './approvals';
 import type { ExecutionEngine } from '../execution/execution-engine';
@@ -76,6 +77,7 @@ export function createRoutes(
   // Protected routes
   router.use('/tasks', requireAuth, createTaskRoutes(db, executionEngine, auth));
   router.use('/agents', requireAuth, createAgentRoutes(db, auth));
+  router.use('/catalog', requireAuth, createCatalogRoutes(db, auth));
   router.use('/mcp', requireAuth, createMCPRoutes(db, auth));
   router.use('/approvals', requireAuth, createApprovalRoutes(db, executionEngine, auth));
   router.use('/policies', requireAuth, createPolicyRoutes(db, auth));

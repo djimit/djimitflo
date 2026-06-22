@@ -1,0 +1,20 @@
+{
+  "name": "@djimitflo/agent-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Djimit agent catalog — import/normalize/evaluate/compile/activate agency-agents profiles.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6",
+    "@types/node": "^22.0.0"
+  }
+}
