@@ -1,46 +1,9 @@
 ---
-description: Execute the implementation plan by processing and executing all tasks
-  defined in tasks.md
+description: Execute the implementation plan by processing and executing all tasks defined in tasks.md
 scripts:
-  sh: .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
-  ps: .specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
+  sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
+  ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
 ---
-
-
-<!-- Source: djimit -->
-## Djimit Governance Gate — Approval Check (Pre-Execution)
-
-Before executing any tasks, you MUST perform the following approval gate check:
-
-1. **Read tasks.md** and scan every task for an `Execution Surface` field.
-
-2. **Categorize tasks**:
-   - `host:macbook` — safe to execute locally without additional approval
-   - `ssh:<device>` — REQUIRES explicit user approval before execution
-   - `docker:sandbox` — REQUIRES explicit user approval before execution
-   - Any task that touches production (even with `host:macbook`) — REQUIRES
-     explicit user approval before execution
-   - Tasks without an Execution Surface field — treat as `host:macbook` (default)
-
-3. **If any task requires approval**:
-   - List the approval-gated tasks with their Execution Surface
-   - STOP and ask: "The following tasks require approval before execution:
-     [list]. Do you approve execution of these tasks? (yes/no)"
-   - Wait for explicit user response
-   - If user says "no" or "wait" or "stop": skip those tasks, proceed with
-     only the approved tasks
-   - If user says "yes" or "proceed" or "approve": proceed with all tasks
-
-4. **Security baseline check**:
-   - Verify no task will log API keys, tokens, or credentials
-   - Verify no task will read `auth.json`, `.env`, or private keys
-   - Verify `trash` is used instead of `rm` for any file removal
-   - If any violation is detected, STOP and warn the user
-
-5. **After the gate passes**, proceed to the core implement workflow below.
-
----
-
 
 ## User Input
 
@@ -86,7 +49,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. Run `.specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Run `{SCRIPT}` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Scan all checklist files in the checklists/ directory
@@ -125,7 +88,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **IF EXISTS**: Read .specify/memory/constitution.md for governance constraints
+   - **IF EXISTS**: Read /memory/constitution.md for governance constraints
    - **IF EXISTS**: Read quickstart.md for integration scenarios
 
 4. **Project Setup Verification**:
@@ -206,7 +169,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
 
-Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `/speckit.tasks` first to regenerate the task list.
+Note: This command assumes a complete task breakdown exists in tasks.md. If tasks are incomplete or missing, suggest running `__SPECKIT_COMMAND_TASKS__` first to regenerate the task list.
 
 ## Mandatory Post-Execution Hooks
 
