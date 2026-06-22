@@ -1109,6 +1109,11 @@ function rebuildLoopTables(db: BetterSqlite3Database) {
       CREATE INDEX IF NOT EXISTS idx_loop_checkpoints_created_at ON loop_checkpoints(created_at);
     `);
 
+    // The recreated worker_leases uses the base schema; re-add the nested
+    // spawn lineage columns (parent_lease_id, spawn_tree_id, depth,
+    // spawned_by_agent_id) that createNestedSpawnTables added, otherwise
+    // re-inserting leases that carry those columns fails on stale DBs.
+    addMissingColumns(db, 'worker_leases', nestedWorkerLeaseColumns);
     insertRows(db, 'loop_runs', loopRuns);
     insertRows(db, 'loop_events', loopEvents);
     insertRows(db, 'worker_leases', workerLeases);
@@ -1117,6 +1122,29 @@ function rebuildLoopTables(db: BetterSqlite3Database) {
   } finally {
     db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
   }
+}
+
+// Columns added to token_usage_log by the newer schema. On stale dev databases
+// the table predates these columns, and CREATE INDEX statements in schema.ts
+// (idx_token_usage_log_discussion_id, idx_token_usage_log_created_at) reference
+// them — so they must exist BEFORE db.exec(schema) runs, otherwise server start
+// fails with "no such column: discussion_id". Idempotent: only adds missing cols.
+const tokenUsageLogColumns: ColumnSpec[] = [
+  { name: 'discussion_id', definition: 'TEXT' },
+  { name: 'task_type', definition: 'TEXT' },
+  { name: 'total_tokens', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'cost_estimate', definition: 'REAL' },
+  { name: 'metadata', definition: 'TEXT' },
+  { name: 'created_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+  { name: 'updated_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
+];
+
+// Migrations that MUST run before the schema string is exec'd, because the
+// schema contains CREATE INDEX statements referencing columns that may be
+// absent on pre-existing (stale) tables (CREATE TABLE IF NOT EXISTS does not
+// add columns to an existing table).
+export function runPreSchemaMigrations(db: BetterSqlite3Database) {
+  addMissingColumns(db, 'token_usage_log', tokenUsageLogColumns);
 }
 
 export function runMigrations(db: BetterSqlite3Database) {

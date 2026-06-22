@@ -7,6 +7,7 @@ import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'fs';
 import { schema } from './schema';
 import { runMigrations } from './migrate';
+import { runPreSchemaMigrations } from './migrate';
 
 // Get the monorepo root (3 levels up from packages/server/src)
 const MONOREPO_ROOT = process.cwd().includes('/packages/server')
@@ -104,6 +105,9 @@ export function initializeDatabase(): Database.Database {
   
   // Run schema
   console.log('📋 Applying database schema...');
+  // Add columns referenced by schema indexes to pre-existing stale tables
+  // before applying the schema (CREATE TABLE IF NOT EXISTS won't alter them).
+  runPreSchemaMigrations(db);
   db.exec(schema);
   runMigrations(db);
   
