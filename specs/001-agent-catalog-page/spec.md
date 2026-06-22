@@ -111,6 +111,7 @@ status changes to inactive.
 - **FR-010**: The page MUST display an error state with retry when the API is
   unreachable.
 - **FR-011**: Non-authenticated users MUST be redirected to the login page.
+- **FR-012**: The page MUST display summary counts (imported, evaluated, active, rejected) at the top, fetched from `GET /api/catalog/counts`.
 
 ### Key Entities
 
@@ -136,6 +137,24 @@ status changes to inactive.
 - The dashboard already has authentication, navigation, and a routing system.
 - The dashboard uses React + Vite + Tailwind (existing stack).
 - API responses match the existing server route definitions in `catalog.ts`.
-- [NEEDS CLARIFICATION: Should the catalog page show summary counts at the top
+
   (imported/evaluated/active/rejected)? The API has a /counts endpoint but it's
   unclear if the dashboard should display them.]
+
+## Clarifications
+
+### Summary Counts Display (Resolved)
+
+**Question**: Should the catalog page show summary counts at the top
+(imported/evaluated/active/rejected)?
+
+**Decision**: Yes. The `/api/catalog/counts` endpoint already exists and provides
+these counts. Displaying a summary row at the top of the page gives operators a
+quick overview before diving into the agent list. This aligns with the existing
+dashboard pattern (e.g., the Mission Control Dashboard shows summary metrics).
+
+**Impact on spec**:
+- Add FR-012: The page MUST display summary counts (imported, evaluated, active,
+  rejected) at the top, fetched from `GET /api/catalog/counts`.
+- Add to User Story 1 acceptance: summary counts are displayed above the agent
+  table.
