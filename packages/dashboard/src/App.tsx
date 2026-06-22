@@ -24,6 +24,7 @@ import { ProofRunDetailPage } from './pages/ProofRunDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
 import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
+import { AgentCatalogPage } from './pages/AgentCatalogPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -74,6 +75,7 @@ export function App() {
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="catalog" element={<AgentCatalogPage />} />
           <Route path="swarm" element={<SwarmOverviewPage />} />
           <Route path="approvals" element={<ApprovalQueuePage />} />
           <Route path="policies" element={<PolicyCenterPage />} />

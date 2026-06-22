@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -45,6 +45,12 @@ export function Layout() {
             icon={<Users className="w-5 h-5" />}
             label="Agents"
             active={isActive('/agents')}
+          />
+          <NavLink
+            to="/catalog"
+            icon={<BookUser className="w-5 h-5" />}
+            label="Agent Catalog"
+            active={isActive('/catalog')}
           />
           <NavLink
             to="/swarm"

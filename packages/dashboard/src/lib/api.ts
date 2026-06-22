@@ -530,6 +530,34 @@ export type SwarmMissionControl = {
   next_safe_actions: string[];
 };
 
+
+export type CatalogCounts = {
+  imported: number;
+  evaluated: number;
+  active: number;
+  duplicate: number;
+  rejected: number;
+};
+
+export type CatalogAgent = {
+  id: string;
+  name: string;
+  division: string;
+  status: string;
+  evaluation?: {
+    score?: number;
+    verdict?: string;
+  } | null;
+  activation?: {
+    target?: string;
+    active?: boolean;
+  } | null;
+};
+
+export type CatalogSearchResult = {
+  agents: CatalogAgent[];
+};
+
 class ApiClient {
   private getToken(): string | null {
     return localStorage.getItem(AUTH_SESSION_KEY);
@@ -1198,6 +1226,37 @@ class ApiClient {
 
   async exportSummaryReport(format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
     return this.exportDownload('/exports/report/summary', format, options);
+  }
+
+  // --- Agent Catalog ---
+
+  async getCatalogCounts(): Promise<CatalogCounts> {
+    return this.request(`/catalog/counts`);
+  }
+
+  async getCatalogAgents(params?: { division?: string; status?: string }): Promise<{ agents: CatalogAgent[] }> {
+    const query = new URLSearchParams(params as Record<string, string>);
+    const qs = query.toString();
+    return this.request(`/catalog/agents${qs ? `?${qs}` : ""}`);
+  }
+
+  async searchCatalogAgents(q: string, topK?: number): Promise<CatalogSearchResult> {
+    const params = new URLSearchParams({ q });
+    if (topK) params.set("topK", String(topK));
+    return this.request(`/catalog/search?${params}`);
+  }
+
+  async activateCatalogAgent(id: string, target?: string): Promise<{ target: string; active: boolean }> {
+    return this.request(`/catalog/activate/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ target: target || "openclaw" }),
+    });
+  }
+
+  async deactivateCatalogAgent(id: string): Promise<{ active: boolean }> {
+    return this.request(`/catalog/deactivate/${id}`, {
+      method: "POST",
+    });
   }
 
 }
