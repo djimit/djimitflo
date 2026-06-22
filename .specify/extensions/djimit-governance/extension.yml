@@ -1,0 +1,37 @@
+schema_version: "1.0"
+
+extension:
+  id: "djimit-governance"
+  name: "Djimit Governance Check"
+  version: "1.0.0"
+  description: "Validates that plan.md and tasks.md contain required governance fields (security/privacy/threat-model/rollback/validation/execution-surface)"
+  author: "dlandman"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.11.0"
+  commands:
+    - "speckit.plan"
+    - "speckit.tasks"
+
+provides:
+  commands:
+    - name: "speckit.djimit-governance.check"
+      file: "commands/governance-check.md"
+      description: "Validate governance fields in plan.md and tasks.md"
+
+hooks:
+  after_plan:
+    command: "speckit.djimit-governance.check"
+    optional: true
+    prompt: "Run governance check on the generated plan?"
+  after_tasks:
+    command: "speckit.djimit-governance.check"
+    optional: true
+    prompt: "Run governance check on the generated tasks?"
+
+tags:
+  - "governance"
+  - "security"
+  - "validation"
+  - "openspec"
