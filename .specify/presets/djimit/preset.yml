@@ -1,0 +1,48 @@
+schema_version: "1.0"
+
+preset:
+  id: "djimit"
+  name: "Djimit Governance Bridge"
+  version: "1.0.0"
+  description: "Injects OpenSpec governance fields (security/privacy/threat-model/rollback) into Spec Kit templates and wraps implement with approval gates"
+  author: "dlandman"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.11.0"
+
+provides:
+  templates:
+    - type: "template"
+      name: "plan-template"
+      file: "templates/plan-template.md"
+      strategy: "append"
+      description: "Add Security Impact, Privacy Impact, Threat Model Delta, Rollback Strategy sections to plan"
+      replaces: "plan-template"
+
+    - type: "template"
+      name: "tasks-template"
+      file: "templates/tasks-template.md"
+      strategy: "append"
+      description: "Add per-task Validation, Rollback, Execution Surface fields to tasks"
+      replaces: "tasks-template"
+
+    - type: "template"
+      name: "constitution-template"
+      file: "templates/constitution-template.md"
+      strategy: "replace"
+      description: "Djimit constitution template with runtime awareness, security baseline, scope boundary, relaxed library-first/CLI articles"
+      replaces: "constitution-template"
+
+    - type: "command"
+      name: "speckit.implement"
+      file: "commands/speckit.implement.md"
+      strategy: "wrap"
+      description: "Wrap implement with approval-gate preamble for ssh:/docker:/production tasks"
+      replaces: "speckit.implement"
+
+tags:
+  - "governance"
+  - "security"
+  - "openspec"
+  - "djimit"

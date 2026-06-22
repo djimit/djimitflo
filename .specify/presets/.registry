@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "presets": {
+    "djimit": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:33e2a0e4465f7d2d9788069e828b73b4947a0a288cf897e7ae059cbca78eae7e",
+      "enabled": true,
+      "priority": 10,
+      "registered_commands": {
+        "opencode": [
+          "speckit.implement"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-06-22T09:40:20.438623+00:00"
+    }
+  }
+}

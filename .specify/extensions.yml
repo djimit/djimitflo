@@ -1,0 +1,41 @@
+installed:
+- agent-context
+- djimit-governance
+settings:
+  auto_execute_hooks: true
+hooks:
+  after_specify:
+  - extension: agent-context
+    command: speckit.agent-context.update
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Execute speckit.agent-context.update?
+    description: Refresh agent context after specification
+    condition: null
+  after_plan:
+  - extension: agent-context
+    command: speckit.agent-context.update
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Execute speckit.agent-context.update?
+    description: Refresh agent context after planning
+    condition: null
+  - extension: djimit-governance
+    command: speckit.djimit-governance.check
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Run governance check on the generated plan?
+    description: ''
+    condition: null
+  after_tasks:
+  - extension: djimit-governance
+    command: speckit.djimit-governance.check
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Run governance check on the generated tasks?
+    description: ''
+    condition: null

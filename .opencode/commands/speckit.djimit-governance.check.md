@@ -1,0 +1,1 @@
+../../.specify/extensions/djimit-governance/.specify-dev/agent-commands/opencode/speckit.djimit-governance.check.md
