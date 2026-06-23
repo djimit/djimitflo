@@ -63,9 +63,16 @@ export interface SwarmRealityStatus {
     running_leases: number;
     completed_24h: number;
     failed_24h: number;
+    average_runtime_ms: number | null;
+    failure_rate_24h: number;
     tokens_used_24h: number;
     tokens_per_successful_worker: number | null;
+    tokens_per_diff_line: number | null;
     recommended_concurrency: number;
+    capacity_used_percent: number;
+    oldest_queued_age_ms: number | null;
+    next_recommended_action: 'execute_maker' | 'execute_checker' | 'wait';
+    bottleneck_reason: string | null;
     blocked_capacity_reasons: string[];
     queue_depth_by_risk: Record<string, number>;
   }>;
@@ -104,6 +111,9 @@ export interface WorkerPoolDecision {
   risk_class: string;
   eligible: boolean;
   blocked_reasons: string[];
+  priority_score: number;
+  queue_age_ms: number;
+  bottleneck_reason: string | null;
   next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
 }
 
@@ -225,12 +235,23 @@ export class SwarmStatusService {
       const running = leases.filter((row) => row.status === 'running');
       const completed24h = leases.filter((row) => row.status === 'completed' && String(row.updated_at) >= since);
       const failed24h = leases.filter((row) => row.status === 'failed' && String(row.updated_at) >= since);
+      const runtimeDurations = completed24h
+        .map((row) => this.workerRuntimeMs(row))
+        .filter((value): value is number => value !== null);
       const tokensUsed24h = completed24h.reduce((sum, row) => {
         const metadata = JSON.parse(row.metadata || '{}');
         const total = Number(metadata.runtime_usage?.total_tokens);
         return Number.isFinite(total) ? sum + total : sum;
       }, 0);
+      const tokensPerDiffSamples = completed24h
+        .map((row) => {
+          const metadata = JSON.parse(row.metadata || '{}');
+          const value = Number(metadata.token_efficiency?.tokens_per_diff_line);
+          return Number.isFinite(value) && value > 0 ? value : null;
+        })
+        .filter((value): value is number => value !== null);
       const successfulWorkers = Math.max(1, completed24h.length);
+      const totalFinished24h = completed24h.length + failed24h.length;
       const blocked: string[] = [];
       if (runtime !== 'manual' && runtime !== 'mock' && !this.runtimeCommandAvailable(runtime)) {
         blocked.push('runtime_unavailable');
@@ -239,12 +260,18 @@ export class SwarmStatusService {
       if (load > resourceSnapshot.cpu_threads * 1.5) blocked.push('high_cpu_load');
       const baseConcurrency = runtime === 'manual' ? 0 : Math.max(1, Math.floor(resourceSnapshot.cpu_threads / 4));
       const recommended = blocked.length > 0 ? 0 : Math.max(0, baseConcurrency - running.length);
+      const oldestQueuedAgeMs = prepared.length > 0
+        ? Math.max(...prepared.map((row) => Date.now() - Date.parse(row.created_at || new Date().toISOString())))
+        : null;
       const queueDepthByRisk = prepared.reduce((acc, row) => {
         const metadata = JSON.parse(row.run_metadata || '{}');
         const risk = String(metadata.risk_class || 'unknown');
         acc[risk] = (acc[risk] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
+      const bottleneck = blocked[0]
+        || (prepared.length > 0 && recommended <= 0 ? 'concurrency_exhausted' : null)
+        || (prepared.length === 0 ? 'queue_empty' : null);
       return {
         runtime,
         available: blocked.length === 0,
@@ -253,9 +280,22 @@ export class SwarmStatusService {
         running_leases: running.length,
         completed_24h: completed24h.length,
         failed_24h: failed24h.length,
+        average_runtime_ms: runtimeDurations.length > 0
+          ? Math.round(runtimeDurations.reduce((sum, value) => sum + value, 0) / runtimeDurations.length)
+          : null,
+        failure_rate_24h: totalFinished24h > 0 ? failed24h.length / totalFinished24h : 0,
         tokens_used_24h: tokensUsed24h,
         tokens_per_successful_worker: completed24h.length > 0 ? tokensUsed24h / successfulWorkers : null,
+        tokens_per_diff_line: tokensPerDiffSamples.length > 0
+          ? tokensPerDiffSamples.reduce((sum, value) => sum + value, 0) / tokensPerDiffSamples.length
+          : null,
         recommended_concurrency: recommended,
+        capacity_used_percent: baseConcurrency > 0 ? Math.min(100, Math.round((running.length / baseConcurrency) * 100)) : 0,
+        oldest_queued_age_ms: oldestQueuedAgeMs,
+        next_recommended_action: recommended > 0 && prepared.some((row) => row.role === 'checker')
+          ? 'execute_checker'
+          : recommended > 0 && prepared.length > 0 ? 'execute_maker' : 'wait',
+        bottleneck_reason: bottleneck,
         blocked_capacity_reasons: blocked,
         queue_depth_by_risk: queueDepthByRisk,
       };
@@ -291,7 +331,9 @@ export class SwarmStatusService {
     const status = this.getStatus();
     const pools = new Map(status.fleet_pools.map((pool) => [pool.runtime, pool]));
     const rows = this.workerPoolRows(input.runtime);
-    const decisions = rows.map((row) => this.workerPoolDecision(row, pools, input));
+    const decisions = rows
+      .map((row) => this.workerPoolDecision(row, pools, input))
+      .sort((a, b) => b.priority_score - a.priority_score || b.queue_age_ms - a.queue_age_ms);
     const maxWorkers = Math.max(1, Math.min(Number(input.max_workers || 1), 20));
     return {
       decisions,
@@ -339,6 +381,14 @@ export class SwarmStatusService {
       return { action: 'blocked', decision, plan };
     }
 
+    return this.startWorkerDecision(decision, plan, input);
+  }
+
+  private async startWorkerDecision(
+    decision: WorkerPoolDecision,
+    plan: WorkerPoolPlanResult,
+    input: WorkerPoolPlanInput = {}
+  ): Promise<WorkerPoolStartResult> {
     const traceId = `worker-pool-${decision.loop_run_id}-${decision.lease_id}-${Date.now()}`;
     this.assurance.createTraceSpan({
       trace_id: traceId,
@@ -458,12 +508,44 @@ export class SwarmStatusService {
   async drainWorkerPool(input: WorkerPoolPlanInput = {}): Promise<WorkerPoolDrainResult> {
     const maxWorkers = Math.max(1, Math.min(Number(input.max_workers || 1), 20));
     const started: WorkerPoolStartResult[] = [];
-    for (let index = 0; index < maxWorkers; index += 1) {
-      const result = await this.startNextWorker({ ...input, max_workers: 1 });
-      if (result.action !== 'started') {
-        break;
+
+    while (started.length < maxWorkers) {
+      const plan = this.planWorkerPool(input);
+      const runtimeSlots = new Map<string, number>();
+      for (const pool of this.getStatus().fleet_pools) {
+        runtimeSlots.set(pool.runtime, input.ignore_capacity ? maxWorkers : Math.max(0, pool.recommended_concurrency));
       }
-      started.push(result);
+
+      const selected: WorkerPoolDecision[] = [];
+      for (const decision of plan.decisions) {
+        if (!decision.eligible) continue;
+        if (started.length + selected.length >= maxWorkers) break;
+        const slots = runtimeSlots.get(decision.effective_runtime) ?? 0;
+        if (slots <= 0) continue;
+        runtimeSlots.set(decision.effective_runtime, slots - 1);
+        selected.push(decision);
+      }
+      if (selected.length === 0) break;
+
+      const settled = await Promise.allSettled(
+        selected.map((decision) => this.startWorkerDecision(decision, plan, input))
+      );
+      const fulfilled = settled
+        .filter((result): result is PromiseFulfilledResult<WorkerPoolStartResult> => result.status === 'fulfilled')
+        .map((result) => result.value);
+      started.push(...fulfilled);
+      for (const result of settled) {
+        if (result.status === 'rejected') {
+          this.recordRunnerDecision('worker_pool_parallel_worker_failed', null, 'warning', {
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          });
+        }
+      }
+      if (fulfilled.length === 0) break;
+      // A checker can become eligible only after a maker wave completes, so drain
+      // in bounded waves instead of assuming one static plan can express the whole pipeline.
+      if (started.length >= maxWorkers) break;
+      if (fulfilled.length < selected.length) break;
     }
     return {
       action: 'drained',
@@ -704,6 +786,7 @@ export class SwarmStatusService {
     const gates = JSON.parse(row.run_gates_json || '[]') as Array<{ name?: string; status?: string }>;
     const pool = pools.get(effectiveRuntime);
     const blocked: string[] = [];
+    const queueAgeMs = row.created_at ? Math.max(0, Date.now() - Date.parse(row.created_at)) : 0;
 
     if (row.status === 'running') blocked.push('already_running');
     if (row.status !== 'prepared') blocked.push('lease_not_prepared');
@@ -729,6 +812,9 @@ export class SwarmStatusService {
     }
 
     const blockedReasons = [...new Set(blocked)];
+    const nextAction = blockedReasons.length > 0
+      ? (['high_risk_requires_security_or_human_gate', 'manual_runtime_requires_human', 'manual_checker_runtime_required'].some((reason) => blockedReasons.includes(reason)) ? 'human_review' : 'wait')
+      : role === 'checker' ? 'execute_checker' : 'execute_maker';
     return {
       lease_id: row.id,
       loop_run_id: row.loop_run_id,
@@ -739,9 +825,10 @@ export class SwarmStatusService {
       risk_class: riskClass,
       eligible: blockedReasons.length === 0,
       blocked_reasons: blockedReasons,
-      next_action: blockedReasons.length > 0
-        ? (['high_risk_requires_security_or_human_gate', 'manual_runtime_requires_human', 'manual_checker_runtime_required'].some((reason) => blockedReasons.includes(reason)) ? 'human_review' : 'wait')
-        : role === 'checker' ? 'execute_checker' : 'execute_maker',
+      priority_score: this.workerPriorityScore(role, riskClass, queueAgeMs, blockedReasons.length),
+      queue_age_ms: queueAgeMs,
+      bottleneck_reason: blockedReasons[0] || null,
+      next_action: nextAction,
     };
   }
 
@@ -869,6 +956,24 @@ export class SwarmStatusService {
     } catch {
       return {};
     }
+  }
+
+  private workerPriorityScore(role: RunnerLeaseRole, riskClass: string, queueAgeMs: number, blockedReasonCount: number): number {
+    if (blockedReasonCount > 0) return 0;
+    const roleScore = role === 'checker' ? 500 : role === 'maker' ? 300 : 100;
+    const riskScore = riskClass === 'low' ? 60 : riskClass === 'medium' ? 40 : 10;
+    const ageScore = Math.min(120, Math.floor(queueAgeMs / 60_000));
+    return roleScore + riskScore + ageScore;
+  }
+
+  private workerRuntimeMs(row: any): number | null {
+    const metadata = JSON.parse(row.metadata || '{}');
+    const started = Date.parse(String(metadata.started_at || row.created_at || ''));
+    const completed = Date.parse(String(metadata.completed_at || row.updated_at || ''));
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed < started) {
+      return null;
+    }
+    return completed - started;
   }
 
   private makeDecisionManifestId(decision: WorkerPoolDecision, action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete'): string {

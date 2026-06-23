@@ -244,9 +244,16 @@ export type SwarmRealityStatus = {
     running_leases: number;
     completed_24h: number;
     failed_24h: number;
+    average_runtime_ms: number | null;
+    failure_rate_24h: number;
     tokens_used_24h: number;
     tokens_per_successful_worker: number | null;
+    tokens_per_diff_line: number | null;
     recommended_concurrency: number;
+    capacity_used_percent: number;
+    oldest_queued_age_ms: number | null;
+    next_recommended_action: 'execute_maker' | 'execute_checker' | 'wait';
+    bottleneck_reason: string | null;
     blocked_capacity_reasons: string[];
     queue_depth_by_risk: Record<string, number>;
   }>;
@@ -275,8 +282,14 @@ export type WorkerPoolDecision = {
   risk_class: string;
   eligible: boolean;
   blocked_reasons: string[];
+  priority_score: number;
+  queue_age_ms: number;
+  bottleneck_reason: string | null;
   next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
 };
+
+type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
+type CheckerRuntime = Exclude<WorkerRuntime, 'manual'>;
 
 export type WorkerPoolPlanResult = {
   decisions: WorkerPoolDecision[];
@@ -947,28 +960,28 @@ class ApiClient {
     return this.request('/swarms/status');
   }
 
-  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
+  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: WorkerRuntime; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
     return this.request('/swarms/scheduler/tick', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   }
 
-  async planWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
+  async planWorkerPool(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
     return this.request('/swarms/worker-pool/plan', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   }
 
-  async startNextWorker(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolStartResult> {
+  async startNextWorker(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolStartResult> {
     return this.request('/swarms/worker-pool/start-next', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   }
 
-  async drainWorkerPool(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolDrainResult> {
+  async drainWorkerPool(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; max_workers?: number; timeout_ms?: number; diff_max_lines?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolDrainResult> {
     return this.request('/swarms/worker-pool/drain', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -1095,7 +1108,7 @@ class ApiClient {
     return this.request(`/swarms/intelligence/claims${query}`);
   }
 
-  async planCapacityV2(input: { runtime?: 'codex' | 'opencode' | 'mock' | 'manual'; checker_runtime?: 'codex' | 'opencode' | 'mock'; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<CapacityPlanV2Result> {
+  async planCapacityV2(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<CapacityPlanV2Result> {
     return this.request('/swarms/intelligence/capacity/plan', {
       method: 'POST',
       body: JSON.stringify(input),
