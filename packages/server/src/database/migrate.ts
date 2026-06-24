@@ -1167,6 +1167,28 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);
+  createOpenAiCapabilityTable(db);
+}
+
+function createOpenAiCapabilityTable(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS openai_capability_descriptors (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK(kind IN ('openai_agent', 'openai_skill', 'openai_mcp_connector')),
+      name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_review' CHECK(status IN ('pending_review', 'approved', 'rejected', 'deprecated')),
+      risk_ceiling TEXT NOT NULL DEFAULT 'high' CHECK(risk_ceiling IN ('low', 'medium', 'high', 'critical')),
+      authorization_ref TEXT,
+      adapter_proof_ref TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_openai_cap_kind ON openai_capability_descriptors(kind);
+    CREATE INDEX IF NOT EXISTS idx_openai_cap_status ON openai_capability_descriptors(status);
+  `);
 }
 
 if (require.main === module) {
