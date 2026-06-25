@@ -46,6 +46,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'HIGH_RISK_SECURITY_CHECK_REQUIRED') throw createError(409, 'high-risk loop requires accepted security checker verdict before completion', 'HIGH_RISK_SECURITY_CHECK_REQUIRED');
   if (message === 'LOOP_COMPLETION_LEASES_INCOMPLETE') throw createError(409, 'all worker leases must be completed before loop completion', 'LOOP_COMPLETION_LEASES_INCOMPLETE');
   if (message === 'LOOP_COMPLETION_NO_WORKERS') throw createError(409, 'loop has no completed worker path to close', 'LOOP_COMPLETION_NO_WORKERS');
+  if (message === 'LOOP_HUMAN_APPROVAL_REQUIRED') throw createError(409, 'human approval is required before completing mutating work', 'LOOP_HUMAN_APPROVAL_REQUIRED');
   if (message.startsWith('LOOP_COMPLETION_BLOCKED:')) {
     const gate = message.split(':')[1] || 'unknown';
     throw createError(409, `loop completion blocked by gate: ${gate}`, 'LOOP_COMPLETION_BLOCKED');
@@ -267,7 +268,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/complete', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.completeLoopRun(req.params.id));
+      res.json(loopService.completeLoopRun(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);

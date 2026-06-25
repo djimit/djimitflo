@@ -32,7 +32,14 @@ function makeTempRepo(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-proof-repo-'));
   fs.writeFileSync(path.join(dir, 'README.md'), 'proof-run temp repo\n');
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
-    scripts: { test: 'node -e "process.exit(0)"', lint: 'node -e "process.exit(0)"', 'type-check': 'node -e "process.exit(0)"' },
+    scripts: {
+      test: 'node -e "process.exit(0)"',
+      lint: 'node -e "process.exit(0)"',
+      'type-check': 'node -e "process.exit(0)"',
+      'proof:test': 'node -e "process.exit(0)"',
+      'proof:lint': 'node -e "process.exit(0)"',
+      'proof:type-check': 'node -e "process.exit(0)"',
+    },
   }, null, 2));
   execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
   execFileSync('git', ['config', 'user.email', 'proof-test@example.invalid'], { cwd: dir });
@@ -155,6 +162,9 @@ describe('swarm proof runs', () => {
     const created = await createResponse.json() as any;
 
     expect(created.passed).toBe(true);
+    expect(created.proof_class).toBe('demo');
+    expect(created.production_passed).toBe(false);
+    expect(created.production_missing).toEqual(expect.arrayContaining(['non_mock_runtime']));
     expect(created.status).toBe('completed');
     expect(created.runtime).toBe('mock');
     expect(created.counts).toMatchObject({
@@ -164,16 +174,18 @@ describe('swarm proof runs', () => {
       claims: 3,
       goals: 1,
       loop_runs: 1,
-      worker_leases: 2,
+      worker_leases: 4,
       trace_spans: 5,
       checkpoints: 2,
       memory_candidates: 1,
       work_items: 1,
     });
+    expect(created.counts.spawn_trees).toBe(1);
+    expect(created.counts.sub_agent_spawns).toBe(2);
     expect(created.counts.manifests).toBeGreaterThanOrEqual(4);
     expect(created.artifact_refs.goal).toBeTruthy();
     expect(created.artifact_refs.loop_run).toBeTruthy();
-    expect(created.artifact_refs.worker_leases).toHaveLength(2);
+    expect(created.artifact_refs.worker_leases).toHaveLength(4);
     expect(created.missing).toEqual({});
 
     const getResponse = await fetch(`${baseUrl}/swarms/proof-runs/${created.id}`);
@@ -181,18 +193,20 @@ describe('swarm proof runs', () => {
     const fetched = await getResponse.json() as any;
     expect(fetched.id).toBe(created.id);
     expect(fetched.passed).toBe(true);
+    expect(fetched.production_passed).toBe(false);
 
     const missionResponse = await fetch(`${baseUrl}/swarms/intelligence/mission-control`);
     expect(missionResponse.status).toBe(200);
     const mission = await missionResponse.json() as any;
     expect(mission.latest_proof_run.id).toBe(created.id);
-    expect(mission.latest_proof_run.counts.worker_leases).toBe(2);
+    expect(mission.latest_proof_run.counts.worker_leases).toBe(4);
     expect(mission.swarm_truth.active_execution_count).toBe(0);
 
     const rollbackResponse = await fetch(`${baseUrl}/swarms/proof-runs/${created.id}/rollback`, { method: 'POST' });
     expect(rollbackResponse.status).toBe(200);
     const rolledBack = await rollbackResponse.json() as any;
     expect(rolledBack.status).toBe('rolled_back');
+    expect(rolledBack.production_passed).toBe(false);
     expect(Object.values(rolledBack.counts).every((count) => count === 0)).toBe(true);
 
     const missingResponse = await fetch(`${baseUrl}/swarms/proof-runs/${created.id}`);
@@ -213,7 +227,12 @@ describe('swarm proof runs', () => {
     expect(created.runtime).toBe(runtime);
     expect(created.status).toBe('completed');
     expect(created.passed).toBe(true);
-    expect(created.counts.worker_leases).toBe(2);
+    expect(created.proof_class).toBe('production');
+    expect(created.production_passed).toBe(true);
+    expect(created.production_missing).toEqual([]);
+    expect(created.counts.worker_leases).toBe(4);
+    expect(created.counts.spawn_trees).toBe(1);
+    expect(created.counts.sub_agent_spawns).toBe(2);
     expect(created.counts.claims).toBe(3);
     expect(created.counts.manifests).toBeGreaterThanOrEqual(4);
 
@@ -226,6 +245,32 @@ describe('swarm proof runs', () => {
     const getResponse = await fetch(`${baseUrl}/swarms/proof-runs/${created.id}`);
     expect(getResponse.status).toBe(200);
     expect((await getResponse.json() as any).runtime).toBe(runtime);
+
+    const maker = db.prepare("SELECT metadata FROM worker_leases WHERE role = 'maker'").get() as { metadata: string };
+    const makerMetadata = JSON.parse(maker.metadata) as { deterministic_checks?: Array<{ name: string; status: string }> };
+    expect(makerMetadata.deterministic_checks?.map((check) => [check.name, check.status])).toEqual([
+      ['proof:test', 'pass'],
+      ['proof:lint', 'pass'],
+      ['proof:type-check', 'pass'],
+    ]);
+
+    const subAgents = db.prepare(`
+      SELECT role, status, metadata
+      FROM worker_leases
+      WHERE role IN ('planner', 'memory_curator')
+      ORDER BY role
+    `).all() as Array<{ role: string; status: string; metadata: string }>;
+    expect(subAgents.map((lease) => [lease.role, lease.status])).toEqual([
+      ['memory_curator', 'completed'],
+      ['planner', 'completed'],
+    ]);
+    for (const lease of subAgents) {
+      expect(JSON.parse(lease.metadata).runtime_usage.total_tokens).toBeGreaterThan(0);
+    }
+
+    const claims = (db.prepare('SELECT claim FROM swarm_claims').all() as Array<{ claim: string }>).map((row) => row.claim);
+    expect(claims).toContain(`Runtime ${runtime} executed maker and checker workers through the process runtime bridge.`);
+    expect(claims).not.toContain('The remaining runtime upgrade is replacing mock execution with Codex/OpenCode process spawn.');
   });
 
   it('returns a deterministic 503 PROOF_RUN_RUNTIME_FAILED when worktree creation fails', async () => {

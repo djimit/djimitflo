@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult } from './swarm-status-service';
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -524,7 +525,7 @@ export class SwarmIntelligenceService {
     };
   }
 
-  okfDriftReport(okfBase = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge')) {
+  okfDriftReport(okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true })) {
     const base = this.resolveOkfBase(String(okfBase));
     const skillsDir = path.join(base, 'skills');
     const files = fs.existsSync(skillsDir)
@@ -538,6 +539,8 @@ export class SwarmIntelligenceService {
     const staleTrust = capabilities.filter((capability) => capability.status === 'validated' && !capability.live_route_allowed);
     return {
       okf_base: okfBase,
+      canonical_okf_base: KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }),
+      canonical_path_mismatch: path.resolve(String(okfBase)) !== path.resolve(KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true })),
       skills_dir: skillsDir,
       skill_file_count: files.length,
       registered_skill_capability_count: capabilities.length,
@@ -550,6 +553,7 @@ export class SwarmIntelligenceService {
         blocked_reasons: capability.blocked_reasons,
       })),
       rebuild_default: 'dry_run',
+      projection_status: 'unknown',
       reproducible_from: ['OKF files', 'DB swarm_capabilities'],
     };
   }
@@ -562,8 +566,6 @@ export class SwarmIntelligenceService {
     const configuredBase = this.trimStringOrNull(process.env.OKF_BASE) ? [path.resolve(process.env.OKF_BASE as string)] : [];
     const workspaceRoots = [
       path.resolve(process.cwd(), 'knowledge'),
-      path.resolve(process.cwd(), 'packages', 'knowledge'),
-      path.resolve(__dirname, '../../../knowledge'),
       path.resolve(__dirname, '..', '..', '..'),
     ];
 

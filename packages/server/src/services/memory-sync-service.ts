@@ -1,8 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const UAMS_URL = process.env.UAMS_URL || 'http://192.168.1.28:8000';
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 
@@ -12,7 +12,7 @@ export class MemorySyncService {
 
   constructor(db: Database) {
     this.db = db;
-    this.okfTasksDir = path.join(OKF_BASE, 'tasks');
+    this.okfTasksDir = path.join(KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }), 'tasks');
   }
 
   async onTaskCompleted(taskId: string): Promise<void> {

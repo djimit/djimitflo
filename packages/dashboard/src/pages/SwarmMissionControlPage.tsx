@@ -2,13 +2,28 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl } from '../lib/api';
+import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+
+const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
+
+export function knowledgeRuntimePanelModel(knowledge: KnowledgeRuntimeHealth | null) {
+  return {
+    canonical: knowledge?.okf_base || knowledge?.canonical_candidate || 'unknown',
+    usesPackagesKnowledge: Boolean(knowledge?.drift.packages_knowledge_is_canonical),
+    status: knowledge?.valid ? 'valid' : knowledge?.validate_okf.status || 'unknown',
+  };
+}
 
 export function SwarmMissionControlPage() {
   const [mission, setMission] = useState<SwarmMissionControl | null>(null);
   const [capabilities, setCapabilities] = useState<SwarmCapabilityRecord[]>([]);
   const [claims, setClaims] = useState<ClaimLedgerRecord[]>([]);
   const [capacity, setCapacity] = useState<CapacityPlanV2Result | null>(null);
+  const [knowledge, setKnowledge] = useState<KnowledgeRuntimeHealth | null>(null);
+  const [knowledgeSync, setKnowledgeSync] = useState<KnowledgeSyncResult | null>(null);
+  const [goalBatch, setGoalBatch] = useState<GoalBatchPreviewResult | null>(null);
+  const [lowCapacityPlan, setLowCapacityPlan] = useState<WorkerPoolPlanResult | null>(null);
+  const [learningClosure, setLearningClosure] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,15 +39,17 @@ export function SwarmMissionControlPage() {
     setLoading(true);
     setError(null);
     try {
-      const [missionControl, capabilityList, claimList] = await Promise.all([
+      const [missionControl, capabilityList, claimList, knowledgeRuntime] = await Promise.all([
         api.getSwarmMissionControl(),
         api.getSwarmCapabilities(50),
         api.getSwarmClaims(50),
+        api.getKnowledgeRuntime(),
       ]);
       setMission(missionControl);
       setCapacity(missionControl.capacity);
       setCapabilities(capabilityList.capabilities);
       setClaims(claimList.claims);
+      setKnowledge(knowledgeRuntime);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
     } finally {
@@ -60,6 +77,72 @@ export function SwarmMissionControlPage() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Proof run failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function runKnowledgeSync(apply: boolean) {
+    setActionId(apply ? 'knowledge-sync-apply' : 'knowledge-sync-preview');
+    setError(null);
+    try {
+      setKnowledgeSync(await api.syncKnowledgeRuntime(apply ? { apply: true } : { dry_run: true }));
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Knowledge sync failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function previewGoalBatch() {
+    setActionId('goal-batch-preview');
+    setError(null);
+    try {
+      setGoalBatch(await api.previewGoalBatch({ path: FLYWHEEL_BATCH_PATH }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Goal batch preview failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function applyGoalBatch() {
+    setActionId('goal-batch-apply');
+    setError(null);
+    try {
+      const applied = await api.applyGoalBatch({ path: FLYWHEEL_BATCH_PATH });
+      setGoalBatch(applied.preview);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Goal batch apply failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function runLowCapacityPlan() {
+    setActionId('low-capacity-plan');
+    setError(null);
+    try {
+      setLowCapacityPlan(await api.planWorkerPool({ runtime: 'mock', checker_runtime: 'mock', simulate_low_capacity: true }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Low capacity plan failed');
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  async function closeLearningLoop() {
+    const loopRunId = window.prompt('Loop run id to close');
+    if (!loopRunId) return;
+    setActionId('learning-close');
+    setError(null);
+    try {
+      setLearningClosure(await api.closeLoopLearning({ loop_run_id: loopRunId, promote_memory: false }));
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Learning closure failed');
     } finally {
       setActionId(null);
     }
@@ -140,6 +223,22 @@ export function SwarmMissionControlPage() {
         onRuntimeChange={setProofRuntime}
         onRun={() => void runProofRun()}
         onRollback={(id) => void rollbackProofRun(id)}
+      />
+
+      <KnowledgeRuntimePanel
+        knowledge={knowledge}
+        actionId={actionId}
+        knowledgeSync={knowledgeSync}
+        goalBatch={goalBatch}
+        lowCapacityPlan={lowCapacityPlan}
+        learningClosure={learningClosure}
+        onRefresh={() => void refresh()}
+        onPreviewSync={() => void runKnowledgeSync(false)}
+        onApplySync={() => void runKnowledgeSync(true)}
+        onPreviewGoalBatch={() => void previewGoalBatch()}
+        onApplyGoalBatch={() => void applyGoalBatch()}
+        onLowCapacityPlan={() => void runLowCapacityPlan()}
+        onCloseLearningLoop={() => void closeLearningLoop()}
       />
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
@@ -342,6 +441,131 @@ export function SwarmMissionControlPage() {
   );
 }
 
+function KnowledgeRuntimePanel({
+  knowledge,
+  actionId,
+  knowledgeSync,
+  goalBatch,
+  lowCapacityPlan,
+  learningClosure,
+  onRefresh,
+  onPreviewSync,
+  onApplySync,
+  onPreviewGoalBatch,
+  onApplyGoalBatch,
+  onLowCapacityPlan,
+  onCloseLearningLoop,
+}: {
+  knowledge: KnowledgeRuntimeHealth | null;
+  actionId: string | null;
+  knowledgeSync: KnowledgeSyncResult | null;
+  goalBatch: GoalBatchPreviewResult | null;
+  lowCapacityPlan: WorkerPoolPlanResult | null;
+  learningClosure: Record<string, unknown> | null;
+  onRefresh: () => void;
+  onPreviewSync: () => void;
+  onApplySync: () => void;
+  onPreviewGoalBatch: () => void;
+  onApplyGoalBatch: () => void;
+  onLowCapacityPlan: () => void;
+  onCloseLearningLoop: () => void;
+}) {
+  const { canonical, status, usesPackagesKnowledge } = knowledgeRuntimePanelModel(knowledge);
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <BrainCircuit className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold text-foreground">Knowledge Runtime</h2>
+            <StatusBadge status={status} />
+          </div>
+          <p className="mt-1 max-w-4xl text-sm text-foreground-secondary">
+            Canonical OKF: <span className="font-mono text-foreground">{canonical}</span>
+            {knowledge?.symlink_target ? <span>{' -> '}{knowledge.symlink_target}</span> : null}
+          </p>
+        </div>
+        <StatusBadge status={usesPackagesKnowledge ? 'misconfigured' : 'canonical'} />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+        {['skills', 'agents', 'memory', 'services', 'repos', 'models', 'total'].map((key) => (
+          <div key={key} className="rounded border border-border bg-background p-3">
+            <div className="font-mono text-lg font-semibold text-foreground">{knowledge?.counts[key] ?? 0}</div>
+            <div className="mt-1 text-xs text-foreground-tertiary">{key}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <HealthStrip label="Capability Sync Drift" values={[
+          `okf skills ${knowledge?.drift.okf_skill_count ?? 0}`,
+          `registered ${knowledge?.drift.registered_skill_capability_count ?? 0}`,
+          `missing ${knowledge?.drift.missing_registry_entries.length ?? 0}`,
+          `stale ${knowledge?.drift.stale_registry_entries.length ?? 0}`,
+        ]} />
+        <HealthStrip label="Validation" values={[
+          `status ${knowledge?.validate_okf.status || 'unknown'}`,
+          `projection ${knowledge?.drift.projection_status || 'unknown'}`,
+          `blocked ${knowledge?.blocked_reasons.length ?? 0}`,
+        ]} />
+        <HealthStrip label="Next Safe Actions" values={(knowledge?.next_safe_actions || ['Load knowledge runtime']).slice(0, 4)} />
+      </div>
+      {knowledge?.blocked_reasons.length ? (
+        <div className="mt-3 rounded border border-status-warning/20 bg-status-warning/10 p-3 text-sm text-status-warning">
+          {knowledge.blocked_reasons.join(', ')}
+        </div>
+      ) : null}
+      <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+        <button onClick={onRefresh} disabled={actionId !== null} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground-secondary hover:bg-background-elevated disabled:opacity-50">
+          <RefreshCw className="h-4 w-4" /> Validate OKF
+        </button>
+        <button onClick={onPreviewSync} disabled={actionId !== null} className="inline-flex items-center gap-2 rounded-lg border border-accent/30 px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50">
+          <Route className="h-4 w-4" /> Sync Preview
+        </button>
+        <button onClick={onApplySync} disabled={actionId !== null || knowledge?.validate_okf.status === 'fail'} className="inline-flex items-center gap-2 rounded-lg border border-status-success/30 px-3 py-2 text-sm text-status-success hover:bg-status-success/10 disabled:opacity-50">
+          <CheckCircle2 className="h-4 w-4" /> Apply Sync
+        </button>
+        <button onClick={onPreviewGoalBatch} disabled={actionId !== null} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-foreground-secondary hover:bg-background-elevated disabled:opacity-50">
+          <Workflow className="h-4 w-4" /> Batch Preview
+        </button>
+        <button onClick={onApplyGoalBatch} disabled={actionId !== null || Boolean(goalBatch?.blocked)} className="inline-flex items-center gap-2 rounded-lg border border-status-success/30 px-3 py-2 text-sm text-status-success hover:bg-status-success/10 disabled:opacity-50">
+          <PlayCircle className="h-4 w-4" /> Import Goals
+        </button>
+        <button onClick={onLowCapacityPlan} disabled={actionId !== null} className="inline-flex items-center gap-2 rounded-lg border border-status-warning/30 px-3 py-2 text-sm text-status-warning hover:bg-status-warning/10 disabled:opacity-50">
+          <Gauge className="h-4 w-4" /> Low Capacity
+        </button>
+        <button onClick={onCloseLearningLoop} disabled={actionId !== null} className="inline-flex items-center gap-2 rounded-lg border border-accent/30 px-3 py-2 text-sm text-accent hover:bg-accent/10 disabled:opacity-50">
+          <BrainCircuit className="h-4 w-4" /> Close Learning
+        </button>
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
+        {knowledgeSync && <HealthStrip label="Last Sync" values={[
+          knowledgeSync.dry_run ? 'dry-run' : 'applied',
+          `created ${knowledgeSync.created}`,
+          `updated ${knowledgeSync.updated}`,
+          `blocked ${knowledgeSync.blocked}`,
+        ]} />}
+        {goalBatch && <HealthStrip label="Goal Batch" values={[
+          `change ${goalBatch.change || 'unknown'}`,
+          `goals ${goalBatch.total}`,
+          `valid ${goalBatch.valid}`,
+          `writes ${goalBatch.writes}`,
+        ]} />}
+        {lowCapacityPlan && <HealthStrip label="Low Capacity Proof" values={[
+          `eligible ${lowCapacityPlan.eligible_count}`,
+          `blocked ${lowCapacityPlan.blocked_count}`,
+          `running ${lowCapacityPlan.running_count}`,
+          lowCapacityPlan.decisions[0]?.blocked_reasons[0] || 'no lease',
+        ]} />}
+        {learningClosure && <HealthStrip label="Learning Closure" values={[
+          `status ${String(learningClosure.status || 'unknown')}`,
+          `delta ${String(learningClosure.score_delta ?? 'baseline')}`,
+          `eval ${String((learningClosure.eval_run as any)?.id || 'none')}`,
+        ]} />}
+      </div>
+    </section>
+  );
+}
+
 function ProofRunPanel({
   proofRun,
   actionId,
@@ -364,7 +588,7 @@ function ProofRunPanel({
         <div>
           <div className="flex items-center gap-2">
             <Database className="h-5 w-5 text-status-success" />
-            <h2 className="text-lg font-semibold text-foreground">Sellable Swarm Proof</h2>
+            <h2 className="text-lg font-semibold text-foreground">Production Swarm Proof</h2>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">
             One closed-loop run writes real persisted evidence across capabilities, specialist review, claims, goals, leases, traces, checkpoints, manifests, backlog and memory.
@@ -404,6 +628,7 @@ function ProofRunPanel({
         <>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <StatusBadge status={proofRun.passed ? 'passed' : proofRun.status} />
+            <StatusBadge status={proofRun.production_passed ? 'production' : proofRun.proof_class} />
             <Link to={`/swarm-mission-control/proof-runs/${proofRun.id}`} className="font-mono text-xs text-accent hover:underline">{proofRun.id}</Link>
             <span className="text-xs text-foreground-tertiary">{proofRun.completed_at || proofRun.created_at}</span>
           </div>

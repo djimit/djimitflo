@@ -1,0 +1,92 @@
+{
+  "change": "prove-learning-flywheel-operator-loop",
+  "goals": [
+    {
+      "id": "pfl-1-openspec-contract",
+      "title": "Validate OpenSpec contract",
+      "risk": "low",
+      "target": "openspec/changes/prove-learning-flywheel-operator-loop",
+      "acceptance": [
+        "proposal, design, tasks and spec exist",
+        "openspec validate prove-learning-flywheel-operator-loop --strict passes"
+      ]
+    },
+    {
+      "id": "pfl-2-knowledge-runtime-smoke",
+      "title": "Prove canonical OKF runtime in smoke",
+      "risk": "medium",
+      "target": "packages/server",
+      "acceptance": [
+        "knowledge runtime smoke resolves repo knowledge/ as canonical",
+        "packages/knowledge is not treated as production canonical knowledge",
+        "health checks do not write OKF"
+      ]
+    },
+    {
+      "id": "pfl-3-capability-sync-proof",
+      "title": "Prove capability sync preview and apply",
+      "risk": "medium",
+      "target": "packages/server",
+      "acceptance": [
+        "dry-run reports drift with zero writes",
+        "apply is blocked when OKF validation fails",
+        "candidate capabilities cannot route workers"
+      ]
+    },
+    {
+      "id": "pfl-4-goal-import-preview",
+      "title": "Add batch goal import preview",
+      "risk": "medium",
+      "target": "packages/server packages/dashboard",
+      "acceptance": [
+        "goals.batch.json preview reports import shape",
+        "preview creates no runtime records",
+        "apply creates planning records without starting workers"
+      ]
+    },
+    {
+      "id": "pfl-5-resource-scaling-proof",
+      "title": "Prove low-capacity worker start block",
+      "risk": "medium",
+      "target": "packages/server packages/dashboard",
+      "acceptance": [
+        "low-capacity simulation blocks new running workers",
+        "prepared leases remain prepared",
+        "dashboard shows capacity blocked reason"
+      ]
+    },
+    {
+      "id": "pfl-6-learning-closure-proof",
+      "title": "Prove loop closure creates learning evidence",
+      "risk": "medium",
+      "target": "packages/server",
+      "acceptance": [
+        "mock loop closes with eval, reflection and memory candidate",
+        "regression creates repair work item",
+        "no automatic memory promotion occurs"
+      ]
+    },
+    {
+      "id": "pfl-7-mission-control-flow",
+      "title": "Expose next safe action in Mission Control",
+      "risk": "medium",
+      "target": "packages/dashboard",
+      "acceptance": [
+        "operator can run validate, sync preview, sync apply and close-loop actions",
+        "latest score delta and candidate links are visible",
+        "dashboard does not present packages/knowledge as production canonical"
+      ]
+    },
+    {
+      "id": "pfl-8-e2e-acceptance",
+      "title": "Run final deterministic acceptance",
+      "risk": "medium",
+      "target": "repo",
+      "acceptance": [
+        "focused server tests pass",
+        "dashboard build passes",
+        "end-to-end smoke evidence is captured"
+      ]
+    }
+  ]
+}

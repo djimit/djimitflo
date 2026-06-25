@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type PanelStatus = 'planned' | 'reviewing' | 'consensus_ready' | 'backlog_created' | 'goal_created' | 'cancelled';
@@ -262,13 +263,23 @@ const DEFAULT_SPECIALISTS = [
 
 export class SpecialistPanelService {
   private workItems: WorkItemService;
+  private knowledge: KnowledgeRuntimeService;
 
   constructor(private db: Database) {
     this.workItems = new WorkItemService(db);
+    this.knowledge = new KnowledgeRuntimeService(db);
   }
 
   getCatalog(): SpecialistProfile[] {
-    return SPECIALIST_CATALOG;
+    try {
+      const okfProfiles = this.knowledge.readOkfSpecialistProfiles() as unknown as SpecialistProfile[];
+      if (okfProfiles.length === 0) return SPECIALIST_CATALOG;
+      const byId = new Map(SPECIALIST_CATALOG.map((profile) => [profile.id, profile]));
+      for (const profile of okfProfiles) byId.set(profile.id, profile);
+      return Array.from(byId.values());
+    } catch {
+      return SPECIALIST_CATALOG;
+    }
   }
 
   listPanels(limit = 100): SpecialistPanelRecord[] {
@@ -460,7 +471,7 @@ export class SpecialistPanelService {
       throw new Error('SPECIALIST_PANEL_SECURITY_REVIEWER_REQUIRED');
     }
     const profiles = uniqueIds.map((id) => {
-      const profile = SPECIALIST_CATALOG.find((candidate) => candidate.id === id);
+      const profile = this.getCatalog().find((candidate) => candidate.id === id);
       if (!profile) {
         throw new Error('SPECIALIST_PROFILE_UNKNOWN');
       }

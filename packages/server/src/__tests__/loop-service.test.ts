@@ -564,6 +564,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const verdict = await verdictResponse.json() as any;
     expect(verdict.checker.status).toBe('completed');
     expect(verdict.checker.metadata.verdict).toBe('accepted');
+    expect(verdict.run.status).toBe('ready_for_human_merge');
 
     const postCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(postCheckerVerifyResponse.status).toBe(200);
@@ -575,11 +576,21 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ name: 'tests_lint_typecheck', status: 'pass' }),
     ]));
 
-    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    const unapprovedCompleteResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    expect(unapprovedCompleteResponse.status).toBe(409);
+    const unapprovedComplete = await unapprovedCompleteResponse.json() as any;
+    expect(unapprovedComplete.error.code).toBe('LOOP_HUMAN_APPROVAL_REQUIRED');
+
+    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ human_approval_ref: 'approval:small-docs-fix' }),
+    });
     expect(completeResponse.status).toBe(200);
     const completed = await completeResponse.json() as any;
     expect(completed.run.status).toBe('completed');
     expect(completed.run.completed_at).toEqual(expect.any(String));
+    expect(completed.run.metadata.human_approval_ref).toBe('approval:small-docs-fix');
 
     const bundleResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/review-bundle`);
     expect(bundleResponse.status).toBe(200);
@@ -597,6 +608,7 @@ describe('doc-drift-and-small-fix-loop', () => {
 
   it('executes a prepared worker through the spawn bridge with mock runtime, traces, checkpoints, and artifacts', async () => {
     fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    fs.mkdirSync(path.join(tempDir, 'node_modules'), { recursive: true });
     execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
     execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
 
@@ -616,6 +628,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const continued = await continueResponse.json() as any;
     const maker = continued.leases.find((lease: any) => lease.role === 'maker');
     expect(maker).toMatchObject({ runtime: 'mock', status: 'prepared' });
+    expect(fs.lstatSync(path.join(maker.worktree_path, 'node_modules')).isSymbolicLink()).toBe(true);
 
     const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-worker`, {
       method: 'POST',
@@ -891,7 +904,13 @@ describe('doc-drift-and-small-fix-loop', () => {
     ]));
     expect(verified.gates.find((gate: any) => gate.name === 'maker_checker_separation').evidence).toContain('1 superseded maker lease');
 
-    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    const unapprovedCompleteResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    expect(unapprovedCompleteResponse.status).toBe(409);
+    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ human_approval_ref: 'approval:retry-output' }),
+    });
     expect(completeResponse.status).toBe(200);
     const completed = await completeResponse.json() as any;
     expect(completed.run.status).toBe('completed');
@@ -1186,6 +1205,191 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(bundle.events.map((event: any) => event.event_type)).toContain('loop_budget_exhausted');
   });
 
+  it('marks low-risk workers as budget-risk when token efficiency exceeds threshold without exhausting hard budget', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
+      'const readme = path.join(dir, "README.md");',
+      'const raw = fs.readFileSync(readme, "utf8");',
+      'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
+      'console.log(JSON.stringify({ usage: { prompt_tokens: 8000, completion_tokens: 1000, total_tokens: 9000 } }));',
+    ]);
+
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial budget risk repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const goalResponse = await fetch(`${baseUrl}/goals`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        objective: 'Flag inefficient token usage',
+        acceptance_criteria: ['Inefficient small workers create budget-risk evidence'],
+        budget: {
+          max_tokens: 20_000,
+          max_tokens_per_worker: 20_000,
+          max_tokens_per_diff_line: 1,
+        },
+      }),
+    });
+    const goal = await goalResponse.json() as any;
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal_id: goal.id, repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+    const assignmentPacket = JSON.parse(fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8'));
+    expect(assignmentPacket.runtime_profile).toMatchObject({
+      name: 'djimitflo-worker',
+      token_budget: {
+        max_tokens: 20_000,
+        max_tokens_per_worker: 20_000,
+        max_tokens_per_diff_line: 1,
+        source: 'goal',
+      },
+    });
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, diff_max_lines: 20, timeout_ms: 10_000 }),
+    });
+    expect(executeResponse.status).toBe(200);
+    const executed = await executeResponse.json() as any;
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'token_budget', status: 'pass' }),
+    ]));
+    expect(executed.run.metadata.budget_risk).toMatchObject({
+      type: 'token_efficiency',
+      lease_id: maker.id,
+      runtime_usage: { total_tokens: 9000 },
+      budget: {
+        maxTokens: 20_000,
+        maxTokensPerWorker: 20_000,
+        maxTokensPerDiffLine: 1,
+        efficiency_exceeded: true,
+      },
+    });
+    expect(executed.run.status).toBe('verifying');
+
+    const bundleResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/review-bundle`);
+    const bundle = await bundleResponse.json() as any;
+    expect(bundle.events.map((event: any) => event.event_type)).toContain('token_efficiency_budget_risk');
+  });
+
+  it('captures runtime warnings and keeps low-risk warning gates advisory', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
+      'const readme = path.join(dir, "README.md");',
+      'fs.writeFileSync(readme, fs.readFileSync(readme, "utf8").replace("TODO: document setup", "Setup is documented."));',
+      'console.error("failed to parse plugin hooks config: ignored malformed hook");',
+      'console.error("Skill descriptions were shortened to fit context budget");',
+      'console.log(JSON.stringify({ usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } }));',
+    ]);
+
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial warning repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
+    });
+    const executed = await executeResponse.json() as any;
+
+    expect(executed.lease.status).toBe('completed');
+    expect(executed.lease.metadata.runtime_warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ class_name: 'plugin_hook_config_parse' }),
+      expect.objectContaining({ class_name: 'skill_context_budget' }),
+    ]));
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'runtime_warning_gate', status: 'pass', evidence: expect.stringContaining('advisory') }),
+    ]));
+  });
+
+  it('blocks high-risk worker completion when runtime warnings affect a trust boundary', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
+      'const readme = path.join(dir, "README.md");',
+      'fs.writeFileSync(readme, fs.readFileSync(readme, "utf8").replace("TODO: update auth policy", "Auth policy is documented."));',
+      'console.error("auth trust boundary warning: permission capability changed");',
+      'console.log(JSON.stringify({ usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 } }));',
+    ]);
+
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: update auth policy\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial high-risk warning repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const goalResponse = await fetch(`${baseUrl}/goals`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        objective: 'Update auth policy docs',
+        acceptance_criteria: ['Trust-boundary warnings block high-risk workers'],
+        risk_class: 'high',
+      }),
+    });
+    const goal = await goalResponse.json() as any;
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ goal_id: goal.id, repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+
+    const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
+    });
+    const executed = await executeResponse.json() as any;
+
+    expect(executed.lease.status).toBe('failed');
+    expect(executed.run.status).toBe('blocked');
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'runtime_warning_gate', status: 'fail', evidence: expect.stringContaining('trust boundary') }),
+    ]));
+  });
+
   it('captures OpenCode token usage from structured output', async () => {
     installFakeOpencode([
       'const fs = require("fs");',
@@ -1363,7 +1567,16 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ name: 'security_checker_verdict', status: 'pass' }),
     ]));
 
-    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    const unapprovedCompleteResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
+    expect(unapprovedCompleteResponse.status).toBe(409);
+    const unapprovedComplete = await unapprovedCompleteResponse.json() as any;
+    expect(unapprovedComplete.error.code).toBe('LOOP_HUMAN_APPROVAL_REQUIRED');
+
+    const completeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ human_approval_ref: 'approval:security-reviewed' }),
+    });
     expect(completeResponse.status).toBe(200);
     const completed = await completeResponse.json() as any;
     expect(completed.run.status).toBe('completed');

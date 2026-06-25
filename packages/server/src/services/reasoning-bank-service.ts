@@ -1,8 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const COLLECTION_REASONING = 'djimitflo_reasoning';
@@ -35,7 +35,7 @@ export class ReasoningBankService {
     const swarmContext = metadata.swarm_context || '';
 
     // Write to OKF as reasoning entry
-    const okfDir = path.join(OKF_BASE, 'memory');
+    const okfDir = path.join(KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }), 'memory');
     fs.mkdirSync(okfDir, { recursive: true });
 
     const reasoningPath = path.join(okfDir, `${taskId}.md`);

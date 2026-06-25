@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
@@ -181,7 +182,7 @@ export class MemoryCandidateService {
 
   private writeSink(sink: 'okf' | 'uams' | 'qdrant', candidate: MemoryCandidateRecord, input: MemoryPromotionInput): Record<string, unknown> {
     if (sink === 'okf') {
-      const okfBase = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
+      const okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });
       const memoryDir = path.join(okfBase, 'memory');
       fs.mkdirSync(memoryDir, { recursive: true });
       const filePath = path.join(memoryDir, `${candidate.id}.md`);

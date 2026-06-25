@@ -1,0 +1,140 @@
+{
+  "change": "converge-foundation-and-swarm-intelligence",
+  "goals": [
+    {
+      "key": "CFI-1-stabilize-tests",
+      "objective": "Fix all failing tests so npm run test exits green across all workspaces.",
+      "acceptance_criteria": [
+        "npm run test exits 0 for @djimitflo/server.",
+        "swarm-resource-plan.test.ts does not timeout.",
+        "npm run type-check exits 0.",
+        "npm run lint exits 0."
+      ]
+    },
+    {
+      "key": "CFI-2-verify-flywheel-closure",
+      "objective": "Verify learning-flywheel-smoke covers Phase 7 tasks and check them off.",
+      "acceptance_criteria": [
+        "All 6 Phase 7 tasks in knowledge-runtime-learning-flywheel are checked.",
+        "openspec validate knowledge-runtime-learning-flywheel --strict exits 0.",
+        "openspec validate prove-learning-flywheel-operator-loop --strict exits 0."
+      ],
+      "depends_on": ["CFI-1-stabilize-tests"]
+    },
+    {
+      "key": "CFI-3-commit-clean-tree",
+      "objective": "Review, group and commit all 39 uncommitted files with OpenSpec references.",
+      "acceptance_criteria": [
+        "git status --short is empty.",
+        "git diff --check is clean.",
+        "git log shows grouped commits with OpenSpec change IDs."
+      ],
+      "depends_on": ["CFI-2-verify-flywheel-closure"]
+    },
+    {
+      "key": "G14-1-swarm-intelligence-kernel",
+      "objective": "Add mission, task and decision-state models linking goals, loop-runs, panels, claims, capabilities and worker leases.",
+      "acceptance_criteria": [
+        "swarm_missions, swarm_tasks, swarm_decisions tables exist.",
+        "State transitions follow observed→hypothesized→planned→queued→prepared→running→checking→ready_for_human_merge→completed|blocked|rejected|escalated.",
+        "Active execution requires runtime evidence.",
+        "Illegal transition tests pass."
+      ],
+      "depends_on": ["CFI-3-commit-clean-tree"]
+    },
+    {
+      "key": "G14-2-capability-registry",
+      "objective": "Add typed capability registry with contract validation and status gates.",
+      "acceptance_criteria": [
+        "Contract fields: allowed_actions, forbidden_actions, required_evidence, eval_threshold, risk_ceiling, removal_strategy.",
+        "Draft and candidate capabilities cannot route live workers.",
+        "Validated capability routes within risk ceiling.",
+        "Live routing refusal tests pass."
+      ],
+      "depends_on": ["G14-1-swarm-intelligence-kernel"]
+    },
+    {
+      "key": "G14-3-specialist-council",
+      "objective": "Add specialist council and hypothesis workbench with dissent preservation.",
+      "acceptance_criteria": [
+        "Specialist profiles, panels, reviews tables exist.",
+        "High/critical risk requires security reviewer.",
+        "Reviews record support, oppose, uncertain, dissent.",
+        "Consensus-to-backlog projection does not start workers.",
+        "Unknown specialist refusal and duplicate backlog prevention tests pass."
+      ],
+      "depends_on": ["G14-2-capability-registry"]
+    },
+    {
+      "key": "G14-4-evidence-graph-claim-ledger",
+      "objective": "Add evidence graph and claim ledger with contradiction detection and memory classification.",
+      "acceptance_criteria": [
+        "swarm_claims table with source refs, confidence, contradiction links, promotion status.",
+        "evidence_edges table connects all runtime entities.",
+        "Memory candidate classification: operational, engineering_rule, policy_rule, rejected_secret_like.",
+        "Contradiction detection and secret-like rejection tests pass.",
+        "Policy memory requires human review."
+      ],
+      "depends_on": ["G14-3-specialist-council"]
+    },
+    {
+      "key": "G14-5-capacity-governor-v2",
+      "objective": "Add queue classes, fair-share scheduling, budget enforcement and kill handling.",
+      "acceptance_criteria": [
+        "Queue classes: research, doc_fix, test_repair, security, memory, policy.",
+        "Per-runtime fair-share scheduling respects weights.",
+        "Exhausted budget blocks new worker starts.",
+        "Kill/timeout handling includes trace spans and checkpoints.",
+        "Fair-share, budget, kill evidence tests pass."
+      ],
+      "depends_on": ["G14-2-capability-registry"]
+    },
+    {
+      "key": "G14-6-evaluation-harness",
+      "objective": "Add deterministic scorecards for skills, specialists, memory, routing and worker outcomes.",
+      "acceptance_criteria": [
+        "Eval targets for skill contracts, specialist outputs, memory retrieval, routing decisions, worker outcomes.",
+        "Deterministic scorecards with pass thresholds and evidence refs.",
+        "Advisory LLM evals cannot override deterministic gates.",
+        "Regression fixtures for known-bad skills fail."
+      ],
+      "depends_on": ["G14-2-capability-registry"]
+    },
+    {
+      "key": "G14-7-mission-control-dashboard",
+      "objective": "Add dashboard views for registry, active execution, queue, capacity, specialists, evidence graph.",
+      "acceptance_criteria": [
+        "npm run build --workspace=@djimitflo/dashboard exits 0.",
+        "Dashboard shows active execution from runtime evidence only.",
+        "Registry count is not shown as active execution.",
+        "Specialist council view shows panel state, consensus, dissent.",
+        "Evidence graph view filters contradicted, review-required, promoted."
+      ],
+      "depends_on": ["G14-4-evidence-graph-claim-ledger", "G14-5-capacity-governor-v2", "G14-6-evaluation-harness"]
+    },
+    {
+      "key": "G14-8-smoke-part-1",
+      "objective": "Add evaluator quorum, split-decision rules, runner audit manifests, replay branches, warning gates, circuit breakers.",
+      "acceptance_criteria": [
+        "Quorum missing blocks high-risk work.",
+        "Split decision creates child work items.",
+        "Runner audit manifests for start, skip, fail, stop, kill.",
+        "Replay branch has zero copied leases.",
+        "Warning gate and circuit breaker tests pass."
+      ],
+      "depends_on": ["G14-7-mission-control-dashboard"]
+    },
+    {
+      "key": "G14-9-smoke-part-2",
+      "objective": "Run full mock-runtime scenario from question to panel to backlog to goal to leases to checker to evidence graph.",
+      "acceptance_criteria": [
+        "Full scenario completes with mock runtime.",
+        "Evidence graph has nodes for every entity.",
+        "No auto-merge, push, deploy or high-risk unattended execution.",
+        "Smoke is a passing test in the suite.",
+        "npm run test exits 0 with G14.9 smoke included."
+      ],
+      "depends_on": ["G14-8-smoke-part-1"]
+    }
+  ]
+}

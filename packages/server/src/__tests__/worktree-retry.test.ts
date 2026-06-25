@@ -51,9 +51,11 @@ describe('createWorktree git-lock retry', () => {
     const repoPath = path.join(worktreeRoot, 'fake-repo');
     // Neutralise the sync sleep so the test does not wait on backoff.
     vi.spyOn(loops as any, 'sleepSync').mockImplementation(() => {});
+    vi.spyOn(loops as any, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
     let worktreeAddCalls = 0;
     vi.spyOn(loops as any, 'git').mockImplementation((_repo: string, args: string[]) => {
       if (args[0] === 'rev-parse') return repoPath;
+      if (args[0] === 'diff') return '';
       if (args[0] === 'worktree' && args[1] === 'add') {
         worktreeAddCalls += 1;
         if (worktreeAddCalls === 1) {
@@ -67,6 +69,36 @@ describe('createWorktree git-lock retry', () => {
     const result = (loops as any).createWorktree(repoPath, 'run-1', 'find-1', 'branch-1') as string;
     expect(result).toBe(path.join(worktreeRoot, 'run-1', 'find-1'));
     expect(worktreeAddCalls).toBe(2); // first failed (lock), second succeeded
+  });
+
+  it('sanitizes finding ids before using them as worktree path segments', () => {
+    const loops = new LoopService(db);
+    const repoPath = path.join(worktreeRoot, 'fake-repo');
+    let worktreePathArg = '';
+    vi.spyOn(loops as any, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
+    vi.spyOn(loops as any, 'git').mockImplementation((_repo: string, args: string[]) => {
+      if (args[0] === 'rev-parse') return repoPath;
+      if (args[0] === 'diff') return '';
+      if (args[0] === 'worktree' && args[1] === 'add') {
+        worktreePathArg = args[4];
+        return '';
+      }
+      throw new Error(`unexpected git ${args.join(' ')}`);
+    });
+
+    const result = (loops as any).createWorktree(repoPath, 'run-3', 'proof-finding:proof-123', 'branch-3') as string;
+    expect(result).toBe(path.join(worktreeRoot, 'run-3', 'proof-finding-proof-123'));
+    expect(worktreePathArg).toBe(result);
+  });
+
+  it('keeps proof-run branch names unique beyond short common prefixes', () => {
+    const loops = new LoopService(db);
+    const first = (loops as any).branchNameFor('loop-73511111-aaaa', 'proof-finding:proof-11111111') as string;
+    const second = (loops as any).branchNameFor('loop-73522222-bbbb', 'proof-finding:proof-22222222') as string;
+
+    expect(first).not.toBe(second);
+    expect(first).not.toContain(':');
+    expect(second).not.toContain(':');
   });
 
   it('does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED', () => {

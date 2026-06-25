@@ -1,7 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-
-const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 export interface AgentConcept {
   id: string;
@@ -35,7 +34,7 @@ export class AgentRegistryService {
   private okfAgentsDir: string;
 
   constructor(okfBase?: string) {
-    this.okfAgentsDir = path.join(okfBase || OKF_BASE, 'agents');
+    this.okfAgentsDir = path.join(okfBase || KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }), 'agents');
   }
 
   ensureDir(): void {

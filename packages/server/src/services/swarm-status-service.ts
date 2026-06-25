@@ -6,6 +6,8 @@ import { WorkItemService, type WorkItemRecord } from './work-item-service';
 import { LoopService, type LoopName, type WorkerLeaseRecord } from './loop-service';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
+import { messageBus, type SwarmMessage } from './message_bus';
+import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -76,10 +78,89 @@ export interface SwarmRealityStatus {
     blocked_capacity_reasons: string[];
     queue_depth_by_risk: Record<string, number>;
   }>;
+  fleet_topology: Array<{
+    goal_id: string | null;
+    goal_objective: string | null;
+    loop_run_id: string;
+    loop_name: string;
+    run_status: string;
+    lease_id: string;
+    role: string;
+    runtime: string;
+    lease_status: string;
+    artifact_path: string | null;
+    stdout_path: string | null;
+    stderr_path: string | null;
+    warning_count: number;
+    latest_gate: string | null;
+    failed_gate: string | null;
+    latest_event: string | null;
+    next_safe_action: WorkerPoolDecision['next_action'];
+    bottleneck_reason: string | null;
+  }>;
+  open_handoffs: Array<{
+    id: string;
+    from_agent_id: string;
+    to_agent_id: string;
+    priority: string;
+    source_lease_id: string | null;
+    loop_run_id: string | null;
+    work_item_id: string | null;
+    task_id: string | null;
+    target_role: string | null;
+    summary: string;
+    created_at: string;
+  }>;
   reality_check: {
     agent_count_is_registry_only: boolean;
     active_execution_requires_runtime_evidence: boolean;
   };
+}
+
+export interface AgentHandoffInput {
+  from_agent_id?: string;
+  to_agent_id?: string;
+  source_lease_id?: string;
+  work_item_id?: string;
+  task_id?: string;
+  target_role?: RunnerLeaseRole;
+  summary?: string;
+  evidence_ref?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+}
+
+export interface AgentHandoffAcceptResult {
+  message: SwarmMessage;
+  action: 'memory_candidate_created' | 'work_item_created';
+  memory_candidate?: MemoryCandidateRecord;
+  work_item?: WorkItemRecord;
+}
+
+export interface SwarmEvolutionRunResult {
+  eval_run: Record<string, unknown>;
+  previous_score: number | null;
+  score_delta: number | null;
+  improved: boolean | null;
+  reflection: Record<string, unknown>;
+  follow_up_work_item: WorkItemRecord | null;
+}
+
+export interface AgentHandoffDrainInput extends WorkerPoolPlanInput {
+  max_handoffs?: number;
+  plan?: boolean;
+  prepare?: boolean;
+  start_workers?: boolean;
+  repository_path?: string;
+}
+
+export interface AgentHandoffDrainResult {
+  action: 'drained';
+  accepted: AgentHandoffAcceptResult[];
+  failed: Array<{ handoff_id: string; error: string }>;
+  memory_candidate_ids: string[];
+  work_item_ids: string[];
+  scheduler_tick: SchedulerTickResult | null;
+  worker_pool_drain: WorkerPoolDrainResult | null;
 }
 
 export interface SchedulerTickResult {
@@ -91,14 +172,26 @@ export interface SchedulerTickResult {
   leases_created: number;
 }
 
+interface SchedulerTickInput {
+  max_items?: number;
+  plan_triaged?: boolean;
+  prepare_planned?: boolean;
+  runtime?: WorkerRuntime;
+  repository_path?: string;
+  max_assignments_per_item?: number;
+  work_item_ids?: string[];
+}
+
 export interface WorkerPoolPlanInput {
   runtime?: WorkerRuntime;
   checker_runtime?: Exclude<WorkerRuntime, 'manual'>;
   max_workers?: number;
   timeout_ms?: number;
   diff_max_lines?: number;
+  skip_permissions?: boolean;
   allow_high_risk?: boolean;
   ignore_capacity?: boolean;
+  simulate_low_capacity?: boolean;
 }
 
 export interface WorkerPoolDecision {
@@ -139,17 +232,24 @@ export interface WorkerPoolDrainResult {
   final_plan: WorkerPoolPlanResult;
 }
 
+export interface BacklogFleetSyncResult {
+  inspected_work_items: number;
+  updated_work_items: WorkItemRecord[];
+}
+
 export class SwarmStatusService {
   private workItems: WorkItemService;
   private loops: LoopService;
   private assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
+  private memoryCandidates: MemoryCandidateService;
 
   constructor(private db: Database, private options: SwarmStatusOptions = {}) {
     this.workItems = new WorkItemService(db);
     this.loops = new LoopService(db);
     this.assurance = new AgentAssuranceService(db);
     this.intelligence = new SwarmIntelligenceService(db);
+    this.memoryCandidates = new MemoryCandidateService(db);
   }
 
   getStatus(): SwarmRealityStatus {
@@ -194,6 +294,7 @@ export class SwarmStatusService {
       uptime_seconds: os.uptime(),
     };
 
+    const fleetPools = this.fleetPools(resourceSnapshot);
     return {
       registry_agent_count: agents.length,
       live_agent_count: liveAgents.length,
@@ -208,12 +309,463 @@ export class SwarmStatusService {
       backlog_count: backlogCount,
       stale_agents: staleAgents,
       resource_snapshot: resourceSnapshot,
-      fleet_pools: this.fleetPools(resourceSnapshot),
+      fleet_pools: fleetPools,
+      fleet_topology: this.fleetTopology(fleetPools),
+      open_handoffs: this.openHandoffs(),
       reality_check: {
         agent_count_is_registry_only: agents.length !== liveAgents.length,
         active_execution_requires_runtime_evidence: true,
       },
     };
+  }
+
+  async createHandoff(input: AgentHandoffInput): Promise<SwarmMessage> {
+    const fromAgentId = String(input.from_agent_id || '').trim();
+    const toAgentId = String(input.to_agent_id || '').trim();
+    const summary = String(input.summary || '').trim();
+    if (!fromAgentId || !toAgentId || !summary) throw new Error('SWARM_HANDOFF_REQUIRED');
+    const priority = input.priority || 'medium';
+    if (!['low', 'medium', 'high', 'urgent'].includes(priority)) throw new Error('SWARM_HANDOFF_PRIORITY_INVALID');
+
+    this.assertAgentExists(fromAgentId);
+    this.assertAgentExists(toAgentId);
+
+    const sourceLeaseId = String(input.source_lease_id || '').trim();
+    const lease = sourceLeaseId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(sourceLeaseId) as any | undefined : null;
+    if (sourceLeaseId && !lease) throw new Error('SWARM_HANDOFF_LEASE_NOT_FOUND');
+
+    const workItemId = String(input.work_item_id || '').trim();
+    if (workItemId && !this.db.prepare('SELECT id FROM work_items WHERE id = ?').get(workItemId)) {
+      throw new Error('SWARM_HANDOFF_WORK_ITEM_NOT_FOUND');
+    }
+    const taskId = String(input.task_id || '').trim();
+    if (taskId && !this.db.prepare('SELECT id FROM tasks WHERE id = ?').get(taskId)) {
+      throw new Error('SWARM_HANDOFF_TASK_NOT_FOUND');
+    }
+    if (!sourceLeaseId && !workItemId && !taskId) throw new Error('SWARM_HANDOFF_SOURCE_REQUIRED');
+
+    const now = new Date().toISOString();
+    const message: SwarmMessage = {
+      id: randomUUID(),
+      from_agent_id: fromAgentId,
+      to_agent_id: toAgentId,
+      type: 'task_delegation',
+      priority,
+      read_at: null,
+      created_at: now,
+      payload: {
+        kind: 'swarm_handoff',
+        summary,
+        source_lease_id: sourceLeaseId || null,
+        loop_run_id: lease?.loop_run_id || null,
+        work_item_id: workItemId || null,
+        task_id: taskId || null,
+        target_role: input.target_role || null,
+        evidence_ref: input.evidence_ref || null,
+      },
+    };
+
+    this.db.prepare(`
+      INSERT INTO messages (id, from_agent_id, to_agent_id, type, payload, priority, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(message.id, message.from_agent_id, message.to_agent_id, message.type, JSON.stringify(message.payload), message.priority, message.created_at);
+
+    if (lease) {
+      const metadata = this.parseJsonSafe(lease.metadata || '{}');
+      this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify({ ...metadata, handoff_message_id: message.id, handed_off_to_agent_id: toAgentId, handed_off_at: now }), now, lease.id);
+      this.recordRunnerDecision('worker_handoff_created', lease.loop_run_id, 'info', {
+        lease_id: lease.id,
+        from_agent_id: fromAgentId,
+        to_agent_id: toAgentId,
+        target_role: input.target_role || null,
+        message_id: message.id,
+      });
+    }
+
+    await messageBus.publish(toAgentId, message);
+    return message;
+  }
+
+  acceptHandoff(id: string): AgentHandoffAcceptResult {
+    const row = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as any | undefined;
+    if (!row) throw new Error('SWARM_HANDOFF_NOT_FOUND');
+    if (row.read_at) throw new Error('SWARM_HANDOFF_ALREADY_ACCEPTED');
+    const message = this.parseMessage(row);
+    const payload = message.payload;
+    if (payload.kind !== 'swarm_handoff') throw new Error('SWARM_HANDOFF_INVALID');
+
+    const summary = String(payload.summary || '').trim();
+    const targetRole = String(payload.target_role || 'planner');
+    const loopRunId = typeof payload.loop_run_id === 'string' ? payload.loop_run_id : null;
+    const sourceLeaseId = typeof payload.source_lease_id === 'string' ? payload.source_lease_id : null;
+    const evidenceRef = typeof payload.evidence_ref === 'string' ? payload.evidence_ref : null;
+    const sourceRef = `handoff:${message.id}`;
+    const traceId = `handoff-${message.id}`;
+    const now = new Date().toISOString();
+
+    let result: AgentHandoffAcceptResult;
+    if (targetRole === 'memory_curator') {
+      const candidate = this.memoryCandidates.create({
+        title: `Handoff memory: ${summary.slice(0, 80)}`,
+        content: [
+          summary,
+          evidenceRef ? `Evidence: ${evidenceRef}` : '',
+          sourceLeaseId ? `Source lease: ${sourceLeaseId}` : '',
+          loopRunId ? `Loop run: ${loopRunId}` : '',
+        ].filter(Boolean).join('\n'),
+        memory_type: 'operational_memory',
+        source_ref: sourceRef,
+        metadata: {
+          handoff_message_id: message.id,
+          from_agent_id: message.from_agent_id,
+          to_agent_id: message.to_agent_id,
+          source_lease_id: sourceLeaseId,
+          loop_run_id: loopRunId,
+        },
+      });
+      this.assurance.createTraceSpan({
+        trace_id: traceId,
+        loop_run_id: loopRunId,
+        span_type: 'memory',
+        name: 'handoff:accept:memory_curator',
+        status: 'ok',
+        evidence_ref: `memory_candidate:${candidate.id}`,
+        ended_at: now,
+        metadata: { message_id: message.id, source_lease_id: sourceLeaseId },
+      });
+      result = { message, action: 'memory_candidate_created', memory_candidate: candidate };
+    } else {
+      const created = this.workItems.createIfMissingBySourceRef({
+        title: summary,
+        description: [
+          `Handoff target role: ${targetRole}`,
+          evidenceRef ? `Evidence: ${evidenceRef}` : '',
+          sourceLeaseId ? `Source lease: ${sourceLeaseId}` : '',
+          loopRunId ? `Loop run: ${loopRunId}` : '',
+        ].filter(Boolean).join('\n'),
+        source: 'swarm_handoff',
+        source_ref: sourceRef,
+        risk_class: 'low',
+        value_score: 70,
+        confidence: 0.75,
+        status: 'candidate',
+        recommended_loop: targetRole === 'governance_guard' ? 'overwatch-policy-drift-loop' : targetRole === 'planner' ? 'repo-maintenance-loop' : DEFAULT_LOOP_NAME,
+        assigned_agent_id: message.to_agent_id,
+        metadata: {
+          handoff_message_id: message.id,
+          from_agent_id: message.from_agent_id,
+          target_role: targetRole,
+          source_lease_id: sourceLeaseId,
+          source_loop_run_id: loopRunId,
+        },
+      });
+      this.assurance.createTraceSpan({
+        trace_id: traceId,
+        loop_run_id: loopRunId,
+        work_item_id: created.work_item.id,
+        span_type: 'worker',
+        name: `handoff:accept:${targetRole}`,
+        status: 'ok',
+        evidence_ref: `work_item:${created.work_item.id}`,
+        ended_at: now,
+        metadata: { message_id: message.id, created: created.created },
+      });
+      result = { message, action: 'work_item_created', work_item: created.work_item };
+    }
+
+    this.intelligence.createRunnerManifest({
+      decision_id: `handoff:accept:${message.id}:${now}`,
+      lease_id: sourceLeaseId,
+      loop_run_id: loopRunId,
+      action: 'plan',
+      policy_version: 'swarm-handoff-v1',
+      gate_refs: ['handoff_accept'],
+      blocked_reasons: [],
+      metadata: {
+        message_id: message.id,
+        target_role: targetRole,
+        accepted_action: result.action,
+        artifact_ref: result.memory_candidate ? `memory_candidate:${result.memory_candidate.id}` : `work_item:${result.work_item?.id}`,
+      },
+    });
+
+    const acceptedPayload = {
+      ...payload,
+      accepted_at: now,
+      accepted_action: result.action,
+      accepted_ref: result.memory_candidate ? `memory_candidate:${result.memory_candidate.id}` : `work_item:${result.work_item?.id}`,
+    };
+    this.db.prepare('UPDATE messages SET payload = ?, read_at = ? WHERE id = ?')
+      .run(JSON.stringify(acceptedPayload), now, message.id);
+    return {
+      ...result,
+      message: this.parseMessage(this.db.prepare('SELECT * FROM messages WHERE id = ?').get(message.id)),
+    };
+  }
+
+  async drainHandoffs(input: AgentHandoffDrainInput = {}): Promise<AgentHandoffDrainResult> {
+    const maxHandoffs = Math.max(1, Math.min(Number(input.max_handoffs || 10), 50));
+    const handoffs = this.openHandoffs().slice(0, maxHandoffs).reverse();
+    const accepted: AgentHandoffAcceptResult[] = [];
+    const failed: AgentHandoffDrainResult['failed'] = [];
+
+    for (const handoff of handoffs) {
+      try {
+        accepted.push(this.acceptHandoff(handoff.id));
+      } catch (error) {
+        failed.push({ handoff_id: handoff.id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+
+    const workItemIds = accepted
+      .map((item) => item.work_item?.id)
+      .filter((id): id is string => Boolean(id));
+    const shouldSchedule = Boolean(input.plan || input.prepare || input.start_workers);
+    if (shouldSchedule) {
+      for (const id of workItemIds) {
+        const item = this.workItems.get(id);
+        if (item.status === 'candidate') {
+          this.workItems.update(id, { status: 'triaged', metadata: { ...item.metadata, triaged_from_handoff_drain: true } });
+        }
+      }
+    }
+
+    let schedulerTick: SchedulerTickResult | null = null;
+    if (shouldSchedule && workItemIds.length > 0) {
+      const plannedTick = this.tickScheduler({
+        work_item_ids: workItemIds,
+        plan_triaged: true,
+        runtime: input.runtime,
+        repository_path: input.repository_path,
+      });
+      let preparedTick: SchedulerTickResult | null = null;
+      if (input.prepare || input.start_workers) {
+        const plannedIds = plannedTick.planned_work_items.map((item) => item.id);
+        preparedTick = this.tickScheduler({
+          work_item_ids: plannedIds.length > 0 ? plannedIds : workItemIds,
+          prepare_planned: true,
+          runtime: input.runtime,
+          repository_path: input.repository_path,
+        });
+      }
+      schedulerTick = {
+        created_work_items: [...plannedTick.created_work_items, ...(preparedTick?.created_work_items || [])],
+        planned_work_items: plannedTick.planned_work_items,
+        prepared_work_items: preparedTick?.prepared_work_items || [],
+        skipped_existing: plannedTick.skipped_existing + (preparedTick?.skipped_existing || 0),
+        inspected_loop_runs: plannedTick.inspected_loop_runs + (preparedTick?.inspected_loop_runs || 0),
+        leases_created: plannedTick.leases_created + (preparedTick?.leases_created || 0),
+      };
+    }
+
+    const workerPoolDrain = input.start_workers
+      ? await this.drainWorkerPool({
+        runtime: input.runtime,
+        checker_runtime: input.checker_runtime,
+        max_workers: input.max_workers || Math.max(1, workItemIds.length * 2),
+        timeout_ms: input.timeout_ms,
+        diff_max_lines: input.diff_max_lines,
+        skip_permissions: input.skip_permissions,
+        allow_high_risk: input.allow_high_risk,
+        ignore_capacity: input.ignore_capacity,
+      })
+      : null;
+
+    return {
+      action: 'drained',
+      accepted,
+      failed,
+      memory_candidate_ids: accepted
+        .map((item) => item.memory_candidate?.id)
+        .filter((id): id is string => Boolean(id)),
+      work_item_ids: accepted
+        .map((item) => item.work_item?.id)
+        .filter((id): id is string => Boolean(id)),
+      scheduler_tick: schedulerTick,
+      worker_pool_drain: workerPoolDrain,
+    };
+  }
+
+  runEvolutionCycle(input: { suite_name?: string; target_type?: 'memory' | 'skill' | 'swarm' | 'loop' | 'capability'; target_ref?: string | null; min_score?: number } = {}): SwarmEvolutionRunResult {
+    const suiteName = String(input.suite_name || 'swarm-coordination').trim();
+    const targetType = input.target_type || 'swarm';
+    const previous = this.latestEval(suiteName, targetType);
+    const evalRun = this.assurance.runEval({
+      suite_name: suiteName,
+      target_type: targetType,
+      target_ref: input.target_ref || null,
+      metadata: { evolution_cycle: true },
+    });
+    const previousScore = previous ? Number(previous.score) : null;
+    const scoreDelta = previousScore === null ? null : Number((evalRun.score - previousScore).toFixed(4));
+    const minScore = Math.max(0, Math.min(Number(input.min_score ?? 0.75), 1));
+    const improved = scoreDelta === null ? null : scoreDelta > 0;
+    const statusText = scoreDelta === null
+      ? `baseline score ${evalRun.score.toFixed(2)}`
+      : `${improved ? 'improved' : scoreDelta < 0 ? 'regressed' : 'unchanged'} by ${scoreDelta.toFixed(2)} to ${evalRun.score.toFixed(2)}`;
+
+    const reflection = this.assurance.createReflection({
+      source_type: 'eval',
+      source_ref: evalRun.id,
+      lesson: `${suiteName} ${targetType} evaluation ${statusText}; next runs should preserve evidence that moved the score and create follow-up work when below ${minScore.toFixed(2)}.`,
+      evidence_refs: [`eval:${evalRun.id}`, previous ? `eval:${previous.id}` : 'eval:baseline'],
+      metadata: {
+        evolution_cycle: true,
+        suite_name: suiteName,
+        target_type: targetType,
+        previous_score: previousScore,
+        current_score: evalRun.score,
+        score_delta: scoreDelta,
+      },
+    });
+
+    let followUp: WorkItemRecord | null = null;
+    if (evalRun.score < minScore) {
+      followUp = this.workItems.createIfMissingBySourceRef({
+        title: `Improve ${suiteName} ${targetType} score`,
+        description: `Latest score ${evalRun.score.toFixed(2)} is below ${minScore.toFixed(2)}. Findings: ${evalRun.findings.join('; ')}`,
+        source: 'evolution_cycle',
+        source_ref: `eval:${evalRun.id}`,
+        risk_class: 'low',
+        value_score: 75,
+        confidence: 0.8,
+        status: 'candidate',
+        recommended_loop: this.evolutionLoopFor(targetType),
+        metadata: {
+          eval_run_id: evalRun.id,
+          reflection_id: reflection.id,
+          suite_name: suiteName,
+          target_type: targetType,
+          score: evalRun.score,
+          min_score: minScore,
+        },
+      }).work_item;
+    }
+
+    return {
+      eval_run: evalRun as unknown as Record<string, unknown>,
+      previous_score: previousScore,
+      score_delta: scoreDelta,
+      improved,
+      reflection: reflection as unknown as Record<string, unknown>,
+      follow_up_work_item: followUp,
+    };
+  }
+
+  private openHandoffs(): SwarmRealityStatus['open_handoffs'] {
+    const rows = this.db.prepare(`
+      SELECT * FROM messages
+      WHERE type = 'task_delegation' AND read_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 100
+    `).all() as any[];
+    return rows
+      .map((row) => {
+        const payload = this.parseJsonSafe(row.payload || '{}');
+        if (payload.kind !== 'swarm_handoff') return null;
+        return {
+          id: row.id,
+          from_agent_id: row.from_agent_id,
+          to_agent_id: row.to_agent_id,
+          priority: row.priority,
+          source_lease_id: typeof payload.source_lease_id === 'string' ? payload.source_lease_id : null,
+          loop_run_id: typeof payload.loop_run_id === 'string' ? payload.loop_run_id : null,
+          work_item_id: typeof payload.work_item_id === 'string' ? payload.work_item_id : null,
+          task_id: typeof payload.task_id === 'string' ? payload.task_id : null,
+          target_role: typeof payload.target_role === 'string' ? payload.target_role : null,
+          summary: String(payload.summary || ''),
+          created_at: row.created_at,
+        };
+      })
+      .filter((handoff): handoff is SwarmRealityStatus['open_handoffs'][number] => handoff !== null);
+  }
+
+  private parseMessage(row: any): SwarmMessage {
+    return {
+      id: row.id,
+      from_agent_id: row.from_agent_id,
+      to_agent_id: row.to_agent_id,
+      type: row.type,
+      payload: this.parseJsonSafe(row.payload || '{}'),
+      priority: row.priority,
+      read_at: row.read_at || null,
+      created_at: row.created_at,
+    };
+  }
+
+  private latestEval(suiteName: string, targetType: string): { id: string; score: number } | null {
+    const row = this.db.prepare(`
+      SELECT id, score FROM agent_eval_runs
+      WHERE suite_name = ? AND target_type = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(suiteName, targetType) as { id: string; score: number } | undefined;
+    return row || null;
+  }
+
+  private evolutionLoopFor(targetType: string): LoopName {
+    if (targetType === 'memory') return 'okf-synchronization-loop';
+    if (targetType === 'skill') return 'skill-quality-loop';
+    if (targetType === 'capability') return 'mcp-connector-validation-loop';
+    return DEFAULT_LOOP_NAME;
+  }
+
+  private fleetTopology(pools: SwarmRealityStatus['fleet_pools']): SwarmRealityStatus['fleet_topology'] {
+    const poolMap = new Map(pools.map((pool) => [pool.runtime, pool]));
+    const rows = this.db.prepare(`
+      SELECT
+        wl.*,
+        lr.loop_name AS loop_name,
+        lr.status AS run_status,
+        lr.gates_json AS run_gates_json,
+        lr.metadata AS run_metadata,
+        lr.goal_id AS goal_id,
+        g.objective AS goal_objective,
+        g.risk_class AS goal_risk_class
+      FROM worker_leases wl
+      JOIN loop_runs lr ON lr.id = wl.loop_run_id
+      LEFT JOIN goals g ON g.id = lr.goal_id
+      WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
+      ORDER BY wl.updated_at DESC, wl.created_at DESC
+      LIMIT 80
+    `).all() as any[];
+
+    return rows.map((row) => {
+      const metadata = JSON.parse(row.metadata || '{}');
+      const gates = JSON.parse(row.run_gates_json || '[]') as Array<{ name?: string; status?: string }>;
+      const decision = this.workerPoolDecision(row, poolMap, {});
+      const failedGate = gates.find((gate) => gate.status === 'fail')?.name || null;
+      const latestGate = gates.at(-1)?.name || null;
+      const latestEvent = this.db.prepare(`
+        SELECT event_type FROM loop_events
+        WHERE loop_run_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(row.loop_run_id) as { event_type?: string } | undefined;
+      const warnings = metadata.runtime_warnings;
+
+      return {
+        goal_id: row.goal_id || null,
+        goal_objective: row.goal_objective || null,
+        loop_run_id: row.loop_run_id,
+        loop_name: row.loop_name,
+        run_status: row.run_status,
+        lease_id: row.id,
+        role: row.role,
+        runtime: row.runtime,
+        lease_status: row.status,
+        artifact_path: metadata.artifact_path || null,
+        stdout_path: metadata.stdout_path || null,
+        stderr_path: metadata.stderr_path || null,
+        warning_count: Array.isArray(warnings) ? warnings.length : 0,
+        latest_gate: latestGate,
+        failed_gate: failedGate,
+        latest_event: latestEvent?.event_type || null,
+        next_safe_action: decision.next_action,
+        bottleneck_reason: decision.bottleneck_reason,
+      };
+    });
   }
 
   private fleetPools(resourceSnapshot: SwarmRealityStatus['resource_snapshot']): SwarmRealityStatus['fleet_pools'] {
@@ -328,7 +880,7 @@ export class SwarmStatusService {
   }
 
   planWorkerPool(input: WorkerPoolPlanInput = {}): WorkerPoolPlanResult {
-    const status = this.getStatus();
+    const status = input.simulate_low_capacity ? this.statusForResourceSnapshot(this.lowCapacitySnapshot()) : this.getStatus();
     const pools = new Map(status.fleet_pools.map((pool) => [pool.runtime, pool]));
     const rows = this.workerPoolRows(input.runtime);
     const decisions = rows
@@ -342,6 +894,27 @@ export class SwarmStatusService {
       running_count: decisions.filter((decision) => decision.status === 'running').length,
       max_workers: maxWorkers,
       capacity_snapshot: status.resource_snapshot,
+    };
+  }
+
+  private statusForResourceSnapshot(resourceSnapshot: SwarmRealityStatus['resource_snapshot']): SwarmRealityStatus {
+    const status = this.getStatus();
+    const fleetPools = this.fleetPools(resourceSnapshot);
+    return {
+      ...status,
+      resource_snapshot: resourceSnapshot,
+      fleet_pools: fleetPools,
+      fleet_topology: this.fleetTopology(fleetPools),
+    };
+  }
+
+  private lowCapacitySnapshot(): SwarmRealityStatus['resource_snapshot'] {
+    return {
+      cpu_threads: 8,
+      total_memory_bytes: 100,
+      free_memory_bytes: 1,
+      load_average: [99, 99, 99],
+      uptime_seconds: os.uptime(),
     };
   }
 
@@ -421,17 +994,26 @@ export class SwarmStatusService {
     });
 
     try {
-      const execution = decision.next_action === 'execute_checker'
+      let execution = decision.next_action === 'execute_checker'
         ? await this.loops.executeChecker(decision.loop_run_id, {
           lease_id: decision.lease_id,
           runtime: decision.effective_runtime as Exclude<WorkerRuntime, 'manual'>,
           timeout_ms: input.timeout_ms,
+          skip_permissions: input.skip_permissions,
         })
         : await this.loops.executeWorker(decision.loop_run_id, {
           lease_id: decision.lease_id,
           timeout_ms: input.timeout_ms,
           diff_max_lines: input.diff_max_lines,
+          skip_permissions: input.skip_permissions,
         });
+      if (decision.next_action === 'execute_maker') {
+        const checked = this.loops.runDeterministicChecks(decision.loop_run_id, {
+          lease_id: decision.lease_id,
+          timeout_ms: input.timeout_ms,
+        });
+        if (checked) execution = { ...execution, run: checked.run, lease: checked.lease };
+      }
 
       this.assurance.createTraceSpan({
         trace_id: traceId,
@@ -460,10 +1042,11 @@ export class SwarmStatusService {
           worker_role: decision.role,
           worker_runtime: decision.effective_runtime,
           next_action: decision.next_action,
-          execution_status: 'completed',
+          execution_status: execution.lease.status,
         },
       });
       this.recordRunnerDecision('worker_pool_worker_started', decision.loop_run_id, 'info', { decision, trace_id: traceId });
+      this.syncBacklogFromFleet({ loop_run_ids: [decision.loop_run_id] });
       return { action: 'started', decision, plan, execution };
     } catch (error) {
       this.assurance.createTraceSpan({
@@ -501,6 +1084,7 @@ export class SwarmStatusService {
         trace_id: traceId,
         error: error instanceof Error ? error.message : String(error),
       });
+      this.syncBacklogFromFleet({ loop_run_ids: [decision.loop_run_id] });
       throw error;
     }
   }
@@ -614,10 +1198,11 @@ export class SwarmStatusService {
     };
   }
 
-  tickScheduler(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number } = {}): SchedulerTickResult {
+  tickScheduler(input: SchedulerTickInput = {}): SchedulerTickResult {
     const maxItems = Math.max(1, Math.min(Number(input.max_items || 10), 100));
-    const planned = input.plan_triaged ? this.planTriagedWorkItems(maxItems) : [];
-    const prepared = input.prepare_planned ? this.preparePlannedWorkItems(input, maxItems) : [];
+    const workItemIds = this.requestedWorkItemIds(input.work_item_ids);
+    const planned = input.plan_triaged ? this.planTriagedWorkItems(maxItems, workItemIds) : [];
+    const prepared = input.prepare_planned ? this.preparePlannedWorkItems(input, maxItems, workItemIds) : [];
     const rows = this.db.prepare(`
       SELECT * FROM loop_runs
       WHERE status = 'completed'
@@ -675,8 +1260,101 @@ export class SwarmStatusService {
     };
   }
 
-  private planTriagedWorkItems(maxItems: number): WorkItemRecord[] {
-    const candidates = this.workItems.list({ status: 'triaged', limit: maxItems });
+  syncBacklogFromFleet(input: { loop_run_ids?: string[] } = {}): BacklogFleetSyncResult {
+    const loopRunIds = this.requestedWorkItemIds(input.loop_run_ids);
+    const candidates = this.workItems.list({ status: 'leased', limit: 500 })
+      .filter((item) => loopRunIds.length === 0 || loopRunIds.includes(String(item.metadata.loop_run_id || '')));
+    const updated: WorkItemRecord[] = [];
+
+    for (const item of candidates) {
+      const loopRunId = String(item.metadata.loop_run_id || '');
+      if (!loopRunId) continue;
+      const outcome = this.workItemFleetOutcome(loopRunId);
+      if (!outcome) continue;
+
+      updated.push(this.workItems.update(item.id, {
+        status: outcome.status,
+        metadata: {
+          ...item.metadata,
+          fleet_synced_at: new Date().toISOString(),
+          fleet_outcome: outcome,
+        },
+      }));
+    }
+
+    return {
+      inspected_work_items: candidates.length,
+      updated_work_items: updated,
+    };
+  }
+
+  private workItemFleetOutcome(loopRunId: string): { status: 'done' | 'blocked'; loop_run_id: string; loop_status: string; reason: string; evidence: Record<string, unknown> } | null {
+    const run = this.db.prepare('SELECT * FROM loop_runs WHERE id = ?').get(loopRunId) as any | undefined;
+    if (!run) return null;
+    const leases = this.db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
+    const parsedLeases = leases.map((lease) => ({ ...lease, metadata: JSON.parse(lease.metadata || '{}') }));
+    const failedLease = parsedLeases.find((lease) => lease.status === 'failed');
+    if (failedLease) {
+      return this.fleetOutcome('blocked', run, parsedLeases, `lease_failed:${failedLease.role}`);
+    }
+
+    const rejectedChecker = parsedLeases.find((lease) => (
+      lease.role === 'checker'
+      && ['needs_revision', 'rejected', 'insufficient_evidence'].includes(String(lease.metadata.verdict || ''))
+    ));
+    if (rejectedChecker) {
+      return this.fleetOutcome('blocked', run, parsedLeases, `checker_${rejectedChecker.metadata.verdict}`);
+    }
+
+    if (['failed', 'cancelled', 'interrupted', 'escalated'].includes(String(run.status))) {
+      return this.fleetOutcome('blocked', run, parsedLeases, `loop_${run.status}`);
+    }
+
+    const makers = parsedLeases.filter((lease) => lease.role === 'maker' && !lease.metadata.superseded_by_maker_lease_id);
+    const completedMakers = makers.filter((lease) => lease.status === 'completed');
+    if (makers.length === 0 || completedMakers.length !== makers.length) return null;
+
+    const acceptedCheckerForEveryMaker = completedMakers.every((maker) => parsedLeases.some((lease) => (
+      lease.role === 'checker'
+      && lease.metadata.maker_lease_id === maker.id
+      && lease.metadata.verdict === 'accepted'
+      && lease.status === 'completed'
+    )));
+    if (!acceptedCheckerForEveryMaker) return null;
+
+    const verified = this.loops.verifyLoopRun(loopRunId);
+    if (verified.run.status === 'blocked') {
+      return this.fleetOutcome('blocked', verified.run, parsedLeases, 'verification_blocked');
+    }
+    if (['ready_for_human_merge', 'completed'].includes(verified.run.status)) {
+      return this.fleetOutcome('done', verified.run, parsedLeases, verified.run.status);
+    }
+    return null;
+  }
+
+  private fleetOutcome(status: 'done' | 'blocked', run: any, leases: any[], reason: string) {
+    return {
+      status,
+      loop_run_id: run.id,
+      loop_status: run.status,
+      reason,
+      evidence: {
+        gates: JSON.parse(run.gates_json || '[]'),
+        leases: leases.map((lease) => ({
+          id: lease.id,
+          role: lease.role,
+          status: lease.status,
+          runtime: lease.runtime,
+          verdict: lease.metadata?.verdict || null,
+          stdout_path: lease.metadata?.stdout_path || null,
+          stderr_path: lease.metadata?.stderr_path || null,
+        })),
+      },
+    };
+  }
+
+  private planTriagedWorkItems(maxItems: number, workItemIds: string[]): WorkItemRecord[] {
+    const candidates = this.workItemsForStatus('triaged', maxItems, workItemIds);
     const planned: WorkItemRecord[] = [];
     for (const item of candidates) {
       if (planned.length >= maxItems) break;
@@ -689,10 +1367,11 @@ export class SwarmStatusService {
   }
 
   private preparePlannedWorkItems(
-    input: { runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual'; repository_path?: string; max_assignments_per_item?: number },
-    maxItems: number
+    input: SchedulerTickInput,
+    maxItems: number,
+    workItemIds: string[]
   ): WorkItemRecord[] {
-    const candidates = this.workItems.list({ status: 'planned', limit: maxItems });
+    const candidates = this.workItemsForStatus('planned', maxItems, workItemIds);
     const prepared: WorkItemRecord[] = [];
     const runtime = input.runtime || 'manual';
     const maxAssignments = Math.max(1, Math.min(Number(input.max_assignments_per_item || 1), 5));
@@ -721,6 +1400,7 @@ export class SwarmStatusService {
           loop_name: this.loopNameForWorkItem(item),
           repository_path: repositoryPath,
         });
+        this.ensureWorkItemFinding(run.id, item);
         const continued = this.loops.continueLoopRun(run.id, {
           max_assignments: maxAssignments,
           runtime,
@@ -750,6 +1430,69 @@ export class SwarmStatusService {
     }
 
     return prepared;
+  }
+
+  private ensureWorkItemFinding(loopRunId: string, item: WorkItemRecord): void {
+    const row = this.db.prepare('SELECT findings_json, plan_json FROM loop_runs WHERE id = ?').get(loopRunId) as any | undefined;
+    if (!row) return;
+
+    const findings = JSON.parse(row.findings_json || '[]') as Array<Record<string, any>>;
+    const syntheticFindingId = `work-item-${item.id}`;
+    if (findings.some((finding) => finding.id === syntheticFindingId || finding.metadata?.work_item_id === item.id)) {
+      return;
+    }
+
+    const finding = {
+      id: syntheticFindingId,
+      type: 'work_item_assignment',
+      severity: item.risk_class === 'low' ? 'info' : 'warning',
+      file: String(item.metadata.file || 'WORK_ITEM'),
+      line: item.metadata.line || null,
+      message: item.title,
+      evidence: item.source_ref ? `${item.source}:${item.source_ref}` : item.source,
+      suggested_fix: item.description,
+      metadata: {
+        work_item_id: item.id,
+        source: item.source,
+        source_ref: item.source_ref,
+        direct_assignment: true,
+      },
+    };
+    const nextFindings = [finding, ...findings];
+    const plan = JSON.parse(row.plan_json || '{}') as Record<string, unknown>;
+    const nextPlan = {
+      ...plan,
+      direct_work_item_assignment: true,
+      work_item_id: item.id,
+    };
+
+    this.db.prepare(`
+      UPDATE loop_runs
+      SET findings_json = ?, plan_json = ?, updated_at = ?
+      WHERE id = ?
+    `).run(JSON.stringify(nextFindings), JSON.stringify(nextPlan), new Date().toISOString(), loopRunId);
+  }
+
+  private requestedWorkItemIds(input: unknown): string[] {
+    if (!Array.isArray(input)) return [];
+    return [...new Set(input.map((id) => String(id).trim()).filter(Boolean))].slice(0, 100);
+  }
+
+  private workItemsForStatus(status: BacklogStatus, maxItems: number, workItemIds: string[]): WorkItemRecord[] {
+    if (workItemIds.length === 0) {
+      return this.workItems.list({ status, limit: maxItems });
+    }
+    const items: WorkItemRecord[] = [];
+    for (const id of workItemIds) {
+      try {
+        const item = this.workItems.get(id);
+        if (item.status === status) items.push(item);
+      } catch {
+        continue;
+      }
+      if (items.length >= maxItems) break;
+    }
+    return items;
   }
 
   private loopNameForWorkItem(item: WorkItemRecord): LoopName {
@@ -955,6 +1698,12 @@ export class SwarmStatusService {
       return JSON.parse(raw) as Record<string, unknown>;
     } catch {
       return {};
+    }
+  }
+
+  private assertAgentExists(agentId: string): void {
+    if (!this.db.prepare('SELECT id FROM agents WHERE id = ?').get(agentId)) {
+      throw new Error('SWARM_HANDOFF_AGENT_NOT_FOUND');
     }
   }
 

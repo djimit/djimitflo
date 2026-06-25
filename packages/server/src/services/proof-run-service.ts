@@ -5,6 +5,7 @@ import { MemoryCandidateService } from './memory-candidate-service';
 import { SpecialistPanelService } from './specialist-panel-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { LoopService } from './loop-service';
+import { NestedSpawnService } from './nested-spawn-service';
 
 type ProofRunStatus = 'completed' | 'rolled_back';
 type ProofRunRuntime = 'mock' | 'codex' | 'opencode';
@@ -34,6 +35,9 @@ export interface ProofRunSummary {
   artifact_refs: Record<string, string | string[] | null>;
   minimums: Record<string, number>;
   passed: boolean;
+  proof_class: 'demo' | 'production';
+  production_passed: boolean;
+  production_missing: string[];
   missing: Record<string, number>;
   narrative: string[];
 }
@@ -101,6 +105,7 @@ export class ProofRunService {
   private panels: SpecialistPanelService;
   private intelligence: SwarmIntelligenceService;
   private loops: LoopService;
+  private spawns: NestedSpawnService;
 
   constructor(private db: Database) {
     this.assurance = new AgentAssuranceService(db);
@@ -108,6 +113,7 @@ export class ProofRunService {
     this.panels = new SpecialistPanelService(db);
     this.intelligence = new SwarmIntelligenceService(db);
     this.loops = new LoopService(db);
+    this.spawns = new NestedSpawnService(db, this.loops, { intelligence: this.intelligence });
   }
 
   async create(input: { runtime?: string; skip_permissions?: boolean } = {}): Promise<ProofRunSummary> {
@@ -470,6 +476,7 @@ export class ProofRunService {
         metadata: base,
       });
       this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+      this.createNestedSpawnProof(loopRunId, proofRunId, 'mock', base);
 
       this.db.prepare(`
         UPDATE loop_runs
@@ -603,7 +610,7 @@ export class ProofRunService {
       const checks = this.loops.runDeterministicChecks(loopRunId, {
         lease_id: makerPrepared.id,
         timeout_ms: 120_000,
-        scripts: ['proof-run-sentinel'],
+        scripts: ['proof:test', 'proof:lint', 'proof:type-check'],
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
       if (checks.run.status === 'blocked') {
@@ -627,7 +634,7 @@ export class ProofRunService {
         throw new Error('PROOF_RUN_VERIFICATION_BLOCKED');
       }
 
-      const completedResult = this.loops.completeLoopRun(loopRunId);
+      const completedResult = this.loops.completeLoopRun(loopRunId, { human_approval_ref: `proof-run:${proofRunId}` });
       if (completedResult.run.status !== 'completed') {
         throw new Error('PROOF_RUN_COMPLETE_FAILED');
       }
@@ -707,6 +714,8 @@ export class ProofRunService {
         },
       });
       this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+      const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
+      await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
     } catch (error) {
       proofRunError = error instanceof Error ? error : new Error(String(error));
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
@@ -734,11 +743,14 @@ export class ProofRunService {
     const createdAt = this.firstCreatedAt(id);
     const completedAt = this.completedAt(id);
     const passed = Object.keys(missing).length === 0;
+    const runtime = this.resolveProofRunRuntime(id);
+    const productionMissing = this.productionMissing(id, runtime);
+    const productionPassed = productionMissing.length === 0;
 
     return {
       id,
       status: 'completed',
-      runtime: this.resolveProofRunRuntime(id),
+      runtime,
       created_at: createdAt,
       completed_at: completedAt,
       rollback_safe: true,
@@ -752,11 +764,17 @@ export class ProofRunService {
       },
       minimums: MINIMUMS,
       passed,
+      proof_class: runtime === 'mock' ? 'demo' : 'production',
+      production_passed: productionPassed,
+      production_missing: productionMissing,
       missing,
       narrative: [
         passed
           ? 'Proof run passed: every required artifact type exists as a persisted record.'
           : 'Proof run is incomplete; inspect missing counts before presenting it.',
+        productionPassed
+          ? 'Production proof passed: non-mock runtime, nested spawn lineage and promoted memory evidence are present.'
+          : `Production proof incomplete: ${productionMissing.join(', ') || 'artifact minimums missing'}.`,
         'Runtime execution is lease-driven and checkpointed through worker traces, manifests and usage captures.',
         'Registry rows, prepared leases and active execution are separate; this proof only marks completed leases with execution evidence as work.',
       ],
@@ -784,6 +802,7 @@ export class ProofRunService {
     }
 
     this.db.transaction(() => {
+      this.deleteSpawnProof(id);
       this.deleteByProofId('swarm_evidence_edges', id);
       this.deleteByProofId('agent_trace_spans', id);
       this.deleteByProofId('loop_checkpoints', id);
@@ -947,10 +966,13 @@ export class ProofRunService {
       created_from: `proof:${proofRunId}`,
       metadata: { ...base, runtime, runtime_summary: runtimeSummary },
     });
+    const runtimeBridgeClaim = runtime === 'mock'
+      ? 'The remaining runtime upgrade is replacing mock execution with Codex/OpenCode process spawn.'
+      : `Runtime ${runtime} executed maker and checker workers through the process runtime bridge.`;
     this.intelligence.createClaim({
-      claim: 'The remaining runtime upgrade is replacing mock execution with Codex/OpenCode process spawn.',
-      claim_type: 'backlog',
-      subject_ref: `proof:${proofRunId}:next-runtime-upgrade`,
+      claim: runtimeBridgeClaim,
+      claim_type: runtime === 'mock' ? 'backlog' : 'observation',
+      subject_ref: runtime === 'mock' ? `proof:${proofRunId}:next-runtime-upgrade` : `proof:${proofRunId}:runtime-bridge`,
       evidence_refs: [`loop:${loopRunId}`],
       confidence: 0.84,
       status: 'supported',
@@ -958,6 +980,69 @@ export class ProofRunService {
       created_from: `proof:${proofRunId}`,
       metadata: { ...base, runtime, runtime_summary: runtimeSummary },
     });
+  }
+
+  private createNestedSpawnProof(loopRunId: string, proofRunId: string, runtime: ProofRunRuntime, base: Record<string, unknown>): { root_lease_id: string; child_lease_id: string } {
+    const root = this.spawns.createRoot({
+      loop_run_id: loopRunId,
+      runtime,
+      role: 'planner',
+      prompt: 'Production proof root: prepare a child memory curator lease as nested swarm evidence.',
+      depth_budget: 1,
+      risk_class: 'medium',
+    });
+    const child = this.spawns.requestSpawn({
+      spawn_tree_id: root.spawn_tree_id,
+      parent_lease_id: root.root_lease_id,
+      requested_by_lease_id: root.root_lease_id,
+      role: 'memory_curator',
+      runtime,
+      prompt: 'Capture proof-run evidence into durable memory candidate metadata.',
+    }, { internal: true });
+    if (!child.child_lease_id) {
+      throw new Error('PROOF_RUN_SUB_AGENT_NOT_PREPARED');
+    }
+
+    const now = new Date().toISOString();
+    for (const leaseId of [root.root_lease_id, child.child_lease_id].filter(Boolean) as string[]) {
+      const row = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata?: string } | undefined;
+      if (!row) continue;
+      this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(
+        JSON.stringify({ ...this.parseJson(row.metadata || '{}'), ...base, proof_run_id: proofRunId, nested_proof: true }),
+        now,
+        leaseId
+      );
+    }
+
+    return { root_lease_id: root.root_lease_id, child_lease_id: child.child_lease_id };
+  }
+
+  private async executeNestedSpawnProof(
+    loopRunId: string,
+    nested: { root_lease_id: string; child_lease_id: string },
+    skipPermissions: boolean
+  ) {
+    for (const leaseId of [nested.root_lease_id, nested.child_lease_id]) {
+      const result = await this.loops.executeWorker(loopRunId, {
+        lease_id: leaseId,
+        timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
+        diff_max_lines: 200,
+        skip_permissions: skipPermissions,
+      });
+      if (result.lease.status !== 'completed') {
+        throw new Error('PROOF_RUN_SUB_AGENT_NOT_COMPLETED');
+      }
+      this.db.prepare(`
+        UPDATE sub_agent_spawns
+        SET status = ?
+        WHERE child_lease_id = ?
+      `).run('completed', leaseId);
+    }
+    this.db.prepare(`
+      UPDATE spawn_trees
+      SET status = ?, updated_at = ?
+      WHERE id = ?
+    `).run('closed', new Date().toISOString(), nested.root_lease_id);
   }
 
   private createManifests(
@@ -1009,8 +1094,74 @@ export class ProofRunService {
       memory_candidates: this.countTableByProofId('memory_candidates', id),
       work_items: this.countTableByProofId('work_items', id),
       evidence_edges: this.countTableByProofId('swarm_evidence_edges', id),
+      spawn_trees: this.countSpawnTrees(id),
+      sub_agent_spawns: this.countSubAgentSpawns(id),
     };
     return counts;
+  }
+
+  private productionMissing(id: string, runtime: ProofRunRuntime): string[] {
+    const missing: string[] = [];
+    if (runtime === 'mock') missing.push('non_mock_runtime');
+    if (runtime !== 'mock' && !this.hasRealMakerCheckerUsage(id)) missing.push('real_runtime_usage');
+    if (runtime !== 'mock' && !this.hasPassedDeterministicChecks(id)) missing.push('deterministic_checks');
+    const promoted = this.rowsByProofId('memory_candidates', id).some((row) => row.status === 'promoted');
+    if (!promoted) missing.push('promoted_memory');
+    if (this.countSpawnTrees(id) < 1) missing.push('spawn_tree');
+    if (this.countSubAgentSpawns(id) < 2) missing.push('sub_agent_lineage');
+    if (runtime !== 'mock' && !this.hasCompletedSubAgentExecutions(id)) missing.push('sub_agent_execution');
+    return missing;
+  }
+
+  private hasRealMakerCheckerUsage(id: string): boolean {
+    const rows = this.rowsByProofId('worker_leases', id);
+    const requiredRoles = new Set(['maker', 'checker']);
+    for (const role of requiredRoles) {
+      const row = rows.find((candidate) => candidate.role === role && candidate.status === 'completed');
+      if (!row) return false;
+      const metadata = this.parseJson(String(row.metadata || '{}'));
+      const usage = this.parseRuntimeUsage(metadata.runtime_usage);
+      if (!usage || this.toNumber(usage.total_tokens) <= 0) return false;
+    }
+    return true;
+  }
+
+  private hasPassedDeterministicChecks(id: string): boolean {
+    const rows = this.rowsByProofId('worker_leases', id);
+    const maker = rows.find((candidate) => candidate.role === 'maker' && candidate.status === 'completed');
+    if (!maker) return false;
+    const metadata = this.parseJson(String(maker.metadata || '{}'));
+    const checks = Array.isArray(metadata.deterministic_checks) ? metadata.deterministic_checks : [];
+    return checks.length > 0 && checks.every((check) => {
+      return typeof check === 'object' && check !== null && (check as { status?: unknown }).status === 'pass';
+    });
+  }
+
+  private hasCompletedSubAgentExecutions(id: string): boolean {
+    const rows = this.rowsByProofId('worker_leases', id);
+    const requiredRoles = new Set(['planner', 'memory_curator']);
+    for (const role of requiredRoles) {
+      const row = rows.find((candidate) => candidate.role === role && candidate.status === 'completed');
+      if (!row) return false;
+      const metadata = this.parseJson(String(row.metadata || '{}'));
+      const usage = this.parseRuntimeUsage(metadata.runtime_usage);
+      if (!usage || this.toNumber(usage.total_tokens) <= 0) return false;
+    }
+    return true;
+  }
+
+  private countSpawnTrees(id: string): number {
+    const leaseIds = new Set(this.findMany('worker_leases', id));
+    if (leaseIds.size === 0) return 0;
+    const rows = this.db.prepare('SELECT id FROM spawn_trees').all() as Array<{ id: string }>;
+    return rows.filter((row) => leaseIds.has(row.id)).length;
+  }
+
+  private countSubAgentSpawns(id: string): number {
+    const leaseIds = new Set(this.findMany('worker_leases', id));
+    if (leaseIds.size === 0) return 0;
+    const rows = this.db.prepare('SELECT child_lease_id FROM sub_agent_spawns').all() as Array<{ child_lease_id: string | null }>;
+    return rows.filter((row) => row.child_lease_id && leaseIds.has(row.child_lease_id)).length;
   }
 
   private countTableByProofId(table: string, id: string): number {
@@ -1054,6 +1205,14 @@ export class ProofRunService {
   private deleteByProofId(table: string, id: string) {
     for (const row of this.rowsByProofId(table, id)) {
       this.db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(row.id);
+    }
+  }
+
+  private deleteSpawnProof(id: string) {
+    const leaseIds = this.findMany('worker_leases', id);
+    for (const leaseId of leaseIds) {
+      this.db.prepare('DELETE FROM sub_agent_spawns WHERE child_lease_id = ? OR parent_lease_id = ? OR requested_by_lease_id = ?').run(leaseId, leaseId, leaseId);
+      this.db.prepare('DELETE FROM spawn_trees WHERE id = ?').run(leaseId);
     }
   }
 
@@ -1150,6 +1309,9 @@ export class ProofRunService {
       },
       minimums: MINIMUMS,
       passed: false,
+      proof_class: 'demo',
+      production_passed: false,
+      production_missing: ['rolled_back'],
       missing: MINIMUMS,
       narrative: [],
     };

@@ -1,8 +1,8 @@
 import path from 'path';
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const DEERFLOW_URL = process.env.DEERFLOW_URL || 'http://192.168.1.28:2026';
 
 export interface SkillAcquireResult {
@@ -26,8 +26,9 @@ export class SkillService {
 
   constructor(db: Database) {
     this.db = db;
-    this.skillsDir = path.join(OKF_BASE, 'skills');
-    this.reportsDir = path.join(path.resolve(OKF_BASE, '../'), 'reports', 'validation');
+    const okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });
+    this.skillsDir = path.join(okfBase, 'skills');
+    this.reportsDir = path.join(path.resolve(okfBase, '../'), 'reports', 'validation');
     fs.mkdirSync(this.skillsDir, { recursive: true });
     fs.mkdirSync(this.reportsDir, { recursive: true });
   }

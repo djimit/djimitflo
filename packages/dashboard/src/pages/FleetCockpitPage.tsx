@@ -6,17 +6,21 @@ import {
   BarChart3,
   Clock,
   Cpu,
+  FileText,
   Gauge,
   Layers,
   Play,
   RefreshCw,
   Route,
   Server,
+  ShieldCheck,
   Square,
   Zap,
 } from 'lucide-react';
 import {
   api,
+  type RuntimeContract,
+  type SchedulerTickResult,
   type SwarmRealityStatus,
   type WorkerPoolDecision,
   type WorkerPoolPlanResult,
@@ -80,9 +84,13 @@ function queueByRisk(decisions: WorkerPoolDecision[]): Record<string, number> {
 export function FleetCockpitPage() {
   const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
   const [plan, setPlan] = useState<WorkerPoolPlanResult | null>(null);
+  const [contracts, setContracts] = useState<Record<string, RuntimeContract>>({});
+  const [schedulerResult, setSchedulerResult] = useState<SchedulerTickResult | null>(null);
   const [runtime, setRuntime] = useState<RuntimeChoice>('mock');
   const [checkerRuntime, setCheckerRuntime] = useState<CheckerRuntimeChoice>('mock');
   const [maxWorkers, setMaxWorkers] = useState(2);
+  const [repositoryPath, setRepositoryPath] = useState('/Users/dlandman/djimitflo');
+  const [workItemIds, setWorkItemIds] = useState('');
   const [ignoreCapacity, setIgnoreCapacity] = useState(false);
   const [loading, setLoading] = useState(true);
   const [action, setAction] = useState<string | null>(null);
@@ -93,7 +101,7 @@ export function FleetCockpitPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextStatus, nextPlan] = await Promise.all([
+      const [nextStatus, nextPlan, nextContracts] = await Promise.all([
         api.getSwarmStatus(),
         api.planWorkerPool({
           runtime,
@@ -101,9 +109,11 @@ export function FleetCockpitPage() {
           max_workers: maxWorkers,
           ignore_capacity: ignoreCapacity,
         }),
+        api.getRuntimeContracts(),
       ]);
       setStatus(nextStatus);
       setPlan(nextPlan);
+      setContracts(nextContracts.runtimes);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load fleet cockpit');
     } finally {
@@ -122,6 +132,24 @@ export function FleetCockpitPage() {
     } finally {
       setAction(null);
     }
+  }
+
+  async function runScheduler(name: string, input: { plan_triaged?: boolean; prepare_planned?: boolean }) {
+    await runAction(name, async () => {
+      const ids = workItemIds
+        .split(/[\s,]+/)
+        .map((id) => id.trim())
+        .filter(Boolean);
+      const result = await api.runSchedulerTick({
+        ...input,
+        runtime,
+        repository_path: repositoryPath.trim() || undefined,
+        max_items: 50,
+        max_assignments_per_item: 1,
+        work_item_ids: ids.length > 0 ? ids : undefined,
+      });
+      setSchedulerResult(result);
+    });
   }
 
   useEffect(() => {
@@ -148,6 +176,8 @@ export function FleetCockpitPage() {
   const totalCompleted = status?.fleet_pools.reduce((sum, pool) => sum + pool.completed_24h, 0) || 0;
   const totalFailed = status?.fleet_pools.reduce((sum, pool) => sum + pool.failed_24h, 0) || 0;
   const totalTokens = status?.fleet_pools.reduce((sum, pool) => sum + pool.tokens_used_24h, 0) || 0;
+  const topology = status?.fleet_topology || [];
+  const contractRows = Object.values(contracts);
 
   if (loading && !status) {
     return (
@@ -345,6 +375,92 @@ export function FleetCockpitPage() {
       </div>
 
       <section className="rounded-lg border border-border bg-background-secondary p-4">
+        <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Backlog Batch Flow</h2>
+            <p className="text-xs text-foreground-tertiary">Triaged work items {'>'} goals {'>'} loop runs {'>'} prepared leases.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={repositoryPath}
+              onChange={(event) => setRepositoryPath(event.target.value)}
+              className="w-72 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              placeholder="repository path"
+            />
+            <input
+              type="text"
+              value={workItemIds}
+              onChange={(event) => setWorkItemIds(event.target.value)}
+              className="w-72 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+              placeholder="optional work item ids"
+            />
+            <button
+              onClick={() => void runScheduler('plan-triaged', { plan_triaged: true })}
+              disabled={action !== null}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground hover:border-accent/40 disabled:opacity-50"
+            >
+              <FileText className="h-4 w-4" />
+              Plan
+            </button>
+            <button
+              onClick={() => void runScheduler('prepare-planned', { prepare_planned: true })}
+              disabled={action !== null}
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground hover:border-accent/40 disabled:opacity-50"
+            >
+              <Layers className="h-4 w-4" />
+              Prepare
+            </button>
+            <button
+              onClick={() => void runScheduler('plan-prepare', { plan_triaged: true, prepare_planned: true })}
+              disabled={action !== null}
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-3 py-2 text-sm text-white hover:bg-accent/90 disabled:opacity-50"
+            >
+              <Route className="h-4 w-4" />
+              Plan + prepare
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
+          <SmallStat label="Created backlog" value={schedulerResult?.created_work_items.length ?? 0} />
+          <SmallStat label="Planned goals" value={schedulerResult?.planned_work_items.length ?? 0} />
+          <SmallStat label="Prepared items" value={schedulerResult?.prepared_work_items.length ?? 0} />
+          <SmallStat label="Leases created" value={schedulerResult?.leases_created ?? 0} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background-secondary p-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Runtime Contracts</h2>
+            <p className="text-xs text-foreground-tertiary">Adapter status before real worker execution.</p>
+          </div>
+          <ShieldCheck className="h-5 w-5 text-accent" />
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {contractRows.map((contract) => (
+            <div key={contract.runtime} className="rounded-lg border border-border bg-background p-3">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold text-foreground">{contract.runtime}</span>
+                <span className={`rounded-full px-2 py-1 text-xs ${contract.status === 'ok' ? 'bg-emerald-500/10 text-emerald-700' : 'bg-amber-500/10 text-amber-700'}`}>
+                  {contract.status}
+                </span>
+              </div>
+              <div className="mt-2 space-y-1 text-xs text-foreground-tertiary">
+                <div className="truncate">command: {contract.command || '-'}</div>
+                <div>json: {Array.isArray(contract.json_flag) ? contract.json_flag.join(' ') : contract.json_flag || '-'}</div>
+                <div>cwd: {contract.cwd_flag || '-'}</div>
+                <div>probed: {contract.probed_at ? new Date(contract.probed_at).toLocaleTimeString() : '-'}</div>
+              </div>
+            </div>
+          ))}
+          {contractRows.length === 0 && (
+            <div className="text-sm text-foreground-tertiary">No runtime contracts reported.</div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background-secondary p-4">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-foreground">Worker Queue</h2>
@@ -378,7 +494,22 @@ export function FleetCockpitPage() {
                   <td className="py-3 pr-3 text-foreground-secondary">{decision.risk_class}</td>
                   <td className="py-3 pr-3 text-foreground-secondary">{formatDuration(decision.queue_age_ms)}</td>
                   <td className="py-3 pr-3 text-foreground-secondary">{decision.priority_score}</td>
-                  <td className="py-3 pr-3 text-foreground-secondary">{decision.next_action}</td>
+                  <td className="py-3 pr-3 text-foreground-secondary">
+                    <div className="flex items-center gap-2">
+                      <span>{decision.next_action}</span>
+                      {decision.status === 'running' && (
+                        <button
+                          onClick={() => void runAction(`stop-${decision.lease_id}`, () => api.stopWorkerLease(decision.lease_id))}
+                          disabled={action !== null}
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground hover:border-status-error/40 disabled:opacity-50"
+                          title="Stop worker lease"
+                        >
+                          <Square className="h-3 w-3" />
+                          Stop
+                        </button>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-3 pr-3">
                     <span className={`rounded-full border px-2 py-1 text-xs ${statusTone(decision.eligible, decision.status)}`}>
                       {decision.eligible ? 'eligible' : decision.bottleneck_reason || decision.status}
@@ -390,6 +521,63 @@ export function FleetCockpitPage() {
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-foreground-tertiary">
                     No worker leases in this pool plan.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background-secondary p-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Fleet Topology</h2>
+            <p className="text-xs text-foreground-tertiary">Goal {'>'} loop {'>'} lease {'>'} runtime {'>'} artifact {'>'} gate {'>'} action.</p>
+          </div>
+          <div className="text-sm text-foreground-secondary">{topology.length} leases</div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] text-left text-sm">
+            <thead className="border-b border-border text-xs uppercase text-foreground-tertiary">
+              <tr>
+                <th className="py-2 pr-3">Goal</th>
+                <th className="py-2 pr-3">Loop</th>
+                <th className="py-2 pr-3">Lease</th>
+                <th className="py-2 pr-3">Runtime</th>
+                <th className="py-2 pr-3">Artifact</th>
+                <th className="py-2 pr-3">Gate</th>
+                <th className="py-2 pr-3">Warnings</th>
+                <th className="py-2 pr-3">Next</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topology.slice(0, 40).map((item) => (
+                <tr key={item.lease_id} className="border-b border-border/60">
+                  <td className="max-w-[220px] truncate py-3 pr-3 text-foreground-secondary">{item.goal_objective || item.goal_id || '-'}</td>
+                  <td className="py-3 pr-3">
+                    <div className="text-foreground">{item.loop_name}</div>
+                    <div className="text-xs text-foreground-tertiary">{item.run_status}</div>
+                  </td>
+                  <td className="py-3 pr-3">
+                    <div className="font-mono text-xs text-foreground">{item.lease_id}</div>
+                    <div className="text-xs text-foreground-tertiary">{item.role} / {item.lease_status}</div>
+                  </td>
+                  <td className="py-3 pr-3 text-foreground-secondary">{item.runtime}</td>
+                  <td className="max-w-[220px] truncate py-3 pr-3 text-xs text-foreground-tertiary">{item.stdout_path || item.artifact_path || '-'}</td>
+                  <td className="py-3 pr-3 text-foreground-secondary">{item.failed_gate || item.latest_gate || '-'}</td>
+                  <td className="py-3 pr-3 text-foreground-secondary">{item.warning_count}</td>
+                  <td className="py-3 pr-3">
+                    <span className="rounded-full border border-border bg-background px-2 py-1 text-xs text-foreground-secondary">
+                      {item.bottleneck_reason || item.next_safe_action}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {topology.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-foreground-tertiary">
+                    No worker topology yet.
                   </td>
                 </tr>
               )}

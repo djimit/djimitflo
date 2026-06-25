@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-const OKF_BASE = process.env.OKF_BASE || path.resolve(__dirname, '../../../knowledge');
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const QDRANT_COLLECTION = 'djimitflo_swarm';
@@ -138,7 +138,7 @@ export class ContextInjectionService {
   }
 
   private readOkfConcept(conceptId: string): string | null {
-    const mdPath = path.join(OKF_BASE, `${conceptId}.md`);
+    const mdPath = path.join(KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }), `${conceptId}.md`);
     if (!fs.existsSync(mdPath)) return null;
     const content = fs.readFileSync(mdPath, 'utf-8');
     const bodyStart = content.indexOf('---', 3);

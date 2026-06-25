@@ -13,6 +13,7 @@ import { createWorkItemRoutes } from '../routes/work-items';
 import { createSwarmRoutes } from '../routes/swarms';
 import { createMemoryRoutes } from '../routes/memory';
 import { errorHandler } from '../middleware/error-handler';
+import { SwarmStatusService } from '../services/swarm-status-service';
 
 let db: Database.Database;
 let server: Server;
@@ -167,6 +168,256 @@ describe('workstation swarm resource plan', () => {
     });
     expect(mockPool.available).toEqual(expect.any(Boolean));
     expect(mockPool.recommended_concurrency).toBeGreaterThanOrEqual(0);
+    expect(status.fleet_topology).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        loop_run_id: 'loop-1',
+        lease_id: 'lease-2',
+        role: 'maker',
+      }),
+    ]));
+  }, 15000);
+
+  it('creates and accepts agent handoffs through the swarm message queue', async () => {
+    const now = new Date().toISOString();
+    for (const [id, name] of [['agent-maker', 'Maker Agent'], ['agent-memory', 'Memory Agent']]) {
+      db.prepare(`
+        INSERT INTO agents (id, name, description, status, capabilities, metadata, last_active_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, name, 'handoff test agent', 'idle', '[]', '{}', now, now, now);
+    }
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('loop-handoff', 'doc-drift-and-small-fix-loop', 'closed', 'running', '[]', '{}', '[]', '[]', '{"risk_class":"low"}', now, now);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('lease-handoff', 'loop-handoff', 'maker', 'codex', 'completed', '{"stdout_path":"agent-evidence/stdout.log"}', now, now);
+
+    const response = await fetch(`${baseUrl}/swarms/handoffs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from_agent_id: 'agent-maker',
+        to_agent_id: 'agent-memory',
+        source_lease_id: 'lease-handoff',
+        target_role: 'memory_curator',
+        summary: 'Promote the completed worker evidence into durable memory.',
+        evidence_ref: 'agent-evidence/stdout.log',
+        priority: 'high',
+      }),
+    });
+    expect(response.status).toBe(201);
+    const handoff = await response.json() as any;
+    expect(handoff).toMatchObject({
+      from_agent_id: 'agent-maker',
+      to_agent_id: 'agent-memory',
+      type: 'task_delegation',
+      priority: 'high',
+      payload: {
+        kind: 'swarm_handoff',
+        source_lease_id: 'lease-handoff',
+        loop_run_id: 'loop-handoff',
+        target_role: 'memory_curator',
+      },
+    });
+
+    const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get('lease-handoff') as any;
+    expect(JSON.parse(lease.metadata)).toMatchObject({
+      handoff_message_id: handoff.id,
+      handed_off_to_agent_id: 'agent-memory',
+    });
+
+    const statusResponse = await fetch(`${baseUrl}/swarms/status`);
+    const status = await statusResponse.json() as any;
+    expect(status.open_handoffs).toEqual([
+      expect.objectContaining({
+        id: handoff.id,
+        to_agent_id: 'agent-memory',
+        source_lease_id: 'lease-handoff',
+        loop_run_id: 'loop-handoff',
+        target_role: 'memory_curator',
+      }),
+    ]);
+
+    const acceptMemoryResponse = await fetch(`${baseUrl}/swarms/handoffs/${handoff.id}/accept`, { method: 'POST' });
+    expect(acceptMemoryResponse.status).toBe(200);
+    const acceptedMemory = await acceptMemoryResponse.json() as any;
+    expect(acceptedMemory).toMatchObject({
+      action: 'memory_candidate_created',
+      memory_candidate: {
+        source_ref: `handoff:${handoff.id}`,
+        memory_type: 'operational_memory',
+      },
+      message: {
+        read_at: expect.any(String),
+        payload: {
+          accepted_action: 'memory_candidate_created',
+          accepted_ref: expect.stringMatching(/^memory_candidate:/),
+        },
+      },
+    });
+
+    const plannerResponse = await fetch(`${baseUrl}/swarms/handoffs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from_agent_id: 'agent-maker',
+        to_agent_id: 'agent-memory',
+        source_lease_id: 'lease-handoff',
+        target_role: 'planner',
+        summary: 'Plan the next follow-up task from completed worker evidence.',
+        evidence_ref: 'agent-evidence/stdout.log',
+      }),
+    });
+    const plannerHandoff = await plannerResponse.json() as any;
+    const acceptPlannerResponse = await fetch(`${baseUrl}/swarms/handoffs/${plannerHandoff.id}/accept`, { method: 'POST' });
+    expect(acceptPlannerResponse.status).toBe(200);
+    const acceptedPlanner = await acceptPlannerResponse.json() as any;
+    expect(acceptedPlanner).toMatchObject({
+      action: 'work_item_created',
+      work_item: {
+        source: 'swarm_handoff',
+        source_ref: `handoff:${plannerHandoff.id}`,
+        assigned_agent_id: 'agent-memory',
+        recommended_loop: 'repo-maintenance-loop',
+      },
+    });
+
+    const finalStatusResponse = await fetch(`${baseUrl}/swarms/status`);
+    const finalStatus = await finalStatusResponse.json() as any;
+    expect(finalStatus.open_handoffs).toHaveLength(0);
+    expect(db.prepare('SELECT COUNT(*) as count FROM agent_trace_spans WHERE trace_id LIKE ?').get('handoff-%')).toMatchObject({ count: 2 });
+  });
+
+  it('drains open handoffs into memory candidates and prepared worker leases', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-handoff-drain-repo-'));
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-handoff-drain-worktrees-'));
+    const previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
+    try {
+      fs.writeFileSync(path.join(repo, 'README.md'), 'TODO: document handoff drain\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
+      execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'handoff-drain@example.invalid'], { cwd: repo });
+      execFileSync('git', ['config', 'user.name', 'Handoff Drain Test'], { cwd: repo });
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: repo });
+      execFileSync('git', ['commit', '-m', 'Initial handoff drain repo'], { cwd: repo, stdio: 'ignore' });
+
+      const now = new Date().toISOString();
+      for (const [id, name] of [['agent-maker', 'Maker Agent'], ['agent-memory', 'Memory Agent']]) {
+        db.prepare(`
+          INSERT INTO agents (id, name, description, status, capabilities, metadata, last_active_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(id, name, 'handoff drain test agent', 'idle', '[]', '{}', now, now, now);
+      }
+      db.prepare(`
+        INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('loop-handoff-drain', 'doc-drift-and-small-fix-loop', 'closed', 'running', '[]', '{}', '[]', '[]', '{"risk_class":"low"}', now, now);
+      db.prepare(`
+        INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run('lease-handoff-drain', 'loop-handoff-drain', 'maker', 'codex', 'completed', '{"stdout_path":"agent-evidence/stdout.log"}', now, now);
+
+      for (const target_role of ['memory_curator', 'planner']) {
+        const response = await fetch(`${baseUrl}/swarms/handoffs`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            from_agent_id: 'agent-maker',
+            to_agent_id: 'agent-memory',
+            source_lease_id: 'lease-handoff-drain',
+            target_role,
+            summary: `Drain ${target_role} handoff from completed worker evidence.`,
+            evidence_ref: 'agent-evidence/stdout.log',
+          }),
+        });
+        expect(response.status).toBe(201);
+      }
+
+      const drainResponse = await fetch(`${baseUrl}/swarms/handoffs/drain`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          max_handoffs: 5,
+          plan: true,
+          prepare: true,
+          runtime: 'mock',
+          repository_path: repo,
+        }),
+      });
+      expect(drainResponse.status).toBe(200);
+      const drain = await drainResponse.json() as any;
+      expect(drain.accepted).toHaveLength(2);
+      expect(drain.failed).toHaveLength(0);
+      expect(drain.memory_candidate_ids).toHaveLength(1);
+      expect(drain.work_item_ids).toHaveLength(1);
+      expect(drain.scheduler_tick).toMatchObject({
+        leases_created: 2,
+        planned_work_items: [expect.objectContaining({ status: 'planned' })],
+        prepared_work_items: [expect.objectContaining({ status: 'leased', assigned_runtime: 'mock' })],
+      });
+      expect(drain.worker_pool_drain).toBeNull();
+
+      const statusResponse = await fetch(`${baseUrl}/swarms/status`);
+      const status = await statusResponse.json() as any;
+      expect(status.open_handoffs).toHaveLength(0);
+    } finally {
+      if (previousWorktreeRoot) {
+        process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
+      } else {
+        delete process.env.LOOP_WORKTREE_ROOT;
+      }
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('passes headless approval bypass requests from worker pool to real worker execution', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('loop-worker-pool-skip', 'repo-maintenance-loop', 'closed', 'running', '[]', '{}', '[]', '[]', '{"risk_class":"low"}', now, now);
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, worktree_path, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('lease-worker-pool-skip', 'loop-worker-pool-skip', 'maker', 'codex', 'prepared', '/tmp/worker-pool-skip', '{}', now, now);
+
+    const service = new SwarmStatusService(db) as any;
+    let workerInput: any = null;
+    service.loops.executeWorker = async (_loopRunId: string, input: any) => {
+      workerInput = input;
+      db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
+        .run('completed', JSON.stringify({ runtime_usage: { total_tokens: 12 } }), new Date().toISOString(), input.lease_id);
+      return {
+        run: service.loops.getLoopRun('loop-worker-pool-skip'),
+        lease: service.loops.getWorkerLease(input.lease_id),
+        gates: [],
+        stdout_path: '/tmp/stdout.log',
+        stderr_path: '/tmp/stderr.log',
+        checkpoint_before: {},
+        checkpoint_after: {},
+        trace: { trace_id: 'trace-worker-pool-skip', spans: [], edges: [], roots: [] },
+      };
+    };
+    service.loops.runDeterministicChecks = () => null;
+
+    const result = await service.startNextWorker({
+      skip_permissions: true,
+      timeout_ms: 12_000,
+      diff_max_lines: 40,
+      ignore_capacity: true,
+    });
+
+    expect(result.action).toBe('started');
+    expect(workerInput).toMatchObject({
+      lease_id: 'lease-worker-pool-skip',
+      skip_permissions: true,
+      timeout_ms: 12_000,
+      diff_max_lines: 40,
+    });
   });
 
   it('scheduler tick projects loop findings into backlog candidates without leasing workers', async () => {
@@ -382,6 +633,42 @@ describe('workstation swarm resource plan', () => {
     });
   });
 
+  it('scheduler can plan selected triaged work items as a batch', async () => {
+    const now = new Date().toISOString();
+    for (const id of ['wi-selected', 'wi-skipped']) {
+      db.prepare(`
+        INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        `Selected batch ${id}`,
+        'Convert only explicitly selected backlog items.',
+        'test',
+        `test:${id}`,
+        'low',
+        60,
+        0.8,
+        'triaged',
+        'doc-drift-and-small-fix-loop',
+        '{}',
+        now,
+        now
+      );
+    }
+
+    const response = await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan_triaged: true, work_item_ids: ['wi-selected'] }),
+    });
+    expect(response.status).toBe(200);
+    const tick = await response.json() as any;
+
+    expect(tick.planned_work_items).toHaveLength(1);
+    expect(tick.planned_work_items[0]).toMatchObject({ id: 'wi-selected', status: 'planned' });
+    expect(db.prepare('SELECT status FROM work_items WHERE id = ?').get('wi-skipped')).toMatchObject({ status: 'triaged' });
+  });
+
   it('scheduler can prepare planned backlog candidates into worker leases without starting workers', async () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-scheduler-repo-'));
     const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-scheduler-worktrees-'));
@@ -537,6 +824,122 @@ describe('workstation swarm resource plan', () => {
       expect(spans.length).toBeGreaterThanOrEqual(4);
       const events = db.prepare('SELECT event_type FROM loop_events WHERE loop_run_id = ?').all(loopRunId) as any[];
       expect(events.map((event) => event.event_type)).toEqual(expect.arrayContaining(['worker_pool_worker_started']));
+      const workItem = db.prepare('SELECT status, metadata FROM work_items WHERE id = ?').get('wi-runner') as any;
+      expect(workItem.status).toBe('done');
+      expect(JSON.parse(workItem.metadata).fleet_outcome).toMatchObject({
+        loop_run_id: loopRunId,
+        status: 'done',
+        reason: 'ready_for_human_merge',
+      });
+    } finally {
+      if (previousWorktreeRoot) {
+        process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
+      } else {
+        delete process.env.LOOP_WORKTREE_ROOT;
+      }
+      fs.rmSync(repo, { recursive: true, force: true });
+      fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('fleet smoke drives selected backlog items to auditable closure', async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-fleet-smoke-repo-'));
+    const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-fleet-smoke-worktrees-'));
+    const previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
+    process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
+    try {
+      fs.writeFileSync(path.join(repo, 'README.md'), 'TODO: document setup\n');
+      fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({
+        scripts: {
+          test: 'node -e "process.exit(0)"',
+          lint: 'node -e "process.exit(0)"',
+          'type-check': 'node -e "process.exit(0)"',
+        },
+      }, null, 2));
+      execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 'fleet@example.invalid'], { cwd: repo });
+      execFileSync('git', ['config', 'user.name', 'Fleet Smoke Test'], { cwd: repo });
+      execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: repo });
+      execFileSync('git', ['commit', '-m', 'Initial fleet smoke repo'], { cwd: repo, stdio: 'ignore' });
+
+      const now = new Date().toISOString();
+      const ids = ['wi-fleet-1', 'wi-fleet-2', 'wi-fleet-3'];
+      for (const id of ids) {
+        db.prepare(`
+          INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          id,
+          `Fleet closure ${id}`,
+          'Prepare, execute, check, and close one bounded fleet item.',
+          'test',
+          `test:${id}`,
+          'low',
+          80,
+          0.9,
+          'triaged',
+          'doc-drift-and-small-fix-loop',
+          JSON.stringify({ repository_path: repo }),
+          now,
+          now
+        );
+      }
+
+      const tickResponse = await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          max_items: 3,
+          plan_triaged: true,
+          prepare_planned: true,
+          runtime: 'mock',
+          work_item_ids: ids,
+        }),
+      });
+      expect(tickResponse.status).toBe(200);
+      const tick = await tickResponse.json() as any;
+      expect(tick.planned_work_items).toHaveLength(3);
+      expect(tick.prepared_work_items).toHaveLength(3);
+      expect(tick.leases_created).toBe(6);
+
+      const drainResponse = await fetch(`${baseUrl}/swarms/worker-pool/drain`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true, max_workers: 6, timeout_ms: 10_000, diff_max_lines: 20 }),
+      });
+      expect(drainResponse.status).toBe(200);
+      const drain = await drainResponse.json() as any;
+      expect(drain.started).toHaveLength(6);
+      expect(drain.started.filter((item: any) => item.decision.next_action === 'execute_maker')).toHaveLength(3);
+      expect(drain.started.filter((item: any) => item.decision.next_action === 'execute_checker')).toHaveLength(3);
+
+      const syncResponse = await fetch(`${baseUrl}/swarms/backlog/sync`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(syncResponse.status).toBe(200);
+      const sync = await syncResponse.json() as any;
+      expect(sync.updated_work_items).toHaveLength(0);
+
+      const rows = db.prepare('SELECT id, status, metadata FROM work_items WHERE id IN (?, ?, ?) ORDER BY id ASC').all(...ids) as any[];
+      expect(rows.map((row) => row.status)).toEqual(['done', 'done', 'done']);
+      for (const row of rows) {
+        const metadata = JSON.parse(row.metadata);
+        expect(metadata.loop_run_id).toEqual(expect.any(String));
+        expect(metadata.fleet_outcome).toMatchObject({
+          status: 'done',
+          reason: 'ready_for_human_merge',
+        });
+        expect(metadata.fleet_outcome.evidence.leases).toEqual(expect.arrayContaining([
+          expect.objectContaining({ role: 'maker', status: 'completed', stdout_path: expect.any(String) }),
+          expect.objectContaining({ role: 'checker', status: 'completed', verdict: 'accepted', stdout_path: expect.any(String) }),
+        ]));
+      }
+
+      const statusResponse = await fetch(`${baseUrl}/swarms/status`);
+      const status = await statusResponse.json() as any;
+      expect(status.fleet_topology.filter((item: any) => ids.some((id) => item.goal_objective?.includes(id))).length).toBeGreaterThanOrEqual(6);
     } finally {
       if (previousWorktreeRoot) {
         process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
@@ -1059,6 +1462,65 @@ describe('workstation swarm resource plan', () => {
       promoted_memory_count: 1,
       external_writes: 0,
     });
+  });
+
+  it('runs an evolution cycle that measures, reflects, and creates follow-up work only when score is low', async () => {
+    const firstResponse = await fetch(`${baseUrl}/swarms/evolution/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ suite_name: 'memory-quality', target_type: 'memory', min_score: 0.75 }),
+    });
+    expect(firstResponse.status).toBe(201);
+    const first = await firstResponse.json() as any;
+    expect(first).toMatchObject({
+      previous_score: null,
+      score_delta: null,
+      improved: null,
+      eval_run: {
+        suite_name: 'memory-quality',
+        target_type: 'memory',
+        status: 'failed',
+      },
+      reflection: {
+        source_type: 'eval',
+        status: 'candidate',
+      },
+      follow_up_work_item: {
+        source: 'evolution_cycle',
+        recommended_loop: 'okf-synchronization-loop',
+      },
+    });
+
+    const createResponse = await fetch(`${baseUrl}/swarms/memory/candidates`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Validated evolution lesson',
+        content: 'Promoted memory gives the next evaluation run a stronger local signal.',
+        memory_type: 'operational_memory',
+        source_ref: 'test:evolution-memory',
+      }),
+    });
+    const candidate = await createResponse.json() as any;
+    await fetch(`${baseUrl}/swarms/memory/candidates/${candidate.id}/promote`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ approved_by: 'evolution-test' }),
+    });
+
+    const secondResponse = await fetch(`${baseUrl}/swarms/evolution/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ suite_name: 'memory-quality', target_type: 'memory', min_score: 0.75 }),
+    });
+    expect(secondResponse.status).toBe(201);
+    const second = await secondResponse.json() as any;
+    expect(second.eval_run.status).toBe('passed');
+    expect(second.previous_score).toBe(first.eval_run.score);
+    expect(second.score_delta).toBeGreaterThan(0);
+    expect(second.improved).toBe(true);
+    expect(second.follow_up_work_item).toBeNull();
+    expect(second.reflection.lesson).toContain('improved');
   });
 
   it('issues least-privilege capability tokens and blocks high-risk scopes without approval', async () => {

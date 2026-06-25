@@ -219,4 +219,25 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
     expect(runtimes.claude.runtime).toBe('claude');
     expect(runtimes.editor.runtime).toBe('editor');
   });
+
+  it('persists latest runtime contract probe results in SQLite', () => {
+    const bin = writeFakeBin(binDir, 'claude', 'Usage: claude -p <prompt> --output-format json');
+    process.env.CLAUDE_BIN_PATH = bin;
+    const loops = new LoopService(db);
+    const contract = (loops as any).getRuntimeContract('claude');
+
+    const row = db.prepare('SELECT * FROM runtime_contract_probes WHERE runtime = ?').get('claude') as any;
+    expect(row).toMatchObject({
+      runtime: 'claude',
+      command: bin,
+      status: 'ok',
+      available: 1,
+      probed_at: contract.probed_at,
+    });
+    expect(JSON.parse(row.contract_json)).toMatchObject({
+      runtime: 'claude',
+      status: 'ok',
+      probed_at: contract.probed_at,
+    });
+  });
 });

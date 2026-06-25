@@ -152,6 +152,7 @@ export type RuntimeContract = {
   supports_timeout_kill: boolean;
   evidence: string[];
   reason?: string;
+  probed_at?: string;
 };
 
 export type WorkerLeaseRecord = {
@@ -257,6 +258,26 @@ export type SwarmRealityStatus = {
     blocked_capacity_reasons: string[];
     queue_depth_by_risk: Record<string, number>;
   }>;
+  fleet_topology: Array<{
+    goal_id: string | null;
+    goal_objective: string | null;
+    loop_run_id: string;
+    loop_name: string;
+    run_status: string;
+    lease_id: string;
+    role: string;
+    runtime: string;
+    lease_status: string;
+    artifact_path: string | null;
+    stdout_path: string | null;
+    stderr_path: string | null;
+    warning_count: number;
+    latest_gate: string | null;
+    failed_gate: string | null;
+    latest_event: string | null;
+    next_safe_action: WorkerPoolDecision['next_action'];
+    bottleneck_reason: string | null;
+  }>;
   reality_check: {
     agent_count_is_registry_only: boolean;
     active_execution_requires_runtime_evidence: boolean;
@@ -270,6 +291,11 @@ export type SchedulerTickResult = {
   skipped_existing: number;
   inspected_loop_runs: number;
   leases_created: number;
+};
+
+export type BacklogFleetSyncResult = {
+  inspected_work_items: number;
+  updated_work_items: WorkItemRecord[];
 };
 
 export type WorkerPoolDecision = {
@@ -313,6 +339,11 @@ export type WorkerPoolDrainResult = {
   final_plan: WorkerPoolPlanResult;
 };
 
+export type WorkerPoolStopResult = {
+  lease: WorkerLeaseRecord;
+  event: LoopEventRecord;
+};
+
 export type MemoryCandidateRecord = {
   id: string;
   title: string;
@@ -326,6 +357,65 @@ export type MemoryCandidateRecord = {
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+};
+
+export type KnowledgeRuntimeHealth = {
+  okf_base: string | null;
+  canonical_candidate: string;
+  symlink_target: string | null;
+  exists: boolean;
+  valid: boolean;
+  validate_okf: {
+    status: 'pass' | 'fail' | 'skipped';
+    command: string | null;
+    stdout: string;
+    stderr: string;
+  };
+  counts: Record<string, number>;
+  drift: {
+    okf_skill_count: number;
+    registered_skill_capability_count: number;
+    missing_registry_entries: string[];
+    stale_registry_entries: string[];
+    packages_knowledge_is_canonical: boolean;
+    projection_status: 'unknown' | 'fresh' | 'stale';
+  };
+  blocked_reasons: string[];
+  next_safe_actions: string[];
+};
+
+export type KnowledgeSyncResult = {
+  dry_run: boolean;
+  okf_base: string;
+  created: number;
+  updated: number;
+  blocked: number;
+  unchanged: number;
+  capabilities: Array<Record<string, unknown>>;
+};
+
+export type GoalBatchPreviewResult = {
+  change: string | null;
+  total: number;
+  valid: number;
+  blocked: number;
+  writes: 0;
+  items: Array<{
+    id: string;
+    objective: string;
+    risk_class: 'low' | 'medium' | 'high' | 'critical';
+    target_ref: string | null;
+    acceptance_criteria: string[];
+    blocked_reasons: string[];
+  }>;
+  errors: Array<{ id: string; error: string }>;
+};
+
+export type GoalBatchApplyResult = {
+  preview: GoalBatchPreviewResult;
+  created_goals: GoalRecord[];
+  skipped: Array<{ id: string; reason: string }>;
+  started_workers: 0;
 };
 
 export type SpecialistProfile = {
@@ -501,6 +591,9 @@ export type ProofRunSummary = {
   };
   minimums: Record<string, number>;
   passed: boolean;
+  proof_class: 'demo' | 'production';
+  production_passed: boolean;
+  production_missing: string[];
   missing: Record<string, number>;
   narrative: string[];
 };
@@ -863,6 +956,20 @@ class ApiClient {
     });
   }
 
+  async previewGoalBatch(input: { path?: string; batch?: unknown; selected_ids?: string[] } = {}): Promise<GoalBatchPreviewResult> {
+    return this.request('/goals/batch/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async applyGoalBatch(input: { path?: string; batch?: unknown; selected_ids?: string[] } = {}): Promise<GoalBatchApplyResult> {
+    return this.request('/goals/batch/apply', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
   async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
     return this.request('/loops/runs');
   }
@@ -960,14 +1067,39 @@ class ApiClient {
     return this.request('/swarms/status');
   }
 
-  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: WorkerRuntime; repository_path?: string; max_assignments_per_item?: number } = {}): Promise<SchedulerTickResult> {
+  async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: WorkerRuntime; repository_path?: string; max_assignments_per_item?: number; work_item_ids?: string[] } = {}): Promise<SchedulerTickResult> {
     return this.request('/swarms/scheduler/tick', {
       method: 'POST',
       body: JSON.stringify(input),
     });
   }
 
-  async planWorkerPool(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
+  async syncBacklogFromFleet(input: { loop_run_ids?: string[] } = {}): Promise<BacklogFleetSyncResult> {
+    return this.request('/swarms/backlog/sync', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async getKnowledgeRuntime(): Promise<KnowledgeRuntimeHealth> {
+    return this.request('/swarms/knowledge/runtime');
+  }
+
+  async syncKnowledgeRuntime(input: { dry_run?: boolean; apply?: boolean } = {}): Promise<KnowledgeSyncResult> {
+    return this.request('/swarms/knowledge/sync', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async closeLoopLearning(input: { loop_run_id: string; work_item_id?: string; promote_memory?: boolean }): Promise<Record<string, unknown>> {
+    return this.request('/swarms/evolution/close-loop', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  async planWorkerPool(input: { runtime?: WorkerRuntime; checker_runtime?: CheckerRuntime; max_workers?: number; allow_high_risk?: boolean; ignore_capacity?: boolean; simulate_low_capacity?: boolean } = {}): Promise<WorkerPoolPlanResult> {
     return this.request('/swarms/worker-pool/plan', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -986,6 +1118,10 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  }
+
+  async stopWorkerLease(leaseId: string): Promise<WorkerPoolStopResult> {
+    return this.request(`/swarms/worker-pool/stop/${leaseId}`, { method: 'POST' });
   }
 
   async getWorkItems(params?: { status?: string; limit?: number }): Promise<{ work_items: WorkItemRecord[] }> {

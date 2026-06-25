@@ -970,6 +970,20 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
   `);
 }
 
+function createRuntimeContractProbeTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS runtime_contract_probes (
+      runtime TEXT PRIMARY KEY,
+      command TEXT,
+      status TEXT NOT NULL,
+      available INTEGER NOT NULL DEFAULT 0,
+      contract_json TEXT NOT NULL DEFAULT '{}',
+      probed_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+}
+
 function ensureLoopRunsReadyStatus(db: BetterSqlite3Database) {
   const sql = tableSql(db, 'loop_runs');
   if (!sql || sql.includes('ready_for_human_merge')) {
@@ -1164,6 +1178,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createAgenticLoopTables(db);
   createSwarmIntelligenceTables(db);
   createNestedSpawnTables(db);
+  createRuntimeContractProbeTables(db);
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);

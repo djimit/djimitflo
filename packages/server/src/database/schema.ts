@@ -460,4 +460,14 @@ CREATE TABLE IF NOT EXISTS config (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS runtime_contract_probes (
+  runtime TEXT PRIMARY KEY,
+  command TEXT,
+  status TEXT NOT NULL,
+  available INTEGER NOT NULL DEFAULT 0,
+  contract_json TEXT NOT NULL DEFAULT '{}',
+  probed_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;

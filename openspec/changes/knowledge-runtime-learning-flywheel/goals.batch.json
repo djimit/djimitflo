@@ -1,0 +1,64 @@
+{
+  "change": "knowledge-runtime-learning-flywheel",
+  "goals": [
+    {
+      "key": "KLF-1-knowledge-runtime-contract",
+      "objective": "Implement canonical OKF runtime resolution and health reporting.",
+      "acceptance_criteria": [
+        "OKF_BASE absent resolves repo knowledge symlink.",
+        "packages/knowledge is not treated as production canonical knowledge.",
+        "GET /api/swarms/knowledge/runtime reports validation, counts and drift."
+      ]
+    },
+    {
+      "key": "KLF-2-capability-sync",
+      "objective": "Sync OKF skills, agents and services into swarm_capabilities.",
+      "acceptance_criteria": [
+        "Dry-run reports create/update/block counts with zero writes.",
+        "Apply upserts only swarm_capabilities.",
+        "Incomplete contracts remain candidate with blocked reasons."
+      ],
+      "depends_on": ["KLF-1-knowledge-runtime-contract"]
+    },
+    {
+      "key": "KLF-3-learning-closure",
+      "objective": "Close completed loop runs into eval, reflection, memory candidate and follow-up work.",
+      "acceptance_criteria": [
+        "Missing checker blocks closure.",
+        "Regression creates repair work item.",
+        "Improvement creates skill improvement work item."
+      ],
+      "depends_on": ["KLF-1-knowledge-runtime-contract"]
+    },
+    {
+      "key": "KLF-4-okf-specialists-skills",
+      "objective": "Allow validated OKF-backed specialist profiles and skills to influence panels and routing.",
+      "acceptance_criteria": [
+        "Static catalog remains fallback.",
+        "OKF profile overrides fallback only when valid.",
+        "High-risk security reviewer gate remains enforced."
+      ],
+      "depends_on": ["KLF-2-capability-sync"]
+    },
+    {
+      "key": "KLF-5-dashboard-proof",
+      "objective": "Expose Knowledge Runtime state in Mission Control.",
+      "acceptance_criteria": [
+        "Dashboard shows canonical OKF root, validation status and sync drift.",
+        "Dashboard does not present packages/knowledge as canonical runtime knowledge.",
+        "Next safe actions reflect OKF health and learning closure state."
+      ],
+      "depends_on": ["KLF-1-knowledge-runtime-contract", "KLF-3-learning-closure"]
+    },
+    {
+      "key": "KLF-6-end-to-end-smoke",
+      "objective": "Run deterministic smoke from OKF validation to learning closure.",
+      "acceptance_criteria": [
+        "OpenSpec validates strict.",
+        "Server tests pass.",
+        "Type-check and dashboard build pass."
+      ],
+      "depends_on": ["KLF-5-dashboard-proof"]
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { createError } from '../middleware/error-handler';
 import { AgentAssuranceService } from '../services/agent-assurance-service';
 import { CsSkillSwarmHarnessService } from '../services/cs-skill-swarm-harness-service';
 import { MemoryCandidateService } from '../services/memory-candidate-service';
+import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ProofRunService, type ProofRunSummary } from '../services/proof-run-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
@@ -89,6 +90,31 @@ function mapWorkerPoolError(error: unknown): never {
   throw error;
 }
 
+function mapKnowledgeRuntimeError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'KNOWLEDGE_RUNTIME_OKF_BASE_MISSING') throw createError(404, 'Canonical OKF base is missing', 'KNOWLEDGE_RUNTIME_OKF_BASE_MISSING');
+  if (message === 'KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL') throw createError(409, 'packages/knowledge is not the canonical runtime OKF base', 'KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL');
+  if (message === 'KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED') throw createError(422, 'OKF validation failed', 'KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+  if (message === 'KNOWLEDGE_RUNTIME_LOOP_RUN_REQUIRED') throw createError(400, 'loop_run_id is required', 'KNOWLEDGE_RUNTIME_LOOP_RUN_REQUIRED');
+  if (message === 'LOOP_RUN_NOT_FOUND') throw createError(404, 'Loop run not found', 'LOOP_RUN_NOT_FOUND');
+  throw error;
+}
+
+function mapHandoffError(error: unknown): never {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'SWARM_HANDOFF_REQUIRED') throw createError(400, 'from_agent_id, to_agent_id and summary are required', 'SWARM_HANDOFF_REQUIRED');
+  if (message === 'SWARM_HANDOFF_SOURCE_REQUIRED') throw createError(400, 'source_lease_id, work_item_id or task_id is required', 'SWARM_HANDOFF_SOURCE_REQUIRED');
+  if (message === 'SWARM_HANDOFF_PRIORITY_INVALID') throw createError(400, 'handoff priority is invalid', 'SWARM_HANDOFF_PRIORITY_INVALID');
+  if (message === 'SWARM_HANDOFF_NOT_FOUND') throw createError(404, 'handoff not found', 'SWARM_HANDOFF_NOT_FOUND');
+  if (message === 'SWARM_HANDOFF_INVALID') throw createError(400, 'message is not a swarm handoff', 'SWARM_HANDOFF_INVALID');
+  if (message === 'SWARM_HANDOFF_ALREADY_ACCEPTED') throw createError(409, 'handoff is already accepted', 'SWARM_HANDOFF_ALREADY_ACCEPTED');
+  if (message === 'SWARM_HANDOFF_AGENT_NOT_FOUND') throw createError(404, 'handoff agent not found', 'SWARM_HANDOFF_AGENT_NOT_FOUND');
+  if (message === 'SWARM_HANDOFF_LEASE_NOT_FOUND') throw createError(404, 'handoff source lease not found', 'SWARM_HANDOFF_LEASE_NOT_FOUND');
+  if (message === 'SWARM_HANDOFF_WORK_ITEM_NOT_FOUND') throw createError(404, 'handoff work item not found', 'SWARM_HANDOFF_WORK_ITEM_NOT_FOUND');
+  if (message === 'SWARM_HANDOFF_TASK_NOT_FOUND') throw createError(404, 'handoff task not found', 'SWARM_HANDOFF_TASK_NOT_FOUND');
+  throw error;
+}
+
 function mapProofRunError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'PROOF_RUN_NOT_FOUND') throw createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
@@ -146,6 +172,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const service = new SwarmStatusService(db);
   const assurance = new AgentAssuranceService(db);
+  const knowledgeRuntime = new KnowledgeRuntimeService(db);
   const memoryCandidates = new MemoryCandidateService(db);
   const specialistPanels = new SpecialistPanelService(db);
   const intelligence = new SwarmIntelligenceService(db);
@@ -165,6 +192,38 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       res.json(service.tickScheduler(req.body || {}));
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.post('/backlog/sync', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      res.json(service.syncBacklogFromFleet(req.body || {}));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/knowledge/runtime', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(knowledgeRuntime.health());
+    } catch (error) {
+      try {
+        mapKnowledgeRuntimeError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/knowledge/sync', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      res.json(knowledgeRuntime.syncCapabilities(req.body || {}));
+    } catch (error) {
+      try {
+        mapKnowledgeRuntimeError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
     }
   });
 
@@ -210,6 +269,66 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     } catch (error) {
       try {
         mapWorkerPoolError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/handoffs', requirePermission('write:swarm_action'), async (req, res, next) => {
+    try {
+      res.status(201).json(await service.createHandoff(req.body || {}));
+    } catch (error) {
+      try {
+        mapHandoffError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/handoffs/drain', requirePermission('write:swarm_action'), async (req, res, next) => {
+    try {
+      res.json(await service.drainHandoffs(req.body || {}));
+    } catch (error) {
+      try {
+        mapHandoffError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/handoffs/:id/accept', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      res.json(service.acceptHandoff(req.params.id));
+    } catch (error) {
+      try {
+        mapHandoffError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/evolution/run', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      res.status(201).json(service.runEvolutionCycle(req.body || {}));
+    } catch (error) {
+      try {
+        mapAssuranceError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
+    }
+  });
+
+  router.post('/evolution/close-loop', requirePermission('write:swarm_action'), (req, res, next) => {
+    try {
+      res.status(201).json(knowledgeRuntime.closeLoop(req.body || {}));
+    } catch (error) {
+      try {
+        mapKnowledgeRuntimeError(error);
       } catch (mapped) {
         next(mapped);
       }
