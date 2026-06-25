@@ -138,6 +138,15 @@ function mapCsSkillSwarmHarnessError(error: unknown): never {
   function mapSwarmIntelligenceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'SWARM_INTELLIGENCE_SECRET_DETECTED') throw createError(400, 'swarm intelligence payload appears to contain a secret', 'SWARM_INTELLIGENCE_SECRET_DETECTED');
+  if (message?.startsWith('SWARM_INVALID_TRANSITION:')) { const [, from, to] = message.split(':'); throw createError(400, `invalid state transition: ${from} -> ${to}`, 'SWARM_INVALID_TRANSITION'); }
+  if (message === 'SWARM_MISSION_NOT_FOUND') throw createError(404, 'swarm mission not found', 'SWARM_MISSION_NOT_FOUND');
+  if (message === 'SWARM_MISSION_TITLE_REQUIRED') throw createError(400, 'mission title is required', 'SWARM_MISSION_TITLE_REQUIRED');
+  if (message === 'SWARM_MISSION_RISK_INVALID') throw createError(400, 'mission risk class is invalid', 'SWARM_MISSION_RISK_INVALID');
+  if (message === 'SWARM_TASK_NOT_FOUND') throw createError(404, 'swarm task not found', 'SWARM_TASK_NOT_FOUND');
+  if (message === 'SWARM_TASK_TITLE_REQUIRED') throw createError(400, 'task title is required', 'SWARM_TASK_TITLE_REQUIRED');
+  if (message === 'SWARM_TASK_MISSION_REQUIRED') throw createError(400, 'task mission_id is required', 'SWARM_TASK_MISSION_REQUIRED');
+  if (message === 'SWARM_DECISION_TYPE_INVALID') throw createError(400, 'decision type is invalid', 'SWARM_DECISION_TYPE_INVALID');
+  if (message === 'SWARM_DECISION_REQUIRED') throw createError(400, 'decision is required', 'SWARM_DECISION_REQUIRED');
   if (message === 'SWARM_CAPABILITY_NOT_FOUND') throw createError(404, 'Capability not found', 'SWARM_CAPABILITY_NOT_FOUND');
   if (message === 'SWARM_CAPABILITY_ID_REQUIRED') throw createError(400, 'capability id is required', 'SWARM_CAPABILITY_ID_REQUIRED');
   if (message === 'SWARM_CAPABILITY_KIND_INVALID') throw createError(400, 'capability kind is invalid', 'SWARM_CAPABILITY_KIND_INVALID');
@@ -748,6 +757,68 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         next(mapped);
       }
     }
+  });
+
+  // G14.1: Swarm Intelligence Kernel — mission/task/decision endpoints
+  router.get('/intelligence/missions', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json({ missions: svc.listMissions(Number(req.query.limit) || 100) });
+  });
+
+  router.post('/intelligence/missions', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.status(201).json(svc.createMission(req.body));
+  });
+
+  router.get('/intelligence/missions/:id', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json(svc.getMission(req.params.id));
+  });
+
+  router.post('/intelligence/missions/:id/transition', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json(svc.transitionMission(req.params.id, req.body.status, req.body));
+  });
+
+  router.get('/intelligence/missions/:id/tasks', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json({ tasks: svc.listTasks(req.params.id) });
+  });
+
+  router.post('/intelligence/missions/:id/tasks', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.status(201).json(svc.createTask({ ...req.body, mission_id: req.params.id }));
+  });
+
+  router.post('/intelligence/tasks/:id/transition', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json(svc.transitionTask(req.params.id, req.body.status, req.body));
+  });
+
+  router.get('/intelligence/missions/:id/decisions', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json({ decisions: svc.listDecisions(req.params.id) });
+  });
+
+  router.post('/intelligence/decisions', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.status(201).json(svc.recordDecision(req.body));
+  });
+
+  // G14.8: Circuit breaker endpoints
+  router.get('/intelligence/circuit-breaker/:scope', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json(svc.checkCircuitBreaker(req.params.scope));
+  });
+
+  router.post('/intelligence/circuit-breaker/:scope/failure', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    res.json(svc.recordCircuitBreakerFailure(req.params.scope));
+  });
+  router.post('/intelligence/circuit-breaker/:scope/reset', (req, res) => {
+    const svc = new SwarmIntelligenceService(db);
+    svc.resetCircuitBreaker(req.params.scope);
+    res.json({ reset: true });
   });
 
   return router;

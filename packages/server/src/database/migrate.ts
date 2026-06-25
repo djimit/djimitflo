@@ -967,6 +967,67 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_lease ON swarm_runner_manifests(lease_id);
     CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_loop ON swarm_runner_manifests(loop_run_id);
     CREATE INDEX IF NOT EXISTS idx_swarm_runner_manifests_action ON swarm_runner_manifests(action);
+
+    -- G14.1: Swarm Intelligence Kernel — mission/task/decision state machine
+    CREATE TABLE IF NOT EXISTS swarm_missions (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+      status TEXT NOT NULL CHECK(status IN ('observed', 'hypothesized', 'planned', 'queued', 'prepared', 'running', 'checking', 'ready_for_human_merge', 'completed', 'blocked', 'rejected', 'escalated')),
+      panel_id TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_missions_status ON swarm_missions(status);
+    CREATE INDEX IF NOT EXISTS idx_swarm_missions_goal_id ON swarm_missions(goal_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_missions_risk_class ON swarm_missions(risk_class);
+
+    CREATE TABLE IF NOT EXISTS swarm_tasks (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK(status IN ('observed', 'hypothesized', 'planned', 'queued', 'prepared', 'running', 'checking', 'ready_for_human_merge', 'completed', 'blocked', 'rejected', 'escalated')),
+      assigned_lease_id TEXT,
+      capability_id TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES swarm_missions(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_lease_id) REFERENCES worker_leases(id) ON DELETE SET NULL,
+      FOREIGN KEY (capability_id) REFERENCES swarm_capabilities(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_tasks_mission_id ON swarm_tasks(mission_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_tasks_status ON swarm_tasks(status);
+
+    CREATE TABLE IF NOT EXISTS swarm_decisions (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT,
+      task_id TEXT,
+      decision_type TEXT NOT NULL CHECK(decision_type IN ('state_transition', 'route', 'gate', 'quorum', 'split', 'kill', 'escalate', 'review')),
+      decision TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      actor TEXT NOT NULL DEFAULT 'system',
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      gate_refs_json TEXT NOT NULL DEFAULT '[]',
+      blocked_reasons_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES swarm_missions(id) ON DELETE CASCADE,
+      FOREIGN KEY (task_id) REFERENCES swarm_tasks(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_decisions_mission_id ON swarm_decisions(mission_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_decisions_task_id ON swarm_decisions(task_id);
+    CREATE INDEX IF NOT EXISTS idx_swarm_decisions_type ON swarm_decisions(decision_type);
   `);
 }
 

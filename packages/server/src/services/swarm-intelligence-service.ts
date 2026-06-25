@@ -891,4 +891,348 @@ export class SwarmIntelligenceService {
       throw new Error('SWARM_INTELLIGENCE_SECRET_DETECTED');
     }
   }
+
+  // ── G14.1: Swarm Intelligence Kernel — mission/task/decision state machine ──
+
+  private static readonly MISSION_TRANSITIONS: Record<string, string[]> = {
+    observed: ['hypothesized', 'rejected'],
+    hypothesized: ['planned', 'rejected', 'escalated'],
+    planned: ['queued', 'rejected', 'escalated'],
+    queued: ['prepared', 'blocked', 'escalated'],
+    prepared: ['running', 'blocked', 'escalated'],
+    running: ['checking', 'blocked', 'escalated'],
+    checking: ['ready_for_human_merge', 'blocked', 'rejected', 'escalated'],
+    ready_for_human_merge: ['completed', 'rejected', 'escalated'],
+    completed: [],
+    blocked: ['queued', 'rejected', 'escalated'],
+    rejected: [],
+    escalated: ['planned', 'rejected'],
+  };
+
+  private validateTransition(from: string, to: string): void {
+    const allowed = SwarmIntelligenceService.MISSION_TRANSITIONS[from];
+    if (!allowed || !allowed.includes(to)) {
+      throw new Error(`SWARM_INVALID_TRANSITION:${from}:${to}`);
+    }
+  }
+
+  createMission(input: {
+    goal_id?: string | null;
+    title: string;
+    description?: string;
+    risk_class?: RiskClass;
+    panel_id?: string | null;
+    evidence_refs?: string[];
+    metadata?: Record<string, unknown>;
+  }): MissionRecord {
+    if (!input.title?.trim()) throw new Error('SWARM_MISSION_TITLE_REQUIRED');
+    const riskClass: RiskClass = input.risk_class || 'medium';
+    if (!RISK_CLASSES.includes(riskClass)) throw new Error('SWARM_MISSION_RISK_INVALID');
+    this.rejectSecretLike(input);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO swarm_missions (id, goal_id, title, description, risk_class, status, panel_id, evidence_refs_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'observed', ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.goal_id || null,
+      input.title.trim(),
+      (input.description || '').trim(),
+      riskClass,
+      input.panel_id || null,
+      JSON.stringify(this.stringArray(input.evidence_refs)),
+      JSON.stringify(input.metadata || {}),
+      now, now,
+    );
+    return this.getMission(id);
+  }
+
+  getMission(id: string): MissionRecord {
+    const row = this.db.prepare('SELECT * FROM swarm_missions WHERE id = ?').get(id);
+    if (!row) throw new Error('SWARM_MISSION_NOT_FOUND');
+    return this.parseMission(row as any);
+  }
+
+  listMissions(limit = 100): MissionRecord[] {
+    return (this.db.prepare('SELECT * FROM swarm_missions ORDER BY created_at DESC LIMIT ?')
+      .all(this.limit(limit)) as any[])
+      .map((row) => this.parseMission(row));
+  }
+
+  transitionMission(id: string, toStatus: MissionStatus, decisionInput?: {
+    reason?: string;
+    actor?: string;
+    evidence_refs?: string[];
+    gate_refs?: string[];
+    blocked_reasons?: string[];
+  }): MissionRecord {
+    const mission = this.getMission(id);
+    if (mission.status === toStatus) return mission;
+    this.validateTransition(mission.status, toStatus);
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE swarm_missions SET status = ?, updated_at = ? WHERE id = ?')
+      .run(toStatus, now, id);
+    this.recordDecision({
+      mission_id: id,
+      task_id: null,
+      decision_type: 'state_transition',
+      decision: `${mission.status}->${toStatus}`,
+      reason: decisionInput?.reason || '',
+      actor: decisionInput?.actor || 'system',
+      evidence_refs: decisionInput?.evidence_refs,
+      gate_refs: decisionInput?.gate_refs,
+      blocked_reasons: decisionInput?.blocked_reasons,
+    });
+    return this.getMission(id);
+  }
+
+  createTask(input: {
+    mission_id: string;
+    title: string;
+    description?: string;
+    capability_id?: string | null;
+    evidence_refs?: string[];
+    metadata?: Record<string, unknown>;
+  }): TaskRecord {
+    if (!input.mission_id?.trim()) throw new Error('SWARM_TASK_MISSION_REQUIRED');
+    if (!input.title?.trim()) throw new Error('SWARM_TASK_TITLE_REQUIRED');
+    this.rejectSecretLike(input);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO swarm_tasks (id, mission_id, title, description, status, assigned_lease_id, capability_id, evidence_refs_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'observed', NULL, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.mission_id.trim(),
+      input.title.trim(),
+      (input.description || '').trim(),
+      input.capability_id || null,
+      JSON.stringify(this.stringArray(input.evidence_refs)),
+      JSON.stringify(input.metadata || {}),
+      now, now,
+    );
+    return this.getTask(id);
+  }
+
+  getTask(id: string): TaskRecord {
+    const row = this.db.prepare('SELECT * FROM swarm_tasks WHERE id = ?').get(id);
+    if (!row) throw new Error('SWARM_TASK_NOT_FOUND');
+    return this.parseTask(row as any);
+  }
+
+  listTasks(missionId: string): TaskRecord[] {
+    return (this.db.prepare('SELECT * FROM swarm_tasks WHERE mission_id = ? ORDER BY created_at ASC')
+      .all(missionId) as any[])
+      .map((row) => this.parseTask(row));
+  }
+
+  transitionTask(id: string, toStatus: MissionStatus, decisionInput?: {
+    reason?: string;
+    actor?: string;
+    evidence_refs?: string[];
+    gate_refs?: string[];
+    blocked_reasons?: string[];
+  }): TaskRecord {
+    const task = this.getTask(id);
+    if (task.status === toStatus) return task;
+    this.validateTransition(task.status, toStatus);
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE swarm_tasks SET status = ?, updated_at = ? WHERE id = ?')
+      .run(toStatus, now, id);
+    this.recordDecision({
+      mission_id: task.mission_id,
+      task_id: id,
+      decision_type: 'state_transition',
+      decision: `${task.status}->${toStatus}`,
+      reason: decisionInput?.reason || '',
+      actor: decisionInput?.actor || 'system',
+      evidence_refs: decisionInput?.evidence_refs,
+      gate_refs: decisionInput?.gate_refs,
+      blocked_reasons: decisionInput?.blocked_reasons,
+    });
+    return this.getTask(id);
+  }
+
+  recordDecision(input: {
+    mission_id?: string | null;
+    task_id?: string | null;
+    decision_type: DecisionType;
+    decision: string;
+    reason?: string;
+    actor?: string;
+    evidence_refs?: string[];
+    gate_refs?: string[];
+    blocked_reasons?: string[];
+    metadata?: Record<string, unknown>;
+  }): DecisionRecord {
+    const validTypes: DecisionType[] = ['state_transition', 'route', 'gate', 'quorum', 'split', 'kill', 'escalate', 'review'];
+    if (!input.decision_type || !validTypes.includes(input.decision_type)) throw new Error('SWARM_DECISION_TYPE_INVALID');
+    if (!input.decision?.trim()) throw new Error('SWARM_DECISION_REQUIRED');
+    this.rejectSecretLike(input);
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO swarm_decisions (id, mission_id, task_id, decision_type, decision, reason, actor, evidence_refs_json, gate_refs_json, blocked_reasons_json, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.mission_id || null,
+      input.task_id || null,
+      input.decision_type,
+      input.decision.trim(),
+      (input.reason || '').trim(),
+      (input.actor || 'system').trim(),
+      JSON.stringify(this.stringArray(input.evidence_refs)),
+      JSON.stringify(this.stringArray(input.gate_refs)),
+      JSON.stringify(this.stringArray(input.blocked_reasons)),
+      JSON.stringify(input.metadata || {}),
+      new Date().toISOString(),
+    );
+    return this.parseDecision(this.db.prepare('SELECT * FROM swarm_decisions WHERE id = ?').get(id) as any);
+  }
+
+  listDecisions(missionId?: string, limit = 100): DecisionRecord[] {
+    const sql = missionId
+      ? 'SELECT * FROM swarm_decisions WHERE mission_id = ? ORDER BY created_at DESC LIMIT ?'
+      : 'SELECT * FROM swarm_decisions ORDER BY created_at DESC LIMIT ?';
+    const args = missionId ? [missionId, this.limit(limit)] : [this.limit(limit)];
+    return (this.db.prepare(sql).all(...args) as any[]).map((row) => this.parseDecision(row));
+  }
+
+  // ── G14.8: Circuit breaker ──
+
+  private circuitBreakerState: Map<string, { failures: number; tripped: boolean; lastFailureAt: string | null }> = new Map();
+  private static readonly CIRCUIT_BREAKER_THRESHOLD = 3;
+  private static readonly CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
+
+  checkCircuitBreaker(scope: string): { tripped: boolean; failures: number; reason: string | null } {
+    const state = this.circuitBreakerState.get(scope);
+    if (!state) return { tripped: false, failures: 0, reason: null };
+    if (state.tripped) {
+      const cooldownElapsed = state.lastFailureAt
+        ? Date.now() - new Date(state.lastFailureAt).getTime() > SwarmIntelligenceService.CIRCUIT_BREAKER_COOLDOWN_MS
+        : false;
+      if (cooldownElapsed) {
+        this.circuitBreakerState.set(scope, { failures: 0, tripped: false, lastFailureAt: null });
+        return { tripped: false, failures: 0, reason: null };
+      }
+      return { tripped: true, failures: state.failures, reason: `circuit_breaker_tripped:${scope}:${state.failures}_failures` };
+    }
+    return { tripped: false, failures: state.failures, reason: null };
+  }
+
+  recordCircuitBreakerFailure(scope: string): { tripped: boolean; failures: number } {
+    const state = this.circuitBreakerState.get(scope) || { failures: 0, tripped: false, lastFailureAt: null };
+    state.failures += 1;
+    state.lastFailureAt = new Date().toISOString();
+    if (state.failures >= SwarmIntelligenceService.CIRCUIT_BREAKER_THRESHOLD) {
+      state.tripped = true;
+    }
+    this.circuitBreakerState.set(scope, state);
+    return { tripped: state.tripped, failures: state.failures };
+  }
+
+  resetCircuitBreaker(scope: string): void {
+    this.circuitBreakerState.delete(scope);
+  }
+
+  // ── Parsers ──
+
+  private parseMission(row: any): MissionRecord {
+    return {
+      id: row.id,
+      goal_id: row.goal_id || null,
+      title: row.title,
+      description: row.description || '',
+      risk_class: row.risk_class as RiskClass,
+      status: row.status as MissionStatus,
+      panel_id: row.panel_id || null,
+      evidence_refs: JSON.parse(row.evidence_refs_json || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private parseTask(row: any): TaskRecord {
+    return {
+      id: row.id,
+      mission_id: row.mission_id,
+      title: row.title,
+      description: row.description || '',
+      status: row.status as MissionStatus,
+      assigned_lease_id: row.assigned_lease_id || null,
+      capability_id: row.capability_id || null,
+      evidence_refs: JSON.parse(row.evidence_refs_json || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    };
+  }
+
+  private parseDecision(row: any): DecisionRecord {
+    return {
+      id: row.id,
+      mission_id: row.mission_id || null,
+      task_id: row.task_id || null,
+      decision_type: row.decision_type as DecisionType,
+      decision: row.decision,
+      reason: row.reason || '',
+      actor: row.actor || 'system',
+      evidence_refs: JSON.parse(row.evidence_refs_json || '[]'),
+      gate_refs: JSON.parse(row.gate_refs_json || '[]'),
+      blocked_reasons: JSON.parse(row.blocked_reasons_json || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_at: row.created_at,
+    };
+  }
+}
+
+// ── G14.1 Types ──
+
+export type MissionStatus = 'observed' | 'hypothesized' | 'planned' | 'queued' | 'prepared' | 'running' | 'checking' | 'ready_for_human_merge' | 'completed' | 'blocked' | 'rejected' | 'escalated';
+export type DecisionType = 'state_transition' | 'route' | 'gate' | 'quorum' | 'split' | 'kill' | 'escalate' | 'review';
+
+export interface MissionRecord {
+  id: string;
+  goal_id: string | null;
+  title: string;
+  description: string;
+  risk_class: RiskClass;
+  status: MissionStatus;
+  panel_id: string | null;
+  evidence_refs: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskRecord {
+  id: string;
+  mission_id: string;
+  title: string;
+  description: string;
+  status: MissionStatus;
+  assigned_lease_id: string | null;
+  capability_id: string | null;
+  evidence_refs: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DecisionRecord {
+  id: string;
+  mission_id: string | null;
+  task_id: string | null;
+  decision_type: DecisionType;
+  decision: string;
+  reason: string;
+  actor: string;
+  evidence_refs: string[];
+  gate_refs: string[];
+  blocked_reasons: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
 }
