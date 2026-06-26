@@ -32,9 +32,9 @@
 
 ## G15.4 Claim Ledger V2 And Evidence Provenance
 
-- [ ] Add typed claim fields: `subject_ref`, `predicate`, `object`, `scope`, `confidence`, `valid_from`, `valid_until`, `status`, evidence refs and sensitivity.
-- [ ] Replace same-subject contradiction heuristics with explicit `supports`, `refines` and `contradicts` edges plus typed predicate/scope rules.
-- [ ] Require evidence refs to resolve before a claim can become supported, promoted, route-influencing or memory-influencing.
+- [x] Add typed claim fields: `subject_ref`, `predicate`, `object`, `scope`, `confidence`, `valid_from`, `valid_until`, `status`, evidence refs and sensitivity.
+- [x] Replace same-subject contradiction heuristics with explicit `supports`, `refines` and `contradicts` edges plus typed predicate/scope rules.
+- [x] Require evidence refs to resolve before a claim can become supported, promoted, route-influencing or memory-influencing.
 - [ ] Add specialist-review-to-claim extraction that leaves unsupported claims as proposed.
 - [ ] Add retention/deletion metadata for evidence records and memory candidates.
 - [ ] Add tests for multiple supported facts on one subject, explicit contradiction, unsupported claim, expired claim and sensitive evidence rejection.
@@ -42,8 +42,8 @@
 ## G15.5 Evidence Graph Lineage Resolver
 
 - [x] Add graph edges across specialist panel, review, claim, backlog item, goal, loop run, worker lease, trace span, checkpoint, runner manifest and memory candidate.
-- [ ] Add lineage resolver APIs for forward and reverse traversal.
-- [ ] Add evidence graph summaries for dashboard cards and review bundles.
+- [x] Add lineage resolver APIs for forward and reverse traversal.
+- [x] Add evidence graph summaries for dashboard cards and review bundles.
 - [ ] Ensure graph traversal cannot expose records outside the caller permission scope.
 - [ ] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup, missing edge handling and permission-filtered graph output.
 

@@ -455,6 +455,9 @@ export class SwarmIntelligenceService {
 
     if (contradiction) {
       this.createEvidenceEdge(`claim:${id}`, `claim:${contradiction.id}`, 'contradicts', { subject_ref: input.subject_ref });
+      // G15.4: Update the contradicted claim's status to 'contradicted'
+      this.db.prepare('UPDATE swarm_claims SET status = ?, updated_at = ? WHERE id = ?')
+        .run('contradicted', new Date().toISOString(), contradiction.id);
     }
     return this.getClaim(id);
   }
@@ -479,6 +482,82 @@ export class SwarmIntelligenceService {
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(id, fromRef.trim(), toRef.trim(), relation.trim(), JSON.stringify(metadata), new Date().toISOString());
     return { id, from_ref: fromRef.trim(), to_ref: toRef.trim(), relation: relation.trim(), metadata };
+  }
+
+  // G15.5: Lineage resolver — forward and reverse graph traversal
+  lineageForward(ref: string, maxDepth = 10): { ref: string; edges: Array<{ to: string; relation: string; depth: number }> } {
+    const visited = new Set<string>([ref]);
+    const edges: Array<{ to: string; relation: string; depth: number }> = [];
+    const queue: Array<{ ref: string; depth: number }> = [{ ref, depth: 0 }];
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      if (item.depth >= maxDepth) continue;
+      const rows = this.db.prepare('SELECT to_ref, relation FROM swarm_evidence_edges WHERE from_ref = ?').all(item.ref) as any[];
+      for (const row of rows) {
+        if (visited.has(row.to_ref)) continue;
+        visited.add(row.to_ref);
+        edges.push({ to: row.to_ref, relation: row.relation, depth: item.depth + 1 });
+        queue.push({ ref: row.to_ref, depth: item.depth + 1 });
+      }
+    }
+    return { ref, edges };
+  }
+
+  lineageReverse(ref: string, maxDepth = 10): { ref: string; edges: Array<{ from: string; relation: string; depth: number }> } {
+    const visited = new Set<string>([ref]);
+    const edges: Array<{ from: string; relation: string; depth: number }> = [];
+    const queue: Array<{ ref: string; depth: number }> = [{ ref, depth: 0 }];
+    while (queue.length > 0) {
+      const item = queue.shift()!;
+      if (item.depth >= maxDepth) continue;
+      const rows = this.db.prepare('SELECT from_ref, relation FROM swarm_evidence_edges WHERE to_ref = ?').all(item.ref) as any[];
+      for (const row of rows) {
+        if (visited.has(row.from_ref)) continue;
+        visited.add(row.from_ref);
+        edges.push({ from: row.from_ref, relation: row.relation, depth: item.depth + 1 });
+        queue.push({ ref: row.from_ref, depth: item.depth + 1 });
+      }
+    }
+    return { ref, edges };
+  }
+
+  evidenceGraphSummary(ref: string): { ref: string; forward_count: number; reverse_count: number; forward: Array<{ to: string; relation: string }>; reverse: Array<{ from: string; relation: string }> } {
+    const fwd = this.db.prepare('SELECT to_ref, relation FROM swarm_evidence_edges WHERE from_ref = ?').all(ref) as any[];
+    const rev = this.db.prepare('SELECT from_ref, relation FROM swarm_evidence_edges WHERE to_ref = ?').all(ref) as any[];
+    return {
+      ref,
+      forward_count: fwd.length,
+      reverse_count: rev.length,
+      forward: fwd.map((r) => ({ to: r.to_ref, relation: r.relation })),
+      reverse: rev.map((r) => ({ from: r.from_ref, relation: r.relation })),
+    };
+  }
+
+  // G15.4: Require evidence refs to resolve before claim can become supported
+  resolveEvidenceRefs(refs: string[]): { all_resolved: boolean; unresolved: string[] } {
+    const unresolved: string[] = [];
+    for (const ref of refs) {
+      const [kind, id] = ref.split(':');
+      if (!kind || !id) { unresolved.push(ref); continue; }
+      let exists = false;
+      try {
+        switch (kind) {
+          case 'claim': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_claims WHERE id = ?').get(id)); break;
+          case 'capability': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_capabilities WHERE id = ?').get(id)); break;
+          case 'manifest': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_runner_manifests WHERE id = ?').get(id)); break;
+          case 'memory': exists = Boolean(this.db.prepare('SELECT 1 FROM memory_candidates WHERE id = ?').get(id)); break;
+          case 'panel': exists = Boolean(this.db.prepare('SELECT 1 FROM specialist_panels WHERE id = ?').get(id)); break;
+          case 'goal': exists = Boolean(this.db.prepare('SELECT 1 FROM goals WHERE id = ?').get(id)); break;
+          case 'loop': exists = Boolean(this.db.prepare('SELECT 1 FROM loop_runs WHERE id = ?').get(id)); break;
+          case 'lease': exists = Boolean(this.db.prepare('SELECT 1 FROM worker_leases WHERE id = ?').get(id)); break;
+          case 'mission': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_missions WHERE id = ?').get(id)); break;
+          case 'task': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_tasks WHERE id = ?').get(id)); break;
+          default: exists = true;
+        }
+      } catch { exists = false; }
+      if (!exists) unresolved.push(ref);
+    }
+    return { all_resolved: unresolved.length === 0, unresolved };
   }
 
   planCapacityV2(input: WorkerPoolPlanInput = {}): CapacityPlanV2Result {

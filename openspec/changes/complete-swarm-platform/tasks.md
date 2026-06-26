@@ -41,7 +41,7 @@ Validation:
 - [ ] Write trace spans for each enforcement decision.
 
 ### G15.4 Claim Ledger V2
-- [ ] Add typed claim fields: predicate, object, scope, valid_from, valid_until, sensitivity.
+- [x] Add typed claim fields: predicate, object, scope, valid_from, valid_until, sensitivity.
 - [ ] Replace same-subject heuristics with explicit supports/refines/contradicts edges.
 - [ ] Require evidence refs to resolve before claim promotion.
 - [ ] Add specialist-review-to-claim extraction.
