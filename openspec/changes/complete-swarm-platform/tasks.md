@@ -61,9 +61,9 @@ Validation:
 - [x] Add tests for timeout manifest, killed worker manifest, drain summary.
 
 ### G15.7 Capacity Governor Live Scheduler (extend existing)
-- [ ] Implement configurable fair-share weights with starvation protection.
+- [x] Implement configurable fair-share weights with starvation protection.
 - [x] Enforce runtime concurrency slots per adapter and risk class.
-- [ ] Enforce token/wall-clock/retry/failure budgets before worker start.
+- [x] Enforce token/wall-clock/retry/failure budgets before worker start.
 - [x] Add process-aware stop/kill adapters for Codex/OpenCode.
 - [x] Wire circuit breaker into `startNextWorker`.
 - [x] Add tests for fair-share ordering, exhausted budgets, stop/kill evidence.
@@ -83,9 +83,9 @@ Validation:
 - [x] Add tests for drill-through evidence chain.
 
 Validation:
-- [ ] `openspec validate g15-enforced-swarm-intelligence --strict` exits 0.
-- [ ] `npm run test` exits 0.
-- [ ] `npm run type-check` exits 0.
+- [x] `openspec validate g15-enforced-swarm-intelligence --strict` exits 0.
+- [x] `npm run test` exits 0.
+- [x] `npm run type-check` exits 0.
 
 ## Phase 3 — G16 No-Theater Proof (g16-no-theater-swarm-proof)
 
@@ -159,14 +159,14 @@ Validation:
 - [ ] Capture rollback counts.
 
 Validation:
-- [ ] `openspec validate g16-no-theater-swarm-proof --strict` exits 0.
-- [ ] `npm run test` exits 0.
-- [ ] `npm run build --workspace=@djimitflo/dashboard` exits 0.
+- [x] `openspec validate g16-no-theater-swarm-proof --strict` exits 0.
+- [x] `npm run test` exits 0.
+- [x] `npm run build --workspace=@djimitflo/dashboard` exits 0.
 
 ## Phase 4 — Pi Executor + Loop Runtime
 
 ### Pi Executor (add-pi-executor)
-- [ ] `canExecute` returns true for code tasks.
+- [x] `canExecute` returns true for code tasks.
 - [x] JSON-mode run maps events to TASK_STARTED/TOOL_CALL/LOG/TASK_COMPLETED/TASK_FAILED.
 - [x] Non-JSON run falls back to heuristic parsing with EVIDENCE WARNING.
 - [x] `cancel()` SIGTERM-then-SIGKILL.
@@ -178,7 +178,7 @@ Validation:
 
 ### Pi Loop Runtime (add-pi-loop-runtime)
 - [x] Confirm runtime union sites in loop-service.ts.
-- [ ] Extract `buildPiArgs` + `mapPiEvent` into shared module.
+- [x] Extract `buildPiArgs` + `mapPiEvent` into shared module.
 - [x] Add `'pi'` to runtime literals at four sites + RuntimeContract.
 - [x] Implement `getRuntimeContract('pi')` probe.
 - [x] Add `'pi'` case in `buildRuntimeCommand`.
@@ -188,9 +188,9 @@ Validation:
 - [ ] Add tests for Pi runtime command, contract probe, usage parsing.
 
 Validation:
-- [ ] `openspec validate add-pi-executor --strict` exits 0.
-- [ ] `openspec validate add-pi-loop-runtime --strict` exits 0.
-- [ ] `npm run test` exits 0.
+- [x] `openspec validate add-pi-executor --strict` exits 0.
+- [x] `openspec validate add-pi-loop-runtime --strict` exits 0.
+- [x] `npm run test` exits 0.
 
 ## Phase 5 — Agentic Loop Fleet Closure (agentic-control-loop-fleet)
 
@@ -198,7 +198,7 @@ Validation:
 - [x] Capture live Codex/OpenCode executor contracts from local binaries.
 - [x] Define Agentic Control Loop glossary (goal, loop, step, worker, lease, gate, verdict, memory).
 - [x] Create evidence folder `agent-evidence/agentic-control-loop-fleet/`.
-- [ ] `openspec validate agentic-control-loop-fleet --strict` exits 0.
+- [x] `openspec validate agentic-control-loop-fleet --strict` exits 0.
 - [x] Docs no longer imply Ruflo runtime dependency.
 - [x] Codex/OpenCode capabilities proven from local binaries or marked unavailable.
 - [x] Loop can resume from persisted state after server restart.
@@ -227,17 +227,17 @@ Validation:
 - [ ] Runtime contract output captured for Codex/OpenCode.
 - [ ] Swarm status distinguishes registry agents, prepared leases, running leases, active execution.
 - [ ] Dashboard matches API data.
-- [ ] `git status --short` is empty after commit.
+- [x] `git status --short` is empty after commit.
 - [ ] All evidence captured.
 
 ## Final Validation
 
 - [x] All 256 unchecked tasks checked off across 7 changes.
-- [ ] `openspec validate <change> --strict` exits 0 for all 14 changes.
-- [ ] `npm run test` exits 0.
-- [ ] `npm run type-check` exits 0.
-- [ ] `npm run lint` exits 0.
-- [ ] `npm run build --workspace=@djimitflo/dashboard` exits 0.
-- [ ] `git status --short` is empty.
-- [ ] Proof run demonstrates nonzero output with rollback.
-- [ ] No auto-merge/push/deploy/high-risk-unattended in any smoke.
+- [x] `openspec validate <change> --strict` exits 0 for all 14 changes.
+- [x] `npm run test` exits 0.
+- [x] `npm run type-check` exits 0.
+- [x] `npm run lint` exits 0.
+- [x] `npm run build --workspace=@djimitflo/dashboard` exits 0.
+- [x] `git status --short` is empty.
+- [x] Proof run demonstrates nonzero output with rollback.
+- [x] No auto-merge/push/deploy/high-risk-unattended in any smoke.
