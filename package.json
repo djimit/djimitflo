@@ -13,7 +13,7 @@
     "dev": "npm-run-all --parallel dev:server dev:dashboard",
     "dev:server": "npm run dev --workspace=@djimitflo/server",
     "dev:dashboard": "npm run dev --workspace=@djimitflo/dashboard",
-    "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
+    "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "npm run test --workspaces --if-present",
