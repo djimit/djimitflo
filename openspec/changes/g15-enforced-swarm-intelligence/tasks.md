@@ -2,13 +2,13 @@
 
 ## G15.1 Security Boundary And Provenance Baseline
 
-- [ ] Constrain OKF drift/sync inputs to configured OKF roots and workspace roots using canonical realpath checks.
-- [ ] Remove arbitrary filesystem query paths from OKF drift endpoints, or require explicit allowlisted root ids instead of raw paths.
-- [ ] Add a shared secret-like payload detector for claims, evidence, traces, manifests and memory candidates.
-- [ ] Replace broad `create:task` checks with scoped permissions: `write:capability`, `write:claim`, `write:governance`, `write:runner_manifest` and `write:swarm_action`.
+- [x] Constrain OKF drift/sync inputs to configured OKF roots and workspace roots using canonical realpath checks.
+- [x] Remove arbitrary filesystem query paths from OKF drift endpoints, or require explicit allowlisted root ids instead of raw paths.
+- [x] Add a shared secret-like payload detector for claims, evidence, traces, manifests and memory candidates.
+- [x] Replace broad `create:task` checks with scoped permissions: `write:capability`, `write:claim`, `write:governance`, `write:runner_manifest` and `write:swarm_action`.
 - [ ] Move cockpit/workstation labels to runtime node configuration or heartbeat-derived inventory.
-- [ ] Add evidence-ref resolver helpers that verify record kind, existence, actor, timestamp, sensitivity and route eligibility.
-- [ ] Add tests for OKF path escape refusal, secret-like rejection, scoped permission refusal and runtime node label fallback.
+- [x] Add evidence-ref resolver helpers that verify record kind, existence, actor, timestamp, sensitivity and route eligibility.
+- [x] Add tests for OKF path escape refusal, secret-like rejection, scoped permission refusal and runtime node label fallback.
 
 ## G15.2 Capability Promotion And Router Enforcement
 

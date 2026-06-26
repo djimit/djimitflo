@@ -20,13 +20,13 @@ Validation:
 ## Phase 2 — G15 Enforcement (g15-enforced-swarm-intelligence)
 
 ### G15.1 Security Boundary
-- [ ] Constrain OKF drift/sync to configured roots with canonical realpath checks.
-- [ ] Remove arbitrary filesystem paths from OKF drift endpoints.
-- [ ] Extend shared secret-like detector to all mutating endpoints.
-- [ ] Replace broad `create:task` with scoped permissions.
-- [ ] Move cockpit/workstation labels to runtime node config.
-- [ ] Add evidence-ref resolver helpers.
-- [ ] Add tests for path escape refusal, secret rejection, scoped permission refusal.
+- [x] Constrain OKF drift/sync to configured roots with canonical realpath checks.
+- [x] Remove arbitrary filesystem paths from OKF drift endpoints.
+- [x] Extend shared secret-like detector to all mutating endpoints.
+- [x] Replace broad `create:task` with scoped permissions.
+- [x] Move cockpit/workstation labels to runtime node config.
+- [x] Add evidence-ref resolver helpers.
+- [x] Add tests for path escape refusal, secret rejection, scoped permission refusal.
 
 ### G15.2 Capability Promotion
 - [ ] Split `registerCapability` into `createCandidate` + `promoteCapability`.
