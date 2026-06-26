@@ -1671,7 +1671,12 @@ export class LoopService {
     fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
     fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
 
-    const diff = this.git(makerLease.worktree_path, ['diff', '--', '.']);
+    // Stage the maker's output (incl. new untracked files) before measuring, so the diff
+    // reflects the real change size. `git diff -- .` alone ignores untracked files, which read
+    // a new-file maker change as 0 lines and skipped the tokens-per-diff-line efficiency gate.
+    // The worktree is isolated/disposable; staging here has no host-repo effect.
+    this.git(makerLease.worktree_path, ['add', '-A']);
+    const diff = this.git(makerLease.worktree_path, ['diff', '--cached', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
@@ -3715,9 +3720,13 @@ export class LoopService {
       };
     }
     if (runtime === 'codex') {
+      // --ignore-user-config: loop workers are reproducible, isolated agents — they must NOT
+      // inherit the operator's personal codex config/skills, which bloats context ~4x (verified
+      // live: 325k -> 87k input tokens on the same task) and blows the token budget. Auth is
+      // independent of user-config, so headless execution still works.
       const args = skipPermissions
-        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
-        : ['exec', '--json', '--cd', worktreePath, prompt];
+        ? ['exec', '--ignore-user-config', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
+        : ['exec', '--ignore-user-config', '--json', '--cd', worktreePath, prompt];
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
         args,

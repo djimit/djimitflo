@@ -540,7 +540,20 @@ export class ProofRunService {
       const backlog = this.panels.projectPanelToBacklog(panel.id);
       this.tagWorkItem(backlog.work_item.id, proofRunId);
 
-      this.insertGoal(goalId, proofRunId, now, { ...base, mode: runtime, loop_run_id: loopRunId, runtime_mode: runtime });
+      this.insertGoal(goalId, proofRunId, now, { ...base, mode: runtime, loop_run_id: loopRunId, runtime_mode: runtime }, {
+        // Real-runtime budgets (codex/opencode). The mock-calibrated defaults
+        // (60k tokens/worker, 3k tokens/diff-line, 60s wall) reject any real runtime —
+        // codex's intrinsic overhead is ~87k+ even on a trivial task. Calibrate for reality:
+        // generous per-worker ceiling (efficiency is enforced by --ignore-user-config, not by
+        // a mock-sized limit), a real diff-line ceiling that still catches true runaways, and a
+        // 10-min wall clock matching REAL_RUNTIME_TIMEOUT_MS.
+        max_wall_clock_ms: 600_000,
+        max_parallel_workers: 2,
+        max_usage_units: 3_000,
+        max_tokens: 2_000_000,
+        max_tokens_per_worker: 1_000_000,
+        max_tokens_per_diff_line: 500_000,
+      });
       this.insertLoopRun(
         loopRunId,
         goalId,
@@ -863,7 +876,7 @@ export class ProofRunService {
     });
   }
 
-  private insertGoal(id: string, proofRunId: string, now: string, base: Record<string, unknown>) {
+  private insertGoal(id: string, proofRunId: string, now: string, base: Record<string, unknown>, budget?: Record<string, unknown>) {
     this.db.prepare(`
       INSERT INTO goals (
         id, objective, constraints_json, acceptance_criteria_json, risk_class,
@@ -875,7 +888,7 @@ export class ProofRunService {
       JSON.stringify(['real runtime execution for maker/checker', 'rollback-safe proof metadata required']),
       JSON.stringify(Object.entries(MINIMUMS).map(([key, value]) => `${key} >= ${value}`)),
       'medium',
-      JSON.stringify({ max_wall_clock_ms: 60000, max_parallel_workers: 2, max_usage_units: 3000 }),
+      JSON.stringify(budget ?? { max_wall_clock_ms: 60000, max_parallel_workers: 2, max_usage_units: 3000 }),
       'completed',
       JSON.stringify({ ...base, proof_run_id: proofRunId }),
       now,
