@@ -138,6 +138,7 @@ function mapCsSkillSwarmHarnessError(error: unknown): never {
   function mapSwarmIntelligenceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'SWARM_INTELLIGENCE_SECRET_DETECTED') throw createError(400, 'swarm intelligence payload appears to contain a secret', 'SWARM_INTELLIGENCE_SECRET_DETECTED');
+  if (message === 'KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE') throw createError(403, 'OKF path is outside allowed roots', 'KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE');
   if (message?.startsWith('SWARM_INVALID_TRANSITION:')) { const [, from, to] = message.split(':'); throw createError(400, `invalid state transition: ${from} -> ${to}`, 'SWARM_INVALID_TRANSITION'); }
   if (message === 'SWARM_MISSION_NOT_FOUND') throw createError(404, 'swarm mission not found', 'SWARM_MISSION_NOT_FOUND');
   if (message === 'SWARM_MISSION_TITLE_REQUIRED') throw createError(400, 'mission title is required', 'SWARM_MISSION_TITLE_REQUIRED');
@@ -320,7 +321,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.post('/evolution/run', requirePermission('write:swarm_action'), (req, res, next) => {
+  router.post('/evolution/run', requirePermission('write:governance'), (req, res, next) => {
     try {
       res.status(201).json(service.runEvolutionCycle(req.body || {}));
     } catch (error) {
@@ -332,7 +333,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.post('/evolution/close-loop', requirePermission('write:swarm_action'), (req, res, next) => {
+  router.post('/evolution/close-loop', requirePermission('write:governance'), (req, res, next) => {
     try {
       res.status(201).json(knowledgeRuntime.closeLoop(req.body || {}));
     } catch (error) {
@@ -371,7 +372,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.post('/proof-runs', requirePermission('write:swarm_action'), async (req, res, next) => {
+  router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
     try {
       const summary = await proofRuns.create(req.body || {});
       emitProofRunUpdated(wsService, summary);
@@ -413,7 +414,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.post('/proof-runs/:id/rollback', requirePermission('write:swarm_action'), (req, res, next) => {
+  router.post('/proof-runs/:id/rollback', requirePermission('write:governance'), (req, res, next) => {
     try {
       const summary = proofRuns.rollback(req.params.id);
       emitProofRunUpdated(wsService, summary);

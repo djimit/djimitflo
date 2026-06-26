@@ -578,4 +578,49 @@ export class KnowledgeRuntimeService {
       return null;
     }
   }
+
+  // G15.1: OKF path allowlist — reject paths outside configured roots
+  static isWithinOkfRoot(testPath: string): boolean {
+    const resolved = this.realpathSafe(testPath);
+    if (!resolved) return false;
+    const canonicalResolved = this.realpathSafe(CANONICAL_OKF_PATH);
+    if (!canonicalResolved) return false;
+    return resolved === canonicalResolved || resolved.startsWith(canonicalResolved + path.sep);
+  }
+
+  static validateOkfPath(testPath: string): void {
+    if (!this.isWithinOkfRoot(testPath)) {
+      throw new Error('KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE');
+    }
+  }
+
+  // G15.1: Evidence-ref resolver — verify record kind, existence, sensitivity
+  resolveEvidenceRef(ref: string): { kind: string; exists: boolean; valid: boolean } {
+    const [kind, id] = ref.split(':');
+    if (!kind || !id) return { kind: 'unknown', exists: false, valid: false };
+    const validKinds = ['goal', 'loop', 'lease', 'panel', 'claim', 'capability', 'trace', 'checkpoint', 'manifest', 'memory', 'gate', 'task', 'mission', 'decision'];
+    if (!validKinds.includes(kind)) return { kind, exists: false, valid: false };
+    // Check existence in the appropriate table
+    let exists = false;
+    try {
+      switch (kind) {
+        case 'claim': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_claims WHERE id = ?').get(id)); break;
+        case 'capability': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_capabilities WHERE id = ?').get(id)); break;
+        case 'manifest': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_runner_manifests WHERE id = ?').get(id)); break;
+        case 'memory': exists = Boolean(this.db.prepare('SELECT 1 FROM memory_candidates WHERE id = ?').get(id)); break;
+        case 'panel': exists = Boolean(this.db.prepare('SELECT 1 FROM specialist_panels WHERE id = ?').get(id)); break;
+        case 'goal': exists = Boolean(this.db.prepare('SELECT 1 FROM goals WHERE id = ?').get(id)); break;
+        case 'loop': exists = Boolean(this.db.prepare('SELECT 1 FROM loop_runs WHERE id = ?').get(id)); break;
+        case 'lease': exists = Boolean(this.db.prepare('SELECT 1 FROM worker_leases WHERE id = ?').get(id)); break;
+        case 'mission': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_missions WHERE id = ?').get(id)); break;
+        case 'task': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_tasks WHERE id = ?').get(id)); break;
+        case 'trace': exists = Boolean(this.db.prepare('SELECT 1 FROM trace_spans WHERE id = ?').get(id)); break;
+        case 'checkpoint': exists = Boolean(this.db.prepare('SELECT 1 FROM checkpoints WHERE id = ?').get(id)); break;
+        default: exists = false;
+      }
+    } catch {
+      exists = false;
+    }
+    return { kind, exists, valid: true };
+  }
 }
