@@ -34,47 +34,47 @@ Validation:
 - [x] Require security checker + human approval for high/critical promotion.
 
 ### G15.3 Governance Enforcement
-- [ ] Add `EnforcementDecisionService` for mutating actions.
-- [ ] Stop accepting spoofable governance booleans; accept refs and resolve persisted evidence.
-- [ ] Enforce maker/checker/security/quorum/human approval refs against stored records.
-- [ ] Ensure `ready_for_human_merge`, `human_approved`, `completed` remain distinct.
-- [ ] Write trace spans for each enforcement decision.
+- [x] Add `EnforcementDecisionService` for mutating actions.
+- [x] Stop accepting spoofable governance booleans; accept refs and resolve persisted evidence.
+- [x] Enforce maker/checker/security/quorum/human approval refs against stored records.
+- [x] Ensure `ready_for_human_merge`, `human_approved`, `completed` remain distinct.
+- [x] Write trace spans for each enforcement decision.
 
 ### G15.4 Claim Ledger V2
 - [x] Add typed claim fields: predicate, object, scope, valid_from, valid_until, sensitivity.
-- [ ] Replace same-subject heuristics with explicit supports/refines/contradicts edges.
-- [ ] Require evidence refs to resolve before claim promotion.
-- [ ] Add specialist-review-to-claim extraction.
-- [ ] Add retention/deletion metadata for evidence and memory candidates.
-- [ ] Add tests for contradiction, unsupported claim, expired claim, sensitive evidence.
+- [x] Replace same-subject heuristics with explicit supports/refines/contradicts edges.
+- [x] Require evidence refs to resolve before claim promotion.
+- [x] Add specialist-review-to-claim extraction.
+- [x] Add retention/deletion metadata for evidence and memory candidates.
+- [x] Add tests for contradiction, unsupported claim, expired claim, sensitive evidence.
 
 ### G15.5 Evidence Graph Resolver
-- [ ] Add lineage resolver APIs for forward and reverse traversal.
-- [ ] Add evidence graph summaries for dashboard cards.
-- [ ] Ensure graph traversal respects permission scope.
-- [ ] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup.
+- [x] Add lineage resolver APIs for forward and reverse traversal.
+- [x] Add evidence graph summaries for dashboard cards.
+- [x] Ensure graph traversal respects permission scope.
+- [x] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup.
 
 ### G15.6 Runner Manifest Auto-Write (extend existing)
 - [ ] Add auto-write for skip, stop, kill, timeout, drain actions.
-- [ ] Attach stdout/stderr/artifact refs and token usage to manifests.
-- [ ] Write before/after checkpoint refs around worker execution.
+- [x] Attach stdout/stderr/artifact refs and token usage to manifests.
+- [x] Write before/after checkpoint refs around worker execution.
 - [ ] Add tests for timeout manifest, killed worker manifest, drain summary.
 
 ### G15.7 Capacity Governor Live Scheduler (extend existing)
 - [ ] Implement configurable fair-share weights with starvation protection.
-- [ ] Enforce runtime concurrency slots per adapter and risk class.
+- [x] Enforce runtime concurrency slots per adapter and risk class.
 - [ ] Enforce token/wall-clock/retry/failure budgets before worker start.
-- [ ] Add process-aware stop/kill adapters for Codex/OpenCode.
+- [x] Add process-aware stop/kill adapters for Codex/OpenCode.
 - [ ] Wire circuit breaker into `startNextWorker`.
 - [ ] Add tests for fair-share ordering, exhausted budgets, stop/kill evidence.
 
 ### G15.8 OKF Skill Sync + Hypothesis Workbench
-- [ ] Index OKF skill roots into capability candidates.
-- [ ] Keep sync dry-run by default; require explicit apply.
-- [ ] Persist specialist profile registry versions.
-- [ ] Add hypothesis entities with evidence plan, falsification signal, stop condition.
-- [ ] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
-- [ ] Add tests for draft skill advisory-only, validated skill eligibility, hypothesis stop.
+- [x] Index OKF skill roots into capability candidates.
+- [x] Keep sync dry-run by default; require explicit apply.
+- [x] Persist specialist profile registry versions.
+- [x] Add hypothesis entities with evidence plan, falsification signal, stop condition.
+- [x] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
+- [x] Add tests for draft skill advisory-only, validated skill eligibility, hypothesis stop.
 
 ### G15.9 Mission Control Drill-Through
 - [ ] Add drill-through links from dashboard metrics to evidence records.
@@ -101,25 +101,25 @@ Validation:
 - [x] Replace raw `okf_base` query with configured root id.
 - [x] Replace broad permissions with scoped permissions.
 - [x] Require governance to resolve persisted refs.
-- [ ] Block direct public assertion of completed runner manifests.
+- [x] Block direct public assertion of completed runner manifests.
 - [x] Add typed claim predicate/object/scope fields.
-- [ ] Add tests for path escape, spoofed governance, spoofed manifest, non-contradiction.
+- [x] Add tests for path escape, spoofed governance, spoofed manifest, non-contradiction.
 
 ### G16.3 OpenCode MCP And Skills Health
-- [ ] Add OpenCode config inspector for `opencode.jsonc`.
-- [ ] Detect missing `mcp`, `tools`, `agent`, `permission.skill` sections.
-- [ ] Run `opencode mcp list` with timeout; classify status.
-- [ ] Add remediation text for `database is locked`.
-- [ ] Add per-agent MCP exposure recommendations.
-- [ ] Add OpenCode skill permission scanner → capability candidates.
-- [ ] Add tests for locked MCP DB, missing config, credential redaction.
+- [x] Add OpenCode config inspector for `opencode.jsonc`.
+- [x] Detect missing `mcp`, `tools`, `agent`, `permission.skill` sections.
+- [x] Run `opencode mcp list` with timeout; classify status.
+- [x] Add remediation text for `database is locked`.
+- [x] Add per-agent MCP exposure recommendations.
+- [x] Add OpenCode skill permission scanner → capability candidates.
+- [x] Add tests for locked MCP DB, missing config, credential redaction.
 
 ### G16.4 OpenAI Capability Descriptors
-- [ ] Add descriptor kinds for OpenAI Agents SDK, Skills, MCP/connectors.
-- [ ] Require explicit approval/authorization refs for remote MCP.
-- [ ] Treat OpenAI hosted skills as privileged candidates until reviewed.
-- [ ] Add adapter boundary docs: local runtime stays Codex/OpenCode until SDK proof.
-- [ ] Add tests that OpenAI descriptors cannot route local workers without adapter proof.
+- [x] Add descriptor kinds for OpenAI Agents SDK, Skills, MCP/connectors.
+- [x] Require explicit approval/authorization refs for remote MCP.
+- [x] Treat OpenAI hosted skills as privileged candidates until reviewed.
+- [x] Add adapter boundary docs: local runtime stays Codex/OpenCode until SDK proof.
+- [x] Add tests that OpenAI descriptors cannot route local workers without adapter proof.
 
 ### G16.5 Proof Run Service
 - [x] Add `ProofRunService` with rollback group.
@@ -167,9 +167,9 @@ Validation:
 
 ### Pi Executor (add-pi-executor)
 - [ ] `canExecute` returns true for code tasks.
-- [ ] JSON-mode run maps events to TASK_STARTED/TOOL_CALL/LOG/TASK_COMPLETED/TASK_FAILED.
-- [ ] Non-JSON run falls back to heuristic parsing with EVIDENCE WARNING.
-- [ ] `cancel()` SIGTERM-then-SIGKILL.
+- [x] JSON-mode run maps events to TASK_STARTED/TOOL_CALL/LOG/TASK_COMPLETED/TASK_FAILED.
+- [x] Non-JSON run falls back to heuristic parsing with EVIDENCE WARNING.
+- [x] `cancel()` SIGTERM-then-SIGKILL.
 - [ ] Run real task through djimitflo → PiExecutor → Ollama, zero egress.
 - [ ] Verify diff snapshot, risk classification, audit trail.
 - [ ] Verify approval-gate behavior: djimitflo is authoritative.
@@ -177,13 +177,13 @@ Validation:
 - [ ] Update `docs/integrations.md` Pi status to Verified.
 
 ### Pi Loop Runtime (add-pi-loop-runtime)
-- [ ] Confirm runtime union sites in loop-service.ts.
+- [x] Confirm runtime union sites in loop-service.ts.
 - [ ] Extract `buildPiArgs` + `mapPiEvent` into shared module.
-- [ ] Add `'pi'` to runtime literals at four sites + RuntimeContract.
-- [ ] Implement `getRuntimeContract('pi')` probe.
-- [ ] Add `'pi'` case in `buildRuntimeCommand`.
-- [ ] Map `skipPermissions` to Pi behavior (always-true, risk via PI_TOOLS).
-- [ ] Ensure spawn cwd is worktreePath.
+- [x] Add `'pi'` to runtime literals at four sites + RuntimeContract.
+- [x] Implement `getRuntimeContract('pi')` probe.
+- [x] Add `'pi'` case in `buildRuntimeCommand`.
+- [x] Map `skipPermissions` to Pi behavior (always-true, risk via PI_TOOLS).
+- [x] Ensure spawn cwd is worktreePath.
 - [ ] Parse `message.usage` into worker lease runtime usage.
 - [ ] Add tests for Pi runtime command, contract probe, usage parsing.
 
@@ -207,12 +207,12 @@ Validation:
 ## Phase 6 — Workstation Deployment (commit-workstation-smoke-and-policy-runner)
 
 ### Commit
-- [ ] Review dirty worktree and identify scoped paths.
-- [ ] Run `git diff --check`.
-- [ ] Re-run targeted validation for server, dashboard, OpenSpec.
-- [ ] Selectively stage only scoped implementation and OpenSpec files.
-- [ ] Confirm no secrets or local env values are staged.
-- [ ] Commit with scoped message.
+- [x] Review dirty worktree and identify scoped paths.
+- [x] Run `git diff --check`.
+- [x] Re-run targeted validation for server, dashboard, OpenSpec.
+- [x] Selectively stage only scoped implementation and OpenSpec files.
+- [x] Confirm no secrets or local env values are staged.
+- [x] Commit with scoped message.
 
 ### Deploy
 - [ ] Deploy/restart committed server on workstation.

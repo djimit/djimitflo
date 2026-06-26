@@ -90,5 +90,5 @@
 - [x] Verify the mock scenario writes trace spans, checkpoints, runner manifests, evidence graph edges and blocked/allowed governance decisions.
 - [ ] Run a bounded Codex worker smoke after the mock scenario is green.
 - [ ] Run a bounded OpenCode worker smoke after the Codex smoke is green or record an explicit runtime-unavailable blocked reason.
-- [ ] Store evidence ids, endpoints, runtime status, stdout/stderr/artifact refs, usage parse results, budgets and remaining risks in the change evidence file.
+- [x] Store evidence ids, endpoints, runtime status, stdout/stderr/artifact refs, usage parse results, budgets and remaining risks in the change evidence file.
 - [x] Verify no merge, push, deploy, high-risk unattended execution or automatic policy memory promotion occurred.
