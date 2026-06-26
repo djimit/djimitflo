@@ -12,10 +12,10 @@
 
 ## G15.2 Capability Promotion And Router Enforcement
 
-- [ ] Split capability candidate creation from validated promotion.
-- [ ] Require promotion evidence refs, eval scorecard refs, owner, version, risk ceiling, allowed actions, forbidden actions, eval threshold and removal strategy.
+- [x] Split capability candidate creation from validated promotion.
+- [x] Require promotion evidence refs, eval scorecard refs, owner, version, risk ceiling, allowed actions, forbidden actions, eval threshold and removal strategy.
 - [x] Make eval score below threshold a hard fail in capability evaluation.
-- [ ] Require high/critical capability promotion to include security checker and human approval refs.
+- [x] Require high/critical capability promotion to include security checker and human approval refs.
 - [x] Route `startNextWorker` and worker drain selection through validated capability contracts.
 - [x] Persist blocked routing reasons when capability status, risk ceiling, runtime status, eval threshold or required evidence fails.
 - [x] Add tests for draft/candidate routing refusal, below-threshold hard fail, high-risk promotion refusal and successful low-risk routing.

@@ -29,9 +29,9 @@ Validation:
 - [x] Add tests for path escape refusal, secret rejection, scoped permission refusal.
 
 ### G15.2 Capability Promotion
-- [ ] Split `registerCapability` into `createCandidate` + `promoteCapability`.
-- [ ] Require promotion evidence refs, eval scorecard, owner, version, risk ceiling.
-- [ ] Require security checker + human approval for high/critical promotion.
+- [x] Split `registerCapability` into `createCandidate` + `promoteCapability`.
+- [x] Require promotion evidence refs, eval scorecard, owner, version, risk ceiling.
+- [x] Require security checker + human approval for high/critical promotion.
 
 ### G15.3 Governance Enforcement
 - [ ] Add `EnforcementDecisionService` for mutating actions.

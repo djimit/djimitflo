@@ -139,6 +139,9 @@ function mapCsSkillSwarmHarnessError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'SWARM_INTELLIGENCE_SECRET_DETECTED') throw createError(400, 'swarm intelligence payload appears to contain a secret', 'SWARM_INTELLIGENCE_SECRET_DETECTED');
   if (message === 'KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE') throw createError(403, 'OKF path is outside allowed roots', 'KNOWLEDGE_RUNTIME_OKF_PATH_ESCAPE');
+  if (message?.startsWith('CAPABILITY_PROMOTION_EVIDENCE_REQUIRED')) throw createError(409, 'capability promotion requires evidence refs', 'CAPABILITY_PROMOTION_EVIDENCE_REQUIRED');
+  if (message?.startsWith('CAPABILITY_PROMOTION_SECURITY_CHECKER_REQUIRED')) throw createError(409, 'high/critical capability promotion requires security checker ref', 'CAPABILITY_PROMOTION_SECURITY_CHECKER_REQUIRED');
+  if (message?.startsWith('CAPABILITY_PROMOTION_HUMAN_APPROVAL_REQUIRED')) throw createError(409, 'high/critical capability promotion requires human approval ref', 'CAPABILITY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
   if (message?.startsWith('SWARM_INVALID_TRANSITION:')) { const [, from, to] = message.split(':'); throw createError(400, `invalid state transition: ${from} -> ${to}`, 'SWARM_INVALID_TRANSITION'); }
   if (message === 'SWARM_MISSION_NOT_FOUND') throw createError(404, 'swarm mission not found', 'SWARM_MISSION_NOT_FOUND');
   if (message === 'SWARM_MISSION_TITLE_REQUIRED') throw createError(400, 'mission title is required', 'SWARM_MISSION_TITLE_REQUIRED');
@@ -449,6 +452,22 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  router.post('/intelligence/capabilities/candidate', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      res.status(201).json(intelligence.createCandidate(req.body || {}));
+    } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
+    }
+  });
+
+  router.post('/intelligence/capabilities/:id/promote', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      res.json(intelligence.promoteCapability(req.params.id, req.body || {}));
+    } catch (error) {
+      try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); }
     }
   });
 

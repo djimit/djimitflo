@@ -239,6 +239,81 @@ export class SwarmIntelligenceService {
     return this.getCapability(input.id.trim());
   }
 
+  // G15.2: Split candidate creation from validated promotion
+  createCandidate(input: {
+    id?: string;
+    kind?: CapabilityKind;
+    owner?: string;
+    version?: string;
+    risk_ceiling?: RiskClass;
+    input_schema_ref?: string;
+    output_schema_ref?: string;
+    allowed_actions?: string[];
+    forbidden_actions?: string[];
+    required_evidence?: string[];
+    eval_threshold?: number;
+    removal_strategy?: string;
+    metadata?: Record<string, unknown>;
+  }): SwarmCapabilityRecord {
+    return this.registerCapability({
+      ...input,
+      status: 'candidate',
+      eval_score: 0,
+    });
+  }
+
+  promoteCapability(id: string, input: {
+    eval_score?: number;
+    eval_scorecard_ref?: string;
+    evidence_refs?: string[];
+    security_checker_ref?: string;
+    human_approval_ref?: string;
+    validation_report?: string;
+  }): SwarmCapabilityRecord {
+    const capability = this.getCapability(id);
+    if (!capability) throw new Error('SWARM_CAPABILITY_NOT_FOUND');
+
+    // Require eval score above threshold
+    const evalScore = this.normalizedScore(input.eval_score ?? capability.eval_score);
+    if (evalScore < capability.eval_threshold) {
+      throw new Error(`CAPABILITY_BELOW_EVAL_THRESHOLD:${id}:score=${evalScore}:threshold=${capability.eval_threshold}`);
+    }
+
+    // Require evidence refs for promotion
+    if (!input.evidence_refs || input.evidence_refs.length === 0) {
+      throw new Error('CAPABILITY_PROMOTION_EVIDENCE_REQUIRED');
+    }
+
+    // High/critical risk requires security checker + human approval
+    if (capability.risk_ceiling === 'high' || capability.risk_ceiling === 'critical') {
+      if (!input.security_checker_ref?.trim()) {
+        throw new Error('CAPABILITY_PROMOTION_SECURITY_CHECKER_REQUIRED');
+      }
+      if (!input.human_approval_ref?.trim()) {
+        throw new Error('CAPABILITY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
+      }
+    }
+
+    this.rejectSecretLike(input);
+    const now = new Date().toISOString();
+    const metadata = {
+      ...capability.metadata,
+      promotion_evidence_refs: input.evidence_refs,
+      promotion_eval_scorecard_ref: input.eval_scorecard_ref,
+      promotion_security_checker_ref: input.security_checker_ref || null,
+      promotion_human_approval_ref: input.human_approval_ref || null,
+      promoted_at: now,
+    };
+
+    this.db.prepare(`
+      UPDATE swarm_capabilities
+      SET status = 'validated', eval_score = ?, latest_validation_report = ?, metadata = ?, updated_at = ?
+      WHERE id = ?
+    `).run(evalScore, input.validation_report || null, JSON.stringify(metadata), now, id);
+
+    return this.getCapability(id);
+  }
+
   listCapabilities(limit = 100): SwarmCapabilityRecord[] {
     return (this.db.prepare('SELECT * FROM swarm_capabilities ORDER BY updated_at DESC, id ASC LIMIT ?').all(this.limit(limit)) as any[])
       .map((row) => this.parseCapability(row));
