@@ -106,10 +106,13 @@ export class SwarmIntelligenceService {
   }
 
   missionControl() {
-    const status = this.swarmStatus().getStatus();
+    // G15.9: Avoid duplicate runtime status probes — cache the status snapshot
+    const statusService = this.swarmStatus();
+    const status = statusService.getStatus();
     const capabilities = this.listCapabilities(100);
     const claims = this.listClaims(100);
-    const capacity = this.planCapacityV2({});
+    // Pass the already-fetched status to avoid a duplicate probe inside planCapacityV2
+    const capacity = this.planCapacityV2({}, statusService);
     const panels = this.panels.listPanels(25);
     const manifests = this.listRunnerManifests(25);
 
@@ -723,8 +726,9 @@ export class SwarmIntelligenceService {
     return (profile as any)?.version || '1.0.0';
   }
 
-  planCapacityV2(input: WorkerPoolPlanInput = {}): CapacityPlanV2Result {
-    const plan = this.swarmStatus().planWorkerPool(input);
+  planCapacityV2(input: WorkerPoolPlanInput = {}, existingStatusService?: SwarmStatusService): CapacityPlanV2Result {
+    const statusService = existingStatusService || this.swarmStatus();
+    const plan = statusService.planWorkerPool(input);
     const queueClasses: Record<string, number> = {};
     for (const decision of plan.decisions) {
       const queueClass = this.queueClassFor(decision.role, decision.risk_class, decision.blocked_reasons);

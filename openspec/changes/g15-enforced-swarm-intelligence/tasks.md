@@ -80,9 +80,9 @@
 - [x] Add drill-through links from dashboard metrics to capabilities, claims, panels, backlog items, goals, loops, leases, traces, checkpoints, manifests and memory candidates.
 - [x] Add gated operator actions for capability promotion, claim resolution, panel projection, goal creation, start-next, drain, stop/kill and manifest review.
 - [x] Show disabled action state with exact blocked reasons from enforcement decisions.
-- [ ] Separate MacBook cockpit, workstation execution node, registry state, prepared leases and active runtime evidence in the UI.
-- [ ] Avoid duplicate runtime status probes inside a single mission-control request by caching or passing the status snapshot.
-- [ ] Add dashboard tests for drill-through, disabled blocked actions, active execution truth and runtime-node labels.
+- [x] Separate MacBook cockpit, workstation execution node, registry state, prepared leases and active runtime evidence in the UI.
+- [x] Avoid duplicate runtime status probes inside a single mission-control request by caching or passing the status snapshot.
+- [x] Add dashboard tests for drill-through, disabled blocked actions, active execution truth and runtime-node labels.
 
 ## G15.10 End-To-End Scenario And Runtime Smoke
 

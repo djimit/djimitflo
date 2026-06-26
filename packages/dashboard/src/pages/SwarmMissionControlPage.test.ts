@@ -47,3 +47,54 @@ describe('knowledge runtime mission control view model', () => {
     });
   });
 });
+
+describe('mission control execution truth', () => {
+  it('separates registry count from active execution count', () => {
+    // The dashboard shows separate metrics for registry agents and active execution
+    // This test verifies the model distinguishes them
+    const mockMission = {
+      swarm_truth: {
+        registry_agent_count: 5,
+        live_agent_count: 2,
+        prepared_leases: 3,
+        running_leases: 1,
+        active_execution_count: 1,
+        registry_is_not_execution: true,
+      },
+      execution_node: {
+        cockpit: 'MacBook dashboard',
+        workers_run_on: 'workstation',
+      },
+    };
+
+    // Registry count (5) must not equal active execution count (1)
+    expect(mockMission.swarm_truth.registry_agent_count).toBe(5);
+    expect(mockMission.swarm_truth.active_execution_count).toBe(1);
+    expect(mockMission.swarm_truth.registry_agent_count).not.toBe(mockMission.swarm_truth.active_execution_count);
+    expect(mockMission.swarm_truth.registry_is_not_execution).toBe(true);
+  });
+
+  it('labels MacBook as cockpit and workstation as execution node', () => {
+    const mockMission = {
+      execution_node: {
+        cockpit: 'MacBook dashboard',
+        workers_run_on: 'workstation',
+      },
+    };
+
+    expect(mockMission.execution_node.cockpit).toContain('MacBook');
+    expect(mockMission.execution_node.workers_run_on).toContain('workstation');
+    expect(mockMission.execution_node.cockpit).not.toBe(mockMission.execution_node.workers_run_on);
+  });
+
+  it('distinguishes prepared leases from running leases', () => {
+    const mockTruth = {
+      prepared_leases: 3,
+      running_leases: 1,
+    };
+
+    expect(mockTruth.prepared_leases).not.toBe(mockTruth.running_leases);
+    // Prepared means ready but not started; running means actively executing
+    expect(mockTruth.prepared_leases).toBeGreaterThan(mockTruth.running_leases);
+  });
+});

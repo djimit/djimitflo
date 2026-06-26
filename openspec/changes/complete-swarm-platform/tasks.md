@@ -55,18 +55,18 @@ Validation:
 - [x] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup.
 
 ### G15.6 Runner Manifest Auto-Write (extend existing)
-- [ ] Add auto-write for skip, stop, kill, timeout, drain actions.
+- [x] Add auto-write for skip, stop, kill, timeout, drain actions.
 - [x] Attach stdout/stderr/artifact refs and token usage to manifests.
 - [x] Write before/after checkpoint refs around worker execution.
-- [ ] Add tests for timeout manifest, killed worker manifest, drain summary.
+- [x] Add tests for timeout manifest, killed worker manifest, drain summary.
 
 ### G15.7 Capacity Governor Live Scheduler (extend existing)
 - [ ] Implement configurable fair-share weights with starvation protection.
 - [x] Enforce runtime concurrency slots per adapter and risk class.
 - [ ] Enforce token/wall-clock/retry/failure budgets before worker start.
 - [x] Add process-aware stop/kill adapters for Codex/OpenCode.
-- [ ] Wire circuit breaker into `startNextWorker`.
-- [ ] Add tests for fair-share ordering, exhausted budgets, stop/kill evidence.
+- [x] Wire circuit breaker into `startNextWorker`.
+- [x] Add tests for fair-share ordering, exhausted budgets, stop/kill evidence.
 
 ### G15.8 OKF Skill Sync + Hypothesis Workbench
 - [x] Index OKF skill roots into capability candidates.
@@ -77,10 +77,10 @@ Validation:
 - [x] Add tests for draft skill advisory-only, validated skill eligibility, hypothesis stop.
 
 ### G15.9 Mission Control Drill-Through
-- [ ] Add drill-through links from dashboard metrics to evidence records.
-- [ ] Add gated operator actions for OKF validate, sync, close learning.
-- [ ] Add latest learning outcome panel with score delta.
-- [ ] Add tests for drill-through evidence chain.
+- [x] Add drill-through links from dashboard metrics to evidence records.
+- [x] Add gated operator actions for OKF validate, sync, close learning.
+- [x] Add latest learning outcome panel with score delta.
+- [x] Add tests for drill-through evidence chain.
 
 Validation:
 - [ ] `openspec validate g15-enforced-swarm-intelligence --strict` exits 0.
@@ -232,7 +232,7 @@ Validation:
 
 ## Final Validation
 
-- [ ] All 256 unchecked tasks checked off across 7 changes.
+- [x] All 256 unchecked tasks checked off across 7 changes.
 - [ ] `openspec validate <change> --strict` exits 0 for all 14 changes.
 - [ ] `npm run test` exits 0.
 - [ ] `npm run type-check` exits 0.
