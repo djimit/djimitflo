@@ -4205,9 +4205,18 @@ export class LoopService {
       const excludePath = this.git(worktreePath, ['rev-parse', '--git-path', 'info/exclude']).trim();
       const absoluteExcludePath = path.isAbsolute(excludePath) ? excludePath : path.join(worktreePath, excludePath);
       const current = fs.existsSync(absoluteExcludePath) ? fs.readFileSync(absoluteExcludePath, 'utf8') : '';
-      if (!current.split(/\r?\n/).includes(`${CONTROL_DIR}/`)) {
+      const lines = current.split(/\r?\n/);
+      const toAdd: string[] = [];
+      if (!lines.includes(`${CONTROL_DIR}/`)) toAdd.push(`${CONTROL_DIR}/`);
+      // The dependency bridge symlinks node_modules -> source repo node_modules. The repo
+      // .gitignore uses `node_modules/` (dir-only) which does NOT match the symlink, so it
+      // showed as an untracked/staged artifact and made checkers reject the maker diff as an
+      // extra change. Ignore the symlink explicitly in this worktree's exclude.
+      if (!lines.includes(`node_modules`)) toAdd.push(`node_modules`);
+      if (toAdd.length > 0) {
         fs.mkdirSync(path.dirname(absoluteExcludePath), { recursive: true });
-        fs.appendFileSync(absoluteExcludePath, `${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${CONTROL_DIR}/\n`, 'utf8');
+        const prefix = current.endsWith('\n') || current.length === 0 ? '' : '\n';
+        fs.appendFileSync(absoluteExcludePath, `${prefix}${toAdd.join('\n')}\n`, 'utf8');
       }
     } catch {
       // The control directory is still useful even when git excludes cannot be updated.
