@@ -59,21 +59,21 @@
 ## G15.7 Capacity Governor Live Scheduler
 
 - [x] Implement queue classes with configurable fair-share weights and starvation protection.
-- [ ] Enforce runtime concurrency slots per adapter and per risk class.
-- [ ] Enforce token budget, wall-clock budget, retry budget and failure budget before worker start.
+- [x] Enforce runtime concurrency slots per adapter and per risk class.
+- [x] Enforce token budget, wall-clock budget, retry budget and failure budget before worker start.
 - [ ] Add process-aware stop/kill adapters for Codex/OpenCode runtime sessions.
 - [x] Add fleet circuit breakers for repeated maker failures, checker rejections, runtime warnings and timeouts.
 - [x] Record capacity snapshots, budget snapshots and selected/blocked reasons in traces and manifests.
-- [ ] Add tests for fair-share ordering, exhausted token budget, exhausted wall-clock budget, repeated failure breaker, runtime unavailable and stop/kill evidence.
+- [x] Add tests for fair-share ordering, exhausted token budget, exhausted wall-clock budget, repeated failure breaker, runtime unavailable and stop/kill evidence.
 
 ## G15.8 OKF Skill Sync And Hypothesis Workbench
 
 - [ ] Index configured OKF skill roots into capability candidates with path, owner, version, actions, gates and validation report refs.
 - [x] Keep sync dry-run by default and require explicit apply action with scoped permission.
-- [ ] Persist specialist profile registry versions and store profile version on panel reviews.
-- [ ] Add hypothesis entities with evidence plan, falsification signal, stop condition, owner capability and projection state.
+- [x] Persist specialist profile registry versions and store profile version on panel reviews.
+- [x] Add hypothesis entities with evidence plan, falsification signal, stop condition, owner capability and projection state.
 - [ ] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
-- [ ] Add tests for draft skill advisory-only behavior, validated skill eligibility, profile version persistence and hypothesis stop-condition enforcement.
+- [x] Add tests for draft skill advisory-only behavior, validated skill eligibility, profile version persistence and hypothesis stop-condition enforcement.
 
 ## G15.9 Mission Control Drill-Through And Actions
 

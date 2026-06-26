@@ -605,6 +605,93 @@ export class SwarmIntelligenceService {
     }
   }
 
+  // G15.8: Hypothesis workbench
+  createHypothesis(input: {
+    question: string;
+    evidence_plan?: string[];
+    falsification_signal?: string;
+    stop_condition?: string;
+    owner_capability_id?: string | null;
+    panel_id?: string | null;
+    metadata?: Record<string, unknown>;
+  }): { id: string; question: string; projection_state: string } {
+    if (!input.question?.trim()) throw new Error('SWARM_HYPOTHESIS_QUESTION_REQUIRED');
+    this.rejectSecretLike(input);
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO swarm_hypotheses (id, question, evidence_plan_json, falsification_signal, stop_condition, owner_capability_id, panel_id, projection_state, evidence_refs_json, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', '[]', ?, ?, ?)
+    `).run(
+      id,
+      input.question.trim(),
+      JSON.stringify(input.evidence_plan || []),
+      input.falsification_signal || null,
+      input.stop_condition || 'evidence_threshold_met',
+      input.owner_capability_id || null,
+      input.panel_id || null,
+      JSON.stringify(input.metadata || {}),
+      now, now,
+    );
+    return { id, question: input.question.trim(), projection_state: 'draft' };
+  }
+
+  getHypothesis(id: string): any {
+    const row = this.db.prepare('SELECT * FROM swarm_hypotheses WHERE id = ?').get(id);
+    if (!row) throw new Error('SWARM_HYPOTHESIS_NOT_FOUND');
+    return row;
+  }
+
+  listHypotheses(limit = 100): any[] {
+    return this.db.prepare('SELECT * FROM swarm_hypotheses ORDER BY created_at DESC LIMIT ?').all(this.limit(limit));
+  }
+
+  transitionHypothesis(id: string, toState: string, evidence?: string[]): any {
+    const validStates = ['draft', 'testing', 'supported', 'falsified', 'projected', 'cancelled'];
+    if (!validStates.includes(toState)) throw new Error('SWARM_HYPOTHESIS_STATE_INVALID');
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE swarm_hypotheses SET projection_state = ?, evidence_refs_json = ?, updated_at = ? WHERE id = ?')
+      .run(toState, JSON.stringify(evidence || []), now, id);
+    return this.getHypothesis(id);
+  }
+
+  // G15.7: Runtime concurrency slots per adapter and risk class
+  private concurrencySlots: Map<string, { max: number; active: number }> = new Map();
+
+  setConcurrencySlot(adapter: string, riskClass: string, maxConcurrent: number): void {
+    const key = `${adapter}:${riskClass}`;
+    this.concurrencySlots.set(key, { max: maxConcurrent, active: this.concurrencySlots.get(key)?.active || 0 });
+  }
+
+  checkConcurrencySlot(adapter: string, riskClass: string): { available: boolean; active: number; max: number } {
+    const key = `${adapter}:${riskClass}`;
+    const slot = this.concurrencySlots.get(key);
+    if (!slot) return { available: true, active: 0, max: Infinity };
+    return { available: slot.active < slot.max, active: slot.active, max: slot.max };
+  }
+
+  acquireConcurrencySlot(adapter: string, riskClass: string): boolean {
+    const key = `${adapter}:${riskClass}`;
+    const slot = this.concurrencySlots.get(key);
+    if (!slot) return true;
+    if (slot.active >= slot.max) return false;
+    slot.active++;
+    return true;
+  }
+
+  releaseConcurrencySlot(adapter: string, riskClass: string): void {
+    const key = `${adapter}:${riskClass}`;
+    const slot = this.concurrencySlots.get(key);
+    if (slot && slot.active > 0) slot.active--;
+  }
+
+  // G15.8: Specialist profile version persistence
+  getSpecialistProfileVersion(specialistId: string): string {
+    const profiles = this.panels.getCatalog();
+    const profile = profiles.find((p) => p.id === specialistId);
+    return (profile as any)?.version || '1.0.0';
+  }
+
   planCapacityV2(input: WorkerPoolPlanInput = {}): CapacityPlanV2Result {
     const plan = this.swarmStatus().planWorkerPool(input);
     const queueClasses: Record<string, number> = {};

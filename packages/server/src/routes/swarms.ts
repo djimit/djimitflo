@@ -797,6 +797,22 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
+  // G15.8: Hypothesis workbench endpoints
+  router.get('/intelligence/hypotheses', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json({ hypotheses: intelligence.listHypotheses(Number(req.query.limit) || 100) }); }
+    catch (error) { next(error); }
+  });
+
+  router.post('/intelligence/hypotheses', requirePermission('write:swarm_action'), (req, res, next) => {
+    try { res.status(201).json(intelligence.createHypothesis(req.body || {})); }
+    catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
+  });
+
+  router.post('/intelligence/hypotheses/:id/transition', requirePermission('write:swarm_action'), (req, res, next) => {
+    try { res.json(intelligence.transitionHypothesis(req.params.id, req.body.state, req.body.evidence_refs)); }
+    catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
+  });
+
   // G14.1: Swarm Intelligence Kernel — mission/task/decision endpoints
   router.get('/intelligence/missions', (req, res) => {
     const svc = new SwarmIntelligenceService(db);

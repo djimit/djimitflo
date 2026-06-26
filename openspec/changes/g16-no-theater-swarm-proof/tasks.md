@@ -88,8 +88,8 @@
 
 ## G16.10 Sellable Demo Pack
 
-- [ ] Add runbook for demo flow: pre-counts, proof run, Mission Control, evidence graph, rollback.
-- [ ] Add one-page product proof summary for reviewers.
-- [ ] Include exact commands and expected output shapes.
-- [ ] Include caveats: Ruflo is inspiration, registry is not execution, mock proof precedes real runtime.
-- [ ] Include go/no-go checklist for external review.
+- [x] Add runbook for demo flow: pre-counts, proof run, Mission Control, evidence graph, rollback.
+- [x] Add one-page product proof summary for reviewers.
+- [x] Include exact commands and expected output shapes.
+- [x] Include caveats: Ruflo is inspiration, registry is not execution, mock proof precedes real runtime.
+- [x] Include go/no-go checklist for external review.

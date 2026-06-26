@@ -1028,6 +1028,27 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_swarm_decisions_mission_id ON swarm_decisions(mission_id);
     CREATE INDEX IF NOT EXISTS idx_swarm_decisions_task_id ON swarm_decisions(task_id);
     CREATE INDEX IF NOT EXISTS idx_swarm_decisions_type ON swarm_decisions(decision_type);
+
+    -- G15.8: Hypothesis workbench
+    CREATE TABLE IF NOT EXISTS swarm_hypotheses (
+      id TEXT PRIMARY KEY,
+      question TEXT NOT NULL,
+      evidence_plan_json TEXT NOT NULL DEFAULT '[]',
+      falsification_signal TEXT,
+      stop_condition TEXT NOT NULL DEFAULT 'evidence_threshold_met',
+      owner_capability_id TEXT,
+      projection_state TEXT NOT NULL CHECK(projection_state IN ('draft', 'testing', 'supported', 'falsified', 'projected', 'cancelled')),
+      panel_id TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (owner_capability_id) REFERENCES swarm_capabilities(id) ON DELETE SET NULL,
+      FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_swarm_hypotheses_projection ON swarm_hypotheses(projection_state);
+    CREATE INDEX IF NOT EXISTS idx_swarm_hypotheses_panel ON swarm_hypotheses(panel_id);
   `);
 }
 
