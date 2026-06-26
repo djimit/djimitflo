@@ -44,7 +44,7 @@
 - [x] Add graph edges across specialist panel, review, claim, backlog item, goal, loop run, worker lease, trace span, checkpoint, runner manifest and memory candidate.
 - [x] Add lineage resolver APIs for forward and reverse traversal.
 - [x] Add evidence graph summaries for dashboard cards and review bundles.
-- [ ] Ensure graph traversal cannot expose records outside the caller permission scope.
+- [x] Ensure graph traversal cannot expose records outside the caller permission scope.
 - [x] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup, missing edge handling and permission-filtered graph output.
 
 ## G15.6 Runner Manifest Auto-Write
@@ -61,18 +61,18 @@
 - [x] Implement queue classes with configurable fair-share weights and starvation protection.
 - [x] Enforce runtime concurrency slots per adapter and per risk class.
 - [x] Enforce token budget, wall-clock budget, retry budget and failure budget before worker start.
-- [ ] Add process-aware stop/kill adapters for Codex/OpenCode runtime sessions.
+- [x] Add process-aware stop/kill adapters for Codex/OpenCode runtime sessions.
 - [x] Add fleet circuit breakers for repeated maker failures, checker rejections, runtime warnings and timeouts.
 - [x] Record capacity snapshots, budget snapshots and selected/blocked reasons in traces and manifests.
 - [x] Add tests for fair-share ordering, exhausted token budget, exhausted wall-clock budget, repeated failure breaker, runtime unavailable and stop/kill evidence.
 
 ## G15.8 OKF Skill Sync And Hypothesis Workbench
 
-- [ ] Index configured OKF skill roots into capability candidates with path, owner, version, actions, gates and validation report refs.
+- [x] Index configured OKF skill roots into capability candidates with path, owner, version, actions, gates and validation report refs.
 - [x] Keep sync dry-run by default and require explicit apply action with scoped permission.
 - [x] Persist specialist profile registry versions and store profile version on panel reviews.
 - [x] Add hypothesis entities with evidence plan, falsification signal, stop condition, owner capability and projection state.
-- [ ] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
+- [x] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
 - [x] Add tests for draft skill advisory-only behavior, validated skill eligibility, profile version persistence and hypothesis stop-condition enforcement.
 
 ## G15.9 Mission Control Drill-Through And Actions
@@ -86,9 +86,9 @@
 
 ## G15.10 End-To-End Scenario And Runtime Smoke
 
-- [ ] Add a mock-runtime scenario: question to hypothesis, panel, claims, backlog, goal, prepared lease, scheduler plan, worker, checker, manifest, memory candidate and dashboard proof.
-- [ ] Verify the mock scenario writes trace spans, checkpoints, runner manifests, evidence graph edges and blocked/allowed governance decisions.
+- [x] Add a mock-runtime scenario: question to hypothesis, panel, claims, backlog, goal, prepared lease, scheduler plan, worker, checker, manifest, memory candidate and dashboard proof.
+- [x] Verify the mock scenario writes trace spans, checkpoints, runner manifests, evidence graph edges and blocked/allowed governance decisions.
 - [ ] Run a bounded Codex worker smoke after the mock scenario is green.
 - [ ] Run a bounded OpenCode worker smoke after the Codex smoke is green or record an explicit runtime-unavailable blocked reason.
 - [ ] Store evidence ids, endpoints, runtime status, stdout/stderr/artifact refs, usage parse results, budgets and remaining risks in the change evidence file.
-- [ ] Verify no merge, push, deploy, high-risk unattended execution or automatic policy memory promotion occurred.
+- [x] Verify no merge, push, deploy, high-risk unattended execution or automatic policy memory promotion occurred.

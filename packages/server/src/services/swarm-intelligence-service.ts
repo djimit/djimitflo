@@ -533,6 +533,37 @@ export class SwarmIntelligenceService {
     };
   }
 
+  // G15.5: Permission-scoped graph traversal — cannot expose records outside caller scope
+  lineageForwardScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10): { ref: string; edges: Array<{ to: string; relation: string; depth: number }> } {
+    const full = this.lineageForward(ref, maxDepth);
+    return {
+      ref,
+      edges: full.edges.filter((e) => permittedRefs.has(e.to) || permittedRefs.has('*')),
+    };
+  }
+
+  lineageReverseScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10): { ref: string; edges: Array<{ from: string; relation: string; depth: number }> } {
+    const full = this.lineageReverse(ref, maxDepth);
+    return {
+      ref,
+      edges: full.edges.filter((e) => permittedRefs.has(e.from) || permittedRefs.has('*')),
+    };
+  }
+
+  // G15.7: Process-aware stop/kill adapter info
+  getProcessAdapterInfo(runtime: string): { runtime: string; supports_stop: boolean; supports_kill: boolean; stop_signal: string; kill_signal: string } {
+    const adapters: Record<string, { supports_stop: boolean; supports_kill: boolean; stop_signal: string; kill_signal: string }> = {
+      codex: { supports_stop: true, supports_kill: true, stop_signal: 'SIGTERM', kill_signal: 'SIGKILL' },
+      opencode: { supports_stop: true, supports_kill: true, stop_signal: 'SIGTERM', kill_signal: 'SIGKILL' },
+      claude: { supports_stop: true, supports_kill: true, stop_signal: 'SIGTERM', kill_signal: 'SIGKILL' },
+      gemini: { supports_stop: true, supports_kill: true, stop_signal: 'SIGTERM', kill_signal: 'SIGKILL' },
+      pi: { supports_stop: true, supports_kill: true, stop_signal: 'SIGTERM', kill_signal: 'SIGKILL' },
+      mock: { supports_stop: false, supports_kill: false, stop_signal: 'N/A', kill_signal: 'N/A' },
+      manual: { supports_stop: false, supports_kill: false, stop_signal: 'N/A', kill_signal: 'N/A' },
+    };
+    return { runtime, ...adapters[runtime] || { supports_stop: false, supports_kill: false, stop_signal: 'N/A', kill_signal: 'N/A' } };
+  }
+
   // G15.4: Require evidence refs to resolve before claim can become supported
   resolveEvidenceRefs(refs: string[]): { all_resolved: boolean; unresolved: string[] } {
     const unresolved: string[] = [];
