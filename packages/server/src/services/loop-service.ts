@@ -3620,11 +3620,21 @@ export class LoopService {
     const configured = process.env.LOOP_WORKTREE_ROOT;
     if (configured) candidates.push(configured);
     candidates.push(os.tmpdir());
-    candidates.push(path.resolve(this.safeRealpath(process.cwd()), '..', '.djimitflo-loop-worktrees'));
-    const inside = candidates.some((root) => {
-      const resolvedRoot = this.safeRealpath(root);
-      return resolvedCwd === resolvedRoot || resolvedCwd.startsWith(resolvedRoot + path.sep);
-    });
+    // createWorktree places worktrees under <repo-toplevel>/../.djimitflo-loop-worktrees
+    // (a sibling of the repo, OUTSIDE it). The previous candidate derived the root from
+    // process.cwd() (a sub-workspace like packages/server) -> packages/.djimitflo-loop-worktrees
+    // INSIDE the repo, which disagreed with createWorktree's toplevel-based root and rejected
+    // legitimately-isolated worktrees. Accept any path beneath a .djimitflo-loop-worktrees
+    // directory (the naming contract createWorktree always uses) so the boundary check agrees
+    // regardless of which workspace the process runs from.
+    const inside =
+      candidates.some((root) => {
+        const resolvedRoot = this.safeRealpath(root);
+        return resolvedCwd === resolvedRoot || resolvedCwd.startsWith(resolvedRoot + path.sep);
+      }) ||
+      resolvedCwd
+        .split(path.sep)
+        .includes('.djimitflo-loop-worktrees');
     if (!inside) {
       throw new Error(`RUNTIME_CWD_OUTSIDE_WORKTREE: ${resolvedCwd}`);
     }
