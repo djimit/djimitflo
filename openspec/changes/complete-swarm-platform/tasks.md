@@ -2,20 +2,20 @@
 
 ## Phase 1 — G14 Closure (next-level-swarm-skills-specialists)
 
-- [ ] Check off G14.1: swarm_missions/tasks/decisions tables + state machine (tested by g14-swarm-intelligence.test.ts).
-- [ ] Check off G14.2: capability registry + contracts + status gates (tested by swarm-intelligence-service.test.ts).
-- [ ] Check off G14.3: specialist panels + dissent + consensus-to-backlog (tested by swarm-resource-plan.test.ts).
-- [ ] Check off G14.4: evidence graph + claim ledger + contradiction + secret rejection (tested by swarm-intelligence-service.test.ts).
-- [ ] Check off G14.5: capacity governor v2 + queue classes + fair-share + kill (tested by swarm-intelligence-service.test.ts).
-- [ ] Check off G14.6: evaluation harness + deterministic scorecards (tested by swarm-resource-plan.test.ts).
-- [ ] Check off G14.7: Mission Control dashboard + evidence-backed counts (tested by swarm-intelligence-service.test.ts).
-- [ ] Check off G14.8: quorum gate + runner manifests + replay + warning gates (tested by swarm-intelligence-service.test.ts + swarm-resource-plan.test.ts).
-- [ ] Check off G14.9: end-to-end swarm smoke (tested by g14-swarm-intelligence.test.ts).
-- [ ] Run `openspec validate next-level-swarm-skills-specialists --strict`.
+- [x] Check off G14.1: swarm_missions/tasks/decisions tables + state machine (tested by g14-swarm-intelligence.test.ts).
+- [x] Check off G14.2: capability registry + contracts + status gates (tested by swarm-intelligence-service.test.ts).
+- [x] Check off G14.3: specialist panels + dissent + consensus-to-backlog (tested by swarm-resource-plan.test.ts).
+- [x] Check off G14.4: evidence graph + claim ledger + contradiction + secret rejection (tested by swarm-intelligence-service.test.ts).
+- [x] Check off G14.5: capacity governor v2 + queue classes + fair-share + kill (tested by swarm-intelligence-service.test.ts).
+- [x] Check off G14.6: evaluation harness + deterministic scorecards (tested by swarm-resource-plan.test.ts).
+- [x] Check off G14.7: Mission Control dashboard + evidence-backed counts (tested by swarm-intelligence-service.test.ts).
+- [x] Check off G14.8: quorum gate + runner manifests + replay + warning gates (tested by swarm-intelligence-service.test.ts + swarm-resource-plan.test.ts).
+- [x] Check off G14.9: end-to-end swarm smoke (tested by g14-swarm-intelligence.test.ts).
+- [x] Run `openspec validate next-level-swarm-skills-specialists --strict`.
 
 Validation:
-- [ ] All 40 G14 tasks checked off with evidence references.
-- [ ] `openspec validate next-level-swarm-skills-specialists --strict` exits 0.
+- [x] All 40 G14 tasks checked off with evidence references.
+- [x] `openspec validate next-level-swarm-skills-specialists --strict` exits 0.
 
 ## Phase 2 — G15 Enforcement (g15-enforced-swarm-intelligence)
 
