@@ -13,14 +13,14 @@ Validation:
 
 ## Phase 1: Shared Pi Args/Mapping Helper
 
-- [ ] T01.1 Extract `buildPiArgs(task, options)` + env resolution from `pi-executor.ts` into `packages/server/src/execution/executors/pi-args.ts` (or `pi-shared.ts`).
-- [ ] T01.2 Extract `mapPiEvent` (NDJSON → `ExecutionEventCreateInput`) into the same shared module.
-- [ ] T01.3 Refactor `pi-executor.ts` to import from the shared helper (no behavior change).
+- [x] T01.1 Extract `buildPiArgs(task, options)` + env resolution from `pi-executor.ts` into `packages/server/src/execution/executors/pi-args.ts` (or `pi-shared.ts`).
+- [x] T01.2 Extract `mapPiEvent` (NDJSON → `ExecutionEventCreateInput`) into the same shared module.
+- [x] T01.3 Refactor `pi-executor.ts` to import from the shared helper (no behavior change).
 
 Validation:
 
-- [ ] `pi-executor.ts` behavior unchanged; existing manual-path end-to-end still completes.
-- [ ] `npm run build --workspace=@djimitflo/server` green.
+- [x] `pi-executor.ts` behavior unchanged; existing manual-path end-to-end still completes.
+- [x] `npm run build --workspace=@djimitflo/server` green.
 
 ## Phase 2: Loop Runtime Union + Contract
 

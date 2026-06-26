@@ -34,6 +34,7 @@
  */
 
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
+import { buildPiArgs, type PiExecutorOptions } from './pi-shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
@@ -192,47 +193,8 @@ export class PiExecutor implements TaskExecutor {
   // PI_SKIP_VERSION_CHECK, PI_TELEMETRY) passed through buildExecutorEnv.
 
   private buildPiArgs(task: Task, options?: ExecutorOptions): string[] {
-    const args: string[] = ['--mode', 'json', '-p', '--no-session'];
-
-    // Deterministic runs: ignore project-local .pi settings/extensions/skills.
-    // AGENTS.md context files still load (they load before/without trust) so
-    // workspace/project governance is respected. Use PI_NO_APPROVE=0 to allow.
-    if ((process.env.PI_NO_APPROVE ?? '1') === '1') args.push('--no-approve');
-
-    // Context files (AGENTS.md/CLAUDE.md): on by default for governance precedence.
-    // Set PI_NO_CONTEXT_FILES=1 to disable and inject everything via system prompt.
-    if (process.env.PI_NO_CONTEXT_FILES === '1') args.push('--no-context-files');
-
-    // Disable project/user extensions and skills by default to avoid executing
-    // arbitrary third-party code during automated runs. Override with env = '0'.
-    if ((process.env.PI_NO_EXTENSIONS ?? '1') === '1') args.push('--no-extensions');
-    if ((process.env.PI_NO_SKILLS ?? '1') === '1') args.push('--no-skills');
-
-    if (process.env.PI_OFFLINE === '1') args.push('--offline');
-
-    const provider = process.env.PI_PROVIDER;
-    if (provider) args.push('--provider', provider);
-
-    if (options?.model) {
-      args.push('--model', options.model);
-    } else if (process.env.PI_MODEL) {
-      args.push('--model', process.env.PI_MODEL);
-    }
-
-    const thinking = process.env.PI_THINKING;
-    if (thinking) args.push('--thinking', thinking);
-
-    // Tool allowlist — the primary risk-control lever (drop `bash` for low-risk).
-    const tools = process.env.PI_TOOLS;
-    if (tools) args.push('--tools', tools);
-    const excludeTools = process.env.PI_EXCLUDE_TOOLS;
-    if (excludeTools) args.push('--exclude-tools', excludeTools);
-
-    // Inject the djimitflo task as the prompt. Pi also reads piped stdin, but a
-    // positional prompt is simplest and unambiguous for a spawned child.
-    args.push(task.description);
-
-    return args;
+    // G15: delegates to shared helper (pi-shared.ts) for loop-runtime reuse
+    return buildPiArgs(task, options as PiExecutorOptions);
   }
 
   // ── Structured JSON event parsing ──────────────────────────────────────────
