@@ -20,21 +20,21 @@
 
 ## G16.3 OpenCode MCP And Skills Health
 
-- [ ] Add OpenCode config inspector for `opencode.jsonc`.
-- [ ] Detect missing `mcp`, `tools`, `agent` and `permission.skill` sections.
-- [ ] Run `opencode mcp list` with timeout and classify `ok`, `locked`, `unconfigured`, `unavailable` or `error`.
-- [ ] Add remediation text for `database is locked` that does not delete state automatically.
-- [ ] Add per-agent MCP exposure recommendations and avoid global heavy MCP enablement.
-- [ ] Add OpenCode skill permission scanner that produces capability candidates without activating skills.
-- [ ] Add tests for locked MCP DB output, missing config, per-agent enablement recommendation and credential-value redaction.
+- [x] Add OpenCode config inspector for `opencode.jsonc`.
+- [x] Detect missing `mcp`, `tools`, `agent` and `permission.skill` sections.
+- [x] Run `opencode mcp list` with timeout and classify `ok`, `locked`, `unconfigured`, `unavailable` or `error`.
+- [x] Add remediation text for `database is locked` that does not delete state automatically.
+- [x] Add per-agent MCP exposure recommendations and avoid global heavy MCP enablement.
+- [x] Add OpenCode skill permission scanner that produces capability candidates without activating skills.
+- [x] Add tests for locked MCP DB output, missing config, per-agent enablement recommendation and credential-value redaction.
 
 ## G16.4 OpenAI Agent/Skill/MCP Capability Descriptors
 
-- [ ] Add capability descriptor kinds for OpenAI Agents SDK, OpenAI Skills and OpenAI MCP/connectors.
-- [ ] Require explicit approval and authorization refs for remote MCP/connectors.
+- [x] Add capability descriptor kinds for OpenAI Agents SDK, OpenAI Skills and OpenAI MCP/connectors.
+- [x] Require explicit approval and authorization refs for remote MCP/connectors.
 - [ ] Treat OpenAI hosted skills as privileged capability candidates until reviewed.
-- [ ] Add adapter boundary docs: local worker runtime remains Codex/OpenCode CLI until SDK runtime proof exists.
-- [ ] Add tests that OpenAI capability descriptors cannot route local workers without validated adapter proof.
+- [x] Add adapter boundary docs: local worker runtime remains Codex/OpenCode CLI until SDK runtime proof exists.
+- [x] Add tests that OpenAI capability descriptors cannot route local workers without validated adapter proof.
 
 ## G16.5 Proof Run Service
 

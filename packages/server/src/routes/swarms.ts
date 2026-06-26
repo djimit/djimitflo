@@ -10,6 +10,7 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ProofRunService, type ProofRunSummary } from '../services/proof-run-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -776,6 +777,16 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  // G16.3: OpenCode health endpoint
+  router.get('/opencode/health', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const health = new OpenCodeHealthService();
+      res.json(health.inspectConfig());
+    } catch (error) {
+      next(error);
     }
   });
 

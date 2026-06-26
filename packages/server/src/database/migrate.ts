@@ -882,7 +882,7 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS swarm_capabilities (
       id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL CHECK(kind IN ('skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action')),
+      kind TEXT NOT NULL CHECK(kind IN ('skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action', 'openai_agents_sdk', 'openai_skill', 'openai_mcp_connector')),
       owner TEXT NOT NULL,
       version TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('draft', 'candidate', 'validated', 'deprecated', 'disabled')),

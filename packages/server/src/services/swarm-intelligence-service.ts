@@ -6,14 +6,14 @@ import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
+type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type ClaimType = 'observation' | 'hypothesis' | 'decision' | 'memory' | 'capability' | 'backlog' | 'policy';
 type ClaimStatus = 'proposed' | 'supported' | 'contradicted' | 'resolved' | 'rejected' | 'promoted' | 'review_required';
 type RunnerManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
 
-const CAPABILITY_KINDS: CapabilityKind[] = ['skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action'];
+const CAPABILITY_KINDS: CapabilityKind[] = ['skill', 'specialist_agent', 'runtime_adapter', 'deterministic_harness', 'memory_source', 'dashboard_action', 'openai_agents_sdk', 'openai_skill', 'openai_mcp_connector'];
 const CAPABILITY_STATUSES: CapabilityStatus[] = ['draft', 'candidate', 'validated', 'deprecated', 'disabled'];
 const RISK_CLASSES: RiskClass[] = ['low', 'medium', 'high', 'critical'];
 const CLAIM_TYPES: ClaimType[] = ['observation', 'hypothesis', 'decision', 'memory', 'capability', 'backlog', 'policy'];
@@ -792,8 +792,15 @@ export class SwarmIntelligenceService {
     };
   }
 
+  // G16.4: OpenAI capability descriptors — privileged candidates until reviewed
+  private isOpenAIDescriptor(kind: CapabilityKind): boolean {
+    return kind === 'openai_agents_sdk' || kind === 'openai_skill' || kind === 'openai_mcp_connector';
+  }
+
   private capabilityBlockedReasons(capability: Omit<SwarmCapabilityRecord, 'live_route_allowed' | 'blocked_reasons'>): string[] {
     const blocked: string[] = [];
+    // G16.4: OpenAI descriptors cannot route local workers without validated adapter proof
+    if (this.isOpenAIDescriptor(capability.kind)) blocked.push('OPENAI_DESCRIPTOR_REQUIRES_ADAPTER_PROOF');
     if (capability.status !== 'validated') blocked.push(`status_${capability.status}_is_advisory_only`);
     if (capability.eval_score < capability.eval_threshold) blocked.push('eval_score_below_threshold');
     if (!capability.allowed_actions.length) blocked.push('allowed_actions_missing');
