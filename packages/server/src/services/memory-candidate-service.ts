@@ -249,6 +249,7 @@ export class MemoryCandidateService {
 
   private writeSink(sink: 'okf' | 'uams' | 'qdrant', candidate: MemoryCandidateRecord, input: MemoryPromotionInput): Record<string, unknown> {
     if (sink === 'okf') {
+      try {
       const okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });
       const memoryDir = path.join(okfBase, 'memory');
       fs.mkdirSync(memoryDir, { recursive: true });
@@ -266,9 +267,13 @@ export class MemoryCandidateService {
         '',
       ].join('\n');
       fs.writeFileSync(filePath, `${frontmatter}# ${candidate.title}\n\n${candidate.content}\n`, 'utf8');
-      return { sink, status: 'pass', path: filePath };
+        return { sink, status: 'pass', path: filePath };
+      } catch (e) {
+        // Wiki transfer is best-effort: never fail promote when the OKF memory dir is
+        // unwritable/missing (e.g. mocked worktrees in tests). Skip and continue.
+        return { sink, status: 'skipped', reason: `okf_write_failed: ${(e as Error).message}` };
+      }
     }
-
     return {
       sink,
       status: 'skipped',
