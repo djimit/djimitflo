@@ -1,0 +1,244 @@
+{
+  "change": "complete-swarm-platform",
+  "policy": {
+    "auto_spawn_workers": false,
+    "auto_start_loops": false,
+    "auto_promote_memory": false,
+    "requires_mock_e2e_before_real_runtime": true,
+    "high_risk_requires_security_checker": true,
+    "high_risk_requires_human_approval": true,
+    "dashboard_must_distinguish_registry_from_active_execution": true
+  },
+  "goals": [
+    {
+      "key": "P1-g14-closure",
+      "objective": "Check off all 40 next-level-swarm-skills-specialists tasks with evidence.",
+      "acceptance_criteria": [
+        "All 40 G14 tasks checked off in next-level-swarm-skills-specialists/tasks.md.",
+        "openspec validate next-level-swarm-skills-specialists --strict exits 0."
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "P2-g15-security-boundary",
+      "objective": "OKF path allowlisting, scoped permissions, secret-like detector, evidence-ref resolver.",
+      "acceptance_criteria": [
+        "OKF drift/sync constrained to configured roots.",
+        "Broad create:task replaced with scoped permissions.",
+        "Secret-like detector on all mutating endpoints.",
+        "Tests for path escape refusal, secret rejection, scoped permission refusal."
+      ],
+      "depends_on": ["P1-g14-closure"]
+    },
+    {
+      "key": "P2-g15-capability-promotion",
+      "objective": "Split candidate creation from validated promotion with evidence refs.",
+      "acceptance_criteria": [
+        "createCandidate and promoteCapability are separate methods.",
+        "Promotion requires evidence refs, eval scorecard, owner, version, risk ceiling.",
+        "High/critical promotion requires security checker + human approval."
+      ],
+      "depends_on": ["P2-g15-security-boundary"]
+    },
+    {
+      "key": "P2-g15-governance-enforcement",
+      "objective": "EnforcementDecisionService resolving persisted refs, wired into all mutating actions.",
+      "acceptance_criteria": [
+        "No spoofable governance booleans accepted.",
+        "Enforcement integrated into verifyLoopRun, completeLoopRun, startNextWorker, drain, stop/kill, memory promotion.",
+        "Trace spans written for each enforcement decision."
+      ],
+      "depends_on": ["P2-g15-capability-promotion"]
+    },
+    {
+      "key": "P2-g15-claim-ledger-v2",
+      "objective": "Typed claim fields, explicit contradiction edges, evidence-ref resolution before promotion.",
+      "acceptance_criteria": [
+        "Claims have predicate, object, scope, valid_from, valid_until, sensitivity.",
+        "supports/refines/contradicts edges replace same-subject heuristics.",
+        "Evidence refs must resolve before claim becomes supported/promoted.",
+        "Tests for contradiction, unsupported, expired, sensitive."
+      ],
+      "depends_on": ["P2-g15-governance-enforcement"]
+    },
+    {
+      "key": "P2-g15-evidence-resolver",
+      "objective": "Lineage resolver APIs for forward/reverse graph traversal.",
+      "acceptance_criteria": [
+        "Forward and reverse traversal APIs exist.",
+        "Dashboard card summaries from graph traversal.",
+        "Graph traversal respects permission scope.",
+        "Tests for panel-to-memory and lease-to-claim lineage."
+      ],
+      "depends_on": ["P2-g15-claim-ledger-v2"]
+    },
+    {
+      "key": "P2-g15-manifest-autowrite",
+      "objective": "Runner manifests auto-written for all action types (skip, stop, kill, timeout, drain).",
+      "acceptance_criteria": [
+        "autoWriteManifest covers all action types.",
+        "Manifests include stdout/stderr/artifact refs and token usage.",
+        "Before/after checkpoint refs around worker execution.",
+        "Tests for timeout, killed, drain manifests."
+      ],
+      "depends_on": ["P2-g15-governance-enforcement"]
+    },
+    {
+      "key": "P2-g15-capacity-scheduler",
+      "objective": "Live scheduler with fair-share weights, concurrency slots, budgets, process-aware stop/kill.",
+      "acceptance_criteria": [
+        "Configurable fair-share weights with starvation protection.",
+        "Runtime concurrency slots per adapter and risk class.",
+        "Token/wall-clock/retry/failure budgets enforced before worker start.",
+        "Circuit breaker wired into startNextWorker.",
+        "Tests for fair-share, budgets, stop/kill evidence."
+      ],
+      "depends_on": ["P2-g15-manifest-autowrite"]
+    },
+    {
+      "key": "P2-g15-okf-sync-hypothesis",
+      "objective": "OKF skill sync, hypothesis workbench, specialist profile versions.",
+      "acceptance_criteria": [
+        "OKF skill roots indexed into capability candidates.",
+        "Sync dry-run by default; explicit apply required.",
+        "Hypothesis entities with evidence plan, falsification, stop condition.",
+        "Panel-to-backlog and hypothesis-to-goal projection without workers."
+      ],
+      "depends_on": ["P2-g15-capacity-scheduler"]
+    },
+    {
+      "key": "P2-g15-mission-control-drill",
+      "objective": "Mission Control drill-through from metrics to evidence records.",
+      "acceptance_criteria": [
+        "Drill-through links from dashboard metrics to capabilities, claims, panels, leases, traces, manifests.",
+        "Gated operator actions for OKF validate, sync, close learning.",
+        "Latest learning outcome panel with score delta."
+      ],
+      "depends_on": ["P2-g15-evidence-resolver", "P2-g15-okf-sync-hypothesis"]
+    },
+    {
+      "key": "P3-g16-runtime-contract-repair",
+      "objective": "Fix CodexExecutor flags, shared probe, contract fixtures.",
+      "acceptance_criteria": [
+        "CodexExecutor uses exec --json --cd.",
+        "Shared runtime contract probe extracted.",
+        "Contract fixtures for available/drifted/unavailable.",
+        "codex-executor.test.ts passes."
+      ],
+      "depends_on": ["P2-g15-mission-control-drill"]
+    },
+    {
+      "key": "P3-g16-enforcement-repair",
+      "objective": "OKF allowlist, scoped permissions, typed claims, manifest spoofing tests.",
+      "acceptance_criteria": [
+        "Canonical OKF/workspace root allowlist.",
+        "Governance resolves persisted refs.",
+        "Direct public assertion of completed manifests blocked.",
+        "Tests for path escape, spoofed governance, spoofed manifest."
+      ],
+      "depends_on": ["P3-g16-runtime-contract-repair"]
+    },
+    {
+      "key": "P3-g16-opencode-openai-descriptors",
+      "objective": "OpenCode config inspector, MCP list, skill scanner, OpenAI capability descriptors.",
+      "acceptance_criteria": [
+        "OpenCode config inspector detects missing sections.",
+        "opencode mcp list with timeout and status classification.",
+        "OpenAI Agents/Skills/MCP descriptors as privileged candidates.",
+        "Tests for locked MCP DB, missing config, credential redaction."
+      ],
+      "depends_on": ["P3-g16-enforcement-repair"]
+    },
+    {
+      "key": "P3-g16-proof-run-service",
+      "objective": "ProofRunService creating rollback-scoped demo records across all tables.",
+      "acceptance_criteria": [
+        "≥6 capabilities, 1 panel with ≥3 reviews, ≥3 typed claims, 1 backlog+goal, 1 loop+≥2 leases.",
+        "Mock maker/checker execution with traces, checkpoints, manifests, memory candidate.",
+        "Proof-run metadata on every record."
+      ],
+      "depends_on": ["P3-g16-opencode-openai-descriptors"]
+    },
+    {
+      "key": "P3-g16-proof-api-cli",
+      "objective": "Proof run API endpoints and npm scripts.",
+      "acceptance_criteria": [
+        "POST /api/swarms/proof-runs starts mock proof run.",
+        "GET /api/swarms/proof-runs/:id returns status and evidence.",
+        "POST /api/swarms/proof-runs/:id/rollback deletes proof-scoped records.",
+        "npm run swarm:proof and npm run swarm:proof:rollback scripts exist."
+      ],
+      "depends_on": ["P3-g16-proof-run-service"]
+    },
+    {
+      "key": "P3-g16-mission-control-proof",
+      "objective": "Mission Control proof output section with live counts and evidence links.",
+      "acceptance_criteria": [
+        "Proof summary section shows live vs required counts.",
+        "Latest proof-run id, status, rollback status visible.",
+        "Links to created records.",
+        "Missing evidence shown as blocking facts.",
+        "Dashboard smoke test passes."
+      ],
+      "depends_on": ["P3-g16-proof-api-cli"]
+    },
+    {
+      "key": "P3-g16-live-smoke",
+      "objective": "Live workstation proof smoke: zero-state → proof → nonzero → rollback.",
+      "acceptance_criteria": [
+        "Pre-run zero-state captured.",
+        "Proof run creates nonzero output across all required tables.",
+        "Post-run counts captured.",
+        "Rollback deletes only proof-scoped records.",
+        "Dashboard screenshot/browser smoke captured."
+      ],
+      "depends_on": ["P3-g16-mission-control-proof"]
+    },
+    {
+      "key": "P4-pi-executor",
+      "objective": "Pi executor: JSON event mapping, cancel, e2e sovereign run, docs.",
+      "acceptance_criteria": [
+        "JSON-mode maps events to TASK_STARTED/TOOL_CALL/LOG/TASK_COMPLETED/TASK_FAILED.",
+        "cancel() SIGTERM-then-SIGKILL.",
+        "E2E sovereign run with zero external egress.",
+        "docs/integrations.md Pi status updated to Verified."
+      ],
+      "depends_on": ["P2-g15-capacity-scheduler"]
+    },
+    {
+      "key": "P4-pi-loop-runtime",
+      "objective": "Pi as loop runtime: union sites, contract probe, args, usage parsing.",
+      "acceptance_criteria": [
+        "'pi' added to runtime union sites and RuntimeContract.",
+        "getRuntimeContract('pi') probes binary with cache TTL.",
+        "buildRuntimeCommand('pi') returns correct headless args.",
+        "message.usage parsed into worker lease runtime usage.",
+        "Tests for Pi runtime command, contract, usage."
+      ],
+      "depends_on": ["P4-pi-executor"]
+    },
+    {
+      "key": "P5-loop-fleet-closure",
+      "objective": "Docs, contract capture, loop resume, skill validation.",
+      "acceptance_criteria": [
+        "Docs document Ruflo as inspiration only.",
+        "Codex/OpenCode contracts proven from local binaries.",
+        "Loop resumes from persisted state after restart.",
+        "Skills validated before active loop use."
+      ],
+      "depends_on": ["P4-pi-loop-runtime"]
+    },
+    {
+      "key": "P6-workstation-deploy",
+      "objective": "Commit, deploy, verify, smoke on workstation.",
+      "acceptance_criteria": [
+        "Scoped commit with no secrets.",
+        "Server health, runtime contracts, swarm status verified.",
+        "Dashboard Fleet Cockpit verified from MacBook.",
+        "Scheduler tick in safe mode without starting workers.",
+        "All evidence captured."
+      ],
+      "depends_on": ["P3-g16-live-smoke", "P5-loop-fleet-closure"]
+    }
+  ]
+}
