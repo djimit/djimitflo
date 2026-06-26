@@ -195,12 +195,23 @@ export class MemoryCandidateService {
       const QDRANT_URL = (process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
       const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://192.168.1.28:11434').replace(/\/$/, '');
       const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
+      // Best-effort + bounded: never let a slow/unreachable ollama or qdrant hang the proof or
+      // the proof-run-service tests. Fail fast (<=5s) and skip the write-back on any timeout/error.
+      const fetchTO = async (url: string, init: RequestInit, ms = 5_000): Promise<Response> => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), ms);
+        try {
+          return await fetch(url, { ...init, signal: ctrl.signal });
+        } finally {
+          clearTimeout(t);
+        }
+      };
       const auth: Record<string, string> = qdrantApiKey ? { 'api-key': qdrantApiKey } : {};
       const COLLECTION = 'djimitflo_swarm';
       const DIM = 768;
       const json = { 'Content-Type': 'application/json' };
 
-      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+      const embedRes = await fetchTO(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: json,
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: `${candidate.title}. ${candidate.content}` }),
@@ -209,22 +220,22 @@ export class MemoryCandidateService {
       const vector = (await embedRes.json() as { embedding?: number[] }).embedding;
       if (!vector || vector.length !== DIM) return; // model/collection dimension mismatch -> abort safely
 
-      const infoRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: auth });
+      const infoRes = await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: auth });
       if (infoRes.status === 404) {
-        await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
+        await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
       } else if (infoRes.ok) {
         const info = (await infoRes.json() as { result?: { config?: { params?: { vectors?: { size?: number } }; }; points_count?: number } }).result;
         const size = info?.config?.params?.vectors?.size;
         const count = info?.points_count ?? 0;
         if (typeof size === 'number' && size !== DIM && count === 0) {
-          await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'DELETE', headers: auth });
-          await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
+          await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'DELETE', headers: auth });
+          await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
         } else if (typeof size === 'number' && size !== DIM) {
           return; // populated mismatched collection — do not destroy
         }
       }
 
-      await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
+      await fetchTO(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
         method: 'PUT',
         headers: { ...json, ...auth },
         body: JSON.stringify({

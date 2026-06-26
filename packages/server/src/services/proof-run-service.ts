@@ -477,7 +477,7 @@ export class ProofRunService {
         source_ref: `proof:${proofRunId}`,
         metadata: base,
       });
-      this.memory.promote(candidate.id, { sinks: ['okf', 'qdrant'], approved_by: 'proof-run-service' });
+      this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
       this.createNestedSpawnProof(loopRunId, proofRunId, 'mock', base);
 
       this.db.prepare(`
@@ -734,16 +734,9 @@ export class ProofRunService {
         runtimeSummary,
         base,
       );
-      const lesson = [
-        `Runtime ${runtime} proof run produced a closed-loop swarm artifact chain.`,
-        `Outcome: maker + checker completed; nested specialists (planner, memory_curator) spawned with lineage.`,
-        `Usage: ${runtimeSummary.maker_leases_completed} maker lease(s), ${runtimeSummary.checker_leases_completed} checker lease(s), ${runtimeSummary.total_tokens} total tokens (${runtimeSummary.total_prompt_tokens} prompt / ${runtimeSummary.total_completion_tokens} completion).`,
-        `Evidence persisted: capabilities, specialist panel + reviews, goal, loop run, worker leases, trace spans, checkpoints, runner manifests, memory candidate.`,
-        `Lesson: a real ${runtime} specialist swarm runs headless, sandboxed to an isolated worktree, with retrieved swarm memory + OKF/DjimitKB knowledge injected, and writes this memory back so future runs learn from it.`,
-      ].join(' ');
       const candidate = this.memory.create({
         title: `Proof run ${proofRunId} produced a real runtime swarm artifact chain`,
-        content: lesson,
+        content: `Runtime ${runtime} proof run created persisted capabilities, specialist review, goal, loop run, worker leases, trace spans, checkpoints, manifests and memory candidate for closed-loop validation.`,
         memory_type: 'operational_memory',
         source_ref: `proof:${proofRunId}`,
         metadata: {
@@ -756,9 +749,7 @@ export class ProofRunService {
           proof_type: 'runtime_bridge',
         },
       });
-      // Transfer into the wiki (OKF memory markdown) AND the swarm vector store, so the
-      // knowledge base accumulates the swarm's learnings (file wiki + retrievable vector).
-      this.memory.promote(candidate.id, { sinks: ['okf', 'qdrant'], approved_by: 'proof-run-service' });
+      this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
       await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
