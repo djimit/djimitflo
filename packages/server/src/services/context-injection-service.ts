@@ -16,9 +16,10 @@ const qdrantHeaders = (extra: Record<string, string> = {}): Record<string, strin
 });
 const MAX_CONTEXT_TOKENS = 1500;
 const MIN_SCORE = 0.5;
+const DJIMITKB_MCP_URL = process.env.DJIMITKB_MCP_URL || 'http://192.168.1.28:8008';
 
 export interface ContextResult {
-  source: 'qdrant_swarm' | 'okf_search' | 'okf_related';
+  source: 'qdrant_swarm' | 'okf_search' | 'okf_related' | 'djimitkb_search';
   concept_id?: string;
   title?: string;
   type?: string;
@@ -37,6 +38,7 @@ export class ContextInjectionService {
     await Promise.allSettled([
       this.searchQdrantSwarm(taskDescription).then((r) => results.push(...r)),
       this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
+      this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
     ]);
 
     const ranked = this.rankByTrust(results);
@@ -44,9 +46,9 @@ export class ContextInjectionService {
 
     if (truncated.length === 0) return '';
 
-    const lines = ['## Swarm Context', ''];
+    const lines = ['## Context (Swarm + Knowledge)', ''];
     for (const r of truncated) {
-      const src = r.source === 'qdrant_swarm' ? 'memory' : r.source === 'okf_search' ? 'knowledge' : 'related';
+      const src = r.source === 'qdrant_swarm' ? 'memory' : r.source === 'okf_search' ? 'knowledge' : r.source === 'djimitkb_search' ? 'djimitkb' : 'related';
       const trust = r.trust_level ? ` [${r.trust_level}]` : '';
       lines.push(`### ${r.title || r.concept_id || src}${trust}`);
       lines.push(r.excerpt.slice(0, 300));
@@ -153,6 +155,31 @@ export class ContextInjectionService {
     if (bodyStart < 0) return content.slice(0, 300);
     const body = content.slice(bodyStart + 3).trim();
     return body.slice(0, 300);
+  }
+
+
+
+  private async searchDjimitKB(query: string): Promise<ContextResult[]> {
+    try {
+      const res = await fetch(`${DJIMITKB_MCP_URL}/search?q=${encodeURIComponent(query)}&limit=3`);
+      if (!res.ok) return [];
+
+      const json = (await res.json()) as { results: Array<{
+        title: string; path: string; type: string; score: number;
+        tags: string[]; date: string; excerpt: string; chunk_index: number;
+      }> };
+
+      return (json.results || []).map((r: any) => ({
+        source: 'djimitkb_search' as const,
+        title: r.title,
+        type: r.type,
+        score: r.score,
+        excerpt: r.excerpt || '',
+        trust_level: r.type === 'entity' ? 'approved' : r.type === 'report' ? 'validated' : 'agent_generated',
+      }));
+    } catch {
+      return [];
+    }
   }
 
   private rankByTrust(results: ContextResult[]): ContextResult[] {
