@@ -194,15 +194,15 @@ Validation:
 
 ## Phase 5 — Agentic Loop Fleet Closure (agentic-control-loop-fleet)
 
-- [ ] Document Ruflo as inspiration only; Codex/OpenCode is runtime target.
-- [ ] Capture live Codex/OpenCode executor contracts from local binaries.
-- [ ] Define Agentic Control Loop glossary (goal, loop, step, worker, lease, gate, verdict, memory).
-- [ ] Create evidence folder `agent-evidence/agentic-control-loop-fleet/`.
+- [x] Document Ruflo as inspiration only; Codex/OpenCode is runtime target.
+- [x] Capture live Codex/OpenCode executor contracts from local binaries.
+- [x] Define Agentic Control Loop glossary (goal, loop, step, worker, lease, gate, verdict, memory).
+- [x] Create evidence folder `agent-evidence/agentic-control-loop-fleet/`.
 - [ ] `openspec validate agentic-control-loop-fleet --strict` exits 0.
-- [ ] Docs no longer imply Ruflo runtime dependency.
-- [ ] Codex/OpenCode capabilities proven from local binaries or marked unavailable.
-- [ ] Loop can resume from persisted state after server restart.
-- [ ] Validate skills before any active loop uses them.
+- [x] Docs no longer imply Ruflo runtime dependency.
+- [x] Codex/OpenCode capabilities proven from local binaries or marked unavailable.
+- [x] Loop can resume from persisted state after server restart.
+- [x] Validate skills before any active loop uses them.
 
 ## Phase 6 — Workstation Deployment (commit-workstation-smoke-and-policy-runner)
 

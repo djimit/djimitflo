@@ -2,16 +2,16 @@
 
 ## Phase 0: Baseline And Vocabulary
 
-- [ ] T00.1 Document that Ruflo is inspiration only; Djimitflo runtime target is Codex/OpenCode.
-- [ ] T00.2 Capture live Codex/OpenCode executor contracts and current auth requirements.
-- [ ] T00.3 Define `Agentic Control Loop Framework` glossary: goal, loop, step, worker, lease, gate, verdict, memory update.
-- [ ] T00.4 Create evidence folder `agent-evidence/agentic-control-loop-fleet/`.
+- [x] T00.1 Document that Ruflo is inspiration only; Djimitflo runtime target is Codex/OpenCode.
+- [x] T00.2 Capture live Codex/OpenCode executor contracts and current auth requirements.
+- [x] T00.3 Define `Agentic Control Loop Framework` glossary: goal, loop, step, worker, lease, gate, verdict, memory update.
+- [x] T00.4 Create evidence folder `agent-evidence/agentic-control-loop-fleet/`.
 
 Validation:
 
-- [ ] `openspec validate agentic-control-loop-fleet --strict`
-- [ ] Docs no longer imply Ruflo runtime dependency.
-- [ ] Codex/OpenCode capabilities are proven from local binaries or marked unavailable.
+- [x] `openspec validate agentic-control-loop-fleet --strict`
+- [x] Docs no longer imply Ruflo runtime dependency.
+- [x] Codex/OpenCode capabilities are proven from local binaries or marked unavailable.
 
 ## Phase 1: Loop Contract And Goal Lifecycle
 
@@ -40,7 +40,7 @@ Validation:
 
 Validation:
 
-- [ ] Loop can resume from persisted state after server restart.
+- [x] Loop can resume from persisted state after server restart.
 - [x] Generic `/loop` aliases can start, step and stop a loop run.
 - [x] Persistent failure count above threshold escalates to human.
 - [x] `/loop continue` cannot bypass failed gates.
@@ -77,7 +77,7 @@ Validation:
 - [x] T04.5 Add `verification-loop-skill`.
 - [x] T04.6 Add `memory-loop-skill`.
 - [x] T04.7 Add `governance-loop-skill`.
-- [ ] T04.8 Validate skills before any active loop uses them.
+- [x] T04.8 Validate skills before any active loop uses them.
 
 Validation:
 
