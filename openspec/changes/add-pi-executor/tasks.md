@@ -42,21 +42,21 @@ Validation:
 
 Validation:
 
-- [ ] `canExecute` returns true for code tasks.
-- [ ] A JSON-mode run maps events to `TASK_STARTED` / `TOOL_CALL` / `LOG` / `TASK_COMPLETED` / `TASK_FAILED`.
-- [ ] A non-JSON run falls back to heuristic parsing with an `EVIDENCE WARNING` event.
-- [ ] `cancel()` SIGTERM-then-SIGKILL terminates the child, like the other executors.
+- [x] `canExecute` returns true for code tasks.
+- [x] A JSON-mode run maps events to `TASK_STARTED` / `TOOL_CALL` / `LOG` / `TASK_COMPLETED` / `TASK_FAILED`.
+- [x] A non-JSON run falls back to heuristic parsing with an `EVIDENCE WARNING` event.
+- [x] `cancel()` SIGTERM-then-SIGKILL terminates the child, like the other executors.
 
 ## Phase 3: Registration And Docs
 
 - [x] T03.1 Register `new PiExecutor()` in `execution-engine.ts` next to the other executors.
-- [ ] T03.2 Add the Pi row to `docs/integrations.md` with status set by evidence (pending after Phase 0, verified after Phase 4).
+- [x] T03.2 Add the Pi row to `docs/integrations.md` with status set by evidence (pending after Phase 0, verified after Phase 4).
 - [x] T03.3 Ensure the executor is selectable via `executorKind` in `executeTask` / approval metadata.
 
 Validation:
 
 - [x] A task created with `executorKind: 'pi'` routes to `PiExecutor`.
-- [ ] `docs/integrations.md` reflects the actual verified status.
+- [x] `docs/integrations.md` reflects the actual verified status.
 
 ## Phase 4: Sovereign End-To-End Verification
 
@@ -75,8 +75,8 @@ Validation:
 
 ## Phase 5: Removal / Rollback Path
 
-- [ ] T05.1 Document that disabling is: unregister `PiExecutor`, drop `'pi'` from the three union literals, remove `pi_path`. No other code depends on Pi at runtime.
+- [x] T05.1 Document that disabling is: unregister `PiExecutor`, drop `'pi'` from the three union literals, remove `pi_path`. No other code depends on Pi at runtime.
 
 Validation:
 
-- [ ] Reverting the Phase 1 + Phase 2/3 changes restores prior behavior with no orphaned references.
+- [x] Reverting the Phase 1 + Phase 2/3 changes restores prior behavior with no orphaned references.

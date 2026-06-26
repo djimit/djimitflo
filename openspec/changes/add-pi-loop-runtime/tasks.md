@@ -2,14 +2,14 @@
 
 ## Phase 0: Locate The Loop Runtime Seams (read-only)
 
-- [ ] T00.1 Confirm the exact `runtime` union sites in `loop-service.ts` (~152/157/186/206) and `RuntimeContract`.
-- [ ] T00.2 Confirm `buildRuntimeCommand(runtime, worktreePath, prompt, skipPermissions)` signature + how `executeRuntimeCommand` sets `cwd` (expect `worktreePath`), captures stdout, parses token usage, records `runtimePid`.
-- [ ] T00.3 Confirm `getRuntimeContract` probe pattern (cached, TTL) so the Pi probe matches codex/opencode.
-- [ ] T00.4 Confirm the worker-lease fields that carry runtime/token-usage so Pi populates them identically.
+- [x] T00.1 Confirm the exact `runtime` union sites in `loop-service.ts` (~152/157/186/206) and `RuntimeContract`.
+- [x] T00.2 Confirm `buildRuntimeCommand(runtime, worktreePath, prompt, skipPermissions)` signature + how `executeRuntimeCommand` sets `cwd` (expect `worktreePath`), captures stdout, parses token usage, records `runtimePid`.
+- [x] T00.3 Confirm `getRuntimeContract` probe pattern (cached, TTL) so the Pi probe matches codex/opencode.
+- [x] T00.4 Confirm the worker-lease fields that carry runtime/token-usage so Pi populates them identically.
 
 Validation:
 
-- [ ] The four union sites and the command/contract/usage seams are documented with line refs before editing.
+- [x] The four union sites and the command/contract/usage seams are documented with line refs before editing.
 
 ## Phase 1: Shared Pi Args/Mapping Helper
 
@@ -24,24 +24,24 @@ Validation:
 
 ## Phase 2: Loop Runtime Union + Contract
 
-- [ ] T02.1 Add `'pi'` to the `runtime` literals at the four `loop-service.ts` sites and to `RuntimeContract.runtime`.
-- [ ] T02.2 Implement `getRuntimeContract('pi')`: probe `PI_BIN_PATH` (default `pi`) via `--version`/`which`; report `available` + `status: 'ok'`; honor the cache TTL.
+- [x] T02.1 Add `'pi'` to the `runtime` literals at the four `loop-service.ts` sites and to `RuntimeContract.runtime`.
+- [x] T02.2 Implement `getRuntimeContract('pi')`: probe `PI_BIN_PATH` (default `pi`) via `--version`/`which`; report `available` + `status: 'ok'`; honor the cache TTL.
 
 Validation:
 
-- [ ] `assertRuntimeAvailable('pi')` passes when binary present, throws `RUNTIME_UNAVAILABLE` when absent.
-- [ ] `getRuntimeContract('pi')` returns a cached contract consistent with codex/opencode shape.
+- [x] `assertRuntimeAvailable('pi')` passes when binary present, throws `RUNTIME_UNAVAILABLE` when absent.
+- [x] `getRuntimeContract('pi')` returns a cached contract consistent with codex/opencode shape.
 
 ## Phase 3: buildRuntimeCommand 'pi' Case + Dispatch
 
-- [ ] T03.1 Add the `'pi'` case in `buildRuntimeCommand` using the shared `buildPiArgs`-equivalent flags (`--mode json -p --no-session --no-approve --no-context-files --no-extensions --no-skills --offline --tools <PI_TOOLS> --provider <PI_PROVIDER> --model <PI_MODEL>`).
-- [ ] T03.2 Map `skipPermissions` to a Pi-appropriate behavior (Pi has no permission popups; `skipPermissions` is effectively always-true for the runtime — record this, do not gate on it; risk control stays via `PI_TOOLS` + djimitflo approval before lease).
-- [ ] T03.3 Ensure the spawn `cwd` is `worktreePath` (Pi runs cwd-scoped in the worktree).
+- [x] T03.1 Add the `'pi'` case in `buildRuntimeCommand` using the shared `buildPiArgs`-equivalent flags (`--mode json -p --no-session --no-approve --no-context-files --no-extensions --no-skills --offline --tools <PI_TOOLS> --provider <PI_PROVIDER> --model <PI_MODEL>`).
+- [x] T03.2 Map `skipPermissions` to a Pi-appropriate behavior (Pi has no permission popups; `skipPermissions` is effectively always-true for the runtime — record this, do not gate on it; risk control stays via `PI_TOOLS` + djimitflo approval before lease).
+- [x] T03.3 Ensure the spawn `cwd` is `worktreePath` (Pi runs cwd-scoped in the worktree).
 
 Validation:
 
-- [ ] `buildRuntimeCommand('pi', wt, prompt, false)` returns `{command, args}` that run Pi headless against a local model in `wt`.
-- [ ] A manual call to the dispatch path spawns Pi and streams NDJSON.
+- [x] `buildRuntimeCommand('pi', wt, prompt, false)` returns `{command, args}` that run Pi headless against a local model in `wt`.
+- [x] A manual call to the dispatch path spawns Pi and streams NDJSON.
 
 ## Phase 4: Token Usage + Event Mapping In The Loop Path
 
