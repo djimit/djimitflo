@@ -896,7 +896,7 @@ export class ProofRunService {
         'closed',
         'running',
         process.cwd(),
-        JSON.stringify([{ id: `proof-finding:${proofRunId}`, type: 'proof_run', severity: 'info', file: 'packages/server/src/services/proof-run-service.ts', line: 1, message: 'Proof run execution slice', evidence: 'Runtime bridge and verification gates required.', suggested_fix: 'Keep execution bounded and deterministic.' }]),
+        JSON.stringify([{ id: `proof-finding:${proofRunId}`, type: 'proof_run', severity: 'info', file: 'BOUNDED_PROOF_SENTINEL.txt', line: 1, message: 'Bounded real-runtime maker proof: create a single sentinel file.', evidence: 'Single-file, single-line change so a real runtime completes headless within budget (no open-ended refactor).', suggested_fix: 'Create a file named BOUNDED_PROOF_SENTINEL.txt at the repository root containing exactly the text PROOF_OK. Make no other changes. Then stop.' }]),
         JSON.stringify({ proof_run_id: proofRunId, steps: ['register', 'review', 'execute', 'verify', 'remember'] }),
         JSON.stringify([{ name: 'artifact_minimums', status: 'pending' }]),
         JSON.stringify(['execute maker+checker', 'run verifier gates', 'write manifests and claims']),
@@ -987,7 +987,7 @@ export class ProofRunService {
       loop_run_id: loopRunId,
       runtime,
       role: 'planner',
-      prompt: 'Production proof root: prepare a child memory curator lease as nested swarm evidence.',
+      prompt: 'Bounded nested proof (planner): create a file NESTED_PLANNER_SENTINEL.txt at the repository root containing exactly PLANNER_OK. Make no other changes. Then stop.',
       depth_budget: 1,
       risk_class: 'medium',
     });
@@ -997,7 +997,7 @@ export class ProofRunService {
       requested_by_lease_id: root.root_lease_id,
       role: 'memory_curator',
       runtime,
-      prompt: 'Capture proof-run evidence into durable memory candidate metadata.',
+      prompt: 'Bounded nested proof (memory curator): create a file NESTED_MEMORY_SENTINEL.txt at the repository root containing exactly MEMORY_OK. Make no other changes. Then stop.',
     }, { internal: true });
     if (!child.child_lease_id) {
       throw new Error('PROOF_RUN_SUB_AGENT_NOT_PREPARED');
