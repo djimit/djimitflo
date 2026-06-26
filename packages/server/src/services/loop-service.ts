@@ -1554,7 +1554,7 @@ export class LoopService {
       checks_completed_at: new Date().toISOString(),
     });
     // G15: Auto-write runner manifest for worker completion
-    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: failed ? 'fail' : 'complete', gateRefs: checks.map((c: any) => c.name || 'check') });
+    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: failed ? 'fail' : 'complete', gateRefs: checks.map((c: any) => c.name || 'check'), checkpointAfterRef: `checkpoint:after:${makerLease.id}` });
     // G15: Auto-populate evidence edges
     this.populateEvidenceEdges([{ from: `loop:${run.id}`, to: `lease:${makerLease.id}`, relation: 'executes_with' }]);
 
@@ -1624,7 +1624,7 @@ export class LoopService {
     // G15: Enforce capability gate before worker starts
     this.enforceCapabilityGate(makerLease);
     // G15: Auto-write runner manifest for worker start
-    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: 'start', gateRefs: ['capability_gate', 'worktree_isolation'] });
+    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: 'start', gateRefs: ['capability_gate', 'worktree_isolation'], checkpointBeforeRef: `checkpoint:before:${makerLease.id}` });
 
     const contract = this.getRuntimeContract(makerLease.runtime);
     if (!contract.available || contract.status !== 'ok') {
@@ -3503,6 +3503,12 @@ export class LoopService {
     gateRefs?: string[];
     blockedReasons?: string[];
     metadata?: Record<string, unknown>;
+    stdoutPath?: string;
+    stderrPath?: string;
+    artifactPath?: string;
+    tokenUsage?: Record<string, unknown>;
+    checkpointBeforeRef?: string;
+    checkpointAfterRef?: string;
   }): void {
     try {
       this.intelligence.createRunnerManifest({
@@ -3513,7 +3519,15 @@ export class LoopService {
         policy_version: LOOP_RUNTIME_MANIFEST_POLICY_VERSION,
         gate_refs: input.gateRefs,
         blocked_reasons: input.blockedReasons,
-        metadata: input.metadata,
+        metadata: {
+          ...input.metadata,
+          ...(input.stdoutPath ? { stdout_path: input.stdoutPath } : {}),
+          ...(input.stderrPath ? { stderr_path: input.stderrPath } : {}),
+          ...(input.artifactPath ? { artifact_path: input.artifactPath } : {}),
+          ...(input.tokenUsage ? { token_usage: input.tokenUsage } : {}),
+          ...(input.checkpointBeforeRef ? { checkpoint_before_ref: input.checkpointBeforeRef } : {}),
+          ...(input.checkpointAfterRef ? { checkpoint_after_ref: input.checkpointAfterRef } : {}),
+        },
       });
     } catch {
       this.recordLoopEvent(input.loopRunId, 'worker_manifest_error', 'warning',

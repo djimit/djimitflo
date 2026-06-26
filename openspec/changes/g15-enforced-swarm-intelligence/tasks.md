@@ -6,7 +6,7 @@
 - [x] Remove arbitrary filesystem query paths from OKF drift endpoints, or require explicit allowlisted root ids instead of raw paths.
 - [x] Add a shared secret-like payload detector for claims, evidence, traces, manifests and memory candidates.
 - [x] Replace broad `create:task` checks with scoped permissions: `write:capability`, `write:claim`, `write:governance`, `write:runner_manifest` and `write:swarm_action`.
-- [ ] Move cockpit/workstation labels to runtime node configuration or heartbeat-derived inventory.
+- [x] Move cockpit/workstation labels to runtime node configuration or heartbeat-derived inventory.
 - [x] Add evidence-ref resolver helpers that verify record kind, existence, actor, timestamp, sensitivity and route eligibility.
 - [x] Add tests for OKF path escape refusal, secret-like rejection, scoped permission refusal and runtime node label fallback.
 
@@ -22,7 +22,7 @@
 
 ## G15.3 Governance Enforcement Layer
 
-- [ ] Add an enforcement decision service for worker, loop, memory and dashboard mutating actions.
+- [x] Add an enforcement decision service for worker, loop, memory and dashboard mutating actions.
 - [x] Stop accepting spoofable governance booleans from request payloads; accept refs and resolve persisted evidence.
 - [x] Enforce maker/checker/security checker/quorum/human approval refs against stored records and policy version.
 - [x] Integrate enforcement into `verifyLoopRun`, `completeLoopRun`, `startNextWorker`, `drainWorkerPool`, `stop/kill` and memory promotion.
@@ -52,9 +52,9 @@
 - [x] Move runner manifest creation into runner action paths for plan, start, skip, stop, kill, timeout, failure, completion and drain summary.
 - [x] Require real loop-run id, lease id, action, actor, capacity snapshot, budget snapshot and enforcement decision for each manifest.
 - [x] Make manifests append-only and reject direct API assertion of completed runner actions.
-- [ ] Attach stdout/stderr/artifact refs and token usage parsed from runtime output when available.
-- [ ] Write before/after checkpoint refs around worker execution.
-- [ ] Add tests for auto-written manifests, spoofed manifest refusal, timeout manifest, killed worker manifest and completion manifest.
+- [x] Attach stdout/stderr/artifact refs and token usage parsed from runtime output when available.
+- [x] Write before/after checkpoint refs around worker execution.
+- [x] Add tests for auto-written manifests, spoofed manifest refusal, timeout manifest, killed worker manifest and completion manifest.
 
 ## G15.7 Capacity Governor Live Scheduler
 
