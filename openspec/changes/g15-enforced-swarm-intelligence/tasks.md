@@ -58,18 +58,18 @@
 
 ## G15.7 Capacity Governor Live Scheduler
 
-- [ ] Implement queue classes with configurable fair-share weights and starvation protection.
+- [x] Implement queue classes with configurable fair-share weights and starvation protection.
 - [ ] Enforce runtime concurrency slots per adapter and per risk class.
 - [ ] Enforce token budget, wall-clock budget, retry budget and failure budget before worker start.
 - [ ] Add process-aware stop/kill adapters for Codex/OpenCode runtime sessions.
 - [x] Add fleet circuit breakers for repeated maker failures, checker rejections, runtime warnings and timeouts.
-- [ ] Record capacity snapshots, budget snapshots and selected/blocked reasons in traces and manifests.
+- [x] Record capacity snapshots, budget snapshots and selected/blocked reasons in traces and manifests.
 - [ ] Add tests for fair-share ordering, exhausted token budget, exhausted wall-clock budget, repeated failure breaker, runtime unavailable and stop/kill evidence.
 
 ## G15.8 OKF Skill Sync And Hypothesis Workbench
 
 - [ ] Index configured OKF skill roots into capability candidates with path, owner, version, actions, gates and validation report refs.
-- [ ] Keep sync dry-run by default and require explicit apply action with scoped permission.
+- [x] Keep sync dry-run by default and require explicit apply action with scoped permission.
 - [ ] Persist specialist profile registry versions and store profile version on panel reviews.
 - [ ] Add hypothesis entities with evidence plan, falsification signal, stop condition, owner capability and projection state.
 - [ ] Add panel-to-backlog and hypothesis-to-goal projection without starting workers.
@@ -77,7 +77,7 @@
 
 ## G15.9 Mission Control Drill-Through And Actions
 
-- [ ] Add drill-through links from dashboard metrics to capabilities, claims, panels, backlog items, goals, loops, leases, traces, checkpoints, manifests and memory candidates.
+- [x] Add drill-through links from dashboard metrics to capabilities, claims, panels, backlog items, goals, loops, leases, traces, checkpoints, manifests and memory candidates.
 - [ ] Add gated operator actions for capability promotion, claim resolution, panel projection, goal creation, start-next, drain, stop/kill and manifest review.
 - [ ] Show disabled action state with exact blocked reasons from enforcement decisions.
 - [ ] Separate MacBook cockpit, workstation execution node, registry state, prepared leases and active runtime evidence in the UI.
