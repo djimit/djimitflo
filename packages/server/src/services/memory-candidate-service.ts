@@ -180,6 +180,73 @@ export class MemoryCandidateService {
       || /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content);
   }
 
+  /**
+   * Learning flywheel write-back: embed a PROMOTED memory candidate (ollama nomic-embed-text,
+   * 768d) and upsert it into the Qdrant swarm-memory collection so future runs RETRIEVE the
+   * swarm's own accumulated memory via ContextInjectionService.searchQdrantSwarm (same model/
+   * dimension). Best-effort + non-fatal: no key / ollama or qdrant down / dimension mismatch just
+   * skips — never fails the proof. Ensures the collection is 768d Cosine; recreates it ONLY if it
+   * exists at a different dimension AND is empty (never destroys populated data).
+   */
+  async upsertToSwarmMemory(candidateId: string): Promise<void> {
+    try {
+      const candidate = this.get(candidateId);
+      if (!candidate || candidate.promotion_status !== 'promoted') return;
+      const QDRANT_URL = (process.env.QDRANT_URL || 'http://192.168.1.28:6333').replace(/\/$/, '');
+      const OLLAMA_URL = (process.env.OLLAMA_URL || 'http://192.168.1.28:11434').replace(/\/$/, '');
+      const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
+      const auth: Record<string, string> = qdrantApiKey ? { 'api-key': qdrantApiKey } : {};
+      const COLLECTION = 'djimitflo_swarm';
+      const DIM = 768;
+      const json = { 'Content-Type': 'application/json' };
+
+      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+        method: 'POST',
+        headers: json,
+        body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: `${candidate.title}. ${candidate.content}` }),
+      });
+      if (!embedRes.ok) return;
+      const vector = (await embedRes.json() as { embedding?: number[] }).embedding;
+      if (!vector || vector.length !== DIM) return; // model/collection dimension mismatch -> abort safely
+
+      const infoRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { headers: auth });
+      if (infoRes.status === 404) {
+        await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
+      } else if (infoRes.ok) {
+        const info = (await infoRes.json() as { result?: { config?: { params?: { vectors?: { size?: number } }; }; points_count?: number } }).result;
+        const size = info?.config?.params?.vectors?.size;
+        const count = info?.points_count ?? 0;
+        if (typeof size === 'number' && size !== DIM && count === 0) {
+          await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'DELETE', headers: auth });
+          await fetch(`${QDRANT_URL}/collections/${COLLECTION}`, { method: 'PUT', headers: { ...json, ...auth }, body: JSON.stringify({ vectors: { size: DIM, distance: 'Cosine' } }) });
+        } else if (typeof size === 'number' && size !== DIM) {
+          return; // populated mismatched collection — do not destroy
+        }
+      }
+
+      await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
+        method: 'PUT',
+        headers: { ...json, ...auth },
+        body: JSON.stringify({
+          points: [{
+            id: candidate.id,
+            vector,
+            payload: {
+              task_id: candidate.id,
+              content_excerpt: candidate.content.slice(0, 500),
+              agent_type: 'memory_curator',
+              trust_level: 'validated',
+              source_ref: candidate.source_ref,
+              timestamp: new Date().toISOString(),
+            },
+          }],
+        }),
+      });
+    } catch {
+      // best-effort: never fail the proof on the learning write-back
+    }
+  }
+
   private writeSink(sink: 'okf' | 'uams' | 'qdrant', candidate: MemoryCandidateRecord, input: MemoryPromotionInput): Record<string, unknown> {
     if (sink === 'okf') {
       const okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });

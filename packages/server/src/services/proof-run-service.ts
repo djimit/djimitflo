@@ -750,6 +750,7 @@ export class ProofRunService {
         },
       });
       this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+      await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
     } catch (error) {
