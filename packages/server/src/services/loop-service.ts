@@ -3724,8 +3724,15 @@ export class LoopService {
       // inherit the operator's personal codex config/skills, which bloats context ~4x (verified
       // live: 325k -> 87k input tokens on the same task) and blows the token budget. Auth is
       // independent of user-config, so headless execution still works.
+      // skipPermissions (operator opt-in via RUNTIME_ALLOW_SKIP_PERMISSIONS) arms a SANDBOXED
+      // headless mode, NOT an unsandboxed bypass: --sandbox workspace-write confines writes to
+      // the worktree cwd (+/tmp,$TMPDIR), protecting the host repo (verified: a sandboxed codex
+      // cannot write /home/.../djimitflo — "Read-only file system"), and -c approval_policy=never
+      // runs headless with no approval prompts. This replaces --dangerously-bypass-approvals-and-
+      // sandbox, which left the host mutable and codex occasionally escaped to host source by
+      // absolute path.
       const args = skipPermissions
-        ? ['exec', '--ignore-user-config', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
+        ? ['exec', '--ignore-user-config', '--sandbox', 'workspace-write', '-c', 'approval_policy=never', '--json', '--cd', worktreePath, prompt]
         : ['exec', '--ignore-user-config', '--json', '--cd', worktreePath, prompt];
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
