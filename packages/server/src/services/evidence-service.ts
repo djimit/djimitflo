@@ -59,6 +59,51 @@ export class EvidenceService {
     return row ? this.mapEvidence(row) : null;
   }
 
+
+  /**
+   * Capture assessment evidence enriched with RAG citations from DjimitKBWiki.
+   * Stores RAG context in details.rag_context and citations in details.citations.
+   */
+  captureAssessmentEvidence(input: CaptureEvidenceInput & {
+    ragQuery?: string;
+    ragResults?: Array<{
+      title: string;
+      path: string;
+      type: string;
+      score: number;
+      excerpt: string;
+    }>;
+    ragSource?: string;
+  }): string {
+    const { ragQuery, ragResults, ragSource, ...baseInput } = input;
+
+    const enrichedDetails = {
+      ...((baseInput.details || {}) as Record<string, any>),
+      rag_context: ragResults || [],
+      citations: (ragResults || []).map((r: any) => ({
+        title: r.title,
+        path: r.path,
+        type: r.type,
+        score: r.score,
+        excerpt: r.excerpt?.slice(0, 200),
+      })),
+    };
+
+    const enrichedMetadata = {
+      ...(baseInput.metadata || {}),
+      rag_source: ragSource || 'djimitkb-mcp',
+      rag_query: ragQuery,
+      rag_result_count: ragResults?.length || 0,
+      rag_collection: 'djimitkb',
+    };
+
+    return this.captureEvidence({
+      ...baseInput,
+      details: enrichedDetails,
+      metadata: enrichedMetadata,
+    });
+  }
+
   generateExecutionSummary(taskId: string): ExecutionSummary | null {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as any;
     if (!task) return null;
