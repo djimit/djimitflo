@@ -14,21 +14,21 @@
 
 - [ ] Split capability candidate creation from validated promotion.
 - [ ] Require promotion evidence refs, eval scorecard refs, owner, version, risk ceiling, allowed actions, forbidden actions, eval threshold and removal strategy.
-- [ ] Make eval score below threshold a hard fail in capability evaluation.
+- [x] Make eval score below threshold a hard fail in capability evaluation.
 - [ ] Require high/critical capability promotion to include security checker and human approval refs.
-- [ ] Route `startNextWorker` and worker drain selection through validated capability contracts.
-- [ ] Persist blocked routing reasons when capability status, risk ceiling, runtime status, eval threshold or required evidence fails.
-- [ ] Add tests for draft/candidate routing refusal, below-threshold hard fail, high-risk promotion refusal and successful low-risk routing.
+- [x] Route `startNextWorker` and worker drain selection through validated capability contracts.
+- [x] Persist blocked routing reasons when capability status, risk ceiling, runtime status, eval threshold or required evidence fails.
+- [x] Add tests for draft/candidate routing refusal, below-threshold hard fail, high-risk promotion refusal and successful low-risk routing.
 
 ## G15.3 Governance Enforcement Layer
 
 - [ ] Add an enforcement decision service for worker, loop, memory and dashboard mutating actions.
 - [ ] Stop accepting spoofable governance booleans from request payloads; accept refs and resolve persisted evidence.
 - [ ] Enforce maker/checker/security checker/quorum/human approval refs against stored records and policy version.
-- [ ] Integrate enforcement into `verifyLoopRun`, `completeLoopRun`, `startNextWorker`, `drainWorkerPool`, `stop/kill` and memory promotion.
+- [x] Integrate enforcement into `verifyLoopRun`, `completeLoopRun`, `startNextWorker`, `drainWorkerPool`, `stop/kill` and memory promotion.
 - [ ] Ensure `ready_for_human_merge`, `human_approved` and `completed` remain distinct states.
-- [ ] Write trace spans for each allowed, blocked, advisory or human-required enforcement decision.
-- [ ] Add tests for spoofed governance payload refusal, missing quorum block, missing human approval block and low-risk allowed path.
+- [x] Write trace spans for each allowed, blocked, advisory or human-required enforcement decision.
+- [x] Add tests for spoofed governance payload refusal, missing quorum block, missing human approval block and low-risk allowed path.
 
 ## G15.4 Claim Ledger V2 And Evidence Provenance
 
@@ -41,7 +41,7 @@
 
 ## G15.5 Evidence Graph Lineage Resolver
 
-- [ ] Add graph edges across specialist panel, review, claim, backlog item, goal, loop run, worker lease, trace span, checkpoint, runner manifest and memory candidate.
+- [x] Add graph edges across specialist panel, review, claim, backlog item, goal, loop run, worker lease, trace span, checkpoint, runner manifest and memory candidate.
 - [ ] Add lineage resolver APIs for forward and reverse traversal.
 - [ ] Add evidence graph summaries for dashboard cards and review bundles.
 - [ ] Ensure graph traversal cannot expose records outside the caller permission scope.
@@ -49,9 +49,9 @@
 
 ## G15.6 Runner Manifest Auto-Write
 
-- [ ] Move runner manifest creation into runner action paths for plan, start, skip, stop, kill, timeout, failure, completion and drain summary.
-- [ ] Require real loop-run id, lease id, action, actor, capacity snapshot, budget snapshot and enforcement decision for each manifest.
-- [ ] Make manifests append-only and reject direct API assertion of completed runner actions.
+- [x] Move runner manifest creation into runner action paths for plan, start, skip, stop, kill, timeout, failure, completion and drain summary.
+- [x] Require real loop-run id, lease id, action, actor, capacity snapshot, budget snapshot and enforcement decision for each manifest.
+- [x] Make manifests append-only and reject direct API assertion of completed runner actions.
 - [ ] Attach stdout/stderr/artifact refs and token usage parsed from runtime output when available.
 - [ ] Write before/after checkpoint refs around worker execution.
 - [ ] Add tests for auto-written manifests, spoofed manifest refusal, timeout manifest, killed worker manifest and completion manifest.
@@ -62,7 +62,7 @@
 - [ ] Enforce runtime concurrency slots per adapter and per risk class.
 - [ ] Enforce token budget, wall-clock budget, retry budget and failure budget before worker start.
 - [ ] Add process-aware stop/kill adapters for Codex/OpenCode runtime sessions.
-- [ ] Add fleet circuit breakers for repeated maker failures, checker rejections, runtime warnings and timeouts.
+- [x] Add fleet circuit breakers for repeated maker failures, checker rejections, runtime warnings and timeouts.
 - [ ] Record capacity snapshots, budget snapshots and selected/blocked reasons in traces and manifests.
 - [ ] Add tests for fair-share ordering, exhausted token budget, exhausted wall-clock budget, repeated failure breaker, runtime unavailable and stop/kill evidence.
 
