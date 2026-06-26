@@ -2,20 +2,20 @@
 
 ## G16.1 Runtime Contract Repair
 
-- [ ] Fix CodexExecutor to use current Codex CLI flags: `exec --json --cd`.
-- [ ] Add `codex-executor.test.ts` covering JSON flag, working-directory flag, model flag, sandbox/approval options and timeout warning behavior.
-- [ ] Extract shared runtime contract probe used by loop-service and execution-engine.
-- [ ] Add contract fixtures for Codex available, Codex drifted, OpenCode available, OpenCode drifted and runtime unavailable.
-- [ ] Ensure runtime contract output includes command, version, required flags, status, reason, evidence and checked_at.
+- [x] Fix CodexExecutor to use current Codex CLI flags: `exec --json --cd`.
+- [x] Add `codex-executor.test.ts` covering JSON flag, working-directory flag, model flag, sandbox/approval options and timeout warning behavior.
+- [x] Extract shared runtime contract probe used by loop-service and execution-engine.
+- [x] Add contract fixtures for Codex available, Codex drifted, OpenCode available, OpenCode drifted and runtime unavailable.
+- [x] Ensure runtime contract output includes command, version, required flags, status, reason, evidence and checked_at.
 
 ## G16.2 Enforcement Repair
 
-- [ ] Add canonical OKF/workspace root allowlist for OKF drift and sync.
-- [ ] Replace raw `okf_base` query with configured root id or allowlisted canonical path.
-- [ ] Replace broad `create:task` writes for capabilities, claims, governance, manifests and swarm actions with scoped permissions.
-- [ ] Require governance evaluation to resolve persisted refs instead of trusting request booleans for enforceable decisions.
+- [x] Add canonical OKF/workspace root allowlist for OKF drift and sync.
+- [x] Replace raw `okf_base` query with configured root id or allowlisted canonical path.
+- [x] Replace broad `create:task` writes for capabilities, claims, governance, manifests and swarm actions with scoped permissions.
+- [x] Require governance evaluation to resolve persisted refs instead of trusting request booleans for enforceable decisions.
 - [ ] Block direct public assertion of completed runner manifests.
-- [ ] Add typed claim predicate/object/scope fields and explicit `supports`, `refines`, `contradicts` relationships.
+- [x] Add typed claim predicate/object/scope fields and explicit `supports`, `refines`, `contradicts` relationships.
 - [ ] Add tests for OKF path escape, spoofed governance, spoofed runner manifest and same-subject non-contradiction.
 
 ## G16.3 OpenCode MCP And Skills Health
@@ -38,34 +38,34 @@
 
 ## G16.5 Proof Run Service
 
-- [ ] Add `ProofRunService` or equivalent orchestration module.
-- [ ] Create proof run id and rollback group.
-- [ ] Register at least six capabilities: mock runtime, Codex runtime, OpenCode runtime, OKF skill, specialist profile, evidence harness.
-- [ ] Create one specialist panel with at least three reviews and dissent/evidence refs.
-- [ ] Create at least three typed claims, including one proposed, one supported and one review-required or contradicted.
-- [ ] Create one backlog item and one goal from the panel or claim evidence.
-- [ ] Create one loop run and at least two worker leases.
-- [ ] Execute maker/checker through mock runtime first.
-- [ ] Write trace spans, checkpoints, runner manifests and a governed memory candidate.
-- [ ] Attach proof-run metadata to every created record.
+- [x] Add `ProofRunService` or equivalent orchestration module.
+- [x] Create proof run id and rollback group.
+- [x] Register at least six capabilities: mock runtime, Codex runtime, OpenCode runtime, OKF skill, specialist profile, evidence harness.
+- [x] Create one specialist panel with at least three reviews and dissent/evidence refs.
+- [x] Create at least three typed claims, including one proposed, one supported and one review-required or contradicted.
+- [x] Create one backlog item and one goal from the panel or claim evidence.
+- [x] Create one loop run and at least two worker leases.
+- [x] Execute maker/checker through mock runtime first.
+- [x] Write trace spans, checkpoints, runner manifests and a governed memory candidate.
+- [x] Attach proof-run metadata to every created record.
 
 ## G16.6 Proof Run API And CLI
 
-- [ ] Add authenticated `POST /api/swarms/proof-runs` to start a mock proof run.
-- [ ] Add authenticated `GET /api/swarms/proof-runs/:id` for status, counts, evidence refs and missing evidence.
-- [ ] Add authenticated `POST /api/swarms/proof-runs/:id/rollback` for demo-record rollback.
-- [ ] Add `npm run swarm:proof` or equivalent script that calls the API or service with safe defaults.
-- [ ] Add `npm run swarm:proof:rollback` or equivalent rollback command.
-- [ ] Ensure proof run auto-starts mock proof workers and creates rollback-scoped demo memory evidence; release actions remain explicit operator commands.
+- [x] Add authenticated `POST /api/swarms/proof-runs` to start a mock proof run.
+- [x] Add authenticated `GET /api/swarms/proof-runs/:id` for status, counts, evidence refs and missing evidence.
+- [x] Add authenticated `POST /api/swarms/proof-runs/:id/rollback` for demo-record rollback.
+- [x] Add `npm run swarm:proof` or equivalent script that calls the API or service with safe defaults.
+- [x] Add `npm run swarm:proof:rollback` or equivalent rollback command.
+- [x] Ensure proof run auto-starts mock proof workers and creates rollback-scoped demo memory evidence; release actions remain explicit operator commands.
 
 ## G16.7 Mission Control Proof Output
 
-- [ ] Add proof-run summary section to Mission Control.
-- [ ] Show live counts versus required minimum counts.
-- [ ] Show latest proof-run id, status, runtime, created_at and rollback status.
-- [ ] Link to created goal, loop run, leases, claims, panel, traces, checkpoints, manifests and memory candidate.
-- [ ] Show missing evidence as blocking facts, not optimistic copy.
-- [ ] Add dashboard smoke test for proof section.
+- [x] Add proof-run summary section to Mission Control.
+- [x] Show live counts versus required minimum counts.
+- [x] Show latest proof-run id, status, runtime, created_at and rollback status.
+- [x] Link to created goal, loop run, leases, claims, panel, traces, checkpoints, manifests and memory candidate.
+- [x] Show missing evidence as blocking facts, not optimistic copy.
+- [x] Add dashboard smoke test for proof section.
 
 ## G16.8 Live Workstation Proof Smoke
 

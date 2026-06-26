@@ -90,19 +90,19 @@ Validation:
 ## Phase 3 — G16 No-Theater Proof (g16-no-theater-swarm-proof)
 
 ### G16.1 Runtime Contract Repair
-- [ ] Fix CodexExecutor flags: `exec --json --cd`.
-- [ ] Add `codex-executor.test.ts` covering flags, sandbox, timeout.
-- [ ] Extract shared runtime contract probe for loop-service + execution-engine.
-- [ ] Add contract fixtures for available/drifted/unavailable.
-- [ ] Ensure contract output includes command, version, status, reason, evidence, checked_at.
+- [x] Fix CodexExecutor flags: `exec --json --cd`.
+- [x] Add `codex-executor.test.ts` covering flags, sandbox, timeout.
+- [x] Extract shared runtime contract probe for loop-service + execution-engine.
+- [x] Add contract fixtures for available/drifted/unavailable.
+- [x] Ensure contract output includes command, version, status, reason, evidence, checked_at.
 
 ### G16.2 Enforcement Repair (overlaps G15.1-G15.4)
-- [ ] Add canonical OKF/workspace root allowlist.
-- [ ] Replace raw `okf_base` query with configured root id.
-- [ ] Replace broad permissions with scoped permissions.
-- [ ] Require governance to resolve persisted refs.
+- [x] Add canonical OKF/workspace root allowlist.
+- [x] Replace raw `okf_base` query with configured root id.
+- [x] Replace broad permissions with scoped permissions.
+- [x] Require governance to resolve persisted refs.
 - [ ] Block direct public assertion of completed runner manifests.
-- [ ] Add typed claim predicate/object/scope fields.
+- [x] Add typed claim predicate/object/scope fields.
 - [ ] Add tests for path escape, spoofed governance, spoofed manifest, non-contradiction.
 
 ### G16.3 OpenCode MCP And Skills Health
@@ -122,31 +122,31 @@ Validation:
 - [ ] Add tests that OpenAI descriptors cannot route local workers without adapter proof.
 
 ### G16.5 Proof Run Service
-- [ ] Add `ProofRunService` with rollback group.
-- [ ] Register ≥6 capabilities (mock, codex, opencode, OKF skill, specialist, harness).
-- [ ] Create specialist panel with ≥3 reviews and dissent/evidence refs.
-- [ ] Create ≥3 typed claims (proposed, supported, review-required).
-- [ ] Create backlog item + goal from panel/claim evidence.
-- [ ] Create loop run + ≥2 worker leases.
-- [ ] Execute maker/checker through mock runtime.
-- [ ] Write trace spans, checkpoints, runner manifests, memory candidate.
-- [ ] Attach proof-run metadata to every created record.
+- [x] Add `ProofRunService` with rollback group.
+- [x] Register ≥6 capabilities (mock, codex, opencode, OKF skill, specialist, harness).
+- [x] Create specialist panel with ≥3 reviews and dissent/evidence refs.
+- [x] Create ≥3 typed claims (proposed, supported, review-required).
+- [x] Create backlog item + goal from panel/claim evidence.
+- [x] Create loop run + ≥2 worker leases.
+- [x] Execute maker/checker through mock runtime.
+- [x] Write trace spans, checkpoints, runner manifests, memory candidate.
+- [x] Attach proof-run metadata to every created record.
 
 ### G16.6 Proof Run API And CLI
-- [ ] Add `POST /api/swarms/proof-runs` to start mock proof run.
-- [ ] Add `GET /api/swarms/proof-runs/:id` for status and evidence.
-- [ ] Add `POST /api/swarms/proof-runs/:id/rollback` for demo rollback.
-- [ ] Add `npm run swarm:proof` script.
-- [ ] Add `npm run swarm:proof:rollback` script.
-- [ ] Ensure proof run auto-starts mock workers; release actions are explicit.
+- [x] Add `POST /api/swarms/proof-runs` to start mock proof run.
+- [x] Add `GET /api/swarms/proof-runs/:id` for status and evidence.
+- [x] Add `POST /api/swarms/proof-runs/:id/rollback` for demo rollback.
+- [x] Add `npm run swarm:proof` script.
+- [x] Add `npm run swarm:proof:rollback` script.
+- [x] Ensure proof run auto-starts mock workers; release actions are explicit.
 
 ### G16.7 Mission Control Proof Output
-- [ ] Add proof-run summary section to Mission Control.
-- [ ] Show live counts vs required minimums.
-- [ ] Show latest proof-run id, status, runtime, rollback status.
-- [ ] Link to created goal, loop, leases, claims, panel, traces, manifests, memory.
-- [ ] Show missing evidence as blocking facts.
-- [ ] Add dashboard smoke test for proof section.
+- [x] Add proof-run summary section to Mission Control.
+- [x] Show live counts vs required minimums.
+- [x] Show latest proof-run id, status, runtime, rollback status.
+- [x] Link to created goal, loop, leases, claims, panel, traces, manifests, memory.
+- [x] Show missing evidence as blocking facts.
+- [x] Add dashboard smoke test for proof section.
 
 ### G16.8 Live Workstation Proof Smoke
 - [ ] Run database migration on workstation.
