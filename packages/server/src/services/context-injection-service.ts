@@ -6,6 +6,14 @@ const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const QDRANT_COLLECTION = 'djimitflo_swarm';
 const OKF_COLLECTION = 'djimit_okf';
+const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
+// Qdrant enforces auth (QDRANT__SERVICE__API_KEY). Without the key, both retrieval
+// paths 401 and injectContext silently returns empty. Send the key when configured.
+const qdrantHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
+  'Content-Type': 'application/json',
+  ...(qdrantApiKey ? { 'api-key': qdrantApiKey } : {}),
+  ...extra,
+});
 const MAX_CONTEXT_TOKENS = 1500;
 const MIN_SCORE = 0.5;
 
@@ -61,7 +69,7 @@ export class ContextInjectionService {
 
       const searchRes = await fetch(`${QDRANT_URL}/collections/${QDRANT_COLLECTION}/points/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
       });
       if (!searchRes.ok) return [];
@@ -97,7 +105,7 @@ export class ContextInjectionService {
 
       const searchRes = await fetch(`${QDRANT_URL}/collections/${OKF_COLLECTION}/points/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
       });
       if (!searchRes.ok) return [];

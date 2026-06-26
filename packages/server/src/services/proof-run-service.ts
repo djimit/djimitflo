@@ -6,6 +6,8 @@ import { SpecialistPanelService } from './specialist-panel-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { LoopService } from './loop-service';
 import { NestedSpawnService } from './nested-spawn-service';
+import fs from 'fs';
+import { ContextInjectionService } from './context-injection-service';
 
 type ProofRunStatus = 'completed' | 'rolled_back';
 type ProofRunRuntime = 'mock' | 'codex' | 'opencode';
@@ -612,6 +614,27 @@ export class ProofRunService {
       }
 
       this.ensureProofRunMetadata(loopRunId, proofRunId);
+
+      // Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the
+      // maker's task and append it to the work assignment, so specialists operate WITH
+      // retrieved memory + skills instead of blind. Best-effort and non-fatal: empty/failed
+      // retrieval (no key, empty store, ollama/qdrant down) just yields no context.
+      try {
+        const assignmentFile = typeof makerPrepared.metadata.assignment_file === 'string'
+          ? makerPrepared.metadata.assignment_file
+          : '';
+        if (assignmentFile && fs.existsSync(assignmentFile)) {
+          const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
+          const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
+          const contextInjector = new ContextInjectionService();
+          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
+          if (swarmContext) {
+            fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
+          }
+        }
+      } catch {
+        // Context retrieval is best-effort; never fail the proof on the knowledge layer.
+      }
 
       await this.loops.executeWorker(loopRunId, {
         lease_id: makerPrepared.id,
