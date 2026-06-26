@@ -542,6 +542,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
 
   router.post('/intelligence/runner-manifests', requirePermission('write:runner_manifest'), (req, res, next) => {
     try {
+      // G16.2: Block direct public assertion of completed runner manifests
+      // Only auto-write from loop-service should create 'complete'/'fail'/'kill' manifests
+      const blockedActions = ['complete', 'fail', 'kill', 'timeout'];
+      const action = req.body?.action;
+      if (action && blockedActions.includes(action)) {
+        throw createError(403, 'completed runner manifests can only be auto-written by the runner, not asserted via API', 'RUNNER_MANIFEST_DIRECT_ASSERTION_BLOCKED');
+      }
       res.status(201).json(intelligence.createRunnerManifest(req.body || {}));
     } catch (error) {
       try {

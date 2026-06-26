@@ -560,6 +560,51 @@ export class SwarmIntelligenceService {
     return { all_resolved: unresolved.length === 0, unresolved };
   }
 
+  // G15.4: Specialist-review-to-claim extraction — leaves unsupported claims as proposed
+  extractClaimsFromPanel(panelId: string): { extracted: number; claims: Array<{ id: string; claim: string; status: string }> } {
+    const panel = this.panels.getPanel(panelId);
+    const extracted: Array<{ id: string; claim: string; status: string }> = [];
+    for (const review of panel.reviews || []) {
+      const evidenceRefs = (review as any).evidence_refs || [];
+      const status = evidenceRefs.length > 0 ? 'supported' : 'proposed';
+      try {
+        const claim = this.createClaim({
+          claim: `${review.specialist_title}: ${review.findings || 'No findings'}`,
+          claim_type: 'observation',
+          subject_ref: `panel:${panelId}`,
+          confidence: review.confidence || 0.5,
+          status: status as any,
+          evidence_refs: evidenceRefs,
+          created_from: 'specialist_review_extraction',
+        });
+        extracted.push({ id: claim.id, claim: claim.claim, status: claim.status });
+      } catch {
+        // Skip if secret-like or invalid
+      }
+    }
+    return { extracted: extracted.length, claims: extracted };
+  }
+
+  // G15.4: Retention/deletion metadata for evidence and memory candidates
+  setRetentionMetadata(ref: string, retention: { ttl_days?: number; delete_after?: string; sensitivity?: string }): void {
+    const [kind, id] = ref.split(':');
+    if (!kind || !id) return;
+    const metadata = { retention_ttl_days: retention.ttl_days, retention_delete_after: retention.delete_after, sensitivity: retention.sensitivity || 'normal', retention_set_at: new Date().toISOString() };
+    try {
+      if (kind === 'memory') {
+        const row = this.db.prepare('SELECT metadata FROM memory_candidates WHERE id = ?').get(id) as any;
+        const existing = row ? JSON.parse(row.metadata || '{}') : {};
+        this.db.prepare('UPDATE memory_candidates SET metadata = ? WHERE id = ?').run(JSON.stringify({ ...existing, ...metadata }), id);
+      } else if (kind === 'claim') {
+        const row = this.db.prepare('SELECT metadata FROM swarm_claims WHERE id = ?').get(id) as any;
+        const existing = row ? JSON.parse(row.metadata || '{}') : {};
+        this.db.prepare('UPDATE swarm_claims SET metadata = ? WHERE id = ?').run(JSON.stringify({ ...existing, ...metadata }), id);
+      }
+    } catch {
+      // Best effort — table might not exist or row might not be found
+    }
+  }
+
   planCapacityV2(input: WorkerPoolPlanInput = {}): CapacityPlanV2Result {
     const plan = this.swarmStatus().planWorkerPool(input);
     const queueClasses: Record<string, number> = {};

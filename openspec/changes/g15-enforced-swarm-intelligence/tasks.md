@@ -23,10 +23,10 @@
 ## G15.3 Governance Enforcement Layer
 
 - [ ] Add an enforcement decision service for worker, loop, memory and dashboard mutating actions.
-- [ ] Stop accepting spoofable governance booleans from request payloads; accept refs and resolve persisted evidence.
-- [ ] Enforce maker/checker/security checker/quorum/human approval refs against stored records and policy version.
+- [x] Stop accepting spoofable governance booleans from request payloads; accept refs and resolve persisted evidence.
+- [x] Enforce maker/checker/security checker/quorum/human approval refs against stored records and policy version.
 - [x] Integrate enforcement into `verifyLoopRun`, `completeLoopRun`, `startNextWorker`, `drainWorkerPool`, `stop/kill` and memory promotion.
-- [ ] Ensure `ready_for_human_merge`, `human_approved` and `completed` remain distinct states.
+- [x] Ensure `ready_for_human_merge`, `human_approved` and `completed` remain distinct states.
 - [x] Write trace spans for each allowed, blocked, advisory or human-required enforcement decision.
 - [x] Add tests for spoofed governance payload refusal, missing quorum block, missing human approval block and low-risk allowed path.
 
@@ -35,9 +35,9 @@
 - [x] Add typed claim fields: `subject_ref`, `predicate`, `object`, `scope`, `confidence`, `valid_from`, `valid_until`, `status`, evidence refs and sensitivity.
 - [x] Replace same-subject contradiction heuristics with explicit `supports`, `refines` and `contradicts` edges plus typed predicate/scope rules.
 - [x] Require evidence refs to resolve before a claim can become supported, promoted, route-influencing or memory-influencing.
-- [ ] Add specialist-review-to-claim extraction that leaves unsupported claims as proposed.
-- [ ] Add retention/deletion metadata for evidence records and memory candidates.
-- [ ] Add tests for multiple supported facts on one subject, explicit contradiction, unsupported claim, expired claim and sensitive evidence rejection.
+- [x] Add specialist-review-to-claim extraction that leaves unsupported claims as proposed.
+- [x] Add retention/deletion metadata for evidence records and memory candidates.
+- [x] Add tests for multiple supported facts on one subject, explicit contradiction, unsupported claim, expired claim and sensitive evidence rejection.
 
 ## G15.5 Evidence Graph Lineage Resolver
 
@@ -45,7 +45,7 @@
 - [x] Add lineage resolver APIs for forward and reverse traversal.
 - [x] Add evidence graph summaries for dashboard cards and review bundles.
 - [ ] Ensure graph traversal cannot expose records outside the caller permission scope.
-- [ ] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup, missing edge handling and permission-filtered graph output.
+- [x] Add tests for panel-to-memory lineage, lease-to-claim reverse lookup, missing edge handling and permission-filtered graph output.
 
 ## G15.6 Runner Manifest Auto-Write
 
@@ -78,8 +78,8 @@
 ## G15.9 Mission Control Drill-Through And Actions
 
 - [x] Add drill-through links from dashboard metrics to capabilities, claims, panels, backlog items, goals, loops, leases, traces, checkpoints, manifests and memory candidates.
-- [ ] Add gated operator actions for capability promotion, claim resolution, panel projection, goal creation, start-next, drain, stop/kill and manifest review.
-- [ ] Show disabled action state with exact blocked reasons from enforcement decisions.
+- [x] Add gated operator actions for capability promotion, claim resolution, panel projection, goal creation, start-next, drain, stop/kill and manifest review.
+- [x] Show disabled action state with exact blocked reasons from enforcement decisions.
 - [ ] Separate MacBook cockpit, workstation execution node, registry state, prepared leases and active runtime evidence in the UI.
 - [ ] Avoid duplicate runtime status probes inside a single mission-control request by caching or passing the status snapshot.
 - [ ] Add dashboard tests for drill-through, disabled blocked actions, active execution truth and runtime-node labels.

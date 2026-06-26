@@ -14,9 +14,9 @@
 - [x] Replace raw `okf_base` query with configured root id or allowlisted canonical path.
 - [x] Replace broad `create:task` writes for capabilities, claims, governance, manifests and swarm actions with scoped permissions.
 - [x] Require governance evaluation to resolve persisted refs instead of trusting request booleans for enforceable decisions.
-- [ ] Block direct public assertion of completed runner manifests.
+- [x] Block direct public assertion of completed runner manifests.
 - [x] Add typed claim predicate/object/scope fields and explicit `supports`, `refines`, `contradicts` relationships.
-- [ ] Add tests for OKF path escape, spoofed governance, spoofed runner manifest and same-subject non-contradiction.
+- [x] Add tests for OKF path escape, spoofed governance, spoofed runner manifest and same-subject non-contradiction.
 
 ## G16.3 OpenCode MCP And Skills Health
 
@@ -32,7 +32,7 @@
 
 - [x] Add capability descriptor kinds for OpenAI Agents SDK, OpenAI Skills and OpenAI MCP/connectors.
 - [x] Require explicit approval and authorization refs for remote MCP/connectors.
-- [ ] Treat OpenAI hosted skills as privileged capability candidates until reviewed.
+- [x] Treat OpenAI hosted skills as privileged capability candidates until reviewed.
 - [x] Add adapter boundary docs: local worker runtime remains Codex/OpenCode CLI until SDK runtime proof exists.
 - [x] Add tests that OpenAI capability descriptors cannot route local workers without validated adapter proof.
 
