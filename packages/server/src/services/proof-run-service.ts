@@ -1035,21 +1035,32 @@ export class ProofRunService {
     nested: { root_lease_id: string; child_lease_id: string },
     skipPermissions: boolean
   ) {
-    for (const leaseId of [nested.root_lease_id, nested.child_lease_id]) {
-      const result = await this.loops.executeWorker(loopRunId, {
-        lease_id: leaseId,
-        timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
-        diff_max_lines: 200,
-        skip_permissions: skipPermissions,
-      });
-      if (result.lease.status !== 'completed') {
+    const leaseIds = [nested.root_lease_id, nested.child_lease_id].filter(Boolean) as string[];
+    // Parallel specialised swarm: run the nested specialist agents CONCURRENTLY instead of
+    // sequentially. Each executeWorker acquires/releases its own runtime permit, so real
+    // parallelism is bounded by the runtime semaphore (runtimeSemaphoreLimit, default 4).
+    // The specialists have separate worktrees and independent tasks, so they do not contend.
+    // (better-sqlite3 is synchronous; DB ops serialize on the event loop while the codex
+    // child processes overlap — safe, no connection race.)
+    const results = await Promise.all(
+      leaseIds.map((leaseId) =>
+        this.loops.executeWorker(loopRunId, {
+          lease_id: leaseId,
+          timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
+          diff_max_lines: 200,
+          skip_permissions: skipPermissions,
+        }),
+      ),
+    );
+    for (let i = 0; i < leaseIds.length; i += 1) {
+      if (results[i].lease.status !== 'completed') {
         throw new Error('PROOF_RUN_SUB_AGENT_NOT_COMPLETED');
       }
       this.db.prepare(`
         UPDATE sub_agent_spawns
         SET status = ?
         WHERE child_lease_id = ?
-      `).run('completed', leaseId);
+      `).run('completed', leaseIds[i]);
     }
     this.db.prepare(`
       UPDATE spawn_trees
