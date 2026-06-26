@@ -127,6 +127,9 @@ describe('swarm proof runs', () => {
     process.chdir(tempRepoDir);
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
     process.env.LOOP_EVIDENCE_ROOT = evidenceRoot;
+    // The learning-flywheel vector write-back hits real ollama+qdrant; disable it in tests
+    // so the bridge tests stay fast/deterministic (they assert artifacts, not the vector store).
+    process.env.PROOF_RUN_MEMORY_FLYWHEEL = 'false';
     await startApp();
     clearRuntimeEnv();
     runtimeBinDir = '';
@@ -137,6 +140,7 @@ describe('swarm proof runs', () => {
       server.close((err) => err ? reject(err) : resolve());
     });
     clearRuntimeEnv();
+    delete process.env.PROOF_RUN_MEMORY_FLYWHEEL;
     if (runtimeBinDir) {
       fs.rmSync(runtimeBinDir, { recursive: true, force: true });
       runtimeBinDir = '';

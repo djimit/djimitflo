@@ -189,6 +189,7 @@ export class MemoryCandidateService {
    * exists at a different dimension AND is empty (never destroys populated data).
    */
   async upsertToSwarmMemory(candidateId: string): Promise<void> {
+    if (process.env.PROOF_RUN_MEMORY_FLYWHEEL === 'false') return; // tests disable the network write-back
     try {
       const candidate = this.get(candidateId);
       if (!candidate || candidate.promotion_status !== 'promoted') return;
