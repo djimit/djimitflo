@@ -3130,8 +3130,18 @@ export class LoopService {
   }
 
   private createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
-    this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
-    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryPath, '..', '.djimitflo-loop-worktrees');
+    // Worktrees MUST live OUTSIDE the host repo. repositoryPath may be a sub-workspace
+    // *inside* the repo (e.g. packages/server); basing the root on it placed worktrees at
+    // packages/.djimitflo-loop-worktrees — INSIDE the repo — so a runtime launched with
+    // --cd <worktree> had the host source tree as filesystem siblings and could edit the
+    // host repo by upward exploration (observed: a real codex maker mutated host source).
+    // Base the root on the git toplevel (repo root) so worktrees are a sibling of the repo,
+    // outside it. LOOP_WORKTREE_ROOT overrides for operators wanting a dedicated sandbox
+    // root. NOTE: this hardens isolation against accidental/relative-path escape; a
+    // determined runtime can still reach the host by absolute path — full isolation needs
+    // a sandbox (separate follow-up).
+    const sourceRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(sourceRoot, '..', '.djimitflo-loop-worktrees');
     const worktreePath = path.join(worktreeRoot, runId, this.pathSegmentForWorktreeId(findingId));
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
     if (fs.existsSync(worktreePath)) {
