@@ -54,6 +54,11 @@ function getColumns(db: BetterSqlite3Database, tableName: string): Set<string> {
 
 function addMissingColumns(db: BetterSqlite3Database, tableName: string, columns: ColumnSpec[]) {
   const existing = getColumns(db, tableName);
+  // When the table does not yet exist, PRAGMA table_info returns no columns.
+  // There is nothing to migrate — db.exec(schema) below will CREATE the table fresh
+  // with all columns. Only pre-existing stale tables need ALTERs (the point of
+  // runPreSchemaMigrations running before the schema string is exec'd).
+  if (existing.size === 0) return;
 
   for (const column of columns) {
     if (!existing.has(column.name)) {
