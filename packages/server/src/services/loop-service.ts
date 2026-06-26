@@ -1318,6 +1318,12 @@ export class LoopService {
       gates,
     });
 
+    // G15: Auto-populate evidence edges for verified gates
+    for (const gate of gates) {
+      if (gate.status === 'pass') {
+        this.populateEvidenceEdges([{ from: `loop:${run.id}`, to: `gate:${gate.name}`, relation: 'verified_by' }]);
+      }
+    }
     return { run: this.getLoopRun(run.id), gates, leases };
   }
 
@@ -1343,6 +1349,9 @@ export class LoopService {
       if (!approvalRef) {
         throw new Error('LOOP_HUMAN_APPROVAL_REQUIRED');
       }
+
+      // G15: Governance enforcement — verify no unresolved claims block completion
+      this.enforceGovernanceCompletion(id);
 
       const now = new Date().toISOString();
       const metadata = {
@@ -1544,6 +1553,10 @@ export class LoopService {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
     });
+    // G15: Auto-write runner manifest for worker completion
+    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: failed ? 'fail' : 'complete', gateRefs: checks.map((c: any) => c.name || 'check') });
+    // G15: Auto-populate evidence edges
+    this.populateEvidenceEdges([{ from: `loop:${run.id}`, to: `lease:${makerLease.id}`, relation: 'executes_with' }]);
 
     this.db.prepare(`
       UPDATE loop_runs
@@ -1608,6 +1621,10 @@ export class LoopService {
     });
 
     this.updateWorkerLeaseStatus(makerLease.id, 'running', { started_at: new Date().toISOString() });
+    // G15: Enforce capability gate before worker starts
+    this.enforceCapabilityGate(makerLease);
+    // G15: Auto-write runner manifest for worker start
+    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: 'start', gateRefs: ['capability_gate', 'worktree_isolation'] });
 
     const contract = this.getRuntimeContract(makerLease.runtime);
     if (!contract.available || contract.status !== 'ok') {
@@ -3439,6 +3456,101 @@ export class LoopService {
     const capsManifest = this.buildCapabilityManifest(lease.metadata?.capability_ids);
     if (capsManifest) env.DJIMITFLO_CAPABILITIES = capsManifest;
     return env;
+  }
+
+  // ── G15: Enforcement layer ──
+  // Wires advisory swarm intelligence into binding runtime behavior.
+
+  /**
+   * Capability enforcement gate: check that a capability is validated and
+   * live_route_allowed before a worker starts. Throws if the capability
+   * is draft, candidate, disabled, deprecated, over-risk, or below eval
+   * threshold.
+   */
+  private enforceCapabilityGate(lease: WorkerLeaseRecord): void {
+    const capabilityIds = (lease.metadata as any)?.capability_ids;
+    if (!Array.isArray(capabilityIds) || capabilityIds.length === 0) return;
+    for (const capId of capabilityIds) {
+      try {
+        const cap = this.intelligence.getCapability(String(capId));
+        if (!cap) {
+          throw new Error(`CAPABILITY_NOT_FOUND:${capId}`);
+        }
+        if (!cap.live_route_allowed) {
+          throw new Error(`CAPABILITY_NOT_ROUTABLE:${capId}:status=${cap.status}`);
+        }
+        if (cap.eval_score < cap.eval_threshold) {
+          throw new Error(`CAPABILITY_BELOW_EVAL_THRESHOLD:${capId}:score=${cap.eval_score}:threshold=${cap.eval_threshold}`);
+        }
+      } catch (error) {
+        // Re-throw enforcement errors; swallow "not found" from getCapability
+        if (error instanceof Error && error.message.startsWith('CAPABILITY_')) {
+          throw error;
+        }
+      }
+    }
+  }
+
+  /**
+   * Auto-write a runner manifest for a worker action. Best-effort: manifest
+   * persistence failures are logged but do not block execution.
+   */
+  private autoWriteManifest(input: {
+    loopRunId: string;
+    leaseId: string;
+    action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+    decisionId?: string;
+    gateRefs?: string[];
+    blockedReasons?: string[];
+    metadata?: Record<string, unknown>;
+  }): void {
+    try {
+      this.intelligence.createRunnerManifest({
+        decision_id: input.decisionId || `loop:${input.loopRunId}:lease:${input.leaseId}:${input.action}`,
+        lease_id: input.leaseId,
+        loop_run_id: input.loopRunId,
+        action: input.action,
+        policy_version: LOOP_RUNTIME_MANIFEST_POLICY_VERSION,
+        gate_refs: input.gateRefs,
+        blocked_reasons: input.blockedReasons,
+        metadata: input.metadata,
+      });
+    } catch {
+      this.recordLoopEvent(input.loopRunId, 'worker_manifest_error', 'warning',
+        `Runner manifest persistence failed for ${input.action} action.`, { lease_id: input.leaseId });
+    }
+  }
+
+  /**
+   * Auto-populate evidence edges linking runtime entities. Creates typed
+   * edges in the evidence graph so the inquiry trail is provable.
+   */
+  private populateEvidenceEdges(edges: Array<{ from: string; to: string; relation: string }>): void {
+    for (const edge of edges) {
+      try {
+        this.intelligence.createEvidenceEdge(edge.from, edge.to, edge.relation);
+      } catch {
+        // Evidence edges are best-effort; don't block execution on graph writes
+      }
+    }
+  }
+
+  /**
+   * Governance enforcement: verify that all claims linked to a loop run
+   * are supported (not proposed/contradicted) before allowing completion.
+   */
+  private enforceGovernanceCompletion(runId: string): void {
+    const claims = this.intelligence.listClaims(500);
+    const loopClaims = claims.filter((c) =>
+      c.subject_ref === `loop:${runId}` ||
+      (c.evidence_refs || []).some((ref) => ref.includes(runId))
+    );
+    const unresolved = loopClaims.filter((c) =>
+      c.status === 'proposed' || c.status === 'contradicted' || c.status === 'review_required'
+    );
+    if (unresolved.length > 0) {
+      throw new Error(`GOVERNANCE_COMPLETION_BLOCKED:${unresolved.length}_unresolved_claims`);
+    }
   }
 
   /**

@@ -47,6 +47,10 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'LOOP_COMPLETION_LEASES_INCOMPLETE') throw createError(409, 'all worker leases must be completed before loop completion', 'LOOP_COMPLETION_LEASES_INCOMPLETE');
   if (message === 'LOOP_COMPLETION_NO_WORKERS') throw createError(409, 'loop has no completed worker path to close', 'LOOP_COMPLETION_NO_WORKERS');
   if (message === 'LOOP_HUMAN_APPROVAL_REQUIRED') throw createError(409, 'human approval is required before completing mutating work', 'LOOP_HUMAN_APPROVAL_REQUIRED');
+  if (message?.startsWith('CAPABILITY_NOT_FOUND:')) { const [, id] = message.split(':'); throw createError(403, `capability not found: ${id}`, 'CAPABILITY_NOT_FOUND'); }
+  if (message?.startsWith('CAPABILITY_NOT_ROUTABLE:')) { const [, id, reason] = message.split(':'); throw createError(403, `capability not routable: ${id} (${reason})`, 'CAPABILITY_NOT_ROUTABLE'); }
+  if (message?.startsWith('CAPABILITY_BELOW_EVAL_THRESHOLD:')) { const parts = message.split(':'); throw createError(403, `capability below eval threshold: ${parts[1]} (score=${parts[2]?.split('=')[1]}, threshold=${parts[3]?.split('=')[1]})`, 'CAPABILITY_BELOW_EVAL_THRESHOLD'); }
+  if (message?.startsWith('GOVERNANCE_COMPLETION_BLOCKED:')) { const [, detail] = message.split(':'); throw createError(409, `governance completion blocked: ${detail}`, 'GOVERNANCE_COMPLETION_BLOCKED'); }
   if (message.startsWith('LOOP_COMPLETION_BLOCKED:')) {
     const gate = message.split(':')[1] || 'unknown';
     throw createError(409, `loop completion blocked by gate: ${gate}`, 'LOOP_COMPLETION_BLOCKED');
