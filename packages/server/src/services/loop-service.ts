@@ -1018,6 +1018,43 @@ export class LoopService {
     return { run: this.getLoopRun(run.id), leases };
   }
 
+  // G3.1: Planner — maps a goal's findings to a capability DAG. For each finding, selects
+  // the best capability by competence (success_rate / p50_cost = the market). Returns a plan
+  // the scheduler (continueLoopRun) can use to create leases with the right capability_id.
+  // The existing maker→checker→nested shape is the default; the planner generalizes it.
+  planLoopRun(id: string): Array<{
+    finding_id: string;
+    capability_id: string | null;
+    role: string;
+    runtime: string;
+    competence: Record<string, number> | null;
+    dependencies: string[];
+  }> {
+    const run = this.getLoopRun(id);
+    const caps = this.intelligence.listCapabilities()
+      .filter((c) => c.status === 'validated' || c.status === 'candidate');
+    // Match: capabilities whose allowed_actions include 'spawn_runtime_worker' can handle
+    // maker-type findings. Refine as more capability types emerge (G1.5).
+    const matching = caps.filter((c) => c.allowed_actions.includes('spawn_runtime_worker'));
+    let best: { id: string; metadata: Record<string, unknown>; allowed_actions: string[]; status: string } | null = null;
+    let bestScore = -1;
+    for (const c of matching) {
+      const comp = c.metadata.competence as { success_rate?: number; p50_cost?: number } | undefined;
+      const sr = comp?.success_rate ?? 0;
+      const cost = Math.max(1, comp?.p50_cost ?? 1);
+      const score = (sr / cost) * 1000; // competence per cost = the market
+      if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return run.findings.map((finding) => ({
+      finding_id: finding.id,
+      capability_id: best?.id ?? null,
+      role: 'maker',
+      runtime: (run.metadata.runtime as string) || 'codex',
+      competence: (best?.metadata.competence as Record<string, number> | undefined) ?? null,
+      dependencies: [], // maker has no deps; checker depends on maker (added by scheduler)
+    }));
+  }
+
   // G3.4: Convergence certificate — generalizes production_passed to ANY loop_run.
   // A run is certified iff: all gates passed, all maker leases completed, all checker
   // leases accepted, evidence present (trace spans + manifests), budget within, isolation
