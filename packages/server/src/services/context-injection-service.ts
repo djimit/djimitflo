@@ -9,6 +9,15 @@ const OKF_COLLECTION = 'djimit_okf';
 const qdrantApiKey = process.env.QDRANT_API_KEY ?? '';
 // Qdrant enforces auth (QDRANT__SERVICE__API_KEY). Without the key, both retrieval
 // paths 401 and injectContext silently returns empty. Send the key when configured.
+// Bounded fetch: never let a slow/unreachable RAG source (djimitkb-mcp/ollama/qdrant) hang the
+// knowledge-injection path and deadlock the proof/bridge tests. Fail fast (<=5s) + skip.
+const fetchWithTimeout = async (url: string, init: RequestInit = {}, ms = 5_000): Promise<Response> => {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...init, signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+};
+
 const qdrantHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
   'Content-Type': 'application/json',
   ...(qdrantApiKey ? { 'api-key': qdrantApiKey } : {}),
