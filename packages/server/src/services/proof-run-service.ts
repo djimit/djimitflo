@@ -654,6 +654,15 @@ export class ProofRunService {
           const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
           if (swarmContext) {
             fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
+            // G5: record the injected memory trust_scores on the maker lease so the
+            // production certificate can gate on low-trust memory (injected_memory_trust).
+            const trustMatches = [...swarmContext.matchAll(/\[trust:(\d+\.\d+)\]/g)];
+            if (trustMatches.length > 0) {
+              const scores = trustMatches.map((m) => parseFloat(m[1]));
+              const existingRow = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerPrepared.id) as { metadata?: string } | undefined;
+            const existingMeta = existingRow ? JSON.parse(existingRow.metadata || '{}') as Record<string, unknown> : {};
+            this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ ...existingMeta, injected_memory_trust_scores: scores }), new Date().toISOString(), makerPrepared.id);
+            }
           }
         }
       } catch {
@@ -1212,6 +1221,15 @@ export class ProofRunService {
     if (this.countSpawnTrees(id) < 1) missing.push('spawn_tree');
     if (this.countSubAgentSpawns(id) < 2) missing.push('sub_agent_lineage');
     if (runtime !== 'mock' && !this.hasCompletedSubAgentExecutions(id)) missing.push('sub_agent_execution');
+    // G5: injected_memory_trust gate — if the maker used low-trust memory (< 0.3 trust_score),
+    // the certificate flags it. This is the "checker can reject low-trust memory" gate: the
+    // swarm's output is not certified if it relied on unprovenanced/contradicted/stale memory.
+    const makerRow = this.rowsByProofId('worker_leases', id).find((r: any) => r.role === 'maker');
+    if (makerRow) {
+      let m: Record<string, unknown> = {}; try { m = JSON.parse((makerRow as any).metadata || '{}') as Record<string, unknown>; } catch { /* empty */ }
+      const scores = Array.isArray(m.injected_memory_trust_scores) ? m.injected_memory_trust_scores as number[] : [];
+      if (scores.some((s) => typeof s === 'number' && s < 0.3)) missing.push('low_trust_memory');
+    }
     return missing;
   }
 
