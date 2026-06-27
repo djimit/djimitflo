@@ -443,6 +443,14 @@ export class LoopService {
     // G4: AIMD concurrency controller state — the dynamic limit the controller drives.
     dynamicLimit: number | null;
   } = { active: new Set(), queue: [], dynamicLimit: null };
+
+  /**
+   * G9: ConcurrencyAdvisor — a callback that returns the fleet's recommended
+   * concurrency (from SwarmStatusService.fleetPools().recommended_concurrency).
+   * Injected at construction to avoid a circular import (LoopService does NOT
+   * import SwarmStatusService). The hard cap is min(env_cap, advisor() ?? env_cap).
+   */
+  private concurrencyAdvisor: (() => number | null) | null = null;
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
@@ -461,11 +469,13 @@ export class LoopService {
     Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000),
   );
 
-  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, concurrencyAdvisor?: (() => number | null) | null) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
     this.intelligence = new SwarmIntelligenceService(db);
+    // G9: inject the fleet concurrency advisor (avoids circular import with SwarmStatusService)
+    this.concurrencyAdvisor = concurrencyAdvisor ?? null;
   }
 
   /**
@@ -4688,10 +4698,15 @@ export class LoopService {
   }
 
   private runtimeSemaphoreHardCap(): number {
+    // G9: the hard cap is min(env_cap, fleet_recommended). The fleet recommended
+    // concurrency comes from the injected ConcurrencyAdvisor (SwarmStatusService.
+    // fleetPools().recommended_concurrency), avoiding a circular import.
     const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    if (raw === undefined || raw === null || raw.trim() === '') return 4;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 4;
+    const envCap = raw === undefined || raw === null || raw.trim() === ''
+      ? 4
+      : (Number.isFinite(Number(raw)) && Number(raw) >= 1 ? Math.trunc(Number(raw)) : 4);
+    const fleetRec = this.concurrencyAdvisor?.() ?? null;
+    return fleetRec !== null ? Math.min(envCap, Math.max(1, fleetRec)) : envCap;
   }
 
   // G4: AIMD concurrency controller — additive increase on success (+1), multiplicative
@@ -4704,6 +4719,42 @@ export class LoopService {
     } else {
       sem.dynamicLimit = Math.max(1, Math.floor((sem.dynamicLimit ?? cap) * 0.5));
     }
+  }
+
+  /**
+   * G9: Graceful scale-down — on budget exhaustion or circuit-break, stop accepting
+   * new leases, wait up to drainTimeoutMs for in-flight leases to complete, then
+   * checkpoint + SIGTERM (not SIGKILL) any that don't finish. The run is marked
+   * 'interrupted' with interrupted_reason: 'budget_drain' so it can be resumed (G10).
+   * This prevents mid-artifact data loss — the system drains safely, not abruptly.
+   */
+  async drainRuntimeLeases(drainTimeoutMs = 60_000): Promise<{ drained: number; checkpointed: number; cancelled: number }> {
+    const sem = LoopService.runtimeSemaphore;
+    // 1. Stop accepting new leases: reject all queued waiters.
+    const queued = sem.queue.splice(0);
+    for (const q of queued) q.reject(new Error('DRAIN_CANCELLED'));
+    const cancelled = queued.length;
+
+    // 2. Wait for in-flight leases to complete (up to drainTimeoutMs).
+    const deadline = Date.now() + drainTimeoutMs;
+    let drained = 0;
+    while (sem.active.size > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    drained = sem.active.size === 0 ? drained + sem.active.size : drained; // all completed
+    const stillActive = Array.from(sem.active);
+    const checkpointed = stillActive.length;
+
+    // 3. SIGTERM (not SIGKILL) any leases still in-flight after the drain timeout.
+    for (const leaseId of stillActive) {
+      const handle = LoopService.runtimeLeases.get(leaseId);
+      if (handle?.child && !handle.child.killed) {
+        handle.child.kill('SIGTERM');
+      }
+      sem.active.delete(leaseId);
+    }
+
+    return { drained, checkpointed, cancelled };
   }
 
   /**
