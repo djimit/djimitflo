@@ -63,10 +63,18 @@ async function main() {
   };
 
   try {
-    const recovery = new LoopService(db, undefined, concurrencyAdvisor).recoverInterruptedRuns();
+    const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor);
+    const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
       console.log(
         `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
+      );
+    }
+    // G10: resume interrupted runs from their last checkpoint (crash recovery).
+    const resumeResult = recoverySvc.resumeInterruptedRuns();
+    if (resumeResult.resumed > 0 || resumeResult.boundedFailed > 0) {
+      console.log(
+        `🔄 Resumed ${resumeResult.resumed} run(s) from checkpoint, ${resumeResult.boundedFailed} bounded-failed.`,
       );
     }
   } catch (error) {

@@ -543,6 +543,143 @@ export class LoopService {
   }
 
   /**
+   * G10: Resume an interrupted run from its last checkpoint. Loads the last
+   * checkpoint, determines which findings were completed (lease status = 'completed'
+   * + checker accepted) vs in-flight (lease status = 'failed' with failed_reason
+   * 'server_restart' or 'budget_drain'), re-queues in-flight findings as new leases,
+   * and marks the run as 'running' again.
+   *
+   * Bounded-fail: if the run has been resumed >= maxResumeAttempts times (default 3),
+   * it is marked 'failed' (not 'interrupted') — no infinite retry loop.
+   *
+   * Returns the resume result: which findings were re-queued, which were skipped
+   * (already completed), and whether the run was resumed or bounded-failed.
+   */
+  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
+    resumed: boolean;
+    boundedFail: boolean;
+    requeuedFindings: string[];
+    skippedFindings: string[];
+    resumeAttempt: number;
+  } {
+    const run = this.getLoopRun(runId);
+    if (run.status !== 'interrupted') {
+      throw new Error('LOOP_RUN_NOT_INTERRUPTED');
+    }
+
+    const meta = run.metadata as Record<string, unknown>;
+    const resumeAttempts = typeof meta.resume_attempts === 'number' ? meta.resume_attempts : 0;
+    const newAttempt = resumeAttempts + 1;
+
+    // Bounded-fail: too many resume attempts → mark as failed.
+    if (newAttempt > maxResumeAttempts) {
+      this.db.prepare(
+        `UPDATE loop_runs SET status = 'failed', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+      ).run(JSON.stringify({
+        ...meta,
+        failed_reason: 'resume_exhausted',
+        failed_at: new Date().toISOString(),
+        resume_attempts: newAttempt,
+      }), runId);
+      this.recordLoopEvent(runId, 'loop_resume_exhausted', 'warning',
+        `Run failed after ${newAttempt - 1} resume attempts (bounded-fail).`, { resume_attempts: newAttempt });
+      return { resumed: false, boundedFail: true, requeuedFindings: [], skippedFindings: [], resumeAttempt: newAttempt };
+    }
+
+    // Load the last checkpoint for this run.
+    const checkpoint = this.db.prepare(
+      `SELECT * FROM loop_checkpoints WHERE loop_run_id = ? ORDER BY created_at DESC LIMIT 1`,
+    ).get(runId) as { id: string; state_json: string; findings_json: string; leases_json: string } | undefined;
+
+    const leases = this.listWorkerLeases(runId);
+
+    // Determine completed vs in-flight findings.
+    const completedLeases = leases.filter((l) => l.status === 'completed');
+    const completedFindingIds = new Set(completedLeases.map((l) => l.finding_id).filter(Boolean) as string[]);
+    const failedLeases = leases.filter((l) => l.status === 'failed');
+    const inFlightFindingIds = new Set(
+      failedLeases
+        .filter((l) => {
+          const m = l.metadata as Record<string, unknown>;
+          return m.failed_reason === 'server_restart' || m.failed_reason === 'budget_drain';
+        })
+        .map((l) => l.finding_id)
+        .filter(Boolean) as string[],
+    );
+
+    // Re-queue in-flight findings that haven't been completed by another lease.
+    const requeuedFindings: string[] = [];
+    for (const findingId of inFlightFindingIds) {
+      if (!completedFindingIds.has(findingId)) {
+        requeuedFindings.push(findingId);
+      }
+    }
+
+    const skippedFindings = Array.from(completedFindingIds);
+
+    // Mark the run as running again.
+    this.db.prepare(
+      `UPDATE loop_runs SET status = 'running', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
+    ).run(JSON.stringify({
+      ...meta,
+      resume_attempts: newAttempt,
+      resumed_at: new Date().toISOString(),
+      requeued_findings: requeuedFindings,
+      skipped_findings: skippedFindings,
+      checkpoint_id: checkpoint?.id ?? null,
+    }), runId);
+
+    this.recordLoopEvent(runId, 'loop_resumed', 'info',
+      `Run resumed from checkpoint (attempt ${newAttempt}). Re-queued ${requeuedFindings.length} finding(s), skipped ${skippedFindings.length} completed.`,
+      { resume_attempt: newAttempt, requeued: requeuedFindings, skipped: skippedFindings });
+
+    return {
+      resumed: true,
+      boundedFail: false,
+      requeuedFindings,
+      skippedFindings,
+      resumeAttempt: newAttempt,
+    };
+  }
+
+  /**
+   * G10: Resume all interrupted runs. Called on server startup after
+   * recoverInterruptedRuns(). Each interrupted run is resumed from its last
+   * checkpoint, or bounded-failed if too many attempts.
+   */
+  resumeInterruptedRuns(maxResumeAttempts = 3): {
+    resumed: number;
+    boundedFailed: number;
+    details: Array<{ runId: string; resumed: boolean; requeued: number; skipped: number }>;
+  } {
+    const interruptedRuns = this.db.prepare(
+      `SELECT id FROM loop_runs WHERE status = 'interrupted'`,
+    ).all() as Array<{ id: string }>;
+
+    const details: Array<{ runId: string; resumed: boolean; requeued: number; skipped: number }> = [];
+    let resumed = 0;
+    let boundedFailed = 0;
+
+    for (const { id } of interruptedRuns) {
+      try {
+        const result = this.resumeInterruptedRun(id, maxResumeAttempts);
+        details.push({
+          runId: id,
+          resumed: result.resumed,
+          requeued: result.requeuedFindings.length,
+          skipped: result.skippedFindings.length,
+        });
+        if (result.resumed) resumed++;
+        if (result.boundedFail) boundedFailed++;
+      } catch {
+        // Skip runs that can't be resumed (non-fatal).
+      }
+    }
+
+    return { resumed, boundedFailed, details };
+  }
+
+  /**
    * Remove worktree directories on disk that are no longer needed: those whose
    * worker lease is terminal (completed/failed/cancelled/interrupted) or has no
    * lease at all, and that are older than the grace period. Worktrees for in-flight
