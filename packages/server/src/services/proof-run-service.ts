@@ -996,7 +996,7 @@ export class ProofRunService {
         'closed',
         'running',
         process.cwd(),
-        JSON.stringify([{ id: `proof-finding:${proofRunId}`, type: 'proof_run', severity: 'info', file: 'BOUNDED_PROOF_SENTINEL.txt', line: 1, message: 'Bounded real-runtime maker proof: create a single sentinel file.', evidence: 'Single-file, single-line change so a real runtime completes headless within budget (no open-ended refactor).', suggested_fix: 'Create a file named BOUNDED_PROOF_SENTINEL.txt at the repository root containing exactly the text PROOF_OK. Make no other changes. Then stop.' }]),
+        JSON.stringify([{ id: `proof-finding:${proofRunId}`, type: 'proof_run', severity: 'info', file: 'packages/server/src/services/loop-service.ts', line: 1, message: 'G7 real-issue demo: add a JSDoc comment to certifyLoopRun (a real, bounded code change).', evidence: 'A one-line JSDoc comment inside a method — a real diff that passes deterministic checks (tests/lint/type-check).', suggested_fix: 'Add the JSDoc comment `/** G7: certified by the Level-3 swarm — convergence invariant. */` on the line immediately before the `return { certified:` statement inside the certifyLoopRun method in packages/server/src/services/loop-service.ts. Make no other changes. Then stop.' }]),
         JSON.stringify({ proof_run_id: proofRunId, steps: ['register', 'review', 'execute', 'verify', 'remember'] }),
         JSON.stringify([{ name: 'artifact_minimums', status: 'pending' }]),
         JSON.stringify(['execute maker+checker', 'run verifier gates', 'write manifests and claims']),
@@ -1087,7 +1087,7 @@ export class ProofRunService {
       loop_run_id: loopRunId,
       runtime,
       role: 'planner',
-      prompt: 'Bounded nested proof (planner): create a file NESTED_PLANNER_SENTINEL.txt at the repository root containing exactly PLANNER_OK. Make no other changes. Then stop.',
+      prompt: 'Bounded nested proof (planner): add the comment `// G7 planner: capability DAG planned by competence` as the first line inside the planLoopRun method in packages/server/src/services/loop-service.ts. Make no other changes. Then stop.',
       depth_budget: 1,
       risk_class: 'medium',
     });
@@ -1097,7 +1097,7 @@ export class ProofRunService {
       requested_by_lease_id: root.root_lease_id,
       role: 'memory_curator',
       runtime,
-      prompt: 'Bounded nested proof (memory curator): create a file NESTED_MEMORY_SENTINEL.txt at the repository root containing exactly MEMORY_OK. Make no other changes. Then stop.',
+      prompt: 'Bounded nested proof (memory curator): add the comment `// G7 memory: provenance + decay + contradiction` as the first line inside the measureCompetence method in packages/server/src/services/swarm-intelligence-service.ts. Make no other changes. Then stop.',
     }, { internal: true });
     if (!child.child_lease_id) {
       throw new Error('PROOF_RUN_SUB_AGENT_NOT_PREPARED');

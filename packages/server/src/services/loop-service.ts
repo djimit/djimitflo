@@ -4462,6 +4462,23 @@ export class LoopService {
       `stdout_path: ${stdoutPath || 'missing'}`,
       `stderr_path: ${stderrPath || 'missing'}`,
       '',
+      // G6.2: memory-poisoning defense — the checker verifies the maker's injected memory.
+      // If the maker used low-trust memory (< 0.3 trust_score), the checker should flag it.
+      ...((): string[] => {
+        const scores = Array.isArray(maker.metadata.injected_memory_trust_scores)
+          ? maker.metadata.injected_memory_trust_scores as number[]
+          : [];
+        if (scores.length === 0) return [];
+        const lowTrust = scores.filter((s) => typeof s === 'number' && s < 0.3);
+        return [
+          '## Injected Memory Trust (G6.2)',
+          `trust_scores: ${JSON.stringify(scores)}`,
+          lowTrust.length > 0
+            ? `WARNING: ${lowTrust.length} memory item(s) have trust < 0.3 (stale/contradicted/unprovenanced). If the maker relied on these, consider needs_revision or rejected.`
+            : 'All injected memory has trust >= 0.3.',
+          '',
+        ];
+      })(),
     ].join('\n');
   }
 
