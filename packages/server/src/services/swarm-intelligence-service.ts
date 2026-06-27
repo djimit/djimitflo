@@ -3,6 +3,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
+import { knowledgeBus } from './knowledge-bus';
 import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult } from './swarm-status-service';
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
@@ -668,8 +669,26 @@ export class SwarmIntelligenceService {
       this.db.prepare('UPDATE swarm_claims SET status = ?, updated_at = ? WHERE id = ?')
         .run('contradicted', new Date().toISOString(), contradiction.id);
     }
-    return this.getClaim(id);
-  }
+    // G15: publish the claim to the knowledge bus so subscribers (other loop runs,
+    // other capabilities) receive it in real-time. In-process first; the HTTP
+    // transport scaffold (/api/knowledge/publish + /api/knowledge/subscribe) is
+    // for future cross-fleet federation.
+    try {
+      const publishedClaim = this.getClaim(id);
+      knowledgeBus.publish({
+        claim_id: publishedClaim.id,
+        capability_id: (publishedClaim.metadata as Record<string, unknown>)?.capability_id as string | null ?? null,
+        predicate: publishedClaim.predicate || '',
+        subject_ref: publishedClaim.subject_ref,
+        confidence: publishedClaim.confidence,
+        status: publishedClaim.status,
+        trust: publishedClaim.confidence,
+        provenance_run: (publishedClaim.metadata as Record<string, unknown>)?.provenance_run as string | null ?? null,
+        evidence_refs: Array.isArray(publishedClaim.evidence_refs) ? publishedClaim.evidence_refs : [],
+        created_from: (publishedClaim.metadata as Record<string, unknown>)?.created_from as string | null ?? null,
+      });
+    } catch { /* best-effort: never fail claim creation on bus publish */ }
+    return this.getClaim(id);  }
 
   listClaims(limit = 100): ClaimLedgerRecord[] {
     return (this.db.prepare('SELECT * FROM swarm_claims ORDER BY created_at DESC LIMIT ?').all(this.limit(limit)) as any[])
