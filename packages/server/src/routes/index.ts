@@ -16,6 +16,7 @@ import { createEvidenceRoutes } from './evidence';
 import { createObservabilityRoutes } from './observability';
 import { createKnowledgeRoutes } from './knowledge';
 import { createFederationRoutes } from './federation';
+import { createInterventionRoutes } from './intervention';
 import { createRepositoryRoutes, createDiffRoutes } from './repositories';
 import { createAuthRoutes } from './auth';
 import type { AuthService } from '../services/auth-service';
@@ -92,6 +93,9 @@ export function createRoutes(
 
   // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
   router.use('/federation', requireAuth, createFederationRoutes(db, auth!));
+
+  // G22: operator intervention (pause/resume/inject/override)
+  router.use('/intervention', requireAuth, createInterventionRoutes(db, auth!));
   router.use('/goals', requireAuth, createGoalRoutes(db, auth));
   router.use('/loops', requireAuth, createLoopRoutes(db, auth));
   router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));

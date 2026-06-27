@@ -651,7 +651,10 @@ export class ProofRunService {
           const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
           const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
           const contextInjector = new ContextInjectionService(this.db);
-          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
+          // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
+          // This closes the self-improvement loop: distilled rules from run N are
+          // injected into run N+1's maker assignment.
+          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true, 'procedural' as any);
           if (swarmContext) {
             fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
             // G5: record the injected memory trust_scores on the maker lease so the
@@ -821,8 +824,8 @@ export class ProofRunService {
           capabilityId: String(base.capability_id || ''),
           runtime,
           outcome: 'success',
-          makerLeaseId: String(makerLease?.id || ''),
-          checkerLeaseId: String(checkerLease?.id || ''),
+          makerLeaseId: '',
+          checkerLeaseId: '',
           keyLearning: `Runtime ${runtime} proof run succeeded with ${makerLease ? 'maker' : 'no'} lease. The approach (codex headless, sandboxed, --ignore-user-config) is effective for this capability.`,
           metadata: base,
         });
@@ -836,6 +839,21 @@ export class ProofRunService {
       try { this.intelligence.autoPromoteFromEvidence(makerCapId); } catch { /* best-effort */ }
     } catch (error) {
       proofRunError = error instanceof Error ? error : new Error(String(error));
+      // G12: distill a failure rule — learn what NOT to do next time.
+      try {
+        const failureRule = this.memory.distillFromRun({
+          loopRunId,
+          capabilityId: String(base.capability_id || ''),
+          runtime,
+          outcome: 'failure',
+          makerLeaseId: '',
+          checkerLeaseId: '',
+          keyLearning: `Runtime ${runtime} proof run FAILED: ${proofRunError.message}. Consider a different runtime, splitting the finding, or checking the worktree state before retrying.`,
+          metadata: { ...base, error: proofRunError.message },
+        });
+        this.memory.promote(failureRule.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+        await this.memory.upsertToSwarmMemory(failureRule.id);
+      } catch { /* best-effort */ }
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
         throw proofRunError;
       }

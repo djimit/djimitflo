@@ -1,6 +1,9 @@
 import type { Database } from 'better-sqlite3';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
+import { GoalDecomposer } from './goal-decomposer';
+import { ResourceScheduler } from './resource-scheduler';
+import { SwarmIntelligenceService } from './swarm-intelligence-service';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -38,6 +41,9 @@ export class LoopDaemon {
   // multiple leases). Default: min(4, dynamicLimit). Operator-tunable via GOAL_MAX_CONCURRENT.
   private maxConcurrentGoals: number;
 
+  private decomposer: GoalDecomposer;
+  private scheduler: ResourceScheduler;
+
   constructor(
     private db: Database,
     private loops: LoopService,
@@ -45,6 +51,10 @@ export class LoopDaemon {
   ) {
     this.pollMs = opts.pollMs ?? (Number(process.env.GOAL_QUEUE_POLL_MS) || 5000);
     this.maxConcurrentGoals = opts.maxConcurrentGoals ?? (Number(process.env.GOAL_MAX_CONCURRENT) || 4);
+    // G21+G24: goal decomposer + resource scheduler
+    const intelligence = new SwarmIntelligenceService(db);
+    this.decomposer = new GoalDecomposer(db, loops, intelligence);
+    this.scheduler = new ResourceScheduler();
   }
 
   /**
@@ -171,7 +181,20 @@ export class LoopDaemon {
       // Decompose the goal if not already decomposed.
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
       if (currentStatus?.status === 'created') {
-        this.loops.decomposeGoal(goal.id);
+        // G21: decompose into capability DAG (not predefined loops)
+        // G24: check resources before scheduling
+        const canSchedule = this.scheduler.canSchedule(goal.metadata);
+        if (!canSchedule.canSchedule) {
+          swarmEventBus.emit('convergence', {
+            daemon: 'goal_deferred',
+            goal_id: goal.id,
+            reason: canSchedule.reason,
+          });
+          this.activeGoals.delete(goal.id);
+          this.persistActiveGoals();
+          return;
+        }
+        this.decomposer.decomposeGoalToDAG(goal.id);
       }
 
       // Start the loop for this goal.

@@ -3,6 +3,7 @@ import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import type { Database } from 'better-sqlite3';
 import type { MemoryStore } from './memory-candidate-service';
+import { ContextSanitizer } from './context-sanitizer';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -46,6 +47,7 @@ export interface ContextResult {
 }
 
 export class ContextInjectionService {
+  private sanitizer = new ContextSanitizer();
   constructor(private db?: Database) {}
 
   async injectContext(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<string> {
@@ -80,7 +82,10 @@ export class ContextInjectionService {
       lines.push('');
     }
 
-    return lines.join('\n');
+    const result = lines.join('\n');
+    // G25: sanitize retrieved context before injection (prompt injection defense).
+    const sanitized = this.sanitizer.sanitize(result);
+    return sanitized.sanitized;
   }
 
   private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
