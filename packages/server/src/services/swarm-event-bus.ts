@@ -25,7 +25,6 @@ export interface SwarmEvent {
   data: Record<string, unknown>;
 }
 
-const MAX_BUFFER = 100;
 
 class SwarmEventBus extends EventEmitter {
   private droppedEvents = 0;

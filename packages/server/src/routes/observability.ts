@@ -108,8 +108,6 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
     }
   });
 
-  return router;
-}
   // G14: SSE stream for live observability — emits real-time swarm events.
   // Events: aimd_state, trust_change, capability_transition, lease_lifecycle,
   // budget_burn, convergence, recovery.
@@ -132,10 +130,10 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
       }
     });
 
-    // Send periodic keepalive + dropped_events count.
+    // Send periodic keepalive.
     const keepalive = setInterval(() => {
       try {
-        res.write(`: keepalive\\n\\n`);
+        res.write(': keepalive\n\n');
       } catch {
         clearInterval(keepalive);
       }
@@ -147,3 +145,6 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
       clearInterval(keepalive);
     });
   });
+
+  return router;
+}
