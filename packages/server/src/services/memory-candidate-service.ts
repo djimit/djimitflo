@@ -249,6 +249,16 @@ export class MemoryCandidateService {
               agent_type: 'memory_curator',
               trust_level: 'validated',
               source_ref: candidate.source_ref,
+              // G2: provenance — bind this memory to the run + evidence that produced it,
+              // so retrieval returns claims-with-provenance (not bare text) and the receiver's
+              // checker can gate on trust/provenance (G5 handoff).
+              provenance_run: typeof (candidate.metadata as Record<string, unknown>).loop_run_id === 'string'
+                ? (candidate.metadata as Record<string, unknown>).loop_run_id as string
+                : (candidate.source_ref || null),
+              evidence_refs: [
+                (candidate.metadata as Record<string, unknown>).maker_lease_id,
+                (candidate.metadata as Record<string, unknown>).checker_lease_id,
+              ].filter((v): v is string => typeof v === 'string' && v.length > 0),
               timestamp: new Date().toISOString(),
             },
           }],

@@ -35,6 +35,9 @@ export interface ContextResult {
   score?: number;
   excerpt: string;
   trust_level?: string;
+  // G2: provenance — the run + evidence that produced this memory (for trust-gated handoff).
+  provenance_run?: string;
+  evidence_refs?: string[];
 }
 
 export class ContextInjectionService {
@@ -61,6 +64,11 @@ export class ContextInjectionService {
       const trust = r.trust_level ? ` [${r.trust_level}]` : '';
       lines.push(`### ${r.title || r.concept_id || src}${trust}`);
       lines.push(r.excerpt.slice(0, 300));
+      // G2: provenance line — the receiver sees which run + evidence produced this memory
+      // (enables trust-gated handoff; a checker can reject low-trust/unprovenanced memory).
+      if (r.provenance_run || (r.evidence_refs && r.evidence_refs.length > 0)) {
+        lines.push(`_provenance: run=${r.provenance_run || '?'} · evidence=${(r.evidence_refs || []).length}ref(s)_`);
+      }
       lines.push('');
     }
 
@@ -94,7 +102,9 @@ export class ContextInjectionService {
         type: h.payload?.agent_type,
         score: h.score,
         excerpt: h.payload?.content_excerpt || '',
-        trust_level: undefined,
+        trust_level: h.payload?.trust_level,
+        provenance_run: h.payload?.provenance_run,
+        evidence_refs: Array.isArray(h.payload?.evidence_refs) ? h.payload.evidence_refs : [],
       }));
     } catch {
       return [];
