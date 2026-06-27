@@ -1164,6 +1164,7 @@ export class ProofRunService {
           ].filter(Boolean),
           confidence: 0.9,
           status: 'supported',
+          created_from: 'g5_handoff',
           metadata: {
             loop_run_id: loopRunId,
             role: results[i].lease.role,
