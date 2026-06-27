@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import type { Database } from 'better-sqlite3';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -38,9 +39,11 @@ export interface ContextResult {
   // G2: provenance — the run + evidence that produced this memory (for trust-gated handoff).
   provenance_run?: string;
   evidence_refs?: string[];
+  trust_score?: number;
 }
 
 export class ContextInjectionService {
+  constructor(private db?: Database) {}
 
   async injectContext(taskDescription: string, useSwarmContext: boolean = true): Promise<string> {
     if (!useSwarmContext) return '';
@@ -61,7 +64,9 @@ export class ContextInjectionService {
     const lines = ['## Context (Swarm + Knowledge)', ''];
     for (const r of truncated) {
       const src = r.source === 'qdrant_swarm' ? 'memory' : r.source === 'okf_search' ? 'knowledge' : r.source === 'djimitkb_search' ? 'djimitkb' : 'related';
-      const trust = r.trust_level ? ` [${r.trust_level}]` : '';
+      const trust = r.trust_score !== undefined
+        ? ` [trust:${r.trust_score.toFixed(2)}]`
+        : (r.trust_level ? ` [${r.trust_level}]` : '');
       lines.push(`### ${r.title || r.concept_id || src}${trust}`);
       lines.push(r.excerpt.slice(0, 300));
       // G2: provenance line — the receiver sees which run + evidence produced this memory
@@ -95,17 +100,31 @@ export class ContextInjectionService {
       const searchJson = (await searchRes.json()) as { result: any[] };
       const hits = searchJson.result || [];
 
-      return hits.map((h: any) => ({
-        source: 'qdrant_swarm' as const,
-        concept_id: h.payload?.task_id,
-        title: h.payload?.content_excerpt?.slice(0, 80) || 'Task memory',
-        type: h.payload?.agent_type,
-        score: h.score,
-        excerpt: h.payload?.content_excerpt || '',
-        trust_level: h.payload?.trust_level,
-        provenance_run: h.payload?.provenance_run,
-        evidence_refs: Array.isArray(h.payload?.evidence_refs) ? h.payload.evidence_refs : [],
-      }));
+      return hits.map((h: any) => {
+        // G2.3: trust decay — unvalidated/old memory loses trust on a 30-day half-life.
+        const baseTrust = h.payload?.trust_level === 'validated' ? 1.0 : 0.5;
+        const ts = h.payload?.timestamp ? new Date(h.payload.timestamp).getTime() : Date.now();
+        const ageDays = Math.max(0, (Date.now() - ts) / 86_400_000);
+        let trust_score = baseTrust * Math.pow(0.5, ageDays / 30);
+        // G2.4: contradiction — if the claim ledger has a contradicts_ref for this memory,
+        // demote trust (the memory is contradicted by a later claim with evidence).
+        if (this.db && h.payload?.task_id) {
+          const contradicted = this.db.prepare('SELECT 1 FROM swarm_claims WHERE contradicts_ref = ? LIMIT 1').get(h.payload.task_id);
+          if (contradicted) trust_score *= 0.3;
+        }
+        return {
+          source: 'qdrant_swarm' as const,
+          concept_id: h.payload?.task_id,
+          title: h.payload?.content_excerpt?.slice(0, 80) || 'Task memory',
+          type: h.payload?.agent_type,
+          score: h.score,
+          excerpt: h.payload?.content_excerpt || '',
+          trust_level: h.payload?.trust_level,
+          provenance_run: h.payload?.provenance_run,
+          evidence_refs: Array.isArray(h.payload?.evidence_refs) ? h.payload.evidence_refs : [],
+          trust_score,
+        };
+      });
     } catch {
       return [];
     }

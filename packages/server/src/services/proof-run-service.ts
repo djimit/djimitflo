@@ -650,7 +650,7 @@ export class ProofRunService {
         if (assignmentFile && fs.existsSync(assignmentFile)) {
           const assignmentText = fs.readFileSync(assignmentFile, 'utf8');
           const finding = (assignmentText.match(/## Finding[\s\S]*?$/) || [assignmentText])[0].slice(0, 500);
-          const contextInjector = new ContextInjectionService();
+          const contextInjector = new ContextInjectionService(this.db);
           const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
           if (swarmContext) {
             fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
