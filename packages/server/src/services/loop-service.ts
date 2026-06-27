@@ -145,6 +145,8 @@ interface StartDocDriftLoopInput {
   goal_id?: string;
   repository_path?: string;
   max_findings?: number;
+  // G11: sovereign flag — when true, all findings route to pi (offline, zero-egress).
+  sovereign?: boolean;
 }
 
 interface ContinueLoopInput {
@@ -880,6 +882,7 @@ export class LoopService {
 
     const findings = this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
+    const sovereign = input.sovereign ?? false;
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Loop does not merge, deploy, or push changes.' },
@@ -931,6 +934,7 @@ export class LoopService {
         mutating_actions: false,
         risk_class: runRiskClass,
         contract,
+        sovereign,
       }),
       now,
       now,
@@ -1195,14 +1199,69 @@ export class LoopService {
       const score = (sr / cost) * 1000; // competence per cost = the market
       if (score > bestScore) { bestScore = score; best = c; }
     }
-    return run.findings.map((finding) => ({
-      finding_id: finding.id,
-      capability_id: best?.id ?? null,
-      role: 'maker',
-      runtime: (run.metadata.runtime as string) || 'codex',
-      competence: (best?.metadata.competence as Record<string, number> | undefined) ?? null,
-      dependencies: [], // maker has no deps; checker depends on maker (added by scheduler)
-    }));
+    return run.findings.map((finding) => {
+      // G11: runtime-adaptive selection — the planner selects the runtime per finding
+      // by (capability, competence, cost, sovereignty), not a fixed field. This makes
+      // the fleet adaptive: sovereign tasks route to pi, lightweight to opencode,
+      // complex/high-competence to codex.
+      const runtime = this.selectRuntime(run, best, finding);
+      return {
+        finding_id: finding.id,
+        capability_id: best?.id ?? null,
+        role: 'maker',
+        runtime,
+        competence: (best?.metadata.competence as Record<string, number> | undefined) ?? null,
+        dependencies: [], // maker has no deps; checker depends on maker (added by scheduler)
+      };
+    });
+  }
+
+  /**
+   * G11: Runtime-adaptive selection — choose the best runtime for a finding based on
+   * the goal's sovereignty requirement, the capability's learned cost model, and the
+   * capability's competence on each runtime.
+   *
+   * - Sovereign (offline/zero-egress) goals → pi (always, no exceptions)
+   * - Lightweight (p50_tokens < LIGHTWEIGHT_THRESHOLD) → opencode (cheaper, faster)
+   * - Complex / high-competence on codex → codex (the verified baseline)
+   * - Default → codex
+   *
+   * The caller can still override per-goal via run.metadata.runtime (backward compat).
+   */
+  private selectRuntime(
+    run: LoopRunRecord,
+    capability: { id: string; metadata: Record<string, unknown>; allowed_actions: string[]; status: string } | null,
+    _finding: LoopFinding,
+  ): 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock' {
+    // Sovereignty check: if the goal requires offline/sovereign execution → pi.
+    const runMeta = run.metadata as Record<string, unknown>;
+    if (runMeta.sovereign === true || process.env.PI_OFFLINE === '1') {
+      return 'pi';
+    }
+
+    // Backward compat: if the run has an explicit runtime and no capability-based
+    // selection applies, use the run's runtime.
+    const explicitRuntime = runMeta.runtime as string | undefined;
+
+    // Cost-aware: if the capability has a learned cost model and the finding is
+    // lightweight (p50_tokens < threshold) → opencode.
+    const LIGHTWEIGHT_THRESHOLD = Number(process.env.LIGHTWEIGHT_TOKEN_THRESHOLD) || 5000;
+    const costModel = capability?.metadata?.cost_model as { learned?: boolean; p50_tokens?: number } | undefined;
+    if (costModel?.learned && typeof costModel.p50_tokens === 'number' && costModel.p50_tokens < LIGHTWEIGHT_THRESHOLD) {
+      return 'opencode';
+    }
+
+    // Competence-aware: if the capability has high competence → codex (the verified baseline).
+    const competence = capability?.metadata?.competence as { success_rate?: number } | undefined;
+    if (competence?.success_rate !== undefined && competence.success_rate > 0.7) {
+      return 'codex';
+    }
+
+    // Default: use the explicit runtime or codex.
+    if (explicitRuntime && ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'].includes(explicitRuntime)) {
+      return explicitRuntime as 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock';
+    }
+    return 'codex';
   }
 
   // G3.4: Convergence certificate — generalizes production_passed to ANY loop_run.
