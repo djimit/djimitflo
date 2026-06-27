@@ -10,6 +10,7 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ProofRunService, type ProofRunSummary } from '../services/proof-run-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import type { WebSocketService } from '../services/websocket-service';
@@ -395,6 +396,60 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  // G18: GET /api/swarms/economy — reports verified_artifacts / dollar per capability.
+  // This is the ship-gate goal: a real production endpoint that uses G13 (dollar economy).
+  router.get('/economy', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const loops = new LoopService(db);
+      const caps = intelligence.listCapabilities().filter(c => c.status === 'validated' || c.status === 'candidate');
+      const economies = caps.map(cap => {
+        const competence = intelligence.measureCompetence(cap.id);
+        const costModel = cap.cost_model as Record<string, unknown>;
+        const p50Dollars = typeof costModel.p50_dollars === 'number' ? costModel.p50_dollars : 0;
+        const efficiency = competence.n_completed > 0 && p50Dollars > 0
+          ? competence.n_completed / p50Dollars
+          : null;
+        return {
+          capability_id: cap.id,
+          capability_kind: cap.kind,
+          status: cap.status,
+          n_runs: competence.n_runs,
+          n_completed: competence.n_completed,
+          success_rate: competence.success_rate,
+          p50_tokens: competence.p50_cost,
+          p95_tokens: competence.p95_cost,
+          p50_dollars: p50Dollars,
+          p95_dollars: typeof costModel.p95_dollars === 'number' ? costModel.p95_dollars : 0,
+          verified_artifacts_per_dollar: efficiency,
+        };
+      });
+      // Also report per-run efficiency for recent runs.
+      const recentRuns = loops.listLoopRuns().slice(0, 10);
+      const runEconomies = recentRuns.map(run => {
+        const metric = loops.computeEfficiencyMetric(run.id);
+        return {
+          run_id: run.id,
+          loop_name: run.loop_name,
+          status: run.status,
+          verified_artifacts: metric.verifiedArtifacts,
+          dollars_spent: metric.dollarsSpent,
+          efficiency: metric.efficiency,
+        };
+      });
+      res.json({
+        capabilities: economies,
+        recent_runs: runEconomies,
+        summary: {
+          total_capabilities: economies.length,
+          total_verified_artifacts: runEconomies.reduce((s, r) => s + r.verified_artifacts, 0),
+          total_dollars_spent: runEconomies.reduce((s, r) => s + r.dollars_spent, 0),
+        },
+      });
+    } catch (error) {
+      next(error);
     }
   });
 

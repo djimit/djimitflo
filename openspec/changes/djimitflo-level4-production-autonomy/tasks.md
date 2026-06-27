@@ -172,17 +172,17 @@ Validation (G17):
 
 ## G18 — Ship (the integration gate)
 
-- [ ] T18.1 Pick a **real, multi-step production goal**: e.g., "add a new API endpoint
+- [x] T18.1 Pick a **real, multi-step production goal**: e.g., "add a new API endpoint
       `/api/swarms/economy` that reports `verified_artifacts / dollar` per capability + the
       tests + the migration + the docs."
-- [ ] T18.2 Run it via the Level-4 swarm: goal queue → planner (runtime-adaptive, budget-
+- [x] T18.2 Run it via the Level-4 swarm: goal queue → planner (runtime-adaptive, budget-
       allocated) → execution (crash-safe, AIMD-scaled, OS-sandboxed) → memory (distilled
       rules, composed skills) → convergence certificate → live-observable → learning
       written back.
-- [ ] T18.3 The run is **green** (`production_passed=true` certificate), observable in
+- [x] T18.3 The run is **green** (`production_passed=true` certificate), observable in
       real-time via SSE, rollback-safe, host untouched, economically rational (within
       dollar budget), with distilled memory + composed skills.
-- [ ] T18.4 OpenSpec closure: archive this change + the Level-3 change with evidence;
+- [x] T18.4 OpenSpec closure: archive this change + the Level-3 change with evidence;
       publish the ship demo artifact.
 
 Validation (G18 — the ship gate):
