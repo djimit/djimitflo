@@ -381,8 +381,18 @@ export class SwarmIntelligenceService {
     const cap = this.getCapability(capabilityId);
     const now = new Date().toISOString();
     const metadata = { ...cap.metadata, competence, competence_measured_at: now };
-    this.db.prepare('UPDATE swarm_capabilities SET metadata = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(metadata), now, capabilityId);
+    // G6.4: learned cost model — update cost_model_json with the observed cost distribution
+    // so the planner can allocate budget by (competence, cost) — the economy.
+    const learnedCostModel = {
+      ...cap.cost_model,
+      learned: true,
+      p50_tokens: competence.p50_cost,
+      p95_tokens: competence.p95_cost,
+      n_runs: competence.n_runs,
+      success_rate: competence.success_rate,
+    };
+    this.db.prepare('UPDATE swarm_capabilities SET metadata = ?, cost_model_json = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(metadata), JSON.stringify(learnedCostModel), now, capabilityId);
     return competence;
   }
 
