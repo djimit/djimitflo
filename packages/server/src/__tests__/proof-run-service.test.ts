@@ -217,7 +217,7 @@ describe('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 }, () =>
     expect(missingResponse.status).toBe(404);
   });
 
-  it.each(['codex', 'opencode'] as const)('creates a complete persisted proof run via %s runtime bridge', async (runtime) => {
+  it.each(['codex', 'opencode'] as const)('creates a complete persisted proof run via %s runtime bridge', { timeout: 30_000 }, async (runtime) => {
     setRuntimeEnv(runtime);
 
     const createResponse = await fetch(`${baseUrl}/swarms/proof-runs`, {
