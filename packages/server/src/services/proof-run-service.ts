@@ -1148,6 +1148,29 @@ export class ProofRunService {
         SET status = ?
         WHERE child_lease_id = ?
       `).run('completed', leaseIds[i]);
+      // G5: within-run handoff — the sub-agent emits a verified claim to the parent.
+      // The claim records what the sub-agent did + its evidence (the lease + its stdout).
+      // The parent (root) can verify the claim via the claim ledger — handoff is verified
+      // claim transfer, not raw stdout.
+      const leaseMeta = results[i].lease.metadata as Record<string, unknown>;
+      this.intelligence.createClaim({
+        claim: `Sub-agent ${results[i].lease.role} completed with evidence (lease ${leaseIds[i].slice(0, 8)})`,
+        claim_type: 'observation',
+        subject_ref: leaseIds[i],
+        evidence_refs: [
+          `lease:${leaseIds[i]}`,
+          typeof leaseMeta.stdout_path === 'string' ? leaseMeta.stdout_path : '',
+        ].filter(Boolean),
+        confidence: 0.9,
+        status: 'supported',
+        metadata: {
+          loop_run_id: loopRunId,
+          role: results[i].lease.role,
+          runtime_usage: leaseMeta.runtime_usage,
+          spawn_tree_id: nested.root_lease_id,
+          g5_handoff: true,
+        },
+      });
     }
     this.db.prepare(`
       UPDATE spawn_trees
