@@ -4794,6 +4794,25 @@ export class LoopService {
       const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
       let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
+      // G6.1: pluggable OS sandbox — if SANDBOX_WRAPPER is set (e.g., 'bwrap'), wrap the
+      // runtime command in the sandbox binary. bwrap makes the host read-only + the worktree
+      // writable + a fresh /tmp, preventing absolute-path escape (the residual from codex's
+      // own --sandbox workspace-write). This is the real OS-level isolation layer.
+      const sandboxWrapper = process.env.SANDBOX_WRAPPER;
+      if (sandboxWrapper && options.cwd) {
+        const cwd = options.cwd;
+        const sandboxArgs = [
+          '--ro-bind', '/', '/',
+          '--bind', cwd, cwd,
+          '--dev', '/dev',
+          '--proc', '/proc',
+          '--tmpfs', '/tmp',
+        ];
+        if (process.env.SANDBOX_NO_NET === '1') sandboxArgs.unshift('--unshare-net');
+        sandboxArgs.push('--', command, ...args);
+        args = sandboxArgs;
+        command = sandboxWrapper;
+      }
       try {
         child = spawn(command, args, {
           cwd: options.cwd,
