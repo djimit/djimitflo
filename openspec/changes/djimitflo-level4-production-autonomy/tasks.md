@@ -8,14 +8,14 @@
 
 ## G8 — Memory store formalization (T2.1 + T2.5)
 
-- [ ] T8.1 Add `MemoryStore` type (`'episodic' | 'procedural' | 'semantic' | 'working'`)
+- [x] T8.1 Add `MemoryStore` type (`'episodic' | 'procedural' | 'semantic' | 'working'`)
       to `MemoryCandidateService`; add `store` column to `swarm_memory` table (migration).
-- [ ] T8.2 Route the flywheel write by store: run summary → episodic, distilled rule →
+- [x] T8.2 Route the flywheel write by store: run summary → episodic, distilled rule →
       procedural, verified claim → semantic, loop state → working. The memory_curator
       classifies the evidence into the right store before upsert.
-- [ ] T8.3 `ContextInjectionService.searchQdrantSwarm` filters by `store` in the payload
+- [x] T8.3 `ContextInjectionService.searchQdrantSwarm` filters by `store` in the payload
       filter. A maker retrieves procedural + semantic (trust ≥ threshold), not episodic.
-- [ ] T8.4 Document + enforce: vector store = retrieval index over the graph. Every qdrant
+- [x] T8.4 Document + enforce: vector store = retrieval index over the graph. Every qdrant
       point payload includes `{store, claim_id, trust, provenance_run, evidence_refs}`.
 
 Validation (G8):
@@ -25,14 +25,14 @@ Validation (G8):
 
 ## G9 — Resource envelope + graceful scale-down (T4.1 + T4.3)
 
-- [ ] T9.1 Inject a `ConcurrencyAdvisor` callback (`() => number | null`) into
+- [x] T9.1 Inject a `ConcurrencyAdvisor` callback (`() => number | null`) into
       `LoopService` constructor; `runtimeSemaphoreHardCap()` returns
       `min(env_cap, advisor() ?? env_cap)`. Wire the advisor to
       `SwarmStatusService.fleetPools().recommended_concurrency` at the server composition
       layer (not in LoopService — avoids the circular import).
-- [ ] T9.2 Extend `ResourceEnvelope` with `dollars`, `cpu`, `mem`, `gpu` (from fleetPools).
+- [x] T9.2 Extend `ResourceEnvelope` with `dollars`, `cpu`, `mem`, `gpu` (from fleetPools).
       `evaluateTokenBudget` becomes `evaluateBudget` (tokens + wall_clock + dollars).
-- [ ] T9.3 Graceful scale-down: on budget exhaustion or circuit-break → stop accepting new
+- [x] T9.3 Graceful scale-down: on budget exhaustion or circuit-break → stop accepting new
       leases → wait `drain_timeout_ms` for in-flight leases → checkpoint incomplete leases
       → SIGTERM (not SIGKILL) → mark run `interrupted` with `interrupted_reason:
       'budget_drain'`.
@@ -44,14 +44,14 @@ Validation (G9):
 
 ## G10 — Crash recovery with resume
 
-- [ ] T10.1 `resumeInterruptedRun(runId)`: load the last checkpoint, determine completed
+- [x] T10.1 `resumeInterruptedRun(runId)`: load the last checkpoint, determine completed
       vs in-flight findings (by lease status), re-queue in-flight findings as new leases.
-- [ ] T10.2 `onServerStart`: call `recoverInterruptedRuns()` (existing) then
+- [x] T10.2 `onServerStart`: call `recoverInterruptedRuns()` (existing) then
       `resumeInterruptedRuns()` for each interrupted run with `resume_attempts <
       max_resume_attempts`.
-- [ ] T10.3 Bounded-fail: if `resume_attempts >= max_resume_attempts` (default 3), mark
+- [x] T10.3 Bounded-fail: if `resume_attempts >= max_resume_attempts` (default 3), mark
       the run as `failed` (not `interrupted`) + emit a `recovery_exhausted` event.
-- [ ] T10.4 Checkpoint stores the worktree state diff so the resumed lease starts from the
+- [x] T10.4 Checkpoint stores the worktree state diff so the resumed lease starts from the
       last known good state.
 
 Validation (G10):
@@ -61,11 +61,11 @@ Validation (G10):
 
 ## G11 — Runtime-adaptive selection
 
-- [ ] T11.1 `selectRuntime(finding, capability, context)`: sovereign → pi, lightweight →
+- [x] T11.1 `selectRuntime(finding, capability, context)`: sovereign → pi, lightweight →
       opencode, complex/high-competence → codex. Called by `planLoopRun` per finding.
-- [ ] T11.2 Add `sovereign` flag to `GoalRecord` + `StartLoopInput`; when true, all
+- [x] T11.2 Add `sovereign` flag to `GoalRecord` + `StartLoopInput`; when true, all
       findings route to pi (offline, zero-egress).
-- [ ] T11.3 Add `LIGHTWEIGHT_THRESHOLD` (env-configurable, default 5000 tokens): if the
+- [x] T11.3 Add `LIGHTWEIGHT_THRESHOLD` (env-configurable, default 5000 tokens): if the
       capability's `p50_tokens < threshold`, route to opencode.
 
 Validation (G11):
@@ -75,15 +75,15 @@ Validation (G11):
 
 ## G12 — Memory distillation + skill composition
 
-- [ ] T12.1 Evolve the memory_curator: after a run, use the runtime (headless, sandboxed)
+- [x] T12.1 Evolve the memory_curator: after a run, use the runtime (headless, sandboxed)
       to distill an actionable rule from the run's evidence. Write the rule to the
       **procedural** store with provenance + trust.
-- [ ] T12.2 `ComposedSkill` type: a chain of atomic skills with inter-skill handoff
+- [x] T12.2 `ComposedSkill` type: a chain of atomic skills with inter-skill handoff
       schema. Stored in `swarm_capabilities` with `composed: true` + `chain: SkillId[]`.
-- [ ] T12.3 Promotion: a composed skill is promoted when all atomic skills are `validated`
+- [x] T12.3 Promotion: a composed skill is promoted when all atomic skills are `validated`
       AND the chain has ≥N validated runs. The planner can emit a composed skill as a
       single DAG node (expanded at execution time).
-- [ ] T12.4 The distilled rule goes through the same evidence-gated promotion as skills
+- [x] T12.4 The distilled rule goes through the same evidence-gated promotion as skills
       (G1): checker verifies, trust decay + contradiction apply.
 
 Validation (G12):
@@ -94,17 +94,17 @@ Validation (G12):
 
 ## G13 — Dollar economy + budget allocation
 
-- [ ] T13.1 `CostModel` extended with `p50_dollars`, `p95_dollars`. Each runtime's cost =
+- [x] T13.1 `CostModel` extended with `p50_dollars`, `p95_dollars`. Each runtime's cost =
       token usage × price per token (configurable: `CODEX_PRICE_PER_MTOK`,
       `OPENCODE_PRICE_PER_MTOK`, `PI_PRICE_PER_MTOK=0`). Stored on lease metadata +
       aggregated into the capability cost model.
-- [ ] T13.2 `evaluateBudget` includes dollars. The goal's `dollar_budget` is a required
+- [x] T13.2 `evaluateBudget` includes dollars. The goal's `dollar_budget` is a required
       field for production goals (default: `GOAL_DOLLAR_BUDGET` env or 10).
-- [ ] T13.3 Budget allocation: the planner allocates the goal's dollar budget across the
+- [x] T13.3 Budget allocation: the planner allocates the goal's dollar budget across the
       DAG (greedy knapsack: sort by `competence / p50_dollars`, fill until budget
       exhausted). Findings that don't fit are deferred; the goal is flagged
       `budget_insufficient` if no findings fit.
-- [ ] T13.4 Efficiency metric: `verified_artifacts / dollar` reported per run, per
+- [x] T13.4 Efficiency metric: `verified_artifacts / dollar` reported per run, per
       capability, per specialist. The system can refuse a goal whose expected cost exceeds
       its value.
 
@@ -115,11 +115,11 @@ Validation (G13):
 
 ## G14 — Live observability
 
-- [ ] T14.1 `GET /api/observability/stream` (SSE): emits `aimd_state`, `trust_change`,
+- [x] T14.1 `GET /api/observability/stream` (SSE): emits `aimd_state`, `trust_change`,
       `capability_transition`, `lease_lifecycle`, `budget_burn`, `convergence` events.
-- [ ] T14.2 `LoopService` emits events via an `EventEmitter` (or callback); the SSE route
+- [x] T14.2 `LoopService` emits events via an `EventEmitter` (or callback); the SSE route
       subscribes. Bounded buffer (100 events); `dropped_events` counter reported.
-- [ ] T14.3 Mission Control REST endpoint gains `live: true` flag → switches to SSE.
+- [x] T14.3 Mission Control REST endpoint gains `live: true` flag → switches to SSE.
 
 Validation (G14):
 - An SSE client connected to `/api/observability/stream` receives **real-time events** as a
@@ -128,12 +128,12 @@ Validation (G14):
 
 ## G15 — Cross-fleet knowledge bus foundation
 
-- [ ] T15.1 `KnowledgeBus` class: `publish(claim)` + `subscribe(capabilityId, callback)`.
+- [x] T15.1 `KnowledgeBus` class: `publish(claim)` + `subscribe(capabilityId, callback)`.
       `SwarmIntelligenceService.createClaim` calls `bus.publish(claim)`.
-- [ ] T15.2 `POST /api/knowledge/publish` + `GET /api/knowledge/subscribe/:capabilityId`
+- [x] T15.2 `POST /api/knowledge/publish` + `GET /api/knowledge/subscribe/:capabilityId`
       (SSE) — HTTP transport scaffold. In-process bus is the default; HTTP is for future
       federation.
-- [ ] T15.3 A planner subscribed to a capability receives new verified claims in real-time
+- [x] T15.3 A planner subscribed to a capability receives new verified claims in real-time
       (in-process, no HTTP needed for single-node).
 
 Validation (G15):
@@ -143,12 +143,12 @@ Validation (G15):
 
 ## G16 — Continuous operation mode
 
-- [ ] T16.1 `LoopDaemon` class: wraps `LoopService`; on start, loads pending goals, sorts
+- [x] T16.1 `LoopDaemon` class: wraps `LoopService`; on start, loads pending goals, sorts
       by (risk desc, value desc, cost asc); executes in a loop (decompose → execute →
       certify → learn → persist).
-- [ ] T16.2 Started by the server on boot (after `recoverInterruptedRuns` +
+- [x] T16.2 Started by the server on boot (after `recoverInterruptedRuns` +
       `resumeInterruptedRuns`). Runs in-process using existing `continueLoopRun`.
-- [ ] T16.3 Goals submitted via `POST /goals` (existing endpoint) enter the queue. The
+- [x] T16.3 Goals submitted via `POST /goals` (existing endpoint) enter the queue. The
       daemon polls the queue at `GOAL_QUEUE_POLL_MS` (default 5000).
 
 Validation (G16):

@@ -385,11 +385,25 @@ export class SwarmIntelligenceService {
     const metadata = { ...cap.metadata, competence, competence_measured_at: now };
     // G6.4: learned cost model — update cost_model_json with the observed cost distribution
     // so the planner can allocate budget by (competence, cost) — the economy.
+    // G13: dollar-denominated cost model — compute dollar costs from token costs
+    // using the runtime's price per million tokens (env-configurable).
+    const dollarPrice = (runtime: string): number => {
+      const prices: Record<string, number> = {
+        codex: Number(process.env.CODEX_PRICE_PER_MTOK) || 2.0,
+        opencode: Number(process.env.OPENCODE_PRICE_PER_MTOK) || 1.0,
+        pi: 0, claude: Number(process.env.CLAUDE_PRICE_PER_MTOK) || 3.0,
+        gemini: Number(process.env.GEMINI_PRICE_PER_MTOK) || 1.5, mock: 0, manual: 0, editor: 0,
+      };
+      return prices[runtime] ?? 0;
+    };
     const learnedCostModel = {
       ...cap.cost_model,
       learned: true,
       p50_tokens: competence.p50_cost,
       p95_tokens: competence.p95_cost,
+      // G13: dollar-denominated costs for the economy.
+      p50_dollars: (competence.p50_cost / 1_000_000) * dollarPrice(String(cap.metadata?.runtime ?? 'codex')),
+      p95_dollars: (competence.p95_cost / 1_000_000) * dollarPrice(String(cap.metadata?.runtime ?? 'codex')),
       n_runs: competence.n_runs,
       success_rate: competence.success_rate,
     };

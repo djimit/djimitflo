@@ -22,6 +22,7 @@ import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { LoopService } from './services/loop-service';
 import { SwarmStatusService } from './services/swarm-status-service';
+import { LoopDaemon } from './services/loop-daemon';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -79,6 +80,15 @@ async function main() {
     }
   } catch (error) {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // G16: start the continuous operation daemon (goal queue with priority scheduling).
+  try {
+    const daemon = new LoopDaemon(db, new LoopService(db, undefined, concurrencyAdvisor));
+    daemon.start();
+    console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
+  } catch (error) {
+    console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
   // Initialize auth
   const authService = new AuthService(db);

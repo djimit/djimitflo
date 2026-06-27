@@ -361,7 +361,29 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/intelligence/mission-control', requirePermission('read:evidence'), (_req, res, next) => {
+  router.get('/intelligence/mission-control', requirePermission('read:evidence'), (req, res, next) => {
+    // G14: when ?live=true, switch to SSE streaming for real-time observability.
+    if (req.query.live === 'true') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      });
+      // Send initial snapshot.
+      try {
+        const snapshot = { ...intelligence.missionControl(), latest_proof_run: proofRuns.latest() };
+        res.write(`data: ${JSON.stringify({ type: 'snapshot', data: snapshot })}\n\n`);
+      } catch { /* best-effort */ }
+      // Subscribe to live events.
+      const { swarmEventBus } = require('../services/swarm-event-bus');
+      const unsub = swarmEventBus.subscribe((event: any) => {
+        try { res.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* disconnected */ }
+      });
+      const ka = setInterval(() => { try { res.write(': keepalive\n\n'); } catch { clearInterval(ka); } }, 15_000);
+      req.on('close', () => { unsub(); clearInterval(ka); });
+      return;
+    }
     try {
       res.json({
         ...intelligence.missionControl(),

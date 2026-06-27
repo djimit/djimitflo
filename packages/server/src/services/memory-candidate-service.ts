@@ -348,8 +348,13 @@ export class MemoryCandidateService {
    * a distilled rule captures WHAT TO DO differently next time, not WHAT HAPPENED.
    *
    * The rule is structured: { capability, outcome, rule, precondition }.
-   * It goes through the same evidence-gated promotion as skills (G1): the checker
-   * verifies, trust decay + contradiction apply.
+   * T12.4: The rule goes through the SAME evidence-gated promotion as skills (G1):
+   * it's created as memory_type='engineering_rule' → status='review_required' →
+   * promotion_status='blocked_pending_review'. It must be explicitly promoted
+   * (via promote()) before it's trusted + written to the vector store. Trust decay
+   * (30-day half-life) + contradiction (contradicts_ref) apply once promoted.
+   * This closes the memory-poisoning surface: a bad rule can't be injected at full
+   * trust without review.
    *
    * This is template distillation — it creates a structured rule from the run's
    * metadata without requiring a runtime call. A future evolution (G12+) can use
