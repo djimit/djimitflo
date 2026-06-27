@@ -1291,9 +1291,15 @@ export class LoopService {
     const traceSpanCount = (this.db.prepare('SELECT COUNT(*) as c FROM agent_trace_spans WHERE loop_run_id = ?').get(id) as { c: number }).c;
     if (traceSpanCount === 0) missing.push('no_trace_spans');
 
-    // 5. Budget within (token + wall clock).
+    // 5. Budget within (token + wall clock + dollar).
     const tokenBudget = this.evaluateTokenBudget(run, null, '', 0);
     if (tokenBudget.exhausted) missing.push('budget_exhausted');
+    // G13: dollar budget check.
+    const dollarBudget = this.getDollarBudget(run);
+    if (dollarBudget.maxDollars) {
+      const dollarsSpent = this.computeDollarsSpent(id);
+      if (dollarsSpent > dollarBudget.maxDollars) missing.push('dollar_budget_exhausted');
+    }
 
     // 6. Isolation held (worktree_isolation gate passed).
     const isolationGate = run.gates.find((g) => g.name === 'worktree_isolation');
@@ -2715,6 +2721,114 @@ export class LoopService {
     return {
       maxRuntimeMs: Number.isFinite(maxRuntimeMs) && maxRuntimeMs > 0 ? Math.floor(maxRuntimeMs) : undefined,
       source: 'goal',
+    };
+  }
+
+  /**
+   * G13: Dollar economy — compute the dollar cost of a runtime lease from its token
+   * usage × price per token (configurable per runtime). Pi is free (local). This makes
+   * the economy real: the system can answer "is this goal worth $5?"
+   */
+  private computeDollarCost(runtime: string, totalTokens: number): number {
+    const pricePerMtok = {
+      codex: Number(process.env.CODEX_PRICE_PER_MTOK) || 2.0,     // ~$2/Mtok (rough estimate)
+      opencode: Number(process.env.OPENCODE_PRICE_PER_MTOK) || 1.0, // ~$1/Mtok (cheaper)
+      pi: Number(process.env.PI_PRICE_PER_MTOK) || 0,              // free (local)
+      claude: Number(process.env.CLAUDE_PRICE_PER_MTOK) || 3.0,
+      gemini: Number(process.env.GEMINI_PRICE_PER_MTOK) || 1.5,
+      mock: 0,
+      manual: 0,
+      editor: 0,
+    } as Record<string, number>;
+    const price = pricePerMtok[runtime] ?? 0;
+    return (totalTokens / 1_000_000) * price;
+  }
+
+  /**
+   * G13: Get the dollar budget for a goal (from goal.budget.dollar_budget or env default).
+   */
+  private getDollarBudget(run: LoopRunRecord): { maxDollars?: number; source: 'goal' | 'env' | 'none' } {
+    const envDefault = Number(process.env.GOAL_DOLLAR_BUDGET);
+    if (run.goal_id) {
+      const goal = this.getGoal(run.goal_id);
+      const dollarBudget = Number((goal.budget as Record<string, unknown>).dollar_budget);
+      if (Number.isFinite(dollarBudget) && dollarBudget > 0) {
+        return { maxDollars: dollarBudget, source: 'goal' };
+      }
+    }
+    if (Number.isFinite(envDefault) && envDefault > 0) {
+      return { maxDollars: envDefault, source: 'env' };
+    }
+    return { source: 'none' };
+  }
+
+  /**
+   * G13: Compute the total dollar spent on a run (sum of all lease costs).
+   */
+  private computeDollarsSpent(runId: string): number {
+    const leases = this.listWorkerLeases(runId);
+    let total = 0;
+    for (const lease of leases) {
+      const usage = lease.metadata.runtime_usage as { total_tokens?: number } | undefined;
+      if (usage?.total_tokens && typeof usage.total_tokens === 'number') {
+        total += this.computeDollarCost(lease.runtime, usage.total_tokens);
+      }
+    }
+    return total;
+  }
+
+  /**
+   * G13: Compute the efficiency metric: verified_artifacts / dollar.
+   * A verified artifact = a completed maker lease with a passed checker.
+   */
+  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number | null } {
+    const leases = this.listWorkerLeases(runId);
+    const completedMakers = leases.filter((l) => l.role === 'maker' && l.status === 'completed').length;
+    const completedCheckers = leases.filter((l) => l.role === 'checker' && l.status === 'completed').length;
+    // Verified artifacts = min(completed makers, completed checkers) — each maker needs a checker.
+    const verifiedArtifacts = Math.min(completedMakers, completedCheckers);
+    const dollarsSpent = this.computeDollarsSpent(runId);
+    const efficiency = dollarsSpent > 0 ? verifiedArtifacts / dollarsSpent : null;
+    return { verifiedArtifacts, dollarsSpent, efficiency };
+  }
+
+  /**
+   * G13: Allocate the goal's dollar budget across the DAG (greedy knapsack).
+   * Sort findings by competence / p50_dollars (descending), fill until budget exhausted.
+   * Findings that don't fit are deferred; the goal is flagged budget_insufficient if none fit.
+   */
+  allocateDollarBudget(
+    findings: Array<{ finding_id: string; capability_id: string | null; p50_dollars?: number; competence?: number }>,
+    dollarBudget: number,
+  ): { allocated: string[]; deferred: string[]; budgetInsufficient: boolean } {
+    // Score each finding by competence / p50_dollars (higher = better value).
+    const scored = findings.map((f) => {
+      const cost = Math.max(0.001, f.p50_dollars ?? 0.01); // default $0.01 if unknown
+      const comp = f.competence ?? 0.5;
+      return { ...f, score: comp / cost };
+    });
+
+    // Sort by score descending (best value first).
+    scored.sort((a, b) => b.score - a.score);
+
+    const allocated: string[] = [];
+    const deferred: string[] = [];
+    let remaining = dollarBudget;
+
+    for (const f of scored) {
+      const cost = Math.max(0.001, f.p50_dollars ?? 0.01);
+      if (cost <= remaining) {
+        allocated.push(f.finding_id);
+        remaining -= cost;
+      } else {
+        deferred.push(f.finding_id);
+      }
+    }
+
+    return {
+      allocated,
+      deferred,
+      budgetInsufficient: allocated.length === 0 && findings.length > 0,
     };
   }
 
