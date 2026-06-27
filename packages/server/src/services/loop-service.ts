@@ -937,6 +937,9 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
+    // G3.2: if no explicit capabilityId, use the planner to select by competence (the market).
+    const plan = input.capabilityId ? null : this.planLoopRun(id);
+
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
       const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
@@ -954,7 +957,7 @@ export class LoopService {
         findingId: finding.id,
         worktreePath,
         branchName,
-        capabilityId: input.capabilityId ?? null,
+        capabilityId: input.capabilityId ?? plan?.find((p) => p.finding_id === finding.id)?.capability_id ?? null,
         metadata: {
           assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
