@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
+import { swarmEventBus } from './swarm-event-bus';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 
@@ -634,6 +635,14 @@ export class LoopService {
     this.recordLoopEvent(runId, 'loop_resumed', 'info',
       `Run resumed from checkpoint (attempt ${newAttempt}). Re-queued ${requeuedFindings.length} finding(s), skipped ${skippedFindings.length} completed.`,
       { resume_attempt: newAttempt, requeued: requeuedFindings, skipped: skippedFindings });
+    // G14: emit recovery event for live observability.
+    swarmEventBus.emit('recovery', {
+      run_id: runId,
+      resumed: true,
+      resume_attempt: newAttempt,
+      requeued: requeuedFindings.length,
+      skipped: skippedFindings.length,
+    });
 
     return {
       resumed: true,
@@ -1305,6 +1314,12 @@ export class LoopService {
     const isolationGate = run.gates.find((g) => g.name === 'worktree_isolation');
     if (isolationGate && isolationGate.status === 'fail') missing.push('isolation_broken');
 
+    // G14: emit convergence event for live observability.
+    swarmEventBus.emit('convergence', {
+      run_id: id,
+      certified: missing.length === 0,
+      missing,
+    });
     return { certified: missing.length === 0, missing, gates: run.gates };
   }
 
@@ -5029,6 +5044,14 @@ export class LoopService {
     } else {
       sem.dynamicLimit = Math.max(1, Math.floor((sem.dynamicLimit ?? cap) * 0.5));
     }
+    // G14: emit AIMD state change for live observability.
+    swarmEventBus.emit('aimd_state', {
+      dynamicLimit: sem.dynamicLimit,
+      active: sem.active.size,
+      queue_depth: sem.queue.length,
+      hard_cap: cap,
+      success,
+    });
   }
 
   /**

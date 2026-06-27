@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { swarmEventBus } from './swarm-event-bus';
 import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult } from './swarm-status-service';
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
@@ -399,6 +400,12 @@ export class SwarmIntelligenceService {
     if (competence.n_runs >= 3 && competence.success_rate < 0.5 && cap.status === 'validated') {
       this.db.prepare('UPDATE swarm_capabilities SET status = ?, updated_at = ? WHERE id = ?')
         .run('deprecated', now, capabilityId);
+      swarmEventBus.emit('capability_transition', {
+        capability_id: capabilityId,
+        old_status: 'validated',
+        new_status: 'deprecated',
+        reason: `success_rate ${competence.success_rate.toFixed(2)} < 0.5 after ${competence.n_runs} runs`,
+      });
     }
     return competence;
   }
@@ -437,6 +444,12 @@ export class SwarmIntelligenceService {
         eval_score: Math.max(cap.eval_score, competence.success_rate),
         evidence_refs,
         validation_report: `auto-promoted from evidence: ${competence.n_completed}/${competence.n_runs} successes (rate ${competence.success_rate.toFixed(2)}), p50_cost=${competence.p50_cost}, p95_cost=${competence.p95_cost}`,
+      });
+      swarmEventBus.emit('capability_transition', {
+        capability_id: capabilityId,
+        old_status: 'candidate',
+        new_status: 'validated',
+        reason: 'auto-promoted from evidence',
       });
       return { promoted: true, capability, competence, reason: 'promoted from accumulated validated evidence' };
     } catch (error) {
