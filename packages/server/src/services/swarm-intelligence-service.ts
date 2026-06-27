@@ -393,6 +393,13 @@ export class SwarmIntelligenceService {
     };
     this.db.prepare('UPDATE swarm_capabilities SET metadata = ?, cost_model_json = ?, updated_at = ? WHERE id = ?')
       .run(JSON.stringify(metadata), JSON.stringify(learnedCostModel), now, capabilityId);
+    // G1.5: auto-deprecation — a skill whose success_rate drops below 0.5 (with >=3 runs)
+    // is auto-demoted to 'deprecated' (the removal_strategy fires). This prevents the
+    // planner from assigning a failing skill at full trust.
+    if (competence.n_runs >= 3 && competence.success_rate < 0.5 && cap.status === 'validated') {
+      this.db.prepare('UPDATE swarm_capabilities SET status = ?, updated_at = ? WHERE id = ?')
+        .run('deprecated', now, capabilityId);
+    }
     return competence;
   }
 
