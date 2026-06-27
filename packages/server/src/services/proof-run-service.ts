@@ -674,7 +674,34 @@ export class ProofRunService {
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
       if (checks.run.status === 'blocked') {
-        throw new Error('PROOF_RUN_DETERMINISTIC_CHECKS_FAILED');
+        // G3 feedback law: adapt on gate-fail — retry the maker once with the check-failure
+        // context (retryLoopRun creates a new maker lease with the failure feedback), then
+        // re-run the deterministic checks. If the retry also fails, the run is blocked
+        // (bounded failure — the controller does not loop forever).
+        try {
+          const retry = this.loops.retryLoopRun(loopRunId, { maker_lease_id: makerPrepared.id });
+          const retryMaker = retry.retry_maker;
+          this.ensureProofRunMetadata(loopRunId, proofRunId);
+          await this.loops.executeWorker(loopRunId, {
+            lease_id: retryMaker.id,
+            timeout_ms: REAL_RUNTIME_TIMEOUT_MS,
+            diff_max_lines: 200,
+            skip_permissions: skipPermissions,
+          });
+          this.ensureProofRunMetadata(loopRunId, proofRunId);
+          const retryChecks = this.loops.runDeterministicChecks(loopRunId, {
+            lease_id: retryMaker.id,
+            timeout_ms: 120_000,
+            scripts: ['proof:test', 'proof:lint', 'proof:type-check'],
+          });
+          this.ensureProofRunMetadata(loopRunId, proofRunId);
+          if (retryChecks.run.status === 'blocked') {
+            throw new Error('PROOF_RUN_DETERMINISTIC_CHECKS_FAILED');
+          }
+        } catch (retryError) {
+          if (retryError instanceof Error && retryError.message === 'PROOF_RUN_DETERMINISTIC_CHECKS_FAILED') throw retryError;
+          throw new Error('PROOF_RUN_DETERMINISTIC_CHECKS_FAILED');
+        }
       }
 
       const makerLeaseAfterRun = this.findLeaseByRole(loopRunId, 'maker', 'completed');
