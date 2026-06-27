@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import type { Database } from 'better-sqlite3';
+import type { MemoryStore } from './memory-candidate-service';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -40,18 +41,20 @@ export interface ContextResult {
   provenance_run?: string;
   evidence_refs?: string[];
   trust_score?: number;
+  // G8: cognitive store — enables typed retrieval filtering.
+  store?: MemoryStore;
 }
 
 export class ContextInjectionService {
   constructor(private db?: Database) {}
 
-  async injectContext(taskDescription: string, useSwarmContext: boolean = true): Promise<string> {
+  async injectContext(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<string> {
     if (!useSwarmContext) return '';
 
     const results: ContextResult[] = [];
 
     await Promise.allSettled([
-      this.searchQdrantSwarm(taskDescription).then((r) => results.push(...r)),
+      this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
       this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
       this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
     ]);
@@ -80,7 +83,7 @@ export class ContextInjectionService {
     return lines.join('\n');
   }
 
-  private async searchQdrantSwarm(query: string): Promise<ContextResult[]> {
+  private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {
     try {
       const embedRes = await fetchWithTimeout(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
@@ -94,7 +97,8 @@ export class ContextInjectionService {
       const searchRes = await fetchWithTimeout(`${QDRANT_URL}/collections/${QDRANT_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
-        body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
+        body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE,
+          ...(storeFilter ? { filter: { must: [{ key: 'store', match: { value: storeFilter } }] } } : {}) }),
       });
       if (!searchRes.ok) return [];
       const searchJson = (await searchRes.json()) as { result: any[] };
@@ -123,6 +127,7 @@ export class ContextInjectionService {
           provenance_run: h.payload?.provenance_run,
           evidence_refs: Array.isArray(h.payload?.evidence_refs) ? h.payload.evidence_refs : [],
           trust_score,
+          store: h.payload?.store as MemoryStore | undefined,
         };
       });
     } catch {

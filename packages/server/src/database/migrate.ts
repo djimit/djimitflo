@@ -558,6 +558,16 @@ const nestedWorkerLeaseColumns: ColumnSpec[] = [
   { name: 'capability_id', definition: 'TEXT' },
 ];
 
+// G8: Memory store formalization — memory_candidates gains a `store` column so the
+// flywheel routes memories to the right cognitive store (episodic/procedural/semantic/
+// working). This enables typed retrieval: a maker requesting procedural knowledge gets
+// distilled rules, not episodic noise. The vector store is the retrieval index over the
+// provenance graph; the store label is the type discriminator.
+const memoryCandidatesColumns: ColumnSpec[] = [
+  { name: 'store', definition: "TEXT NOT NULL DEFAULT 'episodic' CHECK(store IN ('episodic', 'procedural', 'semantic', 'working'))" },
+];
+
+
 function createNestedSpawnTables(db: BetterSqlite3Database) {
   // Additive lineage columns on the existing worker_leases table.
   addMissingColumns(db, 'worker_leases', nestedWorkerLeaseColumns);
@@ -621,6 +631,7 @@ const agentColumnsTelegramSwarm: ColumnSpec[] = [
 ];
 
 function createAgenticLoopTables(db: BetterSqlite3Database) {
+  addMissingColumns(db, 'memory_candidates', memoryCandidatesColumns);
   db.exec(`
     CREATE TABLE IF NOT EXISTS goals (
       id TEXT PRIMARY KEY,
@@ -731,6 +742,7 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       memory_type TEXT NOT NULL CHECK(memory_type IN ('operational_memory', 'engineering_rule', 'policy_rule')),
+      store TEXT NOT NULL DEFAULT 'episodic' CHECK(store IN ('episodic', 'procedural', 'semantic', 'working')),
       source_ref TEXT,
       status TEXT NOT NULL CHECK(status IN ('candidate', 'review_required', 'rejected', 'promoted')),
       promotion_status TEXT NOT NULL CHECK(promotion_status IN ('proposed', 'blocked_pending_review', 'blocked_pending_human', 'rejected', 'promoted')),

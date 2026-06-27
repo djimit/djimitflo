@@ -6,11 +6,21 @@ import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
+// G8: Memory store classification — the four cognitive stores.
+// episodic: what happened (run logs, immutable, retrieval by time/run)
+// procedural: how to do things (skills, distilled rules, retrieval by capability)
+// semantic: what is true (claims, trust-weighted, retrieval by claim type + trust)
+// working: what's happening now (loop state, ephemeral, retrieval by run_id)
+export type MemoryStore = 'episodic' | 'procedural' | 'semantic' | 'working';
+
+const VALID_STORES: MemoryStore[] = ['episodic', 'procedural', 'semantic', 'working'];
+
 export interface MemoryCandidateRecord {
   id: string;
   title: string;
   content: string;
   memory_type: MemoryType;
+  store: MemoryStore;
   source_ref: string | null;
   status: 'candidate' | 'review_required' | 'rejected' | 'promoted';
   promotion_status: 'proposed' | 'blocked_pending_review' | 'blocked_pending_human' | 'rejected' | 'promoted';
@@ -25,6 +35,7 @@ export interface MemoryCandidateInput {
   title: string;
   content: string;
   memory_type?: MemoryType;
+  store?: MemoryStore;
   source_ref?: string | null;
   metadata?: Record<string, unknown>;
 }
@@ -51,6 +62,14 @@ export class MemoryCandidateService {
     if (!VALID_TYPES.includes(memoryType)) {
       throw new Error('MEMORY_CANDIDATE_TYPE_INVALID');
     }
+    // G8: route the memory to the right cognitive store. Default by memory_type:
+    // operational_memory → episodic (what happened), engineering_rule → procedural
+    // (how to do things), policy_rule → semantic (what is true). The caller can
+    // override with an explicit store (e.g., a distilled rule → procedural).
+    const store = input.store || this.inferStore(memoryType);
+    if (!VALID_STORES.includes(store)) {
+      throw new Error('MEMORY_CANDIDATE_STORE_INVALID');
+    }
     if (this.containsSecret(input.content)) {
       throw new Error('MEMORY_CANDIDATE_SECRET_DETECTED');
     }
@@ -60,14 +79,15 @@ export class MemoryCandidateService {
     const now = new Date().toISOString();
     this.db.prepare(`
       INSERT INTO memory_candidates (
-        id, title, content, memory_type, source_ref, status, promotion_status,
+        id, title, content, memory_type, store, source_ref, status, promotion_status,
         human_required, sensitivity, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.title.trim(),
       input.content.trim(),
       memoryType,
+      store,
       input.source_ref || null,
       classification.status,
       classification.promotion_status,
@@ -174,6 +194,21 @@ export class MemoryCandidateService {
     };
   }
 
+  /**
+   * G8: Infer the cognitive store from the memory type. This is the default routing —
+   * the caller can override with an explicit `store` in the input.
+   * - operational_memory → episodic (what happened — run logs, summaries)
+   * - engineering_rule → procedural (how to do things — skills, distilled rules)
+   * - policy_rule → semantic (what is true — claims, policies)
+   * The `working` store is for ephemeral loop state and is never inferred from a
+   * memory_type — it must be explicitly set by the loop state writer.
+   */
+  private inferStore(memoryType: MemoryType): MemoryStore {
+    if (memoryType === 'engineering_rule') return 'procedural';
+    if (memoryType === 'policy_rule') return 'semantic';
+    return 'episodic';
+  }
+
   private containsSecret(content: string): boolean {
     return /(api[_-]?key|secret|token|password)\s*[:=]\s*['"]?[A-Za-z0-9_\-]{12,}/i.test(content)
       || /\bsk-[A-Za-z0-9_\-]{10,}\b/.test(content)
@@ -248,6 +283,9 @@ export class MemoryCandidateService {
               content_excerpt: candidate.content.slice(0, 500),
               agent_type: 'memory_curator',
               trust_level: 'validated',
+              // G8: cognitive store label — enables typed retrieval (procedural rules,
+              // semantic claims, episodic logs) instead of a mixed-context bag.
+              store: candidate.store,
               source_ref: candidate.source_ref,
               // G2: provenance — bind this memory to the run + evidence that produced it,
               // so retrieval returns claims-with-provenance (not bare text) and the receiver's
@@ -310,6 +348,7 @@ export class MemoryCandidateService {
       title: row.title,
       content: row.content,
       memory_type: row.memory_type,
+      store: (row.store as MemoryStore) || 'episodic',
       source_ref: row.source_ref || null,
       status: row.status,
       promotion_status: row.promotion_status,
