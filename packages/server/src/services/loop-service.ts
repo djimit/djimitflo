@@ -1085,8 +1085,10 @@ export class LoopService {
       throw new Error('LOOP_FINDING_NOT_FOUND');
     }
 
-    const runtime = input.runtime || 'manual';
-    this.assertRuntimeAvailable(runtime);
+    // G11: use the input runtime as a fallback, but the planner's per-finding runtime
+    // (selectRuntime) takes precedence — the fleet adapts per finding, not per goal.
+    const defaultRuntime = input.runtime || 'manual';
+    this.assertRuntimeAvailable(defaultRuntime);
 
     const budget = this.getMakerLeaseBudget(run, input);
     const currentMakerLeases = alreadyLeased.filter((lease) => lease.role === 'maker').length;
@@ -1097,15 +1099,22 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    // G3.2: if no explicit capabilityId, use the planner to select by competence (the market).
-    const plan = input.capabilityId ? null : this.planLoopRun(id);
+    // G3.2: always use the planner to select by competence (the market). The planner
+    // also selects the runtime per finding (G11 selectRuntime). When input.capabilityId
+    // is set, we still use the plan for the runtime selection but override the capability.
+    const plan = this.planLoopRun(id);
 
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
       const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
       this.ensureWorktreeControlIgnore(worktreePath);
-      this.writeWorkAssignment(worktreePath, run, finding, runtime);
-      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime);
+      // G11: use the planner's per-finding runtime (selectRuntime) when available,
+      // falling back to the input/default runtime. This makes the fleet adaptive.
+      const findingPlan = plan?.find((p) => p.finding_id === finding.id);
+      const leaseRuntime = findingPlan?.runtime || defaultRuntime;
+      this.assertRuntimeAvailable(leaseRuntime);
+      this.writeWorkAssignment(worktreePath, run, finding, leaseRuntime);
+      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, leaseRuntime);
 
       const makerLeaseId = randomUUID();
       const assignmentFile = this.workAssignmentPath(worktreePath);
@@ -1113,7 +1122,7 @@ export class LoopService {
         id: makerLeaseId,
         loopRunId: run.id,
         role: 'maker',
-        runtime,
+        runtime: leaseRuntime,
         findingId: finding.id,
         worktreePath,
         branchName,
@@ -1173,7 +1182,7 @@ export class LoopService {
 
     this.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', `Prepared ${selectedFindings.length} maker/checker assignment(s).`, {
       finding_ids: selectedFindings.map((finding) => finding.id),
-      runtime,
+      runtime: defaultRuntime,
       budget,
     });
 
@@ -5017,6 +5026,17 @@ export class LoopService {
     // Initialized from the env cap on first use, then driven by adjustConcurrency.
     const sem = LoopService.runtimeSemaphore;
     if (sem.dynamicLimit === null) {
+      // G5-persist: restore the dynamicLimit from the DB on first use after a restart.
+      try {
+        const row = this.db.prepare('SELECT value FROM system_state WHERE key = ?').get('aimd_dynamic_limit') as { value?: string } | undefined;
+        if (row?.value) {
+          const restored = Number(row.value);
+          if (Number.isFinite(restored) && restored >= 1) {
+            sem.dynamicLimit = Math.min(restored, this.runtimeSemaphoreHardCap());
+            return sem.dynamicLimit;
+          }
+        }
+      } catch { /* table might not exist yet */ }
       sem.dynamicLimit = this.runtimeSemaphoreHardCap();
     }
     return sem.dynamicLimit;
@@ -5044,6 +5064,11 @@ export class LoopService {
     } else {
       sem.dynamicLimit = Math.max(1, Math.floor((sem.dynamicLimit ?? cap) * 0.5));
     }
+    // G5-persist: save the dynamicLimit to the DB so it survives restarts.
+    try {
+      this.db.prepare('INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)')
+        .run('aimd_dynamic_limit', String(sem.dynamicLimit), new Date().toISOString());
+    } catch { /* table might not exist — non-fatal */ }
     // G14: emit AIMD state change for live observability.
     swarmEventBus.emit('aimd_state', {
       dynamicLimit: sem.dynamicLimit,

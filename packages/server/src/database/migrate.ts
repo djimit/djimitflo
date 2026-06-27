@@ -824,6 +824,12 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_status ON agent_trace_spans(status);
     CREATE INDEX IF NOT EXISTS idx_agent_trace_spans_created_at ON agent_trace_spans(created_at);
 
+    CREATE TABLE IF NOT EXISTS system_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS loop_checkpoints (
       id TEXT PRIMARY KEY,
       loop_run_id TEXT NOT NULL,

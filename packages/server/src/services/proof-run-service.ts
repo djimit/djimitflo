@@ -811,6 +811,24 @@ export class ProofRunService {
       });
       this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
       await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
+      // G12: distill an actionable rule from this run's evidence (procedural memory).
+      // This closes the self-improvement loop: the distilled rule is stored in the
+      // procedural store and retrievable by future runs via ContextInjectionService
+      // with storeFilter='procedural'. Best-effort — never fail the proof on distillation.
+      try {
+        const distilled = this.memory.distillFromRun({
+          loopRunId,
+          capabilityId: String(base.capability_id || ''),
+          runtime,
+          outcome: 'success',
+          makerLeaseId: String(makerLease?.id || ''),
+          checkerLeaseId: String(checkerLease?.id || ''),
+          keyLearning: `Runtime ${runtime} proof run succeeded with ${makerLease ? 'maker' : 'no'} lease. The approach (codex headless, sandboxed, --ignore-user-config) is effective for this capability.`,
+          metadata: base,
+        });
+        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+        await this.memory.upsertToSwarmMemory(distilled.id);
+      } catch { /* best-effort: never fail the proof on distillation */ }
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
       // G1: attempt evidence-based auto-promotion of the maker capability. Promotes after

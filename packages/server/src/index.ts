@@ -63,8 +63,8 @@ async function main() {
     } catch { return null; }
   };
 
+  const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor);
   try {
-    const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor);
     const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
       console.log(
@@ -83,8 +83,10 @@ async function main() {
   }
 
   // G16: start the continuous operation daemon (goal queue with priority scheduling).
+  // Share the same LoopService instance (recoverySvc) so the daemon and the server
+  // share in-memory state (runtimeSemaphore, runtimeLeases, etc.).
   try {
-    const daemon = new LoopDaemon(db, new LoopService(db, undefined, concurrencyAdvisor));
+    const daemon = new LoopDaemon(db, recoverySvc);
     daemon.start();
     console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
   } catch (error) {
