@@ -60,7 +60,7 @@ export class ContextInjectionService {
 
   private async searchQdrantSwarm(query: string): Promise<ContextResult[]> {
     try {
-      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+      const embedRes = await fetchWithTimeout(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: query }),
@@ -69,7 +69,7 @@ export class ContextInjectionService {
       const embedJson = (await embedRes.json()) as { embedding: number[] };
       const vector = embedJson.embedding;
 
-      const searchRes = await fetch(`${QDRANT_URL}/collections/${QDRANT_COLLECTION}/points/search`, {
+      const searchRes = await fetchWithTimeout(`${QDRANT_URL}/collections/${QDRANT_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
@@ -96,7 +96,7 @@ export class ContextInjectionService {
     const results: ContextResult[] = [];
 
     try {
-      const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+      const embedRes = await fetchWithTimeout(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text:latest', prompt: query }),
@@ -105,7 +105,7 @@ export class ContextInjectionService {
       const embedJson = (await embedRes.json()) as { embedding: number[] };
       const vector = embedJson.embedding;
 
-      const searchRes = await fetch(`${QDRANT_URL}/collections/${OKF_COLLECTION}/points/search`, {
+      const searchRes = await fetchWithTimeout(`${QDRANT_URL}/collections/${OKF_COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit: 3, with_payload: true, score_threshold: MIN_SCORE }),
@@ -161,7 +161,7 @@ export class ContextInjectionService {
 
   private async searchDjimitKB(query: string): Promise<ContextResult[]> {
     try {
-      const res = await fetch(`${DJIMITKB_MCP_URL}/search?q=${encodeURIComponent(query)}&limit=3`);
+      const res = await fetchWithTimeout(`${DJIMITKB_MCP_URL}/search?q=${encodeURIComponent(query)}&limit=3`);
       if (!res.ok) return [];
 
       const json = (await res.json()) as { results: Array<{
