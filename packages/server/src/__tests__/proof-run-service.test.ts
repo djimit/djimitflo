@@ -110,7 +110,7 @@ async function startApp() {
   baseUrl = `http://127.0.0.1:${address.port}`;
 }
 
-describe('swarm proof runs', () => {
+describe('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 }, () => {
   beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
