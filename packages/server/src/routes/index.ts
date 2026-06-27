@@ -15,6 +15,7 @@ import { createRiskRoutes } from './risk';
 import { createEvidenceRoutes } from './evidence';
 import { createObservabilityRoutes } from './observability';
 import { createKnowledgeRoutes } from './knowledge';
+import { createFederationRoutes } from './federation';
 import { createRepositoryRoutes, createDiffRoutes } from './repositories';
 import { createAuthRoutes } from './auth';
 import type { AuthService } from '../services/auth-service';
@@ -88,6 +89,9 @@ export function createRoutes(
 
   // G15: knowledge bus HTTP endpoints (federation transport scaffold)
   router.use('/knowledge', requireAuth, createKnowledgeRoutes(auth!));
+
+  // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
+  router.use('/federation', requireAuth, createFederationRoutes(db, auth!));
   router.use('/goals', requireAuth, createGoalRoutes(db, auth));
   router.use('/loops', requireAuth, createLoopRoutes(db, auth));
   router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));
