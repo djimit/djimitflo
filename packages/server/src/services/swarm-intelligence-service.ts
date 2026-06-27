@@ -444,6 +444,106 @@ export class SwarmIntelligenceService {
     }
   }
 
+  /**
+   * G12: Create a composed skill — a chain of atomic skills with inter-skill handoff.
+   * A composed skill is stored in swarm_capabilities with composed: true + chain: SkillId[]
+   * in the metadata. It starts as 'candidate' and is promoted (promoteComposedSkill) only
+   * when all atomic skills are 'validated' AND the chain has >=N validated runs.
+   */
+  createComposedSkill(input: {
+    id: string;
+    name: string;
+    chain: string[];
+    owner?: string;
+    version?: string;
+    risk_ceiling?: 'low' | 'medium' | 'high' | 'critical';
+    removal_strategy?: string;
+  }): SwarmCapabilityRecord {
+    if (!input.id?.trim()) throw new Error('SWARM_CAPABILITY_ID_REQUIRED');
+    if (!input.chain || input.chain.length < 2) throw new Error('COMPOSED_SKILL_CHAIN_MIN_2');
+
+    for (const skillId of input.chain) {
+      const cap = this.getCapability(skillId);
+      if (!cap) throw new Error(`SWARM_CAPABILITY_NOT_FOUND: ${skillId}`);
+    }
+
+    const now = new Date().toISOString();
+    const metadata = {
+      composed: true,
+      chain: input.chain,
+      name: input.name,
+      composed_created_at: now,
+    };
+
+    this.db.prepare(`
+      INSERT INTO swarm_capabilities (
+        id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref,
+        allowed_actions_json, forbidden_actions_json, required_evidence_json, eval_score,
+        eval_threshold, cost_model_json, removal_strategy, latest_validation_report,
+        metadata, created_at, updated_at
+      ) VALUES (?, 'skill', ?, ?, 'candidate', ?, 'composed', 'composed',
+        '["spawn_runtime_worker"]', '["deploy"]', '["proof:test"]', 0, 0.5, '{}', ?, null, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        metadata = excluded.metadata,
+        updated_at = excluded.updated_at
+    `).run(
+      input.id.trim(),
+      (input.owner || 'system').trim(),
+      (input.version || '0.1.0').trim(),
+      input.risk_ceiling || 'low',
+      input.removal_strategy || 'demote_on_fail',
+      JSON.stringify(metadata),
+      now,
+      now,
+    );
+
+    return this.getCapability(input.id.trim());
+  }
+
+  /**
+   * G12: Promote a composed skill to 'validated' — only when all atomic skills in the
+   * chain are 'validated' AND the chain has >=minChainRuns validated runs.
+   */
+  promoteComposedSkill(composedSkillId: string, opts: { minChainRuns?: number } = {}): {
+    promoted: boolean;
+    reason: string;
+    allAtomicValidated: boolean;
+    chainRuns: number;
+  } {
+    const minChainRuns = opts.minChainRuns ?? 3;
+    const cap = this.getCapability(composedSkillId);
+    const meta = cap.metadata as Record<string, unknown>;
+
+    if (!meta.composed) {
+      return { promoted: false, reason: 'not a composed skill', allAtomicValidated: false, chainRuns: 0 };
+    }
+
+    const chain = meta.chain as string[];
+    if (!Array.isArray(chain)) {
+      return { promoted: false, reason: 'no chain in metadata', allAtomicValidated: false, chainRuns: 0 };
+    }
+
+    const allAtomicValidated = chain.every((skillId) => {
+      const atomic = this.getCapability(skillId);
+      return atomic?.status === 'validated';
+    });
+
+    if (!allAtomicValidated) {
+      return { promoted: false, reason: 'not all atomic skills are validated', allAtomicValidated: false, chainRuns: 0 };
+    }
+
+    const competence = this.measureCompetence(composedSkillId);
+    if (competence.n_completed < minChainRuns) {
+      return { promoted: false, reason: `insufficient chain runs: ${competence.n_completed} < ${minChainRuns}`, allAtomicValidated: true, chainRuns: competence.n_completed };
+    }
+
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE swarm_capabilities SET status = ?, updated_at = ? WHERE id = ?')
+      .run('validated', now, composedSkillId);
+
+    return { promoted: true, reason: `composed skill promoted (${competence.n_completed} chain runs, all atomic validated)`, allAtomicValidated: true, chainRuns: competence.n_completed };
+  }
+
   listSpecialistProfiles(): SpecialistProfile[] {
     return this.panels.getCatalog().map((profile) => ({
       ...profile,

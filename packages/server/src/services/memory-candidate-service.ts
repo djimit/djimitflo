@@ -342,6 +342,60 @@ export class MemoryCandidateService {
   }
 
 
+  /**
+   * G12: Memory distillation — after a run completes, create a procedural memory
+   * (an actionable rule) from the run's evidence. Unlike the run-summary (episodic),
+   * a distilled rule captures WHAT TO DO differently next time, not WHAT HAPPENED.
+   *
+   * The rule is structured: { capability, outcome, rule, precondition }.
+   * It goes through the same evidence-gated promotion as skills (G1): the checker
+   * verifies, trust decay + contradiction apply.
+   *
+   * This is template distillation — it creates a structured rule from the run's
+   * metadata without requiring a runtime call. A future evolution (G12+) can use
+   * the runtime to produce richer natural-language rules.
+   */
+  distillFromRun(input: {
+    loopRunId: string;
+    capabilityId?: string | null;
+    runtime: string;
+    outcome: 'success' | 'failure';
+    makerLeaseId?: string;
+    checkerLeaseId?: string;
+    keyLearning?: string;
+    metadata?: Record<string, unknown>;
+  }): MemoryCandidateRecord {
+    const rule = input.keyLearning
+      ? input.keyLearning
+      : input.outcome === 'success'
+        ? `Capability ${input.capabilityId || 'unknown'} on ${input.runtime}: the approach succeeded. Apply the same capability-runtime pairing for similar findings.`
+        : `Capability ${input.capabilityId || 'unknown'} on ${input.runtime}: the approach failed. Consider a different runtime or split the finding before retrying.`;
+
+    return this.create({
+      title: `Distilled rule: ${input.capabilityId || 'general'} (${input.runtime}, ${input.outcome})`,
+      content: rule,
+      memory_type: 'engineering_rule',
+      store: 'procedural',
+      source_ref: `loop:${input.loopRunId}`,
+      metadata: {
+        ...(input.metadata || {}),
+        loop_run_id: input.loopRunId,
+        capability_id: input.capabilityId,
+        runtime: input.runtime,
+        outcome: input.outcome,
+        maker_lease_id: input.makerLeaseId,
+        checker_lease_id: input.checkerLeaseId,
+        distilled: true,
+        rule_structure: {
+          capability: input.capabilityId,
+          outcome: input.outcome,
+          runtime: input.runtime,
+          rule,
+        },
+      },
+    });
+  }
+
   private parse(row: any): MemoryCandidateRecord {
     return {
       id: row.id,
