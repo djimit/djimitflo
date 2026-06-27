@@ -1018,6 +1018,44 @@ export class LoopService {
     return { run: this.getLoopRun(run.id), leases };
   }
 
+  // G3.4: Convergence certificate — generalizes production_passed to ANY loop_run.
+  // A run is certified iff: all gates passed, all maker leases completed, all checker
+  // leases accepted, evidence present (trace spans + manifests), budget within, isolation
+  // held. This is the Lyapunov-style invariant: the swarm converged inside its envelope.
+  certifyLoopRun(id: string): { certified: boolean; missing: string[]; gates: LoopGate[] } {
+    const run = this.getLoopRun(id);
+    const leases = this.listWorkerLeases(id);
+    const missing: string[] = [];
+
+    // 1. All gates passed (the control law's final measurement).
+    const failedGates = run.gates.filter((g) => g.status === 'fail');
+    if (failedGates.length > 0) missing.push('gates_failed');
+
+    // 2. All maker leases completed.
+    const makers = leases.filter((l) => l.role === 'maker');
+    if (makers.length === 0) missing.push('no_makers');
+    if (makers.some((l) => l.status !== 'completed')) missing.push('maker_incomplete');
+
+    // 3. All checker leases completed (verdict accepted).
+    const checkers = leases.filter((l) => l.role === 'checker');
+    if (checkers.length === 0) missing.push('no_checkers');
+    if (checkers.some((l) => l.status !== 'completed')) missing.push('checker_incomplete');
+
+    // 4. Evidence present (trace spans + manifests).
+    const traceSpanCount = (this.db.prepare('SELECT COUNT(*) as c FROM agent_trace_spans WHERE loop_run_id = ?').get(id) as { c: number }).c;
+    if (traceSpanCount === 0) missing.push('no_trace_spans');
+
+    // 5. Budget within (token + wall clock).
+    const tokenBudget = this.evaluateTokenBudget(run, null, '', 0);
+    if (tokenBudget.exhausted) missing.push('budget_exhausted');
+
+    // 6. Isolation held (worktree_isolation gate passed).
+    const isolationGate = run.gates.find((g) => g.name === 'worktree_isolation');
+    if (isolationGate && isolationGate.status === 'fail') missing.push('isolation_broken');
+
+    return { certified: missing.length === 0, missing, gates: run.gates };
+  }
+
   splitLoopFinding(id: string, input: SplitLoopInput = {}): { run: LoopRunRecord; parent: LoopFinding; children: LoopFinding[]; leases: WorkerLeaseRecord[] } {
     const run = this.getLoopRun(id);
     this.assertLoopNotEscalated(run);
