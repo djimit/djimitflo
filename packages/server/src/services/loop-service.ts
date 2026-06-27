@@ -1099,10 +1099,11 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    // G3.2: always use the planner to select by competence (the market). The planner
-    // also selects the runtime per finding (G11 selectRuntime). When input.capabilityId
-    // is set, we still use the plan for the runtime selection but override the capability.
-    const plan = this.planLoopRun(id);
+    // G3.2: use the planner to select by competence (the market) when no explicit
+    // capabilityId is set. When capabilityId IS set (e.g., in the proof flow), skip
+    // the planner and use the explicit runtime — the planner is the fallback, not
+    // the override, for explicitly-specified capabilities.
+    const plan = input.capabilityId ? null : this.planLoopRun(id);
 
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
