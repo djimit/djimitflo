@@ -597,11 +597,35 @@ export class ProofRunService {
     })();
 
     let proofRunError: Error | null = null;
+    // G1: ensure a stable candidate capability for this runtime so competence accumulates
+    // across runs and the skill can be auto-promoted from accumulated validated evidence
+    // (skills promoted from evidence, not hand-authored). Stable id (not proof-run-scoped).
+    const makerCapId = `cap:real-runtime-maker:${runtime}`;
+    try {
+      this.intelligence.getCapability(makerCapId);
+    } catch {
+      this.intelligence.createCandidate({
+        id: makerCapId,
+        kind: 'runtime_adapter',
+        owner: runtime,
+        version: '1.0.0',
+        risk_ceiling: 'medium',
+        input_schema_ref: 'schema://real-runtime-maker/input',
+        output_schema_ref: 'schema://real-runtime-maker/output',
+        allowed_actions: ['spawn_runtime_worker', 'parse_usage', 'store_artifacts'],
+        forbidden_actions: ['manual_release_without_operator'],
+        required_evidence: ['completed maker lease', 'runtime_usage', 'checker verdict'],
+        eval_threshold: 0.6,
+        removal_strategy: 'demote when success_rate < 0.5 or contradicted',
+        metadata: { ...base, g1_capability: true, runtime },
+      });
+    }
     try {
       const prepared = this.loops.continueLoopRun(loopRunId, {
         runtime,
         max_assignments: 1,
         max_maker_workers: 1,
+        capabilityId: makerCapId,
       });
 
       const makerPrepared = this.findLeaseByRole(loopRunId, 'maker', 'prepared');
@@ -753,6 +777,9 @@ export class ProofRunService {
       await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
+      // G1: attempt evidence-based auto-promotion of the maker capability. Promotes after
+      // >=3 validated successes. Best-effort — never fail the proof on the promotion step.
+      try { this.intelligence.autoPromoteFromEvidence(makerCapId); } catch { /* best-effort */ }
     } catch (error) {
       proofRunError = error instanceof Error ? error : new Error(String(error));
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {

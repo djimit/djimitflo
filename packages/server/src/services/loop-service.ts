@@ -126,6 +126,8 @@ export interface WorkerLeaseRecord {
   spawn_tree_id: string | null;
   depth: number;
   spawned_by_agent_id: string | null;
+  // G1: the capability this lease exercised (links to swarm_capabilities for competence).
+  capability_id?: string | null;
 }
 
 interface LoopEventRecord {
@@ -149,6 +151,8 @@ interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
+  // G1: capability the maker lease exercises (for competence measurement + auto-promotion).
+  capabilityId?: string | null;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
 }
 
@@ -948,6 +952,7 @@ export class LoopService {
         findingId: finding.id,
         worktreePath,
         branchName,
+        capabilityId: input.capabilityId ?? null,
         metadata: {
           assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
@@ -4450,13 +4455,14 @@ export class LoopService {
     spawnTreeId?: string | null;
     depth?: number;
     spawnedByAgentId?: string | null;
+    capabilityId?: string | null;
   }): void {
     this.db.prepare(`
       INSERT INTO worker_leases (
         id, loop_run_id, role, runtime, status, finding_id, worktree_path,
         branch_name, budget_json, metadata, created_at, updated_at,
-        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id, capability_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.loopRunId,
@@ -4473,7 +4479,8 @@ export class LoopService {
       input.parentLeaseId ?? null,
       input.spawnTreeId ?? null,
       input.depth ?? 0,
-      input.spawnedByAgentId ?? null
+      input.spawnedByAgentId ?? null,
+      input.capabilityId ?? null
     );
   }
 
@@ -4535,6 +4542,7 @@ export class LoopService {
       spawn_tree_id: row.spawn_tree_id ?? null,
       depth: typeof row.depth === 'number' ? row.depth : Number(row.depth ?? 0),
       spawned_by_agent_id: row.spawned_by_agent_id ?? null,
+      capability_id: row.capability_id ?? null,
     };
   }
 

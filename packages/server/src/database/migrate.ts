@@ -552,6 +552,10 @@ const nestedWorkerLeaseColumns: ColumnSpec[] = [
   { name: 'spawn_tree_id', definition: 'TEXT' },           // shared by every lease in one spawn tree (== root id)
   { name: 'depth', definition: 'INTEGER NOT NULL DEFAULT 0 CHECK(depth >= 0)' },
   { name: 'spawned_by_agent_id', definition: 'TEXT' },     // audit: which sub-agent process requested the spawn
+  // G1: capability the lease exercised — links worker_leases to swarm_capabilities so
+  // competence (success_rate + cost distribution) can be measured per capability and skills
+  // can be auto-promoted from accumulated validated evidence.
+  { name: 'capability_id', definition: 'TEXT' },
 ];
 
 function createNestedSpawnTables(db: BetterSqlite3Database) {
@@ -684,6 +688,7 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       finding_id TEXT,
       worktree_path TEXT,
       branch_name TEXT,
+      capability_id TEXT,
       budget_json TEXT NOT NULL DEFAULT '{}',
       metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

@@ -351,6 +351,82 @@ export class SwarmIntelligenceService {
     };
   }
 
+  // G1: Competence measurement — success_rate + cost distribution per capability, from the
+  // worker_leases that exercised it (linked by capability_id). Persisted into the capability's
+  // metadata.competence so the planner can assign specialists by competence (the market).
+  measureCompetence(capabilityId: string): {
+    n_runs: number; n_completed: number; success_rate: number;
+    p50_cost: number; p95_cost: number; costs: number[];
+  } {
+    const rows = this.db.prepare('SELECT status, metadata FROM worker_leases WHERE capability_id = ?')
+      .all(capabilityId) as Array<{ status: string; metadata: string }>;
+    const costs: number[] = [];
+    let n_completed = 0;
+    for (const r of rows) {
+      if (r.status === 'completed') {
+        n_completed += 1;
+        let m: Record<string, unknown> = {}; try { m = JSON.parse(r.metadata || '{}') as Record<string, unknown>; } catch { /* empty */ }
+        const usage = m.runtime_usage as Record<string, unknown> | undefined;
+        const total = Number(usage?.total_tokens) || 0;
+        if (total > 0) costs.push(total);
+      }
+    }
+    const n_runs = rows.length;
+    const success_rate = n_runs > 0 ? n_completed / n_runs : 0;
+    costs.sort((a, b) => a - b);
+    const pct = (p: number): number => costs.length
+      ? costs[Math.min(costs.length - 1, Math.floor(p * costs.length))]
+      : 0;
+    const competence = { n_runs, n_completed, success_rate, p50_cost: pct(0.5), p95_cost: pct(0.95), costs };
+    const cap = this.getCapability(capabilityId);
+    const now = new Date().toISOString();
+    const metadata = { ...cap.metadata, competence, competence_measured_at: now };
+    this.db.prepare('UPDATE swarm_capabilities SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(metadata), now, capabilityId);
+    return competence;
+  }
+
+  // G1: Evidence-based auto-promotion — a candidate skill is promoted to validated only
+  // after >=minSuccesses completed leases with evidence AND success_rate >= minSuccessRate
+  // AND eval_score >= threshold. This is "skills promoted from evidence, not hand-authored."
+  autoPromoteFromEvidence(capabilityId: string, opts: { minSuccesses?: number; minSuccessRate?: number } = {}): {
+    promoted: boolean; capability?: SwarmCapabilityRecord;
+    competence: { n_runs: number; n_completed: number; success_rate: number; p50_cost: number; p95_cost: number };
+    reason: string;
+  } {
+    const minSuccesses = opts.minSuccesses ?? 3;
+    const minSuccessRate = opts.minSuccessRate ?? 0.6;
+    const cap = this.getCapability(capabilityId);
+    const c = this.measureCompetence(capabilityId);
+    const competence = { n_runs: c.n_runs, n_completed: c.n_completed, success_rate: c.success_rate, p50_cost: c.p50_cost, p95_cost: c.p95_cost };
+    if (cap.status !== 'candidate') {
+      return { promoted: false, competence, reason: `capability not candidate (status=${cap.status})` };
+    }
+    if (competence.n_completed < minSuccesses) {
+      return { promoted: false, competence, reason: `insufficient validated successes: ${competence.n_completed} < ${minSuccesses}` };
+    }
+    if (competence.success_rate < minSuccessRate) {
+      return { promoted: false, competence, reason: `success_rate ${competence.success_rate.toFixed(2)} < ${minSuccessRate}` };
+    }
+    const rows = this.db.prepare(
+      "SELECT id, metadata FROM worker_leases WHERE capability_id = ? AND status = 'completed' ORDER BY updated_at DESC LIMIT ?"
+    ).all(capabilityId, minSuccesses) as Array<{ id: string; metadata: string }>;
+    const evidence_refs = rows.map((r) => {
+      let m: Record<string, unknown> = {}; try { m = JSON.parse(r.metadata || '{}') as Record<string, unknown>; } catch { /* empty */ }
+      return typeof m.stdout_path === 'string' ? `lease:${r.id}:${m.stdout_path}` : `lease:${r.id}`;
+    });
+    try {
+      const capability = this.promoteCapability(capabilityId, {
+        eval_score: Math.max(cap.eval_score, competence.success_rate),
+        evidence_refs,
+        validation_report: `auto-promoted from evidence: ${competence.n_completed}/${competence.n_runs} successes (rate ${competence.success_rate.toFixed(2)}), p50_cost=${competence.p50_cost}, p95_cost=${competence.p95_cost}`,
+      });
+      return { promoted: true, capability, competence, reason: 'promoted from accumulated validated evidence' };
+    } catch (error) {
+      return { promoted: false, competence, reason: `promotion rejected: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
+
   listSpecialistProfiles(): SpecialistProfile[] {
     return this.panels.getCatalog().map((profile) => ({
       ...profile,
