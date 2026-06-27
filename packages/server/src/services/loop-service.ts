@@ -440,7 +440,9 @@ export class LoopService {
   private static readonly runtimeSemaphore: {
     active: Set<string>;
     queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }>;
-  } = { active: new Set(), queue: [] };
+    // G4: AIMD concurrency controller state — the dynamic limit the controller drives.
+    dynamicLimit: number | null;
+  } = { active: new Set(), queue: [], dynamicLimit: null };
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
@@ -4581,10 +4583,32 @@ export class LoopService {
    * (spawn_trees.max_concurrent_children) further bounds any one swarm.
    */
   private runtimeSemaphoreLimit(): number {
+    // G4: the limit is a dynamic control variable (AIMD), not a static env const.
+    // Initialized from the env cap on first use, then driven by adjustConcurrency.
+    const sem = LoopService.runtimeSemaphore;
+    if (sem.dynamicLimit === null) {
+      sem.dynamicLimit = this.runtimeSemaphoreHardCap();
+    }
+    return sem.dynamicLimit;
+  }
+
+  private runtimeSemaphoreHardCap(): number {
     const raw = process.env.RUNTIME_MAX_CONCURRENCY;
     if (raw === undefined || raw === null || raw.trim() === '') return 4;
     const n = Number(raw);
     return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 4;
+  }
+
+  // G4: AIMD concurrency controller — additive increase on success (+1), multiplicative
+  // decrease on failure (×0.5). Bounded by [1, hardCap]. Called after each runtime completes.
+  private adjustConcurrency(success: boolean): void {
+    const sem = LoopService.runtimeSemaphore;
+    const cap = this.runtimeSemaphoreHardCap();
+    if (success) {
+      sem.dynamicLimit = Math.min((sem.dynamicLimit ?? cap) + 1, cap);
+    } else {
+      sem.dynamicLimit = Math.max(1, Math.floor((sem.dynamicLimit ?? cap) * 0.5));
+    }
   }
 
   /**
@@ -4740,6 +4764,8 @@ export class LoopService {
           stderr: safeTrim(stderr),
           runtimePid: child.pid || undefined,
         });
+        // G4: AIMD — adjust the concurrency limit based on this runtime's outcome.
+        this.adjustConcurrency(exitCode === 0 && !timedOut);
       };
 
       child.stdout?.setEncoding('utf8');
