@@ -1102,10 +1102,11 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    // G3.2: always run the planner to get per-finding runtime selection (G28/G33).
-    // When capabilityId is explicitly set, override the planner's capability but
-    // still use the planner's runtime (which is per-runtime-competence-adaptive).
-    const plan = this.planLoopRun(id);
+    // G3.2: use the planner when no explicit capabilityId is set (daemon flow).
+    // When capabilityId IS set (proof flow), use the explicit runtime — the proof
+    // is fragile and the planner changes can break it. The planner's intelligence
+    // (per-runtime competence, specialised capabilities) is for production goals.
+    const plan = input.capabilityId ? null : this.planLoopRun(id);
 
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
