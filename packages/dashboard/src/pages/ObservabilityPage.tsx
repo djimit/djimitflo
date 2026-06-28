@@ -3,6 +3,16 @@ import { Activity, AlertTriangle, CheckCircle, XCircle, Clock, Shield, BarChart3
 import type { ObservabilityMetrics } from '@djimitflo/shared';
 import { api } from '../lib/api';
 
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${minutes.toFixed(1)}m`;
+  const hours = minutes / 60;
+  return `${hours.toFixed(1)}h`;
+}
+
 export function ObservabilityPage() {
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,6 +110,9 @@ export function ObservabilityPage() {
           </div>
         </div>
       )}
+
+      {/* D10: SSE Live Event Feed */}
+      <SseLiveEventFeed events={sseEvents} />
     </div>
   );
 }
@@ -150,22 +163,26 @@ function DecisionRow({ label, count, color }: { label: string; count: number; co
     <div className="flex justify-between items-center">
       <span className="text-sm text-foreground-secondary">{label}</span>
       <span className={`text-sm font-medium ${colors[color] || ''}`}>{count}</span>
-      {/* D10: SSE Live Event Feed */}
-      <div className="bg-background-secondary border border-border rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {sseEvents.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">Waiting for events...</div>
-          ) : (
-            sseEvents.slice().reverse().map((event, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
-                <span className="text-xs text-foreground-muted font-mono">{event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : ''}</span>
-                <span className="font-mono font-medium text-accent-secondary">{event.type || 'event'}</span>
-                <span className="text-foreground-secondary flex-1 truncate">{JSON.stringify(event.data || event).slice(0, 200)}</span>
-              </div>
-            ))
-          )}
-        </div>
+    </div>
+  );
+}
+
+function SseLiveEventFeed({ events }: { events: any[] }) {
+  return (
+    <div className="bg-background-secondary border border-border rounded-lg p-6">
+      <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
+      <div className="space-y-2 max-h-96 overflow-y-auto">
+        {events.length === 0 ? (
+          <div className="text-center py-8 text-foreground-muted">Waiting for events...</div>
+        ) : (
+          events.slice().reverse().map((event, i) => (
+            <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
+              <span className="text-xs text-foreground-muted font-mono">{event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : ''}</span>
+              <span className="font-mono font-medium text-accent-secondary">{event.type || 'event'}</span>
+              <span className="text-foreground-secondary flex-1 truncate">{JSON.stringify(event.data || event).slice(0, 200)}</span>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
