@@ -118,7 +118,7 @@ Phase 6 is approximately **95% complete** for an initial release sprint. The cor
 | OpenCode status | "Partially verified" | `contract verified` — CLI contract verified; policy-engine E2E still requires verification | Fixed in this doc and README |
 | Architecture section | No Agentic Control Loop Fleet section | Loop service, goals, worker leases, gates, and fleet dashboard all exist | Addressed by linking to this canonical document |
 
-**Pre-existing code issue for awareness**: `packages/dashboard/src/pages/GoalsLoopsPage.tsx` line 5 contains a hardcoded local path `/Users/dlandman/djimitflo` in `DEFAULT_REPOSITORY_PATH`. This is not introduced by this bead but is a known item for sanitization.
+**Pre-existing code issue for awareness**: `packages/dashboard/src/pages/GoalsLoopsPage.tsx` line 5 contains a hardcoded local path `<absolute-path>` in `DEFAULT_REPOSITORY_PATH`. This is not introduced by this bead but is a known item for sanitization.
 
 ---
 
@@ -229,4 +229,4 @@ Move Djimitflo beyond a local dashboard into enterprise-grade control-plane terr
 
 ---
 
-*All claims above are tied to file paths and documentation present in the repository as of 2026-06-28. No secrets, tokens, local absolute paths, or personal credentials are introduced by this document. Pre-existing code issues (e.g., hardcoded path at lines 121, 208) are documented for awareness only.*
+*All claims above are tied to file paths and documentation present in the repository as of 2026-06-28. No secrets, tokens, or personal credentials are introduced by this document. Pre-existing code issues are documented for awareness only.*
