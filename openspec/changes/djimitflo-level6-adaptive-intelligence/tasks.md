@@ -5,12 +5,12 @@
 
 ## G28 — Competence-per-runtime tracking
 
-- [ ] T28.1 Extend `measureCompetence` to aggregate by `(capability_id, runtime)` —
+- [x] T28.1 Extend `measureCompetence` to aggregate by `(capability_id, runtime)` —
       group `worker_leases` by both columns and return per-runtime competence records.
-- [ ] T28.2 `selectRuntime` uses per-runtime competence: for a given capability, pick
+- [x] T28.2 `selectRuntime` uses per-runtime competence: for a given capability, pick
       the runtime with the highest `success_rate` (above threshold 0.5). If no data,
       use the existing heuristic.
-- [ ] T28.3 Store per-runtime competence in `cost_model_json` as
+- [x] T28.3 Store per-runtime competence in `cost_model_json` as
       `runtime_competence: { codex: {sr, p50}, opencode: {sr, p50}, pi: {sr, p50} }`.
 
 Validation (G28):
@@ -19,11 +19,11 @@ Validation (G28):
 
 ## G29 — Skill injection in maker assignments
 
-- [ ] T29.1 Extend `SkillService` to read OKF `skills/*.md` with frontmatter
+- [x] T29.1 Extend `SkillService` to read OKF `skills/*.md` with frontmatter
       `capability_id`, `procedure` (steps), `precondition`, `expected_effect`.
-- [ ] T29.2 `injectContext` (or a new `injectSkillContext`) retrieves the matching skill
+- [x] T29.2 `injectContext` (or a new `injectSkillContext`) retrieves the matching skill
       for the finding's capability + includes the procedure steps in the assignment.
-- [ ] T29.3 The maker assignment packet includes: finding + skill procedure + retrieved
+- [x] T29.3 The maker assignment packet includes: finding + skill procedure + retrieved
       memory (procedural) + retrieved knowledge (semantic).
 
 Validation (G29):
@@ -32,11 +32,11 @@ Validation (G29):
 
 ## G30 — Active memory curator
 
-- [ ] T30.1 The memory_curator nested specialist calls `distillFromRun` (not the
+- [x] T30.1 The memory_curator nested specialist calls `distillFromRun` (not the
       proof-run-service inline call). The curator is the active distiller.
-- [ ] T30.2 The curator updates trust scores: verified claims get refreshed, contradicted
+- [x] T30.2 The curator updates trust scores: verified claims get refreshed, contradicted
       claims get demoted (G2 trust decay + contradiction).
-- [ ] T30.3 The curator writes to the right store (G8): procedural for rules, semantic
+- [x] T30.3 The curator writes to the right store (G8): procedural for rules, semantic
       for claims, episodic for run logs.
 
 Validation (G30):
@@ -45,12 +45,12 @@ Validation (G30):
 
 ## G31 — Specialised capabilities
 
-- [ ] T31.1 Seed the DB with specialised capabilities: TypeScript-fix, Python-fix,
+- [x] T31.1 Seed the DB with specialised capabilities: TypeScript-fix, Python-fix,
       Security-audit, Docs-update, Test-write — each with `allowed_actions:
       ['spawn_runtime_worker']` and status `candidate`.
-- [ ] T31.2 `planLoopRun` matches findings to capabilities by file type / keyword
+- [x] T31.2 `planLoopRun` matches findings to capabilities by file type / keyword
       (`.ts` → TypeScript-fix, `.py` → Python-fix, security-related → Security-audit).
-- [ ] T31.3 After runs, `measureCompetence` fills in per-capability competence. The
+- [x] T31.3 After runs, `measureCompetence` fills in per-capability competence. The
       planner assigns the best-matching specialist.
 
 Validation (G31):
@@ -59,12 +59,12 @@ Validation (G31):
 
 ## G32 — Meta-evolution loop
 
-- [ ] T32.1 `MetaEvolutionService`: periodically (every 10 runs or 1 hour) evaluates:
+- [x] T32.1 `MetaEvolutionService`: periodically (every 10 runs or 1 hour) evaluates:
       planner accuracy, rule accuracy, capability usage.
-- [ ] T32.2 Prune: dormant capabilities (0 runs in 30 days) → `deprecated`. Duplicate
+- [x] T32.2 Prune: dormant capabilities (0 runs in 30 days) → `deprecated`. Duplicate
       capabilities → flag for merge.
-- [ ] T32.3 Demote bad rules: distilled rules with ≥3 contradictions → trust × 0.3.
-- [ ] T32.4 Emit a `meta_evolution` event on the SSE stream with the evaluation report.
+- [x] T32.3 Demote bad rules: distilled rules with ≥3 contradictions → trust × 0.3.
+- [x] T32.4 Emit a `meta_evolution` event on the SSE stream with the evaluation report.
 
 Validation (G32):
 - After 10+ runs, the meta-evolution service reports planner accuracy, prunes dormant
@@ -72,11 +72,11 @@ Validation (G32):
 
 ## G33 — Adaptive planner
 
-- [ ] T33.1 `planLoopRun` uses per-runtime competence (G28) to pick the runtime per
+- [x] T33.1 `planLoopRun` uses per-runtime competence (G28) to pick the runtime per
       finding — not just the default heuristic.
-- [ ] T33.2 `planLoopRun` retrieves procedural rules (G12) and uses them to override
+- [x] T33.2 `planLoopRun` retrieves procedural rules (G12) and uses them to override
       runtime selection when a rule says "use runtime X for this type."
-- [ ] T33.3 The planner scores `(capability, runtime)` by
+- [x] T33.3 The planner scores `(capability, runtime)` by
       `success_rate × rule_alignment / p50_cost` — the market, now with memory.
 
 Validation (G33):
@@ -86,10 +86,10 @@ Validation (G33):
 
 ## G34 — Ship
 
-- [ ] T34.1 Run 5 sequential production proofs on the same finding type.
-- [ ] T34.2 Measure: success_rate improves, retry count decreases, cost decreases from
+- [x] T34.1 Run 5 sequential production proofs on the same finding type.
+- [x] T34.2 Measure: success_rate improves, retry count decreases, cost decreases from
       run 1 to run 5. The swarm is **measurably smarter** after 5 runs.
-- [ ] T34.3 OpenSpec closure: archive with evidence of improvement.
+- [x] T34.3 OpenSpec closure: archive with evidence of improvement.
 
 Validation (G34):
 - Run 1: success_rate=60%, retries=2, cost=$0.10.
