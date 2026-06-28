@@ -1,4 +1,5 @@
-import { useEffect,  Bot, Activity, XCircle, Clock } from 'lucide-react';
+import { useEffect } from 'react';
+import { Bot, Activity, XCircle, Clock } from 'lucide-react';
 import { useStore } from '../lib/store'
 import { api } from '../lib/api';
 
