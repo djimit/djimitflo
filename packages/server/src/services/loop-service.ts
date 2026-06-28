@@ -3104,8 +3104,16 @@ export class LoopService {
       tokenAlias.completion ?? tokenAlias.output ?? usage.output ??
       usage.completion,
     );
+    // Codex 0.133+ reports cached_input_tokens separately — these are reused
+    // context that doesn't incur additional cost. Subtract them from the total
+    // so the token budget gate isn't triggered by cached context.
+    const cachedInputTokens = Number(usage.cached_input_tokens ?? 0);
     const explicitTotal = Number(usage.total_tokens ?? usage.totalTokens);
-    const calculatedTotal = (Number.isFinite(promptTokens) ? promptTokens : 0) + (Number.isFinite(completionTokens) ? completionTokens : 0);
+    const calculatedTotal = Math.max(0,
+      (Number.isFinite(promptTokens) ? promptTokens : 0) +
+      (Number.isFinite(completionTokens) ? completionTokens : 0) -
+      (Number.isFinite(cachedInputTokens) ? cachedInputTokens : 0)
+    );
     const explicitTotalValue = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : calculatedTotal;
     const aliasTotal = Number(tokenAlias.total);
     const resolvedTotal = Number.isFinite(explicitTotalValue) && explicitTotalValue > 0 ? explicitTotalValue : aliasTotal;
