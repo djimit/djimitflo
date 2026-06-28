@@ -654,7 +654,7 @@ export class ProofRunService {
           // G8+G12: retrieve procedural rules (distilled from prior runs) + general context.
           // This closes the self-improvement loop: distilled rules from run N are
           // injected into run N+1's maker assignment.
-          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true, 'procedural' as any);
+          const swarmContext = await contextInjector.injectContext(`DjimFlo control-plane loop: ${finding}`, true);
           if (swarmContext) {
             fs.appendFileSync(assignmentFile, `\n\n${swarmContext}\n`, 'utf8');
             // G5: record the injected memory trust_scores on the maker lease so the
