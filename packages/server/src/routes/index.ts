@@ -94,6 +94,33 @@ export function createRoutes(
   // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
   router.use('/federation', requireAuth, createFederationRoutes(db, auth!));
 
+  // D2: workstation URLs — live ss -tlnp scan
+  router.get('/workstation/urls', requireAuth, (_req: any, res: any) => {
+    try {
+      const { execFileSync } = require('child_process');
+      const output = execFileSync('ss', ['-tlnp'], { encoding: 'utf8', timeout: 5000 });
+      const lines = output.trim().split('\n').slice(1); // skip header
+      const ports = lines.map((line: string) => {
+        const match = line.match(/\S+\s+\S+\s+\S+\s+([\d.]+):(\d+)\s+/);
+        const pidMatch = line.match(/pid=(\d+)/);
+        const usersMatch = line.match(/users:\(\("([^"]+)"/);
+        if (match) {
+          return {
+            address: match[1],
+            port: parseInt(match[2]),
+            pid: pidMatch ? parseInt(pidMatch[1]) : null,
+            process: usersMatch ? usersMatch[1] : 'unknown',
+            bind: match[1] === '0.0.0.0' || match[1] === '*' ? 'LAN' : 'Localhost',
+          };
+        }
+        return null;
+      }).filter(Boolean);
+      res.json({ ports });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to scan workstation ports' });
+    }
+  });
+
   // G22: operator intervention (pause/resume/inject/override)
   router.use('/intervention', requireAuth, createInterventionRoutes(db, auth!));
   router.use('/goals', requireAuth, createGoalRoutes(db, auth));

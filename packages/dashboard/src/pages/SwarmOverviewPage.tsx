@@ -56,6 +56,18 @@ function getLearningCategoryColor(category: string) {
 }
 
 export function SwarmOverviewPage() {
+  const [swarmStatus, setSwarmStatus] = useState<any>(null);
+  const [capabilities, setCapabilities] = useState<any[]>([]);
+
+  useEffect(() => {
+    Promise.all([
+      api.getSwarmStatus().catch(() => null),
+      api.getSwarmCapabilities().catch(() => ({ capabilities: [] })),
+    ]).then(([status, caps]: any) => {
+      setSwarmStatus(status);
+      setCapabilities(caps.capabilities || []);
+    });
+  }, []);
   const navigate = useNavigate();
   const { agents, tasks } = useStore();
   const [localAgents, setLocalAgents] = useState<Agent[]>([]);

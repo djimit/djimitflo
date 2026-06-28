@@ -42,7 +42,7 @@ export function RepositoriesPage() {
     }
   };
 
-  const [scanPath, setScanPath] = useState('/Users/dlandman/djimitflo');
+  const [scanPath, setScanPath] = useState('/home/djimit/workspace/djimitflo');
 
   return (
     <div className="p-8 space-y-6">

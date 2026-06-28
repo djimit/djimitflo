@@ -1,8 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { knowledgeBus } from '../services/knowledge-bus';
 
-export function createKnowledgeRoutes(auth: AuthMiddleware): Router {
+export function createKnowledgeRoutes(auth: AuthMiddleware, db?: Database): Router {
   const router = Router();
   const requireAuth = auth.requireAuth;
 
@@ -50,6 +51,22 @@ export function createKnowledgeRoutes(auth: AuthMiddleware): Router {
     });
     const ka = setInterval(() => { try { res.write(': keepalive\n\n'); } catch { clearInterval(ka); } }, 15_000);
     req.on('close', () => { unsub(); clearInterval(ka); });
+  });
+
+  // D12: GET /api/knowledge/events — recent knowledge bus claims
+  router.get('/events', requireAuth, (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const events = db?.prepare(`
+        SELECT id, subject_ref, predicate, confidence, status, created_from, metadata, created_at
+        FROM swarm_claims
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(limit) as any[];
+      res.json({ events: events || [] });
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

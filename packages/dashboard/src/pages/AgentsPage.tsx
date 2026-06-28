@@ -1,9 +1,17 @@
-import { Bot, Activity, XCircle, Clock } from 'lucide-react';
-import { useStore } from '../lib/store';
+import { useEffect,  Bot, Activity, XCircle, Clock } from 'lucide-react';
+import { useStore } from '../lib/store'
+import { api } from '../lib/api';
 
 export function AgentsPage() {
   const agents = useStore((state) => state.agents);
   const tasks = useStore((state) => state.tasks);
+
+  // D4: REST fallback — load agents via API when WebSocket store is empty.
+  useEffect(() => {
+    if (agents.length === 0) {
+      api.getAgents().then((res) => useStore.setState({ agents: res.agents })).catch(() => {});
+    }
+  }, []);
 
   return (
     <div className="p-8 space-y-6">

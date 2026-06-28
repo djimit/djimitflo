@@ -107,6 +107,26 @@ export function GoalsLoopsPage() {
     setGoalRisk('low');
   }
 
+  // D9: Operator intervention
+  async function pauseGoal(goalId: string) {
+    try { await api.request(`/intervention/${goalId}/pause`, { method: 'POST' }); refresh(); } catch (e) { console.error('Pause failed:', e); }
+  }
+  async function resumeGoal(goalId: string) {
+    try { await api.request(`/intervention/${goalId}/resume`, { method: 'POST' }); refresh(); } catch (e) { console.error('Resume failed:', e); }
+  }
+  async function injectKnowledge(goalId: string) {
+    const evidence = window.prompt('Enter knowledge to inject:');
+    if (!evidence) return;
+    try { await api.request(`/intervention/${goalId}/inject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence }) }); } catch (e) { console.error('Inject failed:', e); }
+  }
+  async function overrideGate(goalId: string) {
+    const gate = window.prompt('Gate name to override:');
+    if (!gate) return;
+    const decision = window.prompt('Decision (proceed/stop):') || 'proceed';
+    const reason = window.prompt('Reason:') || 'operator override';
+    try { await api.request(`/intervention/${goalId}/override`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate, decision, reason }) }); refresh(); } catch (e) { console.error('Override failed:', e); }
+  }
+
   async function splitFinding(findingId: string) {
     if (!selectedRun) return;
     const reason = window.prompt('Split reason');

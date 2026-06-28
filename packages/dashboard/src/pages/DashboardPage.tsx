@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Activity, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
+import { useEffect } from 'react';
 import { useStore, selectActiveTasks, selectCompletedTasks, selectFailedTasks } from '../lib/store';
+import { api } from '../lib/api';
 
 export function DashboardPage() {
   const tasks = useStore((state) => state.tasks);
@@ -12,6 +14,18 @@ export function DashboardPage() {
   const completedTasks = useStore(selectCompletedTasks);
   const failedTasks = useStore(selectFailedTasks);
   const queuedTasks = tasks.filter((t) => t.status === 'queued' || t.status === 'pending');
+
+  // D3: REST fallback — load initial data via API when WebSocket store is empty.
+  useEffect(() => {
+    if (tasks.length === 0 && agents.length === 0) {
+      Promise.all([api.getTasks(), api.getAgents()])
+        .then(([taskRes, agentRes]) => {
+          useStore.setState({ tasks: taskRes.tasks });
+          useStore.setState({ agents: agentRes.agents });
+        })
+        .catch(() => { /* best-effort */ });
+    }
+  }, []);
   const activeAgents = agents.filter((a) => a.status === 'active');
 
   // Calculate uptime

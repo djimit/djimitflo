@@ -113,7 +113,7 @@ export function Layout() {
             active={isActive('/usage')}
           />
           <NavLink
-            to="/workstation-urls"
+            to="/workstation-urls"  // economy+federation added below
             icon={<Network className="w-5 h-5" />}
             label="Workstation URLs"
             active={isActive('/workstation-urls')}

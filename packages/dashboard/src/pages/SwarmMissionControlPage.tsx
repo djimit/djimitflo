@@ -29,6 +29,18 @@ export function SwarmMissionControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [proofRuntime, setProofRuntime] = useState<'mock' | 'codex' | 'opencode'>('mock');
   const [expandedCapability, setExpandedCapability] = useState<string | null>(null);
+  const [learningCurve, setLearningCurve] = useState<any>(null);
+
+  // D12: Knowledge bus events
+  const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
+  useEffect(() => {
+    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(res.events || [])).catch(() => {});
+  }, []);
+
+  // D11: Learning curve
+  useEffect(() => {
+    api.request('/swarms/learning-curve').then(setLearningCurve).catch(() => {});
+  }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
   useEffect(() => {

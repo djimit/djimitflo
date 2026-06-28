@@ -24,6 +24,8 @@ import { ProofRunDetailPage } from './pages/ProofRunDetailPage';
 import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
 import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
+import { EconomyPage } from './pages/EconomyPage';
+import { FederationPage } from './pages/FederationPage';
 import { AgentCatalogPage } from './pages/AgentCatalogPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';

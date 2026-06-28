@@ -453,6 +453,16 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
+  // D11: GET /api/swarms/learning-curve — inter-run learning verification
+  router.get('/learning-curve', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const loopSvc = new LoopService(db); const curve = loopSvc.computeLearningCurve(20);
+      res.json(curve);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
     try {
       const summary = await proofRuns.create(req.body || {});

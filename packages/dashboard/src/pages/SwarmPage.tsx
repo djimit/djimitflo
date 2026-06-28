@@ -62,6 +62,18 @@ function AgentCard({ agent }: { agent: Agent }) {
 }
 
 export function SwarmPage() {
+  const [claims, setClaims] = useState<any[]>([]);
+  const [missionControl, setMissionControl] = useState<any>(null);
+
+  useEffect(() => {
+    Promise.all([
+      api.getSwarmClaims().catch(() => ({ claims: [] })),
+      api.getSwarmMissionControl().catch(() => null),
+    ]).then(([claimsRes, mc]: any) => {
+      setClaims(claimsRes.claims || []);
+      setMissionControl(mc);
+    });
+  }, []);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
