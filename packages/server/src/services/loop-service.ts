@@ -315,9 +315,9 @@ const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
 const LOW_CONTEXT_WORKER_PROFILE = {
   name: 'djimitflo-worker',
   scope: 'low-context',
-  max_tokens: 120_000,
-  max_tokens_per_worker: 60_000,
-  max_tokens_per_diff_line: 3_000,
+  max_tokens: 500_000,
+  max_tokens_per_worker: 300_000,
+  max_tokens_per_diff_line: 50_000,
 };
 
 const LOOP_CONTRACTS: LoopContract[] = [
