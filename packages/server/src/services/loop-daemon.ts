@@ -173,16 +173,17 @@ export class LoopDaemon {
   }
 
   /**
-   * Execute a single goal: decompose → start loop → certify → learn → persist.
-   * This is async and non-blocking — the tick continues to the next goal.
+   * Execute a single goal: decompose → start loop → continue (execute workers) → certify → learn.
+   * This is the FULLY AUTONOMOUS execution path — no manual intervention needed.
+   * The daemon discovers findings, creates leases, executes the maker+checker, runs
+   * deterministic checks, and certifies the result.
    */
   private async executeGoal(goal: QueueEntry): Promise<void> {
+    let runId: string | null = null;
     try {
-      // Decompose the goal if not already decomposed.
+      // 1. Decompose the goal if not already decomposed.
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
       if (currentStatus?.status === 'created') {
-        // G21: decompose into capability DAG (not predefined loops)
-        // G24: check resources before scheduling
         const canSchedule = this.scheduler.canSchedule(goal.metadata);
         if (!canSchedule.canSchedule) {
           swarmEventBus.emit('convergence', {
@@ -197,11 +198,25 @@ export class LoopDaemon {
         this.decomposer.decomposeGoalToDAG(goal.id);
       }
 
-      // Start the loop for this goal.
+      // 2. Start the loop (discovers findings, creates the loop_run).
       const run = this.loops.startDocDriftAndSmallFixLoop({
         goal_id: goal.id,
         sovereign: Boolean((goal.metadata as Record<string, unknown>).sovereign),
       });
+      runId = run.id;
+
+      // 3. Skip execution if no findings were discovered.
+      if (run.findings.length === 0) {
+        this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
+          .run('completed', new Date().toISOString(), goal.id);
+        swarmEventBus.emit('convergence', {
+          daemon: 'goal_completed',
+          goal_id: goal.id,
+          run_id: run.id,
+          reason: 'no findings — goal completed (nothing to fix)',
+        });
+        return;
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_started',
@@ -210,6 +225,70 @@ export class LoopDaemon {
         objective: goal.objective,
         active_goals: this.activeGoals.size,
       });
+
+      // 4. Continue the loop — creates maker+checker leases (prepared status).
+      const prepared = this.loops.continueLoopRun(run.id, {
+        runtime: 'codex',
+        max_assignments: 1,
+        max_maker_workers: 1,
+      });
+
+      // 5. Find the prepared maker lease and execute it.
+      const makerLease = prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      if (!makerLease) {
+        throw new Error('No prepared maker lease found after continueLoopRun');
+      }
+
+      // 6. Execute the maker (runs the runtime — codex/opencode/pi).
+      await this.loops.executeWorker(run.id, {
+        lease_id: makerLease.id,
+        timeout_ms: 300_000, // 5 min timeout for production goals
+        diff_max_lines: 200,
+        skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
+      });
+
+      // 7. Run deterministic checks (test, lint, type-check).
+      try {
+        const checks = this.loops.runDeterministicChecks(run.id, {
+          lease_id: makerLease.id,
+          timeout_ms: 120_000,
+        });
+
+        // 8. If checks fail, retry once (G3 feedback law).
+        if (checks.run.status === 'blocked') {
+          try {
+            const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
+            const retryMaker = retry.retry_maker;
+            await this.loops.executeWorker(run.id, {
+              lease_id: retryMaker.id,
+              timeout_ms: 300_000,
+              diff_max_lines: 200,
+              skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
+            });
+            this.loops.runDeterministicChecks(run.id, {
+              lease_id: retryMaker.id,
+              timeout_ms: 120_000,
+            });
+          } catch { /* best-effort retry */ }
+        }
+      } catch { /* best-effort: checks are not fatal for the daemon */ }
+
+      // 9. Certify the run (G3.4 convergence certificate).
+      const cert = this.loops.certifyLoopRun(run.id);
+
+      // 10. Update goal status.
+      const goalStatus = cert.certified ? 'completed' : 'failed';
+      this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
+        .run(goalStatus, new Date().toISOString(), goal.id);
+
+      swarmEventBus.emit('convergence', {
+        daemon: 'goal_completed',
+        goal_id: goal.id,
+        run_id: run.id,
+        certified: cert.certified,
+        missing: cert.missing,
+      });
+
     } catch (error) {
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
@@ -218,6 +297,7 @@ export class LoopDaemon {
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
         goal_id: goal.id,
+        run_id: runId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
