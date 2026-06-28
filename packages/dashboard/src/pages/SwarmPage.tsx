@@ -40,9 +40,9 @@ function AgentCard({ agent }: { agent: Agent }) {
     <div className="bg-background-secondary border border-border rounded-lg p-4">
       <div className="flex items-start justify-between mb-2">
         <div>
-          <h3 className="text-sm font-semibold text-content-primary">{agent.name}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{agent.name}</h3>
           {agent.agent_type && (
-            <span className="text-xs text-content-secondary">{agent.agent_type}</span>
+            <span className="text-xs text-foreground-secondary">{agent.agent_type}</span>
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -50,7 +50,7 @@ function AgentCard({ agent }: { agent: Agent }) {
           <span className={`text-xs font-medium capitalize ${color}`}>{agent.status}</span>
         </div>
       </div>
-      <div className="text-xs text-content-secondary space-y-1">
+      <div className="text-xs text-foreground-secondary space-y-1">
         {agent.machine_ip && <div>Machine: {agent.machine_ip}</div>}
         <div>Last seen: {lastSeen}</div>
         {typeof meta.active_tasks === 'number' && (
@@ -100,18 +100,18 @@ export function SwarmPage() {
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-content-primary flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <Activity className="w-6 h-6 text-accent" />
             Swarm
           </h1>
-          <p className="text-content-secondary mt-1">
+          <p className="text-foreground-secondary mt-1">
             {agents.length} agents — {counts.active} active, {counts.idle} idle
             {counts.error > 0 && `, ${counts.error} error`}
           </p>
         </div>
         <button
           onClick={load}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-content-secondary hover:bg-background-elevated transition-colors text-sm"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-foreground-secondary hover:bg-background-elevated transition-colors text-sm"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -127,7 +127,7 @@ export function SwarmPage() {
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               filter === f
                 ? 'bg-accent/10 text-accent border border-accent/20'
-                : 'text-content-secondary hover:bg-background-elevated border border-transparent'
+                : 'text-foreground-secondary hover:bg-background-elevated border border-transparent'
             }`}
           >
             {f === 'all' ? `All (${agents.length})` : f === 'active' ? `Active (${counts.active})` : `Idle (${counts.idle})`}
@@ -143,12 +143,12 @@ export function SwarmPage() {
 
       {loading && !agents.length ? (
         <div className="flex items-center justify-center h-32">
-          <RefreshCw className="w-6 h-6 animate-spin text-content-secondary" />
+          <RefreshCw className="w-6 h-6 animate-spin text-foreground-secondary" />
         </div>
       ) : displayed.length === 0 ? (
         <div className="bg-background-secondary rounded-lg p-8 text-center">
-          <Circle className="w-8 h-8 text-content-secondary mx-auto mb-2" />
-          <p className="text-content-secondary text-sm">No {filter !== 'all' ? filter : ''} agents found.</p>
+          <Circle className="w-8 h-8 text-foreground-secondary mx-auto mb-2" />
+          <p className="text-foreground-secondary text-sm">No {filter !== 'all' ? filter : ''} agents found.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
