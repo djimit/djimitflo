@@ -425,6 +425,57 @@ export class SwarmIntelligenceService {
     return competence;
   }
 
+  /**
+   * G28: Competence-per-runtime tracking — measure success_rate per (capability, runtime).
+   * This lets selectRuntime pick the runtime that historically works best for this capability.
+   * If codex fails 3x on TS but opencode succeeds, opencode gets the assignment.
+   */
+  measureCompetencePerRuntime(capabilityId: string): Record<string, {
+    n_runs: number; n_completed: number; success_rate: number; p50_cost: number;
+  }> {
+    const rows = this.db.prepare(
+      'SELECT runtime, status, metadata FROM worker_leases WHERE capability_id = ?'
+    ).all(capabilityId) as Array<{ runtime: string; status: string; metadata: string }>;
+
+    const byRuntime: Record<string, { n_runs: number; n_completed: number; success_rate: number; p50_cost: number; costs: number[] }> = {};
+    for (const r of rows) {
+      if (!byRuntime[r.runtime]) byRuntime[r.runtime] = { n_runs: 0, n_completed: 0, success_rate: 0, p50_cost: 0, costs: [] };
+      byRuntime[r.runtime].n_runs += 1;
+      if (r.status === 'completed') {
+        byRuntime[r.runtime].n_completed += 1;
+        try {
+          const m = JSON.parse(r.metadata || '{}') as Record<string, unknown>;
+          const usage = m.runtime_usage as Record<string, unknown> | undefined;
+          const total = Number(usage?.total_tokens) || 0;
+          if (total > 0) byRuntime[r.runtime].costs.push(total);
+        } catch { /* empty */ }
+      }
+    }
+
+    const result: Record<string, { n_runs: number; n_completed: number; success_rate: number; p50_cost: number }> = {};
+    for (const [runtime, data] of Object.entries(byRuntime)) {
+      data.success_rate = data.n_runs > 0 ? data.n_completed / data.n_runs : 0;
+      data.costs.sort((a, b) => a - b);
+      data.p50_cost = data.costs.length > 0 ? data.costs[Math.floor(data.costs.length * 0.5)] : 0;
+      result[runtime] = {
+        n_runs: data.n_runs,
+        n_completed: data.n_completed,
+        success_rate: data.success_rate,
+        p50_cost: data.p50_cost,
+      };
+    }
+
+    // G28: store per-runtime competence in cost_model_json
+    try {
+      const cap = this.getCapability(capabilityId);
+      const costModel = { ...(cap.cost_model as Record<string, unknown>), runtime_competence: result };
+      this.db.prepare('UPDATE swarm_capabilities SET cost_model_json = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(costModel), new Date().toISOString(), capabilityId);
+    } catch { /* best-effort */ }
+
+    return result;
+  }
+
   // G1: Evidence-based auto-promotion — a candidate skill is promoted to validated only
   // after >=minSuccesses completed leases with evidence AND success_rate >= minSuccessRate
   // AND eval_score >= threshold. This is "skills promoted from evidence, not hand-authored."
