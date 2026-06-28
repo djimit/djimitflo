@@ -4793,7 +4793,7 @@ export class LoopService {
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
       '- Run relevant deterministic checks before handing off to checker.',
-      '- Checker approval is required before completion.',
+      '- Checker approval is provided externally — do not spawn a checker sub-agent.',
       '',
       // Nested-spawn control block (P1). Only injected when this lease is itself
       // permitted to spawn sub-agents (operator-armed, depth within budget). This
