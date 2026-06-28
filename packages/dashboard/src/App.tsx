@@ -94,6 +94,8 @@ export function App() {
           <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
           <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
+          <Route path="economy" element={<EconomyPage />} />
+          <Route path="federation" element={<FederationPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
