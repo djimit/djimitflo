@@ -4800,7 +4800,7 @@ export class LoopService {
       '',
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
-      '- Run relevant deterministic checks before handing off to checker.',
+      '- Do not run npm test or vitest — the checker verifies externally after your work is done.',
       '- Checker approval is provided externally — do not spawn a checker sub-agent.',
       '',
       // Nested-spawn control block (P1). Only injected when this lease is itself
