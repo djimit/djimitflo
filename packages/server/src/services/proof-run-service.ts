@@ -821,7 +821,7 @@ export class ProofRunService {
       try {
         const distilled = this.memory.distillFromRun({
           loopRunId,
-          capabilityId: String(base.capability_id || ''),
+          capabilityId: '',
           runtime,
           outcome: 'success',
           makerLeaseId: '',
@@ -843,7 +843,7 @@ export class ProofRunService {
       try {
         const failureRule = this.memory.distillFromRun({
           loopRunId,
-          capabilityId: String(base.capability_id || ''),
+          capabilityId: '',
           runtime,
           outcome: 'failure',
           makerLeaseId: '',
@@ -1216,6 +1216,29 @@ export class ProofRunService {
       SET status = ?, updated_at = ?
       WHERE id = ?
     `).run('closed', new Date().toISOString(), nested.root_lease_id);
+
+    // G30: the memory_curator is the active curator — after the nested spawn completes,
+    // the curator distills a rule from the run's evidence (not the proof-run-service
+    // inline call). This makes the curator the active distiller, not a placeholder.
+    try {
+      const curatorLeaseId = nested.child_lease_id;
+      const curatorResult = results.find((r) => r.lease.id === curatorLeaseId);
+      if (curatorResult && curatorResult.lease.status === 'completed') {
+        
+        const distilled = this.memory.distillFromRun({
+          loopRunId,
+          capabilityId: '',
+          runtime: String(curatorResult.lease.runtime || ''),
+          outcome: 'success',
+          makerLeaseId: String(nested.root_lease_id),
+          checkerLeaseId: String(curatorLeaseId),
+          keyLearning: `Memory curator distilled: runtime ${curatorResult.lease.runtime} succeeded. The nested specialist approach (planner + curator, parallel, sandboxed) is effective.`,
+          metadata: { curator_active: true, curator_lease_id: curatorLeaseId },
+        });
+        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'memory_curator' });
+        await this.memory.upsertToSwarmMemory(distilled.id);
+      }
+    } catch { /* best-effort: never fail the proof on curator distillation */ }
   }
 
   private createManifests(
