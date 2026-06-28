@@ -31,11 +31,12 @@ Djimitflo is a TypeScript monorepo with three packages:
 
 | Integration | Status | Details |
 |-------------|--------|---------|
-| **OpenCode** | Partially verified | CLI flags and JSON output verified against v1.15.4 |
-| **Codex** | Not implemented | Type placeholder exists, no executor implementation |
-| **Ruflo** | Conceptually mapped | No runtime dependency, conceptual inspiration only |
+| **OpenCode** | Contract verified | CLI flags and JSON output verified against v1.15.4; permission bypass guardrails present; long-running policy-engine E2E still unverified |
+| **Codex** | Implemented, unverified | Executor exists; CLI contract anticipated but not yet verified against live binary |
+| **Pi** | Contract verified | CLI contract verified against Pi 0.79.8; zero-egress sovereign path supported; long-running policy-engine E2E still unverified |
+| **Ruflo** | Not implemented | Conceptual inspiration only, no runtime dependency |
 
-See [docs/integrations.md](docs/integrations.md) for full compatibility details.
+See [docs/integrations.md](docs/integrations.md) and [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for full compatibility details and the four-label status system.
 
 ## Known Limitations
 
@@ -43,6 +44,14 @@ See [docs/integrations.md](docs/integrations.md) for full compatibility details.
 - OpenCode MCP integration during execution not yet supported
 - OpenCode agent selection passed through but not validated against known agents
 - Codex executor requires CLI contract capture before implementation
+- Pi has no native permission prompt; Djimitflo policy engine is the sole approval boundary
+- Refresh tokens, password reset, and user management UI remain product gaps
+
+## Phase 6: Agentic Control Loop Fleet
+
+Phase 6 is approximately 95% complete, with loop orchestration, gate verification, worker leases, worktree isolation, and dashboard pages (`GoalsLoopsPage`, `FleetCockpitPage`) implemented. Remaining work is validation hardening and documentation.
+
+See [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for the current-state reconciliation, integration compatibility map, and Phase 7 direction.
 
 ## Quick Start
 
