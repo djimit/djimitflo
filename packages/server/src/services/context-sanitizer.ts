@@ -7,17 +7,19 @@ import { swarmEventBus } from './swarm-event-bus';
  * adversarial instruction patterns, strips them, and flags suspicious context.
  */
 
+// G25: Conservative injection patterns — only match clearly adversarial instructions
+// that would NOT appear in legitimate technical documentation. Patterns like "system:"
+// or "execute:" are too common in technical docs and would cause false positives.
 const INJECTION_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /ignore (all )?(previous|prior) instructions/i, label: 'ignore_instructions' },
-  { pattern: /you are now (a |an )?\w+/i, label: 'identity_override' },
-  { pattern: /\bsystem:\s/i, label: 'system_prefix' },
-  { pattern: /\bexecute:\s/i, label: 'execute_prefix' },
-  { pattern: /\bdelete all\b/i, label: 'delete_all' },
-  { pattern: /\bdisregard (all )?(previous|prior)/i, label: 'disregard_previous' },
-  { pattern: /\bact as (if you are|a |an )/i, label: 'act_as' },
-  { pattern: /\boverride (your |the )?instructions/i, label: 'override_instructions' },
-  { pattern: /\bforget (everything|all|previous)/i, label: 'forget_everything' },
-  { pattern: /\bnew (instructions|directive):/i, label: 'new_instructions' },
+  { pattern: /disregard (all )?(previous|prior) instructions/i, label: 'disregard_instructions' },
+  { pattern: /you are now (a |an )?(malicious|evil|harmful|destructive)\s*\w+/i, label: 'identity_override' },
+  { pattern: /act as if you are (a |an )?(malicious|evil|harmful|destructive)/i, label: 'act_as_malicious' },
+  { pattern: /override (your |the )?(system |safety )?instructions/i, label: 'override_instructions' },
+  { pattern: /forget (everything|all previous|your instructions)/i, label: 'forget_instructions' },
+  { pattern: /new (instructions|directive):\s*(ignore|disregard|override)/i, label: 'new_instructions_override' },
+  { pattern: /delete all (files|data|records|repositories)/i, label: 'delete_all_files' },
+  { pattern: /\bexecute:\s*(rm |del |delete |format )/i, label: 'execute_destructive' },
 ];
 
 export interface SanitizationResult {
