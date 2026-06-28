@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { DollarSign } from 'lucide-react';
 import { api } from '../lib/api';
 
 interface CapabilityEconomy {
@@ -30,7 +30,7 @@ export function EconomyPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.request('/swarms/economy').then(setData).catch(() => {}).finally(() => setLoading(false));
+    api.request('/swarms/economy').then((d) => setData(d as { capabilities: CapabilityEconomy[]; recent_runs: RunEconomy[]; summary: any })).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div className="p-8 text-foreground-tertiary">Loading economy data...</div>;

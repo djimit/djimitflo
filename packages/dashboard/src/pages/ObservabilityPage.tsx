@@ -81,6 +81,23 @@ export function ObservabilityPage() {
         </div>
       </div>
 
+      <div className="bg-background-secondary border border-border rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {sseEvents.length === 0 ? (
+            <div className="text-center py-8 text-foreground-muted">Waiting for events...</div>
+          ) : (
+            sseEvents.slice().reverse().map((event, i) => (
+              <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
+                <span className="text-xs text-foreground-muted font-mono">{event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : ''}</span>
+                <span className="font-mono font-medium text-accent-secondary">{event.type || 'event'}</span>
+                <span className="text-foreground-secondary flex-1 truncate">{JSON.stringify(event.data || event).slice(0, 200)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {metrics.recent_errors.length > 0 && (
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -102,6 +119,11 @@ export function ObservabilityPage() {
       )}
     </div>
   );
+}
+
+function formatDuration(ms: number): string {
+  if (!ms || ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function MetricCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
@@ -150,23 +172,6 @@ function DecisionRow({ label, count, color }: { label: string; count: number; co
     <div className="flex justify-between items-center">
       <span className="text-sm text-foreground-secondary">{label}</span>
       <span className={`text-sm font-medium ${colors[color] || ''}`}>{count}</span>
-      {/* D10: SSE Live Event Feed */}
-      <div className="bg-background-secondary border border-border rounded-lg p-6">
-        <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {sseEvents.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">Waiting for events...</div>
-          ) : (
-            sseEvents.slice().reverse().map((event, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
-                <span className="text-xs text-foreground-muted font-mono">{event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : ''}</span>
-                <span className="font-mono font-medium text-accent-secondary">{event.type || 'event'}</span>
-                <span className="text-foreground-secondary flex-1 truncate">{JSON.stringify(event.data || event).slice(0, 200)}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }
