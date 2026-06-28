@@ -81,7 +81,7 @@ The repository contains substantial Phase 6 implementation that is underrepresen
 | Integration | Four-label Status | CLI Verified | JSON Output | Structured Events | Permission Bypass |
 |------------|------------------|-------------|-------------|-------------------|-------------------|
 | **OpenCode** | contract verified | Yes (1.15.4) | Yes (NDJSON) | Yes | Yes (`--dangerously-skip-permissions`) |
-| **Codex** | implemented, unverified | No (contract anticipated) | Yes (NDJSON, same format as OpenCode) | Yes (`step-start/tool/text/step-finish`) | Yes (`CODEX_SKIP_PERMISSIONS` env var) |
+| **Codex** | implemented, unverified | No (contract anticipated) | Anticipated (NDJSON, same format as OpenCode) | Anticipated (`step-start/tool/text/step-finish`) | Yes (`CODEX_SKIP_PERMISSIONS` env var) |
 | **Pi** | contract verified | Yes (0.79.8, `--mode json`) | Yes (NDJSON) | Yes (`session/agent_*/turn_*/message_*/tool_execution_*`) | N/A — Pi has no permission popups; Djimitflo policy engine is the sole boundary; restrict via `--tools` |
 | **Ruflo** | not implemented | N/A | N/A | N/A | N/A |
 
@@ -229,4 +229,4 @@ Move Djimitflo beyond a local dashboard into enterprise-grade control-plane terr
 
 ---
 
-*All claims above are tied to file paths and documentation present in the repository as of 2026-06-28. No secrets, tokens, local absolute paths, or personal credentials are introduced by this document.*
+*All claims above are tied to file paths and documentation present in the repository as of 2026-06-28. No secrets, tokens, local absolute paths, or personal credentials are introduced by this document. Pre-existing code issues (e.g., hardcoded path at lines 121, 208) are documented for awareness only.*
