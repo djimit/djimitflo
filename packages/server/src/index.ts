@@ -25,6 +25,7 @@ import { SwarmStatusService } from './services/swarm-status-service';
 import { LoopDaemon } from './services/loop-daemon';
 import { NegotiationCoordinator } from './services/negotiation-coordinator';
 import { CapabilityAcquisitionService } from './services/capability-acquisition';
+import { MetaEvolutionService } from './services/meta-evolution-service';
 import { NestedSpawnService } from './services/nested-spawn-service';
 import { SwarmIntelligenceService } from './services/swarm-intelligence-service';
 
@@ -102,6 +103,15 @@ async function main() {
     console.log('🧠 Capability acquisition service started (autonomous capability growth).');
   } catch (error) {
     console.warn('⚠️  Capability acquisition failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // G32: start the meta-evolution service (periodic self-evaluation + pruning).
+  try {
+    const metaEvolution = new MetaEvolutionService(db, intelligence);
+    metaEvolution.start();
+    console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
+  } catch (error) {
+    console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // G16: start the continuous operation daemon (goal queue with priority scheduling).

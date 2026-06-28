@@ -227,8 +227,9 @@ export class LoopDaemon {
       });
 
       // 4. Continue the loop — creates maker+checker leases (prepared status).
+      // G28+G33: the planner selects the runtime per finding based on per-runtime
+      // competence (not hardcoded 'codex'). The plan is produced inside continueLoopRun.
       const prepared = this.loops.continueLoopRun(run.id, {
-        runtime: 'codex',
         max_assignments: 1,
         max_maker_workers: 1,
       });

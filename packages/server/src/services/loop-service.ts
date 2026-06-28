@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
+import { SkillService } from './skill-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -457,6 +458,7 @@ export class LoopService {
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
+  private skills: SkillService;
   private intelligence: SwarmIntelligenceService;
   /**
    * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
@@ -477,6 +479,7 @@ export class LoopService {
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
     this.intelligence = new SwarmIntelligenceService(db);
+    this.skills = new SkillService(db);
     // G9: inject the fleet concurrency advisor (avoids circular import with SwarmStatusService)
     this.concurrencyAdvisor = concurrencyAdvisor ?? null;
   }
@@ -1099,11 +1102,10 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    // G3.2: use the planner to select by competence (the market) when no explicit
-    // capabilityId is set. When capabilityId IS set (e.g., in the proof flow), skip
-    // the planner and use the explicit runtime — the planner is the fallback, not
-    // the override, for explicitly-specified capabilities.
-    const plan = input.capabilityId ? null : this.planLoopRun(id);
+    // G3.2: always run the planner to get per-finding runtime selection (G28/G33).
+    // When capabilityId is explicitly set, override the planner's capability but
+    // still use the planner's runtime (which is per-runtime-competence-adaptive).
+    const plan = this.planLoopRun(id);
 
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
@@ -2813,6 +2815,75 @@ export class LoopService {
    * G13: Compute the efficiency metric: verified_artifacts / dollar.
    * A verified artifact = a completed maker lease with a passed checker.
    */
+  /**
+   * G34/H: Compute the learning curve — how has the swarm's performance changed
+   * over recent runs? This is the inter-run learning verification: can the system
+   * prove it's smarter after N runs?
+   */
+  computeLearningCurve(limit: number = 10): {
+    runs: Array<{ run_id: string; created_at: string; success: boolean; retries: number; tokens: number; dollars: number }>;
+    trend: { success_rate_improving: boolean; cost_decreasing: boolean; retries_decreasing: boolean };
+    first_vs_last: { first_success_rate: number; last_success_rate: number; first_cost: number; last_cost: number };
+  } {
+    const runs = this.listLoopRuns().slice(0, limit).reverse(); // oldest first
+    const data = runs.map(run => {
+      const leases = this.listWorkerLeases(run.id);
+      const makers = leases.filter(l => l.role === 'maker');
+      const retries = makers.filter(l => {
+        const m = l.metadata as Record<string, unknown>;
+        return m.retry_root_maker_lease_id !== undefined;
+      }).length;
+      const tokens = makers.reduce((sum, l) => {
+        const usage = l.metadata.runtime_usage as { total_tokens?: number } | undefined;
+        return sum + (usage?.total_tokens || 0);
+      }, 0);
+      const dollars = this.computeDollarsSpent(run.id);
+      const cert = this.certifyLoopRun(run.id);
+      return {
+        run_id: run.id,
+        created_at: run.created_at,
+        success: cert.certified,
+        retries,
+        tokens,
+        dollars,
+      };
+    });
+
+    if (data.length < 2) {
+      return {
+        runs: data,
+        trend: { success_rate_improving: false, cost_decreasing: false, retries_decreasing: false },
+        first_vs_last: { first_success_rate: 0, last_success_rate: 0, first_cost: 0, last_cost: 0 },
+      };
+    }
+
+    
+    
+    const firstHalf = data.slice(0, Math.floor(data.length / 2));
+    const secondHalf = data.slice(Math.floor(data.length / 2));
+    const firstSR = firstHalf.filter(d => d.success).length / firstHalf.length;
+    const lastSR = secondHalf.filter(d => d.success).length / secondHalf.length;
+    const firstCost = firstHalf.reduce((s, d) => s + d.dollars, 0) / firstHalf.length;
+    const lastCost = secondHalf.reduce((s, d) => s + d.dollars, 0) / secondHalf.length;
+    const firstRetries = firstHalf.reduce((s, d) => s + d.retries, 0) / firstHalf.length;
+    const lastRetries = secondHalf.reduce((s, d) => s + d.retries, 0) / secondHalf.length;
+
+    return {
+      runs: data,
+      trend: {
+        success_rate_improving: lastSR > firstSR,
+        cost_decreasing: lastCost < firstCost,
+        retries_decreasing: lastRetries < firstRetries,
+      },
+      first_vs_last: {
+        first_success_rate: firstSR,
+        last_success_rate: lastSR,
+        first_cost: firstCost,
+        last_cost: lastCost,
+      },
+    };
+  }
+
   computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number | null } {
     const leases = this.listWorkerLeases(runId);
     const completedMakers = leases.filter((l) => l.role === 'maker' && l.status === 'completed').length;
@@ -4710,6 +4781,12 @@ export class LoopService {
       '## Suggested Fix',
       '',
       finding.suggested_fix,
+      '',
+      '## Skill Procedure',
+      '',
+      // G29: inject the matching skill procedure so the maker follows a procedure,
+      // not just a finding description. The skill provides step-by-step guidance.
+      this.skills.getSkillForFinding(finding.message, finding.file) || '(No matching skill — improvise based on the finding and rules.)',
       '',
       '## Rules',
       '',
