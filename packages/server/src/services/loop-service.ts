@@ -1206,9 +1206,16 @@ export class LoopService {
     const run = this.getLoopRun(id);
     const caps = this.intelligence.listCapabilities()
       .filter((c) => c.status === 'validated' || c.status === 'candidate');
-    // Match: capabilities whose allowed_actions include 'spawn_runtime_worker' can handle
-    // maker-type findings. Refine as more capability types emerge (G1.5).
-    const matching = caps.filter((c) => c.allowed_actions.includes('spawn_runtime_worker'));
+    // G31: match findings to specialised capabilities by file type / keyword.
+    // If no specialised capabilities match, fall back to generic spawn_runtime_worker.
+    const generic = caps.filter((c) => c.allowed_actions.includes('spawn_runtime_worker'));
+    // Try specialised matching first: TypeScript-fix, Python-fix, Security-audit, etc.
+    const specialised = generic.filter((c) => {
+      const meta = c.metadata as Record<string, unknown> | undefined;
+      const specialisation = meta?.specialisation as string | undefined;
+      return specialisation && specialisation !== 'generic';
+    });
+    const matching = specialised.length > 0 ? specialised : generic;
     let best: { id: string; metadata: Record<string, unknown>; allowed_actions: string[]; status: string } | null = null;
     let bestScore = -1;
     for (const c of matching) {

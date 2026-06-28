@@ -140,6 +140,51 @@ export class SkillService {
     fs.writeFileSync(fullPath, content, 'utf8');
   }
 
+  /**
+   * G29: Get the skill procedure for a capability. Reads the OKF skills/*.md file
+   * that matches the capability, extracts the procedure steps from the markdown body,
+   * and returns them as a formatted string for injection into the maker assignment.
+   */
+  getSkillProcedure(capabilityIdOrName: string): string | null {
+    try {
+      const files = fs.readdirSync(this.skillsDir).filter(f => f.endsWith('.md'));
+      for (const file of files) {
+        const content = fs.readFileSync(path.join(this.skillsDir, file), 'utf-8');
+        if (content.toLowerCase().includes(capabilityIdOrName.toLowerCase()) || file.toLowerCase().includes(capabilityIdOrName.toLowerCase().replace(/[^a-z0-9]/gi, '-'))) {
+          // Extract the body (after frontmatter)
+          const bodyStart = content.indexOf('---', 3);
+          const body = bodyStart > 0 ? content.slice(bodyStart + 3).trim() : content;
+          // Return the first 500 chars as the procedure
+          return body.slice(0, 500);
+        }
+      }
+    } catch { /* best-effort */ }
+    return null;
+  }
+
+  /**
+   * G29: Get skill procedure for a finding based on file type / keywords.
+   */
+  getSkillForFinding(findingTitle: string, filePath: string): string | null {
+    const ext = path.extname(filePath || '').toLowerCase();
+    const skillMap: Record<string, string> = {
+      '.ts': 'typescript', '.tsx': 'typescript',
+      '.py': 'python',
+      '.md': 'documentation',
+      '.rs': 'rust',
+    };
+    const skillName = skillMap[ext] || '';
+    if (skillName) {
+      const proc = this.getSkillProcedure(skillName);
+      if (proc) return proc;
+    }
+    // Try by finding title keywords
+    if (/test|spec/i.test(findingTitle)) return this.getSkillProcedure('test');
+    if (/security|auth|vulnerab/i.test(findingTitle)) return this.getSkillProcedure('security');
+    if (/doc|readme|comment/i.test(findingTitle)) return this.getSkillProcedure('documentation');
+    return null;
+  }
+
   async push(agentId: string, skillPath: string, method: 'telegram' | 'ssh' = 'ssh'): Promise<{ ok: boolean; message: string }> {
     const slug = skillPath.replace(/^skills\//, '');
     const fullPath = path.join(this.skillsDir, `${slug}.md`);
