@@ -27,22 +27,27 @@ Djimitflo is a TypeScript monorepo with three packages:
 - **`@djimitflo/server`** — Express + SQLite backend with WebSocket support
 - **`@djimitflo/dashboard`** — React + Vite + Tailwind frontend
 
+## Phase 6 — Agentic Control Loop Fleet
+
+Phase 6 introduces controlled agentic execution loops with policy gates, evidence capture, worker leases, worktree isolation, checker roles, security gates, and fleet-level observability. The core loop service, goals/loops API, and dashboard pages (`GoalsLoopsPage`, `FleetCockpitPage`) are substantially implemented. See [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for the full capability map and release checklist.
+
 ## Integration Compatibility
 
 | Integration | Status | Details |
 |-------------|--------|---------|
-| **OpenCode** | Partially verified | CLI flags and JSON output verified against v1.15.4 |
-| **Codex** | Not implemented | Type placeholder exists, no executor implementation |
-| **Ruflo** | Conceptually mapped | No runtime dependency, conceptual inspiration only |
+| **OpenCode** | contract verified | CLI flags and JSON output verified against v1.15.4; policy-engine E2E still requires verification |
+| **Codex** | implemented, unverified | Executor class exists; live CLI contract capture pending |
+| **Pi** | contract verified | CLI contract verified against Pi 0.79.8; sovereign/Ollama path verified; policy-engine E2E still requires verification |
+| **Ruflo** | not implemented | Conceptual inspiration only; no runtime dependency |
 
-See [docs/integrations.md](docs/integrations.md) for full compatibility details.
+See [docs/integrations.md](docs/integrations.md) for full compatibility details and [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for the integration capability matrix.
 
 ## Known Limitations
 
 - OpenCode session continuity (`--continue`, `--session`) not yet supported
 - OpenCode MCP integration during execution not yet supported
 - OpenCode agent selection passed through but not validated against known agents
-- Codex executor requires CLI contract capture before implementation
+- Codex executor requires live CLI contract capture before policy-engine E2E verification
 
 ## Quick Start
 
@@ -311,6 +316,18 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - [x] Backup & restore
 - [x] Export & reporting
 
+### Phase 6: Agentic Control Loop Fleet (~95% COMPLETE)
+- [x] Loop orchestration engine (goal creation, lifecycle, budget enforcement, worktree isolation)
+- [x] Goals and loops API routes with ownership and auth gating
+- [x] Verification gates (deterministic, checker, security, human)
+- [x] Worker lease system (maker, checker, security_checker, memory_curator, governance_guard, planner)
+- [x] GoalsLoopsPage and FleetCockpitPage dashboards
+- [ ] E2E goal-to-loop-to-complete test
+- [ ] Multi-worker concurrency stress test
+- [ ] Git conflict resolution test
+- [ ] Dashboard load and WebSocket resilience tests
+- [ ] API and user documentation
+
 ## Technology Stack
 
 ### Backend
@@ -345,6 +362,6 @@ DjimIT Consulting
 
 ---
 
-**Status**: Phase 5.7 Complete (Production Readiness Hardening)
-**Version**: 0.5.8
-**Last Updated**: May 2026
+**Status**: Phase 5.7 Complete (Production Readiness Hardening); Phase 6 Agentic Control Loop Fleet ~95% implemented  
+**Version**: 0.5.8  
+**Last Updated**: June 2026
