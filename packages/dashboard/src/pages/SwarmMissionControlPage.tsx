@@ -449,6 +449,73 @@ export function SwarmMissionControlPage() {
           {!mission?.next_safe_actions?.length && <p className="text-sm text-foreground-tertiary">No action guidance available.</p>}
         </div>
       </section>
+
+      {learningCurve && learningCurve.runs && learningCurve.runs.length > 0 && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Learning Curve ({learningCurve.runs.length} runs)</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="p-4 bg-background-elevated rounded-lg border border-border">
+              <div className="text-sm text-foreground-tertiary mb-1">Success Rate</div>
+              <div className="text-xl font-bold text-foreground">{(learningCurve.first_vs_last?.first_success_rate * 100).toFixed(0)}% → {(learningCurve.first_vs_last?.last_success_rate * 100).toFixed(0)}%</div>
+              <div className={`text-xs mt-1 ${learningCurve.trend?.success_rate_improving ? 'text-status-active' : 'text-status-error'}`}>
+                {learningCurve.trend?.success_rate_improving ? '↗ Improving' : '↘ Not improving'}
+              </div>
+            </div>
+            <div className="p-4 bg-background-elevated rounded-lg border border-border">
+              <div className="text-sm text-foreground-tertiary mb-1">Cost ($)</div>
+              <div className="text-xl font-bold text-foreground">${(learningCurve.first_vs_last?.first_cost || 0).toFixed(4)} → ${(learningCurve.first_vs_last?.last_cost || 0).toFixed(4)}</div>
+              <div className={`text-xs mt-1 ${learningCurve.trend?.cost_decreasing ? 'text-status-active' : 'text-status-error'}`}>
+                {learningCurve.trend?.cost_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
+              </div>
+            </div>
+            <div className="p-4 bg-background-elevated rounded-lg border border-border">
+              <div className="text-sm text-foreground-tertiary mb-1">Retries</div>
+              <div className={`text-xs mt-1 ${learningCurve.trend?.retries_decreasing ? 'text-status-active' : 'text-status-error'}`}>
+                {learningCurve.trend?.retries_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-foreground-tertiary">
+                  <th className="py-2 pr-4">Run</th>
+                  <th className="py-2 pr-4">Date</th>
+                  <th className="py-2 pr-4">Success</th>
+                  <th className="py-2 pr-4">Retries</th>
+                  <th className="py-2 pr-4">$ Spent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {learningCurve.runs.slice(-10).map((run: any) => (
+                  <tr key={run.run_id} className="border-b border-border/60">
+                    <td className="py-2 pr-4 font-mono text-xs">{run.run_id?.slice(0, 8)}</td>
+                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{new Date(run.created_at).toLocaleDateString()}</td>
+                    <td className="py-2 pr-4"><span className={run.success ? 'text-status-active' : 'text-status-error'}>{run.success ? '✓' : '✗'}</span></td>
+                    <td className="py-2 pr-4">{run.retries}</td>
+                    <td className="py-2 pr-4">${run.dollars?.toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {knowledgeEvents.length > 0 && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Knowledge Bus Events ({knowledgeEvents.length})</h2>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {knowledgeEvents.map((event: any) => (
+              <div key={event.id} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
+                <span className="font-mono text-xs text-accent-secondary">{event.predicate}</span>
+                <span className="text-foreground-secondary flex-1 truncate">{event.subject_ref}</span>
+                <span className="text-xs text-foreground-muted">{new Date(event.created_at).toLocaleTimeString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -821,73 +888,6 @@ function FieldList({ label, values }: { label: string; values: string[] }) {
       <div className="mt-0.5 flex flex-wrap gap-1">
         {values.map((value) => <span key={value} className="rounded border border-border px-1.5 py-0.5 text-foreground-secondary">{value}</span>)}
       </div>
-      {/* D11: Learning Curve */}
-      {learningCurve && learningCurve.runs && learningCurve.runs.length > 0 && (
-        <div className="bg-background-secondary border border-border rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Learning Curve ({learningCurve.runs.length} runs)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Success Rate</div>
-              <div className="text-xl font-bold text-foreground">{(learningCurve.first_vs_last?.first_success_rate * 100).toFixed(0)}% → {(learningCurve.first_vs_last?.last_success_rate * 100).toFixed(0)}%</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.success_rate_improving ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.success_rate_improving ? '↗ Improving' : '↘ Not improving'}
-              </div>
-            </div>
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Cost ($)</div>
-              <div className="text-xl font-bold text-foreground">${(learningCurve.first_vs_last?.first_cost || 0).toFixed(4)} → ${(learningCurve.first_vs_last?.last_cost || 0).toFixed(4)}</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.cost_decreasing ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.cost_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
-              </div>
-            </div>
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Retries</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.retries_decreasing ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.retries_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
-              </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-foreground-tertiary">
-                  <th className="py-2 pr-4">Run</th>
-                  <th className="py-2 pr-4">Date</th>
-                  <th className="py-2 pr-4">Success</th>
-                  <th className="py-2 pr-4">Retries</th>
-                  <th className="py-2 pr-4">$ Spent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {learningCurve.runs.slice(-10).map((run: any) => (
-                  <tr key={run.run_id} className="border-b border-border/60">
-                    <td className="py-2 pr-4 font-mono text-xs">{run.run_id?.slice(0, 8)}</td>
-                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{new Date(run.created_at).toLocaleDateString()}</td>
-                    <td className="py-2 pr-4"><span className={run.success ? 'text-status-active' : 'text-status-error'}>{run.success ? '✓' : '✗'}</span></td>
-                    <td className="py-2 pr-4">{run.retries}</td>
-                    <td className="py-2 pr-4">${run.dollars?.toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      {/* D12: Knowledge Bus Events */}
-      {knowledgeEvents.length > 0 && (
-        <div className="bg-background-secondary border border-border rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Knowledge Bus Events ({knowledgeEvents.length})</h2>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {knowledgeEvents.map((event: any) => (
-              <div key={event.id} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
-                <span className="font-mono text-xs text-accent-secondary">{event.predicate}</span>
-                <span className="text-foreground-secondary flex-1 truncate">{event.subject_ref}</span>
-                <span className="text-xs text-foreground-muted">{new Date(event.created_at).toLocaleTimeString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
