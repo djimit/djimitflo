@@ -157,6 +157,44 @@ export function SwarmPage() {
           ))}
         </div>
       )}
+      {/* D6: Claims + Mission Control */}
+      {claims.length > 0 && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Claim Ledger ({claims.length})</h2>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {claims.slice(0, 20).map((claim: any) => (
+              <div key={claim.id} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
+                <span className={`px-2 py-0.5 rounded-full text-xs ${claim.status === 'supported' ? 'bg-status-active/10 text-status-active' : claim.status === 'contradicted' ? 'bg-status-error/10 text-status-error' : 'bg-status-paused/10 text-status-paused'}`}>{claim.status}</span>
+                <span className="font-mono text-xs text-foreground-tertiary">{claim.predicate}</span>
+                <span className="text-foreground-secondary flex-1 truncate">{claim.claim?.slice(0, 100)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {missionControl && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Mission Control Summary</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{missionControl.capability_count || 0}</div>
+              <div className="text-xs text-foreground-tertiary">Capabilities</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{missionControl.claim_count || 0}</div>
+              <div className="text-xs text-foreground-tertiary">Claims</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{missionControl.manifest_count || 0}</div>
+              <div className="text-xs text-foreground-tertiary">Manifests</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{missionControl.lease_count || 0}</div>
+              <div className="text-xs text-foreground-tertiary">Leases</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

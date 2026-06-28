@@ -443,6 +443,56 @@ export function SwarmOverviewPage() {
           </div>
         </div>
       )}
+      {/* D5: Swarm Status + Capabilities */}
+      {swarmStatus && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Fleet Status</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{swarmStatus.resource_snapshot?.cpu_threads || '—'}</div>
+              <div className="text-xs text-foreground-tertiary">CPU Threads</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{Math.round((swarmStatus.resource_snapshot?.total_memory_bytes || 0) / 1e9)}GB</div>
+              <div className="text-xs text-foreground-tertiary">Total RAM</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-status-active">{Math.round((swarmStatus.resource_snapshot?.free_memory_bytes || 0) / 1e9)}GB</div>
+              <div className="text-xs text-foreground-tertiary">Free RAM</div>
+            </div>
+            <div className="text-center p-3 bg-background-elevated rounded-lg">
+              <div className="text-2xl font-bold text-foreground">{(swarmStatus.fleet_pools || []).length}</div>
+              <div className="text-xs text-foreground-tertiary">Runtime Pools</div>
+            </div>
+          </div>
+          {(swarmStatus.fleet_pools || []).length > 0 && (
+            <div className="mt-4 space-y-2">
+              {swarmStatus.fleet_pools.map((pool: any) => (
+                <div key={pool.runtime} className="flex items-center justify-between p-3 bg-background-elevated rounded-lg border border-border text-sm">
+                  <span className="font-mono text-foreground">{pool.runtime}</span>
+                  <span className="text-foreground-secondary">concurrency: {pool.recommended_concurrency}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {capabilities.length > 0 && (
+        <div className="bg-background-secondary border border-border rounded-lg p-6">
+          <h2 className="text-xl font-semibold text-foreground mb-4">Capabilities ({capabilities.length})</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {capabilities.slice(0, 12).map((cap: any) => (
+              <div key={cap.id} className="p-4 bg-background-elevated rounded-lg border border-border">
+                <div className="font-mono text-sm text-foreground truncate">{cap.id?.slice(0, 20)}</div>
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent-secondary">{cap.status}</span>
+                  <span className="text-xs text-foreground-tertiary">{cap.kind}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
