@@ -266,6 +266,14 @@ export function GoalsLoopsPage() {
               Start
             </button>
           </div>
+          {selectedGoalId && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => pauseGoal(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg hover:bg-status-paused/20">Pause</button>
+              <button onClick={() => resumeGoal(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-active/10 text-status-active border border-status-active/20 rounded-lg hover:bg-status-active/20">Resume</button>
+              <button onClick={() => injectKnowledge(selectedGoalId)} className="px-3 py-1.5 text-xs bg-accent/10 text-accent-secondary border border-accent/20 rounded-lg hover:bg-accent/20">Inject Knowledge</button>
+              <button onClick={() => overrideGate(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20">Override Gate</button>
+            </div>
+          )}
           {selectedLoop && (
             <div className="flex flex-wrap gap-2 text-xs text-foreground-tertiary">
               <span>{selectedLoop.risk_class} risk</span>
