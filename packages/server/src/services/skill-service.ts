@@ -29,8 +29,10 @@ export class SkillService {
     const okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });
     this.skillsDir = path.join(okfBase, 'skills');
     this.reportsDir = path.join(path.resolve(okfBase, '../'), 'reports', 'validation');
-    fs.mkdirSync(this.skillsDir, { recursive: true });
-    fs.mkdirSync(this.reportsDir, { recursive: true });
+    // Lazy directory creation — don't fail if the directory can't be created
+    // (e.g., in a worktree or test context where the OKF base doesn't exist).
+    try { fs.mkdirSync(this.skillsDir, { recursive: true }); } catch { /* best-effort */ }
+    try { fs.mkdirSync(this.reportsDir, { recursive: true }); } catch { /* best-effort */ }
   }
 
   async acquire(topic: string, machineId?: string): Promise<SkillAcquireResult> {
