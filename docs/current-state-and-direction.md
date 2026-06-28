@@ -72,7 +72,7 @@ The repository contains substantial Phase 6 implementation that is underrepresen
 | Recovery via persisted checkpoints | `packages/server/src/__tests__/loop-recovery.test.ts` | Implemented |
 | GoalsLoopsPage dashboard | `packages/dashboard/src/pages/GoalsLoopsPage.tsx` (599 LOC) | Implemented |
 | FleetCockpitPage dashboard | `packages/dashboard/src/pages/FleetCockpitPage.tsx` (631 LOC) | Implemented |
-| Phase 6 tests | `loop-service.test.ts` (23 test cases), `loop-recovery.test.ts` (6 test cases) | Tested |
+| Phase 6 tests | `loop-service.test.ts` (44 test cases), `loop-recovery.test.ts` (6 test cases) | Tested |
 
 ---
 
@@ -100,7 +100,7 @@ The repository contains substantial Phase 6 implementation that is underrepresen
 - **Loop service** (`packages/server/src/services/loop-service.ts`): 5,594 lines. Contains goal creation, loop start/continue/execute/verify/complete/retry/split/stop, worker execution (maker/checker/security), budget enforcement (token, wall-clock, retry), worktree isolation, nested spawn lineage, and finding management.
 - **API routes**: `goals.ts` exposes `POST/GET/PATCH /api/goals` plus batch preview/apply and goal decomposition; `loops.ts` exposes `GET /api/loops/catalog`, `GET /api/loops/runtime-contracts`, full loop lifecycle endpoints (`start`, `continue`, `retry`, `split`, `verify`, `execute-maker`, `execute-worker`, `execute-checker`, `checker-verdict`, `security-verdict`, `run-checks`, `complete`, `stop`), and review bundle access.
 - **Dashboard**: `GoalsLoopsPage.tsx` provides goal creation, loop catalog, loop run selection, worker lease visualization, finding discovery/splitting, gate status display, and loop lifecycle controls. `FleetCockpitPage.tsx` provides pool status, token usage, worker role distribution, queue depth alerts, gate failure tracking, and real-time WebSocket updates.
-- **Tests**: Phase 6 test files exist at `packages/server/src/__tests__/loop-service.test.ts` (23 test cases) and `packages/server/src/__tests__/loop-recovery.test.ts` (6 test cases). The Phase 6 status report (`PHASE6_STATUS_REPORT.md`) documents 20 loop-service tests and 6 recovery tests as passing; current file contents indicate additional test cases have been added since that report.
+- **Tests**: Phase 6 test files exist at `packages/server/src/__tests__/loop-service.test.ts` (44 test cases) and `packages/server/src/__tests__/loop-recovery.test.ts` (6 test cases). The Phase 6 status report (`PHASE6_STATUS_REPORT.md`) documents 20 loop-service tests and 6 recovery tests as passing; current file contents indicate additional test cases have been added since that report.
 
 ### Readiness Verdict
 
@@ -144,7 +144,7 @@ These items block a Phase 6 production release if strict E2E confidence is requi
 | Gate verification enforced | Deterministic, checker, security, human gates | `loop-service.ts` gate logic | ✅ |
 | Worker lease isolation | Worktree-per-lease with branch prefixes | `loop-service.ts` | ✅ |
 | Dashboard operational | GoalsLoopsPage and FleetCockpitPage functional | `packages/dashboard/src/pages/GoalsLoopsPage.tsx`, `packages/dashboard/src/pages/FleetCockpitPage.tsx` | ✅ |
-| Test suite passing | 26+ Phase 6 test cases | `loop-service.test.ts`, `loop-recovery.test.ts` | ✅ |
+| Test suite passing | 50 Phase 6 test cases | `loop-service.test.ts`, `loop-recovery.test.ts` | ✅ |
 | E2E validation test | Goal → loop → maker → checker → security → complete | Missing | ❌ |
 | Concurrency stress test | 5 parallel makers in isolated worktrees | Missing | ❌ |
 | Git conflict behavior test | Concurrent modification handling | Missing | ❌ |
