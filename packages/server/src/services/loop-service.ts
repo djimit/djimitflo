@@ -4782,12 +4782,11 @@ export class LoopService {
       '',
       finding.suggested_fix,
       '',
-      '## Skill Procedure',
-      '',
-      // G29: inject the matching skill procedure so the maker follows a procedure,
-      // not just a finding description. The skill provides step-by-step guidance.
-      this.skills.getSkillForFinding(finding.message, finding.file) || '(No matching skill — improvise based on the finding and rules.)',
-      '',
+      // G29: inject the matching skill procedure ONLY when a real match is found.
+      // Don't add a placeholder — it could confuse the runtime.
+      ...(this.skills.getSkillForFinding(finding.message, finding.file)
+        ? ['## Skill Procedure', '', this.skills.getSkillForFinding(finding.message, finding.file)!, '']
+        : []),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
