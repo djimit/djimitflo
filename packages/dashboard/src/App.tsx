@@ -42,8 +42,8 @@ function DataLoader({ children }: { children: React.ReactNode }) {
           api.getTasks(),
           api.getAgents(),
         ]);
-        setTasks(tasksRes.tasks);
-        setAgents(agentsRes.agents);
+        setTasks(tasksRes?.tasks ?? []);
+        setAgents(agentsRes?.agents ?? []);
       } catch (error) {
         console.error('Failed to load initial data:', error);
       }
