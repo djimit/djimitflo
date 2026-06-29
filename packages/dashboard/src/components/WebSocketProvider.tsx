@@ -3,7 +3,6 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useStore } from '../lib/store';
 import { useAuthStore } from '../lib/auth-store';
 import { WebSocketEventType } from '@djimitflo/shared';
-import type { TaskEventPayload, AgentEventPayload, SystemHealthPayload } from '@djimitflo/shared';
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -15,61 +14,41 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, [isConnected, setConnected]);
 
   useEffect(() => {
-    const unsubTaskCreated = subscribe(WebSocketEventType.TASK_CREATED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      addTask(task);
-    });
+    // Defensive wrapper — never let a WebSocket event crash the app
+    const safe = (fn: () => void) => { try { fn(); } catch (e) { console.error('[WS] event handler error:', e); } };
 
-    const unsubTaskUpdated = subscribe(WebSocketEventType.TASK_UPDATED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      updateTask(task.id, task);
+    const unsubTaskCreated = subscribe(WebSocketEventType.TASK_CREATED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) addTask(task); });
     });
-
-    const unsubTaskDeleted = subscribe(WebSocketEventType.TASK_DELETED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      removeTask(task.id);
+    const unsubTaskUpdated = subscribe(WebSocketEventType.TASK_UPDATED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
     });
-
-    const unsubTaskStarted = subscribe(WebSocketEventType.TASK_STARTED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      updateTask(task.id, task);
+    const unsubTaskDeleted = subscribe(WebSocketEventType.TASK_DELETED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) removeTask(task.id); });
     });
-
-    const unsubTaskCompleted = subscribe(WebSocketEventType.TASK_COMPLETED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      updateTask(task.id, task);
+    const unsubTaskStarted = subscribe(WebSocketEventType.TASK_STARTED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
     });
-
-    const unsubTaskFailed = subscribe(WebSocketEventType.TASK_FAILED, (message) => {
-      const { task } = message.payload as TaskEventPayload;
-      updateTask(task.id, task);
+    const unsubTaskCompleted = subscribe(WebSocketEventType.TASK_COMPLETED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
     });
-
-    const unsubAgentUpdated = subscribe(WebSocketEventType.AGENT_UPDATED, (message) => {
-      const { agent } = message.payload as AgentEventPayload;
-      updateAgent(agent.id, agent);
+    const unsubTaskFailed = subscribe(WebSocketEventType.TASK_FAILED, (msg) => {
+      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
     });
-
-    const unsubAgentStatus = subscribe(WebSocketEventType.AGENT_STATUS_CHANGED, (message) => {
-      const { agent } = message.payload as AgentEventPayload;
-      updateAgent(agent.id, { status: agent.status });
+    const unsubAgentUpdated = subscribe(WebSocketEventType.AGENT_UPDATED, (msg) => {
+      safe(() => { const agent = msg?.payload?.agent; if (agent?.id) updateAgent(agent.id, agent); });
     });
-
-    const unsubSystemHealth = subscribe(WebSocketEventType.SYSTEM_HEALTH, (message) => {
-      const health = message.payload as SystemHealthPayload;
-      setSystemHealth(health);
+    const unsubAgentStatus = subscribe(WebSocketEventType.AGENT_STATUS_CHANGED, (msg) => {
+      safe(() => { const agent = msg?.payload?.agent; if (agent?.id) updateAgent(agent.id, { status: agent.status }); });
+    });
+    const unsubSystemHealth = subscribe(WebSocketEventType.SYSTEM_HEALTH, (msg) => {
+      safe(() => { if (msg?.payload) setSystemHealth(msg.payload); });
     });
 
     return () => {
-      unsubTaskCreated();
-      unsubTaskUpdated();
-      unsubTaskDeleted();
-      unsubTaskStarted();
-      unsubTaskCompleted();
-      unsubTaskFailed();
-      unsubAgentUpdated();
-      unsubAgentStatus();
-      unsubSystemHealth();
+      unsubTaskCreated(); unsubTaskUpdated(); unsubTaskDeleted();
+      unsubTaskStarted(); unsubTaskCompleted(); unsubTaskFailed();
+      unsubAgentUpdated(); unsubAgentStatus(); unsubSystemHealth();
     };
   }, [subscribe, addTask, updateTask, removeTask, updateAgent, setSystemHealth]);
 

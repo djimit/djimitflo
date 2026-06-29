@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { WebSocketProvider } from './components/WebSocketProvider';
+import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
 import { TaskDetailPage } from './pages/TaskDetailPage';
@@ -61,6 +62,7 @@ export function App() {
   }, [restoreSession]);
 
   return (
+    <GlobalErrorBoundary>
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -98,6 +100,8 @@ export function App() {
           <Route path="federation" element={<FederationPage />} />
         </Route>
       </Routes>
+    
     </BrowserRouter>
+    </GlobalErrorBoundary>
   );
 }
