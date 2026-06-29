@@ -40,7 +40,7 @@ export const useStore = create<DjimitfloState>((set) => ({
   // Tasks
   tasks: [],
   selectedTask: null,
-  setTasks: (tasks) => set({ tasks }),
+  setTasks: (tasks) => set({ tasks: Array.isArray(tasks) ? tasks : [] }),
   addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
   updateTask: (id, updates) =>
     set((state) => ({
@@ -59,7 +59,7 @@ export const useStore = create<DjimitfloState>((set) => ({
   // Agents
   agents: [],
   selectedAgent: null,
-  setAgents: (agents) => set({ agents }),
+  setAgents: (agents) => set({ agents: Array.isArray(agents) ? agents : [] }),
   updateAgent: (id, updates) =>
     set((state) => ({
       agents: state.agents.map((a) => (a.id === id ? { ...a, ...updates } : a)),
