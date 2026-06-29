@@ -277,10 +277,14 @@ export class LoopDaemon {
       // 9. Certify the run (G3.4 convergence certificate).
       const cert = this.loops.certifyLoopRun(run.id);
 
-      // 10. Update goal status.
+      // 10. Update goal + run status.
       const goalStatus = cert.certified ? 'completed' : 'failed';
+      const runStatus = cert.certified ? 'completed' : 'blocked';
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run(goalStatus, new Date().toISOString(), goal.id);
+      // Also update the loop run status so the dashboard shows it correctly.
+      this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
+        .run(runStatus, new Date().toISOString(), run.id);
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_completed',
