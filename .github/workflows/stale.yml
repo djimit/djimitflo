@@ -1,0 +1,13 @@
+name: Stale Management
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    uses: djimit/.github/.github/workflows/stale.yml@main
