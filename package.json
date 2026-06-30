@@ -23,8 +23,8 @@
     "proof:lint": "npm run lint --workspace=@djimitflo/server",
     "proof:type-check": "npm run type-check --workspace=@djimitflo/server",
     "github:cocreate": "npm run github:cocreate --workspace=@djimitflo/server --",
-    "swarm:proof": "npm run swarm:proof --workspace=@djimitflo/server",
-    "demo:proof": "npm run demo:proof --workspace=@djimitflo/server",
+    "swarm_proof": "npm run swarm_proof --workspace=@djimitflo/server",
+    "demo_proof": "npm run demo_proof --workspace=@djimitflo/server",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules"
   },
   "devDependencies": {
@@ -46,6 +46,6 @@
     "ws": "^8.20.1"
   },
   "overrides": {
-    "esbuild": "0.28.1"
+    "esbuild": "^0.28.1"
   }
 }
