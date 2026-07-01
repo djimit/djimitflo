@@ -1,57 +1,78 @@
-# Djimitflo
+# DjimFlo
 
-**AI agent orchestration control plane for serious engineering teams**
+**Self-evolving agentic operating system for serious engineering teams**
 
-Djimitflo is a production-grade UX/UI control plane for managing AI agent workflows with a verified OpenCode executor integration and a Codex-oriented roadmap. It provides enterprise-grade task management, approval workflows, security policies, and comprehensive audit trails.
+DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds, tests, deploys, and improves its own code. It orchestrates expert agents, evaluates knowledge quality, and recursively enhances its own architecture.
 
-> **Inspired by [ruflo](https://github.com/ruvnet/ruflo)** — the open-source agent orchestration framework for Claude Code, by [ruvnet](https://github.com/ruvnet). Djimitflo builds on the ideas pioneered in ruflo, extending them with a full dashboard, governance, and enterprise control plane. Check out [ruflo on GitHub](https://github.com/ruvnet/ruflo) and [Agentics on LinkedIn](https://www.linkedin.com/company/agentics-org/posts/?feedView=all) for the broader vision of agent-native tooling.
+> **Inspired by [ruflo](https://github.com/ruvnet/ruflo)** — the open-source agent orchestration framework by [ruvnet](https://github.com/ruvnet). DjimFlo extends those ideas into a full self-improving system.
 
-## Features
+## Status
 
-- **Mission Control Dashboard** — Real-time monitoring of agent tasks and system health
-- **Task Management** — Create, track, and manage agent execution with approval gates
-- **Agent Monitoring** — Track agent status, capabilities, and performance metrics
-- **Security-First** — Default-deny policies, risk assessment, and approval workflows
-- **Audit Trail** — Comprehensive logging of all agent actions and decisions with actor attribution
-- **Authentication & Authorization** — JWT authentication, role-based access control (admin/operator/viewer), protected routes
-- **WebSocket Updates** — Real-time task and execution event streaming
-- **MCP Integration** — Manage Model Context Protocol servers and tools
-- **Repository Intelligence** — Git-aware scanning, stack detection, health scoring, AGENTS.md governance (Phase 4.4)
-- **Diff Awareness** — Pre/post execution git snapshots, secret redaction, risk-classified file changes (Phase 4.4)
+| Metric | Value |
+|--------|-------|
+| Version | 0.6.0 |
+| Tests | 1050+ |
+| Services | 96 |
+| Goals | 40 (Level 7-15) |
+| Last Updated | 2026-07-01 |
+
+## Capabilities
+
+### Core Orchestration
+- **Loop Daemon** — Autonomous goal queue with priority scheduling
+- **Worker Pool** — Configurable parallel workers with retry (max 10)
+- **Maker/Checker Separation** — Independent verification of all work
+- **Worktree Isolation** — Git-based sandboxing per task
+- **Multi-Runtime** — OpenCode, Codex, Pi, Claude, Gemini, Editor, Mock executors
+
+### Intelligence
+- **Expert Swarm Orchestrator** — Parallel expert agents per domain with skill injection
+- **Judge Service** — 4-dimension scoring (evidence, source, consistency, uncertainty)
+- **Knowledge Adapters** — Wikipedia, arXiv, OKF, DjimitKB
+- **Causal Self-Model** — Intervention logging + counterfactual reasoning
+- **GOAP A\* Planner** — State-space multi-step goal planning
+- **Thompson Sampling Bandit** — Optimal explore/exploit runtime selection
+
+### Self-Improvement (RSI Engine)
+- **Service Refactoring Analyzer** — Decomposition proposals for large services
+- **Emergent Specialization** — Dynamic agent specialization based on performance
+- **Skill Evolution** — Post-run analysis + improvement proposals
+- **Control Loop Self-Modification** — Proposal/evaluate/apply/rollback lifecycle
+- **Meta-Evolution** — Periodic self-evaluation + capability pruning
+
+### Safety & Governance
+- **RSI Safety Guard** — Immutable audit log, mutation budget, kill switch
+- **Capability Freeze** — Security/audit code immutable by self-modification
+- **Dual-Approve** — Two reviewers required for structural changes
+- **Epistemic Gates** — Source quality, consistency, coverage, falsifiability
 
 ## Architecture
 
-Djimitflo is a TypeScript monorepo with three packages:
+DjimFlo is a TypeScript monorepo with three packages:
 
-- **`@djimitflo/shared`** — Shared types and schemas (backend + frontend)
+- **`@djimitflo/shared`** — Shared types and schemas
 - **`@djimitflo/server`** — Express + SQLite backend with WebSocket support
 - **`@djimitflo/dashboard`** — React + Vite + Tailwind frontend
 
-## Integration Compatibility
+### Backend Structure
 
-| Integration | Status | Details |
-|-------------|--------|---------|
-| **OpenCode** | Contract verified | CLI flags and JSON output verified against v1.15.4; permission bypass guardrails present; long-running policy-engine E2E still unverified |
-| **Codex** | Implemented, unverified | Executor exists; CLI contract anticipated but not yet verified against live binary |
-| **Pi** | Contract verified | CLI contract verified against Pi 0.79.8; zero-egress sovereign path supported; long-running policy-engine E2E still unverified |
-| **Ruflo** | Not implemented | Conceptual inspiration only, no runtime dependency |
-
-See [docs/integrations.md](docs/integrations.md) and [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for full compatibility details and the four-label status system.
-
-## Known Limitations
-
-- OpenCode session continuity (`--continue`, `--session`) not yet supported
-- OpenCode MCP integration during execution not yet supported
-- OpenCode agent selection passed through but not validated against known agents
-- Codex executor requires CLI contract capture before implementation
-- Pi has no native permission prompt; Djimitflo policy engine is the sole approval boundary
-- Refresh tokens, password reset, and user management UI remain product gaps
-
-## Phase 6: Agentic Control Loop Fleet
-
-Phase 6 is approximately 95% complete, with loop orchestration, gate verification, worker leases, worktree isolation, and dashboard pages (`GoalsLoopsPage`, `FleetCockpitPage`) implemented. Remaining work is validation hardening and documentation.
-
-See [docs/current-state-and-direction.md](docs/current-state-and-direction.md) for the current-state reconciliation, integration compatibility map, and Phase 7 direction.
+```
+packages/server/src/
+├── routes/          # API endpoints (swarms, agents, tasks, loops, spawns)
+├── services/        # 96 business logic services
+│   ├── expert-swarm-orchestrator.ts
+│   ├── judge-service.ts
+│   ├── worker-pool.ts
+│   ├── knowledge-adapters/  # Wikipedia, arXiv, OKF, DjimitKB
+│   ├── causal-inference-service.ts
+│   ├── emergent-specialization-service.ts
+│   ├── service-refactoring-analyzer.ts
+│   ├── rsi-safety-guard.ts
+│   └── ... (86 more services)
+├── execution/       # Execution engine + runtime executors
+├── database/        # SQLite schema + migrations
+└── middleware/      # Auth, rate limiting, security headers
+```
 
 ## Quick Start
 
@@ -63,30 +84,19 @@ See [docs/current-state-and-direction.md](docs/current-state-and-direction.md) f
 ### Installation
 
 ```bash
-# Install dependencies
 npm install
-
-# Build all packages
 npm run build
 ```
 
 ### Development
 
-Run the backend and frontend servers concurrently:
-
 ```bash
-# Start both servers in parallel
+# Start both servers
 npm run dev
-```
 
-Or run them individually:
-
-```bash
-# Start backend server (http://localhost:3001)
-npm run dev:server
-
-# Start frontend dashboard (http://localhost:5173)
-npm run dev:dashboard
+# Or individually
+npm run dev:server    # http://localhost:3001
+npm run dev:dashboard # http://localhost:5173
 ```
 
 ### Access
@@ -96,229 +106,26 @@ npm run dev:dashboard
 - **WebSocket**: ws://localhost:3001/ws
 - **Health Check**: http://localhost:3001/health
 
-### Docker Deployment
-
-See [docs/deployment.md](docs/deployment.md) for full Docker deployment instructions.
-
-```bash
-# Quick start with Docker
-cp .env.docker.example .env.docker
-# Edit .env.docker — set JWT_SECRET and bootstrap admin credentials
-docker compose up -d
-```
-
-## Project Structure
-
-```
-djimitflo/
-├── packages/
-│   ├── shared/           # Shared TypeScript types
-│   │   └── src/
-│   │       ├── types/    # Domain types (Task, Agent, MCP, Evidence, etc.)
-│   │       └── index.ts
-│   │
-│   ├── server/           # Backend API server
-│   │   └── src/
-│   │       ├── routes/   # API endpoints
-│   │       ├── database/ # SQLite schema and migrations
-│   │       ├── services/ # Business logic (execution, evidence, diff capture, etc.)
-│   │       ├── execution/ # Execution engine, executors, risk classification
-│   │       └── middleware/
-│   │
-│   └── dashboard/        # Frontend React app
-│       └── src/
-│           ├── pages/    # Dashboard, Tasks, Repositories, Review, etc.
-│           ├── components/
-│           └── styles/   # Tailwind CSS
-│
-├── .data/                # SQLite database
-├── templates/            # AGENTS.md templates
-└── package.json
-```
-
 ## API Endpoints
 
-### Authentication
-- `POST /api/auth/login` — Login with email and password (public)
-- `GET /api/auth/me` — Get current authenticated user (requires auth)
-- `POST /api/auth/logout` — Logout (stateless, public)
+### Expert Swarm
+- `POST /api/swarms/expert/dispatch` — Start expert swarm
+- `GET  /api/swarms/expert/history` — Swarm history
+- `GET  /api/swarms/expert/sources` — Available knowledge sources
+- `GET  /api/swarms/expert/updates` — OKF knowledge updates
 
-### Tasks
-- `GET /api/tasks` — List tasks (ownership-filtered for non-admin)
-- `GET /api/tasks/:id` — Get task by ID (404 if inaccessible)
-- `POST /api/tasks` — Create task (sets created_by, owner_user_id)
-- `PATCH /api/tasks/:id` — Update task (sets updated_by)
-- `DELETE /api/tasks/:id` — Delete task (admin only)
-- `GET /api/tasks/:id/events` — Execution events for a task
-- `GET /api/tasks/:id/approvals` — Approval requests for a task
-- `POST /api/tasks/:id/execute` — Execute task (with risk assessment and policy gating)
-- `POST /api/tasks/:id/cancel` — Cancel running task
+### RSI Engine
+- `POST /api/swarms/rsi/analyze` — Analyze services for refactoring
+- `GET  /api/swarms/rsi/proposals` — Refactoring proposals
+- `GET  /api/swarms/rsi/specializations` — Agent specializations
+- `GET  /api/swarms/rsi/safety` — Safety status
+- `POST /api/swarms/rsi/safety/toggle` — Kill switch
 
-### Repositories (Phase 4.4)
-- `GET /api/repositories` — List repositories
-- `GET /api/repositories/:id` — Get repository details
-- `POST /api/repositories/scan` — Scan a repository path
-- `POST /api/repositories/:id/rescan` — Rescan repository
-- `GET /api/repositories/:id/health` — Health findings and score
-- `GET /api/repositories/:id/agents-md` — AGENTS.md files and issues
-- `POST /api/repositories/:id/agents-md/validate` — Validate AGENTS.md governance
-- `GET /api/repositories/:id/agents-md/effective` — Effective instruction stack
-- `GET /api/repositories/:id/file-changes` — Repository file changes (admin only)
-
-### Diffs (Phase 4.4)
-- `GET /api/tasks/:taskId/diff` — Task diff with file changes and risk levels
-- `GET /api/tasks/:taskId/file-changes` — File changes for a task
-- `GET /api/tasks/:taskId/snapshots` — Pre/post execution git snapshots
-
-### Evidence & Observability
-- `GET /api/evidence/task/:taskId` — Execution evidence chain
-- `GET /api/evidence/summary/:taskId` — Execution summary
-- `GET /api/evidence/review/:taskId` — Full review package (task, summary, evidence, file changes, audit trail)
-- `GET /api/evidence/file-changes/:taskId` — File changes for evidence
-- `GET /api/evidence/audit-trail/:taskId` — Audit trail for a task
-- `GET /api/observability/metrics` — System metrics (admin only)
-- `GET /api/observability/risk-trends` — Risk level trends (admin only)
-- `GET /api/observability/policy-stats` — Policy decision statistics (admin only)
-- `GET /api/observability/execution-activity` — Execution activity (admin only)
-
-### Approvals & Policies
-- `GET /api/approvals` — List approvals (ownership-filtered for non-admin)
-- `GET /api/approvals/:id` — Get approval by ID
-- `PATCH /api/approvals/:id` — Approve or deny (backward-compatible)
-- `POST /api/approvals/:id/approve` — Approve a request
-- `POST /api/approvals/:id/deny` — Deny a request
-- `POST /api/approvals/:id/cancel` — Cancel a pending approval
-- `POST /api/policies` — Create approval policy
-- `GET /api/policies` — List policies
-- `GET /api/policies/:id` — Get policy by ID
-- `PATCH /api/policies/:id` — Update policy
-- `DELETE /api/policies/:id` — Delete policy
-
-### Agents
-- `GET /api/agents` — List agents
-- `GET /api/agents/:id` — Get agent by ID
-
-### Risk Assessment
-- `POST /api/risk/command` — Classify command risk level
-- `POST /api/risk/task` — Assess task risk level
-
-### MCP
-- `GET /api/mcp/servers` — List MCP servers (secrets redacted for non-admin)
-- `GET /api/mcp/tools` — List MCP tools
-- `GET /api/mcp/permissions` — List MCP tool permissions
-- `PATCH /api/mcp/permissions/:toolId` — Update MCP tool permissions (admin only)
-
-### Backups (admin only)
-- `POST /api/backups` — Create backup
-- `GET /api/backups` — List backups
-- `GET /api/backups/:filename` — Get backup metadata
-- `GET /api/backups/:filename/download` — Download backup archive
-- `POST /api/backups/:filename/validate` — Validate backup integrity
-- `POST /api/backups/:filename/restore` — Stage backup for restore (requires restart)
-
-### Exports (Phase 5.6)
-- `POST /api/exports/task/:taskId` — Export task governance evidence pack (JSON/CSV/Markdown)
-- `POST /api/exports/evidence/:taskId` — Export evidence for a task
-- `POST /api/exports/audit` — Export global audit events (admin only)
-- `POST /api/exports/repository/:repositoryId` — Export repository metadata
-- `POST /api/exports/report/summary` — Export operational summary (admin only)
-
-### Version & Health (public)
-- `GET /api/version` — API version info
-- `GET /health` — Health check
-
-## Database Schema
-
-Djimitflo uses SQLite with 20+ tables across 5 phases:
-
-**Core**: `tasks`, `agents`, `execution_events`, `task_artifacts`, `mcp_servers`, `mcp_tools`, `repositories`, `audit_events`, `config`
-
-**Phase 4.2 — Policy-aware execution**: `risk_assessments`, `policy_violations`, `approval_policies`, `approvals`
-
-**Phase 4.3 — Evidence & observability**: `execution_evidence`, `execution_summaries`, `file_changes`
-
-**Phase 4.4 — Repository intelligence**: `repository_scans`, `repository_health_findings`, `agents_md_files`, `agents_md_issues`, `task_repository_snapshots`
-
-**Phase 5 — Auth & ownership**: `users`, `tasks.created_by/owner_user_id/updated_by`, `repositories.added_by`, `approvals.requested_by`
-
-## Design System
-
-Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-first palette:
-
-- Mission control aesthetic (enterprise monitoring)
-- Semantic color system (status, risk, accent)
-- Consistent spacing and typography
-- Tailwind CSS + Radix UI primitives
-
-## Development Roadmap
-
-### Phase 1: Foundation (✅ COMPLETE)
-- [x] Monorepo setup
-- [x] Shared types package
-- [x] Database schema
-- [x] Express server skeleton
-- [x] React dashboard shell
-- [x] Mission control UI
-
-### Phase 2: Core Functionality (✅ COMPLETE)
-- [x] Task CRUD API implementation
-- [x] WebSocket real-time updates
-- [x] Live data integration (API → UI)
-- [x] Task creation modal/form
-- [x] Agent management UI
-- [x] Zustand state management
-- [x] Database seeding
-
-### Phase 3: Security & Policies (✅ COMPLETE)
-- [x] Task detail page with execution timeline
-- [x] Execution event tracking and display
-- [x] Approval workflow UI (approve/deny)
-- [x] Approval request API
-- [x] Risk level indicators
-- [x] Tool call inspection
-- [x] Audit log viewer
-- [x] Policy management UI
-
-### Phase 4: Integration & Governance (✅ COMPLETE)
-- [x] OpenCode CLI executor with real command execution
-- [x] Mock executor for testing
-- [x] Execution engine with event streaming
-- [x] Command risk classification (deterministic LOW/MEDIUM/HIGH/CRITICAL)
-- [x] Policy decision service (priority-based matching)
-- [x] Approval workflow with WebSocket broadcast
-- [x] Evidence model (11 evidence types)
-- [x] Observability API (metrics, risk trends, policy stats)
-- [x] Review API and ReviewPage
-- [x] Audit trail API and AuditPage
-- [x] Repository intelligence (git status, stack detection, health scoring)
-- [x] AGENTS.md governance (discovery, validation, effective instruction stack)
-- [x] Diff awareness (pre/post git snapshots, secret redaction, risk-classified file changes)
-- [x] Diff panel in ReviewPage with expandable diff viewer
-
-### Phase 5: Integration Contract Stabilization, Auth & Deployment (✅ COMPLETE)
-- [x] OpenCode executor CLI flags corrected (--dir, --format json, --dangerously-skip-permissions, --agent)
-- [x] Structured JSON event parsing with heuristic fallback and evidence warnings
-- [x] Safety guardrail: OPENCODE_SKIP_PERMISSIONS defaults to false, audit event on bypass
-- [x] Compatibility documentation (OpenCode partially verified, Codex not implemented, Ruflo conceptually mapped)
-- [x] JWT authentication with bcryptjs password hashing (cost factor 12)
-- [x] Role-based authorization (admin, operator, viewer) with permission-gated routes
-- [x] Protected API routes — all operational routes require authentication
-- [x] Audit actor attribution — authenticated user ID recorded in audit/evidence events
-- [x] Frontend login flow, protected routes, role-aware sidebar
-- [x] Docker deployment packaging (Dockerfile, docker-compose, entrypoint, health check)
-- [x] Static serving + SPA fallback with safe Accept-header guard
-- [x] Production-ready defaults (HOST=0.0.0.0, relative API base, dynamic WebSocket URL)
-- [x] Multi-user ownership model (task, repository, approval ownership with visibility rules)
-- [x] AuthorizationService with role-based and ownership-aware access control
-- [x] Task ownership enforcement (created_by, owner_user_id, updated_by)
-- [x] Approval actor attribution (decided_by, approved_by, requested_by using authenticated user IDs)
-- [x] Evidence and review access scoped to underlying task ownership
-- [x] Observability endpoints admin-only
-- [x] Repository path/metadata redaction for non-admin users
-- [x] MCP server secret redaction (env, command, args, url) for non-admin users
-- [x] Legacy NULL-owned tasks visible to admin only
-- [x] Backup & restore
-- [x] Export & reporting
+### Core
+- `GET  /api/swarms/status` — System status
+- `POST /api/swarms/scheduler/tick` — Trigger daemon tick
+- `GET  /api/swarms/proof-runs/latest` — Latest proof run
+- `POST /api/swarms/proof-runs` — Start proof run
 
 ## Technology Stack
 
@@ -326,21 +133,12 @@ Djimitflo uses a custom **djimit-\*** design token namespace with a dark-mode-fi
 - **Express** — HTTP server
 - **better-sqlite3** — SQLite database
 - **ws** — WebSocket server
-- **TypeScript** — Type safety
-- **Zod** — Runtime validation
+- **TypeScript** — Strict mode
 
 ### Frontend
 - **React 18** — UI framework
 - **Vite 6** — Build tool
-- **React Router** — Navigation
 - **Tailwind CSS** — Styling
-- **Radix UI** — Primitives
-- **Lucide React** — Icons
-- **Zustand** — State management
-
-## Contributing
-
-This is a personal project by Dennis Landman (DjimIT). Contributions are welcome but please open an issue first to discuss proposed changes.
 
 ## License
 
@@ -351,9 +149,3 @@ MIT
 Dennis Landman
 DjimIT Consulting
 2026
-
----
-
-**Status**: Phase 5.7 Complete (Production Readiness Hardening)
-**Version**: 0.5.8
-**Last Updated**: May 2026
