@@ -12,10 +12,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
     status: 'pending',
     priority: 'medium',
     metadata: {},
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
     ...overrides,
-  };
+  } as unknown as Task;
 }
 
 describe('MockExecutor', () => {
