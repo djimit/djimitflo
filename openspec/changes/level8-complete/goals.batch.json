@@ -1,0 +1,56 @@
+{
+  "batch": "level8-complete",
+  "autonomous": true,
+  "human_gate_only_at_ship": true,
+  "phases": [
+    {
+      "name": "Phase 0: Fixes + Proof",
+      "goals": [
+        {
+          "id": "G44p",
+          "objective": "Fix 6 pre-existing test failures + run production proof",
+          "acceptance_criteria": ["all 596 tests green", "production_passed: true"]
+        }
+      ]
+    },
+    {
+      "name": "Phase 1: Best-of-Breed",
+      "goals": [
+        {"id": "G45", "objective": "Thompson Sampling Bandit", "acceptance_criteria": ["converges within 20 trials"]},
+        {"id": "G46", "objective": "Search Feedback Loop", "acceptance_criteria": ["MRR +10% after 50 cycles"]},
+        {"id": "G47", "objective": "GOAP A* Planner", "acceptance_criteria": ["optimal path >= 90% cases"]},
+        {"id": "G48", "objective": "Metacognitive Planner", "acceptance_criteria": [">= 1 goal/week when gaps"]},
+        {"id": "G49", "objective": "DAG Consensus", "acceptance_criteria": ["tolerates < 1/3 malicious"]},
+        {"id": "G50", "objective": "Federation Protocol", "acceptance_criteria": ["0 PII leaks", "trust scoring"]},
+        {"id": "G51", "objective": "Plugin Marketplace", "acceptance_criteria": ["hot-swap < 1s", "signature verify"]},
+        {"id": "G52", "objective": "MetaHarness Self-Audit", "acceptance_criteria": ["6-dimension grading"]},
+        {"id": "G53", "objective": "Cognitive Memory", "acceptance_criteria": ["skill retrieval > 0.7"]},
+        {"id": "G54", "objective": "Elastic Memory", "acceptance_criteria": ["scales on load"]},
+        {"id": "G55", "objective": "Influence Attribution", "acceptance_criteria": ["sums to 1.0", "Shapley fair"]},
+        {"id": "G56", "objective": "Competence Awareness", "acceptance_criteria": ["novelty detection", "conservative mode"]}
+      ]
+    },
+    {
+      "name": "Phase 2: Architecture Evolution",
+      "goals": [
+        {"id": "G57", "objective": "Skill Marketplace", "acceptance_criteria": ["publish/search/install/rate"]},
+        {"id": "G58", "objective": "Operator Intervention", "acceptance_criteria": ["request/approve/reject flow"]},
+        {"id": "G59", "objective": "Multi-Modal Perception", "acceptance_criteria": ["screenshot + diagram + OCR"]},
+        {"id": "G60", "objective": "Control Loop Self-Modification", "acceptance_criteria": ["draft/eval/apply/rollback"]}
+      ]
+    },
+    {
+      "name": "Phase 3: AGI Foundations",
+      "goals": [
+        {"id": "G61", "objective": "Theory of Mind", "acceptance_criteria": ["intent modeling", "action prediction"]},
+        {"id": "G62", "objective": "Curriculum Learning", "acceptance_criteria": ["step generation", "mastery evaluation"]}
+      ]
+    },
+    {
+      "name": "Ship",
+      "goals": [
+        {"id": "G63", "objective": "Final validation + production proof", "acceptance_criteria": ["all tests green", "type-check clean", "production_passed"]}
+      ]
+    }
+  ]
+}
