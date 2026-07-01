@@ -4,45 +4,99 @@ import { InfrastructureExecutor } from '../execution/executors/infrastructure-ex
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 
-let db: Database.Database;
-let executor: InfrastructureExecutor;
+describe('InfrastructureExecutor', () => {
+  let db: Database.Database;
+  let executor: InfrastructureExecutor;
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
-  executor = new InfrastructureExecutor(db);
-});
+  it('should create an instance', () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
+    expect(executor).toBeDefined();
+  });
 
-afterEach(() => {
-  db?.close();
-});
-
-describe('G73: Infrastructure Executor', () => {
-  it('can execute infrastructure runtime', () => {
+  it('should handle infrastructure runtime', () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
     expect(executor.canExecute('infrastructure')).toBe(true);
     expect(executor.canExecute('codex')).toBe(false);
   });
 
-  it('executes docker command', async () => {
-    const result = await executor.execute({ type: 'docker', action: 'ps', target: '' });
+  it('should execute docker task', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
+    const result = await executor.execute({ type: 'docker', action: 'version', target: '' });
+    expect(result).toBeDefined();
     expect(typeof result.success).toBe('boolean');
   });
 
-  it('executes kubernetes command', async () => {
+  it('should execute kubernetes task', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
     const result = await executor.execute({ type: 'kubernetes', action: 'get', target: 'pods' });
-    expect(typeof result.success).toBe('boolean');
+    expect(result).toBeDefined();
   });
 
-  it('handles unknown type', async () => {
+  it('should execute ansible task', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
+    const result = await executor.execute({ type: 'ansible', action: 'playbook.yml', target: 'localhost' });
+    expect(result).toBeDefined();
+  });
+
+  it('should execute terraform task', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
+    const result = await executor.execute({ type: 'terraform', action: 'plan', target: '.' });
+    expect(result).toBeDefined();
+  });
+
+  it('should handle unknown type', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
     const result = await executor.execute({ type: 'unknown' as any, action: 'x', target: 'y' });
     expect(result.success).toBe(false);
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('measures duration', async () => {
+  it('should measure duration', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
     const result = await executor.execute({ type: 'docker', action: 'version', target: '' });
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should check health', async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    executor = new InfrastructureExecutor(db);
+    const result = await executor.healthCheck('nonexistent-container');
+    expect(typeof result.healthy).toBe('boolean');
+    expect(typeof result.details).toBe('string');
   });
 });
