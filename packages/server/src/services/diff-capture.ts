@@ -217,9 +217,9 @@ export class DiffCaptureService {
   private getGitStatus(repoPath: string): { isGitRepository: boolean; currentBranch: string | null; isClean: boolean; stagedFiles: number; modifiedFiles: number; untrackedFiles: number; headCommit: string | null; headCommitMessage: string | null } | null {
     try {
       if (!existsSync(join(repoPath, '.git'))) return null;
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const porcelain = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' }).trim();
+       const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+       const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+       const porcelain = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
       const lines = porcelain ? porcelain.split('\n').filter(Boolean) : [];
       return {
         isGitRepository: true,
