@@ -16,7 +16,7 @@ export interface InfrastructureResult {
 }
 
 export class InfrastructureExecutor {
-  constructor(private db: Database) {}
+  constructor(_db: Database) { void _db; }
 
   canExecute(runtime: string): boolean {
     return runtime === 'infrastructure';

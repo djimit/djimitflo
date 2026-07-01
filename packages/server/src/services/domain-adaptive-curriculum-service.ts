@@ -10,15 +10,6 @@ export interface DomainCurriculum {
   }>;
 }
 
-interface DomainStepRow {
-  id: string;
-  domain: string;
-  objective: string;
-  difficulty: number;
-  prerequisites_json: string;
-  status: string;
-}
-
 export class DomainAdaptiveCurriculumService {
   constructor(private db: Database) {
     this.db.exec(`

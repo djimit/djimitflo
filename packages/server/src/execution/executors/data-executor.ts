@@ -18,7 +18,7 @@ export interface DataResult {
 }
 
 export class DataExecutor {
-  constructor(private db: Database) {}
+  constructor(_db: Database) { void _db; }
 
   canExecute(runtime: string): boolean {
     return runtime === 'data';
