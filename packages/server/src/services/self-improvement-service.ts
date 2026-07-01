@@ -156,7 +156,7 @@ export class SelfImprovementService {
     if (lower.includes('security') || lower.includes('vulnerability')) return 'security';
     if (lower.includes('performance') || lower.includes('slow') || lower.includes('optimize')) return 'performance';
     if (lower.includes('refactor') || lower.includes('cleanup') || lower.includes('restructure')) return 'refactor';
-    if (lower.includes('fix') || lower.includes('bug') || lower.includes('error')) return 'bug_fix';
+    if (lower.includes('fix') || lower.includes('bug') || lower.includes('error') || lower.includes('handle') || lower.includes('catch') || lower.includes('resolve')) return 'bug_fix';
     return 'feature';
   }
 

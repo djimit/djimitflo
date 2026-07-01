@@ -62,22 +62,22 @@ export class SelfRepositoryService {
 
     const existing = this.db.prepare("SELECT id FROM repositories WHERE metadata->>'$.type' = 'self'").get() as { id: string } | undefined;
     if (existing) {
-      this.db.prepare("UPDATE repositories SET url = ?, name = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(info.remoteUrl, 'djimitflo-self', JSON.stringify({ type: 'self', branch: info.branch, commit: info.commitSha }), existing.id);
+      this.db.prepare("UPDATE repositories SET name = ?, git_remote = ?, git_branch = ?, git_commit = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?")
+        .run('djimitflo-self', info.remoteUrl, info.branch, info.commitSha, JSON.stringify({ type: 'self', branch: info.branch, commit: info.commitSha }), existing.id);
       return { registered: true, id: existing.id };
     }
 
     const id = `repo-self-${Date.now()}`;
     this.db.prepare(`
-      INSERT INTO repositories (id, name, url, created_at, updated_at, metadata)
-      VALUES (?, 'djimitflo-self', ?, datetime('now'), datetime('now'), ?)
-    `).run(id, info.remoteUrl, JSON.stringify({ type: 'self', branch: info.branch, commit: info.commitSha }));
+      INSERT INTO repositories (id, name, description, path, git_remote, git_branch, git_commit, metadata, created_at, updated_at)
+      VALUES (?, 'djimitflo-self', 'Djimitflo self-repository', ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).run(id, info.rootPath, info.remoteUrl, info.branch, info.commitSha, JSON.stringify({ type: 'self', branch: info.branch, commit: info.commitSha }));
 
     return { registered: true, id };
   }
 
   getSelfRepository(): RepoRow | null {
-    const row = this.db.prepare("SELECT id, name, url, metadata FROM repositories WHERE metadata->>'$.type' = 'self'").get() as RepoRow | undefined;
+    const row = this.db.prepare("SELECT id, name, git_remote as url, metadata FROM repositories WHERE metadata->>'$.type' = 'self'").get() as RepoRow | undefined;
     return row ?? null;
   }
 
@@ -95,8 +95,8 @@ export class SelfRepositoryService {
     metadata.hasUncommittedChanges = info.hasUncommittedChanges;
     metadata.lastSyncedAt = new Date().toISOString();
 
-    this.db.prepare("UPDATE repositories SET metadata = ?, updated_at = datetime('now') WHERE id = ?")
-      .run(JSON.stringify(metadata), existing.id);
+    this.db.prepare("UPDATE repositories SET git_commit = ?, git_branch = ?, metadata = ?, last_synced_at = datetime('now'), updated_at = datetime('now') WHERE id = ?")
+      .run(info.commitSha, info.branch, JSON.stringify(metadata), existing.id);
   }
 
   getDiff(): string {
