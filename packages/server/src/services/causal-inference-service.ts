@@ -1,9 +1,20 @@
+import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export interface CausalPrediction {
   predictedSuccessRate: number;
   confidence: number;
   evidence: number;
+}
+
+export interface InterventionRecord {
+  id: string;
+  description: string;
+  changes: Record<string, unknown>;
+  expectedOutcome: string;
+  actualOutcome: string | null;
+  success: boolean | null;
+  timestamp: string;
 }
 
 export interface RuntimeComparison {
@@ -29,6 +40,53 @@ export class CausalInferenceService {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS intervention_log (
+        id TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        changes_json TEXT NOT NULL,
+        expected_outcome TEXT NOT NULL,
+        actual_outcome TEXT,
+        success INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+  }
+
+  logIntervention(description: string, changes: Record<string, unknown>, expectedOutcome: string): string {
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO intervention_log (id, description, changes_json, expected_outcome)
+      VALUES (?, ?, ?, ?)
+    `).run(id, description, JSON.stringify(changes), expectedOutcome);
+    return id;
+  }
+
+  recordInterventionOutcome(interventionId: string, actualOutcome: string, success: boolean): void {
+    this.db.prepare('UPDATE intervention_log SET actual_outcome = ?, success = ? WHERE id = ?')
+      .run(actualOutcome, success ? 1 : 0, interventionId);
+  }
+
+  getInterventionHistory(limit: number = 20): InterventionRecord[] {
+    const rows = this.db.prepare('SELECT * FROM intervention_log ORDER BY created_at DESC LIMIT ?').all(limit) as Array<{
+      id: string; description: string; changes_json: string; expected_outcome: string; actual_outcome: string | null; success: number | null; created_at: string;
+    }>;
+    return rows.map(r => ({
+      id: r.id,
+      description: r.description,
+      changes: JSON.parse(r.changes_json) as Record<string, unknown>,
+      expectedOutcome: r.expected_outcome,
+      actualOutcome: r.actual_outcome,
+      success: r.success === null ? null : r.success === 1,
+      timestamp: r.created_at,
+    }));
+  }
+
+  getInterventionAccuracy(): number {
+    const rows = this.db.prepare('SELECT success FROM intervention_log WHERE success IS NOT NULL').all() as Array<{ success: number }>;
+    if (rows.length === 0) return 0;
+    const correct = rows.filter(r => r.success === 1).length;
+    return correct / rows.length;
   }
 
   recordObservation(features: Record<string, string>, outcome: number): void {

@@ -146,6 +146,17 @@ ${input.goalObjective || 'Resolve finding'}
           type: 'clarity',
           description: `Low confidence (${result.confidence.toFixed(2)}) in domain "${result.domain}" — skill procedure may need clarification`,
           domain: result.domain,
+          severity: result.confidence < 0.3 ? 'high' : 'medium',
+        });
+      }
+
+      if (result.metadata?.skill_used && result.confidence < 0.4) {
+        improvements.push({
+          skill_id: skillId,
+          type: 'accuracy',
+          description: `Skill produced low-confidence output for "${result.domain}" — procedure may be incorrect or incomplete`,
+          domain: result.domain,
+          severity: 'high',
         });
       }
     }
@@ -155,8 +166,20 @@ ${input.goalObjective || 'Resolve finding'}
       improvements.push({
         skill_id: skillId,
         type: 'coverage',
-        description: `Skill only covers one domain — consider expanding to related domains`,
+        description: `Skill only covers one domain (${[...domains][0]}) — consider expanding to related domains`,
         domain: [...domains][0],
+        severity: 'low',
+      });
+    }
+
+    const avgConfidence = executionResults.reduce((sum, r) => sum + r.confidence, 0) / executionResults.length;
+    if (avgConfidence > 0.8 && executionResults.length >= 3) {
+      improvements.push({
+        skill_id: skillId,
+        type: 'promotion',
+        description: `High average confidence (${avgConfidence.toFixed(2)}) over ${executionResults.length} runs — consider promoting to validated`,
+        domain: executionResults[0].domain,
+        severity: 'info',
       });
     }
 
@@ -166,7 +189,8 @@ ${input.goalObjective || 'Resolve finding'}
 
 export interface SkillImprovement {
   skill_id: string;
-  type: 'clarity' | 'coverage' | 'accuracy';
+  type: 'clarity' | 'coverage' | 'accuracy' | 'promotion';
   description: string;
   domain: string;
+  severity: 'high' | 'medium' | 'low' | 'info';
 }

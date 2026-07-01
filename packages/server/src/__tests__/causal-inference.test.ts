@@ -60,4 +60,56 @@ describe('G43: Causal Inference', () => {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='causal_observations'").all();
     expect(tables.length).toBe(1);
   });
+
+  describe('G106: Intervention Logging', () => {
+    it('logs an intervention', () => {
+      const id = causal.logIntervention('Test change', { runtime: 'codex' }, 'Improve success rate');
+      expect(id).toBeDefined();
+    });
+
+    it('records intervention outcome', () => {
+      const id = causal.logIntervention('Test change', { runtime: 'codex' }, 'Improve success rate');
+      causal.recordInterventionOutcome(id, 'Success rate improved', true);
+
+      const history = causal.getInterventionHistory(10);
+      expect(history.length).toBe(1);
+      expect(history[0].success).toBe(true);
+    });
+
+    it('gets intervention history', () => {
+      causal.logIntervention('Change A', { x: 1 }, 'Outcome A');
+      causal.logIntervention('Change B', { x: 2 }, 'Outcome B');
+
+      const history = causal.getInterventionHistory(10);
+      expect(history.length).toBe(2);
+    });
+
+    it('calculates intervention accuracy', () => {
+      const id1 = causal.logIntervention('Change 1', {}, 'Expected');
+      const id2 = causal.logIntervention('Change 2', {}, 'Expected');
+      causal.recordInterventionOutcome(id1, 'Actual', true);
+      causal.recordInterventionOutcome(id2, 'Actual', false);
+
+      const accuracy = causal.getInterventionAccuracy();
+      expect(accuracy).toBe(0.5);
+    });
+
+    it('returns 0 accuracy when no outcomes recorded', () => {
+      causal.logIntervention('Change', {}, 'Expected');
+      const accuracy = causal.getInterventionAccuracy();
+      expect(accuracy).toBe(0);
+    });
+
+    it('intervention has correct structure', () => {
+      const id = causal.logIntervention('Test', { key: 'value' }, 'Expected outcome');
+      const history = causal.getInterventionHistory(1);
+      const record = history[0];
+
+      expect(record.id).toBe(id);
+      expect(record.description).toBe('Test');
+      expect(record.changes).toEqual({ key: 'value' });
+      expect(record.expectedOutcome).toBe('Expected outcome');
+      expect(record.timestamp).toBeDefined();
+    });
+  });
 });
