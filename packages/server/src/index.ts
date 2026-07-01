@@ -30,6 +30,7 @@ import { NestedSpawnService } from './services/nested-spawn-service';
 import { SwarmIntelligenceService } from './services/swarm-intelligence-service';
 import { SelfModelService } from './services/self-model-service';
 import { ExperienceRetrievalService } from './services/experience-retrieval-service';
+import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -119,6 +120,17 @@ async function main() {
     console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
   } catch (error) {
     console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // G92: start the autonomous goal generator (self-improvement → goals → loop-daemon).
+  try {
+    const autonomousGoals = new AutonomousGoalGenerator(db);
+    const generated = autonomousGoals.generateAll();
+    if (generated.total > 0) {
+      console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // G16: start the continuous operation daemon (goal queue with priority scheduling).

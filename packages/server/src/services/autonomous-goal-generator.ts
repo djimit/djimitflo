@@ -1,13 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
-interface GoalInput {
-  objective: string;
-  riskClass: 'low' | 'medium' | 'high' | 'critical';
-  metadata: Record<string, unknown>;
-  source: string;
-}
-
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {}
 
