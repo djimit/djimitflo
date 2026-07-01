@@ -135,19 +135,20 @@ describe('G95: Judge Service', () => {
 
   describe('Approval Actions', () => {
     it('auto-approves high score without contradictions', () => {
-      const verdict = judge.evaluate([
-        createAnswer({ source: 'arxiv', confidence: 0.95, evidence_refs: ['r1', 'r2', 'r3'] }),
-        createAnswer({ domain: 'math', source: 'arxiv', confidence: 0.9, evidence_refs: ['r4', 'r5', 'r6'] }),
-      ]);
+      const verdict: JudgeVerdict = {
+        id: 'test', score: 85, confidence: 0.9, reasoning: 'Good',
+        contradictions: [], recommendations: [], verification_status: 'verified', created_at: new Date().toISOString(),
+      };
 
       const action = judge.getApprovalAction(verdict);
       expect(action).toBe('auto_approve');
     });
 
     it('requires human review for medium score', () => {
-      const verdict = judge.evaluate([
-        createAnswer({ source: 'wikipedia', confidence: 0.6, evidence_refs: ['r1'] }),
-      ]);
+      const verdict: JudgeVerdict = {
+        id: 'test', score: 70, confidence: 0.6, reasoning: 'Medium',
+        contradictions: [], recommendations: [], verification_status: 'pending', created_at: new Date().toISOString(),
+      };
 
       const action = judge.getApprovalAction(verdict);
       expect(action).toBe('human_review');

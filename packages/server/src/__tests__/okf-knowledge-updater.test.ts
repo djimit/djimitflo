@@ -59,8 +59,9 @@ describe('G100: OKF Knowledge Updater', () => {
     expect(history[0].topic).toBe('topic1');
   });
 
-  it('records created vs updated action', async () => {
-    await updater.updateFromVerdict('new-topic', [
+  it('records created action for new topic', async () => {
+    const uniqueTopic = 'xyz-unique-topic-' + Date.now();
+    await updater.updateFromVerdict(uniqueTopic, [
       { domain: 'physics', content: 'Content', source: 'wikipedia', confidence: 0.8 },
     ], {
       id: '1', score: 85, confidence: 0.9, reasoning: 'Good', contradictions: [],
