@@ -49,7 +49,7 @@ export class ComplianceCheckingAgent {
         checks_json TEXT NOT NULL DEFAULT '[]',
         summary_json TEXT NOT NULL DEFAULT '{}',
         compliance_score REAL NOT NULL DEFAULT 0,
-        createdAt TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )
     `);
   }
@@ -227,7 +227,7 @@ export class ComplianceCheckingAgent {
   }
 
   getHistory(limit: number = 20): ComplianceCheckResult[] {
-    const rows = this.db.prepare('SELECT * FROM compliance_checks ORDER BY createdAt DESC LIMIT ?').all(limit) as ComplianceRow[];
+    const rows = this.db.prepare('SELECT * FROM compliance_checks ORDER BY created_at DESC LIMIT ?').all(limit) as ComplianceRow[];
     return rows.map(r => ({
       id: r.id,
       framework: r.framework,
@@ -235,7 +235,7 @@ export class ComplianceCheckingAgent {
       checks: JSON.parse(r.checks_json) as ComplianceCheck[],
       summary: JSON.parse(r.summary_json) as ComplianceCheckResult['summary'],
       complianceScore: r.compliance_score,
-      checkedAt: r.createdAt,
+      checkedAt: r.created_at,
     }));
   }
 
