@@ -9,6 +9,7 @@ import { SkillService } from './skill-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
+import { SelfModelService } from './self-model-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -22,7 +23,8 @@ export type LoopName =
   | 'mcp-connector-validation-loop'
   | 'security-regression-loop'
   | 'okf-synchronization-loop'
-  | 'overwatch-policy-drift-loop';
+  | 'overwatch-policy-drift-loop'
+  | 'research-loop';
 
 interface LoopContract {
   name: LoopName;
@@ -455,6 +457,7 @@ export class LoopService {
    * import SwarmStatusService). The hard cap is min(env_cap, advisor() ?? env_cap).
    */
   private concurrencyAdvisor: (() => number | null) | null = null;
+  private selfModel: SelfModelService | null = null;
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
@@ -474,7 +477,7 @@ export class LoopService {
     Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000),
   );
 
-  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, concurrencyAdvisor?: (() => number | null) | null) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, concurrencyAdvisor?: (() => number | null) | null, selfModel?: SelfModelService | null) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
@@ -482,6 +485,8 @@ export class LoopService {
     this.skills = new SkillService(db);
     // G9: inject the fleet concurrency advisor (avoids circular import with SwarmStatusService)
     this.concurrencyAdvisor = concurrencyAdvisor ?? null;
+    // G37: inject the self-model service for calibrated runtime selection
+    this.selfModel = selfModel ?? null;
   }
 
   /**
@@ -1088,8 +1093,6 @@ export class LoopService {
       throw new Error('LOOP_FINDING_NOT_FOUND');
     }
 
-    // G11: use the input runtime as a fallback, but the planner's per-finding runtime
-    // (selectRuntime) takes precedence — the fleet adapts per finding, not per goal.
     const defaultRuntime = input.runtime || 'manual';
     this.assertRuntimeAvailable(defaultRuntime);
 
@@ -1102,18 +1105,14 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    // G3.2: use the planner when no explicit capabilityId is set (daemon flow).
-    // When capabilityId IS set (proof flow), use the explicit runtime — the proof
-    // is fragile and the planner changes can break it. The planner's intelligence
-    // (per-runtime competence, specialised capabilities) is for production goals.
-    const plan = input.capabilityId ? null : this.planLoopRun(id);
+    const requestedRuntime = input.runtime || null;
+    // ponytail: explicit runtime is the operator/smoke contract; adaptive planning only fills blanks.
+    const plan = requestedRuntime || input.capabilityId ? null : this.planLoopRun(id);
 
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
       const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
       this.ensureWorktreeControlIgnore(worktreePath);
-      // G11: use the planner's per-finding runtime (selectRuntime) when available,
-      // falling back to the input/default runtime. This makes the fleet adaptive.
       const findingPlan = plan?.find((p) => p.finding_id === finding.id);
       const leaseRuntime = findingPlan?.runtime || defaultRuntime;
       this.assertRuntimeAvailable(leaseRuntime);
@@ -1134,6 +1133,8 @@ export class LoopService {
         metadata: {
           assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
+          requested_runtime: requestedRuntime,
+          effective_runtime: leaseRuntime,
         },
         now,
       });
@@ -1147,7 +1148,12 @@ export class LoopService {
         findingId: finding.id,
         worktreePath: null,
         branchName: null,
-        metadata: { maker_lease_id: makerLeaseId, requires_independent_review: true },
+        metadata: {
+          maker_lease_id: makerLeaseId,
+          requires_independent_review: true,
+          requested_runtime: requestedRuntime,
+          effective_runtime: 'manual',
+        },
         now,
       });
 
@@ -1266,6 +1272,33 @@ export class LoopService {
     const runMeta = run.metadata as Record<string, unknown>;
     if (runMeta.sovereign === true || process.env.PI_OFFLINE === '1') {
       return 'pi';
+    }
+
+    // G37: Calibrated selection — use self-model if available
+    if (this.selfModel && capability?.id) {
+      const calibration = this.selfModel.getCalibration(capability.id);
+      if (calibration.nRuns >= 3) {
+        const perRuntime = this.intelligence.measureCompetencePerRuntime(capability.id);
+        const runtimes = Object.entries(perRuntime);
+        if (runtimes.length > 0) {
+          let bestRuntime = runtimes[0][0];
+          let bestScore = -1;
+          for (const [runtime, data] of runtimes) {
+            if (data.success_rate < 0.3) continue;
+            const score = data.success_rate * calibration.recommendedConfidence;
+            if (score > bestScore) {
+              bestScore = score;
+              bestRuntime = runtime;
+            }
+          }
+          if (bestScore > 0) {
+            const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
+            if (validRuntimes.includes(bestRuntime as typeof validRuntimes[number])) {
+              return bestRuntime as 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock';
+            }
+          }
+        }
+      }
     }
 
     // Backward compat: if the run has an explicit runtime and no capability-based
@@ -3256,7 +3289,57 @@ export class LoopService {
     if (loopName === 'overwatch-policy-drift-loop') {
       return this.discoverOverwatchPolicyDrift(repositoryPath, maxFindings);
     }
+    if (loopName === 'research-loop') {
+      return this.discoverResearchQuestions(repositoryPath, maxFindings);
+    }
     return [];
+  }
+
+  private discoverResearchQuestions(_repositoryPath: string, maxFindings: number): LoopFinding[] {
+    const findings: LoopFinding[] = [];
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    try {
+      const gapClaims = this.db.prepare(`
+        SELECT subject_ref, COUNT(*) as freq FROM swarm_claims
+        WHERE predicate = 'capability_gap' AND created_at > ?
+        GROUP BY subject_ref
+      `).all(thirtyDaysAgo) as Array<{ subject_ref: string; freq: number }>;
+      for (const gap of gapClaims) {
+        if (findings.length >= maxFindings) break;
+        findings.push({
+          id: randomUUID(),
+          type: 'research_question',
+          severity: 'info',
+          file: '<knowledge-gap>',
+          message: `Investigate knowledge gap: ${gap.subject_ref} (${gap.freq} occurrences)`,
+          evidence: `capability_gap claims: ${gap.freq} in last 30 days`,
+          suggested_fix: `Research and synthesize findings on '${gap.subject_ref}' into OKF memory store.`,
+        });
+      }
+    } catch { /* best-effort */ }
+
+    try {
+      const hypotheses = this.db.prepare(`
+        SELECT id, question FROM swarm_hypotheses
+        WHERE projection_state = 'draft'
+        ORDER BY created_at ASC LIMIT ?
+      `).all(maxFindings) as Array<{ id: string; question: string }>;
+      for (const h of hypotheses) {
+        if (findings.length >= maxFindings) break;
+        findings.push({
+          id: randomUUID(),
+          type: 'research_question',
+          severity: 'info',
+          file: '<hypothesis>',
+          message: `Investigate hypothesis: ${h.question}`,
+          evidence: `Hypothesis ${h.id} in draft state`,
+          suggested_fix: `Design and execute research plan to test hypothesis: ${h.question}`,
+        });
+      }
+    } catch { /* best-effort */ }
+
+    return findings;
   }
 
   private discoverDocDrift(repositoryPath: string, maxFindings: number): LoopFinding[] {
@@ -3710,15 +3793,22 @@ export class LoopService {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    if (!diff) {
-      return;
-    }
     try {
-      execFileSync('git', ['-C', worktreePath, 'apply', '--binary', '--whitespace=nowarn'], {
-        input: diff,
+      if (diff) {
+        execFileSync('git', ['-C', worktreePath, 'apply', '--binary', '--whitespace=nowarn'], {
+          input: diff,
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+      }
+      this.copySourceUntrackedFiles(sourceRoot, worktreePath);
+      const status = execFileSync('git', ['-C', worktreePath, 'status', '--porcelain=v1'], {
         encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+      if (!status.trim()) {
+        return;
+      }
       execFileSync('git', ['-C', worktreePath, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] });
       execFileSync('git', [
         '-C',
@@ -3734,6 +3824,28 @@ export class LoopService {
     } catch (error) {
       const stderr = (error as { stderr?: Buffer | string }).stderr?.toString() || '';
       throw new Error(stderr.trim() || 'git apply dirty source diff failed');
+    }
+  }
+
+  private copySourceUntrackedFiles(sourceRoot: string, worktreePath: string): void {
+    const untracked = execFileSync('git', ['-C', sourceRoot, 'ls-files', '--others', '--exclude-standard', '-z'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    for (const relativePath of untracked.split('\0').filter(Boolean)) {
+      const sourcePath = path.resolve(sourceRoot, relativePath);
+      const targetPath = path.resolve(worktreePath, relativePath);
+      if (!sourcePath.startsWith(path.resolve(sourceRoot) + path.sep) || !targetPath.startsWith(path.resolve(worktreePath) + path.sep)) {
+        continue;
+      }
+      const stat = fs.lstatSync(sourcePath);
+      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+      if (stat.isSymbolicLink()) {
+        fs.rmSync(targetPath, { force: true, recursive: true });
+        fs.symlinkSync(fs.readlinkSync(sourcePath), targetPath);
+      } else if (stat.isFile()) {
+        fs.copyFileSync(sourcePath, targetPath);
+      }
     }
   }
 
@@ -4303,6 +4415,17 @@ export class LoopService {
       args.push(prompt);
       return {
         command: process.env.CLINE_BIN_PATH || 'cline',
+        args,
+      };
+    }
+    if (runtime === 'research') {
+      // Research runtime: DeerFlow-style synthesis. Runs headless, produces a
+      // document (not a code diff). The command is a script that calls the
+      // research pipeline via the existing DeerFlow/LLM infrastructure.
+      const args = ['--mode', 'research', '--format', 'json', '--topic', prompt];
+      if (process.env.RESEARCH_MODEL) args.push('--model', process.env.RESEARCH_MODEL);
+      return {
+        command: process.env.RESEARCH_BIN_PATH || 'djimitflo-research',
         args,
       };
     }

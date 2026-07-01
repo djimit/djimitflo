@@ -1,0 +1,105 @@
+{
+  "batch": "agi-cognitive-evolution",
+  "autonomous": true,
+  "human_gate_only_at_ship": true,
+  "goals": [
+    {
+      "id": "G35",
+      "objective": "Build Self-Model Service with calibration, known unknowns, and trend detection",
+      "acceptance_criteria": [
+        "calibration_error < 0.15 after 10 runs",
+        "recommended_confidence < 0.5 when n < 3",
+        "trend detection works for improving/stable/degrading"
+      ]
+    },
+    {
+      "id": "G36",
+      "objective": "Build Experience Retrieval Service with Qdrant embedding and similarity search",
+      "acceptance_criteria": [
+        "similarity > 0.9 for identical objectives",
+        "similarity > 0.6 for related objectives",
+        "lessons injected in maker context when >= 3 past runs"
+      ]
+    },
+    {
+      "id": "G37",
+      "objective": "Build Calibrated Runtime Selection using SelfModel confidence",
+      "acceptance_criteria": [
+        "selects best calibrated runtime when n >= 5",
+        "falls back to default when n < 3",
+        "never selects runtime with sr < 0.3 unless no alternative"
+      ]
+    },
+    {
+      "id": "G38",
+      "objective": "Build Epistemic Gate Service with 4 gate types",
+      "acceptance_criteria": [
+        "source_quality: 0 sources -> fail, 2 sources -> pass",
+        "logical_consistency: contradicts edge -> fail",
+        "perspective_coverage: 1 type -> fail, 2 types + dissent -> pass",
+        "falsifiability: testable claim -> pass, vague -> fail"
+      ]
+    },
+    {
+      "id": "G39",
+      "objective": "Build Research Loop with DeerFlow executor and epistemic verification",
+      "acceptance_criteria": [
+        "synthesis with >= 3 cited sources",
+        "all epistemic gates pass",
+        "findings written to OKF memory store"
+      ]
+    },
+    {
+      "id": "G40",
+      "objective": "Build Skill Distillation Service",
+      "acceptance_criteria": [
+        ">= 1 distilled procedure after 5 successful runs",
+        "procedure retrievable via getSkillForFinding"
+      ]
+    },
+    {
+      "id": "G41",
+      "objective": "Build Curiosity Service with gap detection",
+      "acceptance_criteria": [
+        ">= 1 coverage gap for empty OKF",
+        ">= 1 confidence gap for stale low-confidence concepts",
+        "gap claims published to KnowledgeBus"
+      ]
+    },
+    {
+      "id": "G42",
+      "objective": "Build Goal Formation Service",
+      "acceptance_criteria": [
+        ">= 1 autonomous goal when gaps exist",
+        "autonomous goals <= 50% daemon capacity",
+        "operator goals always preempt"
+      ]
+    },
+    {
+      "id": "G43",
+      "objective": "Build Causal Inference Service",
+      "acceptance_criteria": [
+        "predictions > 60% accuracy after 20+ runs",
+        "what-if queries return prediction + confidence"
+      ]
+    },
+    {
+      "id": "G44",
+      "objective": "Build Adaptive Self-Modification (Meta-Evolution v2)",
+      "acceptance_criteria": [
+        "3+ gaps -> draft contract created",
+        "draft cannot route without human approval"
+      ]
+    },
+    {
+      "id": "G45",
+      "objective": "Ship Gate: full production proof with all G35-G44 active",
+      "acceptance_criteria": [
+        "npm run test: all green",
+        "npm run type-check: clean",
+        "production_passed: true"
+      ],
+      "human_validation": true
+    }
+  ]
+}

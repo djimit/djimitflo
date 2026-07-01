@@ -28,6 +28,8 @@ import { CapabilityAcquisitionService } from './services/capability-acquisition'
 import { MetaEvolutionService } from './services/meta-evolution-service';
 import { NestedSpawnService } from './services/nested-spawn-service';
 import { SwarmIntelligenceService } from './services/swarm-intelligence-service';
+import { SelfModelService } from './services/self-model-service';
+import { ExperienceRetrievalService } from './services/experience-retrieval-service';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -68,7 +70,12 @@ async function main() {
     } catch { return null; }
   };
 
-  const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor);
+  const selfModel = new SelfModelService(db);
+  // ExperienceRetrievalService is instantiated within ContextInjectionService
+  // when a db is available. The instance here is for future standalone use.
+  const _experienceRetrieval = new ExperienceRetrievalService(db);
+  void _experienceRetrieval;
+  const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor, selfModel);
   try {
     const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {

@@ -4,6 +4,7 @@ import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import type { Database } from 'better-sqlite3';
 import type { MemoryStore } from './memory-candidate-service';
 import { ContextSanitizer } from './context-sanitizer';
+import { ExperienceRetrievalService } from './experience-retrieval-service';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -31,7 +32,7 @@ const MIN_SCORE = 0.5;
 const DJIMITKB_MCP_URL = process.env.DJIMITKB_MCP_URL || 'http://192.168.1.28:8008';
 
 export interface ContextResult {
-  source: 'qdrant_swarm' | 'okf_search' | 'okf_related' | 'djimitkb_search';
+  source: 'qdrant_swarm' | 'okf_search' | 'okf_related' | 'djimitkb_search' | 'experience_retrieval';
   concept_id?: string;
   title?: string;
   type?: string;
@@ -48,18 +49,35 @@ export interface ContextResult {
 
 export class ContextInjectionService {
   private sanitizer = new ContextSanitizer();
-  constructor(private db?: Database) {}
+  private experienceRetrieval: ExperienceRetrievalService | null = null;
+  constructor(private db?: Database) {
+    if (db) this.experienceRetrieval = new ExperienceRetrievalService(db);
+  }
 
   async injectContext(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<string> {
     if (!useSwarmContext) return '';
 
     const results: ContextResult[] = [];
 
-    await Promise.allSettled([
+    const searches = [
       this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
       this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
       this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
-    ]);
+    ];
+    if (this.experienceRetrieval) {
+      searches.push(this.experienceRetrieval.retrieveRelevantRuns(taskDescription, 5).then((expResults: import('./experience-retrieval-service').ExperienceResult[]) => {
+        if (expResults.length > 0) {
+          results.push({
+            source: 'experience_retrieval',
+            excerpt: this.experienceRetrieval!.formatExperienceContext(expResults),
+            score: expResults[0].similarity,
+            store: 'episodic',
+          });
+        }
+      }));
+    }
+
+    await Promise.allSettled(searches);
 
     const ranked = this.rankByTrust(results);
     const truncated = this.truncateToTokenBudget(ranked, MAX_CONTEXT_TOKENS);

@@ -19,6 +19,7 @@ interface EvaluationReport {
   dormant_capabilities: number;
   pruned: number;
   demoted_rules: number;
+  synthesized_contracts: number;
 }
 
 export class MetaEvolutionService {
@@ -98,6 +99,41 @@ export class MetaEvolutionService {
       }
     } catch { /* best-effort */ }
 
+    // G44: Synthesize draft loop contracts from recurring gaps
+    let synthesizedContracts = 0;
+    const recurringGaps = this.db.prepare(`
+      SELECT subject_ref, COUNT(*) as freq FROM swarm_claims
+      WHERE claim_type = 'capability' AND created_at > datetime('now', '-30 days')
+      GROUP BY subject_ref HAVING freq >= 3
+    `).all() as Array<{ subject_ref: string; freq: number }>;
+
+    for (const gap of recurringGaps) {
+      const existing = this.db.prepare('SELECT id FROM swarm_capabilities WHERE id = ?').get(`loop-contract-${gap.subject_ref}`);
+      if (existing) continue;
+
+      const draftContract = {
+        name: 'research-loop',
+        title: `Research: ${gap.subject_ref}`,
+        description: `Auto-generated loop contract for recurring gap: ${gap.subject_ref}`,
+        trigger: ['capability_gap'],
+        context_sources: ['okf_memory', 'qdrant_knowledge'],
+        actions_allowed: ['search', 'read', 'synthesize', 'cite'],
+        actions_forbidden: ['deploy', 'merge', 'push'],
+        verification: ['source_quality', 'logical_consistency'],
+      };
+
+      const metaJson = JSON.stringify({
+        draft_loop_contract: draftContract,
+        synthesized_from: gap.subject_ref,
+        gap_frequency: gap.freq,
+      });
+      this.db.prepare(
+        "INSERT OR IGNORE INTO swarm_capabilities (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref, allowed_actions_json, forbidden_actions_json, required_evidence_json, eval_score, eval_threshold, cost_model_json, removal_strategy, metadata, created_at, updated_at) VALUES (?, 'deterministic_harness', 'meta-evolution', '0.1.0', 'draft', 'low', 'none', 'none', '[\"spawn_runtime_worker\"]', '[\"deploy\"]', '[\"proof:test\"]', 0, 0.5, '{}', 'demote_on_fail', ?, datetime('now'), datetime('now'))"
+      ).run(`loop-contract-${gap.subject_ref}`, metaJson);
+
+      synthesizedContracts++;
+    }
+
     const report: EvaluationReport = {
       timestamp: now,
       planner_accuracy: plannerAccuracy,
@@ -107,6 +143,7 @@ export class MetaEvolutionService {
       dormant_capabilities: dormantCount,
       pruned,
       demoted_rules: demotedRules,
+      synthesized_contracts: synthesizedContracts,
     };
 
     swarmEventBus.emit('convergence', {
