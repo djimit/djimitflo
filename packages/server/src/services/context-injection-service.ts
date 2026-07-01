@@ -59,13 +59,13 @@ export class ContextInjectionService {
 
     const results: ContextResult[] = [];
 
-    const searches = [
+    const searches: Promise<unknown>[] = [
       this.searchQdrantSwarm(taskDescription, storeFilter).then((r) => results.push(...r)),
       this.searchOkfMcp(taskDescription).then((r) => results.push(...r)),
       this.searchDjimitKB(taskDescription).then((r) => results.push(...r)),
     ];
     if (this.experienceRetrieval) {
-      searches.push(this.experienceRetrieval.retrieveRelevantRuns(taskDescription, 5).then((expResults: import('./experience-retrieval-service').ExperienceResult[]) => {
+      searches.push(this.experienceRetrieval.retrieveRelevantRuns(taskDescription, 5).then((expResults) => {
         if (expResults.length > 0) {
           results.push({
             source: 'experience_retrieval',
