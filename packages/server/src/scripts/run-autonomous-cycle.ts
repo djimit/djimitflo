@@ -10,6 +10,7 @@ import { LoopService } from '../services/loop-service';
 import { LoopDaemon } from '../services/loop-daemon';
 import { SelfModelService } from '../services/self-model-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
+import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 
 async function main() {
   console.log('🤖 DjimFlo Autonomous Cycle');
@@ -54,9 +55,23 @@ async function main() {
     console.error('   Daemon tick failed:', error instanceof Error ? error.message : String(error));
   }
 
-  // Step 3: Report results
+  // Step 3: Close learning loop for completed runs
   console.log('');
-  console.log('📈 Step 3: Results...');
+  console.log('🧠 Step 3: Closing learning loop...');
+  const knowledge = new KnowledgeRuntimeService(db);
+  const completedRuns = db.prepare("SELECT id FROM loop_runs WHERE status = 'completed'").all() as Array<{ id: string }>;
+  let reflections = 0;
+  for (const run of completedRuns) {
+    try {
+      const result = knowledge.closeLoop({ loop_run_id: run.id });
+      if (result.status === 'closed') reflections++;
+    } catch { /* skip runs that cannot be closed yet */ }
+  }
+  console.log(`   Closed ${reflections} learning loop(s).`);
+
+  // Step 4: Report results
+  console.log('');
+  console.log('📈 Step 4: Results...');
   const goalStats = db.prepare(`
     SELECT status, COUNT(*) as c FROM goals
     WHERE metadata LIKE '%autonomous%'

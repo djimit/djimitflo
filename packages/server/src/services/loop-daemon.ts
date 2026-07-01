@@ -4,6 +4,7 @@ import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
+import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -276,6 +277,14 @@ export class LoopDaemon {
 
       // 9. Certify the run (G3.4 convergence certificate).
       const cert = this.loops.certifyLoopRun(run.id);
+
+      // 9b. Close learning loop (reflection + memory + follow-up).
+      if (cert.certified) {
+        try {
+          const knowledge = new KnowledgeRuntimeService(this.db);
+          knowledge.closeLoop({ loop_run_id: run.id });
+        } catch { /* best-effort: learning closure is not fatal */ }
+      }
 
       // 10. Update goal + run status.
       const goalStatus = cert.certified ? 'completed' : 'failed';
