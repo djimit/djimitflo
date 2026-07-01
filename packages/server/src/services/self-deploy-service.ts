@@ -37,8 +37,8 @@ export class SelfDeployService {
 
   commitChanges(message: string): { success: boolean; sha: string } {
     try {
-      execSync('git add -A', { cwd: this.rootPath, stdio: 'pipe' });
-      execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: this.rootPath, stdio: 'pipe' });
+      execSync('git add -A', { cwd: this.rootPath, stdio: 'pipe', timeout: 10_000 });
+      execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: this.rootPath, stdio: 'pipe', timeout: 10_000 });
       const sha = execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
       return { success: true, sha };
     } catch (err: unknown) {
@@ -59,7 +59,7 @@ export class SelfDeployService {
 
   rollback(commitSha: string): { success: boolean } {
     try {
-      execSync(`git revert --no-edit ${commitSha}`, { cwd: this.rootPath, stdio: 'pipe' });
+      execSync(`git revert --no-edit ${commitSha}`, { cwd: this.rootPath, stdio: 'pipe', timeout: 10_000 });
       return { success: true };
     } catch {
       return { success: false };

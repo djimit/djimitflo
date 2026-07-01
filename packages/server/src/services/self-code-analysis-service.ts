@@ -197,7 +197,7 @@ export class SelfCodeAnalysisService {
 
     try {
       const { execSync } = require('child_process');
-      const testOutput = execSync("find packages/server/src/__tests__ -name '*.test.ts' 2>/dev/null || true", { encoding: 'utf8' });
+      const testOutput = execSync("find packages/server/src/__tests__ -name '*.test.ts' 2>/dev/null || true", { encoding: 'utf8', timeout: 10_000 });
       for (const tf of testOutput.split('\n').filter(Boolean)) {
         testFiles.add(tf.replace('__tests__/', '').replace('.test.ts', '.ts'));
       }

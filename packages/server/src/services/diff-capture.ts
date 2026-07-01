@@ -229,7 +229,7 @@ export class DiffCaptureService {
         modifiedFiles: lines.filter((l: string) => /^\s?[MADRC]/.test(l) || /^[MADRC]\s/.test(l)).length,
         untrackedFiles: lines.filter((l: string) => /^\?\?/.test(l)).length,
         headCommit,
-        headCommitMessage: execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8' }).trim(),
+        headCommitMessage: execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim(),
       };
     } catch {
       return null;
@@ -244,10 +244,10 @@ export class DiffCaptureService {
       if (preCommit) {
         diffTarget = preCommit;
       } else {
-        try { diffTarget = execSync('git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim(); } catch { diffTarget = 'HEAD~1'; }
+        try { diffTarget = execSync('git merge-base HEAD main 2>/dev/null || git merge-base HEAD master 2>/dev/null', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim(); } catch { diffTarget = 'HEAD~1'; }
       }
 
-      const nameStatus = execSync(`git diff --name-status ${diffTarget} 2>/dev/null || git diff --name-status HEAD~1`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const nameStatus = execSync(`git diff --name-status ${diffTarget} 2>/dev/null || git diff --name-status HEAD~1`, { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
       const statusLines = nameStatus ? nameStatus.split('\n').filter(Boolean) : [];
 
       for (const line of statusLines) {
@@ -261,10 +261,10 @@ export class DiffCaptureService {
         let beforeHash: string | null = null;
         let afterHash: string | null = null;
         try {
-          if (status !== 'A') beforeHash = execSync(`git rev-parse ${diffTarget}:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+          if (status !== 'A') beforeHash = execSync(`git rev-parse ${diffTarget}:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
         } catch { beforeHash = null; }
         try {
-          if (status !== 'D') afterHash = execSync(`git rev-parse HEAD:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8' }).trim();
+          if (status !== 'D') afterHash = execSync(`git rev-parse HEAD:"${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
         } catch { afterHash = null; }
 
         const statusMap: Record<string, FileChangeInput['change_type']> = { A: 'created', M: 'modified', D: 'deleted', R: 'renamed', C: 'modified' };
