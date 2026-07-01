@@ -151,6 +151,8 @@ export class SwarmIntelligenceService {
         blocked_or_needs_evidence: panels.filter((panel) => ['blocked', 'needs_more_evidence'].includes(panel.consensus.decision)).length,
       },
       capacity,
+      integration_spine: this.integrationSpineSummary(),
+      production_pilot: this.productionPilotSummary(),
       latest_runner_manifests: manifests,
       next_safe_actions: this.nextSafeActions(capabilities, claims, capacity),
     };
@@ -1217,6 +1219,149 @@ export class SwarmIntelligenceService {
       actions.push('Prepare or unblock leases before runner drain.');
     }
     return actions;
+  }
+
+  private integrationSpineSummary() {
+    const rows = this.db.prepare(`
+      SELECT * FROM work_items
+      WHERE metadata LIKE '%"integration"%'
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 25
+    `).all() as any[];
+    const chains = rows
+      .map((row) => this.integrationChainForWorkItem(row))
+      .filter((chain) => chain !== null)
+      .slice(0, 5);
+    return {
+      latest: chains[0] || null,
+      chains,
+      next_safe_action: chains[0]?.next_safe_action || 'Import integration event',
+    };
+  }
+
+  private productionPilotSummary() {
+    const rows = this.db.prepare(`
+      SELECT * FROM work_items
+      WHERE metadata LIKE '%"production_pilot"%'
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT 25
+    `).all() as any[];
+    const runs = rows
+      .map((row) => this.integrationChainForWorkItem(row))
+      .filter((chain) => chain !== null)
+      .slice(0, 10);
+    const completed = runs.filter((run) => Boolean(run.eval_run));
+    const checkerRejected = runs.filter((run) => run.leases.some((lease: any) => lease.role === 'checker' && lease.status === 'failed')).length;
+    const interventionCount = runs.reduce((sum, run) => sum + Number((run as any).manual_interventions || 0), 0);
+    const durations = runs
+      .map((run) => {
+        const started = Date.parse(String((run as any).created_at || ''));
+        const completedAt = Date.parse(String((run as any).completed_at || ''));
+        return Number.isFinite(started) && Number.isFinite(completedAt) ? completedAt - started : null;
+      })
+      .filter((duration): duration is number => typeof duration === 'number' && duration >= 0);
+    return {
+      latest: runs[0] || null,
+      runs,
+      metrics: {
+        total_runs: runs.length,
+        completed_runs: completed.length,
+        success_rate: runs.length ? Number((completed.length / runs.length).toFixed(4)) : 0,
+        checker_rejection_rate: runs.length ? Number((checkerRejected / runs.length).toFixed(4)) : 0,
+        reflection_candidates: runs.filter((run) => Boolean(run.reflection_candidate)).length,
+        memory_candidates: runs.filter((run) => Boolean(run.memory_candidate)).length,
+        manual_intervention_count: interventionCount,
+        avg_time_to_closure_ms: durations.length ? Math.round(durations.reduce((sum, duration) => sum + duration, 0) / durations.length) : null,
+      },
+      next_safe_action: runs[0]?.next_safe_action || 'Run production pilot from a low-risk integration item',
+    };
+  }
+
+  private integrationChainForWorkItem(row: any) {
+    const metadata = this.jsonObject(row.metadata);
+    const integration = this.jsonObject(metadata.integration);
+    if (!integration) return null;
+    const goalId = row.parent_goal_id || null;
+    const loopRunId = this.trimStringOrNull(metadata.loop_run_id);
+    const loop = loopRunId
+      ? this.db.prepare('SELECT id, status, metadata, completed_at FROM loop_runs WHERE id = ?').get(loopRunId) as any | undefined
+      : null;
+    const leases = loopRunId
+      ? (this.db.prepare('SELECT id, role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[])
+          .map((lease) => ({
+            id: lease.id,
+            role: lease.role,
+            runtime: lease.runtime,
+            effective_runtime: this.trimStringOrNull(this.jsonObject(lease.metadata).runtime_adapter)
+              || this.trimStringOrNull(this.jsonObject(lease.metadata).effective_runtime)
+              || lease.runtime,
+            status: lease.status,
+          }))
+      : [];
+    const evalRun = loopRunId
+      ? this.db.prepare("SELECT id, status, score FROM agent_eval_runs WHERE target_type = 'loop' AND target_ref = ? ORDER BY created_at DESC LIMIT 1").get(loopRunId) as any | undefined
+      : null;
+    const reflection = loopRunId
+      ? this.db.prepare("SELECT id, status FROM reflection_candidates WHERE source_type = 'loop' AND source_ref = ? ORDER BY created_at DESC LIMIT 1").get(loopRunId) as any | undefined
+      : null;
+    const memory = loopRunId
+      ? this.db.prepare('SELECT id, status, promotion_status FROM memory_candidates WHERE source_ref = ? ORDER BY created_at DESC LIMIT 1').get(`loop:${loopRunId}`) as any | undefined
+      : null;
+    const maker = leases.find((lease) => lease.role === 'maker');
+    const checker = leases.find((lease) => lease.role === 'checker');
+    return {
+      source: row.source,
+      source_ref: row.source_ref,
+      work_item: {
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        risk_class: row.risk_class,
+        recommended_loop: row.recommended_loop,
+        assigned_runtime: row.assigned_runtime,
+        metadata,
+      },
+      goal_id: goalId,
+      loop: loop ? { id: loop.id, status: loop.status } : null,
+      leases,
+      eval_run: evalRun ? { id: evalRun.id, status: evalRun.status, score: Number(evalRun.score || 0) } : null,
+      reflection_candidate: reflection ? { id: reflection.id, status: reflection.status } : null,
+      memory_candidate: memory ? { id: memory.id, status: memory.status, promotion_status: memory.promotion_status } : null,
+      requested_runtime: this.trimStringOrNull(integration.requested_runtime),
+      manual_interventions: Number(integration.manual_interventions || 0),
+      created_at: row.created_at,
+      completed_at: loop?.completed_at || null,
+      next_safe_action: this.integrationNextAction(row.status, loop?.status || null, maker?.status || null, checker?.status || null, Boolean(evalRun)),
+    };
+  }
+
+  private integrationNextAction(
+    workItemStatus: string,
+    loopStatus: string | null,
+    makerStatus: string | null,
+    checkerStatus: string | null,
+    hasEval: boolean
+  ): string {
+    if (workItemStatus === 'triaged') return 'Plan and prepare selected work item';
+    if (workItemStatus === 'planned') return 'Prepare maker and checker leases';
+    if (makerStatus === 'prepared') return 'Run worker-pool scheduler';
+    if (makerStatus === 'completed' && checkerStatus === 'prepared') return 'Run checker through worker pool';
+    if (checkerStatus === 'completed' && !hasEval) return 'Close loop learning';
+    if (hasEval) return 'Review reflection and memory candidates';
+    if (loopStatus === 'blocked' || workItemStatus === 'blocked') return 'Inspect blocked reasons';
+    return 'Import integration event';
+  }
+
+  private jsonObject(value: unknown): Record<string, unknown> {
+    if (!value) return {};
+    if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+    if (typeof value !== 'string') return {};
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
   }
 
   private parseCapability(row: any): SwarmCapabilityRecord {

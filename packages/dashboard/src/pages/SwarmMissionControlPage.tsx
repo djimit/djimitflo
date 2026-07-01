@@ -2,15 +2,60 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
 
 const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
+
+export function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
 
 export function knowledgeRuntimePanelModel(knowledge: KnowledgeRuntimeHealth | null) {
   return {
     canonical: knowledge?.okf_base || knowledge?.canonical_candidate || 'unknown',
     usesPackagesKnowledge: Boolean(knowledge?.drift.packages_knowledge_is_canonical),
     status: knowledge?.valid ? 'valid' : knowledge?.validate_okf.status || 'unknown',
+  };
+}
+
+export function integrationSpinePanelModel(spine: SwarmMissionControl['integration_spine'] | null | undefined) {
+  const chains = asArray<IntegrationSpineChain>(spine?.chains);
+  return {
+    latest: spine?.latest || chains[0] || null,
+    chains,
+    nextSafeAction: spine?.next_safe_action || chains[0]?.next_safe_action || 'Import integration event',
+  };
+}
+
+export function productionCertificationPanelModel(mission: SwarmMissionControl | null) {
+  const certification = mission?.production_certification;
+  const readiness = mission?.runtime_readiness;
+  return {
+    status: certification?.status || 'missing',
+    runtime: certification?.runtime || 'none',
+    productionPassed: Boolean(certification?.production_passed),
+    missing: asArray<string>(certification?.production_missing),
+    readyRuntimes: asArray<any>(readiness?.runtimes).filter((runtime) => runtime.ready).map((runtime) => String(runtime.runtime)),
+    nextSafeAction: certification?.next_safe_action || readiness?.next_safe_action || 'Run real runtime proof certification',
+  };
+}
+
+export function productionPilotPanelModel(pilot: SwarmMissionControl['production_pilot'] | null | undefined) {
+  const runs = asArray<IntegrationSpineChain>(pilot?.runs);
+  return {
+    latest: pilot?.latest || runs[0] || null,
+    runs,
+    metrics: pilot?.metrics || {
+      total_runs: 0,
+      completed_runs: 0,
+      success_rate: 0,
+      checker_rejection_rate: 0,
+      reflection_candidates: 0,
+      memory_candidates: 0,
+      manual_intervention_count: 0,
+      avg_time_to_closure_ms: null,
+    },
+    nextSafeAction: pilot?.next_safe_action || 'Run production pilot from a low-risk integration item',
   };
 }
 
@@ -34,12 +79,12 @@ export function SwarmMissionControlPage() {
   // D12: Knowledge bus events
   const [knowledgeEvents, setKnowledgeEvents] = useState<any[]>([]);
   useEffect(() => {
-    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(res.events || [])).catch(() => {});
+    api.request('/knowledge/events?limit=20').then((res: any) => setKnowledgeEvents(Array.isArray(res.events) ? res.events : [])).catch(() => {});
   }, []);
 
   // D11: Learning curve
   useEffect(() => {
-    api.request('/swarms/learning-curve').then(setLearningCurve).catch(() => {});
+    api.request('/swarms/learning-curve').then((res: any) => setLearningCurve(res && typeof res === 'object' ? res : null)).catch(() => {});
   }, []);
   const [expandedClaim, setExpandedClaim] = useState<string | null>(null);
 
@@ -59,8 +104,8 @@ export function SwarmMissionControlPage() {
       ]);
       setMission(missionControl);
       setCapacity(missionControl.capacity);
-      setCapabilities(capabilityList.capabilities);
-      setClaims(claimList.claims);
+      setCapabilities(asArray<SwarmCapabilityRecord>(capabilityList.capabilities));
+      setClaims(asArray<ClaimLedgerRecord>(claimList.claims));
       setKnowledge(knowledgeRuntime);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
@@ -175,6 +220,11 @@ export function SwarmMissionControlPage() {
 
   const blockedCapabilities = useMemo(() => capabilities.filter((capability) => !capability.live_route_allowed), [capabilities]);
   const importantClaims = useMemo(() => claims.filter((claim) => ['contradicted', 'review_required', 'proposed'].includes(claim.status)).slice(0, 8), [claims]);
+  const learningRuns = asArray<any>(learningCurve?.runs);
+  const knowledgeEventList = asArray<any>(knowledgeEvents);
+  const fairShareOrder = asArray<string>(capacity?.fair_share_order);
+  const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
+  const nextSafeActions = asArray<string>(mission?.next_safe_actions);
 
   return (
     <div className="p-8 space-y-6">
@@ -230,6 +280,7 @@ export function SwarmMissionControlPage() {
 
       <ProofRunPanel
         proofRun={mission?.latest_proof_run || null}
+        production={productionCertificationPanelModel(mission)}
         actionId={actionId}
         runtime={proofRuntime}
         onRuntimeChange={setProofRuntime}
@@ -252,6 +303,9 @@ export function SwarmMissionControlPage() {
         onLowCapacityPlan={() => void runLowCapacityPlan()}
         onCloseLearningLoop={() => void closeLearningLoop()}
       />
+
+      <IntegrationSpinePanel spine={mission?.integration_spine} />
+      <ProductionPilotPanel pilot={mission?.production_pilot} />
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div className="flex items-start justify-between gap-4">
@@ -305,8 +359,8 @@ export function SwarmMissionControlPage() {
           <div className="rounded border border-border bg-background p-4">
             <div className="text-sm font-semibold text-foreground">Fair-Share Order</div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {(capacity?.fair_share_order || []).map((item) => <span key={item} className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary">{item}</span>)}
-              {!capacity?.fair_share_order?.length && <p className="text-sm text-foreground-tertiary">No fair-share plan.</p>}
+              {fairShareOrder.map((item) => <span key={item} className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary">{item}</span>)}
+              {!fairShareOrder.length && <p className="text-sm text-foreground-tertiary">No fair-share plan.</p>}
             </div>
           </div>
           <div className="rounded border border-border bg-background p-4">
@@ -330,7 +384,7 @@ export function SwarmMissionControlPage() {
               </tr>
             </thead>
             <tbody>
-              {(capacity?.audit_manifest_preview || []).slice(0, 8).map((item) => (
+              {auditManifestPreview.slice(0, 8).map((item) => (
                 <tr key={item.decision_id} className="border-t border-border">
                   <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{item.decision_id}</td>
                   <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{item.lease_id}</td>
@@ -339,7 +393,7 @@ export function SwarmMissionControlPage() {
                   <td className="py-2 pr-4 text-foreground-tertiary">{item.blocked_reasons.join(', ') || 'none'}</td>
                 </tr>
               ))}
-              {!capacity?.audit_manifest_preview?.length && (
+              {!auditManifestPreview.length && (
                 <tr><td className="py-3 text-foreground-tertiary" colSpan={5}>No runner decisions to preview.</td></tr>
               )}
             </tbody>
@@ -443,12 +497,62 @@ export function SwarmMissionControlPage() {
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <h2 className="text-lg font-semibold text-foreground">Next Safe Actions</h2>
         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-          {(mission?.next_safe_actions || []).map((action) => (
+          {nextSafeActions.map((action) => (
             <div key={action} className="rounded border border-border bg-background p-3 text-sm text-foreground-secondary">{action}</div>
           ))}
-          {!mission?.next_safe_actions?.length && <p className="text-sm text-foreground-tertiary">No action guidance available.</p>}
+          {!nextSafeActions.length && <p className="text-sm text-foreground-tertiary">No action guidance available.</p>}
         </div>
       </section>
+
+      {learningRuns.length > 0 && (
+        <section className="rounded-lg border border-border bg-background-secondary p-5">
+          <h2 className="text-lg font-semibold text-foreground">Learning Curve ({learningRuns.length} runs)</h2>
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <SmallStat label="Success Rate" value={`${((learningCurve?.first_vs_last?.first_success_rate || 0) * 100).toFixed(0)}% -> ${((learningCurve?.first_vs_last?.last_success_rate || 0) * 100).toFixed(0)}%`} />
+            <SmallStat label="Cost" value={`$${(learningCurve?.first_vs_last?.first_cost || 0).toFixed(4)} -> $${(learningCurve?.first_vs_last?.last_cost || 0).toFixed(4)}`} />
+            <SmallStat label="Retries" value={learningCurve?.trend?.retries_decreasing ? 'decreasing' : 'not decreasing'} />
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-foreground-tertiary">
+                <tr>
+                  <th className="py-2 pr-4">Run</th>
+                  <th className="py-2 pr-4">Date</th>
+                  <th className="py-2 pr-4">Success</th>
+                  <th className="py-2 pr-4">Retries</th>
+                  <th className="py-2 pr-4">$ Spent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {learningRuns.slice(-10).map((run: any) => (
+                  <tr key={run.run_id} className="border-t border-border">
+                    <td className="py-2 pr-4 font-mono text-xs">{String(run.run_id || '').slice(0, 8)}</td>
+                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{run.created_at ? new Date(run.created_at).toLocaleDateString() : '-'}</td>
+                    <td className="py-2 pr-4">{run.success ? 'yes' : 'no'}</td>
+                    <td className="py-2 pr-4">{run.retries ?? 0}</td>
+                    <td className="py-2 pr-4">${Number(run.dollars || 0).toFixed(4)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {knowledgeEventList.length > 0 && (
+        <section className="rounded-lg border border-border bg-background-secondary p-5">
+          <h2 className="text-lg font-semibold text-foreground">Knowledge Bus Events ({knowledgeEventList.length})</h2>
+          <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+            {knowledgeEventList.map((event: any) => (
+              <div key={event.id} className="flex items-start gap-3 rounded border border-border bg-background p-3 text-sm">
+                <span className="font-mono text-xs text-accent">{event.predicate}</span>
+                <span className="flex-1 truncate text-foreground-secondary">{event.subject_ref}</span>
+                <span className="text-xs text-foreground-tertiary">{event.created_at ? new Date(event.created_at).toLocaleTimeString() : '-'}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -519,7 +623,7 @@ function KnowledgeRuntimePanel({
           `projection ${knowledge?.drift.projection_status || 'unknown'}`,
           `blocked ${knowledge?.blocked_reasons.length ?? 0}`,
         ]} />
-        <HealthStrip label="Next Safe Actions" values={(knowledge?.next_safe_actions || ['Load knowledge runtime']).slice(0, 4)} />
+        <HealthStrip label="Next Safe Actions" values={(asArray<string>(knowledge?.next_safe_actions).length ? asArray<string>(knowledge?.next_safe_actions) : ['Load knowledge runtime']).slice(0, 4)} />
       </div>
       {knowledge?.blocked_reasons.length ? (
         <div className="mt-3 rounded border border-status-warning/20 bg-status-warning/10 p-3 text-sm text-status-warning">
@@ -578,8 +682,161 @@ function KnowledgeRuntimePanel({
   );
 }
 
+function ProductionPilotPanel({ pilot }: { pilot: SwarmMissionControl['production_pilot'] | null | undefined }) {
+  const model = productionPilotPanelModel(pilot);
+  const metrics = model.metrics;
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <Gauge className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold text-foreground">Production Pilot</h2>
+            <StatusBadge status={model.latest ? 'tracking' : 'empty'} />
+          </div>
+          <p className="mt-1 text-sm text-foreground-secondary">
+            {model.latest ? `${metrics.completed_runs}/${metrics.total_runs} closed pilot runs` : 'No production pilot runs marked yet.'}
+          </p>
+        </div>
+        <div className="rounded border border-border bg-background px-3 py-2 text-sm text-foreground-secondary">
+          {model.nextSafeAction}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-5">
+        <SmallStat label="Runs" value={metrics.total_runs} />
+        <SmallStat label="Success" value={`${Math.round(metrics.success_rate * 100)}%`} />
+        <SmallStat label="Checker Reject" value={`${Math.round(metrics.checker_rejection_rate * 100)}%`} />
+        <SmallStat label="Candidates" value={metrics.reflection_candidates + metrics.memory_candidates} />
+        <SmallStat label="Interventions" value={metrics.manual_intervention_count} />
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Source</th>
+              <th className="py-2 pr-4">Work</th>
+              <th className="py-2 pr-4">Runtime</th>
+              <th className="py-2 pr-4">Closure</th>
+              <th className="py-2 pr-4">Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.runs.map((run) => (
+              <tr key={run.work_item.id} className="border-t border-border align-top">
+                <td className="py-2 pr-4">
+                  <div className="font-mono text-xs text-foreground-secondary">{run.source}</div>
+                  <div className="font-mono text-xs text-foreground-tertiary">{run.source_ref || 'no-ref'}</div>
+                </td>
+                <td className="py-2 pr-4">
+                  <div className="font-mono text-xs text-foreground">{run.work_item.id}</div>
+                  <StatusBadge status={run.work_item.status} />
+                </td>
+                <td className="py-2 pr-4 text-xs text-foreground-secondary">{run.requested_runtime || run.work_item.assigned_runtime || 'none'}</td>
+                <td className="py-2 pr-4 text-xs text-foreground-secondary">
+                  <div>eval {run.eval_run?.id || 'none'}</div>
+                  <div>memory {run.memory_candidate?.id || 'none'}</div>
+                </td>
+                <td className="py-2 pr-4 text-foreground-secondary">{run.next_safe_action}</td>
+              </tr>
+            ))}
+            {!model.runs.length && (
+              <tr><td className="py-3 text-foreground-tertiary" colSpan={5}>No pilot run evidence yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function IntegrationSpinePanel({ spine }: { spine: SwarmMissionControl['integration_spine'] | null | undefined }) {
+  const model = integrationSpinePanelModel(spine);
+  const latest = model.latest;
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <Route className="h-5 w-5 text-accent" />
+            <h2 className="text-lg font-semibold text-foreground">Integration Spine</h2>
+            <StatusBadge status={latest ? latest.work_item.status : 'empty'} />
+          </div>
+          <p className="mt-1 text-sm text-foreground-secondary">
+            {latest ? `${latest.source}:${latest.source_ref || 'no-ref'} -> ${latest.work_item.id}` : 'No integration-origin work item yet.'}
+          </p>
+        </div>
+        <div className="rounded border border-border bg-background px-3 py-2 text-sm text-foreground-secondary">
+          {model.nextSafeAction}
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <SmallStat label="Work Item" value={latest?.work_item.status || 'none'} />
+        <SmallStat label="Loop" value={latest?.loop?.status || 'none'} />
+        <SmallStat label="Runtime" value={latest?.requested_runtime || latest?.work_item.assigned_runtime || 'none'} />
+        <SmallStat label="Learning" value={latest?.eval_run ? 'closed' : latest?.loop ? 'pending' : 'none'} />
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">Source</th>
+              <th className="py-2 pr-4">Work</th>
+              <th className="py-2 pr-4">Loop</th>
+              <th className="py-2 pr-4">Leases</th>
+              <th className="py-2 pr-4">Learning</th>
+              <th className="py-2 pr-4">Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.chains.map((chain) => (
+              <tr key={chain.work_item.id} className="border-t border-border align-top">
+                <td className="py-2 pr-4">
+                  <div className="font-mono text-xs text-foreground-secondary">{chain.source}</div>
+                  <div className="font-mono text-xs text-foreground-tertiary">{chain.source_ref || 'no-ref'}</div>
+                </td>
+                <td className="py-2 pr-4">
+                  <div className="font-mono text-xs text-foreground">{chain.work_item.id}</div>
+                  <StatusBadge status={chain.work_item.status} />
+                </td>
+                <td className="py-2 pr-4">
+                  <div className="font-mono text-xs text-foreground-secondary">{chain.loop?.id || 'none'}</div>
+                  {chain.loop ? <StatusBadge status={chain.loop.status} /> : null}
+                </td>
+                <td className="py-2 pr-4">
+                  <div className="flex flex-wrap gap-1">
+                    {asArray<IntegrationSpineChain['leases'][number]>(chain.leases).map((lease) => (
+                      <span key={lease.id} className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary">
+                        {lease.role}:{lease.effective_runtime}:{lease.status}
+                      </span>
+                    ))}
+                    {!chain.leases.length && <span className="text-xs text-foreground-tertiary">none</span>}
+                  </div>
+                </td>
+                <td className="py-2 pr-4 text-xs text-foreground-secondary">
+                  <div>eval {chain.eval_run?.id || 'none'}</div>
+                  <div>reflection {chain.reflection_candidate?.id || 'none'}</div>
+                  <div>memory {chain.memory_candidate?.id || 'none'}</div>
+                </td>
+                <td className="py-2 pr-4 text-foreground-secondary">{chain.next_safe_action}</td>
+              </tr>
+            ))}
+            {!model.chains.length && (
+              <tr><td className="py-3 text-foreground-tertiary" colSpan={6}>No integration chain evidence yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function ProofRunPanel({
   proofRun,
+  production,
   actionId,
   runtime,
   onRuntimeChange,
@@ -587,6 +844,7 @@ function ProofRunPanel({
   onRollback,
 }: {
   proofRun: ProofRunSummary | null;
+  production: ReturnType<typeof productionCertificationPanelModel>;
   actionId: string | null;
   runtime: 'mock' | 'codex' | 'opencode';
   onRuntimeChange: (runtime: 'mock' | 'codex' | 'opencode') => void;
@@ -605,6 +863,11 @@ function ProofRunPanel({
           <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">
             One closed-loop run writes real persisted evidence across capabilities, specialist review, claims, goals, leases, traces, checkpoints, manifests, backlog and memory.
           </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusBadge status={production.status} />
+            <span className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary">runtime {production.runtime}</span>
+            <span className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary">ready {production.readyRuntimes.join(', ') || 'none'}</span>
+          </div>
         </div>
         <div className="flex gap-2">
           <select
@@ -668,6 +931,14 @@ function ProofRunPanel({
               proofRun.rollback_safe ? 'rollback safe' : 'rollback blocked',
               proofRun.passed ? 'minimums passed' : 'minimums missing',
             ]} />
+            <HealthStrip label="Production Certification" values={[
+              `status ${production.status}`,
+              production.productionPassed ? 'production passed' : 'production incomplete',
+              production.missing.length ? `missing ${production.missing.join(', ')}` : 'missing none',
+            ]} />
+          </div>
+          <div className="mt-3 rounded border border-border bg-background p-3 text-sm text-foreground-secondary">
+            {production.nextSafeAction}
           </div>
           <NarrativeTimeline
             narrative={proofRun.narrative}
@@ -711,7 +982,7 @@ function NarrativeTimeline({
   onRollback: () => void;
 }) {
   const rolledBack = status === 'rolled_back';
-  const steps = narrative.length ? narrative : ['No narrative captured for this run.'];
+  const steps = Array.isArray(narrative) && narrative.length ? narrative : ['No narrative captured for this run.'];
   const verdict = rolledBack ? 'rolled back' : passed ? 'passed' : 'incomplete';
   const verdictTone = rolledBack
     ? 'border-status-warning/30 bg-status-warning/10 text-status-warning'
@@ -808,7 +1079,8 @@ function ExpandToggle({ open, onToggle }: { open: boolean; onToggle: () => void 
 }
 
 function FieldList({ label, values }: { label: string; values: string[] }) {
-  if (!values || values.length === 0) {
+  const list = asArray<string>(values);
+  if (list.length === 0) {
     return (
       <div>
         <span className="text-foreground-tertiary">{label}:</span> <span className="text-foreground-tertiary">none</span>
@@ -819,75 +1091,8 @@ function FieldList({ label, values }: { label: string; values: string[] }) {
     <div>
       <span className="text-foreground-tertiary">{label}:</span>
       <div className="mt-0.5 flex flex-wrap gap-1">
-        {values.map((value) => <span key={value} className="rounded border border-border px-1.5 py-0.5 text-foreground-secondary">{value}</span>)}
+        {list.map((value) => <span key={value} className="rounded border border-border px-1.5 py-0.5 text-foreground-secondary">{value}</span>)}
       </div>
-      {/* D11: Learning Curve */}
-      {learningCurve && learningCurve.runs && learningCurve.runs.length > 0 && (
-        <div className="bg-background-secondary border border-border rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Learning Curve ({learningCurve.runs.length} runs)</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Success Rate</div>
-              <div className="text-xl font-bold text-foreground">{(learningCurve.first_vs_last?.first_success_rate * 100).toFixed(0)}% → {(learningCurve.first_vs_last?.last_success_rate * 100).toFixed(0)}%</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.success_rate_improving ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.success_rate_improving ? '↗ Improving' : '↘ Not improving'}
-              </div>
-            </div>
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Cost ($)</div>
-              <div className="text-xl font-bold text-foreground">${(learningCurve.first_vs_last?.first_cost || 0).toFixed(4)} → ${(learningCurve.first_vs_last?.last_cost || 0).toFixed(4)}</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.cost_decreasing ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.cost_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
-              </div>
-            </div>
-            <div className="p-4 bg-background-elevated rounded-lg border border-border">
-              <div className="text-sm text-foreground-tertiary mb-1">Retries</div>
-              <div className={`text-xs mt-1 ${learningCurve.trend?.retries_decreasing ? 'text-status-active' : 'text-status-error'}`}>
-                {learningCurve.trend?.retries_decreasing ? '↗ Decreasing' : '↘ Not decreasing'}
-              </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-foreground-tertiary">
-                  <th className="py-2 pr-4">Run</th>
-                  <th className="py-2 pr-4">Date</th>
-                  <th className="py-2 pr-4">Success</th>
-                  <th className="py-2 pr-4">Retries</th>
-                  <th className="py-2 pr-4">$ Spent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {learningCurve.runs.slice(-10).map((run: any) => (
-                  <tr key={run.run_id} className="border-b border-border/60">
-                    <td className="py-2 pr-4 font-mono text-xs">{run.run_id?.slice(0, 8)}</td>
-                    <td className="py-2 pr-4 text-xs text-foreground-tertiary">{new Date(run.created_at).toLocaleDateString()}</td>
-                    <td className="py-2 pr-4"><span className={run.success ? 'text-status-active' : 'text-status-error'}>{run.success ? '✓' : '✗'}</span></td>
-                    <td className="py-2 pr-4">{run.retries}</td>
-                    <td className="py-2 pr-4">${run.dollars?.toFixed(4)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      {/* D12: Knowledge Bus Events */}
-      {knowledgeEvents.length > 0 && (
-        <div className="bg-background-secondary border border-border rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-foreground mb-4">Knowledge Bus Events ({knowledgeEvents.length})</h2>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {knowledgeEvents.map((event: any) => (
-              <div key={event.id} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">
-                <span className="font-mono text-xs text-accent-secondary">{event.predicate}</span>
-                <span className="text-foreground-secondary flex-1 truncate">{event.subject_ref}</span>
-                <span className="text-xs text-foreground-muted">{new Date(event.created_at).toLocaleTimeString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

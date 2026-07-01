@@ -9,15 +9,6 @@ export interface InfluenceRecord {
   utility: number;
 }
 
-interface InfluenceRow {
-  lease_id: string;
-  loop_run_id: string;
-  influence: number;
-  claims_confirmed: number;
-  utility: number;
-  created_at: string;
-}
-
 interface LeaseRow {
   id: string;
   capability_id: string;

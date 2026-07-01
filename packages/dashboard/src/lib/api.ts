@@ -631,9 +631,93 @@ export type SwarmMissionControl = {
     blocked_or_needs_evidence: number;
   };
   capacity: CapacityPlanV2Result;
+  integration_spine?: {
+    latest: IntegrationSpineChain | null;
+    chains: IntegrationSpineChain[];
+    next_safe_action: string;
+  };
+  production_pilot?: ProductionPilotSummary;
+  runtime_readiness?: RuntimeReadinessResult;
+  production_certification?: ProductionCertificationState;
   latest_runner_manifests: RunnerManifestRecord[];
   latest_proof_run: ProofRunSummary | null;
   next_safe_actions: string[];
+};
+
+export type RuntimeReadinessResult = {
+  ready: boolean;
+  starts_workers: false;
+  next_safe_action: string;
+  runtimes: Array<{
+    runtime: string;
+    production_runtime: boolean;
+    ready: boolean;
+    start_allowed: boolean;
+    command: string | null;
+    status: string;
+    available: boolean;
+    version: string | null;
+    evidence: string[];
+    blocked_reasons: string[];
+    contract: Record<string, unknown>;
+  }>;
+};
+
+export type ProductionCertificationState = {
+  status: 'missing' | 'demo' | 'incomplete' | 'certified';
+  proof_run_id: string | null;
+  runtime: string | null;
+  proof_class: string | null;
+  production_passed: boolean;
+  production_missing: string[];
+  next_safe_action: string;
+};
+
+export type IntegrationSpineChain = {
+  source: string;
+  source_ref: string | null;
+  work_item: {
+    id: string;
+    title: string;
+    status: string;
+    risk_class: string;
+    recommended_loop: string | null;
+    assigned_runtime: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  goal_id: string | null;
+  loop: { id: string; status: string } | null;
+  leases: Array<{
+    id: string;
+    role: string;
+    runtime: string;
+    effective_runtime: string;
+    status: string;
+  }>;
+  eval_run: { id: string; status: string; score: number } | null;
+  reflection_candidate: { id: string; status: string } | null;
+  memory_candidate: { id: string; status: string; promotion_status: string } | null;
+  requested_runtime: string | null;
+  manual_interventions?: number;
+  created_at?: string;
+  completed_at?: string | null;
+  next_safe_action: string;
+};
+
+export type ProductionPilotSummary = {
+  latest: IntegrationSpineChain | null;
+  runs: IntegrationSpineChain[];
+  metrics: {
+    total_runs: number;
+    completed_runs: number;
+    success_rate: number;
+    checker_rejection_rate: number;
+    reflection_candidates: number;
+    memory_candidates: number;
+    manual_intervention_count: number;
+    avg_time_to_closure_ms: number | null;
+  };
+  next_safe_action: string;
 };
 
 
@@ -1213,6 +1297,10 @@ class ApiClient {
 
   async getSwarmMissionControl(): Promise<SwarmMissionControl> {
     return this.request('/swarms/intelligence/mission-control');
+  }
+
+  async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {
+    return this.request(`/swarms/runtime-readiness${runtime ? `?runtime=${runtime}` : ''}`);
   }
 
   async createProofRun(runtime: 'mock' | 'codex' | 'opencode' = 'mock'): Promise<ProofRunSummary> {

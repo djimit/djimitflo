@@ -6,7 +6,8 @@ import { execFileSync } from 'child_process';
 import { initializeDatabase } from '../database';
 import { LoopService, type LoopName } from '../services/loop-service';
 import { SwarmStatusService, type WorkerPoolPlanInput } from '../services/swarm-status-service';
-import { WorkItemService, type WorkItemCreateInput } from '../services/work-item-service';
+import { type WorkItemCreateInput } from '../services/work-item-service';
+import { IntegrationInboxService } from '../services/integration-inbox-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -268,12 +269,12 @@ function commandImportIssue(args: ParsedArgs): Record<string, unknown> {
   const issue = fetchIssue(ref, args.flags);
   const db = initializeDatabase();
   try {
-    const service = new WorkItemService(db);
-    const result = service.createIfMissingBySourceRef(issueToWorkItemInput(ref, issue, {
+    const service = new IntegrationInboxService(db);
+    const result = service.importEvent(issueToWorkItemInput(ref, issue, {
       repository_path: stringFlag(args.flags, 'repo-path'),
       loop_name: stringFlag(args.flags, 'loop'),
       risk_class: args.flags.risk,
-    }));
+    }) as any);
     return {
       action: 'imported',
       created: result.created,

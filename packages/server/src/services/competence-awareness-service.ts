@@ -15,12 +15,6 @@ interface CapabilityRow {
   metadata: string;
 }
 
-interface CalibrationRow {
-  capability_id: string;
-  success_rate: number;
-  n_runs: number;
-}
-
 export class CompetenceAwarenessService {
   private noveltyThreshold = 0.5;
   private conservativeThreshold = 0.3;

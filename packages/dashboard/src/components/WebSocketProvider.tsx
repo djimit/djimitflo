@@ -3,6 +3,10 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useStore } from '../lib/store';
 import { useAuthStore } from '../lib/auth-store';
 import { WebSocketEventType } from '@djimitflo/shared';
+import type { Agent, SystemHealthPayload, Task } from '@djimitflo/shared';
+
+type TaskPayload = { task?: Task };
+type AgentPayload = { agent?: Agent };
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -18,31 +22,31 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     const safe = (fn: () => void) => { try { fn(); } catch (e) { console.error('[WS] event handler error:', e); } };
 
     const unsubTaskCreated = subscribe(WebSocketEventType.TASK_CREATED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) addTask(task); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) addTask(task); });
     });
     const unsubTaskUpdated = subscribe(WebSocketEventType.TASK_UPDATED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) updateTask(task.id, task); });
     });
     const unsubTaskDeleted = subscribe(WebSocketEventType.TASK_DELETED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) removeTask(task.id); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) removeTask(task.id); });
     });
     const unsubTaskStarted = subscribe(WebSocketEventType.TASK_STARTED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) updateTask(task.id, task); });
     });
     const unsubTaskCompleted = subscribe(WebSocketEventType.TASK_COMPLETED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) updateTask(task.id, task); });
     });
     const unsubTaskFailed = subscribe(WebSocketEventType.TASK_FAILED, (msg) => {
-      safe(() => { const task = msg?.payload?.task; if (task?.id) updateTask(task.id, task); });
+      safe(() => { const task = (msg?.payload as TaskPayload | undefined)?.task; if (task?.id) updateTask(task.id, task); });
     });
     const unsubAgentUpdated = subscribe(WebSocketEventType.AGENT_UPDATED, (msg) => {
-      safe(() => { const agent = msg?.payload?.agent; if (agent?.id) updateAgent(agent.id, agent); });
+      safe(() => { const agent = (msg?.payload as AgentPayload | undefined)?.agent; if (agent?.id) updateAgent(agent.id, agent); });
     });
     const unsubAgentStatus = subscribe(WebSocketEventType.AGENT_STATUS_CHANGED, (msg) => {
-      safe(() => { const agent = msg?.payload?.agent; if (agent?.id) updateAgent(agent.id, { status: agent.status }); });
+      safe(() => { const agent = (msg?.payload as AgentPayload | undefined)?.agent; if (agent?.id) updateAgent(agent.id, { status: agent.status }); });
     });
     const unsubSystemHealth = subscribe(WebSocketEventType.SYSTEM_HEALTH, (msg) => {
-      safe(() => { if (msg?.payload) setSystemHealth(msg.payload); });
+      safe(() => { if (msg?.payload) setSystemHealth(msg.payload as Partial<SystemHealthPayload>); });
     });
 
     return () => {

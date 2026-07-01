@@ -1,0 +1,86 @@
+{
+  "change": "production-pilot-runbook",
+  "policy": {
+    "auto_create_goals": false,
+    "auto_start_loops": false,
+    "auto_spawn_workers": false,
+    "auto_promote_memory": false,
+    "requires_operator_approval_before_execution": true,
+    "worker_starts_use_existing_scheduler": true,
+    "real_runtime_smoke_opt_in": true
+  },
+  "goals": [
+    {
+      "key": "PPR-1-operator-runbook",
+      "objective": "Create an operator runbook for one bounded production pilot run.",
+      "acceptance_criteria": [
+        "Runbook starts with runtime readiness.",
+        "Runbook uses Integration Inbox, worker pool and learning closure.",
+        "Runbook has stop conditions for blocked readiness, capacity, checker and closure.",
+        "Runbook excludes auto-merge, deploy and automatic memory promotion."
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "PPR-2-pilot-metrics-contract",
+      "objective": "Define the smallest metrics contract for pilot repeatability.",
+      "acceptance_criteria": [
+        "Metrics link source, work item, goal, loop, leases and closure.",
+        "Metrics include success rate, time to closure, checker rejection rate, candidate counts and intervention count.",
+        "No new table is added unless existing metadata cannot hold the pilot id."
+      ],
+      "depends_on": ["PPR-1-operator-runbook"]
+    },
+    {
+      "key": "PPR-3-pilot-run-1",
+      "objective": "Execute or simulate-with-real-runtime one bounded low-risk pilot item and capture evidence.",
+      "acceptance_criteria": [
+        "Run uses explicit real runtime or records readiness block.",
+        "Run links source event through learning closure or exact blocked reason.",
+        "Evidence is added to evidence.md."
+      ],
+      "depends_on": ["PPR-2-pilot-metrics-contract"]
+    },
+    {
+      "key": "PPR-4-pilot-run-2",
+      "objective": "Repeat the pilot on a second bounded low-risk item.",
+      "acceptance_criteria": [
+        "Run is comparable with pilot 1.",
+        "Metrics can compute checker rejection and intervention deltas.",
+        "Evidence is added to evidence.md."
+      ],
+      "depends_on": ["PPR-3-pilot-run-1"]
+    },
+    {
+      "key": "PPR-5-pilot-run-3",
+      "objective": "Repeat the pilot on a third bounded low-risk item.",
+      "acceptance_criteria": [
+        "Run is comparable with pilots 1 and 2.",
+        "Metrics can compute three-run success rate.",
+        "Evidence is added to evidence.md."
+      ],
+      "depends_on": ["PPR-4-pilot-run-2"]
+    },
+    {
+      "key": "PPR-6-mission-control-demo-truth",
+      "objective": "Expose latest pilot chain and metrics in Mission Control if current payload is insufficient.",
+      "acceptance_criteria": [
+        "Operator can identify latest pilot state and next safe action.",
+        "Partial and empty pilot states do not crash the dashboard.",
+        "No raw stdout reading is required for the demo."
+      ],
+      "depends_on": ["PPR-5-pilot-run-3"]
+    },
+    {
+      "key": "PPR-7-final-validation",
+      "objective": "Validate the OpenSpec change and focused gates.",
+      "acceptance_criteria": [
+        "OpenSpec validates strict.",
+        "Goals batch previews successfully.",
+        "Focused tests pass for touched code.",
+        "type-check and git diff check pass."
+      ],
+      "depends_on": ["PPR-6-mission-control-demo-truth"]
+    }
+  ]
+}

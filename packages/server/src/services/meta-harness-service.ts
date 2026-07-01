@@ -29,13 +29,6 @@ export interface SecurityFinding {
   description: string;
 }
 
-interface GradeRow {
-  id: string;
-  grade_json: string;
-  overall_score: number;
-  created_at: string;
-}
-
 export class MetaHarnessService {
   constructor(private db: Database) {
     this.db.exec(`

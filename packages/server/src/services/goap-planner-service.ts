@@ -195,12 +195,12 @@ export class GOAPPlannerService {
     const count = this.db.prepare('SELECT COUNT(*) as c FROM goap_actions').get() as { c: number };
     if (count.c > 0) return;
 
-    const defaults = [
-      { capabilityId: 'ts-fix', name: 'Fix TypeScript errors', preconditions: { hasTypeScriptErrors: true }, effects: { typeCheckPass: true }, cost: 1.0 },
-      { capabilityId: 'lint-fix', name: 'Fix lint warnings', preconditions: { hasLintWarnings: true }, effects: { lintClean: true }, cost: 0.5 },
-      { capabilityId: 'doc-drift', name: 'Fix documentation drift', preconditions: { hasDocDrift: true }, effects: { docsUpdated: true }, cost: 1.5 },
-      { capabilityId: 'security-fix', name: 'Fix security issues', preconditions: { hasSecurityIssues: true }, effects: { securityClean: true }, cost: 2.0 },
-      { capabilityId: 'test-fix', name: 'Fix failing tests', preconditions: { hasFailingTests: true }, effects: { testsPass: true }, cost: 1.0 },
+    const defaults: Array<Omit<GOAPAction, 'id'>> = [
+      { capabilityId: 'ts-fix', name: 'Fix TypeScript errors', preconditions: { hasTypeScriptErrors: true }, effects: { typeCheckPass: true }, cost: 1.0, runtime: 'codex' },
+      { capabilityId: 'lint-fix', name: 'Fix lint warnings', preconditions: { hasLintWarnings: true }, effects: { lintClean: true }, cost: 0.5, runtime: 'codex' },
+      { capabilityId: 'doc-drift', name: 'Fix documentation drift', preconditions: { hasDocDrift: true }, effects: { docsUpdated: true }, cost: 1.5, runtime: 'codex' },
+      { capabilityId: 'security-fix', name: 'Fix security issues', preconditions: { hasSecurityIssues: true }, effects: { securityClean: true }, cost: 2.0, runtime: 'codex' },
+      { capabilityId: 'test-fix', name: 'Fix failing tests', preconditions: { hasFailingTests: true }, effects: { testsPass: true }, cost: 1.0, runtime: 'codex' },
     ];
 
     for (const d of defaults) {

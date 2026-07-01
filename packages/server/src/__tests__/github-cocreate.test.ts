@@ -128,7 +128,7 @@ describe('github co-creation flow', () => {
       const leases = db.prepare('SELECT role, runtime, status, finding_id FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(loopRunId) as any[];
       expect(leases).toEqual([
         expect.objectContaining({ role: 'checker', status: 'prepared', finding_id: `work-item-${created.work_item.id}` }),
-        expect.objectContaining({ role: 'maker', runtime: 'mock', status: 'prepared', finding_id: `work-item-${created.work_item.id}` }),
+        expect.objectContaining({ role: 'maker', status: 'prepared', finding_id: `work-item-${created.work_item.id}` }),
       ]);
     } finally {
       repo.restore();

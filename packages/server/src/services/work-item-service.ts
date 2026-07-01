@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
-type RiskClass = 'low' | 'medium' | 'high' | 'critical';
-type WorkItemStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
+export type RiskClass = 'low' | 'medium' | 'high' | 'critical';
+export type WorkItemStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 
 export interface WorkItemRecord {
   id: string;
@@ -104,6 +104,32 @@ export class WorkItemService {
       }
     }
     return { work_item: this.create(input), created: true };
+  }
+
+  upsertBySourceRef(input: WorkItemCreateInput): { work_item: WorkItemRecord; created: boolean } {
+    if (!input.source || !input.source_ref) {
+      return { work_item: this.create(input), created: true };
+    }
+    const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(input.source, input.source_ref);
+    if (!existing) {
+      return { work_item: this.create(input), created: true };
+    }
+    return {
+      work_item: this.update(this.parse(existing).id, {
+        title: input.title,
+        description: input.description,
+        risk_class: input.risk_class,
+        value_score: input.value_score,
+        confidence: input.confidence,
+        status: input.status,
+        recommended_loop: input.recommended_loop,
+        assigned_agent_id: input.assigned_agent_id,
+        assigned_runtime: input.assigned_runtime,
+        parent_goal_id: input.parent_goal_id,
+        metadata: input.metadata,
+      }),
+      created: false,
+    };
   }
 
   list(filter: { status?: string; limit?: number } = {}): WorkItemRecord[] {

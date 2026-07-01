@@ -22,6 +22,20 @@ interface Learning {
   description: string;
 }
 
+export function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+export function pickList<T>(value: unknown, keys: string[]): T[] {
+  if (Array.isArray(value)) return value as T[];
+  if (!value || typeof value !== "object") return [];
+  for (const key of keys) {
+    const candidate = (value as Record<string, unknown>)[key];
+    if (Array.isArray(candidate)) return candidate as T[];
+  }
+  return [];
+}
+
 function formatDuration(ms: number): string {
   if (!ms || ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
@@ -65,7 +79,7 @@ export function SwarmOverviewPage() {
       api.getSwarmCapabilities().catch(() => ({ capabilities: [] })),
     ]).then(([status, caps]: any) => {
       setSwarmStatus(status);
-      setCapabilities(caps.capabilities || []);
+      setCapabilities(pickList(caps, ["capabilities"]));
     });
   }, []);
   const navigate = useNavigate();
@@ -83,8 +97,8 @@ export function SwarmOverviewPage() {
         api.getAgents(),
         api.getTasks(),
       ]);
-      setLocalAgents(agentsRes.agents || []);
-      setLocalTasks(tasksRes.tasks || []);
+      setLocalAgents(pickList<Agent>(agentsRes, ["agents"]));
+      setLocalTasks(pickList<Task>(tasksRes, ["tasks"]));
     } catch (err) {
       console.error("Failed to fetch swarm data:", err);
     } finally {
@@ -95,7 +109,7 @@ export function SwarmOverviewPage() {
   const fetchDiscussions = useCallback(async () => {
     try {
       const res = await api.request<any>("/discussions?limit=10");
-      setDiscussions(res.data || res || []);
+      setDiscussions(pickList<Discussion>(res, ["discussions", "data"]));
     } catch (err) {
       console.error("Failed to fetch discussions:", err);
     }
@@ -105,7 +119,7 @@ export function SwarmOverviewPage() {
     try {
       // NOTE: /learning endpoint does not exist yet — backend TBD
       const res = await api.request<any>("/learning?limit=5");
-      setLearnings(res.data || res || []);
+      setLearnings(pickList<Learning>(res, ["learnings", "data"]));
     } catch (err) {
       console.error("Failed to fetch learnings:", err);
     }
@@ -208,6 +222,7 @@ export function SwarmOverviewPage() {
   const totalExecTime = localAgents.reduce((sum, a) => sum + (a.total_execution_time_ms || 0), 0);
   const completedTasks = localTasks.filter(t => t.status === "completed");
   const failedTasks = localTasks.filter(t => t.status === "failed");
+  const fleetPools = asArray<any>(swarmStatus?.fleet_pools);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -461,13 +476,13 @@ export function SwarmOverviewPage() {
               <div className="text-xs text-foreground-tertiary">Free RAM</div>
             </div>
             <div className="text-center p-3 bg-background-elevated rounded-lg">
-              <div className="text-2xl font-bold text-foreground">{(swarmStatus.fleet_pools || []).length}</div>
+              <div className="text-2xl font-bold text-foreground">{fleetPools.length}</div>
               <div className="text-xs text-foreground-tertiary">Runtime Pools</div>
             </div>
           </div>
-          {(swarmStatus.fleet_pools || []).length > 0 && (
+          {fleetPools.length > 0 && (
             <div className="mt-4 space-y-2">
-              {swarmStatus.fleet_pools.map((pool: any) => (
+              {fleetPools.map((pool: any) => (
                 <div key={pool.runtime} className="flex items-center justify-between p-3 bg-background-elevated rounded-lg border border-border text-sm">
                   <span className="font-mono text-foreground">{pool.runtime}</span>
                   <span className="text-foreground-secondary">concurrency: {pool.recommended_concurrency}</span>

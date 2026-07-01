@@ -125,10 +125,82 @@ function mapProofRunError(error: unknown): never {
   // concurrent fleet operation) — transient infrastructure, not a client error.
   // Map to a stable 503 so it is observable and distinguishable from a bare 500
   // INTERNAL_ERROR fall-through.
-  if (message.startsWith('PROOF_RUN_RUNTIME_FAILED')) throw createError(503, 'Proof run runtime execution failed', 'PROOF_RUN_RUNTIME_FAILED');
+  if (message.startsWith('PROOF_RUN_RUNTIME_FAILED')) throw createError(503, message, 'PROOF_RUN_RUNTIME_FAILED');
   if (message === 'PROOF_RUN_VERIFICATION_BLOCKED') throw createError(422, 'Proof run verification blocked', 'PROOF_RUN_VERIFICATION_BLOCKED');
   if (message === 'PROOF_RUN_COMPLETE_FAILED') throw createError(500, 'Proof run completion failed', 'PROOF_RUN_COMPLETE_FAILED');
   throw error;
+}
+
+function runtimeReadiness(db: Database, runtimeInput?: unknown) {
+  const allowedProduction = new Set(['codex', 'opencode']);
+  const requested = typeof runtimeInput === 'string' && runtimeInput.trim()
+    ? [runtimeInput.trim().toLowerCase()]
+    : ['codex', 'opencode'];
+  const contracts = new LoopService(db).getRuntimeContracts().runtimes;
+  const runtimes = requested.map((runtime) => {
+    const contract = contracts[runtime] || {
+      runtime,
+      available: false,
+      command: null,
+      status: 'unavailable',
+      evidence: [],
+      reason: 'unsupported runtime',
+    };
+    const blocked = [];
+    if (!allowedProduction.has(runtime)) blocked.push('non_mock_supported_runtime_required');
+    if (!contract.available) blocked.push('runtime_unavailable');
+    if (contract.status !== 'ok') blocked.push(`runtime_contract_${contract.status || 'unknown'}`);
+    if (contract.reason) blocked.push(String(contract.reason));
+    return {
+      runtime,
+      production_runtime: allowedProduction.has(runtime),
+      ready: blocked.length === 0,
+      start_allowed: blocked.length === 0,
+      command: contract.command || null,
+      status: contract.status || 'unavailable',
+      available: Boolean(contract.available),
+      version: contract.version || null,
+      evidence: Array.isArray(contract.evidence) ? contract.evidence : [],
+      blocked_reasons: [...new Set(blocked)],
+      contract,
+    };
+  });
+  return {
+    runtimes,
+    ready: runtimes.some((runtime) => runtime.ready),
+    next_safe_action: runtimes.some((runtime) => runtime.ready)
+      ? 'Run opt-in real runtime certification'
+      : 'Install or repair codex/opencode runtime before production certification',
+    starts_workers: false,
+  };
+}
+
+function productionCertification(latest: ProofRunSummary | null) {
+  if (!latest) {
+    return {
+      status: 'missing',
+      proof_run_id: null,
+      runtime: null,
+      proof_class: null,
+      production_passed: false,
+      production_missing: ['no_proof_run'],
+      next_safe_action: 'Run real runtime proof certification',
+    };
+  }
+  const production = latest.proof_class === 'production' && latest.production_passed;
+  return {
+    status: production ? 'certified' : latest.proof_class === 'production' ? 'incomplete' : 'demo',
+    proof_run_id: latest.id,
+    runtime: latest.runtime,
+    proof_class: latest.proof_class,
+    production_passed: latest.production_passed,
+    production_missing: latest.production_missing,
+    next_safe_action: production
+      ? 'Review production evidence and candidates'
+      : latest.proof_class === 'demo'
+        ? 'Run proof with codex or opencode'
+        : 'Resolve production_missing reasons',
+  };
 }
 
 function mapCsSkillSwarmHarnessError(error: unknown): never {
@@ -227,6 +299,14 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  router.get('/runtime-readiness', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(runtimeReadiness(db, req.query.runtime));
+    } catch (error) {
+      next(error);
     }
   });
 
@@ -373,7 +453,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       });
       // Send initial snapshot.
       try {
-        const snapshot = { ...intelligence.missionControl(), latest_proof_run: proofRuns.latest() };
+        const latest = proofRuns.latest();
+        const snapshot = {
+          ...intelligence.missionControl(),
+          latest_proof_run: latest,
+          production_certification: productionCertification(latest),
+          runtime_readiness: runtimeReadiness(db),
+        };
         res.write(`data: ${JSON.stringify({ type: 'snapshot', data: snapshot })}\n\n`);
       } catch { /* best-effort */ }
       // Subscribe to live events.
@@ -386,9 +472,12 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       return;
     }
     try {
+      const latest = proofRuns.latest();
       res.json({
         ...intelligence.missionControl(),
-        latest_proof_run: proofRuns.latest(),
+        latest_proof_run: latest,
+        production_certification: productionCertification(latest),
+        runtime_readiness: runtimeReadiness(db),
       });
     } catch (error) {
       try {

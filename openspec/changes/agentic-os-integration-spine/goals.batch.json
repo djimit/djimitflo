@@ -1,0 +1,106 @@
+{
+  "change": "agentic-os-integration-spine",
+  "policy": {
+    "auto_create_goals": false,
+    "auto_decompose_goals": false,
+    "auto_start_loops": false,
+    "auto_spawn_workers": false,
+    "auto_promote_memory": false,
+    "requires_operator_approval_before_execution": true,
+    "requires_human_merge_approval": true,
+    "worker_starts_use_existing_scheduler": true
+  },
+  "goals": [
+    {
+      "key": "AOS-1-integration-inbox-contract",
+      "objective": "Create the canonical integration intake contract using existing work_items.",
+      "acceptance_criteria": [
+        "Dry-run import returns normalized source, risk class, recommended loop and metadata.integration with zero writes.",
+        "Apply writes or updates one work_items row by source and source_ref.",
+        "No goal, loop run or worker lease is created by intake alone."
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "AOS-2-github-issue-to-work-item",
+      "objective": "Wire GitHub issue import into the shared integration inbox.",
+      "acceptance_criteria": [
+        "Imported GitHub issue becomes an idempotent work_item.",
+        "Existing GitHub co-creation tests still pass.",
+        "GitHub source metadata is visible in the work item metadata."
+      ],
+      "depends_on": ["AOS-1-integration-inbox-contract"]
+    },
+    {
+      "key": "AOS-3-telegram-command-to-work-item",
+      "objective": "Wire Telegram command events into the shared integration inbox.",
+      "acceptance_criteria": [
+        "Telegram command preview creates no writes.",
+        "Telegram command apply creates or updates a work_item.",
+        "Telegram command import does not start workers."
+      ],
+      "depends_on": ["AOS-1-integration-inbox-contract"]
+    },
+    {
+      "key": "AOS-4-mcp-okf-drift-to-work-item",
+      "objective": "Convert MCP and OKF drift into actionable work_items.",
+      "acceptance_criteria": [
+        "MCP drift recommends mcp-connector-validation-loop.",
+        "OKF drift recommends the appropriate knowledge or capability-sync loop.",
+        "Drift imports preserve blocked reasons in metadata.integration."
+      ],
+      "depends_on": ["AOS-1-integration-inbox-contract"]
+    },
+    {
+      "key": "AOS-5-plan-prepare-run-chain",
+      "objective": "Turn a selected integration-origin work item into goal, loop and prepared maker/checker leases.",
+      "acceptance_criteria": [
+        "Selected work item links to a goal and loop run.",
+        "Maker and checker leases are prepared and linked to source work item metadata.",
+        "No worker starts until the scheduler start path is explicitly called."
+      ],
+      "depends_on": ["AOS-2-github-issue-to-work-item", "AOS-3-telegram-command-to-work-item", "AOS-4-mcp-okf-drift-to-work-item"]
+    },
+    {
+      "key": "AOS-6-scheduler-worker-checker-execution",
+      "objective": "Prove maker and checker execution from imported work item through the existing worker pool.",
+      "acceptance_criteria": [
+        "Worker start uses existing resource-aware scheduler gates.",
+        "Maker lease artifacts, gates and trace refs link back to the source work item.",
+        "Checker verdict and evidence link back to the same loop run."
+      ],
+      "depends_on": ["AOS-5-plan-prepare-run-chain"]
+    },
+    {
+      "key": "AOS-7-learning-closure-memory-candidates",
+      "objective": "Close integration-origin loops into eval, reflection and optional memory candidate.",
+      "acceptance_criteria": [
+        "Learning closure creates eval and reflection candidate for verified loop evidence.",
+        "Reusable lesson creates memory candidate only.",
+        "Regression creates repair work item.",
+        "No automatic durable memory promotion occurs."
+      ],
+      "depends_on": ["AOS-6-scheduler-worker-checker-execution"]
+    },
+    {
+      "key": "AOS-8-dashboard-integration-spine",
+      "objective": "Add Mission Control truth for the integration spine.",
+      "acceptance_criteria": [
+        "Dashboard shows source event through work item, goal, loop, leases, gates, eval and learning candidates.",
+        "Dashboard shows connector/capability gate status.",
+        "Dashboard shows next safe action without raw stdout inspection."
+      ],
+      "depends_on": ["AOS-7-learning-closure-memory-candidates"]
+    },
+    {
+      "key": "AOS-9-end-to-end-smoke",
+      "objective": "Run deterministic mock-runtime smoke from imported integration event to learning closure.",
+      "acceptance_criteria": [
+        "Full chain completes with source event, work item, loop, leases, checker, eval and learning candidate ids.",
+        "OpenSpec validates strict.",
+        "Server tests, dashboard build, type-check and git diff check pass."
+      ],
+      "depends_on": ["AOS-8-dashboard-integration-spine"]
+    }
+  ]
+}

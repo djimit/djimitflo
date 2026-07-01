@@ -31,8 +31,9 @@ export class MetacognitivePlanner {
   constructor(
     private db: Database,
     private selfModel: SelfModelService,
-    private goalFormation: GoalFormationService,
+    _goalFormation: GoalFormationService,
   ) {
+    void _goalFormation;
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS learning_goals (
         id TEXT PRIMARY KEY,

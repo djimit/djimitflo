@@ -1,4 +1,4 @@
-import { createHash, createSign, createVerify } from 'crypto';
+import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export interface FederationPeer {

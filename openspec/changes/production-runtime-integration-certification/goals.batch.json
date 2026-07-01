@@ -1,0 +1,92 @@
+{
+  "change": "production-runtime-integration-certification",
+  "policy": {
+    "auto_create_goals": false,
+    "auto_start_loops": false,
+    "auto_spawn_workers": false,
+    "auto_promote_memory": false,
+    "requires_operator_approval_before_execution": true,
+    "worker_starts_use_existing_scheduler": true,
+    "real_runtime_smoke_opt_in": true,
+    "allowed_production_runtimes": ["codex", "opencode"]
+  },
+  "goals": [
+    {
+      "key": "PRC-1-runtime-readiness-contract",
+      "objective": "Expose real runtime readiness for codex/opencode without starting workers.",
+      "acceptance_criteria": [
+        "Readiness includes runtime, command, status, evidence and blocked reasons.",
+        "Unavailable runtime reports blocked readiness.",
+        "Mock and unknown runtimes cannot be production-certified.",
+        "Readiness checks start no workers."
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "PRC-2-opt-in-real-runtime-smoke",
+      "objective": "Add an opt-in real runtime integration spine smoke.",
+      "acceptance_criteria": [
+        "Smoke is skipped unless RUN_REAL_RUNTIME_SMOKE=1.",
+        "REAL_RUNTIME selects codex or opencode.",
+        "Smoke imports a low-risk integration event and prepares leases with explicit runtime.",
+        "Planning starts no workers."
+      ],
+      "depends_on": ["PRC-1-runtime-readiness-contract"]
+    },
+    {
+      "key": "PRC-3-real-worker-checker-evidence",
+      "objective": "Run maker and checker through existing worker pool with real runtime evidence.",
+      "acceptance_criteria": [
+        "Worker starts only through existing scheduler.",
+        "Maker stdout/stderr, gates, checkpoints and manifests are persisted.",
+        "Checker waits for maker evidence.",
+        "Checker verdict links to source work item and loop."
+      ],
+      "depends_on": ["PRC-2-opt-in-real-runtime-smoke"]
+    },
+    {
+      "key": "PRC-4-production-proof-certification",
+      "objective": "Certify a real runtime proof run as production when all required evidence exists.",
+      "acceptance_criteria": [
+        "Mock proof remains demo.",
+        "Real runtime proof reports proof_class production.",
+        "production_missing is empty for certified run.",
+        "Incomplete real runtime proof reports exact missing criteria."
+      ],
+      "depends_on": ["PRC-3-real-worker-checker-evidence"]
+    },
+    {
+      "key": "PRC-5-real-runtime-learning-closure",
+      "objective": "Close the real runtime integration loop into eval, reflection and optional memory candidate.",
+      "acceptance_criteria": [
+        "Close-loop creates eval and reflection for real runtime evidence.",
+        "Reusable lesson creates memory candidate only.",
+        "Regression creates repair work item.",
+        "No durable memory promotion occurs automatically."
+      ],
+      "depends_on": ["PRC-4-production-proof-certification"]
+    },
+    {
+      "key": "PRC-6-mission-control-production-truth",
+      "objective": "Show production runtime certification state in Mission Control.",
+      "acceptance_criteria": [
+        "Dashboard distinguishes mock demo from production runtime proof.",
+        "Dashboard shows requested runtime, effective runtime and production_missing reasons.",
+        "Dashboard shows next safe action.",
+        "Dashboard renders empty certification state without crashing."
+      ],
+      "depends_on": ["PRC-5-real-runtime-learning-closure"]
+    },
+    {
+      "key": "PRC-7-end-to-end-production-certification",
+      "objective": "Run one bounded low-risk production runtime certification and capture evidence.",
+      "acceptance_criteria": [
+        "Opt-in real runtime smoke completes with evidence ids.",
+        "Mission Control shows production certification.",
+        "No auto-merge, deploy or automatic memory promotion occurs.",
+        "OpenSpec, server, dashboard, type-check, build and diff gates pass."
+      ],
+      "depends_on": ["PRC-6-mission-control-production-truth"]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
@@ -99,6 +100,26 @@ describe('createWorktree git-lock retry', () => {
     expect(first).not.toBe(second);
     expect(first).not.toContain(':');
     expect(second).not.toContain(':');
+  });
+
+  it('snapshots untracked source files into worker worktrees', () => {
+    const loops = new LoopService(db);
+    const repoPath = path.join(worktreeRoot, 'repo');
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
+    execFileSync('git', ['init'], { cwd: repoPath, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'worktree-test@example.invalid'], { cwd: repoPath });
+    execFileSync('git', ['config', 'user.name', 'Worktree Test'], { cwd: repoPath });
+    execFileSync('git', ['add', 'package.json'], { cwd: repoPath });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repoPath, stdio: 'ignore' });
+    fs.mkdirSync(path.join(repoPath, 'src', 'services'), { recursive: true });
+    fs.writeFileSync(path.join(repoPath, 'src', 'services', 'new-service.ts'), 'export const answer = 42;\n');
+
+    const result = (loops as any).createWorktree(repoPath, 'run-untracked', 'find-untracked', 'branch-untracked') as string;
+
+    expect(fs.readFileSync(path.join(result, 'src', 'services', 'new-service.ts'), 'utf8')).toContain('answer = 42');
+    const status = execFileSync('git', ['-C', result, 'status', '--porcelain=v1'], { encoding: 'utf8' });
+    expect(status.trim()).toBe('');
   });
 
   it('does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED', () => {

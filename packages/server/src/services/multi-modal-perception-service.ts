@@ -39,7 +39,7 @@ export class MultiModalPerceptionService {
     `);
   }
 
-  async describeImage(imagePath: string): Promise<string> {
+  async describeImage(_imagePath: string): Promise<string> {
     try {
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
         method: 'POST',
@@ -79,11 +79,13 @@ export class MultiModalPerceptionService {
     return result;
   }
 
-  async extractTextFromImage(_imagePath: string): Promise<string> {
+  async extractTextFromImage(_imagePath?: string): Promise<string> {
+    void _imagePath;
     return 'OCR not available in this configuration';
   }
 
-  async extractStructuredData(_imagePath: string): Promise<Record<string, unknown>> {
+  async extractStructuredData(_imagePath?: string): Promise<Record<string, unknown>> {
+    void _imagePath;
     return { available: false };
   }
 

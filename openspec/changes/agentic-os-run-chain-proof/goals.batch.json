@@ -1,0 +1,81 @@
+{
+  "change": "agentic-os-run-chain-proof",
+  "policy": {
+    "auto_create_goals": false,
+    "auto_start_loops": false,
+    "auto_spawn_workers": false,
+    "auto_promote_memory": false,
+    "requires_operator_approval_before_execution": true,
+    "worker_starts_use_existing_scheduler": true
+  },
+  "goals": [
+    {
+      "key": "AOS-RC-1-scheduler-runtime-contract",
+      "objective": "Reconcile scheduler runtime selection so explicit operator or smoke runtime wins unless blocked.",
+      "acceptance_criteria": [
+        "Explicit mock runtime remains effective runtime for deterministic low-risk smoke.",
+        "Adaptive runtime selection applies only when no runtime is requested.",
+        "Blocked runtime requests return blocked reasons and start no workers.",
+        "swarm-resource-plan.test.ts passes under the updated contract."
+      ],
+      "depends_on": []
+    },
+    {
+      "key": "AOS-RC-2-plan-prepare-chain",
+      "objective": "Plan a selected integration-origin work item into linked goal, loop and prepared maker/checker leases.",
+      "acceptance_criteria": [
+        "Planning links source event, work item, goal, loop and leases.",
+        "Maker and checker leases remain prepared after planning.",
+        "Planning does not start a worker.",
+        "Operator retry is idempotent or returns a clear duplicate-chain response."
+      ],
+      "depends_on": ["AOS-RC-1-scheduler-runtime-contract"]
+    },
+    {
+      "key": "AOS-RC-3-worker-checker-proof",
+      "objective": "Run maker and checker for an integration-origin work item through the existing worker pool.",
+      "acceptance_criteria": [
+        "Worker start uses existing scheduler gates.",
+        "Maker artifacts, gates and trace/checkpoint refs link to source work item.",
+        "Checker waits for maker evidence.",
+        "Checker verdict links to the loop and source work item."
+      ],
+      "depends_on": ["AOS-RC-2-plan-prepare-chain"]
+    },
+    {
+      "key": "AOS-RC-4-learning-closure-proof",
+      "objective": "Close the completed integration-origin loop into eval, reflection and optional memory or repair candidates.",
+      "acceptance_criteria": [
+        "Completed run creates eval and reflection candidate.",
+        "Reusable lesson creates memory candidate only.",
+        "Regression creates repair work item.",
+        "Missing evidence blocks closure.",
+        "No automatic durable OKF memory promotion occurs."
+      ],
+      "depends_on": ["AOS-RC-3-worker-checker-proof"]
+    },
+    {
+      "key": "AOS-RC-5-mission-control-chain-truth",
+      "objective": "Show the integration run chain and next safe action in Mission Control.",
+      "acceptance_criteria": [
+        "Mission Control shows source event, work item, goal, loop, leases, gates, eval and candidates.",
+        "Mission Control shows requested runtime vs effective runtime.",
+        "Mission Control renders empty and object payloads without map crashes.",
+        "Operator can identify next safe action without raw stdout."
+      ],
+      "depends_on": ["AOS-RC-4-learning-closure-proof"]
+    },
+    {
+      "key": "AOS-RC-6-end-to-end-smoke",
+      "objective": "Run one deterministic mock-runtime smoke from imported integration event to learning closure.",
+      "acceptance_criteria": [
+        "Full chain completes with evidence ids.",
+        "OpenSpec validates strict.",
+        "Server focused tests pass.",
+        "Dashboard focused tests and build pass.",
+        "type-check and git diff check pass."
+      ],
+      "depends_on": ["AOS-RC-5-mission-control-chain-truth"]
+    }
+  ]
+}
