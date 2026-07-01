@@ -80,8 +80,8 @@ export class SelfAnalysisGitHubBridge {
     `);
   }
 
-  runFullPipeline(targetPath: string = 'packages/server/src'): BridgeResult {
-    const report = this.analysisService.analyze(targetPath);
+  runFullPipeline(_targetPath: string = 'packages/server/src'): BridgeResult {
+    const report = this.analysisService.analyze();
     const issues = this.generateIssuesFromReport(report);
     const prs = this.generatePrsFromImprovements();
 
