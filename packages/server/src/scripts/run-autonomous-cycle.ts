@@ -9,7 +9,6 @@ import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { LoopService } from '../services/loop-service';
 import { LoopDaemon } from '../services/loop-daemon';
 import { SelfModelService } from '../services/self-model-service';
-import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 
 async function main() {
@@ -17,7 +16,6 @@ async function main() {
   console.log('');
 
   const db = initializeDatabase();
-  const intelligence = new SwarmIntelligenceService(db);
   const swarmStatus = new SwarmStatusService(db);
   const selfModel = new SelfModelService(db);
 
