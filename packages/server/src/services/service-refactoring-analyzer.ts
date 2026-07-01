@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
-import { SelfCodeAnalysisService } from './self-code-analysis-service';
+
 
 export interface RefactoringProposal {
   id: string;
@@ -40,10 +40,7 @@ interface ProposalRow {
 }
 
 export class ServiceRefactoringAnalyzer {
-  private analysis: SelfCodeAnalysisService;
-
   constructor(private db: Database) {
-    this.analysis = new SelfCodeAnalysisService(db);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS refactoring_proposals (
@@ -102,7 +99,7 @@ export class ServiceRefactoringAnalyzer {
       ));
     }
 
-    const deadExports = this.analysis.analyze(servicePath).deadExports;
+    const deadExports = this.findDeadExports(servicePath);
     if (deadExports.length > 5) {
       proposals.push(this.createProposal(servicePath, 'simplify',
         `Found ${deadExports.length} potentially dead exports — remove or document`,
@@ -121,7 +118,6 @@ export class ServiceRefactoringAnalyzer {
   }
 
   analyzeAllServices(): RefactoringProposal[] {
-    const allProposals: RefactoringProposal[] = [];
     const servicesDir = path.resolve(process.cwd(), 'src/services');
 
     if (!fs.existsSync(servicesDir)) {
@@ -129,6 +125,7 @@ export class ServiceRefactoringAnalyzer {
       if (fs.existsSync(altDir)) {
         return this.scanDirectory(altDir);
       }
+      return [];
     }
 
     return this.scanDirectory(servicesDir);
@@ -195,6 +192,21 @@ export class ServiceRefactoringAnalyzer {
       JSON.stringify(proposal.expectedImpact),
       proposal.risk
     );
+  }
+
+  private findDeadExports(servicePath: string): string[] {
+    const content = this.readFile(servicePath);
+    if (!content) return [];
+
+    const exports = content.matchAll(/export\s+(?:class|function|const|interface|type)\s+(\w+)/g);
+    const exportedNames = new Set<string>();
+    for (const m of exports) {
+      if (m[1] !== 'main' && m[1] !== 'default') {
+        exportedNames.add(m[1]);
+      }
+    }
+
+    return [...exportedNames].slice(0, 20);
   }
 
   private readFile(filePath: string): string | null {

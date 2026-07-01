@@ -34,6 +34,9 @@ import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
 import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
 import { WorkerPool } from './services/worker-pool';
 import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
+import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
+import { EmergentSpecializationService } from './services/emergent-specialization-service';
+import { RsiSafetyGuard } from './services/rsi-safety-guard';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -137,6 +140,19 @@ async function main() {
   }
 
   // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
+  // G103-G106: RSI Engine services
+  try {
+    const safetyGuard = new RsiSafetyGuard(db);
+    const refactoringAnalyzer = new ServiceRefactoringAnalyzer(db);
+    const emergentSpec = new EmergentSpecializationService(db);
+    void safetyGuard;
+    void refactoringAnalyzer;
+    void emergentSpec;
+    console.log('🧬 RSI Engine ready (Refactor + Safety + Specialization).');
+  } catch (error) {
+    console.warn('⚠️  RSI Engine initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   try {
     const workerPool = new WorkerPool({ concurrency: 10 });
     const okfUpdater = new OkfKnowledgeUpdater(db);

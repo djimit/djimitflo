@@ -15,6 +15,9 @@ import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
+import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
+import { EmergentSpecializationService } from '../services/emergent-specialization-service';
+import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import type { WebSocketService } from '../services/websocket-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
@@ -1069,6 +1072,34 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/updates', requirePermission('read:evidence'), route((_req, res) => {
     const updater = new OkfKnowledgeUpdater(db);
     res.json(updater.getUpdateHistory(20));
+  }));
+
+  // G103-G106: RSI Engine endpoints
+  router.post('/rsi/analyze', requirePermission('write:swarm_action'), route((_req, res) => {
+    const analyzer = new ServiceRefactoringAnalyzer(db);
+    const proposals = analyzer.analyzeAllServices();
+    res.json({ proposals: proposals.length, items: proposals.slice(0, 10) });
+  }));
+
+  router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => {
+    const analyzer = new ServiceRefactoringAnalyzer(db);
+    res.json(analyzer.getProposals(req.query.status as string | undefined));
+  }));
+
+  router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => {
+    const spec = new EmergentSpecializationService(db);
+    res.json(spec.getSpecializations());
+  }));
+
+  router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => {
+    const guard = new RsiSafetyGuard(db);
+    res.json(guard.getStatus());
+  }));
+
+  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => {
+    const guard = new RsiSafetyGuard(db);
+    guard.setEnabled(req.body.enabled !== false);
+    res.json(guard.getStatus());
   }));
 
   return router;
