@@ -2,8 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
 
-void 0;
-
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 'test-task-1',
@@ -12,10 +10,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
     status: 'pending',
     priority: 'medium',
     metadata: {},
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
     ...overrides,
-  };
+  } as unknown as Task;
 }
 
 describe('MockExecutor', () => {
