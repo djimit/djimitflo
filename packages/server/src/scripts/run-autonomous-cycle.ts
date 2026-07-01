@@ -11,6 +11,7 @@ import { LoopDaemon } from '../services/loop-daemon';
 import { SelfModelService } from '../services/self-model-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
+import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 
 async function main() {
   console.log('🤖 DjimFlo Autonomous Cycle');
@@ -68,6 +69,22 @@ async function main() {
     } catch { /* skip runs that cannot be closed yet */ }
   }
   console.log(`   Closed ${reflections} learning loop(s).`);
+
+  // Step 3b: Expert swarm (weekly knowledge acquisition)
+  console.log('');
+  console.log('🎓 Step 3b: Expert swarm knowledge acquisition...');
+  try {
+    const orchestrator = new ExpertSwarmOrchestrator(db);
+    const swarmResult = await orchestrator.dispatch({
+      topic: 'DjimFlo autonomous evolution and self-improving systems',
+      domains: ['software-engineering', 'artificial-intelligence', 'complexity-science'],
+      maxParallel: 3,
+      sources: ['wikipedia', 'arxiv'],
+    });
+    console.log(`   Expert swarm: score=${swarmResult.verdict.score}, confidence=${swarmResult.verdict.confidence.toFixed(2)}, knowledge_updated=${swarmResult.knowledge_updated}`);
+  } catch (error) {
+    console.warn('   Expert swarm failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
 
   // Step 4: Report results
   console.log('');

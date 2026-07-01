@@ -31,6 +31,7 @@ import { SwarmIntelligenceService } from './services/swarm-intelligence-service'
 import { SelfModelService } from './services/self-model-service';
 import { ExperienceRetrievalService } from './services/experience-retrieval-service';
 import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
+import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -131,6 +132,14 @@ async function main() {
     }
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
+  try {
+    new ExpertSwarmOrchestrator(db);
+    console.log('🎓 Expert Swarm Orchestrator ready.');
+  } catch (error) {
+    console.warn('⚠️  Expert Swarm Orchestrator failed to initialize (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // G16: start the continuous operation daemon (goal queue with priority scheduling).

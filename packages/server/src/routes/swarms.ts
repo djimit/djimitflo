@@ -13,6 +13,7 @@ import { SwarmIntelligenceService } from '../services/swarm-intelligence-service
 import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
+import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import type { WebSocketService } from '../services/websocket-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
@@ -1041,6 +1042,28 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     svc.resetCircuitBreaker(req.params.scope);
     res.json({ reset: true });
   });
+
+  // G93: Expert Swarm endpoints
+  router.post('/expert/dispatch', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const orchestrator = new ExpertSwarmOrchestrator(db);
+    const result = await orchestrator.dispatch({
+      topic: req.body.topic || '',
+      domains: req.body.domains || [],
+      maxParallel: req.body.max_parallel,
+      sources: req.body.sources,
+    });
+    res.json(result);
+  }));
+
+  router.get('/expert/history', requirePermission('read:evidence'), route((_req, res) => {
+    const orchestrator = new ExpertSwarmOrchestrator(db);
+    res.json(orchestrator.getHistory(20));
+  }));
+
+  router.get('/expert/sources', requirePermission('read:evidence'), route((_req, res) => {
+    const orchestrator = new ExpertSwarmOrchestrator(db);
+    res.json({ sources: orchestrator.getAvailableSources() });
+  }));
 
   return router;
 }
