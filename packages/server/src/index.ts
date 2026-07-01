@@ -32,6 +32,8 @@ import { SelfModelService } from './services/self-model-service';
 import { ExperienceRetrievalService } from './services/experience-retrieval-service';
 import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
 import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
+import { WorkerPool } from './services/worker-pool';
+import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -136,10 +138,14 @@ async function main() {
 
   // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
   try {
+    const workerPool = new WorkerPool({ concurrency: 10 });
+    const okfUpdater = new OkfKnowledgeUpdater(db);
+    void workerPool;
+    void okfUpdater;
     new ExpertSwarmOrchestrator(db);
-    console.log('🎓 Expert Swarm Orchestrator ready.');
+    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
   } catch (error) {
-    console.warn('⚠️  Expert Swarm Orchestrator failed to initialize (non-fatal):', error instanceof Error ? error.message : String(error));
+    console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // G16: start the continuous operation daemon (goal queue with priority scheduling).

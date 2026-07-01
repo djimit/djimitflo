@@ -14,6 +14,7 @@ import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
+import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import type { WebSocketService } from '../services/websocket-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
@@ -1043,7 +1044,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     res.json({ reset: true });
   });
 
-  // G93: Expert Swarm endpoints
+  // G93-G101: Expert Swarm endpoints
   router.post('/expert/dispatch', requirePermission('write:swarm_action'), route(async (req, res) => {
     const orchestrator = new ExpertSwarmOrchestrator(db);
     const result = await orchestrator.dispatch({
@@ -1063,6 +1064,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/sources', requirePermission('read:evidence'), route((_req, res) => {
     const orchestrator = new ExpertSwarmOrchestrator(db);
     res.json({ sources: orchestrator.getAvailableSources() });
+  }));
+
+  router.get('/expert/updates', requirePermission('read:evidence'), route((_req, res) => {
+    const updater = new OkfKnowledgeUpdater(db);
+    res.json(updater.getUpdateHistory(20));
   }));
 
   return router;

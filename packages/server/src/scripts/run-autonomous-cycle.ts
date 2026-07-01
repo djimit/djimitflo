@@ -12,6 +12,7 @@ import { SelfModelService } from '../services/self-model-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
+import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 
 async function main() {
   console.log('🤖 DjimFlo Autonomous Cycle');
@@ -82,6 +83,16 @@ async function main() {
       sources: ['wikipedia', 'arxiv'],
     });
     console.log(`   Expert swarm: score=${swarmResult.verdict.score}, confidence=${swarmResult.verdict.confidence.toFixed(2)}, knowledge_updated=${swarmResult.knowledge_updated}`);
+
+  if (swarmResult.knowledge_updated) {
+    try {
+      const okfUpdater = new OkfKnowledgeUpdater(db);
+      const updated = await okfUpdater.updateFromVerdict(swarmResult.topic, swarmResult.expert_answers, swarmResult.verdict);
+      console.log(`   OKF knowledge updated: ${updated}`);
+    } catch (error) {
+      console.warn('   OKF update failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+  }
   } catch (error) {
     console.warn('   Expert swarm failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }

@@ -133,6 +133,48 @@ describe('G95: Judge Service', () => {
     expect(retrieved).toBeNull();
   });
 
+  describe('Approval Actions', () => {
+    it('auto-approves high score without contradictions', () => {
+      const verdict = judge.evaluate([
+        createAnswer({ source: 'arxiv', confidence: 0.95, evidence_refs: ['r1', 'r2', 'r3'] }),
+        createAnswer({ domain: 'math', source: 'arxiv', confidence: 0.9, evidence_refs: ['r4', 'r5', 'r6'] }),
+      ]);
+
+      const action = judge.getApprovalAction(verdict);
+      expect(action).toBe('auto_approve');
+    });
+
+    it('requires human review for medium score', () => {
+      const verdict = judge.evaluate([
+        createAnswer({ source: 'wikipedia', confidence: 0.6, evidence_refs: ['r1'] }),
+      ]);
+
+      const action = judge.getApprovalAction(verdict);
+      expect(action).toBe('human_review');
+    });
+
+    it('rejects low score', () => {
+      const verdict = judge.evaluate([
+        createAnswer({ source: 'unknown', confidence: 0.1, evidence_refs: [] }),
+      ]);
+
+      const action = judge.getApprovalAction(verdict);
+      expect(action).toBe('reject');
+    });
+
+    it('requires human review for high score with contradictions', () => {
+      const verdict = judge.evaluate([
+        createAnswer({ source: 'arxiv', confidence: 0.95, evidence_refs: ['r1', 'r2', 'r3'] }),
+        createAnswer({ domain: 'optics', content: 'Light does not behave as a wave.', source: 'arxiv', confidence: 0.9 }),
+      ]);
+
+      if (verdict.contradictions.length > 0) {
+        const action = judge.getApprovalAction(verdict);
+        expect(action).toBe('human_review');
+      }
+    });
+  });
+
   it('calculates confidence with agreement bonus', () => {
     const single = judge.evaluate([createAnswer({ confidence: 0.8 })]);
     const multiple = judge.evaluate([

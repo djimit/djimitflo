@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
+import type { ExpertAnswer } from './judge-service';
 
 export interface DistillationResult {
   skillId: string;
@@ -134,4 +135,38 @@ ${input.goalObjective || 'Resolve finding'}
 - Stay within the worktree boundary
 `;
   }
+
+  analyzeSkillPerformance(skillId: string, executionResults: ExpertAnswer[]): SkillImprovement[] {
+    const improvements: SkillImprovement[] = [];
+
+    for (const result of executionResults) {
+      if (result.confidence < 0.5) {
+        improvements.push({
+          skill_id: skillId,
+          type: 'clarity',
+          description: `Low confidence (${result.confidence.toFixed(2)}) in domain "${result.domain}" — skill procedure may need clarification`,
+          domain: result.domain,
+        });
+      }
+    }
+
+    const domains = new Set(executionResults.map(r => r.domain));
+    if (domains.size === 1 && executionResults.length > 1) {
+      improvements.push({
+        skill_id: skillId,
+        type: 'coverage',
+        description: `Skill only covers one domain — consider expanding to related domains`,
+        domain: [...domains][0],
+      });
+    }
+
+    return improvements;
+  }
+}
+
+export interface SkillImprovement {
+  skill_id: string;
+  type: 'clarity' | 'coverage' | 'accuracy';
+  description: string;
+  domain: string;
 }

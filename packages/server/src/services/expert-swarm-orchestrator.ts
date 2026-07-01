@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { KnowledgeAdapterRegistry } from './knowledge-adapters';
 import { JudgeService, type ExpertAnswer, type JudgeVerdict } from './judge-service';
+import { SkillService } from './skill-service';
 
 export interface ExpertSwarmInput {
   topic: string;
@@ -30,11 +31,13 @@ interface SwarmRow {
 export class ExpertSwarmOrchestrator {
   private registry: KnowledgeAdapterRegistry;
   private judge: JudgeService;
+  private skills: SkillService;
   private maxParallel = 10;
 
   constructor(private db: Database) {
     this.registry = new KnowledgeAdapterRegistry(db);
     this.judge = new JudgeService(db);
+    this.skills = new SkillService(db);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS expert_swarm_history (
@@ -101,7 +104,11 @@ export class ExpertSwarmOrchestrator {
 
   private async executeExpert(domain: string, topic: string, sources: string[]): Promise<ExpertAnswer | null> {
     try {
-      const query = `${topic} ${domain}`;
+      const skill = this.skills.getSkillForFinding(topic, domain);
+      const query = skill
+        ? `Given this procedure:\n${skill}\n\nResearch: ${topic} in ${domain}`
+        : `${topic} ${domain}`;
+
       const results = await this.registry.searchAll(query, sources, 3);
 
       if (results.length === 0) {
@@ -111,6 +118,7 @@ export class ExpertSwarmOrchestrator {
           source: 'none',
           confidence: 0.1,
           evidence_refs: [],
+          metadata: { skill_used: !!skill },
         };
       }
 
@@ -126,6 +134,8 @@ export class ExpertSwarmOrchestrator {
           url: bestResult.url,
           title: bestResult.title,
           all_sources: results.map(r => r.source),
+          skill_used: !!skill,
+          skill_procedure: skill ? skill.slice(0, 200) : null,
         },
       };
     } catch {

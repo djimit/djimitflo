@@ -72,6 +72,12 @@ export class JudgeService {
     return verdict;
   }
 
+  getApprovalAction(verdict: JudgeVerdict): 'auto_approve' | 'human_review' | 'reject' {
+    if (verdict.score >= 80 && verdict.contradictions.length === 0) return 'auto_approve';
+    if (verdict.score >= 60) return 'human_review';
+    return 'reject';
+  }
+
   getVerdictHistory(limit: number = 20): JudgeVerdict[] {
     const rows = this.db.prepare('SELECT verdict_json FROM judge_verdicts ORDER BY created_at DESC LIMIT ?').all(limit) as JudgeRow[];
     return rows.map(r => JSON.parse(r.verdict_json) as JudgeVerdict);
