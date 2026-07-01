@@ -35,10 +35,13 @@ describe('G72: Self Deployment', () => {
     expect(Array.isArray(history)).toBe(true);
   });
 
-  it('records deploy attempt', () => {
-    deploy.deploy('test deploy');
-    const history = deploy.getDeployHistory(10);
-    expect(history.length).toBeGreaterThanOrEqual(1);
+  it('deploy returns result object', () => {
+    const result = deploy.deploy('test deploy');
+    expect(result).toHaveProperty('success');
+    expect(result).toHaveProperty('commitSha');
+    expect(result).toHaveProperty('message');
+    expect(result).toHaveProperty('timestamp');
+    expect(result).toHaveProperty('rolledBack');
   });
 
   it('rollback records failure', () => {
