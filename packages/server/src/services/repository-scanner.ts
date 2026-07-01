@@ -163,23 +163,23 @@ export class RepositoryScanner {
         return { isGitRepository: false, currentBranch: null, defaultBranch: null, isClean: true, stagedFiles: 0, modifiedFiles: 0, untrackedFiles: 0, aheadBehind: null, headCommit: null, headCommitMessage: null };
       }
 
-      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim();
-      const headCommitMessage = execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+      const headCommit = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+      const headCommitMessage = execSync('git log -1 --format=%s', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
 
       let defaultBranch: string | null = null;
       try {
-        defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|^refs/remotes/origin/||"', { cwd: repoPath, encoding: 'utf-8' }).trim() || null;
+        defaultBranch = execSync('git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed "s|^refs/remotes/origin/||"', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim() || null;
       } catch { defaultBranch = null; }
       if (!defaultBranch) {
         try {
-          const remoteHeads = execSync('git ls-remote --symref origin HEAD 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim();
+          const remoteHeads = execSync('git ls-remote --symref origin HEAD 2>/dev/null', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
           const match = remoteHeads.match(/refs\/heads\/(\S+)/);
           if (match) defaultBranch = match[1];
         } catch { defaultBranch = null; }
       }
 
-      const porcelainStatus = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' }).trim();
+      const porcelainStatus = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
       const statusLines = porcelainStatus ? porcelainStatus.split('\n').filter(Boolean) : [];
       const stagedFiles = statusLines.filter((l: string) => /^[MADRC]/.test(l)).length;
       const modifiedFiles = statusLines.filter((l: string) => /^\s?[MADRC]/.test(l) || /^[MADRC]\s/.test(l)).length;
@@ -188,7 +188,7 @@ export class RepositoryScanner {
 
       let aheadBehind: { ahead: number; behind: number } | null = null;
       try {
-        const abRaw = execSync('git rev-list --left-right --count HEAD...@{u} 2>/dev/null', { cwd: repoPath, encoding: 'utf-8' }).trim();
+        const abRaw = execSync('git rev-list --left-right --count HEAD...@{u} 2>/dev/null', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
         const [ahead, behind] = abRaw.split(/\s+/).map(Number);
         aheadBehind = { ahead, behind };
       } catch { aheadBehind = null; }

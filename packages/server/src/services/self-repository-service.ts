@@ -27,11 +27,11 @@ export class SelfRepositoryService {
 
   detectSelfRepository(): SelfRepositoryInfo {
     try {
-      const remoteUrl = execSync('git remote get-url origin', { cwd: this.rootPath, encoding: 'utf8' }).trim();
-      const branch = execSync('git branch --show-current', { cwd: this.rootPath, encoding: 'utf8' }).trim();
-      const commitSha = execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8' }).trim();
-      const lastCommitDate = execSync('git log -1 --format=%ci', { cwd: this.rootPath, encoding: 'utf8' }).trim();
-      const statusOutput = execSync('git status --porcelain', { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      const remoteUrl = execSync('git remote get-url origin', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
+      const branch = execSync('git branch --show-current', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
+      const commitSha = execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
+      const lastCommitDate = execSync('git log -1 --format=%ci', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
+      const statusOutput = execSync('git status --porcelain', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
       const hasUncommittedChanges = statusOutput.length > 0;
 
       return {
@@ -101,7 +101,7 @@ export class SelfRepositoryService {
 
   getDiff(): string {
     try {
-      return execSync('git diff', { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      return execSync('git diff', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
     } catch {
       return '';
     }
@@ -109,7 +109,7 @@ export class SelfRepositoryService {
 
   getRecentCommits(limit: number = 10): Array<{ sha: string; message: string; date: string; author: string }> {
     try {
-      const output = execSync(`git log --pretty=format:'%H|%s|%ci|%an' -n ${limit}`, { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      const output = execSync(`git log --pretty=format:'%H|%s|%ci|%an' -n ${limit}`, { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
       if (!output) return [];
       return output.split('\n').map(line => {
         const [sha, message, date, author] = line.split('|');

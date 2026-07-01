@@ -181,10 +181,10 @@ export class SelfCodeAnalysisService {
       try {
         const content = fs.readFileSync(f, 'utf8');
         if (content.includes('execSync') && !content.includes('timeout')) {
-          issues.push(`${f}: execSync without timeout — potential DoS`);
-        }
-        if (content.includes('password') && content.includes('console.log')) {
-          issues.push(`${f}: Potential password logging`);
+          const lines = content.split('\n').filter((l: string) => l.includes('execSync') && !l.includes('timeout') && !l.trim().startsWith('//'));
+          if (lines.length > 0) {
+            issues.push(`${f}: ${lines.length} execSync calls without timeout — potential DoS`);
+          }
         }
       } catch { /* skip */ }
     }

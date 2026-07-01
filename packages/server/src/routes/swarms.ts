@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import { WebSocketEventType, type WebSocketMessage } from '@djimitflo/shared';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -14,6 +14,21 @@ import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import type { WebSocketService } from '../services/websocket-service';
+
+type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
+
+function route(handler: RouteHandler): RouteHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = handler(req, res, next);
+      if (result instanceof Promise) {
+        result.catch(next);
+      }
+    } catch (error) {
+      next(error);
+    }
+  };
+}
 
 function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
@@ -266,29 +281,26 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   const proofRuns = new ProofRunService(db);
   const csSkillSwarmHarness = new CsSkillSwarmHarnessService(db);
 
-  router.get('/status', requirePermission('read:evidence'), (_req, res, next) => {
-    try {
-      res.json(service.getStatus());
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/status', requirePermission('read:evidence'), route((_req, res) => {
+    res.json(service.getStatus());
+  }));
 
-  router.post('/scheduler/tick', requirePermission('write:swarm_action'), (req, res, next) => {
-    try {
-      res.json(service.tickScheduler(req.body || {}));
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.post('/scheduler/tick', requirePermission('write:swarm_action'), route((req, res) => {
+    res.json(service.tickScheduler(req.body || {}));
+  }));
 
-  router.post('/backlog/sync', requirePermission('write:swarm_action'), (req, res, next) => {
+  router.post('/backlog/sync', requirePermission('write:swarm_action'), route((req, res, next) => {
     try {
       res.json(service.syncBacklogFromFleet(req.body || {}));
     } catch (error) {
+      try {
+        mapKnowledgeRuntimeError(error);
+      } catch (mapped) {
+        next(mapped);
+      }
       next(error);
     }
-  });
+  }));
 
   router.get('/knowledge/runtime', requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -302,13 +314,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/runtime-readiness', requirePermission('read:evidence'), (req, res, next) => {
-    try {
-      res.json(runtimeReadiness(db, req.query.runtime));
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/runtime-readiness', requirePermission('read:evidence'), route((req, res) => {
+    res.json(runtimeReadiness(db, req.query.runtime));
+  }));
 
   router.post('/knowledge/sync', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
@@ -827,13 +835,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/assurance/capability-tokens', requirePermission('read:evidence'), (req, res, next) => {
-    try {
-      res.json({ tokens: assurance.listCapabilityTokens(req.query.limit ? Number(req.query.limit) : undefined) });
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/assurance/capability-tokens', requirePermission('read:evidence'), route((req, res) => {
+    res.json(assurance.listCapabilityTokens(req.query.limit ? Number(req.query.limit) : undefined));
+  }));
 
   router.post('/assurance/capability-tokens', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
@@ -847,13 +851,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/assurance/reflections', requirePermission('read:evidence'), (req, res, next) => {
-    try {
-      res.json({ reflections: assurance.listReflections(req.query.limit ? Number(req.query.limit) : undefined) });
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/assurance/reflections', requirePermission('read:evidence'), route((req, res) => {
+    res.json(assurance.listReflections(req.query.limit ? Number(req.query.limit) : undefined));
+  }));
 
   router.post('/assurance/reflections', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
@@ -867,13 +867,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/memory/candidates', requirePermission('read:evidence'), (req, res, next) => {
-    try {
-      res.json({ candidates: memoryCandidates.list(req.query.limit ? Number(req.query.limit) : undefined) });
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/memory/candidates', requirePermission('read:evidence'), route((req, res) => {
+    res.json(memoryCandidates.list(req.query.limit ? Number(req.query.limit) : undefined));
+  }));
 
   router.post('/memory/candidates', requirePermission('write:claim'), (req, res, next) => {
     try {
@@ -907,13 +903,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
 
-  router.get('/specialist-panels', requirePermission('read:evidence'), (req, res, next) => {
-    try {
-      res.json({ panels: specialistPanels.listPanels(req.query.limit ? Number(req.query.limit) : undefined) });
-    } catch (error) {
-      next(error);
-    }
-  });
+  router.get('/specialist-panels', requirePermission('read:evidence'), route((req, res) => {
+    res.json(specialistPanels.listPanels(req.query.limit ? Number(req.query.limit) : undefined));
+  }));
 
   router.post('/specialist-panels', requirePermission('write:swarm_action'), (req, res, next) => {
     try {
@@ -974,10 +966,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   });
 
   // G15.8: Hypothesis workbench endpoints
-  router.get('/intelligence/hypotheses', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json({ hypotheses: intelligence.listHypotheses(Number(req.query.limit) || 100) }); }
-    catch (error) { next(error); }
-  });
+  router.get('/intelligence/hypotheses', requirePermission('read:evidence'), route((req, res) => {
+    res.json(intelligence.listHypotheses(Number(req.query.limit) || 100));
+  }));
 
   router.post('/intelligence/hypotheses', requirePermission('write:swarm_action'), (req, res, next) => {
     try { res.status(201).json(intelligence.createHypothesis(req.body || {})); }

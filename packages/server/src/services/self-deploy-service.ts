@@ -39,7 +39,7 @@ export class SelfDeployService {
     try {
       execSync('git add -A', { cwd: this.rootPath, stdio: 'pipe' });
       execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: this.rootPath, stdio: 'pipe' });
-      const sha = execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      const sha = execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
       return { success: true, sha };
     } catch (err: unknown) {
       const e = err as { message?: string };
@@ -108,7 +108,7 @@ export class SelfDeployService {
 
   getCurrentCommit(): string {
     try {
-      return execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      return execSync('git rev-parse HEAD', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
     } catch {
       return 'unknown';
     }
@@ -116,7 +116,7 @@ export class SelfDeployService {
 
   hasUncommittedChanges(): boolean {
     try {
-      const output = execSync('git status --porcelain', { cwd: this.rootPath, encoding: 'utf8' }).trim();
+      const output = execSync('git status --porcelain', { cwd: this.rootPath, encoding: 'utf8', timeout: 10_000 }).trim();
       return output.length > 0;
     } catch {
       return false;
