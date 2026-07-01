@@ -8,31 +8,28 @@ describe('DataExecutor', () => {
   let db: Database.Database;
   let executor: DataExecutor;
 
-  it('should create an instance', () => {
+  beforeEach(() => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
     runMigrations(db);
     executor = new DataExecutor(db);
+  });
+
+  afterEach(() => {
+    db?.close();
+  });
+
+  it('should create an instance', () => {
     expect(executor).toBeDefined();
   });
 
   it('should handle data runtime', () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     expect(executor.canExecute('data')).toBe(true);
     expect(executor.canExecute('codex')).toBe(false);
   });
 
   it('should execute csv task', async () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     const result = await executor.execute({
       type: 'csv',
       action: '',
@@ -43,11 +40,6 @@ describe('DataExecutor', () => {
   });
 
   it('should execute json task', async () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     const result = await executor.execute({
       type: 'json',
       action: '',
@@ -57,11 +49,6 @@ describe('DataExecutor', () => {
   });
 
   it('should handle unknown type', async () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     const result = await executor.execute({
       type: 'unknown' as any,
       action: 'x',
@@ -72,11 +59,6 @@ describe('DataExecutor', () => {
   });
 
   it('should measure duration', async () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     const result = await executor.execute({
       type: 'csv',
       action: '',
@@ -86,11 +68,6 @@ describe('DataExecutor', () => {
   });
 
   it('should validate data integrity', async () => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
-    executor = new DataExecutor(db);
     const result = await executor.validateDataIntegrity(':memory:', { id: 'INTEGER' });
     expect(typeof result.valid).toBe('boolean');
     expect(Array.isArray(result.issues)).toBe(true);
