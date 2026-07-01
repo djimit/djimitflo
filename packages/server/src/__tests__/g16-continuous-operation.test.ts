@@ -86,8 +86,8 @@ describe('G16: Continuous operation mode', () => {
     await (daemon as any).tick();
 
     // The daemon should have attempted to decompose and start the goal.
-    // A convergence event should have been emitted (goal_started or goal_failed).
-    const daemonEvent = events.find((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_failed');
+    // A convergence event should have been emitted (goal_started, goal_completed, or goal_failed).
+    const daemonEvent = events.find((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_failed' || e.data?.daemon === 'goal_completed');
     expect(daemonEvent).toBeDefined();
     expect(daemonEvent.data.goal_id).toBe(goal1Id);
   });

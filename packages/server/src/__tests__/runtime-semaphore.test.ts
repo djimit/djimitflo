@@ -30,6 +30,7 @@ function resetSemaphore(): void {
   }
   sem.queue.length = 0;
   sem.active.clear();
+  sem.dynamicLimit = null;
 }
 
 describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
@@ -84,8 +85,11 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     await (loops as any).acquireRuntimePermit('a');
     expect(loops.runtimeConcurrencyInUse()).toBe(1);
 
+    expect(semState().active.size).toBe(1);
+    expect(semState().queue.length).toBe(0);
     const queued = (loops as any).acquireRuntimePermit('b');
-    await Promise.resolve();
+    expect(semState().active.size).toBe(1);
+    expect(semState().queue.length).toBe(1);
     expect(semState().queue.map((w) => w.leaseId)).toEqual(['b']);
 
     // Stop the queued lease (the path stopWorkerLeaseRuntime takes when there is

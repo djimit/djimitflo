@@ -112,14 +112,18 @@ describe('P1 per-task skipPermissions gating (resolveSkipPermissions + buildRunt
     expect((service() as any).resolveSkipPermissions(undefined)).toBe(false);
   });
 
-  it('injects the codex bypass flag only when skipPermissions is true', () => {
+  it('injects the codex sandbox + approval_policy flags only when skipPermissions is true', () => {
     const s = service() as any;
     const off = s.buildRuntimeCommand('codex', '/tmp/wt', 'prompt', false);
-    expect(off.args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(off.args).not.toContain('--sandbox');
+    expect(off.args).not.toContain('approval_policy=never');
     const on = s.buildRuntimeCommand('codex', '/tmp/wt', 'prompt', true);
-    expect(on.args).toContain('--dangerously-bypass-approvals-and-sandbox');
-    // bypass precedes the json/cd/prompt tail
-    expect(on.args.indexOf('--dangerously-bypass-approvals-and-sandbox')).toBeLessThan(on.args.indexOf('--json'));
+    expect(on.args).toContain('--sandbox');
+    expect(on.args).toContain('workspace-write');
+    expect(on.args).toContain('-c');
+    expect(on.args).toContain('approval_policy=never');
+    // sandbox precedes the json/cd/prompt tail
+    expect(on.args.indexOf('--sandbox')).toBeLessThan(on.args.indexOf('--json'));
   });
 
   it('injects the opencode bypass flag only when skipPermissions is true', () => {
