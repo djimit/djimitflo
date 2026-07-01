@@ -2,7 +2,7 @@ import express from 'express';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import type { Server } from 'http';
@@ -11,6 +11,10 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { createSwarmRoutes } from '../routes/swarms';
 import { errorHandler } from '../middleware/error-handler';
+
+let inGitRepo = true;
+try { execSync('git rev-parse --git-dir', { stdio: 'pipe' }); } catch { inGitRepo = false; }
+const describeOrSkip = inGitRepo ? describe : describe.skip;
 
 let db: Database.Database;
 let server: Server;
@@ -110,7 +114,7 @@ async function startApp() {
   baseUrl = `http://127.0.0.1:${address.port}`;
 }
 
-describe('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 }, () => {
+describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 }, () => {
   beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
