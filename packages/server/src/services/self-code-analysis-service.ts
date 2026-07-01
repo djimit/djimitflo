@@ -193,7 +193,6 @@ export class SelfCodeAnalysisService {
 
   private findTestCoverageGaps(files: string[]): string[] {
     const gaps: string[] = [];
-    const fs = require('fs');
     const testFiles = new Set<string>();
 
     try {
