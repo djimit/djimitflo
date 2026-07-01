@@ -110,6 +110,9 @@ export class FleetOptimizationService {
         { id: 'qdrant', name: 'Qdrant Vector DB', status: 'active', capabilities: ['vector-search', 'embeddings', 'similarity'], lastSeen: new Date().toISOString() },
         { id: 'ollama', name: 'Ollama LLM', status: 'active', capabilities: ['llm-inference', 'embeddings', 'vision'], lastSeen: new Date().toISOString() },
         { id: 'uams', name: 'UAMS Memory', status: 'active', capabilities: ['agent-memory', 'session-memory', 'persistence'], lastSeen: new Date().toISOString() },
+        { id: 'security-scanner', name: 'Security Scanning Agent', status: 'active', capabilities: ['security-scanning', 'vulnerability-detection', 'secret-detection', 'dependency-audit'], lastSeen: new Date().toISOString() },
+        { id: 'compliance-checker', name: 'Compliance Checking Agent', status: 'active', capabilities: ['compliance-checking', 'eu-ai-act', 'nora', 'gdpr', 'audit-trail'], lastSeen: new Date().toISOString() },
+        { id: 'monitoring', name: 'Monitoring Agent', status: 'active', capabilities: ['monitoring', 'alerting', 'health-checks', 'metrics-collection'], lastSeen: new Date().toISOString() },
       );
     }
 
