@@ -258,7 +258,7 @@ export class ComplianceCheckingAgent {
     };
 
     this.db.prepare(`
-      INSERT INTO compliance_checks (id, framework, target, checks_json, summary_json, compliance_score, createdAt)
+      INSERT INTO compliance_checks (id, framework, target, checks_json, summary_json, compliance_score, created_at)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(result.id, framework, target, JSON.stringify(checks), JSON.stringify(result.summary), complianceScore);
 
