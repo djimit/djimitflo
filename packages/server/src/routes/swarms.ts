@@ -18,6 +18,7 @@ import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import type { WebSocketService } from '../services/websocket-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
@@ -1100,6 +1101,23 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const guard = new RsiSafetyGuard(db);
     guard.setEnabled(req.body.enabled !== false);
     res.json(guard.getStatus());
+  }));
+
+  // G127: Continuous Learning Loop endpoints
+  router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => {
+    const learningLoop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
+    const result = await learningLoop.runCycle();
+    res.json(result);
+  }));
+
+  router.get('/learning/history', requirePermission('read:evidence'), route((_req, res) => {
+    const learningLoop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
+    res.json(learningLoop.getHistory(20));
+  }));
+
+  router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => {
+    const learningLoop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
+    res.json(learningLoop.getLastCycle());
   }));
 
   return router;

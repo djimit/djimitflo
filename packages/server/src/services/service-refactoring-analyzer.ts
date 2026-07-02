@@ -1,13 +1,11 @@
-import { randomUUID } from 'crypto';
+import type { Database } from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import type { Database } from 'better-sqlite3';
-
 
 export interface RefactoringProposal {
   id: string;
   targetService: string;
-  proposalType: 'extract_module' | 'simplify' | 'merge' | 'split';
+  proposalType: 'split' | 'extract' | 'extract_module' | 'merge' | 'simplify';
   description: string;
   currentState: {
     loc: number;
@@ -23,54 +21,33 @@ export interface RefactoringProposal {
   };
   risk: 'low' | 'medium' | 'high';
   status: 'proposed' | 'approved' | 'applied' | 'rejected';
-  createdAt: string;
-}
-
-interface ProposalRow {
-  id: string;
-  target_service: string;
-  proposal_type: string;
-  description: string;
-  current_state_json: string;
-  proposed_changes_json: string;
-  expected_impact_json: string;
-  risk: string;
-  status: string;
-  created_at: string;
 }
 
 export class ServiceRefactoringAnalyzer {
   constructor(private db: Database) {
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS refactoring_proposals (
-        id TEXT PRIMARY KEY,
-        target_service TEXT NOT NULL,
-        proposal_type TEXT NOT NULL,
-        description TEXT NOT NULL,
-        current_state_json TEXT NOT NULL,
-        proposed_changes_json TEXT NOT NULL,
-        expected_impact_json TEXT NOT NULL,
-        risk TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'proposed',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
-    this.db.exec('CREATE INDEX IF NOT EXISTS idx_refactor_status ON refactoring_proposals(status)');
+    this.db.exec(`CREATE TABLE IF NOT EXISTS refactoring_proposals (
+      id TEXT PRIMARY KEY, target_service TEXT NOT NULL, proposal_type TEXT NOT NULL,
+      description TEXT NOT NULL, current_state_json TEXT NOT NULL, proposed_changes_json TEXT NOT NULL,
+      expected_impact_json TEXT NOT NULL, risk TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'proposed',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
   }
 
-  analyzeService(servicePath: string): RefactoringProposal[] {
-    const proposals: RefactoringProposal[] = [];
-    const content = this.readFile(servicePath);
-    if (!content) return proposals;
+  analyzeService(filePath: string): RefactoringProposal[] {
+    if (!fs.existsSync(filePath)) return [];
 
+    const content = fs.readFileSync(filePath, 'utf8');
     const loc = content.split('\n').length;
-    const methods = this.countMethods(content);
-    const dependencies = this.countDependencies(content);
-    const complexity = this.estimateComplexity(content);
+    const methods = (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*(?::\s*\w+\s*)?=>/g) || []).length +
+                   (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*\{/g) || []).length;
+    const dependencies = (content.match(/import\s+.*from/g) || []).length;
+    const complexity = (content.match(/\b(if|else|switch|case|for|while|catch)\b/g) || []).length +
+                      (content.match(/\{\s*\{/g) || []).length * 2;
+
+    const proposals: RefactoringProposal[] = [];
 
     if (loc > 1000) {
-      proposals.push(this.createProposal(servicePath, 'split',
+      proposals.push(this.createProposal(filePath, 'split',
         `Service has ${loc} LOC (${methods} methods) — consider splitting into domain-specific modules`,
         { loc, methods, dependencies, complexity },
         ['Extract planning logic into separate service', 'Extract execution logic into separate service', 'Extract governance logic into separate service'],
@@ -80,7 +57,7 @@ export class ServiceRefactoringAnalyzer {
     }
 
     if (methods > 20) {
-      proposals.push(this.createProposal(servicePath, 'extract_module',
+      proposals.push(this.createProposal(filePath, 'extract_module',
         `Service has ${methods} methods — extract cohesive groups into helper modules`,
         { loc, methods, dependencies, complexity },
         ['Group related methods into sub-modules', 'Extract shared utilities', 'Create facade for external consumers'],
@@ -90,23 +67,12 @@ export class ServiceRefactoringAnalyzer {
     }
 
     if (dependencies > 15) {
-      proposals.push(this.createProposal(servicePath, 'simplify',
+      proposals.push(this.createProposal(filePath, 'simplify',
         `Service has ${dependencies} import dependencies — consider dependency injection or facade pattern`,
         { loc, methods, dependencies, complexity },
         ['Introduce dependency injection container', 'Create facade for external services', 'Lazy-load heavy dependencies'],
         { locReduction: 0, complexityReduction: 15, testabilityImprovement: 25 },
         'medium'
-      ));
-    }
-
-    const deadExports = this.findDeadExports(servicePath);
-    if (deadExports.length > 5) {
-      proposals.push(this.createProposal(servicePath, 'simplify',
-        `Found ${deadExports.length} potentially dead exports — remove or document`,
-        { loc, methods, dependencies, complexity },
-        deadExports.slice(0, 5).map(e => `Remove or document: ${e}`),
-        { locReduction: deadExports.length * 5, complexityReduction: 5, testabilityImprovement: 10 },
-        'low'
       ));
     }
 
@@ -118,41 +84,60 @@ export class ServiceRefactoringAnalyzer {
   }
 
   analyzeAllServices(): RefactoringProposal[] {
-    const servicesDir = path.resolve(process.cwd(), 'src/services');
+    const allProposals: RefactoringProposal[] = [];
 
-    if (!fs.existsSync(servicesDir)) {
-      const altDir = path.resolve(process.cwd(), 'packages/server/src/services');
-      if (fs.existsSync(altDir)) {
-        return this.scanDirectory(altDir);
+    const possibleDirs = [
+      path.resolve(process.cwd(), 'packages/server/src/services'),
+      path.resolve(process.cwd(), 'src/services'),
+      path.resolve(__dirname, '.'),
+    ];
+
+    let servicesDir = '';
+    for (const dir of possibleDirs) {
+      if (fs.existsSync(dir) && fs.readdirSync(dir).some(f => f.endsWith('.ts') && !f.includes('.test.'))) {
+        servicesDir = dir;
+        break;
       }
-      return [];
     }
 
-    return this.scanDirectory(servicesDir);
-  }
+    if (!servicesDir) return [];
 
-  private scanDirectory(dir: string): RefactoringProposal[] {
-    const proposals: RefactoringProposal[] = [];
-    try {
-      const files = fs.readdirSync(dir).filter(f => f.endsWith('.ts') && !f.includes('.test.'));
-      for (const file of files) {
-        const servicePath = path.join(dir, file);
-        const serviceProposals = this.analyzeService(servicePath);
-        proposals.push(...serviceProposals);
-      }
-    } catch { /* skip */ }
-    return proposals;
+    const files = fs.readdirSync(servicesDir).filter(f => f.endsWith('.ts') && !f.includes('.test.'));
+    for (const file of files) {
+      const filePath = path.join(servicesDir, file);
+      allProposals.push(...this.analyzeService(filePath));
+    }
+
+    return allProposals;
   }
 
   getProposals(status?: string): RefactoringProposal[] {
-    const rows = status
-      ? this.db.prepare('SELECT * FROM refactoring_proposals WHERE status = ? ORDER BY created_at DESC').all(status) as ProposalRow[]
-      : this.db.prepare('SELECT * FROM refactoring_proposals ORDER BY created_at DESC').all() as ProposalRow[];
-    return rows.map(this.rowToProposal);
+    let query = 'SELECT * FROM refactoring_proposals';
+    const params: unknown[] = [];
+    if (status) { query += ' WHERE status = ?'; params.push(status); }
+    query += ' ORDER BY created_at DESC';
+
+    const rows = this.db.prepare(query).all(...params) as Array<{
+      id: string; target_service: string; proposal_type: string; description: string;
+      current_state_json: string; proposed_changes_json: string; expected_impact_json: string;
+      risk: string; status: string;
+    }>;
+
+    return rows.map(r => ({
+      id: r.id,
+      targetService: r.target_service,
+      proposalType: r.proposal_type as RefactoringProposal['proposalType'],
+      description: r.description,
+      currentState: JSON.parse(r.current_state_json) as RefactoringProposal['currentState'],
+      proposedChanges: JSON.parse(r.proposed_changes_json) as string[],
+      expectedImpact: JSON.parse(r.expected_impact_json) as RefactoringProposal['expectedImpact'],
+      risk: r.risk as RefactoringProposal['risk'],
+      status: r.status as RefactoringProposal['status'],
+    }));
   }
 
   updateProposalStatus(proposalId: string, status: RefactoringProposal['status']): void {
-    this.db.prepare('UPDATE refactoring_proposals SET status = ? WHERE id = ?').run(status, proposalId);
+    this.db.prepare('UPDATE refactoring_proposals SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').run(status, proposalId);
   }
 
   private createProposal(
@@ -165,7 +150,7 @@ export class ServiceRefactoringAnalyzer {
     risk: RefactoringProposal['risk']
   ): RefactoringProposal {
     return {
-      id: randomUUID(),
+      id: `refactor-${path.basename(targetService)}-${proposalType}`,
       targetService,
       proposalType,
       description,
@@ -174,14 +159,13 @@ export class ServiceRefactoringAnalyzer {
       expectedImpact,
       risk,
       status: 'proposed',
-      createdAt: new Date().toISOString(),
     };
   }
 
   private persistProposal(proposal: RefactoringProposal): void {
     this.db.prepare(`
-      INSERT OR IGNORE INTO refactoring_proposals (id, target_service, proposal_type, description, current_state_json, proposed_changes_json, expected_impact_json, risk, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'proposed')
+      INSERT OR REPLACE INTO refactoring_proposals (id, target_service, proposal_type, description, current_state_json, proposed_changes_json, expected_impact_json, risk, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       proposal.id,
       proposal.targetService,
@@ -190,62 +174,8 @@ export class ServiceRefactoringAnalyzer {
       JSON.stringify(proposal.currentState),
       JSON.stringify(proposal.proposedChanges),
       JSON.stringify(proposal.expectedImpact),
-      proposal.risk
+      proposal.risk,
+      proposal.status
     );
-  }
-
-  private findDeadExports(servicePath: string): string[] {
-    const content = this.readFile(servicePath);
-    if (!content) return [];
-
-    const exports = content.matchAll(/export\s+(?:class|function|const|interface|type)\s+(\w+)/g);
-    const exportedNames = new Set<string>();
-    for (const m of exports) {
-      if (m[1] !== 'main' && m[1] !== 'default') {
-        exportedNames.add(m[1]);
-      }
-    }
-
-    return [...exportedNames].slice(0, 20);
-  }
-
-  private readFile(filePath: string): string | null {
-    try {
-      return fs.readFileSync(filePath, 'utf8');
-    } catch {
-      return null;
-    }
-  }
-
-  private countMethods(content: string): number {
-    const matches = content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*(?::\s*\w+\s*)?=>/g);
-    const methodMatches = content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*\{/g);
-    return (matches?.length ?? 0) + (methodMatches?.length ?? 0);
-  }
-
-  private countDependencies(content: string): number {
-    const imports = content.match(/import\s+.*from/g);
-    return imports?.length ?? 0;
-  }
-
-  private estimateComplexity(content: string): number {
-    const branches = (content.match(/\b(if|else|switch|case|for|while|catch)\b/g) || []).length;
-    const nesting = (content.match(/\{\s*\{/g) || []).length;
-    return branches + nesting * 2;
-  }
-
-  private rowToProposal(row: ProposalRow): RefactoringProposal {
-    return {
-      id: row.id,
-      targetService: row.target_service,
-      proposalType: row.proposal_type as RefactoringProposal['proposalType'],
-      description: row.description,
-      currentState: JSON.parse(row.current_state_json) as RefactoringProposal['currentState'],
-      proposedChanges: JSON.parse(row.proposed_changes_json) as string[],
-      expectedImpact: JSON.parse(row.expected_impact_json) as RefactoringProposal['expectedImpact'],
-      risk: row.risk as RefactoringProposal['risk'],
-      status: row.status as RefactoringProposal['status'],
-      createdAt: row.created_at,
-    };
   }
 }

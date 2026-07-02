@@ -86,3 +86,4 @@ tmp/
 
 # Agent catalog seeded SQLite (regenerable; auto-seeds from upstream clone)
 packages/server/.data/agent-catalog.sqlite*
+.data/
