@@ -55,7 +55,7 @@ export class SqliteMemoryStore implements MemoryStore {
 
   store(record: Omit<MemoryRecord, 'id' | 'createdAt'>): MemoryRecord {
     const id = randomUUID();
-    this.db.prepare("INSERT INTO central_memories (id, type, content, source, confidence, metadata_json) VALUES (?, ?, ?, ?, ?, ?)").run(id, record.type, record.content, record.source, record.confidence, JSON.stringify(record.metadata));
+    this.db.prepare("INSERT INTO central_memories (id, type, content, source, confidence, metadata_json) VALUES (?, ?, ?, ?, ?, ?)").run(id, record.type, record.content, record.source, record.confidence, JSON.stringify(record.metadata ?? {}));
     return { ...record, id, createdAt: new Date().toISOString() };
   }
 

@@ -25,8 +25,8 @@ export class SwarmMemoryFactory {
   processEpisode(input: SwarmEpisodeInput): FactoryResult {
     const episodeMemory = this.store.store({ type: 'episode', content: 'Swarm: ' + input.topic, source: 'swarm-episode', confidence: input.outcome === 'success' ? 0.9 : 0.5, metadata: { participantCount: input.participants.length } });
     for (const p of input.participants) {
-      this.store.store({ type: 'observation', content: p.output, source: 'agent:' + p.agentId, confidence: 0.7, metadata: { role: p.role, episodeId: input.id } });
-      this.store.relate(episodeMemory.id, p.agentId, 'contains', 0.9);
+      const obs = this.store.store({ type: 'observation', content: p.output, source: 'agent:' + p.agentId, confidence: 0.7, metadata: { role: p.role, episodeId: input.id } });
+      this.store.relate(episodeMemory.id, obs.id, 'contains', 0.9);
     }
     const patterns = this.miner.mineFromEpisode({ id: input.id, topic: input.topic, domains: input.domains, steps: input.participants.map(p => ({ role: p.role, action: p.output.slice(0, 50), outcome: input.outcome === 'success' ? 'success' : 'failure' })), success: input.outcome === 'success', durationMs: input.durationMs });
     this.db.prepare('INSERT OR REPLACE INTO swarm_episodes (id, topic, domains_json, outcome, duration_ms, metadata_json) VALUES (?, ?, ?, ?, ?, ?)').run(input.id, input.topic, JSON.stringify(input.domains), input.outcome, input.durationMs, JSON.stringify(input.metadata || {}));

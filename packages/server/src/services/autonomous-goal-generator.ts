@@ -2,12 +2,33 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export class AutonomousGoalGenerator {
-  constructor(private db: Database) {}
+  constructor(private db: Database) {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS self_improvements (
+      id TEXT PRIMARY KEY, type TEXT NOT NULL DEFAULT 'bug_fix',
+      title TEXT NOT NULL, description TEXT NOT NULL, rationale TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL DEFAULT 'reflection', status TEXT NOT NULL DEFAULT 'proposed',
+      priority REAL NOT NULL DEFAULT 0.5,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS security_scans (
+      id TEXT PRIMARY KEY, target TEXT NOT NULL, scan_type TEXT NOT NULL DEFAULT 'code',
+      findings_json TEXT NOT NULL DEFAULT '[]', summary_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS knowledge_gaps (
+      id TEXT PRIMARY KEY, domain TEXT NOT NULL, description TEXT NOT NULL,
+      priority REAL NOT NULL DEFAULT 0.5, status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  }
 
   generateFromSelfImprovements(): number {
-    const improvements = this.db.prepare(
-      "SELECT * FROM self_improvements WHERE status = 'proposed' ORDER BY priority DESC LIMIT 5"
-    ).all() as Array<{ id: string; title: string; description: string; type: string; priority: number; source: string }>;
+    let improvements: Array<{ id: string; title: string; description: string; type: string; priority: number; source: string }> = [];
+    try {
+      improvements = this.db.prepare(
+        "SELECT * FROM self_improvements WHERE status = 'proposed' ORDER BY priority DESC LIMIT 5"
+      ).all() as Array<{ id: string; title: string; description: string; type: string; priority: number; source: string }>;
+    } catch { return 0; }
 
     let created = 0;
     for (const imp of improvements) {
@@ -31,9 +52,12 @@ export class AutonomousGoalGenerator {
   }
 
   generateFromSecurityFindings(): number {
-    const findings = this.db.prepare(
-      "SELECT * FROM security_scans WHERE created_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 1"
-    ).all() as Array<{ id: string; findings_json: string }>;
+    let findings: Array<{ id: string; findings_json: string }> = [];
+    try {
+      findings = this.db.prepare(
+        "SELECT * FROM security_scans WHERE created_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 1"
+      ).all() as Array<{ id: string; findings_json: string }>;
+    } catch { return 0; }
 
     if (findings.length === 0) return 0;
 
@@ -59,9 +83,12 @@ export class AutonomousGoalGenerator {
   }
 
   generateFromCuriosityGaps(): number {
-    const gaps = this.db.prepare(
-      "SELECT * FROM knowledge_gaps WHERE status = 'open' ORDER BY priority DESC LIMIT 3"
-    ).all() as Array<{ id: string; domain: string; description: string; priority: number }>;
+    let gaps: Array<{ id: string; domain: string; description: string; priority: number }> = [];
+    try {
+      gaps = this.db.prepare(
+        "SELECT * FROM knowledge_gaps WHERE status = 'open' ORDER BY priority DESC LIMIT 3"
+      ).all() as Array<{ id: string; domain: string; description: string; priority: number }>;
+    } catch { return 0; }
 
     let created = 0;
     for (const gap of gaps) {
