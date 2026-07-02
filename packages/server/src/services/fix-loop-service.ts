@@ -31,8 +31,8 @@ export class FixLoopService {
       });
 
       this.loops.planLoopRun(run.id);
-      await this.loops.executeMaker(run.id, { runtime: 'mock' });
-      const checkerResult = await this.loops.executeChecker(run.id, { runtime: 'mock' });
+      await this.loops.executeMaker(run.id);
+      const checkerResult = await this.loops.executeChecker(run.id);
       const cert = this.loops.certifyLoopRun(run.id);
 
       return {

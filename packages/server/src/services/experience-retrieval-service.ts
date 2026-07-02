@@ -136,54 +136,64 @@ export class ExperienceRetrievalService {
   }
 
   private async upsertToQdrant(runId: string, objective: string, outcome: string): Promise<void> {
-    const embedding = await this.embedText(objective);
-    if (!embedding) return;
-    await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ points: [{ id: runId, vector: embedding, payload: { objective, outcome } }] }),
-    });
+    try {
+      const embedding = await this.embedText(objective);
+      if (!embedding) return;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ points: [{ id: runId, vector: embedding, payload: { objective, outcome } }] }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+    } catch { /* best-effort */ }
   }
 
   private async queryQdrant(objective: string, limit: number): Promise<ExperienceResult[]> {
     const embedding = await this.embedText(objective);
     if (!embedding) return [];
-    const response = await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ vector: embedding, limit, with_payload: true }),
-    });
-    if (!response.ok) return [];
-    const data = await response.json() as { result?: Array<{ id: string; score: number; payload?: Record<string, unknown> }> };
-    if (!data.result) return [];
-    const results: ExperienceResult[] = [];
-    for (const point of data.result) {
-      const dbRow = this.db.prepare('SELECT * FROM experience_embeddings WHERE run_id = ?').get(point.id) as ExperienceRow | undefined;
-      if (!dbRow) continue;
-      results.push({
-        runId: dbRow.run_id,
-        objective: dbRow.objective,
-        outcome: dbRow.outcome as 'success' | 'failure',
-        retries: dbRow.retries,
-        runtime: dbRow.runtime,
-        capabilityId: dbRow.capability_id,
-        lessons: JSON.parse(dbRow.lessons || '[]'),
-        similarity: point.score,
-        totalTokens: dbRow.total_tokens,
-        createdAt: dbRow.created_at,
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(this.qdrantUrl + '/collections/' + this.collectionName + '/points/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vector: embedding, limit, with_payload: true }),
+        signal: controller.signal,
       });
-    }
-    return results;
+      clearTimeout(timeout);
+      if (!response.ok) return [];
+      const data = await response.json() as { result?: Array<{ id: string; score: number }> };
+      if (!data.result) return [];
+      const results: ExperienceResult[] = [];
+      for (const point of data.result) {
+        const dbRow = this.db.prepare('SELECT * FROM experience_embeddings WHERE run_id = ?').get(point.id) as ExperienceRow | undefined;
+        if (!dbRow) continue;
+        results.push({
+          runId: dbRow.run_id, objective: dbRow.objective, outcome: dbRow.outcome as 'success' | 'failure',
+          retries: dbRow.retries, runtime: dbRow.runtime, capabilityId: dbRow.capability_id,
+          lessons: JSON.parse(dbRow.lessons || '[]'), similarity: point.score,
+          totalTokens: dbRow.total_tokens, createdAt: dbRow.created_at,
+        });
+      }
+      return results;
+    } catch { return []; }
   }
 
   private async embedText(text: string): Promise<number[] | null> {
     try {
       const ollamaUrl = process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
       const response = await fetch(ollamaUrl + '/api/embeddings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: 'nomic-embed-text', prompt: text }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!response.ok) return null;
       const data = await response.json() as { embedding?: number[] };
       return data.embedding || null;
