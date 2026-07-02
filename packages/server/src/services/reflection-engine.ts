@@ -99,6 +99,75 @@ export class ReflectionEngine {
     return [...new Set(improvements)];
   }
 
+  analyzeReflectionPatterns(limit: number = 50): PatternReport {
+    const reflections = this.getReflections(limit);
+    const lessonCounts = new Map<string, number>;
+    const improvementCounts = new Map<string, number>;
+
+    for (const r of reflections) {
+      for (const lesson of r.lessonsLearned) {
+        const normalized = lesson.toLowerCase().trim();
+        lessonCounts.set(normalized, (lessonCounts.get(normalized) || 0) + 1);
+      }
+      for (const imp of r.proposedImprovements) {
+        const normalized = imp.toLowerCase().trim();
+        improvementCounts.set(normalized, (improvementCounts.get(normalized) || 0) + 1);
+      }
+    }
+
+    const recurringPatterns = [...lessonCounts.entries()]
+      .filter(([, count]) => count >= 3)
+      .map(([lesson, count]) => ({ lesson, count, type: 'recurring_lesson' as const }));
+
+    const recurringImprovements = [...improvementCounts.entries()]
+      .filter(([, count]) => count >= 2)
+      .map(([improvement, count]) => ({ improvement, count, type: 'recurring_improvement' as const }));
+
+    return {
+      totalReflections: reflections.length,
+      recurringPatterns,
+      recurringImprovements,
+      topLessons: [...lessonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([lesson]) => lesson),
+      topImprovements: [...improvementCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([imp]) => imp),
+    };
+  }
+
+  generateMetaLearningProposals(): string[] {
+    const patterns = this.analyzeReflectionPatterns();
+    const proposals: string[] = [];
+
+    for (const pattern of patterns.recurringPatterns) {
+      proposals.push(`Meta-learning: "${pattern.lesson}" occurred ${pattern.count} times — consider systematic fix`);
+    }
+
+    for (const imp of patterns.recurringImprovements) {
+      proposals.push(`Process improvement: "${imp.improvement}" suggested ${imp.count} times — prioritize`);
+    }
+
+    return proposals;
+  }
+
+  correlateWithOutcomes(): CorrelationReport {
+    const reflections = this.getReflections(50);
+    const runs = this.db.prepare('SELECT id, status FROM loop_runs ORDER BY created_at DESC LIMIT 50').all() as Array<{ id: string; status: string }>;
+
+    let reflectionSuccessCorrelation = 0;
+    let totalCorrelated = 0;
+
+    for (const run of runs) {
+      const hasReflection = reflections.some(r => r.loopRunId === run.id);
+      if (hasReflection && run.status === 'completed') reflectionSuccessCorrelation++;
+      if (hasReflection) totalCorrelated++;
+    }
+
+    return {
+      totalRuns: runs.length,
+      runsWithReflections: totalCorrelated,
+      reflectionSuccessRate: totalCorrelated > 0 ? reflectionSuccessCorrelation / totalCorrelated : 0,
+      overallSuccessRate: runs.length > 0 ? runs.filter(r => r.status === 'completed').length / runs.length : 0,
+    };
+  }
+
   private rowToReflection(row: ReflectionRow): Reflection {
     return {
       id: row.id,
@@ -110,4 +179,19 @@ export class ReflectionEngine {
       createdAt: row.created_at,
     };
   }
+}
+
+export interface PatternReport {
+  totalReflections: number;
+  recurringPatterns: Array<{ lesson: string; count: number; type: string }>;
+  recurringImprovements: Array<{ improvement: string; count: number; type: string }>;
+  topLessons: string[];
+  topImprovements: string[];
+}
+
+export interface CorrelationReport {
+  totalRuns: number;
+  runsWithReflections: number;
+  reflectionSuccessRate: number;
+  overallSuccessRate: number;
 }
