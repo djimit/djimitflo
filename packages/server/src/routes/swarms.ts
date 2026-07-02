@@ -19,6 +19,7 @@ import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-anal
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
+import { FixLoopService } from '../services/fix-loop-service';
 import type { WebSocketService } from '../services/websocket-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
@@ -1118,6 +1119,37 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => {
     const learningLoop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
     res.json(learningLoop.getLastCycle());
+  }));
+
+  // G136: Live Code Fix Pipeline
+  const fixLoops = new LoopService(db);
+
+  router.post('/fix', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const fixService = new FixLoopService(db, fixLoops);
+    const result = await fixService.fixFile({
+      repositoryPath: req.body.repository_path || '',
+      filePath: req.body.file_path || '',
+      description: req.body.description || '',
+      category: req.body.category || 'bug',
+    });
+    res.json(result);
+  }));
+
+  router.post('/fix/batch', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const fixService = new FixLoopService(db, fixLoops);
+    const requests = (req.body.requests || []).map((r: Record<string, string>) => ({
+      repositoryPath: r.repository_path || '',
+      filePath: r.file_path || '',
+      description: r.description || '',
+      category: r.category || 'bug',
+    }));
+    const results = await fixService.fixMultiple(requests);
+    res.json({ results });
+  }));
+
+  router.get('/fix/history', requirePermission('read:evidence'), route((_req, res) => {
+    const fixService = new FixLoopService(db, fixLoops);
+    res.json(fixService.getFixHistory(20));
   }));
 
   return router;
