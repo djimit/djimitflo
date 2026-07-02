@@ -11,9 +11,9 @@ DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds
 | Metric | Value |
 |--------|-------|
 | Version | 0.6.0 |
-| Tests | 1050+ |
-| Services | 96 |
-| Goals | 40 (Level 7-15) |
+| Tests | 1103+ |
+| Services | 110 |
+| Goals | 50 (Level 7-18) |
 | Last Updated | 2026-07-01 |
 
 ## Capabilities
@@ -33,18 +33,42 @@ DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds
 - **GOAP A\* Planner** — State-space multi-step goal planning
 - **Thompson Sampling Bandit** — Optimal explore/exploit runtime selection
 
+### Memory & Knowledge
+- **Central Memory Store** — Graph-projection memory with SQLite + InMemory
+- **Memory Curator** — Raw episodes to structured memories
+- **Autobiographical Memory** — Persistent life story of the system
+- **Cognitive Memory** — Skill library + causal edges
+- **Elastic Memory** — Auto-scaling memory tiers (hot/warm/cold)
+- **Continual Learning** — Experience replay without forgetting
+
 ### Self-Improvement (RSI Engine)
 - **Service Refactoring Analyzer** — Decomposition proposals for large services
 - **Emergent Specialization** — Dynamic agent specialization based on performance
-- **Skill Evolution** — Post-run analysis + improvement proposals
-- **Control Loop Self-Modification** — Proposal/evaluate/apply/rollback lifecycle
-- **Meta-Evolution** — Periodic self-evaluation + capability pruning
+- **Skill Evolution Gym** — Exploration suite with evaluator + leaderboard
+- **Prompt Pattern Registry** — Prompt templates with before/after evaluation
+- **Self-Modification** — Proposal/eval/apply/rollback lifecycle with safety gates
+- **Intrinsic Motivation** — Curiosity-driven exploration goal generation
+- **Metacognitive Observer** — Real-time reasoning quality monitoring
+
+### AI/ML Techniques (Level-18)
+- **Contrastive Skill Miner** — Embedding-gelijkenis voor pattern deduplicatie
+- **Meta-Learning Prompt Optimizer** — MAML voor snelle prompt adaptatie
+- **RLHF Memory Ranker** — Reward-gedreven memory ranking
+- **GNN Causal Model** — Graph Neural Network voor cross-agent causaliteit
 
 ### Safety & Governance
 - **RSI Safety Guard** — Immutable audit log, mutation budget, kill switch
 - **Capability Freeze** — Security/audit code immutable by self-modification
-- **Dual-Approve** — Two reviewers required for structural changes
 - **Epistemic Gates** — Source quality, consistency, coverage, falsifiability
+- **Adversarial Input Validation** — Input integrity, poison detection
+- **Autonomy Rollback** — Snapshot + filesystem freeze
+- **Operator Intervention** — Human-in-the-loop for high-risk decisions
+
+### Multi-Agent & Federation
+- **MARL** — Multi-agent reinforcement learning with reward shaping
+- **Theory of Mind** — Agent intent modeling + action prediction
+- **A2A Registry** — Agent cards + memory-aware handoffs
+- **Federation** — Cross-instance collaboration with capability tokens
 
 ## Architecture
 
@@ -53,26 +77,6 @@ DjimFlo is a TypeScript monorepo with three packages:
 - **`@djimitflo/shared`** — Shared types and schemas
 - **`@djimitflo/server`** — Express + SQLite backend with WebSocket support
 - **`@djimitflo/dashboard`** — React + Vite + Tailwind frontend
-
-### Backend Structure
-
-```
-packages/server/src/
-├── routes/          # API endpoints (swarms, agents, tasks, loops, spawns)
-├── services/        # 96 business logic services
-│   ├── expert-swarm-orchestrator.ts
-│   ├── judge-service.ts
-│   ├── worker-pool.ts
-│   ├── knowledge-adapters/  # Wikipedia, arXiv, OKF, DjimitKB
-│   ├── causal-inference-service.ts
-│   ├── emergent-specialization-service.ts
-│   ├── service-refactoring-analyzer.ts
-│   ├── rsi-safety-guard.ts
-│   └── ... (86 more services)
-├── execution/       # Execution engine + runtime executors
-├── database/        # SQLite schema + migrations
-└── middleware/      # Auth, rate limiting, security headers
-```
 
 ## Quick Start
 
