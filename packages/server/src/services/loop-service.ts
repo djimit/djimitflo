@@ -534,7 +534,8 @@ export class LoopService {
       return { resumed: false, boundedFail: true, resumeAttempt: resumeAttempts, requeuedFindings: [], skippedFindings: [] };
     }
 
-    const findings = this.db.prepare('SELECT id FROM loop_findings WHERE loop_run_id = ?').all(runId) as Array<{ id: string }>;
+    const runRow = this.db.prepare('SELECT findings_json FROM loop_runs WHERE id = ?').get(runId) as { findings_json: string } | undefined;
+    const findings = JSON.parse(runRow?.findings_json || '[]') as Array<{ id: string }>;
     const completedFindings = new Set<string>();
     const leases = this.db.prepare('SELECT finding_id, status FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ finding_id: string | null; status: string }>;
     for (const lease of leases) {
@@ -900,6 +901,75 @@ export class LoopService {
       decision,
       next_actions: run.next_actions,
     };
+  }
+
+  private findCapabilityForFinding(finding: LoopFinding): { id: string } | undefined {
+    try {
+      const capabilities = this.intelligence.listCapabilities();
+      const matching = capabilities.filter(c =>
+        c.id.includes(finding.type) || finding.type.includes(c.id)
+      );
+      return matching[0] || capabilities[0];
+    } catch { return undefined; }
+  }
+
+  planLoopRun(id: string): Array<{ findingId: string; runtime: string; capabilityId: string }> {
+    const run = this.getLoopRun(id);
+    const findings = run.findings;
+    const plan: Array<{ findingId: string; runtime: string; capabilityId: string }> = [];
+    const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
+
+    for (const finding of findings) {
+      const runMeta = run.metadata as Record<string, unknown>;
+      let selectedRuntime: string;
+      let capabilityId = '';
+
+      if (runMeta.sovereign === true || process.env.PI_OFFLINE === '1') {
+        selectedRuntime = 'pi';
+      } else {
+        const capability = this.findCapabilityForFinding(finding);
+        capabilityId = capability?.id || '';
+        selectedRuntime = this.selectRuntimeForCapability(capabilityId, finding);
+      }
+
+      if (!validRuntimes.includes(selectedRuntime as typeof validRuntimes[number])) {
+        selectedRuntime = 'codex';
+      }
+
+      plan.push({
+        findingId: finding.id,
+        runtime: selectedRuntime,
+        capabilityId,
+      });
+    }
+
+    return plan;
+  }
+
+  private selectRuntimeForCapability(capabilityId: string, _finding: LoopFinding): string {
+    const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
+
+    try {
+      const costModel = this.intelligence.measureCompetencePerRuntime(capabilityId);
+      const entries = Object.entries(costModel);
+      if (entries.length > 0) {
+        let bestRuntime = entries[0][0];
+        let bestScore = -1;
+        for (const [runtime, data] of entries) {
+          if (data.success_rate < 0.3) continue;
+          const score = data.success_rate;
+          if (score > bestScore) {
+            bestScore = score;
+            bestRuntime = runtime;
+          }
+        }
+        if (bestScore > 0 && validRuntimes.includes(bestRuntime as typeof validRuntimes[number])) {
+          return bestRuntime;
+        }
+      }
+    } catch { /* fallback */ }
+
+    return 'codex';
   }
 
   stopLoopRun(id: string): { run: LoopRunRecord; events: LoopEventRecord[] } {
