@@ -3137,13 +3137,29 @@ export class LoopService {
       return;
     }
 
+    const resolvedWorktreePath = path.resolve(worktreePath);
+    const resolvedRepositoryPath = path.resolve(repositoryPath);
+
     for (const relativePath of untracked) {
-      const sourceFile = path.join(repositoryPath, relativePath);
-      const targetFile = path.join(worktreePath, relativePath);
+      // Path traversal guard: reject any path that escapes the repository root.
+      if (relativePath.includes('..')) {
+        continue;
+      }
+      const sourceFile = path.join(resolvedRepositoryPath, relativePath);
+      const targetFile = path.join(resolvedWorktreePath, relativePath);
+
+      // Verify resolved paths stay within their respective roots.
+      if (!sourceFile.startsWith(resolvedRepositoryPath + path.sep) && sourceFile !== resolvedRepositoryPath) {
+        continue;
+      }
+      if (!targetFile.startsWith(resolvedWorktreePath + path.sep) && targetFile !== resolvedWorktreePath) {
+        continue;
+      }
       if (!fs.existsSync(sourceFile)) {
         continue;
       }
-      const stat = fs.statSync(sourceFile);
+      // Use lstatSync to avoid following symlinks — prevents symlink-based escape.
+      const stat = fs.lstatSync(sourceFile);
       if (!stat.isFile()) {
         continue;
       }
