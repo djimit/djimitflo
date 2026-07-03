@@ -90,9 +90,9 @@ export class KnowledgeRuntimeService {
   static resolveCanonicalOkfBase(options: { allowMissing?: boolean } = {}): string {
     const envBase = process.env.OKF_BASE?.trim();
     const candidate = envBase ? path.resolve(envBase) : CANONICAL_OKF_PATH;
-    const resolvedLegacy = this.realpathSafe(LEGACY_PACKAGES_KNOWLEDGE);
-    const resolvedCandidate = this.realpathSafe(candidate);
-    if (resolvedLegacy && resolvedCandidate === resolvedLegacy) {
+    const resolvedLegacy = this.realpathSafe(LEGACY_PACKAGES_KNOWLEDGE) || LEGACY_PACKAGES_KNOWLEDGE;
+    const resolvedCandidate = this.realpathSafe(candidate) || candidate;
+    if (resolvedCandidate === resolvedLegacy) {
       throw new Error('KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL');
     }
     if (!options.allowMissing && !fs.existsSync(candidate)) {

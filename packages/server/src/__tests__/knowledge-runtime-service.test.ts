@@ -69,7 +69,7 @@ describe('KnowledgeRuntimeService', () => {
   });
 
   it('rejects packages/knowledge as canonical runtime OKF base', () => {
-    process.env.OKF_BASE = path.resolve(process.cwd(), '../..', 'packages', 'knowledge');
+    process.env.OKF_BASE = path.resolve(__dirname, '../../../..', 'packages', 'knowledge');
     expect(() => KnowledgeRuntimeService.resolveCanonicalOkfBase()).toThrow('KNOWLEDGE_RUNTIME_PACKAGES_KNOWLEDGE_NOT_CANONICAL');
   });
 

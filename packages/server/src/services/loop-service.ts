@@ -559,8 +559,9 @@ export class LoopService {
     this.db.prepare('UPDATE loop_runs SET status = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?').run('running', JSON.stringify({ ...metadata, resume_attempts: resumeAttempts }), runId);
 
     swarmEventBus.emit('recovery', {
-      type: 'recovery',
-      data: { run_id: runId, resumed: true, requeued_findings: requeuedFindings.length },
+      run_id: runId,
+      resumed: true,
+      requeued_findings: requeuedFindings.length,
     });
 
     return { resumed: true, boundedFail: false, resumeAttempt: resumeAttempts, requeuedFindings, skippedFindings };
@@ -1533,8 +1534,9 @@ export class LoopService {
     const result = this.verifyLoopRun(id);
     const allPass = result.gates.every(g => g.status === 'pass');
     swarmEventBus.emit('convergence', {
-      type: 'convergence',
-      data: { run_id: id, certified: allPass, gates: result.gates.map(g => ({ name: g.name, status: g.status })) },
+      run_id: id,
+      certified: allPass,
+      gates: result.gates.map(g => ({ name: g.name, status: g.status })),
     });
     return { ...result, certified: allPass };
   }
@@ -3711,7 +3713,7 @@ export class LoopService {
     }
     if (runtime === 'codex') {
       const args = skipPermissions
-        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
+        ? ['exec', '--sandbox', 'workspace-write', '-c', worktreePath, 'approval_policy=never', '--json', '--cd', worktreePath, prompt]
         : ['exec', '--json', '--cd', worktreePath, prompt];
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import path from 'path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
@@ -105,7 +106,7 @@ describe('G15.1 security boundary', () => {
   it('uses scoped permissions for governance and runner manifest endpoints', () => {
     // Verify the route file has scoped permissions
     const fs = require('fs');
-    const routeContent = fs.readFileSync('src/routes/swarms.ts', 'utf8');
+    const routeContent = fs.readFileSync(path.resolve(__dirname, '../routes/swarms.ts'), 'utf8');
     expect(routeContent).toContain('write:capability');
     expect(routeContent).toContain('write:claim');
     expect(routeContent).toContain('write:governance');
