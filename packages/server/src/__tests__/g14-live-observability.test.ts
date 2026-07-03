@@ -65,8 +65,8 @@ describe('G14: Live observability', () => {
 
     const convergenceEvent = events.find((e) => e.type === 'convergence');
     expect(convergenceEvent).toBeDefined();
-    expect(convergenceEvent.data.run_id).toBe(run.id);
-    expect(convergenceEvent.data.certified).toBeDefined();
+    expect(convergenceEvent!.data.run_id).toBe(run.id);
+    expect(convergenceEvent!.data.certified).toBeDefined();
   });
 
   it('emits capability_transition on auto-deprecation', () => {
@@ -106,14 +106,14 @@ describe('G14: Live observability', () => {
     const events: any[] = [];
     swarmEventBus.subscribe((e) => events.push(e));
 
-    // Create an interrupted run.
-    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-resume', 'test', 'closed', 'interrupted', '/tmp', '[]', '[]', '[]', '[]', '{}')`).run();
-    loops.resumeInterruptedRun('run-resume');
+    // Create an interrupted run with metadata.
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES ('run-resume', 'test', 'closed', 'interrupted', '/tmp', '[]', '[]', '[]', '[]', '{"interrupted_reason":"server_restart"}')`).run();
+    const result = loops.resumeInterruptedRun('run-resume');
 
     const recoveryEvent = events.find((e) => e.type === 'recovery');
     expect(recoveryEvent).toBeDefined();
-    expect(recoveryEvent.data.run_id).toBe('run-resume');
-    expect(recoveryEvent.data.resumed).toBe(true);
+    expect(recoveryEvent!.data.run_id).toBe('run-resume');
+    expect(recoveryEvent!.data.resumed).toBe(true);
   });
 
   it('event bus supports multiple subscribers', () => {

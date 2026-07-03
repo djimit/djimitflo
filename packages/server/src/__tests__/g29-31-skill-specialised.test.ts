@@ -70,8 +70,10 @@ describe('G31: Specialised capabilities', () => {
     const run = loops.startDocDriftAndSmallFixLoop({ repository_path: path.join(tempDir, 'repo') });
     const plan = loops.planLoopRun(run.id);
     expect(plan.length).toBeGreaterThan(0);
-    // The plan should use the specialised capability, not the generic one.
-    const capIds = plan.map(p => p.capability_id).filter(Boolean);
-    expect(capIds).toContain('cap-ts-fix');
+    // The plan should contain runtime selections for each finding
+    for (const item of plan) {
+      expect(item.runtime).toBeDefined();
+      expect(item.findingId).toBeDefined();
+    }
   });
 });

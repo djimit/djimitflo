@@ -557,6 +557,11 @@ export class LoopService {
 
     this.db.prepare('UPDATE loop_runs SET status = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?').run('running', JSON.stringify({ ...metadata, resume_attempts: resumeAttempts }), runId);
 
+    swarmEventBus.emit('recovery', {
+      type: 'recovery',
+      data: { run_id: runId, resumed: true, requeued_findings: requeuedFindings.length },
+    });
+
     return { resumed: true, boundedFail: false, resumeAttempt: resumeAttempts, requeuedFindings, skippedFindings };
   }
 
