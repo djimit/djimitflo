@@ -514,6 +514,65 @@ export class LoopService {
     return { interruptedRuns, failedLeases, prunedWorktrees };
   }
 
+  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
+    resumed: boolean;
+    boundedFail: boolean;
+    resumeAttempt: number;
+    requeuedFindings: string[];
+    skippedFindings: string[];
+  } {
+    const run = this.db.prepare('SELECT id, status, metadata FROM loop_runs WHERE id = ?').get(runId) as { id: string; status: string; metadata: string } | undefined;
+    if (!run || run.status !== 'interrupted') {
+      throw new Error('LOOP_RUN_NOT_INTERRUPTED');
+    }
+
+    const metadata = JSON.parse(run.metadata || '{}') as Record<string, unknown>;
+    const resumeAttempts = (metadata.resume_attempts as number ?? 0) + 1;
+
+    if (resumeAttempts > maxResumeAttempts) {
+      this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').run('failed', runId);
+      return { resumed: false, boundedFail: true, resumeAttempt: resumeAttempts, requeuedFindings: [], skippedFindings: [] };
+    }
+
+    const findings = this.db.prepare('SELECT id FROM loop_findings WHERE loop_run_id = ?').all(runId) as Array<{ id: string }>;
+    const completedFindings = new Set<string>();
+    const leases = this.db.prepare('SELECT finding_id, status FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ finding_id: string | null; status: string }>;
+    for (const lease of leases) {
+      if (lease.status === 'completed' && lease.finding_id) completedFindings.add(lease.finding_id);
+    }
+
+    const requeuedFindings: string[] = [];
+    const skippedFindings: string[] = [];
+
+    for (const finding of findings) {
+      if (completedFindings.has(finding.id)) {
+        skippedFindings.push(finding.id);
+      } else {
+        requeuedFindings.push(finding.id);
+      }
+    }
+
+    this.db.prepare('UPDATE loop_runs SET status = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?').run('running', JSON.stringify({ ...metadata, resume_attempts: resumeAttempts }), runId);
+
+    return { resumed: true, boundedFail: false, resumeAttempt: resumeAttempts, requeuedFindings, skippedFindings };
+  }
+
+  resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
+    const interruptedRuns = this.db.prepare('SELECT id FROM loop_runs WHERE status = ?').all('interrupted') as Array<{ id: string }>;
+    const details: Array<{ runId: string; resumed: boolean }> = [];
+    let resumed = 0;
+    let boundedFailed = 0;
+
+    for (const run of interruptedRuns) {
+      const result = this.resumeInterruptedRun(run.id);
+      details.push({ runId: run.id, resumed: result.resumed });
+      if (result.resumed) resumed++;
+      else boundedFailed++;
+    }
+
+    return { resumed, boundedFailed, details };
+  }
+
   /**
    * Remove worktree directories on disk that are no longer needed: those whose
    * worker lease is terminal (completed/failed/cancelled/interrupted) or has no

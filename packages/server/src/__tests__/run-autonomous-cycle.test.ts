@@ -53,7 +53,7 @@ describe('Autonomous Cycle Integration', () => {
       } catch { return null; }
     };
 
-    const loops = new LoopService(db, undefined, concurrencyAdvisor, selfModel);
+    const loops = new LoopService(db);
     const daemon = new LoopDaemon(db, loops);
 
     await daemon.tick();
@@ -72,7 +72,7 @@ describe('Autonomous Cycle Integration', () => {
     const selfModel = new SelfModelService(db);
 
     const concurrencyAdvisor = (): number | null => null;
-    const loops = new LoopService(db, undefined, concurrencyAdvisor, selfModel);
+    const loops = new LoopService(db);
     const daemon = new LoopDaemon(db, loops);
 
     await daemon.tick();

@@ -31,7 +31,7 @@ beforeEach(() => {
   execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
   execFileSync('git', ['commit', '-m', 'Initial'], { cwd: tempDir, stdio: 'ignore' });
   selfModel = new SelfModelService(db);
-  loops = new LoopService(db, undefined, undefined, selfModel);
+  loops = new LoopService(db);
 });
 
 afterEach(() => {
