@@ -210,6 +210,7 @@ interface RuntimeContract {
   command: string | null;
   version?: string;
   status: 'ok' | 'drifted' | 'unavailable';
+  probed_at?: string;
   cwd_flag?: string;
   json_flag?: string | string[];
   supports_json_events: boolean;
@@ -1156,6 +1157,8 @@ export class LoopService {
         metadata: {
           assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
+          requested_runtime: runtime,
+          effective_runtime: runtime,
         },
         now,
       });
@@ -1536,7 +1539,7 @@ export class LoopService {
     return { ...result, certified: allPass };
   }
 
-  completeLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[] } {
+  completeLoopRun(id: string, input: { human_approval_ref?: string } = {}): { run: LoopRunRecord; gates: LoopGate[] } {
     const current = this.getLoopRun(id);
     const leases = this.listWorkerLeases(current.id);
 
@@ -1555,15 +1558,20 @@ export class LoopService {
         throw new Error('LOOP_COMPLETION_LEASES_INCOMPLETE');
       }
 
+      if (!input.human_approval_ref) {
+        throw new Error('LOOP_HUMAN_APPROVAL_REQUIRED');
+      }
+
       const now = new Date().toISOString();
       this.db.prepare(`
         UPDATE loop_runs
-        SET status = ?, next_actions_json = ?, updated_at = ?, completed_at = ?
+        SET status = ?, next_actions_json = ?, updated_at = ?, completed_at = ?, metadata = json_set(COALESCE(metadata, '{}'), '$.human_approval_ref', ?)
         WHERE id = ?
-      `).run('completed', JSON.stringify(['Loop completed; ready for human review before merge']), now, now, id);
+      `).run('completed', JSON.stringify(['Loop completed; ready for human review before merge']), now, now, input.human_approval_ref, id);
 
       this.recordLoopEvent(id, 'loop_completed', 'info', 'Loop run completed after verification gates passed.', {
         gates: verified.gates,
+        human_approval_ref: input.human_approval_ref,
       });
 
       return { run: this.getLoopRun(id), gates: verified.gates };
@@ -1620,7 +1628,7 @@ export class LoopService {
     });
 
     const nextRun = input.verdict === 'accepted'
-      ? this.getLoopRun(run.id)
+      ? this.verifyLoopRun(run.id).run
       : this.escalateIfFailureThresholdExceeded(run.id, `checker_verdict:${input.verdict}`);
 
     return {
@@ -1673,7 +1681,7 @@ export class LoopService {
     });
 
     const nextRun = input.verdict === 'accepted'
-      ? this.getLoopRun(run.id)
+      ? this.verifyLoopRun(run.id).run
       : this.escalateIfFailureThresholdExceeded(run.id, `security_checker_verdict:${input.verdict}`);
 
     return {
@@ -1869,8 +1877,16 @@ export class LoopService {
     const timedOut = result.timedOut;
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
-    const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id);
+    const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
     const efficiency = this.calculateWorkerEfficiency(runtimeUsage, diffLines);
+    const budgetRisk = tokenBudget.efficiencyExceeded
+      ? {
+          type: 'token_efficiency' as const,
+          lease_id: makerLease.id,
+          runtime_usage: runtimeUsage ? { total_tokens: runtimeUsage.total_tokens } : { usage_source: 'unknown' },
+          budget: tokenBudget.budget,
+        }
+      : null;
 
     const gates: LoopGate[] = [
       {
@@ -1884,6 +1900,11 @@ export class LoopService {
         evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.`,
       },
       tokenBudget.gate,
+      {
+        name: 'runtime_warning_gate',
+        status: this.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass',
+        evidence: this.runtimeWarningsEvidence(runtimeWarnings, run),
+      },
       {
         name: 'no_automatic_merge',
         status: 'pass',
@@ -1930,13 +1951,15 @@ export class LoopService {
 
     this.db.prepare(`
       UPDATE loop_runs
-      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?
+      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?,
+          metadata = json_set(COALESCE(metadata, '{}'), '$.budget_risk', json(?))
       WHERE id = ?
     `).run(
       wasCancelled ? this.getLoopRun(run.id).status : (failed ? 'blocked' : 'verifying'),
       JSON.stringify(gates),
       JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
       new Date().toISOString(),
+      JSON.stringify(budgetRisk),
       run.id
     );
 
@@ -1957,6 +1980,14 @@ export class LoopService {
         lease_id: makerLease.id,
         runtime_usage: runtimeUsage,
         token_budget: tokenBudget.budget,
+      });
+    }
+
+    if (budgetRisk) {
+      this.recordLoopEvent(run.id, 'token_efficiency_budget_risk', 'warning', 'Token efficiency exceeded configured per-diff-line budget.', {
+        lease_id: makerLease.id,
+        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+        budget: tokenBudget.budget,
       });
     }
 
@@ -2572,16 +2603,18 @@ export class LoopService {
     return { maxFailureCount: 3, source: 'default' };
   }
 
-  private getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; source: 'goal' | 'none' } {
+  private getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'none' } {
     if (!run.goal_id) {
       return { source: 'none' };
     }
     const goal = this.getGoal(run.goal_id);
     const maxTokens = Number(goal.budget.max_tokens);
     const maxTokensPerWorker = Number(goal.budget.max_tokens_per_worker);
+    const maxTokensPerDiffLine = Number(goal.budget.max_tokens_per_diff_line);
     return {
       maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
       maxTokensPerWorker: Number.isFinite(maxTokensPerWorker) && maxTokensPerWorker > 0 ? Math.floor(maxTokensPerWorker) : undefined,
+      maxTokensPerDiffLine: Number.isFinite(maxTokensPerDiffLine) && maxTokensPerDiffLine > 0 ? Math.floor(maxTokensPerDiffLine) : undefined,
       source: 'goal',
     };
   }
@@ -2598,19 +2631,22 @@ export class LoopService {
     };
   }
 
-  private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string): { gate: LoopGate; exhausted: boolean; budget: Record<string, unknown> } {
+  private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
     const budget = this.getTokenBudget(run);
     if (!budget.maxTokens && !budget.maxTokensPerWorker) {
       return {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'No token budget configured for this goal.' },
         exhausted: false,
+        efficiencyExceeded: false,
         budget,
       };
     }
+
     if (!runtimeUsage) {
       return {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'Runtime did not report token usage; no estimate was used.' },
         exhausted: false,
+        efficiencyExceeded: false,
         budget,
       };
     }
@@ -2620,6 +2656,8 @@ export class LoopService {
     const perWorkerExceeded = Boolean(budget.maxTokensPerWorker && runtimeUsage.total_tokens > budget.maxTokensPerWorker);
     const totalExceeded = Boolean(budget.maxTokens && totalAfterCurrent > budget.maxTokens);
     const exhausted = perWorkerExceeded || totalExceeded;
+    const tokensPerDiffLine = diffLines && diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null;
+    const efficiencyExceeded = Boolean(budget.maxTokensPerDiffLine && tokensPerDiffLine !== null && tokensPerDiffLine > budget.maxTokensPerDiffLine);
 
     return {
       gate: {
@@ -2628,10 +2666,12 @@ export class LoopService {
         evidence: `runtime_usage=${runtimeUsage.total_tokens}, total_after_current=${totalAfterCurrent}, max_tokens=${budget.maxTokens ?? 'unset'}, max_tokens_per_worker=${budget.maxTokensPerWorker ?? 'unset'}.`,
       },
       exhausted,
+      efficiencyExceeded,
       budget: {
         ...budget,
         used_before_current: usedBeforeCurrent,
         total_after_current: totalAfterCurrent,
+        efficiency_exceeded: efficiencyExceeded,
       },
     };
   }
@@ -3234,6 +3274,11 @@ export class LoopService {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
         this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
+        const sourceNodeModules = path.join(repositoryPath, 'node_modules');
+        const worktreeNodeModules = path.join(worktreePath, 'node_modules');
+        if (fs.existsSync(sourceNodeModules) && !fs.existsSync(worktreeNodeModules)) {
+          fs.symlinkSync(sourceNodeModules, worktreeNodeModules, 'dir');
+        }
         return worktreePath;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -3844,6 +3889,27 @@ export class LoopService {
       evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
     };
+    const probedAt = new Date().toISOString();
+    contract.probed_at = probedAt;
+    this.db.prepare(`
+      INSERT INTO runtime_contract_probes (runtime, command, status, available, contract_json, probed_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(runtime) DO UPDATE SET
+        command = excluded.command,
+        status = excluded.status,
+        available = excluded.available,
+        contract_json = excluded.contract_json,
+        probed_at = excluded.probed_at,
+        updated_at = excluded.updated_at
+    `).run(
+      contract.runtime,
+      contract.command,
+      contract.status,
+      contract.available ? 1 : 0,
+      JSON.stringify(contract),
+      probedAt,
+      probedAt,
+    );
     this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
     return contract;
   }
@@ -3857,6 +3923,7 @@ export class LoopService {
       { pattern: /fail to delete session[^\n]*/i, class_name: 'runtime_session_cleanup', severity: 'advisory' },
       { pattern: /structured output unavailable[^\n]*/i, class_name: 'structured_output_unavailable', severity: 'warning' },
       { pattern: /unknown field|unexpected argument[^\n]*/i, class_name: 'runtime_contract_warning', severity: 'warning' },
+      { pattern: /trust boundary[^\n]*/i, class_name: 'trust_boundary_warning', severity: 'blocking' },
     ];
     for (const item of patterns) {
       const match = text.match(item.pattern);
@@ -3869,6 +3936,34 @@ export class LoopService {
       }
     }
     return warnings;
+  }
+
+  private runtimeWarningsBlockCompletion(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): boolean {
+    if (warnings.length === 0) {
+      return false;
+    }
+    const highRisk = this.isHighRiskRun(run);
+    return warnings.some((warning) => {
+      const message = String(warning.message || '').toLowerCase();
+      const severity = String(warning.severity || '').toLowerCase();
+      const className = String(warning.class_name || '').toLowerCase();
+      if (highRisk && (message.includes('trust boundary') || className.includes('trust_boundary'))) {
+        return true;
+      }
+      return severity === 'blocking';
+    });
+  }
+
+  private runtimeWarningsEvidence(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): string {
+    if (warnings.length === 0) {
+      return 'No runtime warnings detected.';
+    }
+    const classes = warnings.map((warning) => String(warning.class_name || 'unknown')).join(', ');
+    const blocked = this.runtimeWarningsBlockCompletion(warnings, run);
+    if (blocked) {
+      return `Runtime warnings include trust boundary classes on a high-risk run: ${classes}.`;
+    }
+    return `Runtime warnings are advisory on a non-high-risk run or do not affect trust boundaries: ${classes}.`;
   }
 
   private calculateWorkerEfficiency(runtimeUsage: RuntimeUsage | null, diffLines: number): Record<string, unknown> {
@@ -4135,6 +4230,11 @@ export class LoopService {
     const contract = (run.metadata.contract && typeof run.metadata.contract === 'object')
       ? run.metadata.contract as Record<string, unknown>
       : {};
+    const tokenBudget = run.goal_id ? this.getTokenBudget(run) : { source: 'none' as const };
+    const goal = run.goal_id ? this.getGoal(run.goal_id) : null;
+    const maxTokensPerDiffLine = goal && Number.isFinite(Number(goal.budget.max_tokens_per_diff_line))
+      ? Number(goal.budget.max_tokens_per_diff_line)
+      : undefined;
     const packet = {
       schema_version: 1,
       loop_run_id: run.id,
@@ -4149,6 +4249,15 @@ export class LoopService {
       // L4 skill injection: the validated capability manifest (read-only
       // metadata) when this lease was armed with capabilities.
       capabilities: capabilitiesManifest ? JSON.parse(capabilitiesManifest) : [],
+      runtime_profile: {
+        name: 'djimitflo-worker',
+        token_budget: {
+          max_tokens: tokenBudget.maxTokens,
+          max_tokens_per_worker: tokenBudget.maxTokensPerWorker,
+          max_tokens_per_diff_line: maxTokensPerDiffLine,
+          source: tokenBudget.source,
+        },
+      },
       finding: {
         id: finding.id,
         type: finding.type,
