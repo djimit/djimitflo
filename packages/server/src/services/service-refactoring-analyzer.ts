@@ -34,20 +34,27 @@ export class ServiceRefactoringAnalyzer {
   }
 
   analyzeService(filePath: string): RefactoringProposal[] {
-    if (!fs.existsSync(filePath)) return [];
+    const resolved = this.resolveServicePath(filePath);
+    if (!resolved) return [];
 
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = fs.readFileSync(resolved, 'utf8');
+    const targetService = path.relative(process.cwd(), resolved);
     const loc = content.split('\n').length;
     const methods = (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*(?::\s*\w+\s*)?=>/g) || []).length +
                    (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*\{/g) || []).length;
-    const dependencies = (content.match(/import\s+.*from/g) || []).length;
+    const importStatements = content.match(/import\s+[^'"]+from\s+['"][^'"]+['"];?/g) || [];
+    const dependencies = importStatements.reduce((sum, statement) => {
+      const names = statement.match(/[a-zA-Z_$][\w$]*/g) || [];
+      const keywords = new Set(['import', 'from', 'type', 'as']);
+      return sum + names.filter((name) => !keywords.has(name)).length;
+    }, 0);
     const complexity = (content.match(/\b(if|else|switch|case|for|while|catch)\b/g) || []).length +
                       (content.match(/\{\s*\{/g) || []).length * 2;
 
     const proposals: RefactoringProposal[] = [];
 
     if (loc > 1000) {
-      proposals.push(this.createProposal(filePath, 'split',
+      proposals.push(this.createProposal(targetService, 'split',
         `Service has ${loc} LOC (${methods} methods) — consider splitting into domain-specific modules`,
         { loc, methods, dependencies, complexity },
         ['Extract planning logic into separate service', 'Extract execution logic into separate service', 'Extract governance logic into separate service'],
@@ -57,7 +64,7 @@ export class ServiceRefactoringAnalyzer {
     }
 
     if (methods > 20) {
-      proposals.push(this.createProposal(filePath, 'extract_module',
+      proposals.push(this.createProposal(targetService, 'extract_module',
         `Service has ${methods} methods — extract cohesive groups into helper modules`,
         { loc, methods, dependencies, complexity },
         ['Group related methods into sub-modules', 'Extract shared utilities', 'Create facade for external consumers'],
@@ -67,7 +74,7 @@ export class ServiceRefactoringAnalyzer {
     }
 
     if (dependencies > 15) {
-      proposals.push(this.createProposal(filePath, 'simplify',
+      proposals.push(this.createProposal(targetService, 'simplify',
         `Service has ${dependencies} import dependencies — consider dependency injection or facade pattern`,
         { loc, methods, dependencies, complexity },
         ['Introduce dependency injection container', 'Create facade for external services', 'Lazy-load heavy dependencies'],
@@ -81,6 +88,23 @@ export class ServiceRefactoringAnalyzer {
     }
 
     return proposals;
+  }
+
+  private resolveServicePath(filePath: string): string | null {
+    if (fs.existsSync(filePath)) return filePath;
+
+    const candidates = [
+      path.resolve(process.cwd(), 'packages/server', filePath),
+      path.resolve(process.cwd(), 'packages/dashboard', filePath),
+      path.resolve(process.cwd(), 'packages/shared', filePath),
+      path.resolve(process.cwd(), 'packages/telegram', filePath),
+      path.resolve(__dirname, '..', filePath),
+      path.resolve(__dirname, filePath),
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) return candidate;
+    }
+    return null;
   }
 
   analyzeAllServices(): RefactoringProposal[] {

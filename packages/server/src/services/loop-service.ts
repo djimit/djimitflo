@@ -3253,14 +3253,16 @@ export class LoopService {
   }
 
   private branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
+    const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const suffix = retryAttempt ? `-r${retryAttempt}` : '';
-    return `agent/loop/${runId.slice(0, 8)}-${findingId.slice(0, 8)}${suffix}`;
+    return `agent/loop/${runId}-${sanitizedFindingId}${suffix}`;
   }
 
   private createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
     this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
     const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryPath, '..', '.djimitflo-loop-worktrees');
-    const worktreePath = path.join(worktreeRoot, runId, findingId);
+    const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
+    const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
     if (fs.existsSync(worktreePath)) {
       return worktreePath;
@@ -3274,6 +3276,7 @@ export class LoopService {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
         this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
+        this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
         const sourceNodeModules = path.join(repositoryPath, 'node_modules');
         const worktreeNodeModules = path.join(worktreePath, 'node_modules');
         if (fs.existsSync(sourceNodeModules) && !fs.existsSync(worktreeNodeModules)) {
@@ -3290,6 +3293,40 @@ export class LoopService {
       }
     }
     throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
+  }
+
+  private applySourceWorkingTreeDiff(repositoryPath: string, worktreePath: string): void {
+    const status = this.git(repositoryPath, ['status', '--porcelain=v1', '--untracked-files=all']);
+    const untracked = status.split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('??'))
+      .map((line) => line.slice(3).trim())
+      .filter((relativePath) => {
+        const normalized = relativePath.replace(/\\/g, '/');
+        return !normalized.startsWith('.git/') && normalized !== '.git' &&
+          !normalized.startsWith('node_modules/') && normalized !== 'node_modules';
+      });
+
+    if (untracked.length === 0) {
+      return;
+    }
+
+    for (const relativePath of untracked) {
+      const sourceFile = path.join(repositoryPath, relativePath);
+      const targetFile = path.join(worktreePath, relativePath);
+      if (!fs.existsSync(sourceFile)) {
+        continue;
+      }
+      const stat = fs.statSync(sourceFile);
+      if (!stat.isFile()) {
+        continue;
+      }
+      fs.mkdirSync(path.dirname(targetFile), { recursive: true });
+      fs.copyFileSync(sourceFile, targetFile);
+    }
+
+    this.git(worktreePath, ['add', '.']);
+    this.git(worktreePath, ['commit', '-m', 'Snapshot untracked source files into worker worktree', '--no-verify']);
   }
 
   private static isGitLockError(error: Error): boolean {
