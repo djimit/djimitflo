@@ -26,6 +26,7 @@ import { LoginPage } from './pages/LoginPage';
 import { UsagePage } from './pages/UsagePage';
 import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
 import { EconomyPage } from './pages/EconomyPage';
+import { PipelineBuilderPage } from './pages/PipelineBuilderPage';
 import { FederationPage } from './pages/FederationPage';
 import { AgentCatalogPage } from './pages/AgentCatalogPage';
 import { useStore } from './lib/store';
@@ -97,6 +98,7 @@ export function App() {
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
           <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
           <Route path="economy" element={<EconomyPage />} />
+          <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />
         </Route>
       </Routes>

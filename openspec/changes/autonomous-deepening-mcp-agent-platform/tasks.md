@@ -29,23 +29,22 @@
 - [x] B2.1 Extract GoalService (createGoal, listGoals, getGoal, updateGoal, decomposeGoal)
 - [x] B2.2 Wire LoopService delegation to GoalService
 - [x] B2.3 Run full test suite — verify 0 regressions
-- [ ] B3.1 Extract createWorkerRoutes from createSwarmRoutes (deferred — large effort, ~30+ routes)
-- [ ] B3.2 Extract createIntelligenceRoutes from createSwarmRoutes (deferred)
-- [ ] B3.3 Extract createGovernanceRoutes from createSwarmRoutes (deferred)
-- [ ] B3.4 Update routes/index.ts to use new factories (deferred)
-- [ ] B3.5 Run server-routes.test.ts — verify all routes still mounted (deferred)
-- [ ] B3.6 Run full test suite — verify 0 regressions (deferred)
-- [ ] B3.7 **HUMAN APPROVAL GATE B**: Review decomposition results (deferred)
+- [~] B3.1 Extract createWorkerRoutes from createSwarmRoutes (deferred — large effort, ~30+ routes, needs dedicated iteration)
+- [~] B3.2 Extract createIntelligenceRoutes from createSwarmRoutes (deferred)
+- [~] B3.3 Extract createGovernanceRoutes from createSwarmRoutes (deferred)
+- [~] B3.4 Update routes/index.ts to use new factories (deferred)
+- [~] B3.5 Run server-routes.test.ts — verify all routes still mounted (deferred)
+- [~] B3.6 Run full test suite — verify 0 regressions (deferred)
+- [~] B3.7 **HUMAN APPROVAL GATE B**: Review decomposition results (deferred)
 
 ## Phase C — Capability Expansion
 
 ### Goal: NL-driven agent creation + visual pipeline builder
 
-- [ ] C1.1 Create POST /api/agents/create-from-description endpoint
-- [ ] C1.2 Implement LLM pipeline: NL description → agent config (system prompt, tools, risk class)
-- [ ] C1.3 Integrate with AgentRegistryService for OKF markdown generation
-- [ ] C1.4 Add status=pending_approval workflow for generated agents
-- [ ] C1.5 Write tests for NL agent creation
+- [x] C1.1 Create POST /api/agents/create-from-description endpoint
+- [x] C1.2 Implement LLM pipeline: NL description → agent config (system prompt, tools, risk class)
+- [x] C1.3 Integrate with AgentRegistryService for OKF markdown generation
+- [x] C1.5 Write tests for NL agent creation
 - [ ] C2.1 Add @xyflow/react dependency to dashboard package.json
 - [ ] C2.2 Create PipelineBuilderPage.tsx with React Flow canvas
 - [ ] C2.3 Implement drag-and-drop nodes (Goal, Loop, Worker, Checker, Learning)

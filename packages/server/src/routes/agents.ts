@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AgentRegistryService } from '../services/agent-registry-service';
+import { NlAgentFactory } from '../services/nl-agent-factory';
 import { randomUUID } from 'crypto';
 
 export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -205,6 +206,42 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       }
 
       res.json({ ok: true, agent_id: id, status: status ?? agent.status, last_heartbeat_at: now });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/agents/create-from-description — NL-driven agent creation
+  router.post('/create-from-description', requireAuth, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { description, name, model, temperature, max_tokens } = req.body;
+
+      if (!description?.trim()) {
+        res.status(400).json({ error: { message: 'description is required', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+
+      const factory = new NlAgentFactory(db);
+      const result = factory.createFromDescription(description, { name, model, temperature, max_tokens });
+
+      res.status(201).json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST /api/agents/:id/approve — approve a pending NL-generated agent
+  router.post('/:id/approve', requireAuth, requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const factory = new NlAgentFactory(db);
+      factory.approveAgent(req.params.id);
+
+      const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id) as any;
+      res.json({
+        ...agent,
+        capabilities: JSON.parse(agent.capabilities || '[]'),
+        metadata: JSON.parse(agent.metadata || '{}'),
+      });
     } catch (error) {
       next(error);
     }

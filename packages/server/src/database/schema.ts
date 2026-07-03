@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('idle', 'active', 'paused', 'error', 'offline')),
+  status TEXT NOT NULL CHECK(status IN ('idle', 'active', 'paused', 'error', 'offline', 'pending_approval')),
   capabilities TEXT NOT NULL, -- JSON array
   instruction_profile_id TEXT,
   model TEXT,
