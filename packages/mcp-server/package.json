@@ -1,0 +1,32 @@
+{
+  "name": "@djimitflo/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DjimitFlo MCP Server — exposes loop orchestration, goal management, and agent capabilities via Model Context Protocol",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "djimitflo-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@djimitflo/shared": "*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.6"
+  }
+}

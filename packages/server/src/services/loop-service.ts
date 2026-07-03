@@ -9,9 +9,10 @@ import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
 import { LoopBudgetService } from './loop-budget-service';
+import { WorktreeManager } from './worktree-manager';
+import { GoalService, type GoalRecord, type GoalCreateInput, type GoalUpdateInput, type DecomposedLoopCandidate } from './goal-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
-type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
 type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
 type GateStatus = 'pass' | 'fail' | 'skipped';
 export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
@@ -40,38 +41,7 @@ interface LoopContract {
   stop_conditions: string[];
 }
 
-export interface GoalCreateInput {
-  objective: string;
-  constraints?: string[];
-  acceptance_criteria: string[];
-  risk_class?: RiskClass;
-  budget?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-}
-
-export interface GoalUpdateInput {
-  objective?: string;
-  constraints?: string[];
-  acceptance_criteria?: string[];
-  risk_class?: RiskClass;
-  budget?: Record<string, unknown>;
-  status?: GoalStatus;
-  metadata?: Record<string, unknown>;
-}
-
-export interface GoalRecord {
-  id: string;
-  objective: string;
-  constraints: string[];
-  acceptance_criteria: string[];
-  risk_class: RiskClass;
-  budget: Record<string, unknown>;
-  status: GoalStatus;
-  owner_user_id: string | null;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+export type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 
 export interface LoopFinding {
   id: string;
@@ -232,15 +202,6 @@ interface RunChecksInput {
   lease_id?: string;
   timeout_ms?: number;
   scripts?: string[];
-}
-
-interface DecomposedLoopCandidate {
-  loop_name: string;
-  mode: 'closed';
-  reason: string;
-  recommended_first: boolean;
-  expected_outputs: string[];
-  gates: string[];
 }
 
 interface RuntimeUsage {
@@ -434,6 +395,8 @@ export class LoopService {
   private assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
   private budget: LoopBudgetService;
+  private worktree: WorktreeManager;
+  private goals: GoalService;
   /**
    * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
    * resolved from the same env chain as NestedSpawnService so a token minted here
@@ -461,6 +424,8 @@ export class LoopService {
         this.recordLoopEvent(runId, eventType, severity as 'debug' | 'info' | 'warning' | 'error' | 'critical', message, metadata);
       },
     });
+    this.worktree = new WorktreeManager(db);
+    this.goals = new GoalService(db);
   }
 
   /**
@@ -602,179 +567,27 @@ export class LoopService {
    * LOOP_WORKTREE_MAX_AGE_HOURS (24h).
    */
   pruneOrphanedWorktrees(options?: { maxAgeHours?: number; dryRun?: boolean }): number {
-    const maxAgeHours = options?.maxAgeHours ?? Number(process.env.LOOP_WORKTREE_MAX_AGE_HOURS ?? 24);
-    const dryRun = options?.dryRun ?? false;
-    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT;
-    if (!worktreeRoot || !fs.existsSync(worktreeRoot)) return 0;
-
-    const rows = this.db
-      .prepare(`SELECT worktree_path, status FROM worker_leases WHERE worktree_path IS NOT NULL`)
-      .all() as Array<{ worktree_path: string; status: string }>;
-    const statusByPath = new Map<string, string>();
-    for (const row of rows) statusByPath.set(row.worktree_path, row.status);
-    const ACTIVE_LEASE = new Set(['prepared', 'running']);
-
-    const maxAgeMs = Math.max(0, maxAgeHours) * 3_600_000;
-    const nowMs = Date.now();
-    let pruned = 0;
-
-    let runDirs: string[];
-    try {
-      runDirs = fs.readdirSync(worktreeRoot);
-    } catch {
-      return 0;
-    }
-    for (const runDirName of runDirs) {
-      const runDir = path.join(worktreeRoot, runDirName);
-      let stat: fs.Stats;
-      try {
-        stat = fs.statSync(runDir);
-      } catch {
-        continue;
-      }
-      if (!stat.isDirectory()) continue;
-
-      let findingDirs: string[];
-      try {
-        findingDirs = fs.readdirSync(runDir);
-      } catch {
-        continue;
-      }
-      for (const findingDirName of findingDirs) {
-        const wtPath = path.join(runDir, findingDirName);
-        try {
-          stat = fs.statSync(wtPath);
-        } catch {
-          continue;
-        }
-        if (!stat.isDirectory()) continue;
-
-        const leaseStatus = statusByPath.get(wtPath);
-        if (leaseStatus && ACTIVE_LEASE.has(leaseStatus)) continue; // in-flight — keep
-        if (nowMs - stat.mtimeMs < maxAgeMs) continue; // within grace window — keep
-
-        if (!dryRun) {
-          try {
-            fs.rmSync(wtPath, { recursive: true, force: true });
-          } catch {
-            continue;
-          }
-        }
-        pruned += 1;
-      }
-
-      if (!dryRun) {
-        try {
-          if (fs.readdirSync(runDir).length === 0) fs.rmdirSync(runDir);
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-    return pruned;
+    return this.worktree.pruneOrphanedWorktrees(options);
   }
 
   createGoal(input: GoalCreateInput, ownerUserId?: string): GoalRecord {
-    this.validateGoalInput(input);
-
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    const riskClass = input.risk_class || 'low';
-
-    this.db.prepare(`
-      INSERT INTO goals (
-        id, objective, constraints_json, acceptance_criteria_json, risk_class,
-        budget_json, status, owner_user_id, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.objective.trim(),
-      JSON.stringify(input.constraints || []),
-      JSON.stringify(input.acceptance_criteria),
-      riskClass,
-      JSON.stringify(input.budget || {}),
-      'created',
-      ownerUserId || null,
-      JSON.stringify(input.metadata || {}),
-      now,
-      now
-    );
-
-    return this.getGoal(id);
+    return this.goals.createGoal(input, ownerUserId);
   }
 
   listGoals(): GoalRecord[] {
-    const rows = this.db.prepare('SELECT * FROM goals ORDER BY created_at DESC').all() as any[];
-    return rows.map((row) => this.parseGoal(row));
+    return this.goals.listGoals();
   }
 
   getGoal(id: string): GoalRecord {
-    const row = this.db.prepare('SELECT * FROM goals WHERE id = ?').get(id);
-    if (!row) {
-      throw new Error('GOAL_NOT_FOUND');
-    }
-    return this.parseGoal(row);
+    return this.goals.getGoalById(id);
   }
 
   updateGoal(id: string, input: GoalUpdateInput): GoalRecord {
-    const existing = this.getGoal(id);
-    const next: GoalCreateInput = {
-      objective: input.objective ?? existing.objective,
-      constraints: input.constraints ?? existing.constraints,
-      acceptance_criteria: input.acceptance_criteria ?? existing.acceptance_criteria,
-      risk_class: input.risk_class ?? existing.risk_class,
-      budget: input.budget ?? existing.budget,
-      metadata: input.metadata ?? existing.metadata,
-    };
-    this.validateGoalInput(next);
-
-    const validStatuses: GoalStatus[] = ['created', 'decomposed', 'running', 'blocked', 'completed', 'failed', 'cancelled'];
-    const status = input.status ?? existing.status;
-    if (!validStatuses.includes(status)) {
-      throw new Error('GOAL_STATUS_INVALID');
-    }
-
-    this.db.prepare(`
-      UPDATE goals
-      SET objective = ?,
-          constraints_json = ?,
-          acceptance_criteria_json = ?,
-          risk_class = ?,
-          budget_json = ?,
-          status = ?,
-          metadata = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(
-      next.objective.trim(),
-      JSON.stringify(next.constraints || []),
-      JSON.stringify(next.acceptance_criteria),
-      next.risk_class || 'low',
-      JSON.stringify(next.budget || {}),
-      status,
-      JSON.stringify(next.metadata || {}),
-      new Date().toISOString(),
-      id
-    );
-
-    return this.getGoal(id);
+    return this.goals.updateGoal(id, input);
   }
 
   decomposeGoal(id: string): { goal: GoalRecord; candidates: DecomposedLoopCandidate[] } {
-    const goal = this.getGoal(id);
-    const candidates: DecomposedLoopCandidate[] = LOOP_CONTRACTS.map((contract) => ({
-      loop_name: contract.name,
-      mode: contract.mode,
-      reason: contract.description,
-      recommended_first: contract.name === LOOP_NAME,
-      expected_outputs: ['findings', 'bounded_task_plan', 'loop_state_file', 'review_bundle'],
-      gates: contract.verification,
-    }));
-
-    this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
-      .run('decomposed', new Date().toISOString(), id);
-
-    return { goal: this.getGoal(goal.id), candidates };
+    return this.goals.decomposeGoal(id, LOOP_CONTRACTS, LOOP_NAME);
   }
 
   startDocDriftAndSmallFixLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
@@ -2425,19 +2238,6 @@ export class LoopService {
     return contract;
   }
 
-  private validateGoalInput(input: GoalCreateInput): void {
-    if (!input.objective || !input.objective.trim()) {
-      throw new Error('GOAL_OBJECTIVE_REQUIRED');
-    }
-    if (!Array.isArray(input.acceptance_criteria) || input.acceptance_criteria.filter(Boolean).length === 0) {
-      throw new Error('GOAL_ACCEPTANCE_CRITERIA_REQUIRED');
-    }
-    const validRisks: RiskClass[] = ['low', 'medium', 'high', 'critical'];
-    if (input.risk_class && !validRisks.includes(input.risk_class)) {
-      throw new Error('GOAL_RISK_CLASS_INVALID');
-    }
-  }
-
   private resolveRepositoryPath(inputPath: string): string {
     const resolved = path.resolve(inputPath);
     if (!fs.existsSync(resolved)) {
@@ -3079,112 +2879,16 @@ export class LoopService {
   }
 
   private branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
-    const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
-    const suffix = retryAttempt ? `-r${retryAttempt}` : '';
-    return `agent/loop/${runId}-${sanitizedFindingId}${suffix}`;
+    return this.worktree.branchNameFor(runId, findingId, retryAttempt);
   }
 
   private createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
-    this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
-    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryPath, '..', '.djimitflo-loop-worktrees');
-    const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
-    const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);
-    fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
-    if (fs.existsSync(worktreePath)) {
-      return worktreePath;
-    }
-    // `git worktree add` takes the source repo's worktree lock. Under concurrent
-    // fleet operation (or parallel test forks that share a source repo) a sibling
-    // git process may briefly hold .git/worktree.lock; retry a few times before
-    // giving up so a transient lock race does not fail a worker lease.
-    const MAX_ATTEMPTS = 3;
-    let lastError: Error | undefined;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      try {
-        this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
-        this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
-        const sourceNodeModules = path.join(repositoryPath, 'node_modules');
-        const worktreeNodeModules = path.join(worktreePath, 'node_modules');
-        if (fs.existsSync(sourceNodeModules) && !fs.existsSync(worktreeNodeModules)) {
-          fs.symlinkSync(sourceNodeModules, worktreeNodeModules, 'dir');
-        }
-        return worktreePath;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < MAX_ATTEMPTS && LoopService.isGitLockError(lastError)) {
-          this.sleepSync(250 * attempt);
-          continue;
-        }
-        throw new Error(`WORKTREE_CREATE_FAILED: ${lastError.message}`);
-      }
-    }
-    throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
+    return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName);
   }
 
-  private applySourceWorkingTreeDiff(repositoryPath: string, worktreePath: string): void {
-    const status = this.git(repositoryPath, ['status', '--porcelain=v1', '--untracked-files=all']);
-    const untracked = status.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith('??'))
-      .map((line) => line.slice(3).trim())
-      .filter((relativePath) => {
-        const normalized = relativePath.replace(/\\/g, '/');
-        return !normalized.startsWith('.git/') && normalized !== '.git' &&
-          !normalized.startsWith('node_modules/') && normalized !== 'node_modules';
-      });
 
-    if (untracked.length === 0) {
-      return;
-    }
 
-    const resolvedWorktreePath = path.resolve(worktreePath);
-    const resolvedRepositoryPath = path.resolve(repositoryPath);
 
-    for (const relativePath of untracked) {
-      // Path traversal guard: reject any path that escapes the repository root.
-      if (relativePath.includes('..')) {
-        continue;
-      }
-      const sourceFile = path.join(resolvedRepositoryPath, relativePath);
-      const targetFile = path.join(resolvedWorktreePath, relativePath);
-
-      // Verify resolved paths stay within their respective roots.
-      if (!sourceFile.startsWith(resolvedRepositoryPath + path.sep) && sourceFile !== resolvedRepositoryPath) {
-        continue;
-      }
-      if (!targetFile.startsWith(resolvedWorktreePath + path.sep) && targetFile !== resolvedWorktreePath) {
-        continue;
-      }
-      if (!fs.existsSync(sourceFile)) {
-        continue;
-      }
-      // Use lstatSync to avoid following symlinks — prevents symlink-based escape.
-      const stat = fs.lstatSync(sourceFile);
-      if (!stat.isFile()) {
-        continue;
-      }
-      fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-      fs.copyFileSync(sourceFile, targetFile);
-    }
-
-    this.git(worktreePath, ['add', '.']);
-    this.git(worktreePath, ['commit', '-m', 'Snapshot untracked source files into worker worktree', '--no-verify']);
-  }
-
-  private static isGitLockError(error: Error): boolean {
-    const m = error.message.toLowerCase();
-    return m.includes('worktree.lock') || m.includes('index.lock') || m.includes('another git process') || m.includes('file exists');
-  }
-
-  private sleepSync(ms: number): void {
-    try {
-      const buf = new SharedArrayBuffer(4);
-      Atomics.wait(new Int32Array(buf), 0, 0, ms);
-    } catch {
-      const end = Date.now() + ms;
-      while (Date.now() < end) { /* SharedArrayBuffer unavailable: busy-wait fallback */ }
-    }
-  }
 
   /**
    * Materialize a nested child worker lease (P1). This is the server-side half of
@@ -4730,22 +4434,6 @@ export class LoopService {
       INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(randomUUID(), loopRunId, eventType, level, message, JSON.stringify(metadata), new Date().toISOString());
-  }
-
-  private parseGoal(row: any): GoalRecord {
-    return {
-      id: row.id,
-      objective: row.objective,
-      constraints: JSON.parse(row.constraints_json || '[]'),
-      acceptance_criteria: JSON.parse(row.acceptance_criteria_json || '[]'),
-      risk_class: row.risk_class,
-      budget: JSON.parse(row.budget_json || '{}'),
-      status: row.status,
-      owner_user_id: row.owner_user_id || null,
-      metadata: JSON.parse(row.metadata || '{}'),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-    };
   }
 
   private parseLoopRun(row: any): LoopRunRecord {

@@ -1,0 +1,12 @@
+schema: spec-driven
+created: 2026-07-03
+title: Autonomous Deepening + MCP Agent Platform
+risk: Medium
+status: proposed
+approver: dlandman
+autonomous: true
+human-gates:
+  - phase-a-ship
+  - phase-b-ship
+  - phase-c-ship
+  - final-ship

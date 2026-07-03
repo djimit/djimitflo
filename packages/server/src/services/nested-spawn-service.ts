@@ -55,6 +55,8 @@ export interface SpawnTreeRecord {
   consumed_wall_ms: number;
   max_concurrent_children: number;
   risk_class: RiskClass;
+  context_budget: number;
+  context_consumed: number;
   status: string;
   started_at: string;
   updated_at: string;
@@ -88,6 +90,7 @@ export interface CreateRootInput {
   total_wall_budget_ms?: number;
   max_concurrent_children?: number;
   risk_class?: RiskClass;
+  context_budget?: number; // Per-sub-agent context token budget (0 = no isolation)
 }
 
 export interface CreateRootResult {
@@ -169,6 +172,7 @@ export class NestedSpawnService {
     const totalWallBudgetMs = input.total_wall_budget_ms ?? this.envInt('SPAWN_TREE_WALL_BUDGET_MS', DEFAULT_WALL_BUDGET_MS);
     const maxConcurrent = input.max_concurrent_children ?? this.envInt('SPAWN_TREE_MAX_CONCURRENT_CHILDREN', DEFAULT_MAX_CONCURRENT_CHILDREN);
     const riskClass = input.risk_class ?? 'medium';
+    const contextBudget = input.context_budget ?? this.envInt('SPAWN_CONTEXT_BUDGET', 0); // 0 = no isolation (backward-compatible)
 
     // The spawn tree id IS the root lease id (plan invariant), so the root's own
     // spawn token — scoped to (rootLeaseId, treeId) — validates when the root
@@ -197,10 +201,10 @@ export class NestedSpawnService {
     this.db.prepare(`
       INSERT INTO spawn_trees (
         id, depth_budget, total_token_budget, consumed_tokens, total_wall_budget_ms,
-        consumed_wall_ms, max_concurrent_children, risk_class, status, started_at, updated_at
-      ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, 'open', ?, ?)
+        consumed_wall_ms, max_concurrent_children, risk_class, context_budget, context_consumed, status, started_at, updated_at
+      ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 'open', ?, ?)
     `).run(
-      treeId, depthBudget, totalTokenBudget, totalWallBudgetMs, maxConcurrent, riskClass, now, now
+      treeId, depthBudget, totalTokenBudget, totalWallBudgetMs, maxConcurrent, riskClass, contextBudget, now, now
     );
 
     // Record the root as a spawn edge so the ancestry walk is uniform (root has no parent).

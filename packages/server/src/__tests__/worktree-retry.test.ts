@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { WorktreeManager } from '../services/worktree-manager';
 
 /**
  * Item A: the `createWorktree` bounded retry on git lock errors. The retry loop
@@ -40,7 +41,7 @@ describe('createWorktree git-lock retry', () => {
   });
 
   it('isGitLockError classifies lock vs non-lock git errors', () => {
-    const classify = (LoopService as any).isGitLockError.bind(LoopService) as (e: Error) => boolean;
+    const classify = WorktreeManager.isGitLockError;
     expect(classify(new Error("fatal: Unable to create '/repo/.git/worktree.lock': File exists."))).toBe(true);
     expect(classify(new Error("fatal: Unable to create '/repo/.git/index.lock': File exists. Another git process seems to be running in this repo."))).toBe(true);
     expect(classify(new Error('fatal: not a git repository'))).toBe(false);
@@ -51,10 +52,10 @@ describe('createWorktree git-lock retry', () => {
     const loops = new LoopService(db);
     const repoPath = path.join(worktreeRoot, 'fake-repo');
     // Neutralise the sync sleep so the test does not wait on backoff.
-    vi.spyOn(loops as any, 'sleepSync').mockImplementation(() => {});
-    vi.spyOn(loops as any, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
+    vi.spyOn((loops as any).worktree, 'sleepSync').mockImplementation(() => {});
+    vi.spyOn((loops as any).worktree, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
     let worktreeAddCalls = 0;
-    vi.spyOn(loops as any, 'git').mockImplementation((_repo: string, args: string[]) => {
+    vi.spyOn((loops as any).worktree, 'git').mockImplementation((_repo: string, args: string[]) => {
       if (args[0] === 'rev-parse') return repoPath;
       if (args[0] === 'diff') return '';
       if (args[0] === 'worktree' && args[1] === 'add') {
@@ -76,8 +77,8 @@ describe('createWorktree git-lock retry', () => {
     const loops = new LoopService(db);
     const repoPath = path.join(worktreeRoot, 'fake-repo');
     let worktreePathArg = '';
-    vi.spyOn(loops as any, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
-    vi.spyOn(loops as any, 'git').mockImplementation((_repo: string, args: string[]) => {
+    vi.spyOn((loops as any).worktree, 'applySourceWorkingTreeDiff').mockImplementation(() => {});
+    vi.spyOn((loops as any).worktree, 'git').mockImplementation((_repo: string, args: string[]) => {
       if (args[0] === 'rev-parse') return repoPath;
       if (args[0] === 'diff') return '';
       if (args[0] === 'worktree' && args[1] === 'add') {
@@ -103,7 +104,7 @@ describe('createWorktree git-lock retry', () => {
   });
 
   it('snapshots untracked source files into worker worktrees', () => {
-    const loops = new LoopService(db);
+    const mgr = new WorktreeManager(db);
     const repoPath = path.join(worktreeRoot, 'repo');
     fs.mkdirSync(repoPath, { recursive: true });
     fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
@@ -115,7 +116,7 @@ describe('createWorktree git-lock retry', () => {
     fs.mkdirSync(path.join(repoPath, 'src', 'services'), { recursive: true });
     fs.writeFileSync(path.join(repoPath, 'src', 'services', 'new-service.ts'), 'export const answer = 42;\n');
 
-    const result = (loops as any).createWorktree(repoPath, 'run-untracked', 'find-untracked', 'branch-untracked') as string;
+    const result = mgr.createWorktree(repoPath, 'run-untracked', 'find-untracked', 'branch-untracked');
 
     expect(fs.readFileSync(path.join(result, 'src', 'services', 'new-service.ts'), 'utf8')).toContain('answer = 42');
     const status = execFileSync('git', ['-C', result, 'status', '--porcelain=v1'], { encoding: 'utf8' });
@@ -125,9 +126,9 @@ describe('createWorktree git-lock retry', () => {
   it('does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED', () => {
     const loops = new LoopService(db);
     const repoPath = path.join(worktreeRoot, 'fake-repo');
-    vi.spyOn(loops as any, 'sleepSync').mockImplementation(() => {});
+    vi.spyOn((loops as any).worktree, 'sleepSync').mockImplementation(() => {});
     let worktreeAddCalls = 0;
-    vi.spyOn(loops as any, 'git').mockImplementation((_repo: string, args: string[]) => {
+    vi.spyOn((loops as any).worktree, 'git').mockImplementation((_repo: string, args: string[]) => {
       if (args[0] === 'rev-parse') return repoPath;
       if (args[0] === 'worktree' && args[1] === 'add') {
         worktreeAddCalls += 1;
