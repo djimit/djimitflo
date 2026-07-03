@@ -8,6 +8,7 @@ import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } fr
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
+import { LoopBudgetService } from './loop-budget-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -432,6 +433,7 @@ export class LoopService {
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
+  private budget: LoopBudgetService;
   /**
    * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
    * resolved from the same env chain as NestedSpawnService so a token minted here
@@ -451,6 +453,14 @@ export class LoopService {
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
     this.intelligence = new SwarmIntelligenceService(db);
+    this.budget = new LoopBudgetService(db, {
+      getGoal: (id) => this.getGoal(id),
+      getLoopRun: (id) => this.getLoopRun(id),
+      listWorkerLeases: (runId) => this.listWorkerLeases(runId),
+      recordLoopEvent: (runId, eventType, severity, message, metadata) => {
+        this.recordLoopEvent(runId, eventType, severity as 'debug' | 'info' | 'warning' | 'error' | 'critical', message, metadata);
+      },
+    });
   }
 
   /**
@@ -996,70 +1006,22 @@ export class LoopService {
   }
 
   computeDollarCost(runtime: string, totalTokens: number): number {
-    const pricePerMtok: Record<string, number> = {
-      codex: 2.0, opencode: 0.5, claude: 3.0, gemini: 1.0, pi: 0, editor: 0, mock: 0,
-    };
-    const price = pricePerMtok[runtime] ?? 2.0;
-    return (totalTokens / 1_000_000) * price;
+    return this.budget.computeDollarCost(runtime, totalTokens);
   }
 
   allocateDollarBudget(
     findings: Array<{ finding_id: string; capability_id: string; p50_dollars: number; competence: number }>,
     budget: number,
   ): { allocated: string[]; deferred: string[]; budgetInsufficient: boolean } {
-    if (findings.length === 0) return { allocated: [], deferred: [], budgetInsufficient: false };
-    const sorted = [...findings].sort((a, b) => (b.competence / b.p50_dollars) - (a.competence / a.p50_dollars));
-    const allocated: string[] = [];
-    const deferred: string[] = [];
-    let remaining = budget;
-    for (const finding of sorted) {
-      if (finding.p50_dollars <= remaining) {
-        allocated.push(finding.finding_id);
-        remaining -= finding.p50_dollars;
-      } else {
-        deferred.push(finding.finding_id);
-      }
-    }
-    return { allocated, deferred, budgetInsufficient: allocated.length === 0 };
+    return this.budget.allocateDollarBudget(findings, budget);
   }
 
   computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
-    const leases = this.db.prepare('SELECT metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ metadata: string }>;
-    let totalTokens = 0;
-    let runtime = 'codex';
-    for (const lease of leases) {
-      try {
-        const meta = JSON.parse(lease.metadata || '{}');
-        const usage = meta.runtime_usage as { total_tokens?: number } | undefined;
-        if (usage?.total_tokens) totalTokens += usage.total_tokens;
-        if (meta.runtime) runtime = meta.runtime as string;
-      } catch { /* skip */ }
-    }
-    const dollarsSpent = this.computeDollarCost(runtime, totalTokens);
-    const verifiedArtifacts = this.db.prepare(
-      "SELECT COUNT(*) as c FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'"
-    ).get(runId) as { c: number };
-    return {
-      verifiedArtifacts: verifiedArtifacts.c,
-      dollarsSpent,
-      efficiency: dollarsSpent > 0 ? verifiedArtifacts.c / dollarsSpent : 0,
-    };
+    return this.budget.computeEfficiencyMetric(runId);
   }
 
   adjustConcurrency(increase: boolean): { success: boolean; dynamicLimit: number; active: number; queueDepth: number } {
-    const active = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'running'").get() as { c: number };
-    const queue = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'prepared'").get() as { c: number };
-    const currentLimit = Number(process.env.RUNTIME_MAX_CONCURRENCY) || 5;
-    const dynamicLimit = increase ? currentLimit + 1 : Math.max(1, currentLimit - 1);
-
-    swarmEventBus.emit('aimd_state', {
-      success: true,
-      dynamicLimit,
-      active: active.c,
-      queue_depth: queue.c,
-    });
-
-    return { success: true, dynamicLimit, active: active.c, queueDepth: queue.c };
+    return this.budget.adjustConcurrency(increase);
   }
 
   stopLoopRun(id: string): { run: LoopRunRecord; events: LoopEventRecord[] } {
@@ -2555,127 +2517,27 @@ export class LoopService {
   }
 
   private getMakerLeaseBudget(run: LoopRunRecord, input: ContinueLoopInput): { maxMakerWorkers: number; source: 'goal' | 'request' | 'default' } {
-    if (run.goal_id) {
-      const goal = this.getGoal(run.goal_id);
-      const maxFromGoal = Number(goal.budget.max_maker_workers ?? goal.budget.max_workers);
-      if (Number.isFinite(maxFromGoal) && maxFromGoal > 0) {
-        return { maxMakerWorkers: Math.min(Math.floor(maxFromGoal), 100), source: 'goal' };
-      }
-    }
-
-    const maxFromRequest = Number(input.max_maker_workers);
-    if (Number.isFinite(maxFromRequest) && maxFromRequest > 0) {
-      return { maxMakerWorkers: Math.min(Math.floor(maxFromRequest), 100), source: 'request' };
-    }
-
-    return { maxMakerWorkers: 5, source: 'default' };
+    return this.budget.getMakerLeaseBudget(run, input.max_maker_workers);
   }
 
   private getRetryBudget(run: LoopRunRecord, maker: WorkerLeaseRecord, input: RetryLoopInput): { maxRetries: number; source: 'goal' | 'request' | 'lease' | 'default' } {
-    if (run.goal_id) {
-      const goal = this.getGoal(run.goal_id);
-      const maxFromGoal = Number(goal.budget.max_retries);
-      if (Number.isFinite(maxFromGoal) && maxFromGoal >= 0) {
-        return { maxRetries: Math.min(Math.floor(maxFromGoal), 10), source: 'goal' };
-      }
-    }
-
-    const maxFromRequest = Number(input.max_retries);
-    if (Number.isFinite(maxFromRequest) && maxFromRequest >= 0) {
-      return { maxRetries: Math.min(Math.floor(maxFromRequest), 10), source: 'request' };
-    }
-
-    const maxFromLease = Number(maker.budget.max_retries);
-    if (Number.isFinite(maxFromLease) && maxFromLease >= 0) {
-      return { maxRetries: Math.min(Math.floor(maxFromLease), 10), source: 'lease' };
-    }
-
-    return { maxRetries: 1, source: 'default' };
+    return this.budget.getRetryBudget(run, maker, input.max_retries);
   }
 
   private getFailureThreshold(run: LoopRunRecord): { maxFailureCount: number; source: 'goal' | 'default' } {
-    if (run.goal_id) {
-      const goal = this.getGoal(run.goal_id);
-      const maxFromGoal = Number(goal.budget.max_failure_count);
-      if (Number.isFinite(maxFromGoal) && maxFromGoal > 0) {
-        return { maxFailureCount: Math.min(Math.floor(maxFromGoal), 20), source: 'goal' };
-      }
-    }
-
-    return { maxFailureCount: 3, source: 'default' };
+    return this.budget.getFailureThreshold(run);
   }
 
   private getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'none' } {
-    if (!run.goal_id) {
-      return { source: 'none' };
-    }
-    const goal = this.getGoal(run.goal_id);
-    const maxTokens = Number(goal.budget.max_tokens);
-    const maxTokensPerWorker = Number(goal.budget.max_tokens_per_worker);
-    const maxTokensPerDiffLine = Number(goal.budget.max_tokens_per_diff_line);
-    return {
-      maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
-      maxTokensPerWorker: Number.isFinite(maxTokensPerWorker) && maxTokensPerWorker > 0 ? Math.floor(maxTokensPerWorker) : undefined,
-      maxTokensPerDiffLine: Number.isFinite(maxTokensPerDiffLine) && maxTokensPerDiffLine > 0 ? Math.floor(maxTokensPerDiffLine) : undefined,
-      source: 'goal',
-    };
+    return this.budget.getTokenBudget(run);
   }
 
   private getWallClockBudget(run: LoopRunRecord): { maxRuntimeMs?: number; source: 'goal' | 'none' } {
-    if (!run.goal_id) {
-      return { source: 'none' };
-    }
-    const goal = this.getGoal(run.goal_id);
-    const maxRuntimeMs = Number(goal.budget.max_runtime_ms);
-    return {
-      maxRuntimeMs: Number.isFinite(maxRuntimeMs) && maxRuntimeMs > 0 ? Math.floor(maxRuntimeMs) : undefined,
-      source: 'goal',
-    };
+    return this.budget.getWallClockBudget(run);
   }
 
   private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
-    const budget = this.getTokenBudget(run);
-    if (!budget.maxTokens && !budget.maxTokensPerWorker) {
-      return {
-        gate: { name: 'token_budget', status: 'skipped', evidence: 'No token budget configured for this goal.' },
-        exhausted: false,
-        efficiencyExceeded: false,
-        budget,
-      };
-    }
-
-    if (!runtimeUsage) {
-      return {
-        gate: { name: 'token_budget', status: 'skipped', evidence: 'Runtime did not report token usage; no estimate was used.' },
-        exhausted: false,
-        efficiencyExceeded: false,
-        budget,
-      };
-    }
-
-    const usedBeforeCurrent = this.sumRuntimeTokens(this.listWorkerLeases(run.id).filter((lease) => lease.id !== currentLeaseId));
-    const totalAfterCurrent = usedBeforeCurrent + runtimeUsage.total_tokens;
-    const perWorkerExceeded = Boolean(budget.maxTokensPerWorker && runtimeUsage.total_tokens > budget.maxTokensPerWorker);
-    const totalExceeded = Boolean(budget.maxTokens && totalAfterCurrent > budget.maxTokens);
-    const exhausted = perWorkerExceeded || totalExceeded;
-    const tokensPerDiffLine = diffLines && diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null;
-    const efficiencyExceeded = Boolean(budget.maxTokensPerDiffLine && tokensPerDiffLine !== null && tokensPerDiffLine > budget.maxTokensPerDiffLine);
-
-    return {
-      gate: {
-        name: 'token_budget',
-        status: exhausted ? 'fail' : 'pass',
-        evidence: `runtime_usage=${runtimeUsage.total_tokens}, total_after_current=${totalAfterCurrent}, max_tokens=${budget.maxTokens ?? 'unset'}, max_tokens_per_worker=${budget.maxTokensPerWorker ?? 'unset'}.`,
-      },
-      exhausted,
-      efficiencyExceeded,
-      budget: {
-        ...budget,
-        used_before_current: usedBeforeCurrent,
-        total_after_current: totalAfterCurrent,
-        efficiency_exceeded: efficiencyExceeded,
-      },
-    };
+    return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines);
   }
 
   private sumRuntimeTokens(leases: WorkerLeaseRecord[]): number {
@@ -2769,48 +2631,10 @@ export class LoopService {
   }
 
   private escalateIfFailureThresholdExceeded(runId: string, reason: string): LoopRunRecord {
-    const run = this.getLoopRun(runId);
-    const threshold = this.getFailureThreshold(run);
-    const leases = this.listWorkerLeases(runId);
-    const failureCount = this.countLoopFailures(leases);
-    if (failureCount < threshold.maxFailureCount) {
-      return run;
-    }
-
-    if (run.status !== 'escalated') {
-      const now = new Date().toISOString();
-      this.db.prepare(`
-        UPDATE loop_runs
-        SET status = ?, next_actions_json = ?, updated_at = ?
-        WHERE id = ?
-      `).run(
-        'escalated',
-        JSON.stringify([
-          'Human review required before leasing more workers',
-          'Inspect review bundle and decide retry, split, or cancel',
-        ]),
-        now,
-        runId
-      );
-
-      this.recordLoopEvent(runId, 'loop_escalated', 'warning', `Loop escalated after ${failureCount} failure(s).`, {
-        reason,
-        failure_count: failureCount,
-        failure_threshold: threshold,
-      });
-    }
-
-    return this.getLoopRun(runId);
+    return this.budget.escalateIfFailureThresholdExceeded(runId, reason);
   }
 
-  private countLoopFailures(leases: WorkerLeaseRecord[]): number {
-    const makerFailures = leases.filter((lease) => lease.role === 'maker' && lease.status === 'failed').length;
-    const checkerFailures = leases.filter((lease) => (
-      (lease.role === 'checker' || lease.role === 'security_checker')
-      && ['needs_revision', 'rejected', 'insufficient_evidence'].includes(String(lease.metadata.verdict || ''))
-    )).length;
-    return makerFailures + checkerFailures;
-  }
+
 
   private isHighRiskRun(run: LoopRunRecord, finding?: LoopFinding): boolean {
     if (run.goal_id) {
