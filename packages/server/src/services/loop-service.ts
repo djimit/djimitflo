@@ -143,6 +143,7 @@ interface StartDocDriftLoopInput {
   goal_id?: string;
   repository_path?: string;
   max_findings?: number;
+  sovereign?: boolean;
 }
 
 interface ContinueLoopInput {
@@ -826,6 +827,7 @@ export class LoopService {
         mutating_actions: false,
         risk_class: runRiskClass,
         contract,
+        sovereign: input.sovereign === true,
       }),
       now,
       now,
@@ -970,6 +972,65 @@ export class LoopService {
     } catch { /* fallback */ }
 
     return 'codex';
+  }
+
+  computeDollarCost(runtime: string, totalTokens: number): number {
+    const pricePerMtok: Record<string, number> = {
+      codex: 2.0, opencode: 0.5, claude: 3.0, gemini: 1.0, pi: 0, editor: 0, mock: 0,
+    };
+    const price = pricePerMtok[runtime] ?? 2.0;
+    return (totalTokens / 1_000_000) * price;
+  }
+
+  allocateDollarBudget(
+    findings: Array<{ finding_id: string; capability_id: string; p50_dollars: number; competence: number }>,
+    budget: number,
+  ): { allocated: string[]; deferred: string[]; budgetInsufficient: boolean } {
+    if (findings.length === 0) return { allocated: [], deferred: [], budgetInsufficient: false };
+    const sorted = [...findings].sort((a, b) => (b.competence / b.p50_dollars) - (a.competence / a.p50_dollars));
+    const allocated: string[] = [];
+    const deferred: string[] = [];
+    let remaining = budget;
+    for (const finding of sorted) {
+      if (finding.p50_dollars <= remaining) {
+        allocated.push(finding.finding_id);
+        remaining -= finding.p50_dollars;
+      } else {
+        deferred.push(finding.finding_id);
+      }
+    }
+    return { allocated, deferred, budgetInsufficient: allocated.length === 0 };
+  }
+
+  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number } {
+    const leases = this.db.prepare('SELECT metadata FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ metadata: string }>;
+    let totalTokens = 0;
+    let runtime = 'codex';
+    for (const lease of leases) {
+      try {
+        const meta = JSON.parse(lease.metadata || '{}');
+        const usage = meta.runtime_usage as { total_tokens?: number } | undefined;
+        if (usage?.total_tokens) totalTokens += usage.total_tokens;
+        if (meta.runtime) runtime = meta.runtime as string;
+      } catch { /* skip */ }
+    }
+    const dollarsSpent = this.computeDollarCost(runtime, totalTokens);
+    const verifiedArtifacts = this.db.prepare(
+      "SELECT COUNT(*) as c FROM worker_leases WHERE loop_run_id = ? AND status = 'completed'"
+    ).get(runId) as { c: number };
+    return {
+      verifiedArtifacts: verifiedArtifacts.c,
+      dollarsSpent,
+      efficiency: dollarsSpent > 0 ? verifiedArtifacts.c / dollarsSpent : 0,
+    };
+  }
+
+  adjustConcurrency(increase: boolean): { success: boolean; dynamicLimit: number; active: number; queueDepth: number } {
+    const active = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'running'").get() as { c: number };
+    const queue = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'prepared'").get() as { c: number };
+    const currentLimit = Number(process.env.RUNTIME_MAX_CONCURRENCY) || 5;
+    const dynamicLimit = increase ? currentLimit + 1 : Math.max(1, currentLimit - 1);
+    return { success: true, dynamicLimit, active: active.c, queueDepth: queue.c };
   }
 
   stopLoopRun(id: string): { run: LoopRunRecord; events: LoopEventRecord[] } {
