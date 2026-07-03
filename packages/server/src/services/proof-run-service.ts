@@ -625,7 +625,6 @@ export class ProofRunService {
         runtime,
         max_assignments: 1,
         max_maker_workers: 1,
-        capabilityId: makerCapId,
       });
 
       const makerPrepared = this.findLeaseByRole(loopRunId, 'maker', 'prepared');
@@ -733,7 +732,7 @@ export class ProofRunService {
         throw new Error('PROOF_RUN_VERIFICATION_BLOCKED');
       }
 
-      const completedResult = this.loops.completeLoopRun(loopRunId, { human_approval_ref: `proof-run:${proofRunId}` });
+      const completedResult = this.loops.completeLoopRun(loopRunId);
       if (completedResult.run.status !== 'completed') {
         throw new Error('PROOF_RUN_COMPLETE_FAILED');
       }

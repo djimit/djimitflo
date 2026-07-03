@@ -30,15 +30,14 @@ export class FixLoopService {
         repository_path: request.repositoryPath,
       });
 
-      this.loops.planLoopRun(run.id);
       await this.loops.executeMaker(run.id);
       const checkerResult = await this.loops.executeChecker(run.id);
-      const cert = this.loops.certifyLoopRun(run.id);
+      const verification = this.loops.verifyLoopRun(run.id);
 
       return {
         success: run.status === 'completed',
         loopRunId: run.id,
-        verdict: cert.certified ? 'certified' : 'not_certified',
+        verdict: verification.gates.every(g => g.status === 'pass') ? 'pass' : 'fail',
         testPassed: checkerResult.gates.length > 0 && checkerResult.gates.every(g => g.status === 'pass'),
         gates: checkerResult.gates.map(g => `${g.name}:${g.status}`),
       };

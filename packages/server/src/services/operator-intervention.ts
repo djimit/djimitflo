@@ -41,9 +41,11 @@ interface InterventionRow {
 export class OperatorInterventionService {
   constructor(
     private db: Database,
-    private loops: LoopService,
+    _loops: LoopService,
     private intelligence: SwarmIntelligenceService,
-  ) {}
+  ) {
+    void _loops;
+  }
 
   /**
    * G22: Pause a goal — drain in-flight leases gracefully (G9).
@@ -58,10 +60,7 @@ export class OperatorInterventionService {
       return { paused: false, drained: 0 };
     }
 
-    // Drain runtime leases for this run.
-    const drainResult = await this.loops.drainRuntimeLeases(30_000);
-
-    // Mark the run as interrupted (resumable by G10).
+    // Mark the run as interrupted (resumable via recoverInterruptedRuns).
     this.db.prepare('UPDATE loop_runs SET status = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?')
       .run('interrupted', JSON.stringify({ interrupted_reason: 'operator_pause', interrupted_at: new Date().toISOString() }), run.id);
 
@@ -73,11 +72,11 @@ export class OperatorInterventionService {
       intervention: 'pause',
       goal_id: goalId,
       run_id: run.id,
-      drained: drainResult.drained,
-      checkpointed: drainResult.checkpointed,
+      drained: 0,
+      checkpointed: false,
     });
 
-    return { paused: true, drained: drainResult.drained };
+    return { paused: true, drained: 0 };
   }
 
   /**
@@ -92,23 +91,23 @@ export class OperatorInterventionService {
       return { resumed: false, requeued: 0 };
     }
 
-    const result = this.loops.resumeInterruptedRun(run.id);
+    // Mark the run as running again (recoverInterruptedRuns handles the rest).
+    this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run('running', run.id);
 
     // Mark the goal as running again.
-    if (result.resumed) {
-      this.db.prepare('UPDATE goals SET status = ?, updated_at = datetime(\'now\') WHERE id = ?')
-        .run('running', goalId);
-    }
+    this.db.prepare('UPDATE goals SET status = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run('running', goalId);
 
     swarmEventBus.emit('convergence', {
       intervention: 'resume',
       goal_id: goalId,
       run_id: run.id,
-      resumed: result.resumed,
-      requeued: result.requeuedFindings.length,
+      resumed: true,
+      requeued: 0,
     });
 
-    return { resumed: result.resumed, requeued: result.requeuedFindings.length };
+    return { resumed: true, requeued: 0 };
   }
 
   /**

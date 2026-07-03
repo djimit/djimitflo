@@ -8,8 +8,6 @@ import { initializeDatabase } from '../database';
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { LoopService } from '../services/loop-service';
 import { LoopDaemon } from '../services/loop-daemon';
-import { SelfModelService } from '../services/self-model-service';
-import { SwarmStatusService } from '../services/swarm-status-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
@@ -19,19 +17,7 @@ async function main() {
   console.log('');
 
   const db = initializeDatabase();
-  const swarmStatus = new SwarmStatusService(db);
-  const selfModel = new SelfModelService(db);
-
-  const concurrencyAdvisor = (): number | null => {
-    try {
-      const status = swarmStatus.getStatus();
-      const pools = status.fleet_pools as Array<{ recommended_concurrency: number }>;
-      if (!pools || pools.length === 0) return null;
-      return pools.reduce((sum, p) => sum + (p.recommended_concurrency || 0), 0);
-    } catch { return null; }
-  };
-
-  const loops = new LoopService(db, undefined, concurrencyAdvisor, selfModel);
+  const loops = new LoopService(db);
 
   // Step 1: Generate autonomous goals
   console.log('📊 Step 1: Generating autonomous goals...');

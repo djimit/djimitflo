@@ -21,7 +21,6 @@ import { ExecutionEngine } from './execution/execution-engine';
 import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { LoopService } from './services/loop-service';
-import { SwarmStatusService } from './services/swarm-status-service';
 import { LoopDaemon } from './services/loop-daemon';
 import { NegotiationCoordinator } from './services/negotiation-coordinator';
 import { CapabilityAcquisitionService } from './services/capability-acquisition';
@@ -29,7 +28,6 @@ import { MetaEvolutionService } from './services/meta-evolution-service';
 import { NestedSpawnService } from './services/nested-spawn-service';
 import { SwarmIntelligenceService } from './services/swarm-intelligence-service';
 import { SelfModelService } from './services/self-model-service';
-import { ExperienceRetrievalService } from './services/experience-retrieval-service';
 import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
 import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
 import { WorkerPool } from './services/worker-pool';
@@ -62,39 +60,16 @@ async function main() {
 
   // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
   // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.
-  // G9: wire the fleet concurrency advisor — LoopService gets the recommended
-  // concurrency from SwarmStatusService without a circular import. The advisor
-  // is a lazy callback so fleetPools() is only called when the AIMD controller
-  // needs the hard cap (not on every constructor).
-  const swarmStatus = new SwarmStatusService(db);
-  const concurrencyAdvisor = (): number | null => {
-    try {
-      const status = swarmStatus.getStatus();
-      const pools = status.fleet_pools as Array<{ recommended_concurrency: number }>;
-      if (!pools || pools.length === 0) return null;
-      // Sum the recommended concurrency across all runtime pools.
-      return pools.reduce((sum, p) => sum + (p.recommended_concurrency || 0), 0);
-    } catch { return null; }
-  };
-
+  // G138: SelfModel service for confidence calibration (used by calibrated runtime selection)
   const selfModel = new SelfModelService(db);
-  // ExperienceRetrievalService is instantiated within ContextInjectionService
-  // when a db is available. The instance here is for future standalone use.
-  const _experienceRetrieval = new ExperienceRetrievalService(db);
-  void _experienceRetrieval;
-  const recoverySvc = new LoopService(db, undefined, concurrencyAdvisor, selfModel);
+  void selfModel;
+
+  const recoverySvc = new LoopService(db);
   try {
     const recovery = recoverySvc.recoverInterruptedRuns();
     if (recovery.interruptedRuns || recovery.failedLeases || recovery.prunedWorktrees) {
       console.log(
         `🔄 Recovered ${recovery.interruptedRuns} interrupted run(s), ${recovery.failedLeases} orphaned lease(s), pruned ${recovery.prunedWorktrees} worktree(s).`,
-      );
-    }
-    // G10: resume interrupted runs from their last checkpoint (crash recovery).
-    const resumeResult = recoverySvc.resumeInterruptedRuns();
-    if (resumeResult.resumed > 0 || resumeResult.boundedFailed > 0) {
-      console.log(
-        `🔄 Resumed ${resumeResult.resumed} run(s) from checkpoint, ${resumeResult.boundedFailed} bounded-failed.`,
       );
     }
   } catch (error) {

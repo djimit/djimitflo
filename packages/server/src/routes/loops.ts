@@ -272,7 +272,7 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
 
   router.post('/runs/:id/complete', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.completeLoopRun(req.params.id, req.body || {}));
+      res.json(loopService.completeLoopRun(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);

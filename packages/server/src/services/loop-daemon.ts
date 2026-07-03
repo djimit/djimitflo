@@ -202,7 +202,6 @@ export class LoopDaemon {
       // 2. Start the loop (discovers findings, creates the loop_run).
       const run = this.loops.startDocDriftAndSmallFixLoop({
         goal_id: goal.id,
-        sovereign: Boolean((goal.metadata as Record<string, unknown>).sovereign),
       });
       runId = run.id;
 
@@ -275,11 +274,12 @@ export class LoopDaemon {
         }
       } catch { /* best-effort: checks are not fatal for the daemon */ }
 
-      // 9. Certify the run (G3.4 convergence certificate).
-      const cert = this.loops.certifyLoopRun(run.id);
+      // 9. Verify the run (G3.4 convergence verification).
+      const verification = this.loops.verifyLoopRun(run.id);
+      const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
 
       // 9b. Close learning loop (reflection + memory + follow-up).
-      if (cert.certified) {
+      if (allGatesPass) {
         try {
           const knowledge = new KnowledgeRuntimeService(this.db);
           knowledge.closeLoop({ loop_run_id: run.id });
@@ -287,11 +287,10 @@ export class LoopDaemon {
       }
 
       // 10. Update goal + run status.
-      const goalStatus = cert.certified ? 'completed' : 'failed';
-      const runStatus = cert.certified ? 'completed' : 'blocked';
+      const goalStatus = allGatesPass ? 'completed' : 'failed';
+      const runStatus = allGatesPass ? 'completed' : 'blocked';
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run(goalStatus, new Date().toISOString(), goal.id);
-      // Also update the loop run status so the dashboard shows it correctly.
       this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
         .run(runStatus, new Date().toISOString(), run.id);
 
@@ -299,8 +298,8 @@ export class LoopDaemon {
         daemon: 'goal_completed',
         goal_id: goal.id,
         run_id: run.id,
-        certified: cert.certified,
-        missing: cert.missing,
+        certified: allGatesPass,
+        gates: verification.gates.map(g => `${g.name}:${g.status}`),
       });
 
     } catch (error) {

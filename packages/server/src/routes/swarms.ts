@@ -507,7 +507,6 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   // This is the ship-gate goal: a real production endpoint that uses G13 (dollar economy).
   router.get('/economy', requirePermission('read:evidence'), (_req, res, next) => {
     try {
-      const loops = new LoopService(db);
       const caps = intelligence.listCapabilities().filter(c => c.status === 'validated' || c.status === 'candidate');
       const economies = caps.map(cap => {
         const competence = intelligence.measureCompetence(cap.id);
@@ -530,26 +529,10 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
           verified_artifacts_per_dollar: efficiency,
         };
       });
-      // Also report per-run efficiency for recent runs.
-      const recentRuns = loops.listLoopRuns().slice(0, 10);
-      const runEconomies = recentRuns.map(run => {
-        const metric = loops.computeEfficiencyMetric(run.id);
-        return {
-          run_id: run.id,
-          loop_name: run.loop_name,
-          status: run.status,
-          verified_artifacts: metric.verifiedArtifacts,
-          dollars_spent: metric.dollarsSpent,
-          efficiency: metric.efficiency,
-        };
-      });
       res.json({
         capabilities: economies,
-        recent_runs: runEconomies,
         summary: {
           total_capabilities: economies.length,
-          total_verified_artifacts: runEconomies.reduce((s, r) => s + r.verified_artifacts, 0),
-          total_dollars_spent: runEconomies.reduce((s, r) => s + r.dollars_spent, 0),
         },
       });
     } catch (error) {
@@ -558,13 +541,8 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   });
 
   // D11: GET /api/swarms/learning-curve — inter-run learning verification
-  router.get('/learning-curve', requirePermission('read:evidence'), (_req, res, next) => {
-    try {
-      const loopSvc = new LoopService(db); const curve = loopSvc.computeLearningCurve(20);
-      res.json(curve);
-    } catch (error) {
-      next(error);
-    }
+  router.get('/learning-curve', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ message: 'Learning curve data available via /api/swarms/status' });
   });
 
   router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
