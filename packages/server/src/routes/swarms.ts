@@ -2,13 +2,16 @@
  * Swarm routes — orchestration control plane API.
  *
  * Refactored from monolithic 1138-line file into focused route factories:
- * - createWorkerRoutes: worker pool, scheduler, handoffs
- * - createIntelligenceRoutes: capabilities, specialists, economy, mission control
- * - createGovernanceRoutes: proof runs, evolution, assurance, memory
+ * - createWorkerRoutes: worker pool, scheduler, handoffs (write:swarm_action)
+ * - createIntelligenceRoutes: capabilities (write:capability), specialists, economy, mission control
+ * - createGovernanceRoutes: proof runs, evolution, assurance, memory (write:governance)
  * - createKnowledgeRoutes: OKF knowledge, runtime readiness
  *
  * Remaining routes (fix pipeline, expert swarm, RSI, learning loop, hypotheses,
  * missions) stay here as they are tightly coupled to their specific services.
+ *
+ * Permission scopes used across all swarm routes:
+ * read:evidence, write:swarm_action, write:capability, write:governance, write:claim, write:runner_manifest
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
