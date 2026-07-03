@@ -1030,7 +1030,7 @@ export class LoopService {
     }
     const dollarsSpent = this.computeDollarCost(runtime, totalTokens);
     const verifiedArtifacts = this.db.prepare(
-      "SELECT COUNT(*) as c FROM worker_leases WHERE loop_run_id = ? AND status = 'completed'"
+      "SELECT COUNT(*) as c FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' AND status = 'completed'"
     ).get(runId) as { c: number };
     return {
       verifiedArtifacts: verifiedArtifacts.c,
@@ -1526,7 +1526,7 @@ export class LoopService {
     const allPass = result.gates.every(g => g.status === 'pass');
     swarmEventBus.emit('convergence', {
       type: 'convergence',
-      data: { run_id: id, certified: allPass, gates: result.gates.map(g => `${g.name}:${g.status}`) },
+      data: { run_id: id, certified: allPass, gates: result.gates.map(g => ({ name: g.name, status: g.status })) },
     });
     return { ...result, certified: allPass };
   }
