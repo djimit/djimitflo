@@ -57,16 +57,21 @@ export class ContextIsolationService {
    * Get the context budget for a spawn tree (0 = no isolation, backward-compatible).
    */
   getContextBudget(spawnTreeId: string): number {
-    const row = this.db.prepare('SELECT context_budget FROM spawn_trees WHERE id = ?').get(spawnTreeId) as { context_budget: number } | undefined;
-    return row?.context_budget ?? 0;
+    try {
+      const row = this.db.prepare('SELECT context_budget FROM spawn_trees WHERE id = ?').get(spawnTreeId) as { context_budget: number } | undefined;
+      return row?.context_budget ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
-  /**
-   * Get consumed context tokens for a spawn tree.
-   */
   getContextConsumed(spawnTreeId: string): number {
-    const row = this.db.prepare('SELECT context_consumed FROM spawn_trees WHERE id = ?').get(spawnTreeId) as { context_consumed: number } | undefined;
-    return row?.context_consumed ?? 0;
+    try {
+      const row = this.db.prepare('SELECT context_consumed FROM spawn_trees WHERE id = ?').get(spawnTreeId) as { context_consumed: number } | undefined;
+      return row?.context_consumed ?? 0;
+    } catch {
+      return 0;
+    }
   }
 
   /**

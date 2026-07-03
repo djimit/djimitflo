@@ -198,14 +198,25 @@ export class NestedSpawnService {
     });
 
     const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO spawn_trees (
-        id, depth_budget, total_token_budget, consumed_tokens, total_wall_budget_ms,
-        consumed_wall_ms, max_concurrent_children, risk_class, context_budget, context_consumed, status, started_at, updated_at
-      ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 'open', ?, ?)
-    `).run(
-      treeId, depthBudget, totalTokenBudget, totalWallBudgetMs, maxConcurrent, riskClass, contextBudget, now, now
-    );
+    // Backward-compatible INSERT: include context columns only if they exist (additive migration).
+    const cols = this.db.prepare("PRAGMA table_info(spawn_trees)").all() as Array<{ name: string }>;
+    const hasContextBudget = cols.some((c) => c.name === 'context_budget');
+
+    if (hasContextBudget) {
+      this.db.prepare(`
+        INSERT INTO spawn_trees (
+          id, depth_budget, total_token_budget, consumed_tokens, total_wall_budget_ms,
+          consumed_wall_ms, max_concurrent_children, risk_class, context_budget, context_consumed, status, started_at, updated_at
+        ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, ?, 0, 'open', ?, ?)
+      `).run(treeId, depthBudget, totalTokenBudget, totalWallBudgetMs, maxConcurrent, riskClass, contextBudget, now, now);
+    } else {
+      this.db.prepare(`
+        INSERT INTO spawn_trees (
+          id, depth_budget, total_token_budget, consumed_tokens, total_wall_budget_ms,
+          consumed_wall_ms, max_concurrent_children, risk_class, status, started_at, updated_at
+        ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, 'open', ?, ?)
+      `).run(treeId, depthBudget, totalTokenBudget, totalWallBudgetMs, maxConcurrent, riskClass, now, now);
+    }
 
     // Record the root as a spawn edge so the ancestry walk is uniform (root has no parent).
     this.insertSpawnRow({
