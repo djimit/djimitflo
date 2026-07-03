@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
+import { swarmEventBus } from './swarm-event-bus';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -949,19 +950,32 @@ export class LoopService {
   }
 
   private selectRuntimeForCapability(capabilityId: string, _finding: LoopFinding): string {
+    void _finding;
     const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
 
     try {
-      const costModel = this.intelligence.measureCompetencePerRuntime(capabilityId);
-      const entries = Object.entries(costModel);
+      const cap = this.db.prepare('SELECT metadata, cost_model_json FROM swarm_capabilities WHERE id = ?').get(capabilityId) as { metadata: string; cost_model_json: string } | undefined;
+      if (cap) {
+        const costModel = JSON.parse(cap.cost_model_json || '{}') as { learned?: boolean; p50_tokens?: number };
+        if (costModel?.learned && typeof costModel.p50_tokens === 'number' && costModel.p50_tokens < 5000) {
+          return 'opencode';
+        }
+        const metadata = JSON.parse(cap.metadata || '{}') as Record<string, unknown>;
+        const competence = metadata.competence as { success_rate?: number } | undefined;
+        if (competence?.success_rate !== undefined && competence.success_rate > 0.7) {
+          return 'codex';
+        }
+      }
+
+      const runtimeData = this.intelligence.measureCompetencePerRuntime(capabilityId);
+      const entries = Object.entries(runtimeData);
       if (entries.length > 0) {
         let bestRuntime = entries[0][0];
         let bestScore = -1;
         for (const [runtime, data] of entries) {
           if (data.success_rate < 0.3) continue;
-          const score = data.success_rate;
-          if (score > bestScore) {
-            bestScore = score;
+          if (data.success_rate > bestScore) {
+            bestScore = data.success_rate;
             bestRuntime = runtime;
           }
         }
@@ -1030,6 +1044,14 @@ export class LoopService {
     const queue = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'prepared'").get() as { c: number };
     const currentLimit = Number(process.env.RUNTIME_MAX_CONCURRENCY) || 5;
     const dynamicLimit = increase ? currentLimit + 1 : Math.max(1, currentLimit - 1);
+
+    swarmEventBus.emit('aimd_state', {
+      success: true,
+      dynamicLimit,
+      active: active.c,
+      queue_depth: queue.c,
+    });
+
     return { success: true, dynamicLimit, active: active.c, queueDepth: queue.c };
   }
 
@@ -1497,6 +1519,16 @@ export class LoopService {
     });
 
     return { run: this.getLoopRun(run.id), gates, leases };
+  }
+
+  certifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; certified: boolean } {
+    const result = this.verifyLoopRun(id);
+    const allPass = result.gates.every(g => g.status === 'pass');
+    swarmEventBus.emit('convergence', {
+      type: 'convergence',
+      data: { run_id: id, certified: allPass, gates: result.gates.map(g => `${g.name}:${g.status}`) },
+    });
+    return { ...result, certified: allPass };
   }
 
   completeLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[] } {
