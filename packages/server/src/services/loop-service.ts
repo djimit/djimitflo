@@ -5,11 +5,8 @@ import { randomUUID } from 'crypto';
 import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
-import { SkillService } from './skill-service';
-import { swarmEventBus } from './swarm-event-bus';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
-import { SelfModelService } from './self-model-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type GoalStatus = 'created' | 'decomposed' | 'running' | 'blocked' | 'completed' | 'failed' | 'cancelled';
@@ -23,8 +20,7 @@ export type LoopName =
   | 'mcp-connector-validation-loop'
   | 'security-regression-loop'
   | 'okf-synchronization-loop'
-  | 'overwatch-policy-drift-loop'
-  | 'research-loop';
+  | 'overwatch-policy-drift-loop';
 
 interface LoopContract {
   name: LoopName;
@@ -130,8 +126,6 @@ export interface WorkerLeaseRecord {
   spawn_tree_id: string | null;
   depth: number;
   spawned_by_agent_id: string | null;
-  // G1: the capability this lease exercised (links to swarm_capabilities for competence).
-  capability_id?: string | null;
 }
 
 interface LoopEventRecord {
@@ -149,16 +143,12 @@ interface StartDocDriftLoopInput {
   goal_id?: string;
   repository_path?: string;
   max_findings?: number;
-  // G11: sovereign flag — when true, all findings route to pi (offline, zero-egress).
-  sovereign?: boolean;
 }
 
 interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
-  // G1: capability the maker lease exercises (for competence measurement + auto-promotion).
-  capabilityId?: string | null;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
 }
 
@@ -225,7 +215,6 @@ interface RuntimeContract {
   supports_timeout_kill: boolean;
   evidence: string[];
   reason?: string;
-  probed_at?: string;
 }
 
 interface CheckerVerdictInput {
@@ -233,10 +222,6 @@ interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
-}
-
-interface CompleteLoopInput {
-  human_approval_ref?: string;
 }
 
 interface RunChecksInput {
@@ -314,13 +299,6 @@ const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
 const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
 const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
-const LOW_CONTEXT_WORKER_PROFILE = {
-  name: 'djimitflo-worker',
-  scope: 'low-context',
-  max_tokens: 500_000,
-  max_tokens_per_worker: 300_000,
-  max_tokens_per_diff_line: 50_000,
-};
 
 const LOOP_CONTRACTS: LoopContract[] = [
   {
@@ -446,22 +424,10 @@ export class LoopService {
   private static readonly runtimeSemaphore: {
     active: Set<string>;
     queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }>;
-    // G4: AIMD concurrency controller state — the dynamic limit the controller drives.
-    dynamicLimit: number | null;
-  } = { active: new Set(), queue: [], dynamicLimit: null };
-
-  /**
-   * G9: ConcurrencyAdvisor — a callback that returns the fleet's recommended
-   * concurrency (from SwarmStatusService.fleetPools().recommended_concurrency).
-   * Injected at construction to avoid a circular import (LoopService does NOT
-   * import SwarmStatusService). The hard cap is min(env_cap, advisor() ?? env_cap).
-   */
-  private concurrencyAdvisor: (() => number | null) | null = null;
-  private selfModel: SelfModelService | null = null;
+  } = { active: new Set(), queue: [] };
   private db: Database;
   private evidenceRoot: string;
   private assurance: AgentAssuranceService;
-  private skills: SkillService;
   private intelligence: SwarmIntelligenceService;
   /**
    * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
@@ -477,16 +443,11 @@ export class LoopService {
     Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000),
   );
 
-  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, concurrencyAdvisor?: (() => number | null) | null, selfModel?: SelfModelService | null) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
     this.intelligence = new SwarmIntelligenceService(db);
-    this.skills = new SkillService(db);
-    // G9: inject the fleet concurrency advisor (avoids circular import with SwarmStatusService)
-    this.concurrencyAdvisor = concurrencyAdvisor ?? null;
-    // G37: inject the self-model service for calibrated runtime selection
-    this.selfModel = selfModel ?? null;
   }
 
   /**
@@ -551,151 +512,6 @@ export class LoopService {
 
     const prunedWorktrees = this.pruneOrphanedWorktrees();
     return { interruptedRuns, failedLeases, prunedWorktrees };
-  }
-
-  /**
-   * G10: Resume an interrupted run from its last checkpoint. Loads the last
-   * checkpoint, determines which findings were completed (lease status = 'completed'
-   * + checker accepted) vs in-flight (lease status = 'failed' with failed_reason
-   * 'server_restart' or 'budget_drain'), re-queues in-flight findings as new leases,
-   * and marks the run as 'running' again.
-   *
-   * Bounded-fail: if the run has been resumed >= maxResumeAttempts times (default 3),
-   * it is marked 'failed' (not 'interrupted') — no infinite retry loop.
-   *
-   * Returns the resume result: which findings were re-queued, which were skipped
-   * (already completed), and whether the run was resumed or bounded-failed.
-   */
-  resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
-    resumed: boolean;
-    boundedFail: boolean;
-    requeuedFindings: string[];
-    skippedFindings: string[];
-    resumeAttempt: number;
-  } {
-    const run = this.getLoopRun(runId);
-    if (run.status !== 'interrupted') {
-      throw new Error('LOOP_RUN_NOT_INTERRUPTED');
-    }
-
-    const meta = run.metadata as Record<string, unknown>;
-    const resumeAttempts = typeof meta.resume_attempts === 'number' ? meta.resume_attempts : 0;
-    const newAttempt = resumeAttempts + 1;
-
-    // Bounded-fail: too many resume attempts → mark as failed.
-    if (newAttempt > maxResumeAttempts) {
-      this.db.prepare(
-        `UPDATE loop_runs SET status = 'failed', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
-      ).run(JSON.stringify({
-        ...meta,
-        failed_reason: 'resume_exhausted',
-        failed_at: new Date().toISOString(),
-        resume_attempts: newAttempt,
-      }), runId);
-      this.recordLoopEvent(runId, 'loop_resume_exhausted', 'warning',
-        `Run failed after ${newAttempt - 1} resume attempts (bounded-fail).`, { resume_attempts: newAttempt });
-      return { resumed: false, boundedFail: true, requeuedFindings: [], skippedFindings: [], resumeAttempt: newAttempt };
-    }
-
-    // Load the last checkpoint for this run.
-    const checkpoint = this.db.prepare(
-      `SELECT * FROM loop_checkpoints WHERE loop_run_id = ? ORDER BY created_at DESC LIMIT 1`,
-    ).get(runId) as { id: string; state_json: string; findings_json: string; leases_json: string } | undefined;
-
-    const leases = this.listWorkerLeases(runId);
-
-    // Determine completed vs in-flight findings.
-    const completedLeases = leases.filter((l) => l.status === 'completed');
-    const completedFindingIds = new Set(completedLeases.map((l) => l.finding_id).filter(Boolean) as string[]);
-    const failedLeases = leases.filter((l) => l.status === 'failed');
-    const inFlightFindingIds = new Set(
-      failedLeases
-        .filter((l) => {
-          const m = l.metadata as Record<string, unknown>;
-          return m.failed_reason === 'server_restart' || m.failed_reason === 'budget_drain';
-        })
-        .map((l) => l.finding_id)
-        .filter(Boolean) as string[],
-    );
-
-    // Re-queue in-flight findings that haven't been completed by another lease.
-    const requeuedFindings: string[] = [];
-    for (const findingId of inFlightFindingIds) {
-      if (!completedFindingIds.has(findingId)) {
-        requeuedFindings.push(findingId);
-      }
-    }
-
-    const skippedFindings = Array.from(completedFindingIds);
-
-    // Mark the run as running again.
-    this.db.prepare(
-      `UPDATE loop_runs SET status = 'running', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
-    ).run(JSON.stringify({
-      ...meta,
-      resume_attempts: newAttempt,
-      resumed_at: new Date().toISOString(),
-      requeued_findings: requeuedFindings,
-      skipped_findings: skippedFindings,
-      checkpoint_id: checkpoint?.id ?? null,
-    }), runId);
-
-    this.recordLoopEvent(runId, 'loop_resumed', 'info',
-      `Run resumed from checkpoint (attempt ${newAttempt}). Re-queued ${requeuedFindings.length} finding(s), skipped ${skippedFindings.length} completed.`,
-      { resume_attempt: newAttempt, requeued: requeuedFindings, skipped: skippedFindings });
-    // G14: emit recovery event for live observability.
-    swarmEventBus.emit('recovery', {
-      run_id: runId,
-      resumed: true,
-      resume_attempt: newAttempt,
-      requeued: requeuedFindings.length,
-      skipped: skippedFindings.length,
-    });
-
-    return {
-      resumed: true,
-      boundedFail: false,
-      requeuedFindings,
-      skippedFindings,
-      resumeAttempt: newAttempt,
-    };
-  }
-
-  /**
-   * G10: Resume all interrupted runs. Called on server startup after
-   * recoverInterruptedRuns(). Each interrupted run is resumed from its last
-   * checkpoint, or bounded-failed if too many attempts.
-   */
-  resumeInterruptedRuns(maxResumeAttempts = 3): {
-    resumed: number;
-    boundedFailed: number;
-    details: Array<{ runId: string; resumed: boolean; requeued: number; skipped: number }>;
-  } {
-    const interruptedRuns = this.db.prepare(
-      `SELECT id FROM loop_runs WHERE status = 'interrupted'`,
-    ).all() as Array<{ id: string }>;
-
-    const details: Array<{ runId: string; resumed: boolean; requeued: number; skipped: number }> = [];
-    let resumed = 0;
-    let boundedFailed = 0;
-
-    for (const { id } of interruptedRuns) {
-      try {
-        const result = this.resumeInterruptedRun(id, maxResumeAttempts);
-        details.push({
-          runId: id,
-          resumed: result.resumed,
-          requeued: result.requeuedFindings.length,
-          skipped: result.skippedFindings.length,
-        });
-        if (result.resumed) resumed++;
-        if (result.boundedFail) boundedFailed++;
-      } catch {
-        // Skip runs that can't be resumed (non-fatal).
-      }
-    }
-
-    return { resumed, boundedFailed, details };
   }
 
   /**
@@ -899,7 +715,6 @@ export class LoopService {
 
     const findings = this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
-    const sovereign = input.sovereign ?? false;
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Loop does not merge, deploy, or push changes.' },
@@ -951,7 +766,6 @@ export class LoopService {
         mutating_actions: false,
         risk_class: runRiskClass,
         contract,
-        sovereign,
       }),
       now,
       now,
@@ -1093,8 +907,8 @@ export class LoopService {
       throw new Error('LOOP_FINDING_NOT_FOUND');
     }
 
-    const defaultRuntime = input.runtime || 'manual';
-    this.assertRuntimeAvailable(defaultRuntime);
+    const runtime = input.runtime || 'manual';
+    this.assertRuntimeAvailable(runtime);
 
     const budget = this.getMakerLeaseBudget(run, input);
     const currentMakerLeases = alreadyLeased.filter((lease) => lease.role === 'maker').length;
@@ -1105,19 +919,12 @@ export class LoopService {
     const now = new Date().toISOString();
     const leases: WorkerLeaseRecord[] = [];
 
-    const requestedRuntime = input.runtime || null;
-    // ponytail: explicit runtime is the operator/smoke contract; adaptive planning only fills blanks.
-    const plan = requestedRuntime || input.capabilityId ? null : this.planLoopRun(id);
-
     for (const finding of selectedFindings) {
       const branchName = this.branchNameFor(run.id, finding.id);
       const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
       this.ensureWorktreeControlIgnore(worktreePath);
-      const findingPlan = plan?.find((p) => p.finding_id === finding.id);
-      const leaseRuntime = findingPlan?.runtime || defaultRuntime;
-      this.assertRuntimeAvailable(leaseRuntime);
-      this.writeWorkAssignment(worktreePath, run, finding, leaseRuntime);
-      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, leaseRuntime);
+      this.writeWorkAssignment(worktreePath, run, finding, runtime);
+      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime);
 
       const makerLeaseId = randomUUID();
       const assignmentFile = this.workAssignmentPath(worktreePath);
@@ -1125,16 +932,13 @@ export class LoopService {
         id: makerLeaseId,
         loopRunId: run.id,
         role: 'maker',
-        runtime: leaseRuntime,
+        runtime,
         findingId: finding.id,
         worktreePath,
         branchName,
-        capabilityId: input.capabilityId ?? plan?.find((p) => p.finding_id === finding.id)?.capability_id ?? null,
         metadata: {
           assignment_file: assignmentFile,
           assignment_packet_file: assignmentPacketFile,
-          requested_runtime: requestedRuntime,
-          effective_runtime: leaseRuntime,
         },
         now,
       });
@@ -1148,12 +952,7 @@ export class LoopService {
         findingId: finding.id,
         worktreePath: null,
         branchName: null,
-        metadata: {
-          maker_lease_id: makerLeaseId,
-          requires_independent_review: true,
-          requested_runtime: requestedRuntime,
-          effective_runtime: 'manual',
-        },
+        metadata: { maker_lease_id: makerLeaseId, requires_independent_review: true },
         now,
       });
 
@@ -1192,188 +991,12 @@ export class LoopService {
 
     this.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', `Prepared ${selectedFindings.length} maker/checker assignment(s).`, {
       finding_ids: selectedFindings.map((finding) => finding.id),
-      runtime: defaultRuntime,
+      runtime,
       budget,
     });
 
     leases.push(...this.listWorkerLeases(run.id));
     return { run: this.getLoopRun(run.id), leases };
-  }
-
-  // G3.1: Planner — maps a goal's findings to a capability DAG. For each finding, selects
-  // the best capability by competence (success_rate / p50_cost = the market). Returns a plan
-  // the scheduler (continueLoopRun) can use to create leases with the right capability_id.
-  // The existing maker→checker→nested shape is the default; the planner generalizes it.
-  planLoopRun(id: string): Array<{
-    finding_id: string;
-    capability_id: string | null;
-    role: string;
-    runtime: string;
-    competence: Record<string, number> | null;
-    dependencies: string[];
-  }> {
-    const run = this.getLoopRun(id);
-    const caps = this.intelligence.listCapabilities()
-      .filter((c) => c.status === 'validated' || c.status === 'candidate');
-    // G31: match findings to specialised capabilities by file type / keyword.
-    // If no specialised capabilities match, fall back to generic spawn_runtime_worker.
-    const generic = caps.filter((c) => c.allowed_actions.includes('spawn_runtime_worker'));
-    // Try specialised matching first: TypeScript-fix, Python-fix, Security-audit, etc.
-    const specialised = generic.filter((c) => {
-      const meta = c.metadata as Record<string, unknown> | undefined;
-      const specialisation = meta?.specialisation as string | undefined;
-      return specialisation && specialisation !== 'generic';
-    });
-    const matching = specialised.length > 0 ? specialised : generic;
-    let best: { id: string; metadata: Record<string, unknown>; allowed_actions: string[]; status: string } | null = null;
-    let bestScore = -1;
-    for (const c of matching) {
-      const comp = c.metadata.competence as { success_rate?: number; p50_cost?: number } | undefined;
-      const sr = comp?.success_rate ?? 0;
-      const cost = Math.max(1, comp?.p50_cost ?? 1);
-      const score = (sr / cost) * 1000; // competence per cost = the market
-      if (score > bestScore) { bestScore = score; best = c; }
-    }
-    return run.findings.map((finding) => {
-      // G11: runtime-adaptive selection — the planner selects the runtime per finding
-      // by (capability, competence, cost, sovereignty), not a fixed field. This makes
-      // the fleet adaptive: sovereign tasks route to pi, lightweight to opencode,
-      // complex/high-competence to codex.
-      const runtime = this.selectRuntime(run, best, finding);
-      return {
-        finding_id: finding.id,
-        capability_id: best?.id ?? null,
-        role: 'maker',
-        runtime,
-        competence: (best?.metadata.competence as Record<string, number> | undefined) ?? null,
-        dependencies: [], // maker has no deps; checker depends on maker (added by scheduler)
-      };
-    });
-  }
-
-  /**
-   * G11: Runtime-adaptive selection — choose the best runtime for a finding based on
-   * the goal's sovereignty requirement, the capability's learned cost model, and the
-   * capability's competence on each runtime.
-   *
-   * - Sovereign (offline/zero-egress) goals → pi (always, no exceptions)
-   * - Lightweight (p50_tokens < LIGHTWEIGHT_THRESHOLD) → opencode (cheaper, faster)
-   * - Complex / high-competence on codex → codex (the verified baseline)
-   * - Default → codex
-   *
-   * The caller can still override per-goal via run.metadata.runtime (backward compat).
-   */
-  private selectRuntime(
-    run: LoopRunRecord,
-    capability: { id: string; metadata: Record<string, unknown>; allowed_actions: string[]; status: string } | null,
-    _finding: LoopFinding,
-  ): 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock' {
-    // Sovereignty check: if the goal requires offline/sovereign execution → pi.
-    const runMeta = run.metadata as Record<string, unknown>;
-    if (runMeta.sovereign === true || process.env.PI_OFFLINE === '1') {
-      return 'pi';
-    }
-
-    // G37: Calibrated selection — use self-model if available
-    if (this.selfModel && capability?.id) {
-      const calibration = this.selfModel.getCalibration(capability.id);
-      if (calibration.nRuns >= 3) {
-        const perRuntime = this.intelligence.measureCompetencePerRuntime(capability.id);
-        const runtimes = Object.entries(perRuntime);
-        if (runtimes.length > 0) {
-          let bestRuntime = runtimes[0][0];
-          let bestScore = -1;
-          for (const [runtime, data] of runtimes) {
-            if (data.success_rate < 0.3) continue;
-            const score = data.success_rate * calibration.recommendedConfidence;
-            if (score > bestScore) {
-              bestScore = score;
-              bestRuntime = runtime;
-            }
-          }
-          if (bestScore > 0) {
-            const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
-            if (validRuntimes.includes(bestRuntime as typeof validRuntimes[number])) {
-              return bestRuntime as 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock';
-            }
-          }
-        }
-      }
-    }
-
-    // Backward compat: if the run has an explicit runtime and no capability-based
-    // selection applies, use the run's runtime.
-    const explicitRuntime = runMeta.runtime as string | undefined;
-
-    // Cost-aware: if the capability has a learned cost model and the finding is
-    // lightweight (p50_tokens < threshold) → opencode.
-    const LIGHTWEIGHT_THRESHOLD = Number(process.env.LIGHTWEIGHT_TOKEN_THRESHOLD) || 5000;
-    const costModel = capability?.metadata?.cost_model as { learned?: boolean; p50_tokens?: number } | undefined;
-    if (costModel?.learned && typeof costModel.p50_tokens === 'number' && costModel.p50_tokens < LIGHTWEIGHT_THRESHOLD) {
-      return 'opencode';
-    }
-
-    // Competence-aware: if the capability has high competence → codex (the verified baseline).
-    const competence = capability?.metadata?.competence as { success_rate?: number } | undefined;
-    if (competence?.success_rate !== undefined && competence.success_rate > 0.7) {
-      return 'codex';
-    }
-
-    // Default: use the explicit runtime or codex.
-    if (explicitRuntime && ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'].includes(explicitRuntime)) {
-      return explicitRuntime as 'codex' | 'opencode' | 'pi' | 'claude' | 'gemini' | 'editor' | 'mock';
-    }
-    return 'codex';
-  }
-
-  // G3.4: Convergence certificate — generalizes production_passed to ANY loop_run.
-  // A run is certified iff: all gates passed, all maker leases completed, all checker
-  // leases accepted, evidence present (trace spans + manifests), budget within, isolation
-  // held. This is the Lyapunov-style invariant: the swarm converged inside its envelope.
-  certifyLoopRun(id: string): { certified: boolean; missing: string[]; gates: LoopGate[] } {
-    const run = this.getLoopRun(id);
-    const leases = this.listWorkerLeases(id);
-    const missing: string[] = [];
-
-    // 1. All gates passed (the control law's final measurement).
-    const failedGates = run.gates.filter((g) => g.status === 'fail');
-    if (failedGates.length > 0) missing.push('gates_failed');
-
-    // 2. All maker leases completed.
-    const makers = leases.filter((l) => l.role === 'maker');
-    if (makers.length === 0) missing.push('no_makers');
-    if (makers.some((l) => l.status !== 'completed')) missing.push('maker_incomplete');
-
-    // 3. All checker leases completed (verdict accepted).
-    const checkers = leases.filter((l) => l.role === 'checker');
-    if (checkers.length === 0) missing.push('no_checkers');
-    if (checkers.some((l) => l.status !== 'completed')) missing.push('checker_incomplete');
-
-    // 4. Evidence present (trace spans + manifests).
-    const traceSpanCount = (this.db.prepare('SELECT COUNT(*) as c FROM agent_trace_spans WHERE loop_run_id = ?').get(id) as { c: number }).c;
-    if (traceSpanCount === 0) missing.push('no_trace_spans');
-
-    // 5. Budget within (token + wall clock + dollar).
-    const tokenBudget = this.evaluateTokenBudget(run, null, '', 0);
-    if (tokenBudget.exhausted) missing.push('budget_exhausted');
-    // G13: dollar budget check.
-    const dollarBudget = this.getDollarBudget(run);
-    if (dollarBudget.maxDollars) {
-      const dollarsSpent = this.computeDollarsSpent(id);
-      if (dollarsSpent > dollarBudget.maxDollars) missing.push('dollar_budget_exhausted');
-    }
-
-    // 6. Isolation held (worktree_isolation gate passed).
-    const isolationGate = run.gates.find((g) => g.name === 'worktree_isolation');
-    if (isolationGate && isolationGate.status === 'fail') missing.push('isolation_broken');
-
-    // G14: emit convergence event for live observability.
-    swarmEventBus.emit('convergence', {
-      run_id: id,
-      certified: missing.length === 0,
-      missing,
-    });
-    return { certified: missing.length === 0, missing, gates: run.gates };
   }
 
   splitLoopFinding(id: string, input: SplitLoopInput = {}): { run: LoopRunRecord; parent: LoopFinding; children: LoopFinding[]; leases: WorkerLeaseRecord[] } {
@@ -1683,16 +1306,10 @@ export class LoopService {
       gates,
     });
 
-    // G15: Auto-populate evidence edges for verified gates
-    for (const gate of gates) {
-      if (gate.status === 'pass') {
-        this.populateEvidenceEdges([{ from: `loop:${run.id}`, to: `gate:${gate.name}`, relation: 'verified_by' }]);
-      }
-    }
     return { run: this.getLoopRun(run.id), gates, leases };
   }
 
-  completeLoopRun(id: string, input: CompleteLoopInput = {}): { run: LoopRunRecord; gates: LoopGate[] } {
+  completeLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[] } {
     const current = this.getLoopRun(id);
     const leases = this.listWorkerLeases(current.id);
 
@@ -1710,29 +1327,16 @@ export class LoopService {
       if (incompleteLease) {
         throw new Error('LOOP_COMPLETION_LEASES_INCOMPLETE');
       }
-      const approvalRef = String(input.human_approval_ref || verified.run.metadata.human_approval_ref || '').trim();
-      if (!approvalRef) {
-        throw new Error('LOOP_HUMAN_APPROVAL_REQUIRED');
-      }
-
-      // G15: Governance enforcement — verify no unresolved claims block completion
-      this.enforceGovernanceCompletion(id);
 
       const now = new Date().toISOString();
-      const metadata = {
-        ...verified.run.metadata,
-        human_approval_ref: approvalRef,
-        human_approved_at: now,
-      };
       this.db.prepare(`
         UPDATE loop_runs
-        SET status = ?, next_actions_json = ?, metadata = ?, updated_at = ?, completed_at = ?
+        SET status = ?, next_actions_json = ?, updated_at = ?, completed_at = ?
         WHERE id = ?
-      `).run('completed', JSON.stringify(['Loop completed after human approval']), JSON.stringify(metadata), now, now, id);
+      `).run('completed', JSON.stringify(['Loop completed; ready for human review before merge']), now, now, id);
 
       this.recordLoopEvent(id, 'loop_completed', 'info', 'Loop run completed after verification gates passed.', {
         gates: verified.gates,
-        human_approval_ref: approvalRef,
       });
 
       return { run: this.getLoopRun(id), gates: verified.gates };
@@ -1789,7 +1393,7 @@ export class LoopService {
     });
 
     const nextRun = input.verdict === 'accepted'
-      ? this.verifyLoopRun(run.id).run
+      ? this.getLoopRun(run.id)
       : this.escalateIfFailureThresholdExceeded(run.id, `checker_verdict:${input.verdict}`);
 
     return {
@@ -1842,7 +1446,7 @@ export class LoopService {
     });
 
     const nextRun = input.verdict === 'accepted'
-      ? this.verifyLoopRun(run.id).run
+      ? this.getLoopRun(run.id)
       : this.escalateIfFailureThresholdExceeded(run.id, `security_checker_verdict:${input.verdict}`);
 
     return {
@@ -1918,10 +1522,6 @@ export class LoopService {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
     });
-    // G15: Auto-write runner manifest for worker completion
-    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: failed ? 'fail' : 'complete', gateRefs: checks.map((c: any) => c.name || 'check'), checkpointAfterRef: `checkpoint:after:${makerLease.id}` });
-    // G15: Auto-populate evidence edges
-    this.populateEvidenceEdges([{ from: `loop:${run.id}`, to: `lease:${makerLease.id}`, relation: 'executes_with' }]);
 
     this.db.prepare(`
       UPDATE loop_runs
@@ -1957,6 +1557,9 @@ export class LoopService {
     if (!makerLease) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
     }
+    if (makerLease.role !== 'maker') {
+      throw new Error('LEASE_NOT_MAKER');
+    }
     if (makerLease.status !== 'prepared') {
       throw new Error('MAKER_LEASE_NOT_PREPARED');
     }
@@ -1986,10 +1589,6 @@ export class LoopService {
     });
 
     this.updateWorkerLeaseStatus(makerLease.id, 'running', { started_at: new Date().toISOString() });
-    // G15: Enforce capability gate before worker starts
-    this.enforceCapabilityGate(makerLease);
-    // G15: Auto-write runner manifest for worker start
-    this.autoWriteManifest({ loopRunId: run.id, leaseId: makerLease.id, action: 'start', gateRefs: ['capability_gate', 'worktree_isolation'], checkpointBeforeRef: `checkpoint:before:${makerLease.id}` });
 
     const contract = this.getRuntimeContract(makerLease.runtime);
     if (!contract.available || contract.status !== 'ok') {
@@ -2036,19 +1635,14 @@ export class LoopService {
     fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
     fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
 
-    // Stage the maker's output (incl. new untracked files) before measuring, so the diff
-    // reflects the real change size. `git diff -- .` alone ignores untracked files, which read
-    // a new-file maker change as 0 lines and skipped the tokens-per-diff-line efficiency gate.
-    // The worktree is isolated/disposable; staging here has no host-repo effect.
-    this.git(makerLease.worktree_path, ['add', '-A']);
-    const diff = this.git(makerLease.worktree_path, ['diff', '--cached', '--', '.']);
+    const diff = this.git(makerLease.worktree_path, ['diff', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
-    const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
+    const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id);
     const efficiency = this.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
     const gates: LoopGate[] = [
@@ -2062,7 +1656,6 @@ export class LoopService {
         status: diffLines <= diffMaxLines ? 'pass' : 'fail',
         evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.`,
       },
-      this.runtimeWarningGate(run, runtimeWarnings),
       tokenBudget.gate,
       {
         name: 'no_automatic_merge',
@@ -2139,9 +1732,6 @@ export class LoopService {
         token_budget: tokenBudget.budget,
       });
     }
-    if (tokenBudget.efficiencyExceeded) {
-      this.markTokenEfficiencyBudgetRisk(run, makerLease.id, runtimeUsage, tokenBudget);
-    }
 
     this.recordWorkerManifest({
       decisionId: this.makeManifestDecisionId(run.id, makerLease.id, failed ? 'fail' : 'complete'),
@@ -2212,6 +1802,10 @@ export class LoopService {
     if (!lease) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
     }
+    if (lease.role !== 'maker') {
+      throw new Error('LEASE_NOT_MAKER');
+    }
+
     const traceId = `loop-${run.id}-worker-${lease.id}`;
     const checkpointBefore = this.assurance.createCheckpoint({
       loop_run_id: run.id,
@@ -2460,7 +2054,6 @@ export class LoopService {
         status: 'pass',
         evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.',
       },
-      this.runtimeWarningGate(run, runtimeWarnings),
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');
@@ -2549,10 +2142,9 @@ export class LoopService {
     this.patchWorkerLeaseMetadata(checker.id, {
       checkpoint_after_id: checkpointAfter.id,
     });
-    const finalRun = failed ? this.escalateIfFailureThresholdExceeded(run.id, 'checker_execution_failed') : this.verifyLoopRun(run.id).run;
 
     return {
-      run: finalRun,
+      run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'checker_execution_failed') : this.getLoopRun(run.id),
       lease: this.listWorkerLeases(run.id).find((candidate) => candidate.id === checker.id)!,
       gates,
       stdout_path: stdoutPath,
@@ -2753,30 +2345,17 @@ export class LoopService {
     return { maxFailureCount: 3, source: 'default' };
   }
 
-  private getTokenBudget(run: LoopRunRecord): {
-    maxTokens?: number;
-    maxTokensPerWorker?: number;
-    maxTokensPerDiffLine?: number;
-    source: 'goal' | 'default';
-    profile: string;
-  } {
-    const defaults = this.defaultTokenBudgetForRun(run);
+  private getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; source: 'goal' | 'none' } {
     if (!run.goal_id) {
-      return defaults;
+      return { source: 'none' };
     }
     const goal = this.getGoal(run.goal_id);
-    if (goal.budget.high_context === true || goal.budget.profile === 'full-context') {
-      return { source: 'goal', profile: 'full-context' };
-    }
     const maxTokens = Number(goal.budget.max_tokens);
     const maxTokensPerWorker = Number(goal.budget.max_tokens_per_worker);
-    const maxTokensPerDiffLine = Number(goal.budget.max_tokens_per_diff_line);
     return {
-      maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : defaults.maxTokens,
-      maxTokensPerWorker: Number.isFinite(maxTokensPerWorker) && maxTokensPerWorker > 0 ? Math.floor(maxTokensPerWorker) : defaults.maxTokensPerWorker,
-      maxTokensPerDiffLine: Number.isFinite(maxTokensPerDiffLine) && maxTokensPerDiffLine > 0 ? Math.floor(maxTokensPerDiffLine) : defaults.maxTokensPerDiffLine,
+      maxTokens: Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : undefined,
+      maxTokensPerWorker: Number.isFinite(maxTokensPerWorker) && maxTokensPerWorker > 0 ? Math.floor(maxTokensPerWorker) : undefined,
       source: 'goal',
-      profile: String(goal.budget.profile || defaults.profile),
     };
   }
 
@@ -2792,300 +2371,42 @@ export class LoopService {
     };
   }
 
-  /**
-   * G13: Dollar economy — compute the dollar cost of a runtime lease from its token
-   * usage × price per token (configurable per runtime). Pi is free (local). This makes
-   * the economy real: the system can answer "is this goal worth $5?"
-   */
-  private computeDollarCost(runtime: string, totalTokens: number): number {
-    const pricePerMtok = {
-      codex: Number(process.env.CODEX_PRICE_PER_MTOK) || 2.0,     // ~$2/Mtok (rough estimate)
-      opencode: Number(process.env.OPENCODE_PRICE_PER_MTOK) || 1.0, // ~$1/Mtok (cheaper)
-      pi: Number(process.env.PI_PRICE_PER_MTOK) || 0,              // free (local)
-      claude: Number(process.env.CLAUDE_PRICE_PER_MTOK) || 3.0,
-      gemini: Number(process.env.GEMINI_PRICE_PER_MTOK) || 1.5,
-      mock: 0,
-      manual: 0,
-      editor: 0,
-    } as Record<string, number>;
-    const price = pricePerMtok[runtime] ?? 0;
-    return (totalTokens / 1_000_000) * price;
-  }
-
-  /**
-   * G13: Get the dollar budget for a goal (from goal.budget.dollar_budget or env default).
-   */
-  private getDollarBudget(run: LoopRunRecord): { maxDollars?: number; source: 'goal' | 'env' | 'none' } {
-    const envDefault = Number(process.env.GOAL_DOLLAR_BUDGET);
-    if (run.goal_id) {
-      const goal = this.getGoal(run.goal_id);
-      const dollarBudget = Number((goal.budget as Record<string, unknown>).dollar_budget);
-      if (Number.isFinite(dollarBudget) && dollarBudget > 0) {
-        return { maxDollars: dollarBudget, source: 'goal' };
-      }
-    }
-    if (Number.isFinite(envDefault) && envDefault > 0) {
-      return { maxDollars: envDefault, source: 'env' };
-    }
-    return { source: 'none' };
-  }
-
-  /**
-   * G13: Compute the total dollar spent on a run (sum of all lease costs).
-   */
-  private computeDollarsSpent(runId: string): number {
-    const leases = this.listWorkerLeases(runId);
-    let total = 0;
-    for (const lease of leases) {
-      const usage = lease.metadata.runtime_usage as { total_tokens?: number } | undefined;
-      if (usage?.total_tokens && typeof usage.total_tokens === 'number') {
-        total += this.computeDollarCost(lease.runtime, usage.total_tokens);
-      }
-    }
-    return total;
-  }
-
-  /**
-   * G13: Compute the efficiency metric: verified_artifacts / dollar.
-   * A verified artifact = a completed maker lease with a passed checker.
-   */
-  /**
-   * G34/H: Compute the learning curve — how has the swarm's performance changed
-   * over recent runs? This is the inter-run learning verification: can the system
-   * prove it's smarter after N runs?
-   */
-  computeLearningCurve(limit: number = 10): {
-    runs: Array<{ run_id: string; created_at: string; success: boolean; retries: number; tokens: number; dollars: number }>;
-    trend: { success_rate_improving: boolean; cost_decreasing: boolean; retries_decreasing: boolean };
-    first_vs_last: { first_success_rate: number; last_success_rate: number; first_cost: number; last_cost: number };
-  } {
-    const runs = this.listLoopRuns().slice(0, limit).reverse(); // oldest first
-    const data = runs.map(run => {
-      const leases = this.listWorkerLeases(run.id);
-      const makers = leases.filter(l => l.role === 'maker');
-      const retries = makers.filter(l => {
-        const m = l.metadata as Record<string, unknown>;
-        return m.retry_root_maker_lease_id !== undefined;
-      }).length;
-      const tokens = makers.reduce((sum, l) => {
-        const usage = l.metadata.runtime_usage as { total_tokens?: number } | undefined;
-        return sum + (usage?.total_tokens || 0);
-      }, 0);
-      const dollars = this.computeDollarsSpent(run.id);
-      const cert = this.certifyLoopRun(run.id);
-      return {
-        run_id: run.id,
-        created_at: run.created_at,
-        success: cert.certified,
-        retries,
-        tokens,
-        dollars,
-      };
-    });
-
-    if (data.length < 2) {
-      return {
-        runs: data,
-        trend: { success_rate_improving: false, cost_decreasing: false, retries_decreasing: false },
-        first_vs_last: { first_success_rate: 0, last_success_rate: 0, first_cost: 0, last_cost: 0 },
-      };
-    }
-
-    
-    
-    const firstHalf = data.slice(0, Math.floor(data.length / 2));
-    const secondHalf = data.slice(Math.floor(data.length / 2));
-    const firstSR = firstHalf.filter(d => d.success).length / firstHalf.length;
-    const lastSR = secondHalf.filter(d => d.success).length / secondHalf.length;
-    const firstCost = firstHalf.reduce((s, d) => s + d.dollars, 0) / firstHalf.length;
-    const lastCost = secondHalf.reduce((s, d) => s + d.dollars, 0) / secondHalf.length;
-    const firstRetries = firstHalf.reduce((s, d) => s + d.retries, 0) / firstHalf.length;
-    const lastRetries = secondHalf.reduce((s, d) => s + d.retries, 0) / secondHalf.length;
-
-    return {
-      runs: data,
-      trend: {
-        success_rate_improving: lastSR > firstSR,
-        cost_decreasing: lastCost < firstCost,
-        retries_decreasing: lastRetries < firstRetries,
-      },
-      first_vs_last: {
-        first_success_rate: firstSR,
-        last_success_rate: lastSR,
-        first_cost: firstCost,
-        last_cost: lastCost,
-      },
-    };
-  }
-
-  computeEfficiencyMetric(runId: string): { verifiedArtifacts: number; dollarsSpent: number; efficiency: number | null } {
-    const leases = this.listWorkerLeases(runId);
-    const completedMakers = leases.filter((l) => l.role === 'maker' && l.status === 'completed').length;
-    const completedCheckers = leases.filter((l) => l.role === 'checker' && l.status === 'completed').length;
-    // Verified artifacts = min(completed makers, completed checkers) — each maker needs a checker.
-    const verifiedArtifacts = Math.min(completedMakers, completedCheckers);
-    const dollarsSpent = this.computeDollarsSpent(runId);
-    const efficiency = dollarsSpent > 0 ? verifiedArtifacts / dollarsSpent : null;
-    return { verifiedArtifacts, dollarsSpent, efficiency };
-  }
-
-  /**
-   * G13: Allocate the goal's dollar budget across the DAG (greedy knapsack).
-   * Sort findings by competence / p50_dollars (descending), fill until budget exhausted.
-   * Findings that don't fit are deferred; the goal is flagged budget_insufficient if none fit.
-   */
-  allocateDollarBudget(
-    findings: Array<{ finding_id: string; capability_id: string | null; p50_dollars?: number; competence?: number }>,
-    dollarBudget: number,
-  ): { allocated: string[]; deferred: string[]; budgetInsufficient: boolean } {
-    // Score each finding by competence / p50_dollars (higher = better value).
-    const scored = findings.map((f) => {
-      const cost = Math.max(0.001, f.p50_dollars ?? 0.01); // default $0.01 if unknown
-      const comp = f.competence ?? 0.5;
-      return { ...f, score: comp / cost };
-    });
-
-    // Sort by score descending (best value first).
-    scored.sort((a, b) => b.score - a.score);
-
-    const allocated: string[] = [];
-    const deferred: string[] = [];
-    let remaining = dollarBudget;
-
-    for (const f of scored) {
-      const cost = Math.max(0.001, f.p50_dollars ?? 0.01);
-      if (cost <= remaining) {
-        allocated.push(f.finding_id);
-        remaining -= cost;
-      } else {
-        deferred.push(f.finding_id);
-      }
-    }
-
-    return {
-      allocated,
-      deferred,
-      budgetInsufficient: allocated.length === 0 && findings.length > 0,
-    };
-  }
-
-  private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines: number): {
-    gate: LoopGate;
-    exhausted: boolean;
-    efficiencyExceeded: boolean;
-    budget: Record<string, unknown>;
-    tokensPerDiffLine: number | null;
-  } {
+  private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string): { gate: LoopGate; exhausted: boolean; budget: Record<string, unknown> } {
     const budget = this.getTokenBudget(run);
-    if (!budget.maxTokens && !budget.maxTokensPerWorker && !budget.maxTokensPerDiffLine) {
+    if (!budget.maxTokens && !budget.maxTokensPerWorker) {
       return {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'No token budget configured for this goal.' },
         exhausted: false,
-        efficiencyExceeded: false,
         budget,
-        tokensPerDiffLine: null,
       };
     }
     if (!runtimeUsage) {
       return {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'Runtime did not report token usage; no estimate was used.' },
         exhausted: false,
-        efficiencyExceeded: false,
         budget,
-        tokensPerDiffLine: null,
       };
     }
 
     const usedBeforeCurrent = this.sumRuntimeTokens(this.listWorkerLeases(run.id).filter((lease) => lease.id !== currentLeaseId));
     const totalAfterCurrent = usedBeforeCurrent + runtimeUsage.total_tokens;
-    const tokensPerDiffLine = diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null;
     const perWorkerExceeded = Boolean(budget.maxTokensPerWorker && runtimeUsage.total_tokens > budget.maxTokensPerWorker);
     const totalExceeded = Boolean(budget.maxTokens && totalAfterCurrent > budget.maxTokens);
-    const efficiencyExceeded = Boolean(
-      budget.maxTokensPerDiffLine
-      && tokensPerDiffLine !== null
-      && tokensPerDiffLine > budget.maxTokensPerDiffLine
-    );
     const exhausted = perWorkerExceeded || totalExceeded;
 
     return {
       gate: {
         name: 'token_budget',
         status: exhausted ? 'fail' : 'pass',
-        evidence: `runtime_usage=${runtimeUsage.total_tokens}, total_after_current=${totalAfterCurrent}, max_tokens=${budget.maxTokens ?? 'unset'}, max_tokens_per_worker=${budget.maxTokensPerWorker ?? 'unset'}, tokens_per_diff_line=${tokensPerDiffLine ?? 'unset'}, max_tokens_per_diff_line=${budget.maxTokensPerDiffLine ?? 'unset'}.`,
+        evidence: `runtime_usage=${runtimeUsage.total_tokens}, total_after_current=${totalAfterCurrent}, max_tokens=${budget.maxTokens ?? 'unset'}, max_tokens_per_worker=${budget.maxTokensPerWorker ?? 'unset'}.`,
       },
       exhausted,
-      efficiencyExceeded,
-      tokensPerDiffLine,
       budget: {
         ...budget,
         used_before_current: usedBeforeCurrent,
         total_after_current: totalAfterCurrent,
-        tokens_per_diff_line: tokensPerDiffLine,
-        efficiency_exceeded: efficiencyExceeded,
       },
     };
-  }
-
-  private defaultTokenBudgetForRun(run: LoopRunRecord): {
-    maxTokens?: number;
-    maxTokensPerWorker?: number;
-    maxTokensPerDiffLine?: number;
-    source: 'default';
-    profile: string;
-  } {
-    const riskClass = String(run.metadata.risk_class || 'low');
-    if (run.loop_name === LOOP_NAME && riskClass === 'low') {
-      return {
-        maxTokens: LOW_CONTEXT_WORKER_PROFILE.max_tokens,
-        maxTokensPerWorker: LOW_CONTEXT_WORKER_PROFILE.max_tokens_per_worker,
-        maxTokensPerDiffLine: LOW_CONTEXT_WORKER_PROFILE.max_tokens_per_diff_line,
-        source: 'default',
-        profile: LOW_CONTEXT_WORKER_PROFILE.name,
-      };
-    }
-    return { source: 'default', profile: 'standard-worker' };
-  }
-
-  private getWorkerRuntimeProfile(run: LoopRunRecord): Record<string, unknown> {
-    const budget = this.getTokenBudget(run);
-    return {
-      name: budget.profile,
-      scope: budget.profile === LOW_CONTEXT_WORKER_PROFILE.name ? LOW_CONTEXT_WORKER_PROFILE.scope : 'standard',
-      token_budget: {
-        max_tokens: budget.maxTokens ?? null,
-        max_tokens_per_worker: budget.maxTokensPerWorker ?? null,
-        max_tokens_per_diff_line: budget.maxTokensPerDiffLine ?? null,
-        source: budget.source,
-      },
-      instructions: budget.profile === LOW_CONTEXT_WORKER_PROFILE.name
-        ? ['Use the assignment packet and local repository only.', 'Avoid broad unrelated workspace context.', 'Keep changes bounded to the finding.']
-        : [],
-    };
-  }
-
-  private markTokenEfficiencyBudgetRisk(
-    run: LoopRunRecord,
-    leaseId: string,
-    runtimeUsage: RuntimeUsage | null,
-    tokenBudget: { budget: Record<string, unknown>; tokensPerDiffLine: number | null }
-  ): void {
-    const latest = this.getLoopRun(run.id);
-    const budgetRisk = {
-      type: 'token_efficiency',
-      lease_id: leaseId,
-      runtime_usage: runtimeUsage,
-      tokens_per_diff_line: tokenBudget.tokensPerDiffLine,
-      budget: tokenBudget.budget,
-      recorded_at: new Date().toISOString(),
-    };
-    const metadata = {
-      ...latest.metadata,
-      budget_risk: budgetRisk,
-    };
-    this.db.prepare('UPDATE loop_runs SET metadata = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(metadata), new Date().toISOString(), run.id);
-    this.recordLoopEvent(run.id, 'token_efficiency_budget_risk', 'warning', 'Worker exceeded the configured token-per-diff efficiency threshold.', budgetRisk);
   }
 
   private sumRuntimeTokens(leases: WorkerLeaseRecord[]): number {
@@ -3137,16 +2458,8 @@ export class LoopService {
       tokenAlias.completion ?? tokenAlias.output ?? usage.output ??
       usage.completion,
     );
-    // Codex 0.133+ reports cached_input_tokens separately — these are reused
-    // context that doesn't incur additional cost. Subtract them from the total
-    // so the token budget gate isn't triggered by cached context.
-    const cachedInputTokens = Number(usage.cached_input_tokens ?? 0);
     const explicitTotal = Number(usage.total_tokens ?? usage.totalTokens);
-    const calculatedTotal = Math.max(0,
-      (Number.isFinite(promptTokens) ? promptTokens : 0) +
-      (Number.isFinite(completionTokens) ? completionTokens : 0) -
-      (Number.isFinite(cachedInputTokens) ? cachedInputTokens : 0)
-    );
+    const calculatedTotal = (Number.isFinite(promptTokens) ? promptTokens : 0) + (Number.isFinite(completionTokens) ? completionTokens : 0);
     const explicitTotalValue = Number.isFinite(explicitTotal) && explicitTotal > 0 ? explicitTotal : calculatedTotal;
     const aliasTotal = Number(tokenAlias.total);
     const resolvedTotal = Number.isFinite(explicitTotalValue) && explicitTotalValue > 0 ? explicitTotalValue : aliasTotal;
@@ -3289,57 +2602,7 @@ export class LoopService {
     if (loopName === 'overwatch-policy-drift-loop') {
       return this.discoverOverwatchPolicyDrift(repositoryPath, maxFindings);
     }
-    if (loopName === 'research-loop') {
-      return this.discoverResearchQuestions(repositoryPath, maxFindings);
-    }
     return [];
-  }
-
-  private discoverResearchQuestions(_repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
-
-    try {
-      const gapClaims = this.db.prepare(`
-        SELECT subject_ref, COUNT(*) as freq FROM swarm_claims
-        WHERE predicate = 'capability_gap' AND created_at > ?
-        GROUP BY subject_ref
-      `).all(thirtyDaysAgo) as Array<{ subject_ref: string; freq: number }>;
-      for (const gap of gapClaims) {
-        if (findings.length >= maxFindings) break;
-        findings.push({
-          id: randomUUID(),
-          type: 'research_question',
-          severity: 'info',
-          file: '<knowledge-gap>',
-          message: `Investigate knowledge gap: ${gap.subject_ref} (${gap.freq} occurrences)`,
-          evidence: `capability_gap claims: ${gap.freq} in last 30 days`,
-          suggested_fix: `Research and synthesize findings on '${gap.subject_ref}' into OKF memory store.`,
-        });
-      }
-    } catch { /* best-effort */ }
-
-    try {
-      const hypotheses = this.db.prepare(`
-        SELECT id, question FROM swarm_hypotheses
-        WHERE projection_state = 'draft'
-        ORDER BY created_at ASC LIMIT ?
-      `).all(maxFindings) as Array<{ id: string; question: string }>;
-      for (const h of hypotheses) {
-        if (findings.length >= maxFindings) break;
-        findings.push({
-          id: randomUUID(),
-          type: 'research_question',
-          severity: 'info',
-          file: '<hypothesis>',
-          message: `Investigate hypothesis: ${h.question}`,
-          evidence: `Hypothesis ${h.id} in draft state`,
-          suggested_fix: `Design and execute research plan to test hypothesis: ${h.question}`,
-        });
-      }
-    } catch { /* best-effort */ }
-
-    return findings;
   }
 
   private discoverDocDrift(repositoryPath: string, maxFindings: number): LoopFinding[] {
@@ -3724,33 +2987,15 @@ export class LoopService {
 
   private branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
     const suffix = retryAttempt ? `-r${retryAttempt}` : '';
-    const runSegment = this.pathSegmentForWorktreeId(runId).slice(0, 18);
-    const findingSegment = this.pathSegmentForWorktreeId(findingId).slice(0, 32);
-    return `agent/loop/${runSegment}-${findingSegment}${suffix}`;
-  }
-
-  private pathSegmentForWorktreeId(id: string): string {
-    const segment = id.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
-    return segment || 'finding';
+    return `agent/loop/${runId.slice(0, 8)}-${findingId.slice(0, 8)}${suffix}`;
   }
 
   private createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
-    // Worktrees MUST live OUTSIDE the host repo. repositoryPath may be a sub-workspace
-    // *inside* the repo (e.g. packages/server); basing the root on it placed worktrees at
-    // packages/.djimitflo-loop-worktrees — INSIDE the repo — so a runtime launched with
-    // --cd <worktree> had the host source tree as filesystem siblings and could edit the
-    // host repo by upward exploration (observed: a real codex maker mutated host source).
-    // Base the root on the git toplevel (repo root) so worktrees are a sibling of the repo,
-    // outside it. LOOP_WORKTREE_ROOT overrides for operators wanting a dedicated sandbox
-    // root. NOTE: this hardens isolation against accidental/relative-path escape; a
-    // determined runtime can still reach the host by absolute path — full isolation needs
-    // a sandbox (separate follow-up).
-    const sourceRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
-    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(sourceRoot, '..', '.djimitflo-loop-worktrees');
-    const worktreePath = path.join(worktreeRoot, runId, this.pathSegmentForWorktreeId(findingId));
+    this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryPath, '..', '.djimitflo-loop-worktrees');
+    const worktreePath = path.join(worktreeRoot, runId, findingId);
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
     if (fs.existsSync(worktreePath)) {
-      this.ensureWorktreeDependencyBridge(repositoryPath, worktreePath);
       return worktreePath;
     }
     // `git worktree add` takes the source repo's worktree lock. Under concurrent
@@ -3762,8 +3007,6 @@ export class LoopService {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
         this.git(repositoryPath, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
-        this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
-        this.ensureWorktreeDependencyBridge(repositoryPath, worktreePath);
         return worktreePath;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -3775,78 +3018,6 @@ export class LoopService {
       }
     }
     throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
-  }
-
-  private ensureWorktreeDependencyBridge(repositoryPath: string, worktreePath: string): void {
-    const sourceRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
-    const sourceNodeModules = path.join(sourceRoot, 'node_modules');
-    const worktreeNodeModules = path.join(worktreePath, 'node_modules');
-    if (!fs.existsSync(sourceNodeModules) || fs.existsSync(worktreeNodeModules)) {
-      return;
-    }
-    fs.symlinkSync(sourceNodeModules, worktreeNodeModules, 'dir');
-  }
-
-  private applySourceWorkingTreeDiff(repositoryPath: string, worktreePath: string): void {
-    const sourceRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
-    const diff = execFileSync('git', ['-C', sourceRoot, 'diff', '--binary', 'HEAD', '--', '.'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    try {
-      if (diff) {
-        execFileSync('git', ['-C', worktreePath, 'apply', '--binary', '--whitespace=nowarn'], {
-          input: diff,
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'pipe'],
-        });
-      }
-      this.copySourceUntrackedFiles(sourceRoot, worktreePath);
-      const status = execFileSync('git', ['-C', worktreePath, 'status', '--porcelain=v1'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-      if (!status.trim()) {
-        return;
-      }
-      execFileSync('git', ['-C', worktreePath, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] });
-      execFileSync('git', [
-        '-C',
-        worktreePath,
-        '-c',
-        'user.email=djimitflo-worker@example.invalid',
-        '-c',
-        'user.name=Djimitflo Worker Snapshot',
-        'commit',
-        '-m',
-        'Apply source working tree snapshot',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (error) {
-      const stderr = (error as { stderr?: Buffer | string }).stderr?.toString() || '';
-      throw new Error(stderr.trim() || 'git apply dirty source diff failed');
-    }
-  }
-
-  private copySourceUntrackedFiles(sourceRoot: string, worktreePath: string): void {
-    const untracked = execFileSync('git', ['-C', sourceRoot, 'ls-files', '--others', '--exclude-standard', '-z'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    for (const relativePath of untracked.split('\0').filter(Boolean)) {
-      const sourcePath = path.resolve(sourceRoot, relativePath);
-      const targetPath = path.resolve(worktreePath, relativePath);
-      if (!sourcePath.startsWith(path.resolve(sourceRoot) + path.sep) || !targetPath.startsWith(path.resolve(worktreePath) + path.sep)) {
-        continue;
-      }
-      const stat = fs.lstatSync(sourcePath);
-      fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-      if (stat.isSymbolicLink()) {
-        fs.rmSync(targetPath, { force: true, recursive: true });
-        fs.symlinkSync(fs.readlinkSync(sourcePath), targetPath);
-      } else if (stat.isFile()) {
-        fs.copyFileSync(sourcePath, targetPath);
-      }
-    }
   }
 
   private static isGitLockError(error: Error): boolean {
@@ -4102,115 +3273,6 @@ export class LoopService {
     return env;
   }
 
-  // ── G15: Enforcement layer ──
-  // Wires advisory swarm intelligence into binding runtime behavior.
-
-  /**
-   * Capability enforcement gate: check that a capability is validated and
-   * live_route_allowed before a worker starts. Throws if the capability
-   * is draft, candidate, disabled, deprecated, over-risk, or below eval
-   * threshold.
-   */
-  private enforceCapabilityGate(lease: WorkerLeaseRecord): void {
-    const capabilityIds = (lease.metadata as any)?.capability_ids;
-    if (!Array.isArray(capabilityIds) || capabilityIds.length === 0) return;
-    for (const capId of capabilityIds) {
-      try {
-        const cap = this.intelligence.getCapability(String(capId));
-        if (!cap) {
-          throw new Error(`CAPABILITY_NOT_FOUND:${capId}`);
-        }
-        if (!cap.live_route_allowed) {
-          throw new Error(`CAPABILITY_NOT_ROUTABLE:${capId}:status=${cap.status}`);
-        }
-        if (cap.eval_score < cap.eval_threshold) {
-          throw new Error(`CAPABILITY_BELOW_EVAL_THRESHOLD:${capId}:score=${cap.eval_score}:threshold=${cap.eval_threshold}`);
-        }
-      } catch (error) {
-        // Re-throw enforcement errors; swallow "not found" from getCapability
-        if (error instanceof Error && error.message.startsWith('CAPABILITY_')) {
-          throw error;
-        }
-      }
-    }
-  }
-
-  /**
-   * Auto-write a runner manifest for a worker action. Best-effort: manifest
-   * persistence failures are logged but do not block execution.
-   */
-  private autoWriteManifest(input: {
-    loopRunId: string;
-    leaseId: string;
-    action: 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
-    decisionId?: string;
-    gateRefs?: string[];
-    blockedReasons?: string[];
-    metadata?: Record<string, unknown>;
-    stdoutPath?: string;
-    stderrPath?: string;
-    artifactPath?: string;
-    tokenUsage?: Record<string, unknown>;
-    checkpointBeforeRef?: string;
-    checkpointAfterRef?: string;
-  }): void {
-    try {
-      this.intelligence.createRunnerManifest({
-        decision_id: input.decisionId || `loop:${input.loopRunId}:lease:${input.leaseId}:${input.action}`,
-        lease_id: input.leaseId,
-        loop_run_id: input.loopRunId,
-        action: input.action,
-        policy_version: LOOP_RUNTIME_MANIFEST_POLICY_VERSION,
-        gate_refs: input.gateRefs,
-        blocked_reasons: input.blockedReasons,
-        metadata: {
-          ...input.metadata,
-          ...(input.stdoutPath ? { stdout_path: input.stdoutPath } : {}),
-          ...(input.stderrPath ? { stderr_path: input.stderrPath } : {}),
-          ...(input.artifactPath ? { artifact_path: input.artifactPath } : {}),
-          ...(input.tokenUsage ? { token_usage: input.tokenUsage } : {}),
-          ...(input.checkpointBeforeRef ? { checkpoint_before_ref: input.checkpointBeforeRef } : {}),
-          ...(input.checkpointAfterRef ? { checkpoint_after_ref: input.checkpointAfterRef } : {}),
-        },
-      });
-    } catch {
-      this.recordLoopEvent(input.loopRunId, 'worker_manifest_error', 'warning',
-        `Runner manifest persistence failed for ${input.action} action.`, { lease_id: input.leaseId });
-    }
-  }
-
-  /**
-   * Auto-populate evidence edges linking runtime entities. Creates typed
-   * edges in the evidence graph so the inquiry trail is provable.
-   */
-  private populateEvidenceEdges(edges: Array<{ from: string; to: string; relation: string }>): void {
-    for (const edge of edges) {
-      try {
-        this.intelligence.createEvidenceEdge(edge.from, edge.to, edge.relation);
-      } catch {
-        // Evidence edges are best-effort; don't block execution on graph writes
-      }
-    }
-  }
-
-  /**
-   * Governance enforcement: verify that all claims linked to a loop run
-   * are supported (not proposed/contradicted) before allowing completion.
-   */
-  private enforceGovernanceCompletion(runId: string): void {
-    const claims = this.intelligence.listClaims(500);
-    const loopClaims = claims.filter((c) =>
-      c.subject_ref === `loop:${runId}` ||
-      (c.evidence_refs || []).some((ref) => ref.includes(runId))
-    );
-    const unresolved = loopClaims.filter((c) =>
-      c.status === 'proposed' || c.status === 'contradicted' || c.status === 'review_required'
-    );
-    if (unresolved.length > 0) {
-      throw new Error(`GOVERNANCE_COMPLETION_BLOCKED:${unresolved.length}_unresolved_claims`);
-    }
-  }
-
   /**
    * Serialize a child's validated capabilities (L4 skill injection) into a
    * compact JSON manifest of LIVE capabilities only. Returns undefined when the
@@ -4254,21 +3316,11 @@ export class LoopService {
     const configured = process.env.LOOP_WORKTREE_ROOT;
     if (configured) candidates.push(configured);
     candidates.push(os.tmpdir());
-    // createWorktree places worktrees under <repo-toplevel>/../.djimitflo-loop-worktrees
-    // (a sibling of the repo, OUTSIDE it). The previous candidate derived the root from
-    // process.cwd() (a sub-workspace like packages/server) -> packages/.djimitflo-loop-worktrees
-    // INSIDE the repo, which disagreed with createWorktree's toplevel-based root and rejected
-    // legitimately-isolated worktrees. Accept any path beneath a .djimitflo-loop-worktrees
-    // directory (the naming contract createWorktree always uses) so the boundary check agrees
-    // regardless of which workspace the process runs from.
-    const inside =
-      candidates.some((root) => {
-        const resolvedRoot = this.safeRealpath(root);
-        return resolvedCwd === resolvedRoot || resolvedCwd.startsWith(resolvedRoot + path.sep);
-      }) ||
-      resolvedCwd
-        .split(path.sep)
-        .includes('.djimitflo-loop-worktrees');
+    candidates.push(path.resolve(this.safeRealpath(process.cwd()), '..', '.djimitflo-loop-worktrees'));
+    const inside = candidates.some((root) => {
+      const resolvedRoot = this.safeRealpath(root);
+      return resolvedCwd === resolvedRoot || resolvedCwd.startsWith(resolvedRoot + path.sep);
+    });
     if (!inside) {
       throw new Error(`RUNTIME_CWD_OUTSIDE_WORKTREE: ${resolvedCwd}`);
     }
@@ -4349,20 +3401,9 @@ export class LoopService {
       };
     }
     if (runtime === 'codex') {
-      // --ignore-user-config: loop workers are reproducible, isolated agents — they must NOT
-      // inherit the operator's personal codex config/skills, which bloats context ~4x (verified
-      // live: 325k -> 87k input tokens on the same task) and blows the token budget. Auth is
-      // independent of user-config, so headless execution still works.
-      // skipPermissions (operator opt-in via RUNTIME_ALLOW_SKIP_PERMISSIONS) arms a SANDBOXED
-      // headless mode, NOT an unsandboxed bypass: --sandbox workspace-write confines writes to
-      // the worktree cwd (+/tmp,$TMPDIR), protecting the host repo (verified: a sandboxed codex
-      // cannot write /home/.../djimitflo — "Read-only file system"), and -c approval_policy=never
-      // runs headless with no approval prompts. This replaces --dangerously-bypass-approvals-and-
-      // sandbox, which left the host mutable and codex occasionally escaped to host source by
-      // absolute path.
       const args = skipPermissions
-        ? ['exec', '--ignore-user-config', '--sandbox', 'workspace-write', '-c', 'approval_policy=never', '--json', '--cd', worktreePath, prompt]
-        : ['exec', '--ignore-user-config', '--json', '--cd', worktreePath, prompt];
+        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
+        : ['exec', '--json', '--cd', worktreePath, prompt];
       return {
         command: process.env.CODEX_BIN_PATH || 'codex',
         args,
@@ -4418,17 +3459,6 @@ export class LoopService {
         args,
       };
     }
-    if (runtime === 'research') {
-      // Research runtime: DeerFlow-style synthesis. Runs headless, produces a
-      // document (not a code diff). The command is a script that calls the
-      // research pipeline via the existing DeerFlow/LLM infrastructure.
-      const args = ['--mode', 'research', '--format', 'json', '--topic', prompt];
-      if (process.env.RESEARCH_MODEL) args.push('--model', process.env.RESEARCH_MODEL);
-      return {
-        command: process.env.RESEARCH_BIN_PATH || 'djimitflo-research',
-        args,
-      };
-    }
     if (runtime === 'pi') {
       // Pi headless: `pi --mode json -p`. Pi uses the spawn cwd as its working
       // directory (no --dir flag), so the lease worktree is the isolation unit and
@@ -4463,13 +3493,8 @@ export class LoopService {
   }
 
   private getRuntimeContract(runtime: string): RuntimeContract {
-    const finish = (contract: RuntimeContract): RuntimeContract => {
-      const next = { ...contract, probed_at: contract.probed_at || new Date().toISOString() };
-      this.persistRuntimeContractProbe(next);
-      return next;
-    };
     if (runtime === 'manual') {
-      return finish({
+      return {
         runtime: 'manual',
         available: true,
         command: null,
@@ -4479,10 +3504,10 @@ export class LoopService {
         supports_usage_parsing: false,
         supports_timeout_kill: false,
         evidence: ['manual runtime requires human execution'],
-      });
+      };
     }
     if (runtime === 'mock') {
-      return finish({
+      return {
         runtime: 'mock',
         available: true,
         command: process.execPath,
@@ -4494,7 +3519,7 @@ export class LoopService {
         supports_usage_parsing: true,
         supports_timeout_kill: true,
         evidence: ['deterministic in-process mock runtime'],
-      });
+      };
     }
     // Real runtime probes: each entry describes how to locate the binary, which
     // help subcommand lists its flags, and which flags must be present for the
@@ -4512,7 +3537,7 @@ export class LoopService {
     };
     const probe = PROBES[runtime];
     if (!probe) {
-      return finish({
+      return {
         runtime: 'manual',
         available: false,
         command: null,
@@ -4522,7 +3547,7 @@ export class LoopService {
         supports_timeout_kill: false,
         evidence: [],
         reason: 'unsupported runtime',
-      });
+      };
     }
     const typedRuntime = runtime as RuntimeContract['runtime'];
     const command = process.env[probe.binEnv] || probe.defaultBin;
@@ -4538,7 +3563,7 @@ export class LoopService {
       maxBuffer: 512 * 1024,
     });
     if (result.error) {
-      return finish({
+      return {
         runtime: typedRuntime,
         available: false,
         command,
@@ -4548,10 +3573,10 @@ export class LoopService {
         supports_timeout_kill: true,
         evidence: [],
         reason: result.error.message,
-      });
+      };
     }
     if (result.status !== 0) {
-      return finish({
+      return {
         runtime: typedRuntime,
         available: false,
         command,
@@ -4561,7 +3586,7 @@ export class LoopService {
         supports_timeout_kill: true,
         evidence: [],
         reason: result.stderr || `exit ${result.status}`,
-      });
+      };
     }
     const helpResult = spawnSync(command, probe.helpArgs, {
       encoding: 'utf8',
@@ -4592,35 +3617,8 @@ export class LoopService {
       evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
     };
-    const persisted = finish(contract);
-    this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract: persisted });
-    return persisted;
-  }
-
-  private persistRuntimeContractProbe(contract: RuntimeContract): void {
-    try {
-      this.db.prepare(`
-        INSERT INTO runtime_contract_probes (runtime, command, status, available, contract_json, probed_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(runtime) DO UPDATE SET
-          command = excluded.command,
-          status = excluded.status,
-          available = excluded.available,
-          contract_json = excluded.contract_json,
-          probed_at = excluded.probed_at,
-          updated_at = excluded.updated_at
-      `).run(
-        contract.runtime,
-        contract.command,
-        contract.status,
-        contract.available ? 1 : 0,
-        JSON.stringify(contract),
-        contract.probed_at || new Date().toISOString(),
-        new Date().toISOString()
-      );
-    } catch {
-      // ponytail: probe persistence is evidence-only; runtime availability must not depend on DB write success.
-    }
+    this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
+    return contract;
   }
 
   private extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
@@ -4629,7 +3627,6 @@ export class LoopService {
     const patterns: Array<{ pattern: RegExp; class_name: string; severity: 'advisory' | 'warning' | 'blocking' }> = [
       { pattern: /failed to parse plugin hooks config[^\n]*/i, class_name: 'plugin_hook_config_parse', severity: 'warning' },
       { pattern: /Skill descriptions were shortened[^\n]*/i, class_name: 'skill_context_budget', severity: 'advisory' },
-      { pattern: /(?:trust boundary|auth|secret|permission|capability|policy)[^\n]*/i, class_name: 'trust_boundary_warning', severity: 'blocking' },
       { pattern: /fail to delete session[^\n]*/i, class_name: 'runtime_session_cleanup', severity: 'advisory' },
       { pattern: /structured output unavailable[^\n]*/i, class_name: 'structured_output_unavailable', severity: 'warning' },
       { pattern: /unknown field|unexpected argument[^\n]*/i, class_name: 'runtime_contract_warning', severity: 'warning' },
@@ -4645,21 +3642,6 @@ export class LoopService {
       }
     }
     return warnings;
-  }
-
-  private runtimeWarningGate(run: LoopRunRecord, warnings: Array<Record<string, unknown>>): LoopGate {
-    if (warnings.length === 0) {
-      return { name: 'runtime_warning_gate', status: 'pass', evidence: 'No runtime warnings captured.' };
-    }
-    const blocks = this.isHighRiskRun(run) && warnings.some((warning) => (
-      warning.severity === 'blocking'
-      || /(trust|auth|secret|permission|capability|policy)/i.test(String(warning.message || warning.class_name || ''))
-    ));
-    return {
-      name: 'runtime_warning_gate',
-      status: blocks ? 'fail' : 'pass',
-      evidence: `${warnings.length} warning(s): ${warnings.map((warning) => `${warning.class_name || 'runtime_warning'}:${warning.severity || 'warning'}`).join(', ')}${blocks ? ' (blocked high-risk trust boundary)' : ' (advisory)'}.`,
-    };
   }
 
   private calculateWorkerEfficiency(runtimeUsage: RuntimeUsage | null, diffLines: number): Record<string, unknown> {
@@ -4852,18 +3834,9 @@ export class LoopService {
       const excludePath = this.git(worktreePath, ['rev-parse', '--git-path', 'info/exclude']).trim();
       const absoluteExcludePath = path.isAbsolute(excludePath) ? excludePath : path.join(worktreePath, excludePath);
       const current = fs.existsSync(absoluteExcludePath) ? fs.readFileSync(absoluteExcludePath, 'utf8') : '';
-      const lines = current.split(/\r?\n/);
-      const toAdd: string[] = [];
-      if (!lines.includes(`${CONTROL_DIR}/`)) toAdd.push(`${CONTROL_DIR}/`);
-      // The dependency bridge symlinks node_modules -> source repo node_modules. The repo
-      // .gitignore uses `node_modules/` (dir-only) which does NOT match the symlink, so it
-      // showed as an untracked/staged artifact and made checkers reject the maker diff as an
-      // extra change. Ignore the symlink explicitly in this worktree's exclude.
-      if (!lines.includes(`node_modules`)) toAdd.push(`node_modules`);
-      if (toAdd.length > 0) {
+      if (!current.split(/\r?\n/).includes(`${CONTROL_DIR}/`)) {
         fs.mkdirSync(path.dirname(absoluteExcludePath), { recursive: true });
-        const prefix = current.endsWith('\n') || current.length === 0 ? '' : '\n';
-        fs.appendFileSync(absoluteExcludePath, `${prefix}${toAdd.join('\n')}\n`, 'utf8');
+        fs.appendFileSync(absoluteExcludePath, `${current.endsWith('\n') || current.length === 0 ? '' : '\n'}${CONTROL_DIR}/\n`, 'utf8');
       }
     } catch {
       // The control directory is still useful even when git excludes cannot be updated.
@@ -4898,7 +3871,6 @@ export class LoopService {
       '',
       `Loop run: ${run.id}`,
       `Runtime target: ${runtime}`,
-      `Worker profile: ${this.getWorkerRuntimeProfile(run).name}`,
       `Finding: ${finding.id}`,
       `File: ${finding.file}${finding.line ? `:${finding.line}` : ''}`,
       '',
@@ -4914,17 +3886,12 @@ export class LoopService {
       '',
       finding.suggested_fix,
       '',
-      // G29: inject the matching skill procedure ONLY when a real match is found.
-      // Don't add a placeholder — it could confuse the runtime.
-      ...(this.skills.getSkillForFinding(finding.message, finding.file)
-        ? ['## Skill Procedure', '', this.skills.getSkillForFinding(finding.message, finding.file)!, '']
-        : []),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
-      '- Do not run npm test or vitest — the checker verifies externally after your work is done.',
-      '- Checker approval is provided externally — do not spawn a checker sub-agent.',
+      '- Run relevant deterministic checks before handing off to checker.',
+      '- Checker approval is required before completion.',
       '',
       // Nested-spawn control block (P1). Only injected when this lease is itself
       // permitted to spawn sub-agents (operator-armed, depth within budget). This
@@ -4949,7 +3916,6 @@ export class LoopService {
       mode: run.mode,
       status: run.status,
       runtime,
-      runtime_profile: this.getWorkerRuntimeProfile(run),
       retry_attempt: retryAttempt || 0,
       repository_path: run.repository_path,
       worktree_path: worktreePath,
@@ -5022,23 +3988,6 @@ export class LoopService {
       `stdout_path: ${stdoutPath || 'missing'}`,
       `stderr_path: ${stderrPath || 'missing'}`,
       '',
-      // G6.2: memory-poisoning defense — the checker verifies the maker's injected memory.
-      // If the maker used low-trust memory (< 0.3 trust_score), the checker should flag it.
-      ...((): string[] => {
-        const scores = Array.isArray(maker.metadata.injected_memory_trust_scores)
-          ? maker.metadata.injected_memory_trust_scores as number[]
-          : [];
-        if (scores.length === 0) return [];
-        const lowTrust = scores.filter((s) => typeof s === 'number' && s < 0.3);
-        return [
-          '## Injected Memory Trust (G6.2)',
-          `trust_scores: ${JSON.stringify(scores)}`,
-          lowTrust.length > 0
-            ? `WARNING: ${lowTrust.length} memory item(s) have trust < 0.3 (stale/contradicted/unprovenanced). If the maker relied on these, consider needs_revision or rejected.`
-            : 'All injected memory has trust >= 0.3.',
-          '',
-        ];
-      })(),
     ].join('\n');
   }
 
@@ -5112,14 +4061,13 @@ export class LoopService {
     spawnTreeId?: string | null;
     depth?: number;
     spawnedByAgentId?: string | null;
-    capabilityId?: string | null;
   }): void {
     this.db.prepare(`
       INSERT INTO worker_leases (
         id, loop_run_id, role, runtime, status, finding_id, worktree_path,
         branch_name, budget_json, metadata, created_at, updated_at,
-        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id, capability_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       input.id,
       input.loopRunId,
@@ -5136,8 +4084,7 @@ export class LoopService {
       input.parentLeaseId ?? null,
       input.spawnTreeId ?? null,
       input.depth ?? 0,
-      input.spawnedByAgentId ?? null,
-      input.capabilityId ?? null
+      input.spawnedByAgentId ?? null
     );
   }
 
@@ -5199,7 +4146,6 @@ export class LoopService {
       spawn_tree_id: row.spawn_tree_id ?? null,
       depth: typeof row.depth === 'number' ? row.depth : Number(row.depth ?? 0),
       spawned_by_agent_id: row.spawned_by_agent_id ?? null,
-      capability_id: row.capability_id ?? null,
     };
   }
 
@@ -5238,97 +4184,10 @@ export class LoopService {
    * (spawn_trees.max_concurrent_children) further bounds any one swarm.
    */
   private runtimeSemaphoreLimit(): number {
-    // G4: the limit is a dynamic control variable (AIMD), not a static env const.
-    // Initialized from the env cap on first use, then driven by adjustConcurrency.
-    const sem = LoopService.runtimeSemaphore;
-    if (sem.dynamicLimit === null) {
-      // G5-persist: restore the dynamicLimit from the DB on first use after a restart.
-      try {
-        const row = this.db.prepare('SELECT value FROM system_state WHERE key = ?').get('aimd_dynamic_limit') as { value?: string } | undefined;
-        if (row?.value) {
-          const restored = Number(row.value);
-          if (Number.isFinite(restored) && restored >= 1) {
-            sem.dynamicLimit = Math.min(restored, this.runtimeSemaphoreHardCap());
-            return sem.dynamicLimit;
-          }
-        }
-      } catch { /* table might not exist yet */ }
-      sem.dynamicLimit = this.runtimeSemaphoreHardCap();
-    }
-    return sem.dynamicLimit;
-  }
-
-  private runtimeSemaphoreHardCap(): number {
-    // G9: the hard cap is min(env_cap, fleet_recommended). The fleet recommended
-    // concurrency comes from the injected ConcurrencyAdvisor (SwarmStatusService.
-    // fleetPools().recommended_concurrency), avoiding a circular import.
     const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    const envCap = raw === undefined || raw === null || raw.trim() === ''
-      ? 4
-      : (Number.isFinite(Number(raw)) && Number(raw) >= 1 ? Math.trunc(Number(raw)) : 4);
-    const fleetRec = this.concurrencyAdvisor?.() ?? null;
-    return fleetRec !== null ? Math.min(envCap, Math.max(1, fleetRec)) : envCap;
-  }
-
-  // G4: AIMD concurrency controller — additive increase on success (+1), multiplicative
-  // decrease on failure (×0.5). Bounded by [1, hardCap]. Called after each runtime completes.
-  private adjustConcurrency(success: boolean): void {
-    const sem = LoopService.runtimeSemaphore;
-    const cap = this.runtimeSemaphoreHardCap();
-    if (success) {
-      sem.dynamicLimit = Math.min((sem.dynamicLimit ?? cap) + 1, cap);
-    } else {
-      sem.dynamicLimit = Math.max(1, Math.floor((sem.dynamicLimit ?? cap) * 0.5));
-    }
-    // G5-persist: save the dynamicLimit to the DB so it survives restarts.
-    try {
-      this.db.prepare('INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)')
-        .run('aimd_dynamic_limit', String(sem.dynamicLimit), new Date().toISOString());
-    } catch { /* table might not exist — non-fatal */ }
-    // G14: emit AIMD state change for live observability.
-    swarmEventBus.emit('aimd_state', {
-      dynamicLimit: sem.dynamicLimit,
-      active: sem.active.size,
-      queue_depth: sem.queue.length,
-      hard_cap: cap,
-      success,
-    });
-  }
-
-  /**
-   * G9: Graceful scale-down — on budget exhaustion or circuit-break, stop accepting
-   * new leases, wait up to drainTimeoutMs for in-flight leases to complete, then
-   * checkpoint + SIGTERM (not SIGKILL) any that don't finish. The run is marked
-   * 'interrupted' with interrupted_reason: 'budget_drain' so it can be resumed (G10).
-   * This prevents mid-artifact data loss — the system drains safely, not abruptly.
-   */
-  async drainRuntimeLeases(drainTimeoutMs = 60_000): Promise<{ drained: number; checkpointed: number; cancelled: number }> {
-    const sem = LoopService.runtimeSemaphore;
-    // 1. Stop accepting new leases: reject all queued waiters.
-    const queued = sem.queue.splice(0);
-    for (const q of queued) q.reject(new Error('DRAIN_CANCELLED'));
-    const cancelled = queued.length;
-
-    // 2. Wait for in-flight leases to complete (up to drainTimeoutMs).
-    const deadline = Date.now() + drainTimeoutMs;
-    let drained = 0;
-    while (sem.active.size > 0 && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    drained = sem.active.size === 0 ? drained + sem.active.size : drained; // all completed
-    const stillActive = Array.from(sem.active);
-    const checkpointed = stillActive.length;
-
-    // 3. SIGTERM (not SIGKILL) any leases still in-flight after the drain timeout.
-    for (const leaseId of stillActive) {
-      const handle = LoopService.runtimeLeases.get(leaseId);
-      if (handle?.child && !handle.child.killed) {
-        handle.child.kill('SIGTERM');
-      }
-      sem.active.delete(leaseId);
-    }
-
-    return { drained, checkpointed, cancelled };
+    if (raw === undefined || raw === null || raw.trim() === '') return 4;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 4;
   }
 
   /**
@@ -5436,25 +4295,6 @@ export class LoopService {
       const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
       let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
-      // G6.1: pluggable OS sandbox — if SANDBOX_WRAPPER is set (e.g., 'bwrap'), wrap the
-      // runtime command in the sandbox binary. bwrap makes the host read-only + the worktree
-      // writable + a fresh /tmp, preventing absolute-path escape (the residual from codex's
-      // own --sandbox workspace-write). This is the real OS-level isolation layer.
-      const sandboxWrapper = process.env.SANDBOX_WRAPPER;
-      if (sandboxWrapper && options.cwd) {
-        const cwd = options.cwd;
-        const sandboxArgs = [
-          '--ro-bind', '/', '/',
-          '--bind', cwd, cwd,
-          '--dev', '/dev',
-          '--proc', '/proc',
-          '--tmpfs', '/tmp',
-        ];
-        if (process.env.SANDBOX_NO_NET === '1') sandboxArgs.unshift('--unshare-net');
-        sandboxArgs.push('--', command, ...args);
-        args = sandboxArgs;
-        command = sandboxWrapper;
-      }
       try {
         child = spawn(command, args, {
           cwd: options.cwd,
@@ -5503,8 +4343,6 @@ export class LoopService {
           stderr: safeTrim(stderr),
           runtimePid: child.pid || undefined,
         });
-        // G4: AIMD — adjust the concurrency limit based on this runtime's outcome.
-        this.adjustConcurrency(exitCode === 0 && !timedOut);
       };
 
       child.stdout?.setEncoding('utf8');
