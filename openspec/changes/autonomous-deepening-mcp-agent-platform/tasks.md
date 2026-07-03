@@ -45,12 +45,12 @@
 - [x] C1.2 Implement LLM pipeline: NL description → agent config (system prompt, tools, risk class)
 - [x] C1.3 Integrate with AgentRegistryService for OKF markdown generation
 - [x] C1.5 Write tests for NL agent creation
-- [ ] C2.1 Add @xyflow/react dependency to dashboard package.json
-- [ ] C2.2 Create PipelineBuilderPage.tsx with React Flow canvas
-- [ ] C2.3 Implement drag-and-drop nodes (Goal, Loop, Worker, Checker, Learning)
-- [ ] C2.4 Implement edge connections between nodes
-- [ ] C2.5 Add export to OpenSpec change functionality
-- [ ] C2.6 Write PipelineBuilderPage tests
+- [x] C2.1 Add @xyflow/react dependency to dashboard package.json
+- [x] C2.2 Create PipelineBuilderPage.tsx with React Flow canvas
+- [x] C2.3 Implement drag-and-drop nodes (Goal, Loop, Worker, Checker, Learning)
+- [x] C2.4 Implement edge connections between nodes
+- [x] C2.5 Add export to OpenSpec change functionality
+- [x] C2.6 Write PipelineBuilderPage tests
 - [ ] C2.7 **HUMAN APPROVAL GATE C**: Review NL agent creation + visual builder
 
 ## Validation & Ship Gate
