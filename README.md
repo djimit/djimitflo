@@ -18,10 +18,10 @@ DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 6.0.0 (Apex Supreme) |
+| **Version** | 7.0.0 (Evolutionary) |
 | **Tests** | 1383 passing |
-| **Services** | 140+ |
-| **API Endpoints** | 70+ |
+| **Services** | 145+ |
+| **API Endpoints** | 80+ |
 | **MCP Tools** | 13 |
 | **Test Files** | 164 |
 | **Graph Risk** | 0.00 (low) |
@@ -239,6 +239,17 @@ npm run dev:dashboard # http://localhost:5173
 | POST | `/api/memory/store` | Store new memory |
 | GET | `/api/memory/search` | Search memories |
 
+### Swarm (v7.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/swarm-v2/sessions` | List active swarm sessions |
+| POST | `/api/swarm-v2/sessions` | Create swarm session with task decomposition |
+| POST | `/api/swarm-v2/sessions/:id/execute` | Start parallel execution |
+| GET | `/api/swarm-v2/sessions/:id/progress` | Real-time progress |
+| POST | `/api/swarm-v2/messages` | Send agent-to-agent message |
+| GET | `/api/swarm-v2/messages/:agentId` | Receive messages for agent |
+| POST | `/api/swarm-v2/broadcast` | Broadcast to all agents |
+
 ### Apex (v6.0)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -352,11 +363,41 @@ DjimFlo includes the OpenMythos Governance Benchmark with 255 test cases:
 
 ---
 
+## Evolutionary Roadmap (v7.0)
+
+Based on analysis of top AI repos (wshobson/agents 37.5K★, AgentWrapper 8K★, ruflo):
+
+### Phase 1: Swarm Engineering ✅
+- [x] Parallel agent orchestration engine
+- [x] Agent communication protocol (AI-native, structured)
+- [x] Task decomposition and agent pool management
+
+### Phase 2: Skills Evolution (Next)
+- [ ] PluginEval framework (static + LLM judge + Monte Carlo)
+- [ ] Skills genome system (crossover, mutation, selection)
+- [ ] Tiered model strategy (Opus → Haiku based on task complexity)
+
+### Phase 3: Knowledge Graph
+- [ ] Neo4j-inspired graph engine
+- [ ] HNSW vector memory with sub-ms retrieval
+- [ ] Contradiction detection and resolution
+
+### Phase 4: Self-Evolution
+- [ ] Autonomous code improvement pipeline
+- [ ] Strategy evolution via A/B testing
+- [ ] Emergent agent specialization
+
+### Phase 5: Multi-Channel & Federation
+- [ ] Slack/Discord/WhatsApp/Signal gateway
+- [ ] Zero-trust federation protocol (mTLS + ed25519)
+- [ ] Web UI multi-model chat
+
 ## Version History
 
 | Version | Date | Key Features |
 |---------|------|-------------|
-| **v6.0.0** | 2026-07-05 | **Apex Supreme**: Plugin marketplace, vector memory, background workers, LLM router, federation-ready |
+| **v7.0.0** | 2026-07-05 | **Evolutionary**: Swarm orchestration, agent communication protocol, parallel coding |
+| **v6.0.0** | 2026-07-05 | **Apex Supreme**: Plugin marketplace, vector memory, background workers, LLM router |
 | **v5.0.0** | 2026-07-05 | Security hardening, input validation, citation research, live canvas, skills system |
 | **v4.0.0** | 2026-07-04 | All 5 sprongen complete (context isolation, handoffs, skills, citations, canvas) |
 | **v3.0.0** | 2026-07-04 | Legal RuleOps UC-06, OpenMythos integration |
