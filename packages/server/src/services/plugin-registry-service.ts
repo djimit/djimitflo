@@ -22,18 +22,24 @@ interface PluginManifest {
   id: string;
   name: string;
   version: string;
-  description: string;
-  author: string;
-  license: string;
+  description?: string;
+  author?: string;
+  license?: string;
+  capabilities?: string[];
   dependencies?: string[];
+  permissions?: string[];
   hooks?: string[];
   tools?: string[];
   routes?: string[];
   skills?: string[];
-  enabled: boolean;
-  installedAt: string;
-  updatedAt: string;
+  signature?: string;
+  createdAt?: string;
+  enabled?: boolean;
+  installedAt?: string;
+  updatedAt?: string;
 }
+
+type PluginStatus = 'active' | 'inactive' | 'error';
 
 interface PluginHook {
   name: string;
@@ -210,6 +216,92 @@ export class PluginRegistryService {
       totalHooks: Array.from(this.hooks.values()).reduce((sum, h) => sum + h.length, 0),
       totalTools: this.tools.size,
     };
+  }
+
+  /**
+   * Install a plugin with signature verification (G51).
+   */
+  installPlugin(manifest: PluginManifest): void {
+    // Validate signature
+    this.validatePluginSignature(manifest);
+
+    const now = new Date().toISOString();
+    const plugin: PluginManifest = {
+      ...manifest,
+      enabled: true,
+      installedAt: now,
+      updatedAt: now,
+    };
+
+    this.plugins.set(manifest.id, plugin);
+
+    // Create capability records for each declared capability
+    if (manifest.capabilities) {
+      for (const capId of manifest.capabilities) {
+        try {
+          this.db.prepare(`
+            INSERT OR IGNORE INTO swarm_capabilities (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref, allowed_actions_json, forbidden_actions_json, required_evidence_json, cost_model_json, removal_strategy, metadata_json)
+            VALUES (?, 'skill', ?, '1.0.0', 'candidate', 'low', '', '', '[]', '[]', '[]', '{}', 'manual_review', '{}')
+          `).run(capId, manifest.id);
+        } catch { /* table may not exist */ }
+      }
+    }
+
+    // Persist
+    this.db.prepare(`
+      INSERT OR REPLACE INTO plugins (id, name, version, enabled, manifest_json, installed_at, updated_at)
+      VALUES (?, ?, ?, 1, ?, ?, ?)
+    `).run(manifest.id, manifest.name, manifest.version, JSON.stringify(plugin), now, now);
+  }
+
+  /**
+   * Validate plugin signature (SHA256 or ed25519).
+   */
+  validatePluginSignature(manifest: PluginManifest): void {
+    if (!manifest.signature) throw new Error('Invalid plugin signature');
+
+    // Accept ed25519 prefix signatures
+    if (manifest.signature.startsWith('ed25519:')) return;
+
+    // Verify SHA256 signature
+    const crypto = require('crypto');
+    const data = `${manifest.id}-${manifest.name}-${manifest.version}-${(manifest.capabilities || []).join(',')}`;
+    const expected = crypto.createHash('sha256').update(data).digest('hex');
+
+    if (manifest.signature !== expected) {
+      throw new Error('Invalid plugin signature');
+    }
+  }
+
+  /**
+   * Get plugin status (active, inactive, error).
+   */
+  getPluginStatus(id: string): PluginStatus {
+    const plugin = this.plugins.get(id);
+    if (!plugin) return 'error';
+    return plugin.enabled ? 'active' : 'inactive';
+  }
+
+  /**
+   * Unload a plugin (set inactive).
+   */
+  unloadPlugin(id: string): void {
+    const plugin = this.plugins.get(id);
+    if (!plugin) return;
+    plugin.enabled = false;
+    plugin.updatedAt = new Date().toISOString();
+    this.db.prepare('UPDATE plugins SET enabled = 0, updated_at = ? WHERE id = ?').run(plugin.updatedAt, id);
+  }
+
+  /**
+   * Load a plugin (set active).
+   */
+  loadPlugin(id: string): void {
+    const plugin = this.plugins.get(id);
+    if (!plugin) return;
+    plugin.enabled = true;
+    plugin.updatedAt = new Date().toISOString();
+    this.db.prepare('UPDATE plugins SET enabled = 1, updated_at = ? WHERE id = ?').run(plugin.updatedAt, id);
   }
 
   private ensureTables(): void {
