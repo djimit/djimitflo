@@ -1,58 +1,75 @@
 /**
- * Skill routes — acquire, validate, push
+ * Skills routes — dynamic skill loading and agent assignment.
  */
 
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
-import { SkillService } from '../services/skill-service';
+import { SkillLoaderService } from '../services/skill-loader-service';
 
 export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
-  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const skillService = new SkillService(db);
+  const loader = new SkillLoaderService(db);
 
-  // POST /api/skills/acquire — trigger DeerFlow research → OKF Skill draft
-  router.post('/acquire', requireAuth, requirePermission('write:evidence'), async (req, res, next): Promise<void> => {
-    try {
-      const { topic } = req.body ?? {};
-      if (!topic || typeof topic !== 'string') {
-        res.status(400).json({ error: { message: 'topic is required', code: 'INVALID_INPUT' } });
-        return;
-      }
-      const machineId = (req as any).user?.sub || 'unknown';
-      const result = await skillService.acquire(topic, machineId);
-      res.status(201).json(result);
-    } catch (error) {
-      next(error);
-    }
+  // GET /api/skills — list all skills
+  router.get('/', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ skills: loader.listSkills() });
   });
 
-  // POST /api/skills/validate — validate a draft skill
-  router.post('/validate', requireAuth, requirePermission('write:evidence'), (req, res): void => {
-    const { skill_path, sandbox } = req.body ?? {};
-    if (!skill_path) {
-      res.status(400).json({ error: { message: 'skill_path is required', code: 'INVALID_INPUT' } });
+  // GET /api/skills/stats — skill statistics
+  router.get('/stats', requirePermission('read:evidence'), (_req, res) => {
+    res.json(loader.getStats());
+  });
+
+  // GET /api/skills/:id — get skill details
+  router.get('/:id', requirePermission('read:evidence'), (req, res) => {
+    const skill = loader.getSkill(req.params.id);
+    if (!skill) {
+      res.status(404).json({ error: { message: 'Skill not found', code: 'NOT_FOUND' } });
       return;
     }
-    const result = skillService.validate(skill_path, sandbox || 'process');
-    res.json(result);
+    res.json(skill);
   });
 
-  // POST /api/skills/push — push validated skill to agent
-  router.post('/push', requireAuth, requirePermission('write:evidence'), async (req, res, next): Promise<void> => {
-    try {
-      const { agent_id, skill_path, method } = req.body ?? {};
-      if (!agent_id || !skill_path) {
-        res.status(400).json({ error: { message: 'agent_id and skill_path are required', code: 'INVALID_INPUT' } });
-        return;
-      }
-      const result = await skillService.push(agent_id, skill_path, method || 'ssh');
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
+  // POST /api/skills/:id/enable — enable a skill
+  router.post('/:id/enable', requirePermission('write:config'), (req, res) => {
+    loader.setSkillEnabled(req.params.id, true);
+    res.json({ enabled: true });
+  });
+
+  // POST /api/skills/:id/disable — disable a skill
+  router.post('/:id/disable', requirePermission('write:config'), (req, res) => {
+    loader.setSkillEnabled(req.params.id, false);
+    res.json({ disabled: true });
+  });
+
+  // POST /api/skills/:id/assign/:agentId — assign skill to agent
+  router.post('/:id/assign/:agentId', requirePermission('write:config'), (req, res) => {
+    const assignment = loader.assignSkillToAgent(req.params.agentId, req.params.id);
+    res.status(201).json(assignment);
+  });
+
+  // DELETE /api/skills/:id/assign/:agentId — remove skill from agent
+  router.delete('/:id/assign/:agentId', requirePermission('write:config'), (req, res) => {
+    loader.removeSkillFromAgent(req.params.agentId, req.params.id);
+    res.json({ removed: true });
+  });
+
+  // GET /api/skills/agent/:agentId — get agent's skills
+  router.get('/agent/:agentId', requirePermission('read:evidence'), (req, res) => {
+    res.json({ skills: loader.getAgentSkills(req.params.agentId) });
+  });
+
+  // GET /api/skills/trigger/:trigger — find skills by trigger
+  router.get('/trigger/:trigger', requirePermission('read:evidence'), (req, res) => {
+    res.json({ skills: loader.findSkillsByTrigger(req.params.trigger) });
+  });
+
+  // POST /api/skills/reload — reload all skills from disk
+  router.post('/reload', requirePermission('write:config'), (_req, res) => {
+    const loaded = loader.loadSkills();
+    res.json({ reloaded: loaded.length });
   });
 
   return router;
