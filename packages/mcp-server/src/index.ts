@@ -19,6 +19,7 @@ import { registerLoopTools } from './tools/loops.js';
 import { registerGoalTools } from './tools/goals.js';
 import { registerAgentTools } from './tools/agents.js';
 import { registerMissionControlTools } from './tools/mission-control.js';
+import { registerOrchestrationTools } from './tools/orchestration.js';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -48,6 +49,7 @@ async function main() {
   registerGoalTools(server, db);
   registerAgentTools(server, db);
   registerMissionControlTools(server, db);
+  registerOrchestrationTools(server, db);
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
