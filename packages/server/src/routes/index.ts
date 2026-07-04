@@ -44,6 +44,9 @@ import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
 import { createSelfModificationRoutes } from './self-modification';
+import { createFleetRoutes } from './fleet';
+import { createMultiModelRoutes } from './multi-model';
+import { createComplianceRoutes } from './compliance';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -154,6 +157,9 @@ export function createRoutes(
   router.use('/cognitive', requireAuth, createCognitiveRoutes(db, auth));
   router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
   router.use('/self-modification', requireAuth, createSelfModificationRoutes(db, auth));
+  router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
+  router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
+  router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
 
   return router;
 }
