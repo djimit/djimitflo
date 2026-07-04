@@ -96,7 +96,7 @@ export class AgentCommunicationService {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
     `).run(
       message.id, message.from, message.to, message.type, message.priority,
-      JSON.stringify(message.payload), message.timestamp, message.ttl, message.status
+      JSON.stringify(message.payload), message.timestamp, message.ttl
     );
 
     return message;
