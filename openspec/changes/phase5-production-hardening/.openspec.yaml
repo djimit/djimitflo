@@ -1,0 +1,12 @@
+schema: spec-driven
+created: 2026-07-04
+title: Phase 5 — Production Hardening & Integration Integrity
+risk: Low-Medium
+status: proposed
+approver: dlandman
+human-gates:
+  - fase-a-complete
+  - fase-b-complete
+  - fase-c-complete
+  - fase-d-complete
+  - final-ship
