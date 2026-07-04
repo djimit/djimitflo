@@ -51,6 +51,7 @@ import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
 import { createAdvancedRoutes } from './advanced';
 import { createHealthRoutes } from './health';
+import { createLegalRoutes } from './legal';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -168,6 +169,7 @@ export function createRoutes(
   router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
   router.use('/advanced', requireAuth, createAdvancedRoutes(db, auth));
   router.use('/health', createHealthRoutes(db, auth));
+  router.use('/legal', requireAuth, createLegalRoutes(db, auth));
 
   return router;
 }
