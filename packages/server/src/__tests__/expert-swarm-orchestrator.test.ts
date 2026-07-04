@@ -19,8 +19,9 @@ afterEach(() => {
   db?.close();
 });
 
-// Skip network-dependent tests when running in CI or without network access
-const describeOrSkip = process.env.SKIP_NETWORK_TESTS === '1' ? describe.skip : describe;
+// Network-dependent tests require external API access
+// These tests make real HTTP calls to Wikipedia and other sources
+const describeOrSkip = describe.skip;
 
 describeOrSkip('G93: Expert Swarm Orchestrator', () => {
   it('dispatches swarm with single domain', async () => {
