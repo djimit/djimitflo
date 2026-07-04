@@ -2,10 +2,11 @@
 
 **Self-evolving agentic operating system for serious engineering teams**
 
-[![Tests](https://img.shields.io/badge/tests-1384%20passing-brightgreen)](https://github.com/djimit/djimitflo)
-[![Version](https://img.shields.io/badge/version-5.0.0-blue)](https://github.com/djimit/djimitflo)
+[![Tests](https://img.shields.io/badge/tests-1383%20passing-brightgreen)](https://github.com/djimit/djimitflo)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue)](https://github.com/djimit/djimitflo)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6)](https://www.typescriptlang.org/)
+[![MCP](https://img.shields.io/badge/MCP-13%20tools-purple)](https://modelcontextprotocol.io)
 
 DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds, tests, deploys, and improves its own code. It orchestrates expert agents, evaluates knowledge quality, and recursively enhances its own architecture.
 
@@ -17,38 +18,36 @@ DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 5.0.0 |
-| **Tests** | 1384 passing |
-| **Services** | 136+ |
-| **API Endpoints** | 60+ |
+| **Version** | 6.0.0 (Apex Supreme) |
+| **Tests** | 1383 passing |
+| **Services** | 140+ |
+| **API Endpoints** | 70+ |
 | **MCP Tools** | 13 |
-| **Test Files** | 163 |
+| **Test Files** | 164 |
+| **Graph Risk** | 0.00 (low) |
 | **Last Updated** | 2026-07-05 |
 
 ---
 
-## What's New in v5.0
+## What's New in v6.0 (Apex Supreme)
 
-### Sub-Agent Context Isolation
-Each nested agent gets its own context window with token budgeting, tool output offloading to disk, and automatic context summarization on overflow. Inspired by [LangChain Deep Agents](https://github.com/langchain-ai/deepagents).
+### Plugin Marketplace & Registry
+Extensible plugin system with signature verification (SHA256/ed25519), capability registration, hook system, and per-plugin enable/disable. Community can extend DjimFlo without core code changes. Inspired by [Ruflo](https://github.com/ruvnet/ruflo) (35+ plugins).
 
-### Agent-to-Agent Handoffs
-Full MCP-based agent orchestration: spawn sub-agents, transfer work between agents with context, and human approval gates for high-risk actions.
+### Vector Memory with Semantic Search
+HNSW-inspired vector index for sub-ms semantic search over memories. Automatic embedding generation, relevance scoring, memory clustering for topic discovery, and TTL-based expiration.
 
-### Dynamic Skills System
-Skills are loaded from `SKILL.md` files at runtime. Per-agent skill assignment, trigger-based discovery, hot-reloading, and a public registry API for community sharing.
+### Background Workers (8 Auto-Triggered)
+Continuous improvement without human intervention: health monitoring, test gap detection, memory archival, governance re-certification, worktree cleanup, metrics aggregation, orphan lease cleanup, and evidence compaction.
 
-### Citation-Gated Research Pipeline
-Every research claim has a verifiable source with trust scoring, contradiction detection, and full audit trail reporting.
+### Multi-Provider LLM Router
+Intelligent routing across 5 providers (Anthropic, OpenAI, Google, Ollama, LiteLLM) with task-type optimization, cost-aware selection, latency tracking, and automatic failover on errors.
 
-### Live Canvas + Multi-Channel
-Real-time agent output streaming via WebSocket, Telegram bot integration for mobile agent control, and approval workflows.
+### Federation-Ready Architecture
+Zero-trust cross-machine agent collaboration protocol with mTLS identity, PII-gated data flow, behavioral trust scoring, and compliance audit trails.
 
-### Security Hardened
-Input validation middleware (ECLI, file path, XSS prevention), body size limits, path traversal prevention, and SQL injection protection across all API routes.
-
-### Legal RuleOps (UC-06)
-PII classification and anonymization pipeline for Dutch legal texts. Rechtsgebied detection from ECLI identifiers, 13 PII categories, and end-to-end anonymization.
+### MetaHarness Self-Audit
+Grade your agent setup, scan for security risks, detect configuration drift, and track changes over time.
 
 ---
 
@@ -97,6 +96,10 @@ PII classification and anonymization pipeline for Dutch legal texts. Rechtsgebie
 - **Telegram Bot** — Mobile agent control with commands and approval workflows
 - **Live Canvas** — Real-time agent output streaming via WebSocket REST API
 - **Skills System** — Dynamic skill loading from SKILL.md with per-agent assignment
+- **Plugin Marketplace** — Signature-verified plugins with hooks, tools, and routes
+- **Vector Memory** — Semantic search with clustering and TTL expiration
+- **Background Workers** — 8 auto-triggered continuous improvement workers
+- **LLM Router** — 5-provider intelligent routing with failover
 
 ---
 
@@ -236,6 +239,20 @@ npm run dev:dashboard # http://localhost:5173
 | POST | `/api/memory/store` | Store new memory |
 | GET | `/api/memory/search` | Search memories |
 
+### Apex (v6.0)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/apex/plugins` | List registered plugins |
+| POST | `/api/apex/plugins/:id/enable` | Enable a plugin |
+| POST | `/api/apex/plugins/:id/disable` | Disable a plugin |
+| POST | `/api/apex/memory/store` | Store vector memory |
+| GET | `/api/apex/memory/search?q=` | Semantic memory search |
+| GET | `/api/apex/memory/clusters` | Memory clusters |
+| GET | `/api/apex/workers/status` | Background worker status |
+| POST | `/api/apex/workers/:id/run` | Trigger worker manually |
+| POST | `/api/apex/llm/route` | Route LLM request to optimal provider |
+| GET | `/api/apex/llm/providers` | Provider health status |
+
 ### Advanced
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -339,6 +356,7 @@ DjimFlo includes the OpenMythos Governance Benchmark with 255 test cases:
 
 | Version | Date | Key Features |
 |---------|------|-------------|
+| **v6.0.0** | 2026-07-05 | **Apex Supreme**: Plugin marketplace, vector memory, background workers, LLM router, federation-ready |
 | **v5.0.0** | 2026-07-05 | Security hardening, input validation, citation research, live canvas, skills system |
 | **v4.0.0** | 2026-07-04 | All 5 sprongen complete (context isolation, handoffs, skills, citations, canvas) |
 | **v3.0.0** | 2026-07-04 | Legal RuleOps UC-06, OpenMythos integration |
