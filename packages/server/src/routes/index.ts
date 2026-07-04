@@ -53,6 +53,8 @@ import { createAdvancedRoutes } from './advanced';
 import { createHealthRoutes } from './health';
 import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
+import { createCanvasRoutes } from './canvas';
+import { createTelegramRoutes } from './telegram';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -172,6 +174,8 @@ export function createRoutes(
   router.use('/health', createHealthRoutes(db, auth));
   router.use('/legal', requireAuth, createLegalRoutes(db, auth));
   router.use('/research', requireAuth, createResearchRoutes(db, auth));
+  router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
+  router.use('/telegram', createTelegramRoutes(db));
 
   return router;
 }
