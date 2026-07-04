@@ -446,6 +446,8 @@ export class NestedSpawnService {
       total_wall_budget_ms: row.total_wall_budget_ms,
       consumed_wall_ms: row.consumed_wall_ms,
       max_concurrent_children: row.max_concurrent_children,
+      context_budget: row.context_budget ?? 0,
+      context_consumed: row.context_consumed ?? 0,
       risk_class: row.risk_class,
       status: row.status,
       started_at: row.started_at,

@@ -56,7 +56,7 @@ function inferAgentType(description: string): { type: string; capabilities: stri
   return { type: 'generalist', capabilities: ['task-execution', 'reporting'] };
 }
 
-function inferRiskClass(description: string, capabilities: string[]): 'low' | 'medium' | 'high' {
+function inferRiskClass(description: string, _capabilities: string[]): 'low' | 'medium' | 'high' {
   if (/security|vulnerab|production|deploy/i.test(description)) return 'high';
   if (/delete|remove|overwrite|force/i.test(description)) return 'high';
   if (/write|modify|create|send/i.test(description)) return 'medium';

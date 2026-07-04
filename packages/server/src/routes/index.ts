@@ -29,7 +29,6 @@ import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from './discussions';
 import { createExportRoutes } from './exports';
 import { createMessageRoutes } from './messages';
-import { createMemoryRoutes } from './memory';
 import { createSkillRoutes } from './skills';
 import { createLearningRoutes } from './learning';
 import { getAppVersion } from '../utils/version';
@@ -159,7 +158,6 @@ export function createRoutes(
   router.use('/gym', requireAuth, createGymRoutes(db, auth));
   router.use('/runtime-governance', requireAuth, createRuntimeGovernanceRoutes(db, auth));
   router.use('/cognitive', requireAuth, createCognitiveRoutes(db, auth));
-  router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
   router.use('/self-modification', requireAuth, createSelfModificationRoutes(db, auth));
   router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
   router.use('/models', requireAuth, createMultiModelRoutes(db, auth));

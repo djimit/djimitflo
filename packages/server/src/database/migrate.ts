@@ -2,9 +2,9 @@
  * Lightweight SQLite migrations for schema evolution.
  */
 
-import BetterSqlite3 from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import { join } from 'path';
-import type { Database as BetterSqlite3Database } from 'better-sqlite3';
+type BetterSqlite3Database = Database.Database;
 import { createPhase56Tables } from './migrate-phase56';
 import { seedMCPServers } from './seed-mcp-servers';
 
@@ -1343,7 +1343,7 @@ function createOpenMythosEvalTables(db: BetterSqlite3Database) {
 
 if (require.main === module) {
   const dbPath = process.env.DB_PATH || join(process.cwd(), '../../.data/djimitflo.sqlite');
-  const db = new BetterSqlite3Database(dbPath);
+  const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
   runMigrations(db);
   db.close();
