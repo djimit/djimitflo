@@ -47,6 +47,9 @@ import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
 import { createComplianceRoutes } from './compliance';
+import { createRetirementRoutes } from './retirement';
+import { createRedTeamRoutes } from './red-team';
+import { createPlatformRoutes } from './platform';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -160,6 +163,9 @@ export function createRoutes(
   router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
   router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
   router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
+  router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
+  router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
+  router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
 
   return router;
 }

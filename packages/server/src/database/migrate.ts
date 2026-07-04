@@ -1296,6 +1296,8 @@ export function runMigrations(db: BetterSqlite3Database) {
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);
   createOpenMythosEvalTables(db);
+  addMissingColumns(db, 'agents', agentRetirementColumns);
+  createAgentArchiveTables(db);
 }
 
 function createOpenMythosEvalTables(db: BetterSqlite3Database) {
@@ -1345,4 +1347,24 @@ if (require.main === module) {
   db.pragma('foreign_keys = ON');
   runMigrations(db);
   db.close();
+}
+
+const agentRetirementColumns: ColumnSpec[] = [
+  { name: 'retired_at', definition: 'TEXT' },
+  { name: 'retirement_reason', definition: 'TEXT DEFAULT ""' },
+];
+
+function createAgentArchiveTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS agent_archives (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      archived_at TEXT NOT NULL DEFAULT (datetime('now')),
+      evidence_json TEXT NOT NULL DEFAULT '{}',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_archives_agent_id ON agent_archives(agent_id);
+  `);
 }
