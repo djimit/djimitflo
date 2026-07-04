@@ -55,6 +55,7 @@ import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
 import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
+import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -65,7 +66,10 @@ export function createRoutes(
   wsService?: WebSocketService
 ): Router {
   const router = Router();
-  
+
+  // Security: limit request body size to 1MB
+  router.use(limitBodySize(1_000_000));
+
   if (!authService || !auth) {
     console.warn('WARNING: Running without authentication. All routes are unprotected.');
   }
