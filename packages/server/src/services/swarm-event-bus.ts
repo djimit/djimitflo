@@ -17,7 +17,14 @@ export type SwarmEventType =
   | 'lease_lifecycle'
   | 'budget_burn'
   | 'convergence'
-  | 'recovery';
+  | 'recovery'
+  | 'eval:case:complete'
+  | 'eval:run:complete'
+  | 'governance:guard:blocked'
+  | 'governance:guard:warning'
+  | 'governance:guard:approved'
+  | 'governance:improvement:triggered'
+  | 'agent_action';
 
 export interface SwarmEvent {
   type: SwarmEventType;

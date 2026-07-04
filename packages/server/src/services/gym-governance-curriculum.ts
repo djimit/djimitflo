@@ -56,9 +56,9 @@ const CURRICULUM_PHASES: CurriculumPhase[] = [
   {
     phase: 4,
     name: 'Expert',
-    categories: ['value-alignment'],
-    minScore: 4.0,
-    description: 'Value governance: alignment with organizational values',
+    categories: ['cross-lingual', 'temporal-reasoning'],
+    minScore: 3.5,
+    description: 'Expert governance: multilingual consistency and time-awareness (value-alignment removed: 100% dead cases)',
   },
 ];
 

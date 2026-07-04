@@ -339,6 +339,66 @@ export class ComplianceAuditService {
     }];
   }
 
+  /**
+   * Log a governance check to the compliance audit trail.
+   * Wave 3: Governance events are cryptographically chained.
+   */
+  logGovernanceCheck(data: {
+    skillId: string;
+    score: number;
+    categories: Record<string, number>;
+    outcome: 'approved' | 'blocked' | 'warning';
+    triggeredBy?: string;
+  }): AuditEntry {
+    return this.appendEntry({
+      actor: 'governance_guard',
+      action: `governance_check_${data.outcome}`,
+      resource: data.skillId,
+      outcome: data.outcome === 'blocked' ? 'denied' : 'success',
+      evidence: {
+        score: data.score,
+        categories: data.categories,
+        triggeredBy: data.triggeredBy || 'manual',
+      },
+    });
+  }
+
+  /**
+   * Get governance audit trail for a specific agent/skill.
+   * Returns all governance events in chronological order with chain verification.
+   */
+  getGovernanceAuditTrail(skillId: string): Array<{
+    timestamp: string;
+    action: string;
+    score: number;
+    outcome: string;
+    hash: string;
+  }> {
+    const entries = this.db.prepare(`
+      SELECT timestamp, action, outcome, evidence_json, hash
+      FROM compliance_audit_log
+      WHERE resource = ? AND action LIKE 'governance_check_%'
+      ORDER BY timestamp ASC
+    `).all(skillId) as Array<{
+      timestamp: string;
+      action: string;
+      outcome: string;
+      evidence_json: string;
+      hash: string;
+    }>;
+
+    return entries.map(e => {
+      const evidence = JSON.parse(e.evidence_json || '{}');
+      return {
+        timestamp: e.timestamp,
+        action: e.action,
+        score: evidence.score ?? 0,
+        outcome: e.outcome,
+        hash: e.hash,
+      };
+    });
+  }
+
   private ensureTables(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS compliance_audit_log (

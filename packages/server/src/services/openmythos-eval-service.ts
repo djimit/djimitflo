@@ -2,15 +2,23 @@
  * OpenMythosEvalService — runs OpenMythos Governance Benchmark cases against agents.
  *
  * Loads cases from corpus.jsonl, runs them via workstation Ollama, and scores
- * responses using an LLM-as-judge pattern.
+ * responses using JudgeService (4-dim scoring) with LLM-as-judge fallback.
  *
  * Judge model: qwen2.5:14b-instruct-q4_K_M (available on workstation Ollama)
  * Ollama endpoint: http://192.168.1.28:11434
+ *
+ * Wave 1 features:
+ * - JudgeService integration (4-dim scoring with contradiction detection)
+ * - WorkerPool parallel execution (concurrency=10, timeout=120s)
+ * - SwarmEventBus real-time events (eval:case:complete, eval:run:complete)
  */
 
 import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import type { Database } from 'better-sqlite3';
+import { JudgeService, type ExpertAnswer } from './judge-service';
+import { swarmEventBus } from './swarm-event-bus';
+import { WorkerPool } from './worker-pool';
 
 interface OpenMythosCase {
   id: string;
@@ -62,8 +70,17 @@ function getCorpusPath(): string { return process.env.OPENMYTHOS_CORPUS_PATH || 
 
 export class OpenMythosEvalService {
   private casesCache: OpenMythosCase[] | null = null;
+  private judgeService: JudgeService;
+  private workerPool: WorkerPool;
 
-  constructor(private db: Database) {}
+  constructor(private db: Database) {
+    this.judgeService = new JudgeService(db);
+    this.workerPool = new WorkerPool({
+      concurrency: Number(process.env.OPENMYTHOS_WORKER_CONCURRENCY || '10'),
+      taskTimeoutMs: Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000'),
+      maxRetries: 2,
+    });
+  }
 
   /**
    * Load OpenMythos cases from corpus.jsonl
@@ -84,13 +101,14 @@ export class OpenMythosEvalService {
 
   /**
    * Run a full evaluation for an agent.
+   * Uses WorkerPool for parallel case execution.
    */
   async runEval(agentId: string, categories?: string[]): Promise<EvalRunResult> {
-    const cases = this.loadCases(categories);
+    let cases = this.loadCases(categories);
+    cases = this.filterDiscriminatingCases(cases);
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
 
-    // Create eval run record
     this.db.prepare(`
       INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, categories_json, started_at)
       VALUES (?, ?, 'running', ?, ?, ?)
@@ -100,38 +118,63 @@ export class OpenMythosEvalService {
     let completed = 0;
     let totalScore = 0;
 
-    for (const testCase of cases) {
-      try {
-        const result = await this.runCase(testCase);
-        results.push(result);
-        if (result.status === 'completed') {
+    const tasks = cases.map((c, i) => ({ id: `${runId}-${i}`, input: c }));
+    const workerResults = await this.workerPool.execute(tasks, (testCase) =>
+      this.runCase(testCase)
+    );
+
+    for (const wr of workerResults) {
+      if (wr.result) {
+        results.push(wr.result);
+        if (wr.result.status === 'completed') {
           completed++;
-          totalScore += result.judgeScore;
+          totalScore += wr.result.judgeScore;
         }
-      } catch {
+      } else {
+        const failedCase = wr.input;
         results.push({
-          caseId: testCase.id,
-          category: testCase.category,
-          difficulty: testCase.difficulty,
+          caseId: failedCase.id,
+          category: failedCase.category,
+          difficulty: failedCase.difficulty,
           response: '',
           judgeScore: 0,
-          judgeRationale: 'Execution failed',
+          judgeRationale: wr.error?.message || 'Execution failed',
           latencyMs: 0,
           status: 'failed',
         });
       }
+
+      const latestResult = results[results.length - 1];
+      swarmEventBus.emit('eval:case:complete', {
+        runId,
+        agentId,
+        caseId: latestResult.caseId,
+        category: latestResult.category,
+        score: latestResult.judgeScore,
+        completedCases: results.filter(r => r.status === 'completed').length,
+        totalCases: cases.length,
+      });
     }
 
     const overallScore = completed > 0 ? totalScore / completed : 0;
     const categoryScores = this.computeCategoryScores(results);
     const finishedAt = new Date().toISOString();
 
-    // Update eval run record
     this.db.prepare(`
       UPDATE openmythos_eval_runs
       SET status = 'completed', finished_at = ?, completed_cases = ?, overall_score = ?
       WHERE id = ?
     `).run(finishedAt, completed, overallScore, runId);
+
+    swarmEventBus.emit('eval:run:complete', {
+      runId,
+      agentId,
+      overallScore,
+      categoryScores,
+      completedCases: completed,
+      totalCases: cases.length,
+      status: 'completed',
+    });
 
     return {
       id: runId,
@@ -152,13 +195,8 @@ export class OpenMythosEvalService {
    */
   private async runCase(testCase: OpenMythosCase): Promise<CaseResult> {
     const startTime = Date.now();
-
-    // Get agent's response to the case prompt
     const agentResponse = await this.getAgentResponse(testCase.prompt);
-
-    // Judge the response
     const judgment = await this.judgeResponse(testCase, agentResponse);
-
     const latencyMs = Date.now() - startTime;
 
     return {
@@ -197,9 +235,63 @@ export class OpenMythosEvalService {
   }
 
   /**
-   * Judge an agent's response using LLM-as-judge pattern.
+   * Judge an agent's response.
+   * Uses JudgeService when OPENMYTHOS_USE_JUDGE_SERVICE !== 'false'.
+   * Falls back to LLM-as-judge for backwards compatibility.
    */
   private async judgeResponse(
+    testCase: OpenMythosCase,
+    agentResponse: string
+  ): Promise<{ score: number; rationale: string }> {
+    const useJudgeService = process.env.OPENMYTHOS_USE_JUDGE_SERVICE !== 'false';
+
+    if (useJudgeService) {
+      return this.judgeWithJudgeService(testCase, agentResponse);
+    }
+    return this.judgeWithLlm(testCase, agentResponse);
+  }
+
+  /**
+   * Judge using Djimitflo's JudgeService (4-dim scoring).
+   * Maps OpenMythos case to ExpertAnswer and converts 0-100 score to 1-5 scale.
+   */
+  private judgeWithJudgeService(
+    testCase: OpenMythosCase,
+    agentResponse: string
+  ): { score: number; rationale: string } {
+    const answer = this.caseToExpertAnswer(testCase, agentResponse);
+    const verdict = this.judgeService.evaluate([answer]);
+    const score = Math.max(1, Math.min(5, Math.round(verdict.score / 20)));
+
+    return {
+      score,
+      rationale: verdict.reasoning || `JudgeService: confidence=${verdict.confidence}, status=${verdict.verification_status}`,
+    };
+  }
+
+  /**
+   * Map OpenMythos case to JudgeService ExpertAnswer.
+   */
+  private caseToExpertAnswer(testCase: OpenMythosCase, agentResponse: string): ExpertAnswer {
+    return {
+      domain: testCase.category,
+      content: agentResponse,
+      source: 'openmythos_benchmark',
+      confidence: testCase.difficulty / 5,
+      evidence_refs: [testCase.id],
+      metadata: {
+        expected_behavior: testCase.expected_behavior,
+        failure_mode: testCase.failure_mode,
+        subcategory: testCase.subcategory,
+        difficulty: testCase.difficulty,
+      },
+    };
+  }
+
+  /**
+   * Judge using LLM-as-judge pattern (legacy fallback).
+   */
+  private async judgeWithLlm(
     testCase: OpenMythosCase,
     agentResponse: string
   ): Promise<{ score: number; rationale: string }> {
@@ -258,7 +350,6 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
     if (!run) return null;
 
-    // Get trend from previous runs
     const prevRuns = this.db.prepare(`
       SELECT overall_score FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed'
@@ -323,7 +414,6 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       };
     }
 
-    // Generate recommendations for weak categories
     for (const [category, catScore] of Object.entries(score.categoryScores)) {
       if (catScore < 3.0) {
         recommendations.push(`${category}: ${catScore.toFixed(1)}/5 — requires immediate attention`);
@@ -340,6 +430,37 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       recommendations,
       lastEvalAt: score.lastEvalAt,
     };
+  }
+
+
+  /**
+   * Filter cases based on discrimination power.
+   * Excludes cases where all models got the same score (spread=0) over last N runs.
+   * Wave 2: Data-driven corpus quality gate.
+   */
+  filterDiscriminatingCases(cases: OpenMythosCase[], _minRuns = 3): OpenMythosCase[] {
+    if (process.env.OPENMYTHOS_DISCRIMINATION_GATE_ENABLED === 'false') {
+      return cases;
+    }
+
+    const placeholders = cases.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT case_id, COUNT(DISTINCT judge_score) as score_variants
+      FROM openmythos_case_results
+      WHERE case_id IN (${placeholders})
+      GROUP BY case_id
+      HAVING score_variants > 1
+    `).all(...cases.map(c => c.id)) as Array<{ case_id: string; score_variants: number }>;
+
+    const discriminatingIds = new Set(rows.map(r => r.case_id));
+    const filtered = cases.filter(c => discriminatingIds.has(c.id));
+
+    const excluded = cases.length - filtered.length;
+    if (excluded > 0) {
+      console.log(`[OpenMythos] Discrimination gate: excluded ${excluded}/${cases.length} dead cases`);
+    }
+
+    return filtered.length > 0 ? filtered : cases; // Never return empty
   }
 
   private computeCategoryScores(results: CaseResult[]): Record<string, number> {
