@@ -50,6 +50,7 @@ import { createComplianceRoutes } from './compliance';
 import { createRetirementRoutes } from './retirement';
 import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
+import { createAdvancedRoutes } from './advanced';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -166,6 +167,7 @@ export function createRoutes(
   router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
   router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
   router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
+  router.use('/advanced', requireAuth, createAdvancedRoutes(db, auth));
 
   return router;
 }
