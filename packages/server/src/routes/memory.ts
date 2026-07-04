@@ -1,91 +1,82 @@
 /**
- * Memory routes — semantic search and context injection endpoints
+ * Proactive Memory routes — relevance-scored, self-maintaining memory substrate.
  */
 
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
-import { ContextInjectionService } from '../services/context-injection-service';
+import { ProactiveMemoryService } from '../services/proactive-memory-service';
 
 export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
-  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const contextInjector = new ContextInjectionService();
+  const service = new ProactiveMemoryService(db);
 
-  // GET /api/memory/search?q=<query>&limit=<n>
-  router.get('/search', requireAuth, requirePermission('read:evidence'), async (req, res, next): Promise<void> => {
-    try {
-      const query = (req.query.q as string || '').trim();
-      if (!query) {
-        res.json({ results: [], total: 0 });
-        return;
-      }
+  // GET /api/memory/stats — memory statistics
+  router.get('/stats', requirePermission('read:evidence'), (_req, res) => {
+    res.json(service.getStats());
+  });
 
-      const localResults = searchPromotedMemory(db, query);
-      if (localResults.length > 0) {
-        res.json({ results: localResults, total: localResults.length, source: 'promoted_memory_fallback' });
-        return;
-      }
+  // GET /api/memory/top — most relevant active memories
+  router.get('/top', requirePermission('read:evidence'), (req, res) => {
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const type = req.query.type as string | undefined;
+    res.json({ memories: service.getTopMemories(limit, type) });
+  });
 
-      const context = await contextInjector.injectContext(query, true);
-      const results = context
-        ? context.split('### ').slice(1).map((block: string) => {
-            const lines = block.split('\n');
-            const titleLine = lines[0] || '';
-            const trustMatch = titleLine.match(/\[(approved|validated|agent_generated)\]/);
-            return {
-              title: titleLine.replace(/\[.*?\]/, '').trim(),
-              excerpt: lines.slice(1).join(' ').trim().slice(0, 200),
-              trust_level: trustMatch ? trustMatch[1] : undefined,
-            };
-          })
-        : [];
-
-      res.json({ results, total: results.length });
-    } catch (error) {
-      next(error);
+  // POST /api/memory/store — store a new memory
+  router.post('/store', requirePermission('write:claim'), (req, res) => {
+    const { content, type, metadata, ttlDays } = req.body;
+    if (!content?.trim()) {
+      res.status(400).json({ error: { message: 'content is required', code: 'VALIDATION_ERROR' } });
+      return;
     }
+    const entry = service.storeMemory({ content, type: type || 'observation', metadata, ttlDays });
+    res.status(201).json(entry);
+  });
+
+  // GET /api/memory/search — search memories by content
+  router.get('/search', requirePermission('read:evidence'), (req, res) => {
+    const q = req.query.q as string;
+    if (!q?.trim()) {
+      res.status(400).json({ error: { message: 'q parameter is required', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    const limit = req.query.limit ? Number(req.query.limit) : 10;
+    res.json({ memories: service.searchMemories(q, limit) });
+  });
+
+  // GET /api/memory/:id — get a memory and update usage
+  router.get('/:id', requirePermission('read:evidence'), (req, res) => {
+    const memory = service.accessMemory(req.params.id);
+    if (!memory) {
+      res.status(404).json({ error: { message: 'Memory not found', code: 'NOT_FOUND' } });
+      return;
+    }
+    res.json(memory);
+  });
+
+  // GET /api/memory/:id/related — get related memories
+  router.get('/:id/related', requirePermission('read:evidence'), (req, res) => {
+    res.json({ related: service.getRelatedMemories(req.params.id) });
+  });
+
+  // POST /api/memory/relations — create a relation between memories
+  router.post('/relations', requirePermission('write:claim'), (req, res) => {
+    const { sourceId, targetId, relationType, strength } = req.body;
+    if (!sourceId || !targetId) {
+      res.status(400).json({ error: { message: 'sourceId and targetId are required', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    const relation = service.createRelation(sourceId, targetId, relationType || 'related', strength || 0.5);
+    res.status(201).json(relation);
+  });
+
+  // POST /api/memory/maintenance — run maintenance cycle
+  router.post('/maintenance', requirePermission('write:governance'), (__req, res) => {
+    const result = service.runMaintenanceCycle();
+    res.json(result);
   });
 
   return router;
-}
-
-function searchPromotedMemory(db: Database, query: string): Array<Record<string, unknown>> {
-  const terms = query
-    .toLowerCase()
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 3)
-    .slice(0, 8);
-  if (terms.length === 0) {
-    return [];
-  }
-  let rows: any[] = [];
-  try {
-    rows = db.prepare(`
-      SELECT * FROM memory_candidates
-      WHERE promotion_status = 'promoted'
-      ORDER BY updated_at DESC
-      LIMIT 50
-    `).all() as any[];
-  } catch {
-    return [];
-  }
-  return rows
-    .map((row) => ({
-      row,
-      score: terms.filter((term) => `${row.title} ${row.content}`.toLowerCase().includes(term)).length,
-    }))
-    .filter((hit) => hit.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map((hit) => ({
-      title: hit.row.title,
-      excerpt: String(hit.row.content).slice(0, 200),
-      trust_level: 'validated',
-      memory_type: hit.row.memory_type,
-      source_ref: hit.row.source_ref || undefined,
-      score: hit.score,
-    }));
 }

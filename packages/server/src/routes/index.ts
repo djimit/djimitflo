@@ -42,6 +42,7 @@ import { createOpenMythosRoutes } from './openmythos';
 import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
+import { createMemoryRoutes } from './memory';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -150,6 +151,7 @@ export function createRoutes(
   router.use('/gym', requireAuth, createGymRoutes(db, auth));
   router.use('/runtime-governance', requireAuth, createRuntimeGovernanceRoutes(db, auth));
   router.use('/cognitive', requireAuth, createCognitiveRoutes(db, auth));
+  router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
 
   return router;
 }
