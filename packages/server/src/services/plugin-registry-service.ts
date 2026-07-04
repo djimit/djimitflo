@@ -238,12 +238,13 @@ export class PluginRegistryService {
     // Create capability records for each declared capability
     if (manifest.capabilities) {
       for (const capId of manifest.capabilities) {
-        try {
-          this.db.prepare(`
-            INSERT OR IGNORE INTO swarm_capabilities (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref, allowed_actions_json, forbidden_actions_json, required_evidence_json, cost_model_json, removal_strategy, metadata_json)
-            VALUES (?, 'skill', ?, '1.0.0', 'candidate', 'low', '', '', '[]', '[]', '[]', '{}', 'manual_review', '{}')
-          `).run(capId, manifest.id);
-        } catch { /* table may not exist */ }
+        this.db.prepare(`
+          INSERT OR IGNORE INTO swarm_capabilities
+            (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref,
+             allowed_actions_json, forbidden_actions_json, required_evidence_json,
+             eval_score, eval_threshold, cost_model_json, removal_strategy, metadata)
+          VALUES (?, 'skill', ?, '1.0.0', 'candidate', 'low', '', '', '[]', '[]', '[]', 0, 0.75, '{}', 'manual_review', '{}')
+        `).run(capId, manifest.id);
       }
     }
 
