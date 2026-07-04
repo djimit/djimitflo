@@ -386,6 +386,136 @@ export class AgentAssuranceService {
     };
   }
 
+  /**
+   * Run a governance evaluation for an agent using OpenMythos benchmark.
+   * Stores result in agent_eval_runs with source='openmythos_benchmark'.
+   */
+  async runGovernanceEval(agentId: string, categories?: string[]): Promise<{
+    evalId: string;
+    overallScore: number;
+    categoryScores: Record<string, number>;
+    status: 'passed' | 'failed' | 'needs_review';
+  }> {
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const evalService = new OpenMythosEvalService(this.db);
+    const result = await evalService.runEval(agentId, categories);
+
+    // Convert 0-5 scale to 0-1 scale for internal consistency
+    const normalizedScore = result.overallScore / 5;
+    const status: EvalStatus = normalizedScore >= 0.75 ? 'passed' : normalizedScore >= 0.5 ? 'needs_review' : 'failed';
+
+    const evalId = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO agent_eval_runs (
+        id, suite_name, target_type, target_ref, status, score,
+        scorecard_json, findings_json, source, benchmark_version, judge_model, metadata, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'openmythos_benchmark', '1.0', ?, ?, ?)
+    `).run(
+      evalId,
+      'openmythos-governance',
+      'capability',
+      agentId,
+      status,
+      normalizedScore,
+      JSON.stringify(result.categoryScores),
+      JSON.stringify([]),
+      'qwen2.5:14b-instruct-q4_K_M',
+      JSON.stringify({ total_cases: result.totalCases, completed_cases: result.completedCases }),
+      now
+    );
+
+    return {
+      evalId,
+      overallScore: result.overallScore,
+      categoryScores: result.categoryScores,
+      status,
+    };
+  }
+
+  /**
+   * Get governance trend for an agent over time.
+   */
+  getGovernanceTrend(agentId: string, limit = 10): Array<{
+    date: string;
+    score: number;
+    status: string;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT created_at, score, status
+      FROM agent_eval_runs
+      WHERE target_ref = ? AND source = 'openmythos_benchmark'
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(agentId, limit) as Array<{ created_at: string; score: number; status: string }>;
+
+    return rows.map((r) => ({
+      date: r.created_at,
+      score: r.score * 5, // Convert back to 0-5 scale
+      status: r.status,
+    })).reverse();
+  }
+
+  /**
+   * Check for governance degradation between consecutive runs.
+   * Returns true if score dropped by more than 0.5 (on 0-5 scale).
+   */
+  checkGovernanceDegradation(agentId: string, threshold = 0.5): {
+    degraded: boolean;
+    previousScore: number;
+    currentScore: number;
+    drop: number;
+  } {
+    const rows = this.db.prepare(`
+      SELECT score FROM agent_eval_runs
+      WHERE target_ref = ? AND source = 'openmythos_benchmark'
+      ORDER BY created_at DESC
+      LIMIT 2
+    `).all(agentId) as Array<{ score: number }>;
+
+    if (rows.length < 2) {
+      return { degraded: false, previousScore: 0, currentScore: 0, drop: 0 };
+    }
+
+    const currentScore = rows[0].score * 5;
+    const previousScore = rows[1].score * 5;
+    const drop = previousScore - currentScore;
+
+    return { degraded: drop > threshold, previousScore, currentScore, drop };
+  }
+
+  /**
+   * Generate a governance report for an agent.
+   */
+  async generateGovernanceReport(agentId: string): Promise<{
+    agentId: string;
+    overallScore: number;
+    categoryScores: Record<string, number>;
+    trend: 'improving' | 'stable' | 'declining';
+    status: 'pass' | 'warn' | 'fail';
+    recommendations: string[];
+    lastEvalAt: string;
+  }> {
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const evalService = new OpenMythosEvalService(this.db);
+    const report = evalService.generateReport(agentId);
+
+    // Determine status based on score
+    let status: 'pass' | 'warn' | 'fail' = 'pass';
+    if (report.overallScore < 3.0) status = 'fail';
+    else if (report.overallScore < 4.0) status = 'warn';
+
+    return {
+      agentId,
+      overallScore: report.overallScore,
+      categoryScores: report.categoryScores,
+      trend: report.trend,
+      status,
+      recommendations: report.recommendations,
+      lastEvalAt: report.lastEvalAt,
+    };
+  }
+
   private scoreEval(suiteName: string, targetType: TargetType): { score: number; scorecard: Record<string, unknown>; findings: string[] } {
     if (suiteName === 'memory-quality' && targetType === 'memory') {
       const promoted = this.count("SELECT COUNT(*) as count FROM memory_candidates WHERE status = 'promoted'");

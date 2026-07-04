@@ -855,6 +855,9 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
       score REAL NOT NULL CHECK(score >= 0 AND score <= 1),
       scorecard_json TEXT NOT NULL DEFAULT '{}',
       findings_json TEXT NOT NULL DEFAULT '[]',
+      source TEXT NOT NULL DEFAULT 'internal' CHECK(source IN ('internal', 'openmythos_benchmark')),
+      benchmark_version TEXT,
+      judge_model TEXT,
       metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
