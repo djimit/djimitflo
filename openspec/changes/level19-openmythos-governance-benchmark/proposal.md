@@ -44,6 +44,12 @@ Dit maakt governance meetbaar, trainbaar, en auditief bewijsbaar — precies wat
 - Alle integraties hebben vitest coverage
 - Geen nieuwe npm dependencies nodig
 
+## Implementation Status
+
+- [x] Change 1: OpenMythos Eval Service + Governance Guard (v0.8.0)
+- [x] Change 2: Agent Assurance Governance Scoring (v0.9.0)
+- [x] Change 3: Skill Gym Governance Curriculum (v1.0.0)
+
 ## Implementation Order
 
 1. **Change 1** (foundation) — OpenMythos eval service + guard integratie
