@@ -1298,6 +1298,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createOpenMythosEvalTables(db);
   addMissingColumns(db, 'agents', agentRetirementColumns);
   createAgentArchiveTables(db);
+  createSubAgentContextTables(db);
 }
 
 function createOpenMythosEvalTables(db: BetterSqlite3Database) {
@@ -1366,5 +1367,32 @@ function createAgentArchiveTables(db: BetterSqlite3Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_agent_archives_agent_id ON agent_archives(agent_id);
+  `);
+}
+
+function createSubAgentContextTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sub_agent_tool_outputs (
+      id TEXT PRIMARY KEY,
+      lease_id TEXT NOT NULL,
+      tool_name TEXT NOT NULL DEFAULT '',
+      original_size INTEGER NOT NULL DEFAULT 0,
+      file_path TEXT,
+      summary TEXT NOT NULL DEFAULT '',
+      offloaded_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sub_agent_tool_outputs_lease_id ON sub_agent_tool_outputs(lease_id);
+
+    CREATE TABLE IF NOT EXISTS sub_agent_scratch (
+      id TEXT PRIMARY KEY,
+      lease_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(lease_id, key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sub_agent_scratch_lease_id ON sub_agent_scratch(lease_id);
   `);
 }
