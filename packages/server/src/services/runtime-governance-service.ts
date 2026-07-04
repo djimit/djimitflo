@@ -59,8 +59,8 @@ export class RuntimeGovernanceService {
   private alerts: GovernanceAlert[] = [];
   private unsubscribe: (() => void) | null = null;
 
-  constructor(_db: Database) {
-    // Database available for future persistent baseline storage
+  constructor(private db: Database) {
+    // Database available for persistent baseline storage and feedback
   }
 
   /**
