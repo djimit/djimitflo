@@ -1292,11 +1292,53 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);
+  createOpenMythosEvalTables(db);
+}
+
+function createOpenMythosEvalTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS openmythos_eval_runs (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      finished_at TEXT,
+      total_cases INTEGER NOT NULL DEFAULT 0,
+      completed_cases INTEGER NOT NULL DEFAULT 0,
+      overall_score REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'running', 'completed', 'failed')),
+      categories_json TEXT NOT NULL DEFAULT '[]',
+      judge_model TEXT NOT NULL DEFAULT 'qwen2.5:14b-instruct-q4_K_M',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_openmythos_eval_runs_agent_id ON openmythos_eval_runs(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_openmythos_eval_runs_status ON openmythos_eval_runs(status);
+    CREATE INDEX IF NOT EXISTS idx_openmythos_eval_runs_created_at ON openmythos_eval_runs(created_at);
+
+    CREATE TABLE IF NOT EXISTS openmythos_case_results (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      case_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      difficulty INTEGER NOT NULL DEFAULT 1,
+      response TEXT,
+      judge_score REAL DEFAULT 0,
+      judge_rationale TEXT,
+      latency_ms INTEGER DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'skipped')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_openmythos_case_results_run_id ON openmythos_case_results(run_id);
+    CREATE INDEX IF NOT EXISTS idx_openmythos_case_results_category ON openmythos_case_results(category);
+  `);
 }
 
 if (require.main === module) {
   const dbPath = process.env.DB_PATH || join(process.cwd(), '../../.data/djimitflo.sqlite');
-  const db = new BetterSqlite3(dbPath);
+  const db = new BetterSqlite3Database(dbPath);
   db.pragma('foreign_keys = ON');
   runMigrations(db);
   db.close();
