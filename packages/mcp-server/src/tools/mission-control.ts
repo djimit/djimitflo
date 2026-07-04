@@ -21,7 +21,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
       const pendingGoals = db.prepare("SELECT COUNT(*) as c FROM goals WHERE status = 'created'").get() as { c: number };
       const activeAgents = db.prepare("SELECT COUNT(*) as c FROM agents WHERE status = 'active'").get() as { c: number };
       const runningWorkers = db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'running'").get() as { c: number };
-      const recentEvents = db.prepare('SELECT event_type, severity, message, created_at FROM loop_events ORDER BY created_at DESC LIMIT 5').all();
+      const recentEvents = db.prepare('SELECT event_type, level, message, created_at FROM loop_events ORDER BY created_at DESC LIMIT 5').all();
 
       return {
         content: [{
@@ -56,7 +56,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
         } catch { /* skip */ }
       }
 
-      const recentErrors = db.prepare("SELECT event_type, message, created_at FROM loop_events WHERE severity IN ('error','critical') ORDER BY created_at DESC LIMIT 5").all();
+      const recentErrors = db.prepare("SELECT event_type, message, created_at FROM loop_events WHERE level IN ('error','critical') ORDER BY created_at DESC LIMIT 5").all();
 
       return {
         content: [{

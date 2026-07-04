@@ -20,7 +20,7 @@
 - [x] Vervang serieel `for (const testCase of cases)` (regel 103-123) met `WorkerPool.execute()`
 - [x] Transformeer cases naar `WorkerTaskInput<OpenMythosCase>[]`
 - [x] Verzamel results als `WorkerTaskResult<OpenMythosCase, CaseResult>[]`
-- [ ] Handle failed tasks (niet-crash, markeer als `status: 'failed'`)
+- [x] Handle failed tasks (niet-crash, markeer als `status: 'failed'`)
 
 **Validation:** Eval-run van 50 cases voltooit in < 60s (vs >25s serieel)
 **Rollback:** Vervang WorkerPool.execute terug met for-loop
@@ -98,8 +98,8 @@
 **Files:** `packages/server/src/services/governance-guard-service.ts`
 - [x] Voeg `triggeredBy` parameter toe aan `runBenchmarkCheck()`
   (`'deploy' | 'manual' | 'schedule'`)
-- [ ] Bij `triggeredBy: 'deploy'` + score < 3.0 → emit `governance:guard:blocked`
-- [ ] Bij `triggeredBy: 'deploy'` + score 3.0-4.0 → emit `governance:guard:warning`
+- [x] Bij `triggeredBy: 'deploy'` + score < 3.0 → emit `governance:guard:blocked`
+- [x] Bij `triggeredBy: 'deploy'` + score 3.0-4.0 → emit `governance:guard:warning`
 - [x] Voeg `complianceAuditService.logGovernanceCheck()` call toe na elke check
 
 **Validation:** Deploy hook test → correcte events + audit log entry
@@ -109,7 +109,7 @@
 **Files:** `packages/server/src/services/governance-improvement-service.ts` (nieuw)
 - [x] Subscribe op `governance:guard:blocked` events
 - [x] Extract weak categories uit eval result
-- [ ] Create LoopService goal met `type: 'governance_improvement'`
+- [x] Create LoopService goal met `type: 'governance_improvement'`
 - [x] Link goal aan GymGovernanceCurriculum phase voor weak categories
 - [x] Implementeer re-eval trigger bij goal completion
 - [x] Escalate naar human review na 3 failed improvement cycles
