@@ -19,7 +19,10 @@ afterEach(() => {
   db?.close();
 });
 
-describe('G93: Expert Swarm Orchestrator', () => {
+// Skip network-dependent tests when running in CI or without network access
+const describeOrSkip = process.env.SKIP_NETWORK_TESTS === '1' ? describe.skip : describe;
+
+describeOrSkip('G93: Expert Swarm Orchestrator', () => {
   it('dispatches swarm with single domain', async () => {
     const result = await orchestrator.dispatch({
       topic: 'quantum computing',

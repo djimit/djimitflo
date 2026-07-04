@@ -117,7 +117,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
 
   // Specialist panel sub-route (projectPanelToBacklog not in any factory)
   const specialistPanels = new SpecialistPanelService(db);
-  router.get('/specialist-panels/:id/backlog', requirePermission('write:swarm_action'), (req, res, next) => {
+  router.post('/specialist-panels/:id/backlog', requirePermission('write:swarm_action'), (req, res, next) => {
     try { res.status(201).json(specialistPanels.projectPanelToBacklog(req.params.id)); } catch (error) { next(error); }
   });
 

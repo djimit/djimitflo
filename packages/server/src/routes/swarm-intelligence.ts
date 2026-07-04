@@ -207,7 +207,7 @@ export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _w
   });
 
   router.post('/specialist-panels/:id/reviews', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(specialistPanels.submitReview(req.params.id, req.body || {})); } catch (error) { try { mapSpecialistPanelError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(200).json(specialistPanels.submitReview(req.params.id, req.body || {})); } catch (error) { try { mapSpecialistPanelError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   return router;
