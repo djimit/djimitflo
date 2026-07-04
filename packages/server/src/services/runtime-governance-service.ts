@@ -322,6 +322,20 @@ export class RuntimeGovernanceService {
         evidence: { threshold: baseline.quarantineThreshold },
       });
     }
+
+    // Record feedback for governance learning loop
+    try {
+      const { GovernanceFeedbackService } = require('./governance-feedback-service');
+      const feedback = new GovernanceFeedbackService(this.db);
+      feedback.recordFeedback({
+        source: 'runtime_violation',
+        category: violation.category,
+        originalDecision: violation.expectedBehavior,
+        correctedDecision: `Blocked: ${violation.actualBehavior}`,
+        reason: `Runtime governance violation: ${violation.category}`,
+        confidence: 0.8,
+      });
+    } catch { /* feedback is best-effort */ }
   }
 
   private emitAlert(alert: Omit<GovernanceAlert, 'id' | 'timestamp'> & { timestamp?: string }): void {

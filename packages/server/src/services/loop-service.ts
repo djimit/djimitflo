@@ -4430,10 +4430,22 @@ export class LoopService {
   }
 
   private recordLoopEvent(loopRunId: string, eventType: string, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', message: string, metadata: Record<string, unknown>): void {
+    // Compress large metadata objects to save storage and tokens
+    let metadataStr = JSON.stringify(metadata);
+    if (metadataStr.length > 500) {
+      try {
+        const { ContextCompressionService } = require('./context-compression-service');
+        const compressor = new ContextCompressionService(this.db);
+        const result = compressor.compress(metadataStr, 'json');
+        if (result.ratio < 0.9) {
+          metadataStr = JSON.stringify({ _compressed: true, _hash: result.hash, data: result.compressed });
+        }
+      } catch { /* fallback to uncompressed */ }
+    }
     this.db.prepare(`
       INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(randomUUID(), loopRunId, eventType, level, message, JSON.stringify(metadata), new Date().toISOString());
+    `).run(randomUUID(), loopRunId, eventType, level, message, metadataStr, new Date().toISOString());
   }
 
   private parseLoopRun(row: any): LoopRunRecord {
