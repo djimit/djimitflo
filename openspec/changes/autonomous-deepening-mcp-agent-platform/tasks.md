@@ -29,13 +29,13 @@
 - [x] B2.1 Extract GoalService (createGoal, listGoals, getGoal, updateGoal, decomposeGoal)
 - [x] B2.2 Wire LoopService delegation to GoalService
 - [x] B2.3 Run full test suite — verify 0 regressions
-- [~] B3.1 Extract createWorkerRoutes from createSwarmRoutes (deferred — large effort, ~30+ routes, needs dedicated iteration)
-- [~] B3.2 Extract createIntelligenceRoutes from createSwarmRoutes (deferred)
-- [~] B3.3 Extract createGovernanceRoutes from createSwarmRoutes (deferred)
-- [~] B3.4 Update routes/index.ts to use new factories (deferred)
-- [~] B3.5 Run server-routes.test.ts — verify all routes still mounted (deferred)
-- [~] B3.6 Run full test suite — verify 0 regressions (deferred)
-- [~] B3.7 **HUMAN APPROVAL GATE B**: Review decomposition results (deferred)
+- [x] B3.1 Extract createWorkerRoutes from createSwarmRoutes
+- [x] B3.2 Extract createIntelligenceRoutes from createSwarmRoutes
+- [x] B3.3 Extract createGovernanceRoutes from createSwarmRoutes
+- [x] B3.4 Extract createKnowledgeRoutes from createSwarmRoutes
+- [x] B3.5 Update createSwarmRoutes to use new factories
+- [x] B3.6 Run server-routes.test.ts — verify all routes still mounted
+- [x] B3.7 **HUMAN APPROVAL GATE B**: Review decomposition results
 
 ## Phase C — Capability Expansion
 
