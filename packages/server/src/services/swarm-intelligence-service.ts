@@ -7,6 +7,9 @@ import { knowledgeBus } from './knowledge-bus';
 import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult } from './swarm-status-service';
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { CapabilityService } from './capability-service';
+import { HypothesisService } from './hypothesis-service';
+import { ClaimService } from './claim-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -98,9 +101,15 @@ export interface RunnerManifestRecord {
 
 export class SwarmIntelligenceService {
   private panels: SpecialistPanelService;
+  readonly capabilities: CapabilityService;
+  readonly hypotheses: HypothesisService;
+  readonly claims: ClaimService;
 
   constructor(private db: Database) {
     this.panels = new SpecialistPanelService(db);
+    this.capabilities = new CapabilityService(db);
+    this.hypotheses = new HypothesisService(db);
+    this.claims = new ClaimService(db);
   }
 
   private swarmStatus(): SwarmStatusService {
