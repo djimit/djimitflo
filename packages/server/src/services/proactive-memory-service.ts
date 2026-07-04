@@ -169,7 +169,7 @@ export class ProactiveMemoryService {
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO memory_relations (id, source_id, target_id, relation_type, strength, created_at)
+      INSERT INTO proactive_memory_relations (id, source_id, target_id, relation_type, strength, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(id, sourceId, targetId, relationType, strength, now);
 
@@ -183,7 +183,7 @@ export class ProactiveMemoryService {
     const relations = this.db.prepare(`
       SELECT m.*, r.relation_type, r.strength
       FROM proactive_memories m
-      JOIN memory_relations r ON (r.target_id = m.id OR r.source_id = m.id)
+      JOIN proactive_memory_relations r ON (r.target_id = m.id OR r.source_id = m.id)
       WHERE (r.source_id = ? OR r.target_id = ?) AND m.id != ?
       ORDER BY r.strength DESC
       LIMIT 20
@@ -249,7 +249,7 @@ export class ProactiveMemoryService {
     const archived = (this.db.prepare("SELECT COUNT(*) as c FROM proactive_memories WHERE status = 'archived'").get() as any)?.c || 0;
     const decayed = (this.db.prepare("SELECT COUNT(*) as c FROM proactive_memories WHERE status = 'decay'").get() as any)?.c || 0;
     const avgRel = (this.db.prepare('SELECT AVG(relevance_score) as avg FROM proactive_memories').get() as any)?.avg || 0;
-    const relations = (this.db.prepare('SELECT COUNT(*) as c FROM memory_relations').get() as any)?.c || 0;
+    const relations = (this.db.prepare('SELECT COUNT(*) as c FROM proactive_memory_relations').get() as any)?.c || 0;
 
     return { total, active, candidates, archived, decayed, avgRelevance: avgRel, totalRelations: relations };
   }
@@ -298,7 +298,7 @@ export class ProactiveMemoryService {
       CREATE INDEX IF NOT EXISTS idx_proactive_memories_relevance ON proactive_memories(relevance_score DESC);
       CREATE INDEX IF NOT EXISTS idx_proactive_memories_expires ON proactive_memories(expires_at);
 
-      CREATE TABLE IF NOT EXISTS memory_relations (
+      CREATE TABLE IF NOT EXISTS proactive_memory_relations (
         id TEXT PRIMARY KEY,
         source_id TEXT NOT NULL,
         target_id TEXT NOT NULL,
@@ -309,8 +309,8 @@ export class ProactiveMemoryService {
         FOREIGN KEY (target_id) REFERENCES proactive_memories(id) ON DELETE CASCADE
       );
 
-      CREATE INDEX IF NOT EXISTS idx_memory_relations_source ON memory_relations(source_id);
-      CREATE INDEX IF NOT EXISTS idx_memory_relations_target ON memory_relations(target_id);
+      CREATE INDEX IF NOT EXISTS idx_proactive_memory_relations_source ON proactive_memory_relations(source_id);
+      CREATE INDEX IF NOT EXISTS idx_proactive_memory_relations_target ON proactive_memory_relations(target_id);
     `);
   }
 }
