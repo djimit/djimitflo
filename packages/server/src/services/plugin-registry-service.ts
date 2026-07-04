@@ -1,123 +1,231 @@
-import { createHash } from 'crypto';
+/**
+ * PluginRegistryService — extensible plugin marketplace for DjimFlo.
+ *
+ * Based on Ruflo's plugin architecture (35+ plugins).
+ * Enables community extensions without core code changes.
+ *
+ * Plugin structure:
+ *   .djimflo/plugins/<plugin-name>/
+ *     plugin.json          — metadata (name, version, author, dependencies)
+ *     index.ts             — entry point (register hooks, tools, routes)
+ *     skills/              — plugin-specific skills
+ *     migrations/          — plugin-specific DB migrations
+ *
+ * Lifecycle: discover → load → init → enable → disable → unload
+ */
+
+import { readdirSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
 import type { Database } from 'better-sqlite3';
 
-export interface PluginManifest {
+interface PluginManifest {
   id: string;
   name: string;
   version: string;
-  capabilities: string[];
-  dependencies: string[];
-  permissions: string[];
-  signature: string;
-  createdAt: string;
+  description: string;
+  author: string;
+  license: string;
+  dependencies?: string[];
+  hooks?: string[];
+  tools?: string[];
+  routes?: string[];
+  skills?: string[];
+  enabled: boolean;
+  installedAt: string;
+  updatedAt: string;
 }
 
-interface PluginRow {
-  id: string;
+interface PluginHook {
   name: string;
-  version: string;
-  capabilities_json: string;
-  dependencies_json: string;
-  permissions_json: string;
-  signature: string;
-  status: string;
-  created_at: string;
+  event: string;
+  handler: string; // Path to handler file
+  priority: number;
 }
+
+interface RegisteredTool {
+  pluginId: string;
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  handler: string;
+}
+
+const PLUGINS_DIR = process.env.DJIMFLO_PLUGINS_DIR || join(process.cwd(), '.djimflo', 'plugins');
 
 export class PluginRegistryService {
+  private plugins: Map<string, PluginManifest> = new Map();
+  private hooks: Map<string, PluginHook[]> = new Map();
+  private tools: Map<string, RegisteredTool> = new Map();
+
   constructor(private db: Database) {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS plugin_registry (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        version TEXT NOT NULL,
-        capabilities_json TEXT NOT NULL,
-        dependencies_json TEXT NOT NULL,
-        permissions_json TEXT NOT NULL,
-        signature TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'inactive',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
+    this.ensureTables();
+    this.discoverPlugins();
   }
 
-  installPlugin(manifest: PluginManifest): void {
-    if (!this.verifySignature(manifest)) {
-      throw new Error('Invalid plugin signature');
+  /**
+   * Discover and load all plugins from the plugins directory.
+   */
+  discoverPlugins(): PluginManifest[] {
+    const loaded: PluginManifest[] = [];
+
+    if (!existsSync(PLUGINS_DIR)) {
+      return loaded;
     }
 
-    for (const dep of manifest.dependencies) {
-      const existing = this.db.prepare('SELECT id FROM plugin_registry WHERE id = ? AND status = ?').get(dep, 'active');
-      if (!existing) {
-        throw new Error(`Missing dependency: ${dep}`);
+    const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      const pluginDir = join(PLUGINS_DIR, entry.name);
+      const manifestPath = join(pluginDir, 'plugin.json');
+
+      if (!existsSync(manifestPath)) continue;
+
+      try {
+        const manifestContent = readFileSync(manifestPath, 'utf8');
+        const manifest = JSON.parse(manifestContent) as PluginManifest;
+
+        manifest.id = entry.name;
+        manifest.enabled = manifest.enabled ?? true;
+        manifest.installedAt = manifest.installedAt || new Date().toISOString();
+        manifest.updatedAt = new Date().toISOString();
+
+        this.plugins.set(manifest.id, manifest);
+        loaded.push(manifest);
+
+        // Register hooks
+        if (manifest.hooks) {
+          for (const hookName of manifest.hooks) {
+            const existing = this.hooks.get(hookName) || [];
+            existing.push({
+              name: `${manifest.id}:${hookName}`,
+              event: hookName,
+              handler: join(pluginDir, 'hooks', `${hookName}.js`),
+              priority: 10,
+            });
+            this.hooks.set(hookName, existing);
+          }
+        }
+
+        // Register tools
+        if (manifest.tools) {
+          for (const toolName of manifest.tools) {
+            this.tools.set(`${manifest.id}:${toolName}`, {
+              pluginId: manifest.id,
+              name: toolName,
+              description: `Plugin tool: ${toolName}`,
+              inputSchema: {},
+              handler: join(pluginDir, 'tools', `${toolName}.js`),
+            });
+          }
+        }
+
+        // Persist to DB
+        this.db.prepare(`
+          INSERT OR REPLACE INTO plugins (id, name, version, description, author, license, enabled, manifest_json, installed_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          manifest.id, manifest.name, manifest.version, manifest.description,
+          manifest.author, manifest.license, manifest.enabled ? 1 : 0,
+          JSON.stringify(manifest), manifest.installedAt, manifest.updatedAt
+        );
+
+      } catch (error) {
+        console.error(`Failed to load plugin ${entry.name}:`, error);
       }
     }
 
-    this.db.prepare(`
-      INSERT OR REPLACE INTO plugin_registry (id, name, version, capabilities_json, dependencies_json, permissions_json, signature, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
-    `).run(
-      manifest.id,
-      manifest.name,
-      manifest.version,
-      JSON.stringify(manifest.capabilities),
-      JSON.stringify(manifest.dependencies),
-      JSON.stringify(manifest.permissions),
-      manifest.signature,
-    );
-
-    for (const capId of manifest.capabilities) {
-      this.db.prepare(`
-        INSERT OR IGNORE INTO swarm_capabilities (id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref,
-          allowed_actions_json, forbidden_actions_json, required_evidence_json, eval_score, eval_threshold,
-          cost_model_json, removal_strategy, metadata, created_at, updated_at)
-        VALUES (?, 'skill', 'plugin', ?, 'validated', 'low', 'none', 'none',
-          '["spawn_runtime_worker"]', '["deploy"]', '["proof:test"]', 0, 0.5, '{}', 'demote_on_fail',
-          ?, datetime('now'), datetime('now'))
-      `).run(capId, manifest.version, JSON.stringify({ plugin_id: manifest.id }));
-    }
+    return loaded;
   }
 
-  unloadPlugin(pluginId: string): void {
-    this.db.prepare("UPDATE plugin_registry SET status = 'inactive' WHERE id = ?").run(pluginId);
+  /**
+   * Get a plugin by ID.
+   */
+  getPlugin(id: string): PluginManifest | null {
+    return this.plugins.get(id) || null;
   }
 
-  loadPlugin(pluginId: string): void {
-    this.db.prepare("UPDATE plugin_registry SET status = 'active' WHERE id = ?").run(pluginId);
-  }
-
-  verifySignature(manifest: PluginManifest): boolean {
-    const data = `${manifest.id}-${manifest.name}-${manifest.version}-${manifest.capabilities.join(',')}`;
-    const expected = createHash('sha256').update(data).digest('hex');
-    return manifest.signature === expected || manifest.signature.startsWith('ed25519:');
-  }
-
+  /**
+   * List all registered plugins.
+   */
   listPlugins(): PluginManifest[] {
-    const rows = this.db.prepare('SELECT * FROM plugin_registry').all() as PluginRow[];
-    return rows.map(this.rowToManifest);
+    return Array.from(this.plugins.values());
   }
 
-  getPluginStatus(pluginId: string): 'active' | 'inactive' | 'error' {
-    const row = this.db.prepare('SELECT status FROM plugin_registry WHERE id = ?').get(pluginId) as { status: string } | undefined;
-    if (!row) return 'error';
-    return row.status as 'active' | 'inactive' | 'error';
+  /**
+   * Enable a plugin.
+   */
+  enablePlugin(id: string): boolean {
+    const plugin = this.plugins.get(id);
+    if (!plugin) return false;
+
+    plugin.enabled = true;
+    plugin.updatedAt = new Date().toISOString();
+
+    this.db.prepare('UPDATE plugins SET enabled = 1, updated_at = ? WHERE id = ?').run(plugin.updatedAt, id);
+    return true;
   }
 
-  getPlugin(pluginId: string): PluginManifest | null {
-    const row = this.db.prepare('SELECT * FROM plugin_registry WHERE id = ?').get(pluginId) as PluginRow | undefined;
-    return row ? this.rowToManifest(row) : null;
+  /**
+   * Disable a plugin.
+   */
+  disablePlugin(id: string): boolean {
+    const plugin = this.plugins.get(id);
+    if (!plugin) return false;
+
+    plugin.enabled = false;
+    plugin.updatedAt = new Date().toISOString();
+
+    this.db.prepare('UPDATE plugins SET enabled = 0, updated_at = ? WHERE id = ?').run(plugin.updatedAt, id);
+    return true;
   }
 
-  private rowToManifest(row: PluginRow): PluginManifest {
+  /**
+   * Get hooks for a specific event.
+   */
+  getHooksForEvent(event: string): PluginHook[] {
+    return this.hooks.get(event) || [];
+  }
+
+  /**
+   * Get all registered plugin tools.
+   */
+  getPluginTools(): RegisteredTool[] {
+    return Array.from(this.tools.values());
+  }
+
+  /**
+   * Get plugin statistics.
+   */
+  getStats(): {
+    totalPlugins: number;
+    enabledPlugins: number;
+    totalHooks: number;
+    totalTools: number;
+  } {
     return {
-      id: row.id,
-      name: row.name,
-      version: row.version,
-      capabilities: JSON.parse(row.capabilities_json) as string[],
-      dependencies: JSON.parse(row.dependencies_json) as string[],
-      permissions: JSON.parse(row.permissions_json) as string[],
-      signature: row.signature,
-      createdAt: row.created_at,
+      totalPlugins: this.plugins.size,
+      enabledPlugins: Array.from(this.plugins.values()).filter((p) => p.enabled).length,
+      totalHooks: Array.from(this.hooks.values()).reduce((sum, h) => sum + h.length, 0),
+      totalTools: this.tools.size,
     };
+  }
+
+  private ensureTables(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS plugins (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        version TEXT NOT NULL DEFAULT '0.1.0',
+        description TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT 'unknown',
+        license TEXT NOT NULL DEFAULT 'MIT',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        manifest_json TEXT NOT NULL DEFAULT '{}',
+        installed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
   }
 }

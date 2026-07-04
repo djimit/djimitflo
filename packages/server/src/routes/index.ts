@@ -55,6 +55,7 @@ import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
 import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
+import { createApexRoutes } from './apex';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -180,6 +181,7 @@ export function createRoutes(
   router.use('/research', requireAuth, createResearchRoutes(db, auth));
   router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
   router.use('/telegram', createTelegramRoutes(db));
+  router.use('/apex', requireAuth, createApexRoutes(db, auth));
 
   return router;
 }
