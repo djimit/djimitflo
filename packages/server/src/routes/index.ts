@@ -39,6 +39,7 @@ import { createWorkItemRoutes } from './work-items';
 import { createSwarmRoutes } from './swarms';
 import { createSpawnRoutes } from './spawns';
 import { createOpenMythosRoutes } from './openmythos';
+import { createGymRoutes } from './gym';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -144,6 +145,7 @@ export function createRoutes(
   router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
   router.use('/skills', requireAuth, createSkillRoutes(db, auth));
   router.use('/openmythos', requireAuth, createOpenMythosRoutes(db, auth));
+  router.use('/gym', requireAuth, createGymRoutes(db, auth));
 
   return router;
 }

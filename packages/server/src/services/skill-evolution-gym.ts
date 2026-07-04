@@ -19,7 +19,14 @@ export class SkillEvolutionGym {
   constructor(private db: Database) {
     this.miner = new SkillPatternMiner(db);
     this.prompts = new PromptPatternRegistry(db);
-    this.db.exec(`CREATE TABLE IF NOT EXISTS gym_evaluations (id TEXT PRIMARY KEY, skill_id TEXT NOT NULL, score REAL NOT NULL, metrics_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS gym_evaluations (
+      id TEXT PRIMARY KEY,
+      skill_id TEXT NOT NULL,
+      score REAL NOT NULL,
+      metrics_json TEXT NOT NULL,
+      eval_type TEXT NOT NULL DEFAULT 'functional' CHECK(eval_type IN ('functional', 'governance_benchmark')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
   }
 
   evaluateSkill(skillId: string, metrics: Record<string, number>): GymEvaluation {
@@ -60,5 +67,59 @@ export class SkillEvolutionGym {
     try { const row = this.db.prepare('SELECT COUNT(*) as c FROM gym_evaluations').get() as { c: number }; totalEvaluations = row.c; } catch { /* ok */ }
     const patterns = this.miner.getPatterns(1, 100);
     return { totalEvaluations, totalPatterns: patterns.length, domains: [...new Set(patterns.flatMap(p => p.domains))] };
+  }
+
+  /**
+   * Run governance benchmark evaluation for a skill.
+   */
+  async runGovernanceEvaluation(skillId: string, categories?: string[]): Promise<{
+    score: number;
+    passed: boolean;
+    categoryScores: Record<string, number>;
+  }> {
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const evalService = new OpenMythosEvalService(this.db);
+    const result = await evalService.runEval(skillId, categories);
+
+    const normalizedScore = result.overallScore / 5;
+    const passed = result.overallScore >= 3.5; // Minimum threshold for gym
+
+    // Store in gym_evaluations with governance type
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO gym_evaluations (id, skill_id, score, metrics_json, eval_type)
+      VALUES (?, ?, ?, ?, 'governance_benchmark')
+    `).run(id, skillId, normalizedScore, JSON.stringify({
+      overallScore: result.overallScore,
+      categoryScores: result.categoryScores,
+      passed,
+    }));
+
+    return { score: result.overallScore, passed, categoryScores: result.categoryScores };
+  }
+
+  /**
+   * Get governance evaluation history for a skill.
+   */
+  getGovernanceHistory(skillId: string, limit = 10): Array<{
+    score: number;
+    passed: boolean;
+    timestamp: string;
+  }> {
+    try {
+      const rows = this.db.prepare(`
+        SELECT score, metrics_json, created_at
+        FROM gym_evaluations
+        WHERE skill_id = ? AND eval_type = 'governance_benchmark'
+        ORDER BY created_at DESC
+        LIMIT ?
+      `).all(skillId, limit) as Array<{ score: number; metrics_json: string; created_at: string }>;
+
+      return rows.map((r) => {
+        let passed = false;
+        try { passed = JSON.parse(r.metrics_json).passed; } catch { /* ok */ }
+        return { score: r.score * 5, passed, timestamp: r.created_at };
+      });
+    } catch { return []; }
   }
 }
