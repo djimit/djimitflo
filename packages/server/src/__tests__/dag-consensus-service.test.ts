@@ -28,7 +28,7 @@ function insertClaim(id: string, confidence: number = 0.5, status: string = 'pro
 
 function insertEdge(from: string, to: string, relation: string) {
   db.prepare(`
-    INSERT INTO swarm_evidence_edges (id, from_ref, to_ref, relation, metadata, created_at)
+    INSERT INTO swarm_evidence_edges (id, from_ref, to_ref, relation, metadata_json, created_at)
     VALUES (?, ?, ?, ?, '{}', datetime('now'))
   `).run(`edge-${from}-${to}`, from, to, relation);
 }
