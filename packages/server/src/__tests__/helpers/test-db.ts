@@ -620,6 +620,19 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY,
+    from_agent_id TEXT NOT NULL,
+    to_agent_id TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('task_delegation', 'status_update', 'knowledge_share', 'alert')),
+    payload TEXT NOT NULL DEFAULT '{}',
+    priority TEXT NOT NULL DEFAULT 'low' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
+    read_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (from_agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
     actor TEXT NOT NULL DEFAULT 'system',
