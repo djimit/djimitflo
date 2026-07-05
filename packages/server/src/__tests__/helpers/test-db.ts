@@ -553,6 +553,38 @@ const SCHEMA = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS memory_candidates (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    memory_type TEXT NOT NULL CHECK(memory_type IN ('operational_memory', 'engineering_rule', 'policy_rule')),
+    store TEXT NOT NULL DEFAULT 'episodic' CHECK(store IN ('episodic', 'procedural', 'semantic', 'working')),
+    source_ref TEXT,
+    status TEXT NOT NULL CHECK(status IN ('candidate', 'review_required', 'rejected', 'promoted')),
+    promotion_status TEXT NOT NULL CHECK(promotion_status IN ('proposed', 'blocked_pending_review', 'blocked_pending_human', 'rejected', 'promoted')),
+    human_required INTEGER NOT NULL DEFAULT 0,
+    sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive', 'secret_detected')),
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS repositories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    path TEXT NOT NULL,
+    git_remote TEXT,
+    git_branch TEXT,
+    git_commit TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    last_synced_at TEXT,
+    metadata TEXT,
+    added_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
     task_id TEXT,
@@ -561,6 +593,7 @@ const SCHEMA = `
     request_type TEXT NOT NULL DEFAULT '',
     request_message TEXT NOT NULL DEFAULT '',
     request_data TEXT NOT NULL DEFAULT '{}',
+    requested_by TEXT,
     approved_at TEXT,
     denied_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
