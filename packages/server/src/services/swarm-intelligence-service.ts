@@ -781,6 +781,23 @@ export class SwarmIntelligenceService {
     verified_by_gate?: string;
     created_from: string;
   }): ClaimLedgerRecord {
+    const hasEvidence = input.evidence_refs && input.evidence_refs.length > 0;
+    const isVerified = input.verified_by_gate && input.verified_by_gate.length > 0;
+
+    if (hasEvidence && isVerified) {
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO swarm_claims (
+          id, claim, claim_type, subject_ref, evidence_refs_json, confidence,
+          status, verified_by_gate, created_from, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'supported', ?, ?, '{}', ?, ?)
+      `).run(id, input.claim, input.claim_type, input.subject_ref,
+        JSON.stringify(input.evidence_refs || []), input.confidence ?? 0.5,
+        input.verified_by_gate, input.created_from, now, now);
+      return this.getClaim(id);
+    }
+
     return this.claims.createClaim({
       claim: input.claim,
       claim_type: input.claim_type,
