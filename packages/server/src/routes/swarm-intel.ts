@@ -9,6 +9,11 @@ import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 
+/** @deprecated Backward compatibility for swarms.ts — use createSwarmIntelRoutes */
+export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _wsService?: any): Router {
+  return createSwarmIntelRoutes(db, auth);
+}
+
 export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());

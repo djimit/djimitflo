@@ -32,7 +32,7 @@ import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { FixLoopService } from '../services/fix-loop-service';
 import type { WebSocketService } from '../services/websocket-service';
 import { createWorkerRoutes } from './swarm-workers';
-import { createIntelligenceRoutes } from './swarm-intelligence';
+import { createIntelligenceRoutes } from './swarm-intel';
 import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
 
