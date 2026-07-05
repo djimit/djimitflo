@@ -1576,9 +1576,11 @@ export class LoopService {
       throw new Error('MAKER_LEASE_NOT_PREPARED');
     }
     if (!makerLease.worktree_path || !fs.existsSync(makerLease.worktree_path)) {
+      this.recordMakerFailure(run.id, makerLease.id, 'MAKER_WORKTREE_NOT_FOUND', 'Worktree path does not exist');
       throw new Error('MAKER_WORKTREE_NOT_FOUND');
     }
     if (makerLease.runtime === 'manual') {
+      this.recordMakerFailure(run.id, makerLease.id, 'MANUAL_MAKER_REQUIRES_HUMAN', 'Manual runtime requires human intervention');
       throw new Error('MANUAL_MAKER_REQUIRES_HUMAN');
     }
 
@@ -2435,6 +2437,24 @@ export class LoopService {
   }
 
 
+
+  private recordMakerFailure(runId: string, leaseId: string, reason: string, details: string): void {
+    try {
+      this.updateWorkerLeaseStatus(leaseId, 'failed', {
+        verdict: 'insufficient_evidence',
+        exit_status: reason,
+        failure_reason: details,
+        failed_at: new Date().toISOString(),
+      });
+      this.recordLoopEvent(runId, 'maker_execution_failed', 'warning', `Maker lease ${leaseId} failed: ${reason}`, {
+        lease_id: leaseId,
+        failure_reason: reason,
+        details,
+      });
+    } catch {
+      // Best-effort: don't let recording failures mask the original error
+    }
+  }
 
   private isHighRiskRun(run: LoopRunRecord, finding?: LoopFinding): boolean {
     if (run.goal_id) {
