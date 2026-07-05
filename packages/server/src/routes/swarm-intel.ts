@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
+import { createError } from '../middleware/error-handler';
 import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
@@ -156,9 +157,17 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   // ─── Capabilities ──────────────────────────────────────────────────
-  router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res) => {
-    const capability = intelligence.registerCapability(req.body);
-    res.status(201).json(capability);
+  router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      const capability = intelligence.registerCapability(req.body);
+      res.status(201).json(capability);
+    } catch (error: any) {
+      if (error.message?.startsWith('SWARM_CAPABILITY_')) {
+        next(createError(400, error.message, error.message));
+      } else {
+        next(error);
+      }
+    }
   });
 
   router.post('/intelligence/capabilities/:id/evaluate', requirePermission('read:evidence'), (req, res) => {
