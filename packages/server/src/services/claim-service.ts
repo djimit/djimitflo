@@ -58,7 +58,7 @@ export class ClaimService {
       INSERT INTO swarm_claims (
         id, claim, predicate, object, scope, claim_type, subject_ref,
         evidence_refs_json, confidence, valid_until, status, created_from,
-        metadata_json, created_at, updated_at
+        metadata, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?)
     `).run(
       id, input.claim, input.predicate || null, input.object || null, input.scope || null,
