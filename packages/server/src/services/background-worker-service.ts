@@ -210,12 +210,16 @@ export class BackgroundWorkerService {
   }
 
   private async taskHealthCheck(): Promise<string> {
-    const loops = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running'").get() as any;
-    const agents = this.db.prepare("SELECT COUNT(*) as c FROM agents WHERE status = 'active'").get() as any;
-    const blocked = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
-    const failedMakers = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed'").get() as any;
+    const safeCount = (sql: string): number => {
+      try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
+    };
 
-    return `Health: ${loops.c} running, ${blocked.c} blocked, ${failedMakers.c} failed makers, ${agents.c} active agents`;
+    const running = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running'");
+    const blocked = safeCount("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'");
+    const failedMakers = safeCount("SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed'");
+    const activeAgents = safeCount("SELECT COUNT(*) as c FROM agents WHERE status = 'active'");
+
+    return `Health: ${running} running, ${blocked} blocked, ${failedMakers} failed makers, ${activeAgents} active agents`;
   }
 
   private async taskTestGapDetector(): Promise<string> {
@@ -224,8 +228,10 @@ export class BackgroundWorkerService {
   }
 
   private async taskMemoryArchival(): Promise<string> {
-    const result = this.db.prepare("DELETE FROM vector_memories WHERE ttl IS NOT NULL AND (julianday('now') - julianday(created_at)) * 86400 > ttl").run();
-    return `Archived ${result.changes} expired memories`;
+    try {
+      const result = this.db.prepare("DELETE FROM vector_memories WHERE ttl IS NOT NULL AND (julianday('now') - julianday(created_at)) * 86400 > ttl").run();
+      return `Archived ${result.changes} expired memories`;
+    } catch { return 'Memory archival skipped (no vector_memories table)'; }
   }
 
   private async taskGovernanceRecert(): Promise<string> {
@@ -237,36 +243,39 @@ export class BackgroundWorkerService {
   }
 
   private async taskMetricsAggregation(): Promise<string> {
-    const loops = this.db.prepare('SELECT COUNT(*) as c FROM loop_runs').get() as any;
-    const goals = this.db.prepare('SELECT COUNT(*) as c FROM goals').get() as any;
-    return `Metrics aggregated: ${loops.c} loops, ${goals.c} goals`;
+    const safeCount = (sql: string): number => {
+      try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
+    };
+    return `Metrics aggregated: ${safeCount('SELECT COUNT(*) as c FROM loop_runs')} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
   }
 
   private async taskOrphanLeaseCleanup(): Promise<string> {
-    const preparedThreshold = Number(process.env.DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS ?? 24);
-    const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
+    try {
+      const preparedThreshold = Number(process.env.DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS ?? 24);
+      const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
 
-    // Cancel stale prepared leases
-    const prepared = this.db.prepare(`
-      UPDATE worker_leases
-      SET status = 'cancelled',
-          metadata = json_set(COALESCE(metadata, '{}'), '$.cancellation_reason', 'stale_timeout', '$.cancelled_at', datetime('now')),
-          updated_at = datetime('now')
-      WHERE status = 'prepared'
-      AND created_at < datetime('now', '-' || ? || ' hours')
-    `).run(preparedThreshold);
+      // Cancel stale prepared leases
+      const prepared = this.db.prepare(`
+        UPDATE worker_leases
+        SET status = 'cancelled',
+            metadata = json_set(COALESCE(metadata, '{}'), '$.cancellation_reason', 'stale_timeout', '$.cancelled_at', datetime('now')),
+            updated_at = datetime('now')
+        WHERE status = 'prepared'
+        AND created_at < datetime('now', '-' || ? || ' hours')
+      `).run(preparedThreshold);
 
-    // Mark hung running leases as failed
-    const running = this.db.prepare(`
-      UPDATE worker_leases
-      SET status = 'failed',
-          metadata = json_set(COALESCE(metadata, '{}'), '$.failure_reason', 'stale_timeout', '$.failed_at', datetime('now')),
-          updated_at = datetime('now')
-      WHERE status = 'running'
-      AND updated_at < datetime('now', '-' || ? || ' hours')
-    `).run(runningThreshold);
+      // Mark hung running leases as failed
+      const running = this.db.prepare(`
+        UPDATE worker_leases
+        SET status = 'failed',
+            metadata = json_set(COALESCE(metadata, '{}'), '$.failure_reason', 'stale_timeout', '$.failed_at', datetime('now')),
+            updated_at = datetime('now')
+        WHERE status = 'running'
+        AND updated_at < datetime('now', '-' || ? || ' hours')
+      `).run(runningThreshold);
 
-    return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
+      return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
+    } catch { return 'Orphan lease cleanup skipped (no worker_leases table)'; }
   }
 
   private async taskEvidenceCompaction(): Promise<string> {
