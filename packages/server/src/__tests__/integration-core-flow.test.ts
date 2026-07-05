@@ -54,7 +54,8 @@ describe('Integration: Core Loop Lifecycle', () => {
       );
       CREATE TABLE loop_events (
         id TEXT PRIMARY KEY, loop_run_id TEXT, event_type TEXT, severity TEXT DEFAULT 'info',
-        message TEXT, metadata TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now'))
+        message TEXT, metadata TEXT DEFAULT '{}', level TEXT DEFAULT 'info',
+        created_at TEXT DEFAULT (datetime('now'))
       );
     `);
 
