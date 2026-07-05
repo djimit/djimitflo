@@ -10,6 +10,7 @@ import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { CapabilityService } from './capability-service';
 import { HypothesisService } from './hypothesis-service';
 import { ClaimService } from './claim-service';
+import { ProofRunService } from './proof-run-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -163,6 +164,7 @@ export class SwarmIntelligenceService {
       integration_spine: this.integrationSpineSummary(),
       production_pilot: this.productionPilotSummary(),
       latest_runner_manifests: manifests,
+      latest_proof_run: new ProofRunService(this.db).latest(),
       next_safe_actions: this.nextSafeActions(capabilities, claims, capacity),
     };
   }
