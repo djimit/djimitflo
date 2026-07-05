@@ -1,6 +1,6 @@
 # Contributing to DjimFlo
 
-Welcome! DjimFlo is a self-evolving agentic OS. We welcome contributions that make it smarter, safer, and more capable.
+Welcome! DjimFlo is an agent orchestration control plane. We welcome contributions that make it more reliable, safer, and easier to operate.
 
 ## Development Setup
 
@@ -18,13 +18,13 @@ npm run dev
 - **ESM modules** — `"type": "module"`
 - **No comments** unless non-obvious (Ponytail principle)
 - **Smallest change** that preserves the control-plane contract
-- **Test every service** — ≥15 tests per new service
+- **Test every service** — red/green tests for new behavior
 
 ## Testing
 
 ```bash
 npm test                 # all workspaces
-npx vitest run           # server workspace only
+npx vitest run           # current workspace
 ```
 
 All tests must pass before submitting a PR. Type-check and lint must be clean.
@@ -32,16 +32,16 @@ All tests must pass before submitting a PR. Type-check and lint must be clean.
 ## Commit Conventions
 
 ```
-feat: add Thompson Sampling bandit for runtime selection
-fix: resolve calibration drift in Self-Model service
-docs: update README with Level-13 capabilities
-chore: remove stale agent/loop branches
+feat: add new executor for Claude Code
+fix: resolve worktree cleanup race condition
+docs: update API endpoint reference
+chore: remove unused services
 ```
 
 ## Pull Request Process
 
 1. Fork the repo, create a feature branch
-2. Implement + test (≥15 tests per service)
+2. Implement + test
 3. Run `npm run type-check && npm run lint && npm test`
 4. Open PR with description of what and why
 5. CI must pass (type-check, lint, build, test)
@@ -52,26 +52,10 @@ chore: remove stale agent/loop branches
 | Layer | Location | Purpose |
 |-------|----------|---------|
 | Orchestration | `loop-service.ts`, `loop-daemon.ts` | Goal execution |
-| Intelligence | `expert-swarm-orchestrator.ts`, `judge-service.ts` | Knowledge + evaluation |
-| Self-Improvement | `service-refactoring-analyzer.ts`, `rsi-safety-guard.ts` | RSI Engine |
-| Safety | `rsi-safety-guard.ts`, `epistemic-gate-service.ts` | Governance |
-| Execution | `execution/executors/*.ts` | Runtime executors |
-
-## OpenSpec Changes
-
-For material changes (new features, architecture changes), create an OpenSpec change:
-
-```
-openspec/changes/<change-name>/
-├── proposal.md
-├── design.md
-├── tasks.md
-└── specs/<change-name>/spec.md
-```
-
-## Code of Conduct
-
-See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+| Intelligence | `swarm-intelligence-service.ts`, `judge-service.ts` | Knowledge + evaluation |
+| Execution | `execution/executors/*.ts` | Runtime executors (9 runtimes) |
+| Governance | `compliance-audit-service.ts`, `governance-guard-service.ts` | Audit + safety |
+| Auth | `auth-service.ts`, `middleware/auth.ts` | JWT + RBAC |
 
 ## License
 

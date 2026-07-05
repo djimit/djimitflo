@@ -61,8 +61,7 @@ async function main() {
   // Recover in-flight loops orphaned by a previous crash/restart and prune stale worktrees.
   // At startup the in-memory lease map is empty, so any DB-'running' lease/run is orphaned.
   // G138: SelfModel service for confidence calibration (used by calibrated runtime selection)
-  const selfModel = new SelfModelService(db);
-  void selfModel;
+  new SelfModelService(db);
 
   const recoverySvc = new LoopService(db);
   try {

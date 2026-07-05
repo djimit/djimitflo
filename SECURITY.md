@@ -41,5 +41,5 @@ Out of scope:
 
 | Version | Supported |
 |---------|-----------|
-| 0.6.x   | Yes       |
-| < 0.6   | No        |
+| 0.5.x   | Yes       |
+| < 0.5   | No        |

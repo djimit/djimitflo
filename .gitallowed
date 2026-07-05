@@ -1,0 +1,6 @@
+# Environment variable names in documentation (not actual secrets)
+AUTH_BOOTSTRAP_ADMIN_PASSWORD
+AUTH_BOOTSTRAP_ADMIN_EMAIL
+JWT_SECRET=your
+JWT_SECRET=Array
+DJIMITFLO_SPAWN_TOKEN_SECRET
