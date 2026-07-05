@@ -170,13 +170,17 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-  router.post('/intelligence/capabilities/:id/evaluate', requirePermission('read:evidence'), (req, res) => {
-    const capability = intelligence.listCapabilities(100).find(c => c.id === req.params.id);
-    if (!capability) {
-      res.status(404).json({ error: { message: 'Capability not found', code: 'SWARM_CAPABILITY_NOT_FOUND' } });
-      return;
+  router.post('/intelligence/capabilities/:id/evaluate', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      const result = intelligence.evaluateCapability(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      if (error.message?.startsWith('SWARM_CAPABILITY_')) {
+        next(createError(404, error.message, error.message));
+      } else {
+        next(error);
+      }
     }
-    res.json({ id: capability.id, status: capability.status, live_route_allowed: capability.live_route_allowed, blocked_reasons: capability.blocked_reasons });
   });
 
   // ─── Specialists ───────────────────────────────────────────────────
