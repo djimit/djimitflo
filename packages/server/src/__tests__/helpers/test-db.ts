@@ -633,6 +633,18 @@ const SCHEMA = `
     FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS compliance_audit_log (
+    id TEXT PRIMARY KEY,
+    timestamp TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    action TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN ('success', 'failure', 'denied')),
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    previous_hash TEXT NOT NULL,
+    hash TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS audit_log (
     id TEXT PRIMARY KEY,
     actor TEXT NOT NULL DEFAULT 'system',
