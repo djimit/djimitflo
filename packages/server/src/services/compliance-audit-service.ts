@@ -262,7 +262,7 @@ export class ComplianceAuditService {
   // ─── Private ──────────────────────────────────────────────────────────
 
   private getLatestHash(): string {
-    const latest = this.db.prepare('SELECT hash FROM compliance_audit_log ORDER BY timestamp DESC, id DESC LIMIT 1').get() as any;
+    const latest = this.db.prepare('SELECT hash FROM compliance_audit_log ORDER BY rowid DESC LIMIT 1').get() as any;
     return latest?.hash || 'genesis';
   }
 
