@@ -1299,7 +1299,93 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'agents', agentRetirementColumns);
   createAgentArchiveTables(db);
   createSubAgentContextTables(db);
+  createLazyServiceTables(db);
   createPerformanceIndexes(db);
+}
+
+/**
+ * Tables that services lazily create via ensureTables().
+ * Created here so performance indexes can reference them.
+ */
+function createLazyServiceTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_hypotheses (
+      id TEXT PRIMARY KEY,
+      statement TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.5,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      reasoning TEXT NOT NULL DEFAULT '',
+      parent_goal_id TEXT,
+      status TEXT NOT NULL DEFAULT 'hypothesis' CHECK(status IN ('hypothesis', 'validated', 'invalidated', 'in_progress', 'achieved')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS strategy_nodes (
+      id TEXT PRIMARY KEY,
+      goal_id TEXT NOT NULL,
+      action TEXT NOT NULL DEFAULT '',
+      preconditions_json TEXT NOT NULL DEFAULT '[]',
+      effects_json TEXT NOT NULL DEFAULT '[]',
+      children_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'failed')),
+      priority INTEGER NOT NULL DEFAULT 5,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (goal_id) REFERENCES goal_hypotheses(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_claims (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      topic TEXT NOT NULL,
+      claim TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.7,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'active',
+      votes_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS vector_memories (
+      id TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      embedding_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      ttl INTEGER,
+      access_count INTEGER NOT NULL DEFAULT 0,
+      last_accessed TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS swarm_sessions (
+      id TEXT PRIMARY KEY,
+      goal TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'planning',
+      subtasks_json TEXT NOT NULL DEFAULT '[]',
+      agent_pool_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS consensus_debates (
+      id TEXT PRIMARY KEY,
+      topic TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS consensus_proposals (
+      id TEXT PRIMARY KEY,
+      debate_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      confidence REAL NOT NULL DEFAULT 0.7,
+      score REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (debate_id) REFERENCES consensus_debates(id) ON DELETE CASCADE
+    );
+  `);
 }
 
 /**
