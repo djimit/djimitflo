@@ -110,13 +110,18 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS agent_trace_spans (
     id TEXT PRIMARY KEY,
     trace_id TEXT NOT NULL,
-    loop_run_id TEXT REFERENCES loop_runs(id) ON DELETE CASCADE,
-    span_type TEXT NOT NULL CHECK(span_type IN ('worker', 'checker', 'security', 'lease', 'gate', 'event', 'evidence', 'reflection', 'checkpoint', 'eval', 'custom')),
+    parent_span_id TEXT,
+    loop_run_id TEXT REFERENCES loop_runs(id) ON DELETE SET NULL,
+    work_item_id TEXT REFERENCES work_items(id) ON DELETE SET NULL,
+    span_type TEXT NOT NULL CHECK(span_type IN ('goal', 'loop', 'worker', 'tool', 'memory', 'eval', 'capability', 'checkpoint', 'reflection')),
     name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'completed', 'failed', 'skipped')),
-    metadata TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('ok', 'error', 'running', 'skipped', 'blocked')),
     evidence_ref TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    started_at TEXT,
+    ended_at TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (parent_span_id) REFERENCES agent_trace_spans(id) ON DELETE SET NULL
   );
 
   CREATE TABLE IF NOT EXISTS agent_checkpoints (
@@ -124,6 +129,10 @@ const SCHEMA = `
     loop_run_id TEXT NOT NULL REFERENCES loop_runs(id) ON DELETE CASCADE,
     label TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'created' CHECK(status IN ('created', 'validated', 'branched', 'superseded')),
+    state_json TEXT NOT NULL DEFAULT '{}',
+    gates_json TEXT NOT NULL DEFAULT '[]',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    leases_json TEXT NOT NULL DEFAULT '[]',
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -647,6 +656,19 @@ const SCHEMA = `
     FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE SET NULL
   );
 
+  CREATE TABLE IF NOT EXISTS loop_checkpoints (
+    id TEXT PRIMARY KEY,
+    loop_run_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    state_json TEXT NOT NULL,
+    gates_json TEXT NOT NULL DEFAULT '[]',
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    leases_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (loop_run_id) REFERENCES loop_runs(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     from_agent_id TEXT NOT NULL,
@@ -670,6 +692,372 @@ const SCHEMA = `
     evidence_json TEXT NOT NULL DEFAULT '{}',
     previous_hash TEXT NOT NULL,
     hash TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS swarm_runner_manifests (
+    id TEXT PRIMARY KEY,
+    decision_id TEXT NOT NULL UNIQUE,
+    lease_id TEXT,
+    loop_run_id TEXT,
+    action TEXT NOT NULL CHECK(action IN ('plan', 'start', 'skip', 'fail', 'stop', 'kill', 'complete')),
+    policy_version TEXT NOT NULL,
+    runtime_contract_json TEXT NOT NULL DEFAULT '{}',
+    capacity_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    budget_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    gate_refs_json TEXT NOT NULL DEFAULT '[]',
+    blocked_reasons_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS reflection_candidates (
+    id TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL CHECK(source_type IN ('trace', 'eval', 'loop', 'memory', 'skill', 'panel')),
+    source_ref TEXT NOT NULL,
+    lesson TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('candidate', 'review_required', 'rejected', 'promoted')),
+    sensitivity TEXT NOT NULL CHECK(sensitivity IN ('normal', 'security_sensitive')),
+    human_required INTEGER NOT NULL DEFAULT 0,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS specialist_panels (
+    id TEXT PRIMARY KEY,
+    topic TEXT NOT NULL,
+    question TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('planned', 'reviewing', 'consensus_ready', 'backlog_created', 'goal_created', 'cancelled')),
+    risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+    panel_json TEXT NOT NULL DEFAULT '[]',
+    context_json TEXT NOT NULL DEFAULT '{}',
+    consensus_json TEXT NOT NULL DEFAULT '{}',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS specialist_reviews (
+    id TEXT PRIMARY KEY,
+    panel_id TEXT NOT NULL,
+    specialist_id TEXT NOT NULL,
+    specialist_title TEXT NOT NULL,
+    stance TEXT NOT NULL CHECK(stance IN ('support', 'oppose', 'uncertain', 'needs_evidence')),
+    confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+    findings_json TEXT NOT NULL DEFAULT '[]',
+    recommendations_json TEXT NOT NULL DEFAULT '[]',
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    limitations TEXT,
+    status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE CASCADE,
+    UNIQUE(panel_id, specialist_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS sub_agent_spawns (
+    id TEXT PRIMARY KEY,
+    spawn_tree_id TEXT NOT NULL,
+    parent_lease_id TEXT,
+    child_lease_id TEXT,
+    requested_by_lease_id TEXT NOT NULL,
+    depth INTEGER NOT NULL CHECK(depth >= 0),
+    runtime TEXT NOT NULL,
+    requested_role TEXT NOT NULL,
+    prompt_digest TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('requested', 'gated_out', 'prepared', 'running', 'completed', 'failed', 'cancelled')),
+    reject_reason TEXT,
+    token_budget_grant INTEGER,
+    wall_budget_ms INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (parent_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+    FOREIGN KEY (child_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+    FOREIGN KEY (requested_by_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS agents_md_files (
+    id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    applies_to_path TEXT NOT NULL DEFAULT '/',
+    content_hash TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    content TEXT,
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS agents_md_issues (
+    id TEXT PRIMARY KEY,
+    file_id TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    rule_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    recommendation TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (file_id) REFERENCES agents_md_files(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS task_repository_snapshots (
+    id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL,
+    task_id TEXT,
+    snapshot_type TEXT NOT NULL,
+    head_commit TEXT,
+    branch TEXT,
+    is_clean INTEGER NOT NULL DEFAULT 1,
+    staged_files INTEGER NOT NULL DEFAULT 0,
+    modified_files INTEGER NOT NULL DEFAULT 0,
+    untracked_files INTEGER NOT NULL DEFAULT 0,
+    diff_summary TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS execution_evidence (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    execution_event_id TEXT,
+    approval_id TEXT,
+    evidence_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    details TEXT,
+    source TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (approval_id) REFERENCES approvals(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS execution_summaries (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL UNIQUE,
+    executor_kind TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    duration_ms INTEGER,
+    final_status TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    policy_decision TEXT NOT NULL,
+    approval_required INTEGER NOT NULL DEFAULT 0,
+    approval_granted INTEGER,
+    event_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    warning_count INTEGER DEFAULT 0,
+    evidence_count INTEGER DEFAULT 0,
+    tool_call_count INTEGER DEFAULT 0,
+    files_changed TEXT NOT NULL DEFAULT '[]',
+    commands_executed TEXT NOT NULL DEFAULT '[]',
+    artifacts_created TEXT NOT NULL DEFAULT '[]',
+    token_usage INTEGER,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS file_changes (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    execution_event_id TEXT,
+    file_path TEXT NOT NULL,
+    change_type TEXT NOT NULL,
+    before_hash TEXT,
+    after_hash TEXT,
+    before_size INTEGER,
+    after_size INTEGER,
+    diff TEXT,
+    risk_level TEXT NOT NULL,
+    detected_at TEXT NOT NULL,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS risk_assessments (
+    id TEXT PRIMARY KEY,
+    task_id TEXT,
+    execution_event_id TEXT,
+    action_type TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    recommended_decision TEXT NOT NULL,
+    matched_rules TEXT NOT NULL,
+    explanation TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS policy_violations (
+    id TEXT PRIMARY KEY,
+    task_id TEXT,
+    execution_event_id TEXT,
+    policy_id TEXT,
+    action_type TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    status TEXT NOT NULL,
+    description TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS mcp_tool_permissions (
+    id TEXT PRIMARY KEY,
+    tool_id TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    risk_level TEXT NOT NULL,
+    reason TEXT,
+    last_seen_at TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(tool_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS repository_scans (
+    id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL,
+    is_git_repository INTEGER NOT NULL DEFAULT 0,
+    current_branch TEXT,
+    default_branch TEXT,
+    is_clean INTEGER NOT NULL DEFAULT 1,
+    staged_files INTEGER NOT NULL DEFAULT 0,
+    modified_files INTEGER NOT NULL DEFAULT 0,
+    untracked_files INTEGER NOT NULL DEFAULT 0,
+    head_commit TEXT,
+    head_commit_message TEXT,
+    detected_stacks TEXT NOT NULL DEFAULT '[]',
+    package_manager TEXT NOT NULL DEFAULT 'unknown',
+    test_commands TEXT NOT NULL DEFAULT '[]',
+    build_commands TEXT NOT NULL DEFAULT '[]',
+    lint_commands TEXT NOT NULL DEFAULT '[]',
+    typecheck_commands TEXT NOT NULL DEFAULT '[]',
+    has_type_script INTEGER NOT NULL DEFAULT 0,
+    has_tests INTEGER NOT NULL DEFAULT 0,
+    has_lint INTEGER NOT NULL DEFAULT 0,
+    has_ci INTEGER NOT NULL DEFAULT 0,
+    has_docker INTEGER NOT NULL DEFAULT 0,
+    health_score INTEGER,
+    scan_duration_ms INTEGER,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS repository_health_findings (
+    id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    recommendation TEXT,
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS swarm_missions (
+    id TEXT PRIMARY KEY,
+    goal_id TEXT,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+    status TEXT NOT NULL CHECK(status IN ('observed', 'hypothesized', 'planned', 'queued', 'prepared', 'running', 'checking', 'ready_for_human_merge', 'completed', 'blocked', 'rejected', 'escalated')),
+    panel_id TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (goal_id) REFERENCES goals(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS swarm_tasks (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL CHECK(status IN ('observed', 'hypothesized', 'planned', 'queued', 'prepared', 'running', 'checking', 'ready_for_human_merge', 'completed', 'blocked', 'rejected', 'escalated')),
+    assigned_lease_id TEXT,
+    capability_id TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (mission_id) REFERENCES swarm_missions(id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_lease_id) REFERENCES worker_leases(id) ON DELETE SET NULL,
+    FOREIGN KEY (capability_id) REFERENCES swarm_capabilities(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS swarm_decisions (
+    id TEXT PRIMARY KEY,
+    mission_id TEXT,
+    task_id TEXT,
+    decision_type TEXT NOT NULL CHECK(decision_type IN ('state_transition', 'route', 'gate', 'quorum', 'split', 'kill', 'escalate', 'review')),
+    decision TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    actor TEXT NOT NULL DEFAULT 'system',
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    gate_refs_json TEXT NOT NULL DEFAULT '[]',
+    blocked_reasons_json TEXT NOT NULL DEFAULT '[]',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (mission_id) REFERENCES swarm_missions(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id) REFERENCES swarm_tasks(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS runtime_contract_probes (
+    runtime TEXT PRIMARY KEY,
+    command TEXT,
+    status TEXT NOT NULL,
+    available INTEGER NOT NULL DEFAULT 0,
+    contract_json TEXT NOT NULL DEFAULT '{}',
+    probed_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS openmythos_case_results (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    difficulty INTEGER NOT NULL DEFAULT 1,
+    response TEXT,
+    judge_score REAL DEFAULT 0,
+    judge_rationale TEXT,
+    latency_ms INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'skipped')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS system_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS does (
+    id TEXT PRIMARY KEY,
+    value TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS audit_log (
