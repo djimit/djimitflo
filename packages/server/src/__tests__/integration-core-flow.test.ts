@@ -47,7 +47,7 @@ describe('Integration: Core Loop Lifecycle', () => {
       CREATE TABLE worker_leases (
         id TEXT PRIMARY KEY, loop_run_id TEXT, role TEXT, runtime TEXT DEFAULT 'codex',
         status TEXT DEFAULT 'prepared', finding_id TEXT, worktree_path TEXT,
-        metadata TEXT DEFAULT '{}', budget_json TEXT DEFAULT '{}',
+        branch_name TEXT, metadata TEXT DEFAULT '{}', budget_json TEXT DEFAULT '{}',
         capability_id TEXT, parent_lease_id TEXT, spawn_tree_id TEXT,
         depth INTEGER DEFAULT 0, spawned_by_agent_id TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
