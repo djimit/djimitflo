@@ -161,11 +161,11 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     try {
       const capability = intelligence.registerCapability(req.body);
       res.status(201).json(capability);
-    } catch (error: any) {
-      if (error.message?.startsWith('SWARM_CAPABILITY_')) {
-        next(createError(400, error.message, error.message));
+    } catch (err: any) {
+      if (err.message?.startsWith('SWARM_CAPABILITY_')) {
+        next(createError(400, err.message, err.message));
       } else {
-        next(error);
+        next(err);
       }
     }
   });
@@ -174,11 +174,11 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     try {
       const result = intelligence.evaluateCapability(req.params.id);
       res.json(result);
-    } catch (error: any) {
-      if (error.message?.startsWith('SWARM_CAPABILITY_')) {
-        next(createError(404, error.message, error.message));
+    } catch (err: any) {
+      if (err.message?.startsWith('SWARM_CAPABILITY_')) {
+        next(createError(404, err.message, err.message));
       } else {
-        next(error);
+        next(err);
       }
     }
   });

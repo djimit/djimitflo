@@ -167,7 +167,7 @@ export class SkillLoaderService {
     // Parse YAML frontmatter + markdown body
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
-    let metadata: Record<string, unknown> = {};
+    const metadata: Record<string, unknown> = {};
     let body = content;
 
     if (frontmatterMatch) {
