@@ -62,7 +62,7 @@ function writeOkf(root: string) {
 function writeRepo(root: string) {
   const repo = path.join(root, 'repo');
   fs.mkdirSync(repo, { recursive: true });
-  fs.writeFileSync(path.join(repo, 'README.md'), '# Smoke\n', 'utf8');
+  fs.writeFileSync(path.join(repo, 'README.md'), '# Smoke\n\nTODO: add real documentation\n', 'utf8');
   fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({
     scripts: {
       test: 'node -e "process.exit(0)"',
