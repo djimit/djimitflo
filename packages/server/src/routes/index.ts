@@ -58,7 +58,7 @@ import { createTelegramRoutes } from './telegram';
 import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
-import { createSwarmIntelRoutes } from './swarm-intelligence';
+import { createSwarmIntelRoutes } from './swarm-intel';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
