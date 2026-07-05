@@ -1292,14 +1292,31 @@ export class LoopService {
       : completedMakerLeases.length > 0
         ? 'ready_for_human_merge'
         : 'verifying';
+
+    // Record structured block reasons in metadata for debugging and pattern analysis
+    const failedGates = gates.filter((gate) => gate.status === 'fail');
+    let blockMetadata: Record<string, unknown> = {};
+    try {
+      const existing = JSON.parse((run.metadata as string) || '{}');
+      blockMetadata = existing;
+    } catch { /* use empty */ }
+
+    if (status === 'blocked') {
+      blockMetadata.block_reason = 'gate_failed';
+      blockMetadata.failed_gates = failedGates.map((g) => `${g.name}: ${g.evidence}`);
+      blockMetadata.recommendations = ['Review failed gates and address issues before re-verifying'];
+      blockMetadata.blocked_at = new Date().toISOString();
+    }
+
     this.db.prepare(`
       UPDATE loop_runs
-      SET status = ?, gates_json = ?, updated_at = ?
+      SET status = ?, gates_json = ?, updated_at = ?, metadata = ?
       WHERE id = ?
-    `).run(status, JSON.stringify(gates), new Date().toISOString(), run.id);
+    `).run(status, JSON.stringify(gates), new Date().toISOString(), JSON.stringify(blockMetadata), run.id);
 
     this.recordLoopEvent(run.id, 'loop_verified', status === 'blocked' ? 'warning' : 'info', `Verification gates ${status === 'blocked' ? 'blocked' : 'passed'} for prepared work.`, {
       gates,
+      block_metadata: blockMetadata,
     });
 
     return { run: this.getLoopRun(run.id), gates, leases };

@@ -212,7 +212,10 @@ export class BackgroundWorkerService {
   private async taskHealthCheck(): Promise<string> {
     const loops = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'running'").get() as any;
     const agents = this.db.prepare("SELECT COUNT(*) as c FROM agents WHERE status = 'active'").get() as any;
-    return `Health OK: ${loops.c} active loops, ${agents.c} active agents`;
+    const blocked = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
+    const failedMakers = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE role = 'maker' AND status = 'failed'").get() as any;
+
+    return `Health: ${loops.c} running, ${blocked.c} blocked, ${failedMakers.c} failed makers, ${agents.c} active agents`;
   }
 
   private async taskTestGapDetector(): Promise<string> {
@@ -240,8 +243,30 @@ export class BackgroundWorkerService {
   }
 
   private async taskOrphanLeaseCleanup(): Promise<string> {
-    const result = this.db.prepare("UPDATE worker_leases SET status = 'cancelled' WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')").run();
-    return `Cleaned up ${result.changes} orphan leases`;
+    const preparedThreshold = Number(process.env.DJIMFLO_STALE_PREPARED_THRESHOLD_HOURS ?? 24);
+    const runningThreshold = Number(process.env.DJIMFLO_STALE_RUNNING_THRESHOLD_HOURS ?? 2);
+
+    // Cancel stale prepared leases
+    const prepared = this.db.prepare(`
+      UPDATE worker_leases
+      SET status = 'cancelled',
+          metadata = json_set(COALESCE(metadata, '{}'), '$.cancellation_reason', 'stale_timeout', '$.cancelled_at', datetime('now')),
+          updated_at = datetime('now')
+      WHERE status = 'prepared'
+      AND created_at < datetime('now', '-' || ? || ' hours')
+    `).run(preparedThreshold);
+
+    // Mark hung running leases as failed
+    const running = this.db.prepare(`
+      UPDATE worker_leases
+      SET status = 'failed',
+          metadata = json_set(COALESCE(metadata, '{}'), '$.failure_reason', 'stale_timeout', '$.failed_at', datetime('now')),
+          updated_at = datetime('now')
+      WHERE status = 'running'
+      AND updated_at < datetime('now', '-' || ? || ' hours')
+    `).run(runningThreshold);
+
+    return `Cleaned: ${prepared.changes} stale prepared, ${running.changes} hung running leases`;
   }
 
   private async taskEvidenceCompaction(): Promise<string> {

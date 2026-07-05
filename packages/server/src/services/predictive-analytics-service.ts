@@ -256,4 +256,70 @@ export class PredictiveAnalyticsService {
 
     return recommendations;
   }
+
+  /**
+   * Check data quality of the system.
+   */
+  checkDataQuality(): {
+    failureMetadataCompleteness: number;
+    blockReasonCompleteness: number;
+    staleLeaseCount: number;
+    overallScore: number;
+    recommendations: string[];
+  } {
+    const recommendations: string[] = [];
+
+    // Check failure metadata completeness
+    const failedLeases = db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed'").get() as any;
+    const failedWithMetadata = db.prepare(`
+      SELECT COUNT(*) as c FROM worker_leases
+      WHERE status = 'failed'
+      AND json_extract(metadata, '$.exit_status') IS NOT NULL
+      AND json_extract(metadata, '$.exit_status') != ''
+    `).get() as any;
+    const failureMetadataCompleteness = failedLeases.c > 0 ? failedWithMetadata.c / failedLeases.c : 1;
+
+    if (failureMetadataCompleteness < 0.9) {
+      recommendations.push(`Failure metadata completeness: ${(failureMetadataCompleteness * 100).toFixed(0)}% — executeMaker should record metadata before throwing`);
+    }
+
+    // Check block reason completeness
+    const blockedLoops = db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
+    const blockedWithReason = db.prepare(`
+      SELECT COUNT(*) as c FROM loop_runs
+      WHERE status = 'blocked'
+      AND json_extract(metadata, '$.block_reason') IS NOT NULL
+      AND json_extract(metadata, '$.block_reason') != ''
+    `).get() as any;
+    const blockReasonCompleteness = blockedLoops.c > 0 ? blockedWithReason.c / blockedLoops.c : 1;
+
+    if (blockReasonCompleteness < 0.9) {
+      recommendations.push(`Block reason completeness: ${(blockReasonCompleteness * 100).toFixed(0)}% — verifyLoopRun should record block reasons`);
+    }
+
+    // Count stale leases
+    const stalePrepared = db.prepare(`
+      SELECT COUNT(*) as c FROM worker_leases
+      WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')
+    `).get() as any;
+    const staleRunning = db.prepare(`
+      SELECT COUNT(*) as c FROM worker_leases
+      WHERE status = 'running' AND updated_at < datetime('now', '-2 hours')
+    `).get() as any;
+    const staleLeaseCount = (stalePrepared.c || 0) + (staleRunning.c || 0);
+
+    if (staleLeaseCount > 0) {
+      recommendations.push(`${staleLeaseCount} stale leases detected — run stale-resource-cleanup worker`);
+    }
+
+    const overallScore = (failureMetadataCompleteness * 0.4 + blockReasonCompleteness * 0.4 + (staleLeaseCount === 0 ? 1 : 0) * 0.2);
+
+    return {
+      failureMetadataCompleteness,
+      blockReasonCompleteness,
+      staleLeaseCount,
+      overallScore,
+      recommendations,
+    };
+  }
 }

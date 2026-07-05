@@ -29,6 +29,11 @@ export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware): R
     res.json(predictive.getStats());
   });
 
+  // Data Quality
+  router.get('/data-quality', requirePermission('read:evidence'), (_req, res) => {
+    res.json(predictive.checkDataQuality());
+  });
+
   // ─── Self-Healing ───────────────────────────────────────────────────
   router.get('/health', requirePermission('read:evidence'), (_req, res) => {
     res.json({ checks: healing.checkHealth() });
