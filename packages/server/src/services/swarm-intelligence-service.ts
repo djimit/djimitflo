@@ -784,28 +784,25 @@ export class SwarmIntelligenceService {
     const hasEvidence = input.evidence_refs && input.evidence_refs.length > 0;
     const isVerified = input.verified_by_gate && input.verified_by_gate.length > 0;
 
+    let status: ClaimStatus = 'proposed';
     if (hasEvidence && isVerified) {
-      const id = randomUUID();
-      const now = new Date().toISOString();
-      this.db.prepare(`
-        INSERT INTO swarm_claims (
-          id, claim, claim_type, subject_ref, evidence_refs_json, confidence,
-          status, verified_by_gate, created_from, metadata, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'supported', ?, ?, '{}', ?, ?)
-      `).run(id, input.claim, input.claim_type, input.subject_ref,
-        JSON.stringify(input.evidence_refs || []), input.confidence ?? 0.5,
-        input.verified_by_gate, input.created_from, now, now);
-      return this.getClaim(id);
+      status = 'supported';
+    } else if (hasEvidence) {
+      const existing = this.listClaims(100).find(c => c.subject_ref === input.subject_ref && c.status === 'supported');
+      status = existing ? 'contradicted' : 'proposed';
     }
 
-    return this.claims.createClaim({
-      claim: input.claim,
-      claim_type: input.claim_type,
-      subject_ref: input.subject_ref,
-      evidence_refs: input.evidence_refs,
-      confidence: input.confidence,
-      created_from: input.created_from,
-    });
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO swarm_claims (
+        id, claim, claim_type, subject_ref, evidence_refs_json, confidence,
+        status, verified_by_gate, created_from, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+    `).run(id, input.claim, input.claim_type, input.subject_ref,
+      JSON.stringify(input.evidence_refs || []), input.confidence ?? 0.5,
+      status, input.verified_by_gate || null, input.created_from, now, now);
+    return this.getClaim(id);
   }
 
   getClaim(id: string): ClaimLedgerRecord {
