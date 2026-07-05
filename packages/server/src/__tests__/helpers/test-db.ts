@@ -585,6 +585,27 @@ const SCHEMA = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS work_items (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    source TEXT NOT NULL,
+    source_ref TEXT,
+    risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+    value_score INTEGER NOT NULL DEFAULT 50 CHECK(value_score >= 0 AND value_score <= 100),
+    confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+    status TEXT NOT NULL CHECK(status IN ('candidate', 'triaged', 'planned', 'leased', 'blocked', 'done', 'discarded')),
+    recommended_loop TEXT,
+    assigned_agent_id TEXT,
+    assigned_runtime TEXT,
+    parent_goal_id TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (assigned_agent_id) REFERENCES agents(id) ON DELETE SET NULL,
+    FOREIGN KEY (parent_goal_id) REFERENCES goals(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
     task_id TEXT,
