@@ -785,11 +785,15 @@ export class SwarmIntelligenceService {
     const isVerified = input.verified_by_gate && input.verified_by_gate.length > 0;
 
     let status: ClaimStatus = 'proposed';
+    let invalidatedBy: string | null = null;
     if (hasEvidence && isVerified) {
       status = 'supported';
     } else if (hasEvidence) {
       const existing = this.listClaims(100).find(c => c.subject_ref === input.subject_ref && c.status === 'supported');
-      status = existing ? 'contradicted' : 'proposed';
+      if (existing) {
+        status = 'contradicted';
+        invalidatedBy = existing.id;
+      }
     }
 
     const id = randomUUID();
@@ -797,11 +801,11 @@ export class SwarmIntelligenceService {
     this.db.prepare(`
       INSERT INTO swarm_claims (
         id, claim, claim_type, subject_ref, evidence_refs_json, confidence,
-        status, verified_by_gate, created_from, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+        status, verified_by_gate, invalidated_by, created_from, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
     `).run(id, input.claim, input.claim_type, input.subject_ref,
       JSON.stringify(input.evidence_refs || []), input.confidence ?? 0.5,
-      status, input.verified_by_gate || null, input.created_from, now, now);
+      status, input.verified_by_gate || null, invalidatedBy, input.created_from, now, now);
     return this.getClaim(id);
   }
 
