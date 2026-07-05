@@ -138,5 +138,20 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     res.status(201).json(manifest);
   });
 
+  // ─── Governance Evaluate ───────────────────────────────────────────
+  router.post('/intelligence/governance/evaluate', requirePermission('write:swarm_action'), (req, res) => {
+    res.json(intelligence.evaluateGovernance(req.body));
+  });
+
+  // ─── Mission Control ───────────────────────────────────────────────
+  router.get('/intelligence/mission-control', requirePermission('read:evidence'), (_req, res) => {
+    res.json(intelligence.missionControl());
+  });
+
+  // ─── OKF Drift ─────────────────────────────────────────────────────
+  router.get('/intelligence/okf-drift', requirePermission('read:evidence'), (_req, res) => {
+    res.json(intelligence.okfDriftReport());
+  });
+
   return router;
 }
