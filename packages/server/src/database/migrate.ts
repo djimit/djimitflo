@@ -1299,6 +1299,45 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'agents', agentRetirementColumns);
   createAgentArchiveTables(db);
   createSubAgentContextTables(db);
+  createPerformanceIndexes(db);
+}
+
+/**
+ * Performance indexes for high-traffic queries.
+ * Added in v8.2 based on query pattern analysis.
+ */
+function createPerformanceIndexes(db: BetterSqlite3Database) {
+  db.exec(`
+    -- Worker lease lookups by status + role (used in executeMaker, verifyLoopRun)
+    CREATE INDEX IF NOT EXISTS idx_worker_leases_status_role ON worker_leases(status, role);
+
+    -- Loop run lookups by status (used in health checks, governance)
+    CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);
+
+    -- Loop events by loop_run_id + created_at (used in getReviewBundle)
+    CREATE INDEX IF NOT EXISTS idx_loop_events_loop_run_id_created_at ON loop_events(loop_run_id, created_at DESC);
+
+    -- Governance eval runs by agent_id + status (used in scoring)
+    CREATE INDEX IF NOT EXISTS idx_openmythos_eval_agent_status ON openmythos_eval_runs(agent_id, status);
+
+    -- Goal hypotheses by status (used in AGI reasoning)
+    CREATE INDEX IF NOT EXISTS idx_goal_hypotheses_status ON goal_hypotheses(status);
+
+    -- Strategy nodes by goal_id + status (used in planning)
+    CREATE INDEX IF NOT EXISTS idx_strategy_nodes_goal_status ON strategy_nodes(goal_id, status);
+
+    -- Knowledge claims by topic + status (used in consensus)
+    CREATE INDEX IF NOT EXISTS idx_knowledge_claims_topic_status ON knowledge_claims(topic, status);
+
+    -- Vector memories by created_at (used in cleanup)
+    CREATE INDEX IF NOT EXISTS idx_vector_memories_created_at ON vector_memories(created_at);
+
+    -- Swarm sessions by status (used in swarm orchestration)
+    CREATE INDEX IF NOT EXISTS idx_swarm_sessions_status ON swarm_sessions(status);
+
+    -- Consensus proposals by debate_id + score (used in resolution)
+    CREATE INDEX IF NOT EXISTS idx_consensus_proposals_debate_score ON consensus_proposals(debate_id, score DESC);
+  `);
 }
 
 function createOpenMythosEvalTables(db: BetterSqlite3Database) {

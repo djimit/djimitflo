@@ -1297,7 +1297,7 @@ export class LoopService {
     const failedGates = gates.filter((gate) => gate.status === 'fail');
     let blockMetadata: Record<string, unknown> = {};
     try {
-      const existing = JSON.parse((run.metadata as string) || '{}');
+      const existing = JSON.parse(String(run.metadata || '{}'));
       blockMetadata = existing;
     } catch { /* use empty */ }
 
