@@ -771,6 +771,26 @@ export class SwarmIntelligenceService {
       .map((row) => this.parseClaim(row));
   }
 
+  submitClaim(input: {
+    claim: string;
+    claim_type: ClaimType;
+    subject_ref: string;
+    evidence_refs?: string[];
+    confidence?: number;
+    status?: string;
+    verified_by_gate?: string;
+    created_from: string;
+  }): ClaimLedgerRecord {
+    return this.claims.createClaim({
+      claim: input.claim,
+      claim_type: input.claim_type,
+      subject_ref: input.subject_ref,
+      evidence_refs: input.evidence_refs,
+      confidence: input.confidence,
+      created_from: input.created_from,
+    });
+  }
+
   getClaim(id: string): ClaimLedgerRecord {
     const row = this.db.prepare('SELECT * FROM swarm_claims WHERE id = ?').get(id);
     if (!row) throw new Error('SWARM_CLAIM_NOT_FOUND');

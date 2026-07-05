@@ -9,6 +9,7 @@ import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { SpecialistPanelService } from '../services/specialist-panel-service';
 
 /** @deprecated Backward compatibility for swarms.ts — use createSwarmIntelRoutes */
 export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _wsService?: any): Router {
@@ -23,6 +24,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   const knowledge = new KnowledgeSharingService(db);
   const evolution = new SkillEvolutionEngine(db);
   const intelligence = new SwarmIntelligenceService(db);
+  const specialistPanel = new SpecialistPanelService(db);
 
   // ─── Task Decomposition ─────────────────────────────────────────────
   router.post('/decompose', requirePermission('write:swarm_action'), (req, res) => {
@@ -151,6 +153,41 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   // ─── OKF Drift ─────────────────────────────────────────────────────
   router.get('/intelligence/okf-drift', requirePermission('read:evidence'), (_req, res) => {
     res.json(intelligence.okfDriftReport());
+  });
+
+  // ─── Capabilities ──────────────────────────────────────────────────
+  router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res) => {
+    const capability = intelligence.registerCapability(req.body);
+    res.status(201).json(capability);
+  });
+
+  router.post('/intelligence/capabilities/:id/evaluate', requirePermission('read:evidence'), (req, res) => {
+    const capability = intelligence.listCapabilities(100).find(c => c.id === req.params.id);
+    if (!capability) {
+      res.status(404).json({ error: { message: 'Capability not found', code: 'SWARM_CAPABILITY_NOT_FOUND' } });
+      return;
+    }
+    res.json({ id: capability.id, status: capability.status, live_route_allowed: capability.live_route_allowed, blocked_reasons: capability.blocked_reasons });
+  });
+
+  // ─── Specialists ───────────────────────────────────────────────────
+  router.get('/intelligence/specialists', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ specialists: specialistPanel.getCatalog() });
+  });
+
+  // ─── Claims ────────────────────────────────────────────────────────
+  router.post('/intelligence/claims', requirePermission('write:claim'), (req, res, next) => {
+    try {
+      const claim = intelligence.submitClaim(req.body);
+      res.status(201).json(claim);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ─── Capacity Plan ─────────────────────────────────────────────────
+  router.post('/intelligence/capacity/plan', requirePermission('write:swarm_action'), (req, res) => {
+    res.json(intelligence.planCapacityV2(req.body || {}));
   });
 
   return router;
