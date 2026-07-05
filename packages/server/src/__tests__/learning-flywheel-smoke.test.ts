@@ -7,8 +7,8 @@ import path from 'path';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
 import { execFileSync } from 'child_process';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { errorHandler } from '../middleware/error-handler';
 import { createGoalRoutes } from '../routes/goals';
 import { createSwarmRoutes } from '../routes/swarms';
@@ -85,10 +85,10 @@ describe('learning flywheel smoke', () => {
     previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
     process.env.OKF_BASE = writeOkf(tempRoot);
     process.env.LOOP_WORKTREE_ROOT = path.join(tempRoot, 'worktrees');
-    db = new Database(':memory:');
+    db = createTestDb();
     db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
+    
+    
     await startApp();
   });
 

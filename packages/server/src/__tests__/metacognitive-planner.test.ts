@@ -3,8 +3,8 @@ import Database from 'better-sqlite3';
 import { MetacognitivePlanner } from '../services/metacognitive-planner';
 import { SelfModelService } from '../services/self-model-service';
 import { GoalFormationService } from '../services/goal-formation-service';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 
 let db: Database.Database;
 let selfModel: SelfModelService;
@@ -12,10 +12,10 @@ let goalFormation: GoalFormationService;
 let planner: MetacognitivePlanner;
 
 beforeEach(() => {
-  db = new Database(':memory:');
+  db = createTestDb();
   db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
+  
+  
   try { db.exec('ALTER TABLE worker_leases ADD COLUMN confidence REAL DEFAULT 0.5'); } catch { /* ok */ }
   selfModel = new SelfModelService(db);
   goalFormation = new GoalFormationService(db);

@@ -18,7 +18,7 @@ let auditService: AuditService;
 let backupService: BackupService;
 
 beforeEach(() => {
-  process.env.JWT_SECRET = 'test-secret-for-backup-tests';
+  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = Array(40).fill('c').join('');
   if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true, force: true });
   mkdirSync(TEST_DIR, { recursive: true });
   mkdirSync(TEST_BACKUP_DIR, { recursive: true });

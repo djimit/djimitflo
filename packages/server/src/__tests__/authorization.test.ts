@@ -1,28 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { mkdirSync, rmSync } from 'fs';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import type { Database } from 'better-sqlite3';
+import { createTestDb } from './helpers/test-db';
 import { AuthService } from '../services/auth-service';
 import { AuditService } from '../services/audit-service';
 import { AuthorizationService } from '../services/authorization-service';
 import { JwtSign } from '../middleware/auth';
 import { ROLE_PERMISSIONS, UserRole } from '@djimitflo/shared';
 
-const TEST_DIR = '/tmp/djimitflo-auth-test';
-const TEST_DB = `${TEST_DIR}/auth-test.sqlite`;
-
-let db: Database.Database;
+let db: Database;
 let authService: AuthService;
 
-function createDb(): Database.Database {
-  mkdirSync(TEST_DIR, { recursive: true });
-  rmSync(TEST_DB, { force: true });
-  const database = new Database(TEST_DB) as unknown as Database.Database;
-  database.pragma('foreign_keys = ON');
-  database.exec(schema);
-  runMigrations(database as any);
-  return database;
+function createDb(): Database {
+  return createTestDb() as unknown as Database;
 }
 
 function createAdminToken(auth: AuthService): string {
@@ -44,17 +33,17 @@ function createViewerToken(auth: AuthService, email: string): string {
 }
 
 function makeUser(role: string, suffix: string) {
-  process.env.JWT_SECRET = 'test-secret-for-auth-tests';
+  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = Array(40).fill('b').join('');
   const email = `${role}${suffix}@test.local`;
-  authService.createUser(email, 'Password123!', role as UserRole);
+  authService.createUser(email, 'Passw0rdTest', role as UserRole);
   return { email, id: authService.findUserByEmail(email)!.id };
 }
 
 describe('AuthorizationService', () => {
   beforeEach(() => {
-    process.env.JWT_SECRET = 'test-secret-for-auth-tests';
-    process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL = '';
-    process.env.AUTH_BOOTSTRAP_ADMIN_PASSWORD = '';
+    if (!process.env.JWT_SECRET) process.env.JWT_SECRET = Array(40).fill('b').join('');
+    delete process.env.AUTH_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.AUTH_BOOTSTRAP_ADMIN_PASSWORD;
   });
 
   it('admin can read any task', () => {

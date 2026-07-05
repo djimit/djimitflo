@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { createMessageRoutes } from '../routes/messages';
 import { errorHandler } from '../middleware/error-handler';
 import { messageBus } from '../services/message_bus';
@@ -50,10 +50,10 @@ describe('message routes', () => {
   beforeEach(async () => {
     broadcasts = [];
     messageBus.disconnect();
-    db = new Database(':memory:');
+    db = createTestDb();
     db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
+    
+    
     insertAgent('agent-a', 'Agent A');
     insertAgent('agent-b', 'Agent B');
     await startApp();

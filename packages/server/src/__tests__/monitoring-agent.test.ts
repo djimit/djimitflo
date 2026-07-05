@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { MonitoringAgent } from '../services/monitoring-agent';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 
 let db: Database.Database;
 let monitoring: MonitoringAgent;
 
 beforeEach(() => {
-  db = new Database(':memory:');
+  db = createTestDb();
   db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
+  
+  
   monitoring = new MonitoringAgent(db);
 });
 
