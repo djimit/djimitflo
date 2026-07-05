@@ -85,6 +85,7 @@ describe('learning flywheel smoke', () => {
     previousWorktreeRoot = process.env.LOOP_WORKTREE_ROOT;
     process.env.OKF_BASE = writeOkf(tempRoot);
     process.env.LOOP_WORKTREE_ROOT = path.join(tempRoot, 'worktrees');
+    process.env.LOOP_EVIDENCE_ROOT = path.join(tempRoot, 'evidence');
     db = createTestDb();
     db.pragma('foreign_keys = ON');
     
@@ -101,6 +102,7 @@ describe('learning flywheel smoke', () => {
     else delete process.env.OKF_BASE;
     if (previousWorktreeRoot) process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;
     else delete process.env.LOOP_WORKTREE_ROOT;
+    delete process.env.LOOP_EVIDENCE_ROOT;
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 

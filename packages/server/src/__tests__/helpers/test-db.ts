@@ -64,6 +64,7 @@ const SCHEMA = `
     status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared', 'running', 'completed', 'failed', 'cancelled', 'blocked', 'needs_revision', 'rejected', 'insufficient_evidence')),
     finding_id TEXT,
     worktree_path TEXT,
+    branch_name TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     budget_json TEXT NOT NULL DEFAULT '{}',
     capability_id TEXT,
