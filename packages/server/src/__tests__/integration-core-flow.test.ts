@@ -60,7 +60,7 @@ describe('Integration: Core Loop Lifecycle', () => {
     `);
 
     // Create minimal git repo
-    fs.writeFileSync(path.join(tempDir, 'README.md'), '# Test\nThis is a test repo.\n');
+    fs.writeFileSync(path.join(tempDir, 'README.md'), '# Test\nThis is a test repo.\n\nTODO: add real documentation\n');
     fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify({
       name: 'test-repo',
       scripts: { test: 'node -e "process.exit(0)"' },
