@@ -19,10 +19,8 @@ function insertAgent(id: string, name: string) {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO agents (
-      id, name, description, status, capabilities, total_tasks,
-      completed_tasks, failed_tasks, total_execution_time_ms,
-      total_token_usage, metadata, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?)
+      id, name, description, status, capabilities_json, metadata, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, name, `${name} agent`, 'idle', '[]', '{}', now, now);
 }
 
