@@ -37,7 +37,7 @@ describe('AuthService', () => {
 
   describe('user management', () => {
     it('creates a user and finds by email', () => {
-      const user = authService.createUser({ email: 'test@example.com', password: 'pass123', role: 'operator' });
+      const user = authService.createUser('test@example.com', 'pass123', 'operator');
       expect(user.id).toBeDefined();
       expect(user.email).toBe('test@example.com');
 
@@ -55,43 +55,43 @@ describe('AuthService', () => {
     });
 
     it('updates user status', () => {
-      const user = authService.createUser({ email: 'active@example.com', password: 'pass', role: 'viewer' });
+      const user = authService.createUser('active@example.com', 'pass', 'viewer');
       authService.setUserActive(user.id, false);
       const found = authService.findUserByEmail('active@example.com');
-      expect(found!.is_active).toBe(0);
+      expect(found!.isActive).toBe(false);
     });
   });
 
   describe('authentication', () => {
     it('authenticates with valid credentials', () => {
-      authService.createUser({ email: 'auth@test.local', password: 'correct-password', role: 'admin' });
-      const result = authService.authenticate({ email: 'auth@test.local', password: 'correct-password' });
+      authService.createUser('auth@test.local', 'correct-password', 'admin');
+      const result = authService.authenticate('auth@test.local', 'correct-password');
       expect(result).not.toBeNull();
-      expect(result!.email).toBe('auth@test.local');
+      expect(result!.user.email).toBe('auth@test.local');
     });
 
     it('fails with wrong password', () => {
-      authService.createUser({ email: 'fail@test.local', password: 'correct', role: 'viewer' });
-      const result = authService.authenticate({ email: 'fail@test.local', password: 'wrong' });
+      authService.createUser('fail@test.local', 'correct', 'viewer');
+      const result = authService.authenticate('fail@test.local', 'wrong');
       expect(result).toBeNull();
     });
 
     it('fails with non-existent email', () => {
-      const result = authService.authenticate({ email: 'ghost@test.local', password: 'any' });
+      const result = authService.authenticate('ghost@test.local', 'any');
       expect(result).toBeNull();
     });
 
     it('fails for inactive user', () => {
-      const user = authService.createUser({ email: 'inactive@test.local', password: 'pass', role: 'viewer' });
+      const user = authService.createUser('inactive@test.local', 'pass', 'viewer');
       authService.setUserActive(user.id, false);
-      const result = authService.authenticate({ email: 'inactive@test.local', password: 'pass' });
+      const result = authService.authenticate('inactive@test.local', 'pass');
       expect(result).toBeNull();
     });
   });
 
   describe('JWT token generation and verification', () => {
     it('generates and verifies a token', () => {
-      const user = authService.createUser({ email: 'jwt@test.local', password: 'pass', role: 'admin' });
+      const user = authService.createUser('jwt@test.local', 'pass', 'admin');
       const token = authService.generateToken(user);
       expect(token).toBeTruthy();
 
@@ -107,34 +107,35 @@ describe('AuthService', () => {
   });
 
   describe('hasPermission', () => {
-    it('admin has all permissions', () => {
-      const admin = authService.createUser({ email: 'admin@test.local', password: 'pass', role: 'admin' });
-      for (const perm of Object.values(ROLE_PERMISSIONS)) {
-        expect(authService.hasPermission(admin.id, perm)).toBe(true);
+    it('admin has all defined permissions', () => {
+      authService.createUser('admin@test.local', 'pass', 'admin');
+      const adminPerms = ROLE_PERMISSIONS[UserRole.ADMIN];
+      for (const perm of adminPerms) {
+        expect(authService.hasPermission('admin', perm)).toBe(true);
       }
     });
 
     it('operator has operational permissions', () => {
-      const op = authService.createUser({ email: 'op@test.local', password: 'pass', role: 'operator' });
-      expect(authService.hasPermission(op.id, 'read:evidence')).toBe(true);
-      expect(authService.hasPermission(op.id, 'write:swarm_action')).toBe(true);
-      expect(authService.hasPermission(op.id, 'manage:config')).toBe(false);
+      authService.createUser('op@test.local', 'pass', 'operator');
+      expect(authService.hasPermission('operator', 'read:evidence')).toBe(true);
+      expect(authService.hasPermission('operator', 'write:swarm_action')).toBe(true);
+      expect(authService.hasPermission('operator', 'manage:config')).toBe(false);
     });
 
     it('viewer has read-only permissions', () => {
-      const viewer = authService.createUser({ email: 'viewer@test.local', password: 'pass', role: 'viewer' });
-      expect(authService.hasPermission(viewer.id, 'read:evidence')).toBe(true);
-      expect(authService.hasPermission(viewer.id, 'write:swarm_action')).toBe(false);
+      authService.createUser('viewer@test.local', 'pass', 'viewer');
+      expect(authService.hasPermission('viewer', 'read:evidence')).toBe(true);
+      expect(authService.hasPermission('viewer', 'write:swarm_action')).toBe(false);
     });
 
-    it('returns false for unknown user', () => {
-      expect(authService.hasPermission('unknown-id', 'read:evidence')).toBe(false);
+    it('returns false for unknown role', () => {
+      expect(authService.hasPermission('unknown' as any, 'read:evidence')).toBe(false);
     });
   });
 
   describe('logout idempotency', () => {
     it('generateToken and verifyToken work correctly for logout flow', () => {
-      const user = authService.createUser({ email: 'logout@test.local', password: 'pass', role: 'viewer' });
+      const user = authService.createUser('logout@test.local', 'pass', 'viewer');
       const token = authService.generateToken(user);
       const payload = authService.verifyToken(token);
       expect(payload).not.toBeNull();
@@ -143,7 +144,7 @@ describe('AuthService', () => {
 
   describe('sanitizeUser', () => {
     it('excludes password_hash from sanitized user', () => {
-      const user = authService.createUser({ email: 'sanitize@test.local', password: 'pass', role: 'viewer' });
+      const user = authService.createUser('sanitize@test.local', 'pass', 'viewer');
       const sanitized = authService.sanitizeUser(user);
       expect((sanitized as any).password_hash).toBeUndefined();
     });

@@ -93,6 +93,11 @@ export class AuthService {
     return this.sanitizeUser(row as Record<string, unknown>);
   }
 
+  setUserActive(id: string, active: boolean): void {
+    this.db.prepare('UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?')
+      .run(active ? 1 : 0, new Date().toISOString(), id);
+  }
+
   authenticate(email: string, password: string): { user: User; token: string } | null {
     const row = this.db.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1').get(email.toLowerCase().trim());
     if (!row) return null;
