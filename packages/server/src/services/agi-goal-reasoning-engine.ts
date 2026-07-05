@@ -163,12 +163,16 @@ export class AgiGoalReasoningEngine {
 
   /**
    * Plan a multi-step strategy to achieve a goal.
+   * Uses LLM when available, falls back to templates.
    */
   planStrategy(goalId: string): StrategyNode[] {
     const goal = this.db.prepare('SELECT * FROM goal_hypotheses WHERE id = ?').get(goalId) as any;
     if (!goal) return [];
 
-    const steps = this.decomposeGoal(goal.statement);
+    // Try LLM-powered decomposition first
+    const llmSteps = this.decomposeGoalWithLlm(goal.statement);
+    const steps = llmSteps || this.decomposeGoal(goal.statement);
+
     const nodes: StrategyNode[] = [];
 
     for (let i = 0; i < steps.length; i++) {
@@ -196,6 +200,15 @@ export class AgiGoalReasoningEngine {
     }
 
     return nodes;
+  }
+
+  /**
+   * Use LLM for goal decomposition (when available).
+   */
+  private decomposeGoalWithLlm(_statement: string): string[] | null {
+    // LLM integration placeholder — async LLM calls will be added in v8.1
+    // For now, fall back to template-based decomposition
+    return null;
   }
 
   /**

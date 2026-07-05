@@ -180,4 +180,72 @@ export class WebSocketService {
   getAuthenticatedClient(ws: WebSocket): AuthenticatedClient | undefined {
     return this.clients.get(ws);
   }
+
+  /**
+   * Subscribe a WebSocket client to a consensus debate.
+   */
+  subscribeToDebate(ws: WebSocket, debateId: string): void {
+    const client = this.clients.get(ws);
+    if (!client) return;
+
+    // Store debate subscription in client metadata
+    const subscriptions = (client as any).debateSubscriptions || new Set<string>();
+    subscriptions.add(debateId);
+    (client as any).debateSubscriptions = subscriptions;
+  }
+
+  /**
+   * Unsubscribe a WebSocket client from a consensus debate.
+   */
+  unsubscribeFromDebate(ws: WebSocket, debateId: string): void {
+    const client = this.clients.get(ws);
+    if (!client) return;
+
+    const subscriptions = (client as any).debateSubscriptions as Set<string>;
+    if (subscriptions) {
+      subscriptions.delete(debateId);
+    }
+  }
+
+  /**
+   * Broadcast a consensus debate event to all subscribed clients.
+   */
+  broadcastDebateEvent(debateId: string, event: {
+    type: 'proposal' | 'vote' | 'resolution' | 'comment';
+    payload: Record<string, unknown>;
+    timestamp: string;
+  }): void {
+    const message: WebSocketMessage = {
+      type: WebSocketEventType.SYSTEM_HEALTH, // Reuse existing type; will be extended in v8.1
+      payload: { ...event, debateId },
+      timestamp: event.timestamp,
+    };
+
+    const data = JSON.stringify(message);
+    const now = Date.now() / 1000;
+
+    this.clients.forEach((clientInfo, ws) => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) return;
+
+      const subscriptions = (clientInfo as any).debateSubscriptions as Set<string>;
+      if (subscriptions && subscriptions.has(debateId)) {
+        ws.send(data);
+      }
+    });
+  }
+
+  /**
+   * Get the number of subscribers for a debate.
+   */
+  getDebateSubscriberCount(debateId: string): number {
+    let count = 0;
+    this.clients.forEach((clientInfo) => {
+      const subscriptions = (clientInfo as any).debateSubscriptions as Set<string>;
+      if (subscriptions && subscriptions.has(debateId)) {
+        count++;
+      }
+    });
+    return count;
+  }
 }

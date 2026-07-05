@@ -29,6 +29,8 @@ import { EconomyPage } from './pages/EconomyPage';
 import { PipelineBuilderPage } from './pages/PipelineBuilderPage';
 import { FederationPage } from './pages/FederationPage';
 import { AgentCatalogPage } from './pages/AgentCatalogPage';
+import { AgiReasoningPage } from './pages/AgiReasoningPage';
+import { ConsensusDebatePage } from './pages/ConsensusDebatePage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -100,6 +102,8 @@ export function App() {
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />
+          <Route path="agi-reasoning" element={<AgiReasoningPage />} />
+          <Route path="consensus-debates" element={<ConsensusDebatePage />} />
         </Route>
       </Routes>
     
