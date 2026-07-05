@@ -621,6 +621,32 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending', 'queued', 'running', 'paused', 'awaiting_approval', 'completed', 'failed', 'cancelled')),
+    priority TEXT NOT NULL CHECK(priority IN ('low', 'medium', 'high', 'critical')),
+    risk_level TEXT NOT NULL CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
+    execution_mode TEXT NOT NULL CHECK(execution_mode IN ('local', 'dry_run', 'review_only', 'cloud_planned')),
+    agent_id TEXT,
+    parent_task_id TEXT,
+    repository_id TEXT,
+    instruction_profile_id TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    failed_at TEXT,
+    execution_time_ms INTEGER,
+    token_usage INTEGER,
+    tags TEXT,
+    metadata TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL,
+    FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE SET NULL
+  );
+
   CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     from_agent_id TEXT NOT NULL,
