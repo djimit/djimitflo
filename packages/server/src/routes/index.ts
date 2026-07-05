@@ -57,6 +57,7 @@ import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
 import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
+import { createSelfImprovementRoutes } from './self-improvement';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -184,6 +185,7 @@ export function createRoutes(
   router.use('/telegram', createTelegramRoutes(db));
   router.use('/apex', requireAuth, createApexRoutes(db, auth));
   router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
+  router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
 
   return router;
 }
