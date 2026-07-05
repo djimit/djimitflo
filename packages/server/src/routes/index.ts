@@ -59,6 +59,8 @@ import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
 import { createSwarmIntelRoutes } from './swarm-intel';
+import { createAgiRoutes } from './agi';
+import { createIntelligenceRoutes } from './intelligence';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -188,6 +190,8 @@ export function createRoutes(
   router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
   router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
   router.use('/swarm-intel', requireAuth, createSwarmIntelRoutes(db, auth));
+  router.use('/agi', requireAuth, createAgiRoutes(db, auth));
+  router.use('/intelligence', requireAuth, createIntelligenceRoutes(db, auth));
 
   return router;
 }

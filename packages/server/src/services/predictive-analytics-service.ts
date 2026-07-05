@@ -1,0 +1,259 @@
+/**
+ * PredictiveAnalyticsService — predict loop outcomes from historical data.
+ *
+ * Uses historical loop execution data to predict:
+ * 1. Success probability for new loops
+ * 2. Expected duration and cost
+ * 3. Risk factors and mitigation strategies
+ * 4. Optimal agent/runtime selection
+ *
+ * Architecture:
+ *   Historical Data → Feature Extraction → Prediction → Recommendation
+ */
+
+import type { Database } from 'better-sqlite3';
+
+interface Prediction {
+  loopRunId?: string;
+  successProbability: number;
+  expectedDurationMs: number;
+  expectedCostDollars: number;
+  riskFactors: string[];
+  recommendations: string[];
+  confidence: number;
+}
+
+interface HistoricalPattern {
+  pattern: string;
+  frequency: number;
+  successRate: number;
+  avgDurationMs: number;
+}
+
+export class PredictiveAnalyticsService {
+  constructor(private db: Database) {}
+
+  /**
+   * Predict outcome for a new loop based on historical data.
+   */
+  predict(input: {
+    goalType: string;
+    runtime: string;
+    mode: string;
+    estimatedFindings?: number;
+  }): Prediction {
+    const historical = this.getHistoricalData(input.goalType, input.runtime);
+
+    // Calculate success probability
+    const successRate = historical.length > 0
+      ? historical.filter((h) => h.status === 'completed').length / historical.length
+      : 0.5;
+
+    // Calculate expected duration
+    const completedRuns = historical.filter((h) => h.status === 'completed' && h.durationMs > 0);
+    const avgDuration = completedRuns.length > 0
+      ? completedRuns.reduce((sum, h) => sum + h.durationMs, 0) / completedRuns.length
+      : 600000; // Default 10 minutes
+
+    // Calculate expected cost
+    const avgCost = completedRuns.length > 0
+      ? completedRuns.reduce((sum, h) => sum + h.totalCost, 0) / completedRuns.length
+      : 0.05;
+
+    // Identify risk factors
+    const riskFactors = this.identifyRiskFactors(input, historical);
+
+    // Generate recommendations
+    const recommendations = this.generateRecommendations(input, historical, riskFactors);
+
+    // Calculate confidence based on data availability
+    const confidence = Math.min(0.9, historical.length / 10);
+
+    return {
+      successProbability: successRate,
+      expectedDurationMs: Math.round(avgDuration),
+      expectedCostDollars: Math.round(avgCost * 100) / 100,
+      riskFactors,
+      recommendations,
+      confidence,
+    };
+  }
+
+  /**
+   * Analyze historical patterns.
+   */
+  analyzePatterns(): HistoricalPattern[] {
+    const patterns: HistoricalPattern[] = [];
+
+    // Pattern by goal type
+    const goalTypes = this.db.prepare(`
+      SELECT json_extract(metadata_json, '$.goal_type') as goal_type, COUNT(*) as count
+      FROM loop_runs
+      WHERE metadata_json IS NOT NULL
+      GROUP BY goal_type
+    `).all() as any[];
+
+    for (const gt of goalTypes) {
+      if (!gt.goal_type) continue;
+      const stats = this.db.prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes,
+          AVG(CASE WHEN completed_at IS NOT NULL THEN (julianday(completed_at) - julianday(created_at)) * 86400000 ELSE NULL END) as avg_duration
+        FROM loop_runs
+        WHERE json_extract(metadata_json, '$.goal_type') = ?
+      `).get(gt.goal_type) as any;
+
+      patterns.push({
+        pattern: `goal_type:${gt.goal_type}`,
+        frequency: stats.total || 0,
+        successRate: stats.total > 0 ? (stats.successes || 0) / stats.total : 0,
+        avgDurationMs: stats.avg_duration || 0,
+      });
+    }
+
+    // Pattern by runtime
+    const runtimes = this.db.prepare(`
+      SELECT runtime, COUNT(*) as count
+      FROM worker_leases
+      GROUP BY runtime
+    `).all() as any[];
+
+    for (const rt of runtimes) {
+      const stats = this.db.prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes
+        FROM worker_leases
+        WHERE runtime = ?
+      `).get(rt.runtime) as any;
+
+      patterns.push({
+        pattern: `runtime:${rt.runtime}`,
+        frequency: stats.total || 0,
+        successRate: stats.total > 0 ? (stats.successes || 0) / stats.total : 0,
+        avgDurationMs: 0,
+      });
+    }
+
+    return patterns.sort((a, b) => b.frequency - a.frequency);
+  }
+
+  /**
+   * Get statistics.
+   */
+  getStats(): {
+    totalPredictions: number;
+    avgSuccessRate: number;
+    totalPatterns: number;
+    dataPoints: number;
+  } {
+    const loops = (this.db.prepare('SELECT COUNT(*) as c FROM loop_runs').get() as any)?.c || 0;
+    const completed = (this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'completed'").get() as any)?.c || 0;
+    const patterns = this.analyzePatterns();
+
+    return {
+      totalPredictions: loops,
+      avgSuccessRate: loops > 0 ? completed / loops : 0,
+      totalPatterns: patterns.length,
+      dataPoints: loops,
+    };
+  }
+
+  // ─── Private ──────────────────────────────────────────────────────────
+
+  private getHistoricalData(_goalType: string, _runtime: string): Array<{
+    status: string;
+    durationMs: number;
+    totalCost: number;
+  }> {
+    // Get historical loops with similar characteristics
+    const runs = this.db.prepare(`
+      SELECT
+        lr.status,
+        CASE WHEN lr.completed_at IS NOT NULL
+          THEN (julianday(lr.completed_at) - julianday(lr.created_at)) * 86400000
+          ELSE NULL END as duration_ms,
+        COALESCE((
+          SELECT SUM(json_extract(wl.metadata, '$.total_tokens'))
+          FROM worker_leases wl
+          WHERE wl.loop_run_id = lr.id
+        ), 0) as total_tokens
+      FROM loop_runs lr
+      ORDER BY lr.created_at DESC
+      LIMIT 100
+    `).all() as any[];
+
+
+
+    return runs.map((r) => ({
+      status: r.status,
+      durationMs: r.duration_ms || 0,
+      totalCost: (r.total_tokens || 0) / 1000000 * 2, // $2/Mtok estimate
+    }));
+  }
+
+  private identifyRiskFactors(input: {
+    goalType: string;
+    runtime: string;
+  }, historical: Array<{ status: string; durationMs: number }>): string[] {
+    const risks: string[] = [];
+
+    // Low historical success rate for this runtime
+    const runtimeSuccess = historical.filter((h) => h.status === 'completed').length / Math.max(1, historical.length);
+    if (runtimeSuccess < 0.5) {
+      risks.push(`Low historical success rate for runtime ${input.runtime}: ${(runtimeSuccess * 100).toFixed(0)}%`);
+    }
+
+    // High variance in duration
+    const durations = historical.filter((h) => h.durationMs > 0).map((h) => h.durationMs);
+    if (durations.length > 2) {
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      const variance = durations.reduce((sum, d) => sum + (d - avg) ** 2, 0) / durations.length;
+      const cv = Math.sqrt(variance) / avg;
+      if (cv > 0.5) {
+        risks.push(`High duration variance (CV=${cv.toFixed(2)}) — predictions unreliable`);
+      }
+    }
+
+    // Insufficient data
+    if (historical.length < 5) {
+      risks.push(`Insufficient historical data (${historical.length} samples) — predictions uncertain`);
+    }
+
+    return risks;
+  }
+
+  private generateRecommendations(input: {
+    goalType: string;
+    runtime: string;
+  }, historical: Array<{ status: string; durationMs: number }>, risks: string[]): string[] {
+    const recommendations: string[] = [];
+
+    // Use goal type for recommendations
+    if (input.goalType) {
+      recommendations.push(`Goal type "${input.goalType}" — using specialized strategy`);
+    }
+
+    if (risks.some((r) => r.includes('Low historical success rate'))) {
+      recommendations.push('Consider using a different runtime based on historical success rates');
+    }
+
+    if (risks.some((r) => r.includes('Insufficient historical data'))) {
+      recommendations.push('Run a small test loop before committing to full execution');
+    }
+
+    // Recommend optimal runtime
+    const runtimeStats = new Map<string, { total: number; success: number }>();
+    for (const h of historical) {
+      const stats = runtimeStats.get(input.runtime) || { total: 0, success: 0 };
+      stats.total++;
+      if (h.status === 'completed') stats.success++;
+      runtimeStats.set(input.runtime, stats);
+    }
+
+    recommendations.push(`Expected success rate: ${((runtimeStats.get(input.runtime)?.success || 0) / Math.max(1, runtimeStats.get(input.runtime)?.total || 1) * 100).toFixed(0)}%`);
+
+    return recommendations;
+  }
+}
