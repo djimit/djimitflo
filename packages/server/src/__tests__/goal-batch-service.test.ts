@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { GoalBatchService } from '../services/goal-batch-service';
 
 function makeDb() {

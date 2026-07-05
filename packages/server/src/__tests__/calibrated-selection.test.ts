@@ -4,8 +4,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { LoopService } from '../services/loop-service';
 import { SelfModelService } from '../services/self-model-service';
 
@@ -15,10 +15,10 @@ let loops: LoopService;
 let tempDir: string;
 
 beforeEach(() => {
-  db = new Database(':memory:');
+  db = createTestDb();
   db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
+  
+  
   try { db.exec('ALTER TABLE worker_leases ADD COLUMN confidence REAL DEFAULT 0.5'); } catch { /* ok */ }
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-g37-'));
   fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document this module\n');

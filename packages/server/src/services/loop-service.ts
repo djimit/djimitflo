@@ -1297,7 +1297,7 @@ export class LoopService {
     const failedGates = gates.filter((gate) => gate.status === 'fail');
     let blockMetadata: Record<string, unknown> = {};
     try {
-      const existing = JSON.parse((run.metadata as string) || '{}');
+      const existing = JSON.parse(String(run.metadata || '{}'));
       blockMetadata = existing;
     } catch { /* use empty */ }
 
@@ -3447,6 +3447,15 @@ export class LoopService {
     const cached = this.runtimeContractCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.contract;
+    }
+    // Evict expired entry (prevents unbounded memory growth)
+    if (cached) this.runtimeContractCache.delete(cacheKey);
+    // Periodic cleanup: evict all expired entries every 100 calls
+    if (this.runtimeContractCache.size > 100) {
+      const now = Date.now();
+      for (const [key, entry] of this.runtimeContractCache) {
+        if (entry.expiresAt <= now) this.runtimeContractCache.delete(key);
+      }
     }
     const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS || 1_000), 5_000));
     const result = spawnSync(command, ['--version'], {

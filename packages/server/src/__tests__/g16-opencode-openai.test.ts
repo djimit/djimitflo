@@ -3,8 +3,8 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 
@@ -13,10 +13,10 @@ let intel: SwarmIntelligenceService;
 let tempDir: string;
 
 beforeEach(() => {
-  db = new Database(':memory:');
+  db = createTestDb();
   db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
+  
+  
   intel = new SwarmIntelligenceService(db);
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'g16-test-'));
 });

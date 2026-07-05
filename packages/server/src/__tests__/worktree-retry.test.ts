@@ -4,8 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 import { LoopService } from '../services/loop-service';
 import { WorktreeManager } from '../services/worktree-manager';
 
@@ -22,10 +22,10 @@ describe('createWorktree git-lock retry', () => {
   const previousEnv = { ...process.env };
 
   beforeEach(() => {
-    db = new Database(':memory:');
+    db = createTestDb();
     db.pragma('foreign_keys = ON');
-    db.exec(schema);
-    runMigrations(db);
+    
+    
     worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-wt-retry-'));
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
   });

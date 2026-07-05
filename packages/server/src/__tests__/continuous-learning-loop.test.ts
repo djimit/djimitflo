@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
+import { createTestDb } from './helpers/test-db';
+
 
 let db: Database.Database;
 let loop: ContinuousLearningLoop;
 
 beforeEach(() => {
-  db = new Database(':memory:');
+  db = createTestDb();
   db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
+  
+  
   loop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
 });
 

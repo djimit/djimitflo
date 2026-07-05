@@ -270,8 +270,8 @@ export class PredictiveAnalyticsService {
     const recommendations: string[] = [];
 
     // Check failure metadata completeness
-    const failedLeases = db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed'").get() as any;
-    const failedWithMetadata = db.prepare(`
+    const failedLeases = this.db.prepare("SELECT COUNT(*) as c FROM worker_leases WHERE status = 'failed'").get() as any;
+    const failedWithMetadata = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status = 'failed'
       AND json_extract(metadata, '$.exit_status') IS NOT NULL
@@ -284,8 +284,8 @@ export class PredictiveAnalyticsService {
     }
 
     // Check block reason completeness
-    const blockedLoops = db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
-    const blockedWithReason = db.prepare(`
+    const blockedLoops = this.db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status = 'blocked'").get() as any;
+    const blockedWithReason = this.db.prepare(`
       SELECT COUNT(*) as c FROM loop_runs
       WHERE status = 'blocked'
       AND json_extract(metadata, '$.block_reason') IS NOT NULL
@@ -298,11 +298,11 @@ export class PredictiveAnalyticsService {
     }
 
     // Count stale leases
-    const stalePrepared = db.prepare(`
+    const stalePrepared = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status = 'prepared' AND created_at < datetime('now', '-24 hours')
     `).get() as any;
-    const staleRunning = db.prepare(`
+    const staleRunning = this.db.prepare(`
       SELECT COUNT(*) as c FROM worker_leases
       WHERE status = 'running' AND updated_at < datetime('now', '-2 hours')
     `).get() as any;
