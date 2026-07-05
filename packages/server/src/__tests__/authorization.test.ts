@@ -1,17 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import type { Database } from 'better-sqlite3';
+import Database from 'better-sqlite3';
 import { createTestDb } from './helpers/test-db';
+import { runMigrations } from '../database/migrate';
+import { schema } from '../database/schema';
 import { AuthService } from '../services/auth-service';
 import { AuditService } from '../services/audit-service';
 import { AuthorizationService } from '../services/authorization-service';
 import { JwtSign } from '../middleware/auth';
 import { ROLE_PERMISSIONS, UserRole } from '@djimitflo/shared';
 
-let db: Database;
+let db: Database.Database;
 let authService: AuthService;
 
-function createDb(): Database {
-  return createTestDb() as unknown as Database;
+function createDb(): Database.Database {
+  return createTestDb() as unknown as Database.Database;
 }
 
 function createAdminToken(auth: AuthService): string {
@@ -239,8 +241,16 @@ describe('AuthorizationService', () => {
 });
 
 describe('Migration Phase 5.5', () => {
+  function createMigratedDb(): Database.Database {
+    const database = new Database(':memory:');
+    database.pragma('foreign_keys = ON');
+    database.exec(schema);
+    runMigrations(database);
+    return database;
+  }
+
   it('adds ownership columns to tasks table', () => {
-    db = createDb();
+    db = createMigratedDb();
     const columns = db.pragma('table_info(tasks)') as any[];
     const colNames = columns.map(c => c.name);
     expect(colNames).toContain('created_by');
@@ -250,7 +260,7 @@ describe('Migration Phase 5.5', () => {
   });
 
   it('adds added_by to repositories table', () => {
-    db = createDb();
+    db = createMigratedDb();
     const columns = db.pragma('table_info(repositories)') as any[];
     const colNames = columns.map(c => c.name);
     expect(colNames).toContain('added_by');
@@ -258,7 +268,7 @@ describe('Migration Phase 5.5', () => {
   });
 
   it('adds requested_by to approvals table', () => {
-    db = createDb();
+    db = createMigratedDb();
     const columns = db.pragma('table_info(approvals)') as any[];
     const colNames = columns.map(c => c.name);
     expect(colNames).toContain('requested_by');
