@@ -40,7 +40,8 @@ function createTestDb(): DbHandle {
     CREATE TABLE loop_events (
       id TEXT PRIMARY KEY, loop_run_id TEXT, event_type TEXT,
       severity TEXT DEFAULT 'info', message TEXT,
-      metadata_json TEXT DEFAULT '{}', created_at TEXT NOT NULL
+      metadata_json TEXT DEFAULT '{}', level TEXT DEFAULT 'info',
+      created_at TEXT NOT NULL
     );
   `);
   return { db, close: () => db.close() };
