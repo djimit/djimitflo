@@ -175,6 +175,10 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     res.json({ specialists: specialistPanel.getCatalog() });
   });
 
+  router.get('/specialists/catalog', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ specialists: specialistPanel.getCatalog() });
+  });
+
   // ─── Claims ────────────────────────────────────────────────────────
   router.post('/intelligence/claims', requirePermission('write:claim'), (req, res, next) => {
     try {
