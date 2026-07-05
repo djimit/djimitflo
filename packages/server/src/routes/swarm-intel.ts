@@ -8,6 +8,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmTaskDecomposer } from '../services/swarm-task-decomposer';
 import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 
 /** @deprecated Backward compatibility for swarms.ts — use createSwarmIntelRoutes */
 export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _wsService?: any): Router {
@@ -21,6 +22,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   const decomposer = new SwarmTaskDecomposer(db);
   const knowledge = new KnowledgeSharingService(db);
   const evolution = new SkillEvolutionEngine(db);
+  const intelligence = new SwarmIntelligenceService(db);
 
   // ─── Task Decomposition ─────────────────────────────────────────────
   router.post('/decompose', requirePermission('write:swarm_action'), (req, res) => {
@@ -123,6 +125,17 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.get('/evolution/stats', requirePermission('read:evidence'), (_req, res) => {
     res.json(evolution.getStats());
+  });
+
+  // ─── Runner Manifests ──────────────────────────────────────────────
+  router.post('/intelligence/runner-manifests', requirePermission('write:runner_manifest'), (req, res) => {
+    const { decision_id, lease_id, loop_run_id, action, policy_version, runtime_contract, capacity_snapshot, budget_snapshot, gate_refs, blocked_reasons, metadata } = req.body;
+    if (action === 'complete') {
+      res.status(403).json({ error: { message: 'Direct assertion of completed runner manifests is blocked', code: 'RUNNER_MANIFEST_DIRECT_ASSERTION_BLOCKED' } });
+      return;
+    }
+    const manifest = intelligence.createRunnerManifest({ decision_id, lease_id, loop_run_id, action, policy_version, runtime_contract, capacity_snapshot, budget_snapshot, gate_refs, blocked_reasons, metadata });
+    res.status(201).json(manifest);
   });
 
   return router;
