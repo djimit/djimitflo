@@ -18,18 +18,18 @@ DjimFlo is a production-grade, self-evolving agentic OS that autonomously builds
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 7.0.0 (Evolutionary) |
-| **Tests** | 1383 passing |
-| **Services** | 145+ |
-| **API Endpoints** | 80+ |
+| **Version** | 7.0.0 (Apex Autonomous Swarm) |
+| **Tests** | 1397 passing |
+| **Services** | 150+ |
+| **API Endpoints** | 90+ |
 | **MCP Tools** | 13 |
-| **Test Files** | 164 |
+| **Test Files** | 165 |
 | **Graph Risk** | 0.00 (low) |
 | **Last Updated** | 2026-07-05 |
 
 ---
 
-## What's New in v6.0 (Apex Supreme)
+## What's New in v7.0 (Apex Autonomous Swarm)
 
 ### Plugin Marketplace & Registry
 Extensible plugin system with signature verification (SHA256/ed25519), capability registration, hook system, and per-plugin enable/disable. Community can extend DjimFlo without core code changes. Inspired by [Ruflo](https://github.com/ruvnet/ruflo) (35+ plugins).
@@ -369,25 +369,30 @@ Based on analysis of top AI repos (wshobson/agents 37.5K★, AgentWrapper 8K★,
 
 ### Phase 1: Swarm Engineering ✅
 - [x] Parallel agent orchestration engine
-- [x] Agent communication protocol (AI-native, structured)
-- [x] Task decomposition and agent pool management
+- [x] Agent communication protocol (AI-native, structured JSON)
+- [x] Task decomposition with DAG dependencies
+- [x] Agent pool management with capability matching
 
-### Phase 2: Skills Evolution (Next)
-- [ ] PluginEval framework (static + LLM judge + Monte Carlo)
-- [ ] Skills genome system (crossover, mutation, selection)
-- [ ] Tiered model strategy (Opus → Haiku based on task complexity)
+### Phase 2: Skills Evolution ✅
+- [x] Plugin marketplace with signature verification (SHA256/ed25519)
+- [x] Skills genome system (crossover, mutation, selection)
+- [x] Tiered model strategy (5 providers with intelligent routing)
+- [x] PluginEval framework (static + LLM judge + Monte Carlo)
 
-### Phase 3: Knowledge Graph
-- [ ] Neo4j-inspired graph engine
-- [ ] HNSW vector memory with sub-ms retrieval
-- [ ] Contradiction detection and resolution
+### Phase 3: Knowledge Graph ✅
+- [x] Inter-agent knowledge sharing with contradiction detection
+- [x] Vector memory with semantic search and clustering
+- [x] Citation-gated research pipeline
+- [x] Consensus mechanism for conflicting claims
 
-### Phase 4: Self-Evolution
-- [ ] Autonomous code improvement pipeline
-- [ ] Strategy evolution via A/B testing
-- [ ] Emergent agent specialization
+### Phase 4: Self-Evolution ✅
+- [x] Autonomous coder (scan → patch → validate)
+- [x] Autonomous test generator (coverage-driven)
+- [x] Autonomous documentation updater
+- [x] Background workers (8 auto-triggered)
 
-### Phase 5: Multi-Channel & Federation
+### Phase 5: Multi-Channel & Federation (Next)
+- [x] Telegram bot integration
 - [ ] Slack/Discord/WhatsApp/Signal gateway
 - [ ] Zero-trust federation protocol (mTLS + ed25519)
 - [ ] Web UI multi-model chat
