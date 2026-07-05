@@ -32,6 +32,7 @@ import { AgentCatalogPage } from './pages/AgentCatalogPage';
 import { AgiReasoningPage } from './pages/AgiReasoningPage';
 import { ConsensusDebatePage } from './pages/ConsensusDebatePage';
 import { PredictiveAnalyticsPage } from './pages/PredictiveAnalyticsPage';
+import { SelfHealingPage } from './pages/SelfHealingPage';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -106,6 +107,7 @@ export function App() {
           <Route path="agi-reasoning" element={<AgiReasoningPage />} />
           <Route path="consensus-debates" element={<ConsensusDebatePage />} />
           <Route path="predictive-analytics" element={<PredictiveAnalyticsPage />} />
+          <Route path="self-healing" element={<SelfHealingPage />} />
         </Route>
       </Routes>
     
