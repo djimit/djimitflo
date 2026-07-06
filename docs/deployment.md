@@ -111,7 +111,7 @@ On first startup, if `AUTH_BOOTSTRAP_ADMIN_EMAIL` and `AUTH_BOOTSTRAP_ADMIN_PASS
 # Login after bootstrap
 curl -X POST http://localhost:3001/api/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"admin@example.com","password":"your-password"}'
+  -d '{"email":"admin@example.com","password":"REDACTED"}'
 ```
 
 **Security notes:**

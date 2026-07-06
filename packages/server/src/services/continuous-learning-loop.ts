@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { MemoryCurator } from './memory-curator';
 import { ReflectionEngine } from './reflection-engine';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
+import { TrajectoryStore } from './trajectory-store';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
@@ -14,9 +15,14 @@ export class ContinuousLearningLoop {
   private curator: MemoryCurator;
   private reflections: ReflectionEngine;
   private goals: AutonomousGoalGenerator;
+  private _trajectories?: TrajectoryStore;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCycle: string | null = null;
+
+  setTrajectoryStore(store: TrajectoryStore): void {
+    this._trajectories = store;
+  }
 
   constructor(private db: Database, options: { intervalMs?: number } = {}) {
     this.curator = new MemoryCurator(db);
@@ -60,7 +66,17 @@ export class ContinuousLearningLoop {
     const episodes: Array<{ id: string; type: string; content: string; source: string; timestamp: string }> = [];
     try {
       const runs = this.db.prepare("SELECT id, loop_name, status, created_at FROM loop_runs WHERE created_at > ? AND status = 'completed' ORDER BY created_at DESC LIMIT 5").all(this.lastCycle ?? '1970-01-01') as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
-      for (const run of runs) { episodes.push({ id: 'episode-' + run.id, type: 'episode', content: 'Completed ' + run.loop_name, source: 'loop-daemon', timestamp: run.created_at }); }
+      for (const run of runs) {
+        let content = 'Completed ' + run.loop_name;
+        // Enrich with trajectory summary when available
+        if (this._trajectories) {
+          const summary = this._trajectories.getTrajectorySummary(run.id);
+          if (summary && !summary.startsWith('_No trajectory')) {
+            content += ' | trajectory: ' + summary;
+          }
+        }
+        episodes.push({ id: 'episode-' + run.id, type: 'episode', content, source: 'loop-daemon', timestamp: run.created_at });
+      }
     } catch { /* ok */ }
     return episodes;
   }

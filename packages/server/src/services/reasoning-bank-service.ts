@@ -2,6 +2,8 @@ import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { VectorMemoryService } from './vector-memory-service';
+import { TrajectoryStore } from './trajectory-store';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -9,9 +11,19 @@ const COLLECTION_REASONING = 'djimitflo_reasoning';
 
 export class ReasoningBankService {
   private db: Database;
+  private vectorMemory?: VectorMemoryService;
+  private trajectoryStore?: TrajectoryStore;
 
   constructor(db: Database) {
     this.db = db;
+  }
+
+  setVectorMemory(service: VectorMemoryService): void {
+    this.vectorMemory = service;
+  }
+
+  setTrajectoryStore(store: TrajectoryStore): void {
+    this.trajectoryStore = store;
   }
 
   async recordReasoning(taskId: string): Promise<void> {
@@ -122,6 +134,37 @@ export class ReasoningBankService {
     } catch (e) {
       console.warn(`ReasoningBank Qdrant write failed for ${taskId}:`, e);
     }
+
+    // Feedback loop: reward vector memory entries that were used in this reasoning
+    if (this.vectorMemory) {
+      const reward = outcome === 'approved' ? 1.0 : outcome === 'denied' ? 0.2 : 0.5;
+      try {
+        const related = this.vectorMemory.search(`${task.title} ${task.description}`, 3);
+        for (const r of related) {
+          this.vectorMemory.recordFeedback(r.id, reward);
+        }
+      } catch { /* best-effort */ }
+    }
+  }
+
+  /**
+   * Get trajectory context for a reasoning search.
+   * Returns human-readable trajectory summaries for similar past runs.
+   */
+  getTrajectoryContext(query: string, limit: number = 3): string {
+    if (!this.trajectoryStore) return '';
+    const results = this.trajectoryStore.findSimilarTrajectories(
+      query.toLowerCase().split(/\s+/).filter(w => w.length > 3),
+      limit
+    );
+    if (results.length === 0) return '';
+
+    const lines: string[] = ['## Trajectory Context', ''];
+    for (const r of results) {
+      const summary = this.trajectoryStore.getTrajectorySummary(r.runId);
+      lines.push(`- **${r.runId.slice(0, 8)}** (${r.outcome}): ${summary}`);
+    }
+    return lines.join('\n');
   }
 
   async searchReasoning(query: string, limit: number = 5): Promise<any[]> {

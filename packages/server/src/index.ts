@@ -20,6 +20,8 @@ import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
 import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
+import { VectorMemoryService } from './services/vector-memory-service';
+import { TrajectoryStore } from './services/trajectory-store';
 import { LoopService } from './services/loop-service';
 import { LoopDaemon } from './services/loop-daemon';
 import { NegotiationCoordinator } from './services/negotiation-coordinator';
@@ -40,6 +42,12 @@ type TelegramBotConfig = { token: string; machineId: string; agentType: string; 
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
+const RANSOMWARE_MODULE_ENABLED = process.env.RANSOMWARE_MODULE_ENABLED !== 'false';
+const RANSOMWARE_MODULE_MODE = process.env.RANSOMWARE_MODULE_MODE || 'detect';
+
+if (RANSOMWARE_MODULE_ENABLED) {
+  console.log(`🛡️  Anti-agentic ransomware module active (mode: ${RANSOMWARE_MODULE_MODE})`);
+}
 
 // L1: derive a default nested-spawn control URL so a runtime child (running on the
 // same host) can call back to POST /api/swarms/spawns without operator config.
@@ -191,6 +199,14 @@ async function main() {
 
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
+
+  // ruvnet capabilities: vector memory with Ollama embeddings + self-learning
+  const vectorMemory = new VectorMemoryService(db);
+  reasoningBank.setVectorMemory(vectorMemory);
+
+  // ruvnet capabilities: trajectory bridge for execution learning
+  const trajectoryStore = new TrajectoryStore(db);
+  executionEngine.setTrajectoryStore(trajectoryStore);
   
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));

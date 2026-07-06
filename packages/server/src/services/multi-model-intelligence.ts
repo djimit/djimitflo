@@ -37,6 +37,15 @@ interface RoutingDecision {
   alternatives: string[];
   confidence: number;
   timestamp: string;
+  cascadeLevel?: number;
+  estimatedCost?: number;
+}
+
+interface CascadeDecision extends RoutingDecision {
+  cascadeLevel: number;
+  maxEscalations: number;
+  estimatedCost: number;
+  modelsAttempted: string[];
 }
 
 export class MultiModelIntelligence {
@@ -222,6 +231,152 @@ export class MultiModelIntelligence {
       .filter((m) => m.sampleCount > 0)
       .sort((a, b) => b.successRate - a.successRate)
       .slice(0, limit);
+  }
+
+  /**
+   * Cost-cascade routing: try cheapest model first, escalate on failure.
+   * Requires COST_CASCADE_ENABLED=true to activate.
+   */
+  routeWithCascade(input: {
+    taskType: string;
+    minSuccessRate?: number;
+    minSampleCount?: number;
+    maxEscalations?: number;
+  }): CascadeDecision {
+    const minRate = input.minSuccessRate ?? (Number(process.env.CASCADE_MIN_SUCCESS_RATE) || 0.6);
+    const minSamples = input.minSampleCount ?? (Number(process.env.CASCADE_MIN_SAMPLES) || 5);
+    const maxEscalations = input.maxEscalations ?? (Number(process.env.CASCADE_MAX_ESCALATIONS) || 2);
+    const cascadeEnabled = process.env.COST_CASCADE_ENABLED === 'true';
+
+    // Get eligible models sorted by cost (ascending)
+    const eligible = Array.from(this.modelCache.values())
+      .filter((model) => {
+        if (model.status !== 'active') return false;
+        const taskCap = model.capabilities.find((c) => c.taskType === input.taskType);
+        if (!taskCap) return false;
+        if (!cascadeEnabled) return true;
+        return taskCap.successRate >= minRate && taskCap.sampleCount >= minSamples;
+      })
+      .sort((a, b) => a.costPerMtok - b.costPerMtok);
+
+    if (eligible.length === 0) {
+      // Fallback to standard routing
+      const fallback = this.routeTask(input);
+      return {
+        ...fallback,
+        cascadeLevel: 0,
+        maxEscalations,
+        estimatedCost: 0,
+        modelsAttempted: [],
+      };
+    }
+
+    const selected = eligible[0];
+    const taskCap = selected.capabilities.find((c) => c.taskType === input.taskType);
+
+    const decision: CascadeDecision = {
+      id: randomUUID(),
+      taskType: input.taskType,
+      selectedModel: selected.modelId,
+      reason: cascadeEnabled
+        ? `Cascade L0: cheapest model ($${selected.costPerMtok}/Mtok, success: ${((taskCap?.successRate || 0) * 100).toFixed(0)}%)`
+        : `Cost-aware: cheapest eligible ($${selected.costPerMtok}/Mtok)`,
+      alternatives: eligible.slice(1, maxEscalations + 1).map((m) => m.modelId),
+      confidence: taskCap?.successRate || 0.5,
+      timestamp: new Date().toISOString(),
+      cascadeLevel: 0,
+      maxEscalations,
+      estimatedCost: selected.costPerMtok,
+      modelsAttempted: [],
+    };
+
+    // Store decision
+    this.db.prepare(`
+      INSERT INTO model_routing_decisions
+      (id, task_type, selected_model, reason, alternatives_json, confidence, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      decision.id, decision.taskType, decision.selectedModel,
+      decision.reason, JSON.stringify(decision.alternatives),
+      decision.confidence, decision.timestamp,
+    );
+
+    return decision;
+  }
+
+  /**
+   * Record cascade outcome: on failure, escalate to next model.
+   * Returns the next model to try, or null if max escalations reached.
+   */
+  recordCascadeOutcome(input: {
+    decisionId: string;
+    modelId: string;
+    success: boolean;
+    latencyMs?: number;
+    costDollars?: number;
+  }): CascadeDecision | null {
+    // Record the outcome
+    const existing = this.db.prepare(
+      'SELECT * FROM model_routing_decisions WHERE id = ?'
+    ).get(input.decisionId) as any;
+
+    if (!existing) return null;
+
+    // Update models attempted
+    const modelsAttempted = JSON.parse(existing.alternatives_json || '[]');
+    const currentLevel = input.success ? 0 : 1; // simplified
+
+    if (input.success) {
+      // Success — no escalation needed
+      this.recordOutcome({
+        modelId: input.modelId,
+        taskType: existing.task_type,
+        success: true,
+        latencyMs: input.latencyMs,
+        costDollars: input.costDollars,
+      });
+      return null;
+    }
+
+    // Failure — escalate to next model
+    if (modelsAttempted.length === 0) {
+      this.recordOutcome({
+        modelId: input.modelId,
+        taskType: existing.task_type,
+        success: false,
+        latencyMs: input.latencyMs,
+        costDollars: input.costDollars,
+      });
+      return null;
+    }
+
+    const nextModelId = modelsAttempted[0];
+    const nextModel = this.modelCache.get(nextModelId);
+    if (!nextModel) return null;
+
+    this.recordOutcome({
+      modelId: input.modelId,
+      taskType: existing.task_type,
+      success: false,
+      latencyMs: input.latencyMs,
+      costDollars: input.costDollars,
+    });
+
+    const taskCap = nextModel.capabilities.find((c) => c.taskType === existing.task_type);
+
+    return {
+      id: randomUUID(),
+      taskType: existing.task_type,
+      selectedModel: nextModelId,
+      reason: `Cascade L1: escalation from ${input.modelId} ($${nextModel.costPerMtok}/Mtok)`,
+      alternatives: modelsAttempted.slice(1),
+      confidence: taskCap?.successRate || 0.5,
+      timestamp: new Date().toISOString(),
+      cascadeLevel: currentLevel + 1,
+      maxEscalations: modelsAttempted.length,
+      estimatedCost: nextModel.costPerMtok,
+      modelsAttempted: [input.modelId, ...modelsAttempted],
+    };
   }
 
   /**

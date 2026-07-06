@@ -31,6 +31,7 @@ import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
 import { MemorySyncService } from '../services/memory-sync-service';
 import { ReasoningBankService } from '../services/reasoning-bank-service';
+import { TrajectoryStore } from '../services/trajectory-store';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -53,6 +54,7 @@ export class ExecutionEngine {
   private diffCaptureService: DiffCaptureService;
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
+  private trajectoryStore?: TrajectoryStore;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -60,6 +62,10 @@ export class ExecutionEngine {
 
   setReasoningBankService(service: ReasoningBankService): void {
     this.reasoningBankService = service;
+  }
+
+  setTrajectoryStore(store: TrajectoryStore): void {
+    this.trajectoryStore = store;
   }
 
   constructor(db: Database, wsService: WebSocketService) {
@@ -247,7 +253,19 @@ export class ExecutionEngine {
         | undefined;
       const session = await executor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
       this.activeSessions.set(taskId, session);
-      
+
+      // Record trajectory step
+      if (this.trajectoryStore) {
+        this.trajectoryStore.recordStep({
+          runId: taskId,
+          actionType: 'execute',
+          capabilityId: parsedTask.execution_mode || null,
+          runtime: executor.kind,
+          outcome: 'success',
+          metadata: { title: parsedTask.title },
+        });
+      }
+
       // Update task status to running
       this.updateTaskStatus(taskId, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),

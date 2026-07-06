@@ -70,8 +70,23 @@ export class LlmRouterService {
 
   /**
    * Route a request to the optimal provider.
+   * When cascadeHint is set, skip static mapping and use the suggested model.
    */
-  route(request: RoutingRequest): RoutingDecision {
+  route(request: RoutingRequest, cascadeHint?: { modelId: string; escalationLevel: number }): RoutingDecision {
+    // Cascade hint: use model suggested by MultiModelIntelligence cascade
+    if (cascadeHint?.modelId) {
+      const provider = this.findProviderByModelId(cascadeHint.modelId);
+      if (provider && provider.status !== 'offline') {
+        return {
+          provider: provider.name,
+          model: provider.model,
+          reason: `Cascade L${cascadeHint.escalationLevel}: ${cascadeHint.modelId}`,
+          estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok,
+          estimatedLatencyMs: provider.avgLatencyMs,
+        };
+      }
+    }
+
     const candidates = request.preferredProvider
       ? [request.preferredProvider]
       : this.taskRouting[request.taskType] || ['litellm'];
@@ -172,6 +187,13 @@ export class LlmRouterService {
       totalRequests: metrics?.c || 0,
       avgLatencyMs: Math.round(metrics?.avg_latency || 0),
     };
+  }
+
+  private findProviderByModelId(modelId: string): ProviderConfig | undefined {
+    for (const provider of this.providers.values()) {
+      if (provider.model === modelId || provider.name === modelId) return provider;
+    }
+    return undefined;
   }
 
   private ensureTables(): void {

@@ -86,7 +86,7 @@ Set environment variables before first startup:
 
 ```bash
 AUTH_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
-AUTH_BOOTSTRAP_ADMIN_PASSWORD=<your-secure-password>
+AUTH_BOOTSTRAP_ADMIN_PASSWORD=REDACTED
 AUTH_BOOTSTRAP_ADMIN_ROLE=admin  # optional, defaults to admin
 ```
 

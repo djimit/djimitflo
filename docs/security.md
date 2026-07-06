@@ -103,14 +103,14 @@ All API responses include the following security headers:
 
 ```bash
 # Required
-JWT_SECRET=<strong-random-secret-at-least-32-chars>
+JWT_SECRET=REDACTED
 
 # Token expiry
 JWT_EXPIRES_IN=24h
 
 # Bootstrap admin
 AUTH_BOOTSTRAP_ADMIN_EMAIL=admin@yourcompany.com
-AUTH_BOOTSTRAP_ADMIN_PASSWORD=<strong-password>
+AUTH_BOOTSTRAP_ADMIN_PASSWORD=REDACTED
 
 # CORS — restrict to your domain
 CORS_ORIGINS=https://your-domain.com

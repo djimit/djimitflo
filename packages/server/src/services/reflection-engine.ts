@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { TrajectoryStore, type TrajectoryActionType, type TrajectoryOutcome } from './trajectory-store';
 
 export interface Reflection {
   id: string;
@@ -22,6 +23,8 @@ interface ReflectionRow {
 }
 
 export class ReflectionEngine {
+  private trajectoryStore?: TrajectoryStore;
+
   constructor(private db: Database) {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS reflections (
@@ -35,6 +38,24 @@ export class ReflectionEngine {
       )
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_reflection_run ON reflections(loop_run_id)');
+  }
+
+  setTrajectoryStore(store: TrajectoryStore): void {
+    this.trajectoryStore = store;
+  }
+
+  recordTrajectoryStep(input: {
+    runId: string;
+    actionType: TrajectoryActionType;
+    capabilityId?: string | null;
+    runtime?: string;
+    outcome: TrajectoryOutcome;
+    durationMs?: number;
+    metadata?: Record<string, unknown>;
+  }): void {
+    if (this.trajectoryStore) {
+      this.trajectoryStore.recordStep(input);
+    }
   }
 
   reflectOnRun(loopRunId: string): Reflection {
