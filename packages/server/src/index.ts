@@ -22,6 +22,10 @@ import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { VectorMemoryService } from './services/vector-memory-service';
 import { TrajectoryStore } from './services/trajectory-store';
+import { RetentionService } from './services/retention-service';
+import { MetaOrchestrationService } from './services/meta-orchestration-service';
+import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
+import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
 import { LoopDaemon } from './services/loop-daemon';
 import { NegotiationCoordinator } from './services/negotiation-coordinator';
@@ -207,9 +211,31 @@ async function main() {
   // ruvnet capabilities: trajectory bridge for execution learning
   const trajectoryStore = new TrajectoryStore(db);
   executionEngine.setTrajectoryStore(trajectoryStore);
-  
+
+  // Retention service — centralized data lifecycle management
+  const retention = new RetentionService(db);
+  retention.start();
+
+  // Cognitive loop closure — learns from loop execution outcomes
+  const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
+  cognitiveLoopClosure.start();
+
+  // Multi-model intelligence — capability-aware model routing
+  const multiModelIntelligence = new MultiModelIntelligence(db);
+  // Seed default models if none exist
+  if (multiModelIntelligence.getStatus().totalModels === 0) {
+    multiModelIntelligence.registerModel({ modelId: 'workstation-litellm/coding', modelName: 'LiteLLM Coding', provider: 'litellm', costPerMtok: 1.0 });
+    multiModelIntelligence.registerModel({ modelId: 'ollama-qwen25-14b', modelName: 'Qwen2.5 14B', provider: 'ollama', costPerMtok: 0 });
+  }
+
+  // Meta-orchestration — self-driving optimization layer (connects all learning subsystems)
+  const metaOrchestration = new MetaOrchestrationService(db);
+  metaOrchestration.start();
+  executionEngine.setMetaOrchestration(metaOrchestration);
+  recoverySvc.setMetaOrchestration(metaOrchestration);
+
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;

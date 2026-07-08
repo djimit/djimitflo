@@ -11,7 +11,7 @@ console.log('Initial stats:', vmem.getStats());
 // Store test memories
 const m1 = vmem.storeMemory({ content: 'TypeScript generics improve type safety', metadata: { test: true } });
 const m2 = vmem.storeMemory({ content: 'Vector embeddings enable semantic search', metadata: { test: true } });
-const m3 = vmem.storeMemory({ content: 'Self-learning systems adapt from feedback', metadata: { test: true } });
+vmem.storeMemory({ content: 'Self-learning systems adapt from feedback', metadata: { test: true } });
 console.log('Stored 3 memories');
 
 // Search

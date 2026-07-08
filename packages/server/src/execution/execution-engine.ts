@@ -32,6 +32,7 @@ import { DiffCaptureService } from '../services/diff-capture';
 import { MemorySyncService } from '../services/memory-sync-service';
 import { ReasoningBankService } from '../services/reasoning-bank-service';
 import { TrajectoryStore } from '../services/trajectory-store';
+import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -55,6 +56,7 @@ export class ExecutionEngine {
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
   private trajectoryStore?: TrajectoryStore;
+  private metaOrchestration?: MetaOrchestrationService;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -66,6 +68,10 @@ export class ExecutionEngine {
 
   setTrajectoryStore(store: TrajectoryStore): void {
     this.trajectoryStore = store;
+  }
+
+  setMetaOrchestration(service: MetaOrchestrationService): void {
+    this.metaOrchestration = service;
   }
 
   constructor(db: Database, wsService: WebSocketService) {
@@ -244,6 +250,30 @@ export class ExecutionEngine {
     const repositoryId = parsedTask.repository_id || task.repository_id;
     this.capturePreExecutionDiff(taskId, repositoryId);
     
+    // Meta-orchestration: predict failure before execution
+    if (this.metaOrchestration) {
+      const prediction = this.metaOrchestration.predictFailure({
+        title: parsedTask.title,
+        description: parsedTask.description,
+        priority: parsedTask.priority,
+        riskLevel: parsedTask.risk_level,
+        executionMode: parsedTask.execution_mode,
+        tags: parsedTask.tags,
+        metadata: parsedTask.metadata as Record<string, unknown>,
+      });
+      if (prediction.willFail && prediction.confidence > 0.7) {
+        this.evidenceService.captureEvidence({
+          task_id: taskId,
+          evidence_type: EvidenceType.RISK_ASSESSMENT,
+          severity: EvidenceSeverity.WARNING,
+          title: `Meta-orchestration: predicted failure (${(prediction.confidence * 100).toFixed(0)}% confidence)`,
+          summary: prediction.reasons.join('; '),
+          details: { prediction },
+          source: 'system',
+        });
+      }
+    }
+
     try {
       // Start execution
       // Resolve a working directory from task metadata (operator/loop may pin a worktree);
@@ -270,13 +300,13 @@ export class ExecutionEngine {
       this.updateTaskStatus(taskId, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
       });
-      
+
       // Process event stream in background
       this.processEventStream(session).catch((error) => {
         console.error(`Error processing event stream for task ${taskId}:`, error);
         this.handleExecutionError(taskId, error);
       });
-      
+
       // Wait for result and update task
       session.result.then((result) => {
         this.handleExecutionComplete(taskId, session, result);
@@ -527,11 +557,30 @@ export class ExecutionEngine {
         details: { durationMs: executionTimeMs },
         source: 'executor',
       });
-      
+
       this.wsService.broadcastTaskEvent(this.getTask(taskId), {
         type: WebSocketEventType.TASK_FAILED,
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Meta-orchestration: record outcome for learning
+    if (this.metaOrchestration) {
+      const task = this.getTask(taskId);
+      this.metaOrchestration.recordOutcome({
+        taskId,
+        taskType: task?.execution_mode || 'coding',
+        title: task?.title || '',
+        description: task?.description || '',
+        provider: 'litellm',
+        model: session.executorKind || 'mock',
+        runtime: session.executorKind || 'mock',
+        success: result.status === 'completed',
+        durationMs: executionTimeMs,
+        costDollars: result.metrics?.costDollars || 0,
+        tags: task?.tags || [],
+        metadata: { riskLevel: task?.risk_level },
       });
     }
   }

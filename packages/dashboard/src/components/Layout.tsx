@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser } from 'lucide-react';
+import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -141,6 +141,12 @@ export function Layout() {
             icon={<BrainCircuit className="w-5 h-5" />}
             label="Mission Control"
             active={isActive('/swarm-mission-control')}
+          />
+          <NavLink
+            to="/cognitive"
+            icon={<Brain className="w-5 h-5" />}
+            label="Cognitive"
+            active={isActive('/cognitive')}
           />
         </nav>
         
