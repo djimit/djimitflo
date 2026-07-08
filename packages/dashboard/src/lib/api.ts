@@ -1531,6 +1531,20 @@ class ApiClient {
     return this.request(`/cognitive/strategy/${encodeURIComponent(goalType)}`);
   }
 
+  async getMemoryStats(): Promise<{
+    total: number; active: number; candidates: number; archived: number;
+    decayed: number; avgRelevance: number; totalRelations: number;
+  }> {
+    return this.request("/memory/stats");
+  }
+
+  async getComplianceStatus(): Promise<{
+    totalAuditEntries: number; chainIntegrity: boolean;
+    lastReportScore: number; lastReportStatus: string | null;
+  }> {
+    return this.request("/compliance/status");
+  }
+
 }
 
 export const api = new ApiClient();

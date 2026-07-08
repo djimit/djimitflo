@@ -34,6 +34,7 @@ import { ConsensusDebatePage } from './pages/ConsensusDebatePage';
 import { PredictiveAnalyticsPage } from './pages/PredictiveAnalyticsPage';
 import { SelfHealingPage } from './pages/SelfHealingPage';
 import { CognitiveRuntimePage } from './pages/CognitiveRuntimePage';
+import { SelfDrivingDashboard } from './pages/SelfDrivingDashboard';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
@@ -110,6 +111,7 @@ export function App() {
           <Route path="predictive-analytics" element={<PredictiveAnalyticsPage />} />
           <Route path="self-healing" element={<SelfHealingPage />} />
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
+          <Route path="self-driving" element={<SelfDrivingDashboard />} />
         </Route>
       </Routes>
     

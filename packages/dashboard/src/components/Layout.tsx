@@ -148,6 +148,12 @@ export function Layout() {
             label="Cognitive"
             active={isActive('/cognitive')}
           />
+          <NavLink
+            to="/self-driving"
+            icon={<Activity className="w-5 h-5" />}
+            label="Self-Driving"
+            active={isActive('/self-driving')}
+          />
         </nav>
         
         {/* Footer */}
