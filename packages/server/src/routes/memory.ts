@@ -78,5 +78,18 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(result);
   });
 
+  // POST /api/memory/discover-relations — auto-discover relations between similar memories
+  router.post('/discover-relations', requirePermission('write:governance'), (req, res) => {
+    const minStrength = req.body?.minStrength ?? 0.3;
+    const result = service.autoDiscoverRelations(minStrength);
+    res.json(result);
+  });
+
+  // POST /api/memory/consolidate — merge near-duplicate memories
+  router.post('/consolidate', requirePermission('write:governance'), (__req, res) => {
+    const result = service.consolidateMemories();
+    res.json(result);
+  });
+
   return router;
 }

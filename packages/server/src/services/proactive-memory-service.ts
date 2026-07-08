@@ -38,6 +38,8 @@ interface MemoryPromotionResult {
   archived: number;
   decayed: number;
   evaluated: number;
+  relationsDiscovered?: number;
+  merged?: number;
 }
 
 const DEFAULT_TTL_DAYS = 90;
@@ -158,7 +160,13 @@ export class ProactiveMemoryService {
       }
     }
 
-    return { promoted, archived, decayed, evaluated: memories.length };
+    // Auto-discover relations between similar memories
+    const relations = this.autoDiscoverRelations();
+
+    // Consolidate near-duplicate memories
+    const consolidated = this.consolidateMemories();
+
+    return { promoted, archived, decayed, evaluated: memories.length, relationsDiscovered: relations.discovered, merged: consolidated.merged };
   }
 
   /**
@@ -232,6 +240,77 @@ export class ProactiveMemoryService {
   }
 
   /**
+   * Auto-discover relations between memories based on content similarity.
+   * Creates relations for memories that share significant keyword overlap.
+   */
+  autoDiscoverRelations(minStrength = 0.3): { discovered: number; relations: MemoryRelation[] } {
+    const memories = this.db.prepare("SELECT * FROM proactive_memories WHERE status IN ('candidate', 'active')").all() as any[];
+    const relations: MemoryRelation[] = [];
+    let discovered = 0;
+
+    for (let i = 0; i < memories.length; i++) {
+      for (let j = i + 1; j < memories.length; j++) {
+        const a = memories[i];
+        const b = memories[j];
+        const similarity = this.calculateSimilarity(a.content, b.content);
+        if (similarity >= minStrength) {
+          // Check if relation already exists
+          const existing = this.db.prepare(`
+            SELECT 1 FROM proactive_memory_relations
+            WHERE (source_id = ? AND target_id = ?) OR (source_id = ? AND target_id = ?)
+          `).get(a.id, b.id, b.id, a.id);
+          if (!existing) {
+            const relation = this.createRelation(a.id, b.id, 'semantic_similarity', similarity);
+            relations.push(relation);
+            discovered++;
+          }
+        }
+      }
+    }
+
+    return { discovered, relations };
+  }
+
+  /**
+   * Consolidate duplicate or near-duplicate memories.
+   * Merges memories with >80% content similarity into a single entry.
+   */
+  consolidateMemories(): { merged: number; removed: string[] } {
+    const memories = this.db.prepare("SELECT * FROM proactive_memories WHERE status IN ('candidate', 'active')").all() as any[];
+    const removed: string[] = [];
+    let merged = 0;
+
+    for (let i = 0; i < memories.length; i++) {
+      if (removed.includes(memories[i].id)) continue;
+      for (let j = i + 1; j < memories.length; j++) {
+        if (removed.includes(memories[j].id)) continue;
+        const similarity = this.calculateSimilarity(memories[i].content, memories[j].content);
+        if (similarity > 0.8) {
+          // Merge: keep the one with higher relevance, transfer relations
+          const keep = memories[i].relevance_score >= memories[j].relevance_score ? memories[i] : memories[j];
+          const remove = keep.id === memories[i].id ? memories[j] : memories[i];
+
+          // Transfer relations from removed to kept
+          this.db.prepare('UPDATE proactive_memory_relations SET source_id = ? WHERE source_id = ?').run(keep.id, remove.id);
+          this.db.prepare('UPDATE proactive_memory_relations SET target_id = ? WHERE target_id = ?').run(keep.id, remove.id);
+
+          // Update usage count
+          this.db.prepare('UPDATE proactive_memories SET usage_count = usage_count + ? WHERE id = ?').run(remove.usage_count, keep.id);
+
+          // Remove duplicate
+          this.db.prepare('DELETE FROM proactive_memories WHERE id = ?').run(remove.id);
+          this.db.prepare('DELETE FROM proactive_memory_relations WHERE source_id = target_id').run();
+
+          removed.push(remove.id);
+          merged++;
+        }
+      }
+    }
+
+    return { merged, removed };
+  }
+
+  /**
    * Get memory statistics.
    */
   getStats(): {
@@ -255,6 +334,18 @@ export class ProactiveMemoryService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  /**
+   * Calculate content similarity between two strings using Jaccard coefficient.
+   */
+  private calculateSimilarity(a: string, b: string): number {
+    const tokensA = new Set(a.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+    const tokensB = new Set(b.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+    if (tokensA.size === 0 || tokensB.size === 0) return 0;
+    const intersection = new Set([...tokensA].filter((t) => tokensB.has(t)));
+    const union = new Set([...tokensA, ...tokensB]);
+    return intersection.size / union.size;
+  }
 
   private calculateRelevance(memory: MemoryEntry): number {
     const ageDays = (Date.now() - new Date(memory.createdAt).getTime()) / 86400000;
