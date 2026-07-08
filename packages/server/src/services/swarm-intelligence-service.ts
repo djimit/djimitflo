@@ -11,6 +11,7 @@ import { CapabilityService } from './capability-service';
 import { HypothesisService } from './hypothesis-service';
 import { ClaimService } from './claim-service';
 import { ProofRunService } from './proof-run-service';
+import { SwarmEvidenceService } from './swarm-evidence-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -105,12 +106,14 @@ export class SwarmIntelligenceService {
   readonly capabilities: CapabilityService;
   readonly hypotheses: HypothesisService;
   readonly claims: ClaimService;
+  readonly evidence: SwarmEvidenceService;
 
   constructor(private db: Database) {
     this.panels = new SpecialistPanelService(db);
     this.capabilities = new CapabilityService(db);
     this.hypotheses = new HypothesisService(db);
     this.claims = new ClaimService(db);
+    this.evidence = new SwarmEvidenceService(db);
   }
 
   private swarmStatus(): SwarmStatusService {
@@ -818,81 +821,15 @@ export class SwarmIntelligenceService {
   }
 
   createEvidenceEdge(fromRef: string, toRef: string, relation: string, metadata: Record<string, unknown> = {}) {
-    if (!fromRef.trim() || !toRef.trim() || !relation.trim()) throw new Error('SWARM_EVIDENCE_EDGE_INVALID');
     this.rejectSecretLike(fromRef, toRef, relation, metadata);
-    const id = randomUUID();
-    this.db.prepare(`
-      INSERT INTO swarm_evidence_edges (id, from_ref, to_ref, relation, metadata, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, fromRef.trim(), toRef.trim(), relation.trim(), JSON.stringify(metadata), new Date().toISOString());
-    return { id, from_ref: fromRef.trim(), to_ref: toRef.trim(), relation: relation.trim(), metadata };
+    return this.evidence.createEvidenceEdge(fromRef, toRef, relation, metadata);
   }
 
-  // G15.5: Lineage resolver — forward and reverse graph traversal
-  lineageForward(ref: string, maxDepth = 10): { ref: string; edges: Array<{ to: string; relation: string; depth: number }> } {
-    const visited = new Set<string>([ref]);
-    const edges: Array<{ to: string; relation: string; depth: number }> = [];
-    const queue: Array<{ ref: string; depth: number }> = [{ ref, depth: 0 }];
-    while (queue.length > 0) {
-      const item = queue.shift()!;
-      if (item.depth >= maxDepth) continue;
-      const rows = this.db.prepare('SELECT to_ref, relation FROM swarm_evidence_edges WHERE from_ref = ?').all(item.ref) as any[];
-      for (const row of rows) {
-        if (visited.has(row.to_ref)) continue;
-        visited.add(row.to_ref);
-        edges.push({ to: row.to_ref, relation: row.relation, depth: item.depth + 1 });
-        queue.push({ ref: row.to_ref, depth: item.depth + 1 });
-      }
-    }
-    return { ref, edges };
-  }
-
-  lineageReverse(ref: string, maxDepth = 10): { ref: string; edges: Array<{ from: string; relation: string; depth: number }> } {
-    const visited = new Set<string>([ref]);
-    const edges: Array<{ from: string; relation: string; depth: number }> = [];
-    const queue: Array<{ ref: string; depth: number }> = [{ ref, depth: 0 }];
-    while (queue.length > 0) {
-      const item = queue.shift()!;
-      if (item.depth >= maxDepth) continue;
-      const rows = this.db.prepare('SELECT from_ref, relation FROM swarm_evidence_edges WHERE to_ref = ?').all(item.ref) as any[];
-      for (const row of rows) {
-        if (visited.has(row.from_ref)) continue;
-        visited.add(row.from_ref);
-        edges.push({ from: row.from_ref, relation: row.relation, depth: item.depth + 1 });
-        queue.push({ ref: row.from_ref, depth: item.depth + 1 });
-      }
-    }
-    return { ref, edges };
-  }
-
-  evidenceGraphSummary(ref: string): { ref: string; forward_count: number; reverse_count: number; forward: Array<{ to: string; relation: string }>; reverse: Array<{ from: string; relation: string }> } {
-    const fwd = this.db.prepare('SELECT to_ref, relation FROM swarm_evidence_edges WHERE from_ref = ?').all(ref) as any[];
-    const rev = this.db.prepare('SELECT from_ref, relation FROM swarm_evidence_edges WHERE to_ref = ?').all(ref) as any[];
-    return {
-      ref,
-      forward_count: fwd.length,
-      reverse_count: rev.length,
-      forward: fwd.map((r) => ({ to: r.to_ref, relation: r.relation })),
-      reverse: rev.map((r) => ({ from: r.from_ref, relation: r.relation })),
-    };
-  }
-
-  // G15.5: Permission-scoped graph traversal — cannot expose records outside caller scope
-  lineageForwardScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10): { ref: string; edges: Array<{ to: string; relation: string; depth: number }> } {
-    const full = this.lineageForward(ref, maxDepth);
-    return {
-      ref,
-      edges: full.edges.filter((e) => permittedRefs.has(e.to) || permittedRefs.has('*')),
-    };
-  }
-
-  lineageReverseScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10): { ref: string; edges: Array<{ from: string; relation: string; depth: number }> } {
-    const full = this.lineageReverse(ref, maxDepth);
-    return {
-      ref,
-      edges: full.edges.filter((e) => permittedRefs.has(e.from) || permittedRefs.has('*')),
-    };
-  }
+  lineageForward(ref: string, maxDepth = 10) { return this.evidence.lineageForward(ref, maxDepth); }
+  lineageReverse(ref: string, maxDepth = 10) { return this.evidence.lineageReverse(ref, maxDepth); }
+  evidenceGraphSummary(ref: string) { return this.evidence.evidenceGraphSummary(ref); }
+  lineageForwardScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10) { return this.evidence.lineageForwardScoped(ref, permittedRefs, maxDepth); }
+  lineageReverseScoped(ref: string, permittedRefs: Set<string>, maxDepth = 10) { return this.evidence.lineageReverseScoped(ref, permittedRefs, maxDepth); }
 
   // G15.7: Process-aware stop/kill adapter info
   getProcessAdapterInfo(runtime: string): { runtime: string; supports_stop: boolean; supports_kill: boolean; stop_signal: string; kill_signal: string } {
@@ -908,32 +845,7 @@ export class SwarmIntelligenceService {
     return { runtime, ...adapters[runtime] || { supports_stop: false, supports_kill: false, stop_signal: 'N/A', kill_signal: 'N/A' } };
   }
 
-  // G15.4: Require evidence refs to resolve before claim can become supported
-  resolveEvidenceRefs(refs: string[]): { all_resolved: boolean; unresolved: string[] } {
-    const unresolved: string[] = [];
-    for (const ref of refs) {
-      const [kind, id] = ref.split(':');
-      if (!kind || !id) { unresolved.push(ref); continue; }
-      let exists = false;
-      try {
-        switch (kind) {
-          case 'claim': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_claims WHERE id = ?').get(id)); break;
-          case 'capability': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_capabilities WHERE id = ?').get(id)); break;
-          case 'manifest': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_runner_manifests WHERE id = ?').get(id)); break;
-          case 'memory': exists = Boolean(this.db.prepare('SELECT 1 FROM memory_candidates WHERE id = ?').get(id)); break;
-          case 'panel': exists = Boolean(this.db.prepare('SELECT 1 FROM specialist_panels WHERE id = ?').get(id)); break;
-          case 'goal': exists = Boolean(this.db.prepare('SELECT 1 FROM goals WHERE id = ?').get(id)); break;
-          case 'loop': exists = Boolean(this.db.prepare('SELECT 1 FROM loop_runs WHERE id = ?').get(id)); break;
-          case 'lease': exists = Boolean(this.db.prepare('SELECT 1 FROM worker_leases WHERE id = ?').get(id)); break;
-          case 'mission': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_missions WHERE id = ?').get(id)); break;
-          case 'task': exists = Boolean(this.db.prepare('SELECT 1 FROM swarm_tasks WHERE id = ?').get(id)); break;
-          default: exists = true;
-        }
-      } catch { exists = false; }
-      if (!exists) unresolved.push(ref);
-    }
-    return { all_resolved: unresolved.length === 0, unresolved };
-  }
+  resolveEvidenceRefs(refs: string[]) { return this.evidence.resolveEvidenceRefs(refs); }
 
   // G15.4: Specialist-review-to-claim extraction — leaves unsupported claims as proposed
   extractClaimsFromPanel(panelId: string): { extracted: number; claims: Array<{ id: string; claim: string; status: string }> } {
