@@ -1496,6 +1496,41 @@ class ApiClient {
     });
   }
 
+  // Cognitive Runtime
+  async getCognitiveStats(): Promise<{
+    totalEpisodes: number;
+    totalPatterns: number;
+    totalStrategies: number;
+    overallSuccessRate: number;
+    bestGoalType: string | null;
+  }> {
+    return this.request("/cognitive/stats");
+  }
+
+  async getCognitiveMetaLearning(): Promise<{ records: Array<{
+    goalType: string;
+    bestStrategy: string;
+    bestSuccessRate: number;
+    totalEpisodes: number;
+    totalStrategies: number;
+    lastUpdated: string;
+  }> }> {
+    return this.request("/cognitive/meta-learning");
+  }
+
+  async getBestStrategy(goalType: string): Promise<{
+    id: string;
+    name: string;
+    description: string;
+    goalType: string;
+    successRate: number;
+    episodeCount: number;
+    avgDurationMs: number;
+    avgCostDollars: number;
+  } | null> {
+    return this.request(`/cognitive/strategy/${encodeURIComponent(goalType)}`);
+  }
+
 }
 
 export const api = new ApiClient();

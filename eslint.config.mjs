@@ -15,6 +15,9 @@ export default tseslint.config(
       '**/.djimitflo-loop-worktrees/**',
       '**/*.config.{js,cjs,mjs,ts}',
       'eslint.config.mjs',
+      // Tooling and external sub-projects outside the @djimitflo workspaces.
+      '.swarm/**',
+      '.metaharness-fork/**',
     ],
   },
   ...tseslint.configs.recommended,

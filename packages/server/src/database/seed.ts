@@ -380,6 +380,36 @@ function seed() {
   });
 
   console.log(`✓ Created ${approvals.length} approvals`);
+  // Ransomware pattern policies (anti-agentic-ransomware module)
+  const ransomwarePolicies = [
+    {
+      id: 'policy-ransomware-critical',
+      name: 'Ransomware CRITICAL patterns',
+      match_pattern: 'AES_ENCRYPT|DROP DATABASE|DROP TABLE|minioadmin|README_RANSOM|vssadmin|shadowcopy',
+      decision: 'deny',
+      priority: 200,
+      description: 'Deny commands matching JADEPUFFER-class ransomware indicators',
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'policy-ransomware-high',
+      name: 'Ransomware HIGH patterns',
+      match_pattern: 'gpg.*--encrypt|openssl.*enc|INTO OUTFILE|LOAD_FILE|crontab.*-e|credentials\.json',
+      decision: 'require_approval',
+      priority: 150,
+      description: 'Require approval for commands matching suspicious encryption/persistence patterns',
+      created_at: new Date().toISOString(),
+    },
+  ];
+
+  for (const policy of ransomwarePolicies) {
+    db.prepare(`
+      INSERT OR IGNORE INTO approval_policies (id, name, match_pattern, decision, priority, description, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(policy.id, policy.name, policy.match_pattern, policy.decision, policy.priority, policy.description, policy.created_at);
+  }
+
+  console.log(`✓ Created ${ransomwarePolicies.length} ransomware approval policies`);
   console.log('✅ Database seeded successfully!');
 
   db.close();

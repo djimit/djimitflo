@@ -9,6 +9,7 @@ import { createTaskRoutes } from '../routes/tasks';
 import { createAgentRoutes } from '../routes/agents';
 import { createOpenMythosRoutes } from '../routes/openmythos';
 import { createGymRoutes } from '../routes/gym';
+import { createCognitiveRoutes } from '../routes/cognitive';
 
 /**
  * Integration tests: all route factories mount without import errors.
@@ -64,5 +65,9 @@ describe('Route factory mounting', () => {
 
   it('createAgentRoutes mounts without throwing', () => {
     expect(() => createAgentRoutes(db, auth)).not.toThrow();
+  });
+
+  it('createCognitiveRoutes mounts without throwing', () => {
+    expect(() => createCognitiveRoutes(db, auth)).not.toThrow();
   });
 });

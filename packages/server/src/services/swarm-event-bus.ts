@@ -24,7 +24,8 @@ export type SwarmEventType =
   | 'governance:guard:warning'
   | 'governance:guard:approved'
   | 'governance:improvement:triggered'
-  | 'agent_action';
+  | 'agent_action'
+  | 'loop_completed';
 
 export interface SwarmEvent {
   type: SwarmEventType;

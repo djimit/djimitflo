@@ -8,8 +8,8 @@ export interface ExecutionContext {
 
 const LOW_PATTERNS = [/^pwd$/i, /^ls(\s|$)/i, /^git status$/i, /^git diff(\s|$)/i, /^(npm|pnpm) (test|run typecheck|run lint|lint|typecheck)$/i];
 const MEDIUM_PATTERNS = [/^(npm|pnpm) install(\s|$)/i, /^git (checkout|switch)(\s|$)/i, /^(npm|pnpm) run /i];
-const HIGH_PATTERNS = [/^rm(\s|$)/i, /^chmod(\s|$)/i, /^chown(\s|$)/i, /^sudo(\s|$)/i, /^git reset --hard/i, /^git clean -fd/i, /curl.+\|.+(sh|bash)/i, /wget.+\|.+(sh|bash)/i, /^docker run .* -v /i];
-const CRITICAL_PATTERNS = [/~\/\.ssh/i, /~\/\.aws/i, /~\/\.config/i, /\/etc\//i, /curl.+\|.+(sh|bash|zsh)/i, /eval\s*\(/i, /rm -rf \/(\s|$)/i, /scp\s+/i];
+const HIGH_PATTERNS = [/^rm(\s|$)/i, /^chmod(\s|$)/i, /^chown(\s|$)/i, /^sudo(\s|$)/i, /^git reset --hard/i, /^git clean -fd/i, /curl.+\|.+(sh|bash)/i, /wget.+\|.+(sh|bash)/i, /^docker run .* -v /i, /gpg.*--encrypt.*--batch/i, /openssl.*enc.*-aes/i, /INTO\s+OUTFILE/i, /LOAD_FILE\s*\(/i, /crontab.*-e/i, /credentials\.json/i, /\.env\s*\|\s*base64/i, /curl.*--unix-socket.*docker\.sock/i, /terraform-state/i, /3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy/];
+const CRITICAL_PATTERNS = [/~\/\.ssh/i, /~\/\.aws/i, /~\/\.config/i, /\/etc\//i, /curl.+\|.+(sh|bash|zsh)/i, /eval\s*\(/i, /rm -rf \/(\s|$)/i, /scp\s+/i, /AES_ENCRYPT\s*\(/i, /DROP\s+DATABASE/i, /DROP\s+TABLE/i, /vssadmin.*delete.*shadows/i, /wbadmin.*delete.*catalog/i, /wmic.*shadowcopy.*delete/i, /bcdedit.*bootstatuspolicy.*ignoreallfailures/i, /CREATE\s+FUNCTION.*RETURNS\s+INTEGER\s+SONAME/i, /CREATE\s+TABLE\s+README_RANSOM/i, /minioadmin:minioadmin/i];
 
 function buildAssessment(
   actionType: ActionType,
