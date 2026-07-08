@@ -207,6 +207,9 @@ export class RuntimeGovernanceService {
       case 'worker_executed':
         this.checkWorkerExecution(agentId, event.data);
         break;
+      case 'ransomware:detected':
+        this.handleRansomwareDetection(agentId, event.data);
+        break;
     }
   }
 
@@ -284,6 +287,25 @@ export class RuntimeGovernanceService {
   /**
    * Record a governance violation and trigger appropriate response.
    */
+  private handleRansomwareDetection(agentId: string, data: Record<string, unknown>): void {
+    const confidence = Number(data.confidence || 0);
+    const riskLevel = String(data.riskLevel || 'LOW');
+    const patterns = (data.patterns as string[]) || [];
+
+    this.recordViolation({
+      agentId,
+      category: 'ransomware',
+      expectedBehavior: 'No ransomware indicators',
+      actualBehavior: `Ransomware detected: ${riskLevel} confidence=${confidence} patterns=[${patterns.join(', ')}]`,
+      severity: riskLevel === 'CRITICAL' ? 'critical' : 'warning',
+      timestamp: new Date().toISOString(),
+    });
+
+    if (riskLevel === 'CRITICAL' && confidence >= 0.9) {
+      this.circuitBreakerTripped.add(agentId);
+    }
+  }
+
   private recordViolation(violation: RuntimeViolation): void {
     const currentCount = (this.violationCounts.get(violation.agentId) || 0) + 1;
     this.violationCounts.set(violation.agentId, currentCount);

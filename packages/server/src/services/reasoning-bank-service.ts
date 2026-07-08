@@ -8,6 +8,8 @@ import { TrajectoryStore } from './trajectory-store';
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
 const COLLECTION_REASONING = 'djimitflo_reasoning';
+const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
+const EMBED_DIM = EMBED_MODEL === 'nomic-embed-text' ? 768 : EMBED_MODEL === 'all-MiniLM-L6-v2' ? 384 : 1024;
 
 export class ReasoningBankService {
   private db: Database;
@@ -96,15 +98,14 @@ export class ReasoningBankService {
         await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vectors: { size: 384, distance: 'Cosine' } }),
+          body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
         });
       }
 
-      // Use MiniLM embedding (matches djimitflo_swarm dimension)
       const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'all-MiniLM-L6-v2', prompt: `${task.title} ${task.description}` }),
+        body: JSON.stringify({ model: EMBED_MODEL, prompt: `${task.title} ${task.description}` }),
       });
 
       if (embedRes.ok) {
@@ -172,7 +173,7 @@ export class ReasoningBankService {
       const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'all-MiniLM-L6-v2', prompt: query }),
+        body: JSON.stringify({ model: EMBED_MODEL, prompt: query }),
       });
       if (!embedRes.ok) return [];
       const vector = ((await embedRes.json()) as { embedding: number[] }).embedding;

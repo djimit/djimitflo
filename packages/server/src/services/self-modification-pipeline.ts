@@ -209,7 +209,7 @@ export class SelfModificationPipeline {
       // Use simple heuristics: files > 500 lines with many methods
       const output = execSync(
         'find packages/server/src/services -name "*.ts" -exec wc -l {} + 2>/dev/null | sort -rn | head -10',
-        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
+        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
       );
 
       for (const line of output.split('\n')) {
@@ -246,7 +246,7 @@ export class SelfModificationPipeline {
       // Find route files without corresponding test files
       const output = execSync(
         'find packages/server/src/routes -name "*.ts" ! -name "*.test.ts" 2>/dev/null',
-        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
+        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
       );
 
       for (const filePath of output.split('\n').filter(Boolean)) {
@@ -277,7 +277,7 @@ export class SelfModificationPipeline {
     try {
       const output = execSync(
         'grep -rn "TODO\\|FIXME\\|HACK\\|XXX" packages/server/src/services/ --include="*.ts" 2>/dev/null | head -20',
-        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
+        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
       );
 
       for (const line of output.split('\n').filter(Boolean)) {
@@ -358,7 +358,7 @@ export class SelfModificationPipeline {
 
   private rollback(_planId: string): void {
     try {
-      execSync('git checkout -- .', { cwd: this.repoRoot, stdio: 'ignore' });
+      execSync('git checkout -- .', { cwd: this.repoRoot, stdio: 'ignore', timeout: 10_000 });
     } catch {
       // Best-effort rollback
     }

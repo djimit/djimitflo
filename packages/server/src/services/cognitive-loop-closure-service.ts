@@ -191,22 +191,25 @@ export class CognitiveLoopClosureService {
       });
     }
 
-    // Pattern 2: Strategy → outcome correlation
-    const strategyOutcomes = this.groupBy(episodes, 'strategy');
-    for (const [strategy, eps] of Object.entries(strategyOutcomes) as Array<[string, Episode[]]>) {
-      if (!strategy || strategy === 'default') continue;
-      const successRate = eps.filter((e) => e.outcome === 'success').length / eps.length;
-      const avgDuration = eps.reduce((sum, e) => sum + e.durationMs, 0) / eps.length;
-      patterns.push({
-        id: randomUUID(),
-        name: `strategy_${strategy}_effectiveness`,
-        description: `Strategy "${strategy}" → ${(successRate * 100).toFixed(0)}% success, avg ${Math.round(avgDuration / 1000)}s`,
-        conditions: { strategy },
-        outcomes: { success: successRate, avgDurationMs: avgDuration },
-        confidence: Math.min(1, eps.length / 5),
-        episodeCount: eps.length,
-        lastSeenAt: new Date().toISOString(),
-      });
+    // Pattern 2: Strategy → outcome correlation (per goal type)
+    const episodesByGoalType = this.groupBy(episodes, 'goalType');
+    for (const [goalType, goalEps] of Object.entries(episodesByGoalType) as Array<[string, Episode[]]>) {
+      const strategyOutcomes = this.groupBy(goalEps, 'strategy');
+      for (const [strategy, eps] of Object.entries(strategyOutcomes) as Array<[string, Episode[]]>) {
+        if (!strategy || strategy === 'default') continue;
+        const successRate = eps.filter((e) => e.outcome === 'success').length / eps.length;
+        const avgDuration = eps.reduce((sum, e) => sum + e.durationMs, 0) / eps.length;
+        patterns.push({
+          id: randomUUID(),
+          name: `strategy_${strategy}_${goalType}_effectiveness`,
+          description: `Strategy "${strategy}" for "${goalType}" → ${(successRate * 100).toFixed(0)}% success, avg ${Math.round(avgDuration / 1000)}s`,
+          conditions: { strategy, goalType },
+          outcomes: { success: successRate, avgDurationMs: avgDuration },
+          confidence: Math.min(1, eps.length / 3),
+          episodeCount: eps.length,
+          lastSeenAt: new Date().toISOString(),
+        });
+      }
     }
 
     // Pattern 3: Duration → outcome anomaly

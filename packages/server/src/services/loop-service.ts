@@ -2,15 +2,22 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { ChildProcess, execFileSync, spawn, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
+import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
-import { AgentAssuranceService, type CheckpointRecord, type TraceSpanRecord } from './agent-assurance-service';
+import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
 import { LoopBudgetService } from './loop-budget-service';
 import { WorktreeManager } from './worktree-manager';
 import { GoalService, type GoalRecord, type GoalCreateInput, type GoalUpdateInput, type DecomposedLoopCandidate } from './goal-service';
+import { LoopWorkerExecutorService, type ExecuteWorkerResult } from './loop-worker-executor-service';
+import { RuntimeCommandService } from './runtime-command-service';
+import { LoopLifecycleService } from './loop-lifecycle-service';
+import { LoopDiscoveryService } from './loop-discovery-service';
+import { LoopVerificationService } from './loop-verification-service';
+export type { LoopFinding } from './loop-discovery-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
@@ -43,18 +50,7 @@ interface LoopContract {
 
 export type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
 
-export interface LoopFinding {
-  id: string;
-  type: string;
-  severity: 'info' | 'warning';
-  file: string;
-  line?: number;
-  message: string;
-  evidence: string;
-  suggested_fix: string;
-  parent_finding_id?: string;
-  metadata?: Record<string, unknown>;
-}
+export type { LoopFinding } from './loop-discovery-service';
 
 export interface LoopGate {
   name: string;
@@ -118,20 +114,20 @@ interface StartDocDriftLoopInput {
   sovereign?: boolean;
 }
 
-interface ContinueLoopInput {
+export interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
 }
 
-interface RetryLoopInput {
+export interface RetryLoopInput {
   maker_lease_id?: string;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
   max_retries?: number;
 }
 
-interface SplitLoopInput {
+export interface SplitLoopInput {
   finding_id?: string;
   reason?: string;
   children?: Array<{
@@ -159,23 +155,7 @@ interface ExecuteCheckerInput extends ExecuteMakerInput {
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
 }
 
-interface ExecuteWorkerResult {
-  run: LoopRunRecord;
-  lease: WorkerLeaseRecord;
-  gates: LoopGate[];
-  stdout_path: string;
-  stderr_path: string;
-  checkpoint_before: CheckpointRecord;
-  checkpoint_after: CheckpointRecord;
-  trace: {
-    trace_id: string;
-    spans: TraceSpanRecord[];
-    edges: Array<{ from: string; to: string }>;
-    roots: TraceSpanRecord[];
-  };
-}
-
-interface RuntimeContract {
+export interface RuntimeContract {
   runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi';
   available: boolean;
   command: string | null;
@@ -204,14 +184,14 @@ interface RunChecksInput {
   scripts?: string[];
 }
 
-interface RuntimeUsage {
+export interface RuntimeUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens: number;
   usage_source: 'runtime_stdout';
 }
 
-interface RuntimeExecutionResult {
+export interface RuntimeExecutionResult {
   exitCode: number | null;
   signal: string | null;
   timedOut: boolean;
@@ -221,12 +201,12 @@ interface RuntimeExecutionResult {
   runtimePid?: number;
 }
 
-interface RuntimeStopResult {
+export interface RuntimeStopResult {
   stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle';
   killAttempted: boolean;
 }
 
-interface RuntimeProcessHandle {
+export interface RuntimeProcessHandle {
   child: ChildProcess;
   leaseId: string;
   command: string;
@@ -235,7 +215,7 @@ interface RuntimeProcessHandle {
   timeoutHandle?: NodeJS.Timeout;
 }
 
-type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
+export type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
 
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
 const DEFAULT_MAX_FINDINGS = 50;
@@ -386,17 +366,20 @@ export class LoopService {
    * swarm-status.fleetPools().recommended_concurrency; that coupling is deferred
    * to avoid a circular dependency — LoopService does not import SwarmStatusService.)
    */
-  private static readonly runtimeSemaphore: {
-    active: Set<string>;
-    queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }>;
-  } = { active: new Set(), queue: [] };
+
   private db: Database;
-  private evidenceRoot: string;
-  private assurance: AgentAssuranceService;
+  public evidenceRoot: string;
+  public assurance: AgentAssuranceService;
   private intelligence: SwarmIntelligenceService;
   private budget: LoopBudgetService;
   private worktree: WorktreeManager;
   private goals: GoalService;
+  public workerExecutor: LoopWorkerExecutorService;
+  public runtimeCommand: RuntimeCommandService;
+  public lifecycle: LoopLifecycleService;
+  public discovery: LoopDiscoveryService;
+  public metaOrchestration?: import('./meta-orchestration-service').MetaOrchestrationService;
+  public verification: LoopVerificationService;
   /**
    * Secret used to mint a nested-spawn child's own scoped token (L1). Lazily
    * resolved from the same env chain as NestedSpawnService so a token minted here
@@ -405,11 +388,6 @@ export class LoopService {
    * LoopService → NestedSpawnService cycle (token logic lives in ./spawn-token).
    */
   private spawnTokenSecret: string | undefined;
-  private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
-  private readonly runtimeContractCacheMs = Math.max(
-    500,
-    Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000),
-  );
 
   constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
     this.db = db;
@@ -426,6 +404,15 @@ export class LoopService {
     });
     this.worktree = new WorktreeManager(db);
     this.goals = new GoalService(db);
+    this.workerExecutor = new LoopWorkerExecutorService(db, this);
+    this.runtimeCommand = new RuntimeCommandService(db, this);
+    this.lifecycle = new LoopLifecycleService(this);
+    this.discovery = new LoopDiscoveryService();
+    this.verification = new LoopVerificationService(this);
+  }
+
+  setMetaOrchestration(service: import('./meta-orchestration-service').MetaOrchestrationService): void {
+    this.metaOrchestration = service;
   }
 
   /**
@@ -864,473 +851,20 @@ export class LoopService {
   }
 
   continueLoopRun(id: string, input: ContinueLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[] } {
-    const run = this.getLoopRun(id);
-    this.assertLoopNotEscalated(run);
-    this.assertWallClockBudgetAvailable(run);
-    this.assertTokenBudgetAvailable(run);
-    this.assertNoFailedGates(run);
-    if (!run.repository_path) {
-      throw new Error('LOOP_REPOSITORY_REQUIRED');
-    }
-    if (run.findings.length === 0) {
-      throw new Error('LOOP_NO_FINDINGS_TO_ASSIGN');
-    }
-
-    const alreadyLeased = this.listWorkerLeases(id);
-    const leasedFindingIds = new Set(
-      alreadyLeased
-        .filter((lease) => lease.role === 'maker' && lease.finding_id)
-        .map((lease) => lease.finding_id as string)
-    );
-
-    const selectedFindingIds = new Set(input.finding_ids || []);
-    if (selectedFindingIds.size > 0 && run.findings.some((finding) => selectedFindingIds.has(finding.id) && this.isSplitFinding(finding))) {
-      throw new Error('LOOP_FINDING_ALREADY_SPLIT');
-    }
-    const maxAssignments = Math.max(1, Math.min(input.max_assignments || 1, 5));
-    const selectedFindings = run.findings
-      .filter((finding) => !this.isSplitFinding(finding))
-      .filter((finding) => selectedFindingIds.size === 0 || selectedFindingIds.has(finding.id))
-      .filter((finding) => !leasedFindingIds.has(finding.id))
-      .slice(0, maxAssignments);
-
-    if (selectedFindings.length === 0 && alreadyLeased.length > 0) {
-      return { run, leases: alreadyLeased };
-    }
-    if (selectedFindings.length === 0) {
-      throw new Error('LOOP_FINDING_NOT_FOUND');
-    }
-
-    const runtime = input.runtime || 'manual';
-    this.assertRuntimeAvailable(runtime);
-
-    const budget = this.getMakerLeaseBudget(run, input);
-    const currentMakerLeases = alreadyLeased.filter((lease) => lease.role === 'maker').length;
-    if (currentMakerLeases >= budget.maxMakerWorkers || selectedFindings.length > budget.maxMakerWorkers - currentMakerLeases) {
-      throw new Error('LOOP_WORKER_BUDGET_EXHAUSTED');
-    }
-
-    const now = new Date().toISOString();
-    const leases: WorkerLeaseRecord[] = [];
-
-    for (const finding of selectedFindings) {
-      const branchName = this.branchNameFor(run.id, finding.id);
-      const worktreePath = this.createWorktree(run.repository_path, run.id, finding.id, branchName);
-      this.ensureWorktreeControlIgnore(worktreePath);
-      this.writeWorkAssignment(worktreePath, run, finding, runtime);
-      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime);
-
-      const makerLeaseId = randomUUID();
-      const assignmentFile = this.workAssignmentPath(worktreePath);
-      this.insertWorkerLease({
-        id: makerLeaseId,
-        loopRunId: run.id,
-        role: 'maker',
-        runtime,
-        findingId: finding.id,
-        worktreePath,
-        branchName,
-        metadata: {
-          assignment_file: assignmentFile,
-          assignment_packet_file: assignmentPacketFile,
-          requested_runtime: runtime,
-          effective_runtime: runtime,
-        },
-        now,
-      });
-
-      const checkerLeaseId = randomUUID();
-      this.insertWorkerLease({
-        id: checkerLeaseId,
-        loopRunId: run.id,
-        role: 'checker',
-        runtime: 'manual',
-        findingId: finding.id,
-        worktreePath: null,
-        branchName: null,
-        metadata: { maker_lease_id: makerLeaseId, requires_independent_review: true },
-        now,
-      });
-
-      if (this.isHighRiskRun(run, finding)) {
-        const securityCheckerLeaseId = randomUUID();
-        this.insertWorkerLease({
-          id: securityCheckerLeaseId,
-          loopRunId: run.id,
-          role: 'security_checker',
-          runtime: 'manual',
-          findingId: finding.id,
-          worktreePath: null,
-          branchName: null,
-          metadata: {
-            maker_lease_id: makerLeaseId,
-            requires_security_review: true,
-            high_risk_reason: this.highRiskReason(run, finding),
-          },
-          now,
-        });
-      }
-    }
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, next_actions_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      'running',
-      JSON.stringify(this.isHighRiskRun(run)
-        ? ['Run maker in prepared worktree', 'Run checker and security checker after maker output', 'Call verify before completion']
-        : ['Run maker in prepared worktree', 'Run checker after maker output', 'Call verify before completion']),
-      now,
-      run.id
-    );
-
-    this.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', `Prepared ${selectedFindings.length} maker/checker assignment(s).`, {
-      finding_ids: selectedFindings.map((finding) => finding.id),
-      runtime,
-      budget,
-    });
-
-    leases.push(...this.listWorkerLeases(run.id));
-    return { run: this.getLoopRun(run.id), leases };
+    return this.lifecycle.continueLoopRun(id, input);
   }
-
   splitLoopFinding(id: string, input: SplitLoopInput = {}): { run: LoopRunRecord; parent: LoopFinding; children: LoopFinding[]; leases: WorkerLeaseRecord[] } {
-    const run = this.getLoopRun(id);
-    this.assertLoopNotEscalated(run);
-    this.assertWallClockBudgetAvailable(run);
-    if (!input.finding_id) {
-      throw new Error('LOOP_FINDING_ID_REQUIRED');
-    }
-
-    const parentIndex = run.findings.findIndex((finding) => finding.id === input.finding_id);
-    if (parentIndex === -1) {
-      throw new Error('LOOP_FINDING_NOT_FOUND');
-    }
-
-    const parent = run.findings[parentIndex];
-    if (this.isSplitFinding(parent)) {
-      throw new Error('LOOP_FINDING_ALREADY_SPLIT');
-    }
-
-    const childInputs = input.children || [];
-    if (childInputs.length < 2) {
-      throw new Error('LOOP_SPLIT_CHILDREN_REQUIRED');
-    }
-
-    const reason = input.reason?.trim() || 'Finding split into bounded child findings.';
-    const now = new Date().toISOString();
-    const updatedParent: LoopFinding = {
-      ...parent,
-      metadata: {
-        ...(parent.metadata || {}),
-        status: 'split',
-        split_reason: reason,
-        split_at: now,
-      },
-    };
-    const children: LoopFinding[] = childInputs.map((child, index) => {
-      if (!child.message?.trim() || !child.suggested_fix?.trim()) {
-        throw new Error('LOOP_SPLIT_CHILD_INVALID');
-      }
-      return {
-        id: randomUUID(),
-        type: parent.type,
-        severity: parent.severity,
-        file: child.file || parent.file,
-        line: child.line ?? parent.line,
-        message: child.message.trim(),
-        evidence: parent.evidence,
-        suggested_fix: child.suggested_fix.trim(),
-        parent_finding_id: parent.id,
-        metadata: {
-          status: 'active',
-          split_reason: reason,
-          split_index: index,
-          split_at: now,
-        },
-      };
-    });
-
-    const findings = [
-      ...run.findings.slice(0, parentIndex),
-      updatedParent,
-      ...children,
-      ...run.findings.slice(parentIndex + 1),
-    ];
-    const plan = this.createPlan(run.loop_name as LoopName, findings);
-    const nextActions = ['Review split child findings', 'Approve maker/checker worker execution for selected child findings'];
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, findings_json = ?, plan_json = ?, next_actions_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      'planning',
-      JSON.stringify(findings),
-      JSON.stringify(plan),
-      JSON.stringify(nextActions),
-      now,
-      run.id
-    );
-
-    this.recordLoopEvent(run.id, 'finding_split', 'info', `Split finding ${parent.id} into ${children.length} child finding(s).`, {
-      parent_finding_id: parent.id,
-      child_finding_ids: children.map((child) => child.id),
-      reason,
-    });
-
-    return {
-      run: this.getLoopRun(run.id),
-      parent: updatedParent,
-      children,
-      leases: this.listWorkerLeases(run.id),
-    };
+    return this.lifecycle.splitLoopFinding(id, input);
   }
-
   retryLoopRun(id: string, input: RetryLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord } {
-    const run = this.getLoopRun(id);
-    this.assertLoopNotEscalated(run);
-    this.assertWallClockBudgetAvailable(run);
-    this.assertTokenBudgetAvailable(run);
-    if (!run.repository_path) {
-      throw new Error('LOOP_REPOSITORY_REQUIRED');
-    }
-
-    const leases = this.listWorkerLeases(run.id);
-    const checkerLeases = leases.filter((lease) => lease.role === 'checker');
-    const maker = input.maker_lease_id
-      ? leases.find((lease) => lease.id === input.maker_lease_id)
-      : leases.find((lease) => lease.role === 'maker' && this.isRetryableMakerLease(lease, checkerLeases));
-
-    if (!maker) {
-      throw new Error('MAKER_LEASE_NOT_FOUND');
-    }
-    if (maker.role !== 'maker') {
-      throw new Error('LEASE_NOT_MAKER');
-    }
-    if (!maker.finding_id) {
-      throw new Error('LOOP_FINDING_NOT_FOUND');
-    }
-    if (!this.isRetryableMakerLease(maker, checkerLeases)) {
-      throw new Error('LOOP_RETRY_NOT_ALLOWED');
-    }
-
-    const finding = run.findings.find((candidate) => candidate.id === maker.finding_id);
-    if (!finding) {
-      throw new Error('LOOP_FINDING_NOT_FOUND');
-    }
-
-    const retryRootMakerLeaseId = this.retryRootFor(maker);
-    const retryBudget = this.getRetryBudget(run, maker, input);
-    const usedRetries = leases.filter((lease) => lease.role === 'maker' && lease.metadata.retry_root_maker_lease_id === retryRootMakerLeaseId).length;
-    if (usedRetries >= retryBudget.maxRetries) {
-      throw new Error('LOOP_RETRY_BUDGET_EXHAUSTED');
-    }
-
-    const runtime = input.runtime || (maker.runtime as RetryLoopInput['runtime']) || 'manual';
-    this.assertRuntimeAvailable(runtime);
-
-    const retryAttempt = usedRetries + 1;
-    const branchName = this.branchNameFor(run.id, finding.id, retryAttempt);
-    const worktreePath = this.createWorktree(run.repository_path, run.id, `${finding.id}-retry-${retryAttempt}`, branchName);
-      this.ensureWorktreeControlIgnore(worktreePath);
-      this.writeWorkAssignment(worktreePath, run, finding, runtime);
-      const assignmentPacketFile = this.writeAssignmentPacket(worktreePath, run, finding, runtime, retryAttempt);
-      const assignmentFile = this.workAssignmentPath(worktreePath);
-
-    const now = new Date().toISOString();
-    const retryMakerLeaseId = randomUUID();
-    this.insertWorkerLease({
-      id: retryMakerLeaseId,
-      loopRunId: run.id,
-      role: 'maker',
-      runtime,
-      findingId: finding.id,
-      worktreePath,
-      branchName,
-      metadata: {
-        assignment_file: assignmentFile,
-        assignment_packet_file: assignmentPacketFile,
-        retry_of_maker_lease_id: maker.id,
-        retry_root_maker_lease_id: retryRootMakerLeaseId,
-        retry_attempt: retryAttempt,
-      },
-      now,
-    });
-
-    const retryCheckerLeaseId = randomUUID();
-    this.insertWorkerLease({
-      id: retryCheckerLeaseId,
-      loopRunId: run.id,
-      role: 'checker',
-      runtime: 'manual',
-      findingId: finding.id,
-      worktreePath: null,
-      branchName: null,
-      metadata: {
-        maker_lease_id: retryMakerLeaseId,
-        requires_independent_review: true,
-        retry_of_maker_lease_id: maker.id,
-        retry_root_maker_lease_id: retryRootMakerLeaseId,
-        retry_attempt: retryAttempt,
-      },
-      now,
-    });
-
-    this.updateWorkerLeaseStatus(maker.id, maker.status, {
-      superseded_by_maker_lease_id: retryMakerLeaseId,
-      superseded_at: now,
-    });
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, next_actions_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      'running',
-      JSON.stringify(['Run retry maker in prepared worktree', 'Run deterministic checks', 'Submit independent checker verdict']),
-      now,
-      run.id
-    );
-
-    this.recordLoopEvent(run.id, 'retry_prepared', 'info', `Prepared retry ${retryAttempt} for maker lease ${maker.id}.`, {
-      maker_lease_id: maker.id,
-      retry_maker_lease_id: retryMakerLeaseId,
-      retry_checker_lease_id: retryCheckerLeaseId,
-      retry_attempt: retryAttempt,
-      retry_budget: retryBudget,
-    });
-
-    const updatedLeases = this.listWorkerLeases(run.id);
-    return {
-      run: this.getLoopRun(run.id),
-      leases: updatedLeases,
-      retry_maker: updatedLeases.find((lease) => lease.id === retryMakerLeaseId)!,
-      retry_checker: updatedLeases.find((lease) => lease.id === retryCheckerLeaseId)!,
-    };
+    return this.lifecycle.retryLoopRun(id, input);
   }
-
   verifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] } {
-    const run = this.getLoopRun(id);
-    const leases = this.listWorkerLeases(run.id);
-    const makerLeases = leases.filter((lease) => lease.role === 'maker');
-    const supersededMakerIds = new Set(makerLeases.filter((lease) => this.isSupersededMakerLease(lease)).map((lease) => lease.id));
-    const activeMakerLeases = makerLeases.filter((lease) => !supersededMakerIds.has(lease.id));
-    const checkerLeases = leases
-      .filter((lease) => lease.role === 'checker')
-      .filter((lease) => {
-        const makerLeaseId = lease.metadata.maker_lease_id;
-        return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
-      });
-    const securityCheckerLeases = leases
-      .filter((lease) => lease.role === 'security_checker')
-      .filter((lease) => {
-        const makerLeaseId = lease.metadata.maker_lease_id;
-        return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
-      });
-    const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
-    const highRisk = this.isHighRiskRun(run);
-
-    const gates: LoopGate[] = [
-      {
-        name: 'maker_checker_separation',
-        status: activeMakerLeases.length > 0 && checkerLeases.length >= activeMakerLeases.length ? 'pass' : 'fail',
-        evidence: `${activeMakerLeases.length} active maker lease(s), ${checkerLeases.length} active checker lease(s), ${supersededMakerIds.size} superseded maker lease(s).`,
-      },
-      {
-        name: 'worktree_isolation',
-        status: activeMakerLeases.every((lease) => lease.worktree_path && fs.existsSync(lease.worktree_path)) ? 'pass' : 'fail',
-        evidence: 'Every maker lease must have an existing isolated worktree.',
-      },
-      {
-        name: 'assignment_file_present',
-        status: activeMakerLeases.every((lease) => fs.existsSync(this.resolveWorkAssignmentPath(lease))) ? 'pass' : 'fail',
-        evidence: 'Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md.',
-      },
-      {
-        name: 'diff_threshold_all_makers',
-        status: completedMakerLeases.every((lease) => this.leaseDiffWithinThreshold(lease)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
-        evidence: completedMakerLeases.length === 0
-          ? 'No completed maker leases yet.'
-          : 'All completed maker leases must stay under their configured diff threshold.',
-      },
-      {
-        name: 'checker_verdict',
-        status: completedMakerLeases.every((lease) => this.hasAcceptedCheckerVerdict(lease.id, checkerLeases)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
-        evidence: completedMakerLeases.length === 0
-          ? 'No completed maker leases yet.'
-          : 'Every completed maker lease requires an accepted checker verdict.',
-      },
-      {
-        name: 'tests_lint_typecheck',
-        status: completedMakerLeases.every((lease) => this.leaseChecksPassed(lease)) ? 'pass' : completedMakerLeases.length === 0 ? 'skipped' : 'fail',
-        evidence: completedMakerLeases.length === 0
-          ? 'No completed maker leases yet.'
-          : 'Each completed maker lease requires passing or skipped deterministic checks.',
-      },
-      {
-        name: 'security_checker_verdict',
-        status: !highRisk
-          ? 'skipped'
-          : completedMakerLeases.length === 0
-            ? 'skipped'
-            : completedMakerLeases.every((lease) => this.hasAcceptedSecurityCheckerVerdict(lease.id, securityCheckerLeases)) ? 'pass' : 'fail',
-        evidence: !highRisk
-          ? 'Run is not high-risk.'
-          : `${securityCheckerLeases.length} active security checker lease(s); high-risk completion requires accepted security verdict for every completed maker.`,
-      },
-      {
-        name: 'no_automatic_merge',
-        status: 'pass',
-        evidence: 'Loop only prepared worktrees and did not merge, push, or deploy.',
-      },
-    ];
-
-    const status: LoopRunStatus = gates.some((gate) => gate.status === 'fail')
-      ? 'blocked'
-      : completedMakerLeases.length > 0
-        ? 'ready_for_human_merge'
-        : 'verifying';
-
-    // Record structured block reasons in metadata for debugging and pattern analysis
-    const failedGates = gates.filter((gate) => gate.status === 'fail');
-    let blockMetadata: Record<string, unknown> = {};
-    try {
-      const existing = JSON.parse(String(run.metadata || '{}'));
-      blockMetadata = existing;
-    } catch { /* use empty */ }
-
-    if (status === 'blocked') {
-      blockMetadata.block_reason = 'gate_failed';
-      blockMetadata.failed_gates = failedGates.map((g) => `${g.name}: ${g.evidence}`);
-      blockMetadata.recommendations = ['Review failed gates and address issues before re-verifying'];
-      blockMetadata.blocked_at = new Date().toISOString();
-    }
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, gates_json = ?, updated_at = ?, metadata = ?
-      WHERE id = ?
-    `).run(status, JSON.stringify(gates), new Date().toISOString(), JSON.stringify(blockMetadata), run.id);
-
-    this.recordLoopEvent(run.id, 'loop_verified', status === 'blocked' ? 'warning' : 'info', `Verification gates ${status === 'blocked' ? 'blocked' : 'passed'} for prepared work.`, {
-      gates,
-      block_metadata: blockMetadata,
-    });
-
-    return { run: this.getLoopRun(run.id), gates, leases };
+    return this.verification.verifyLoopRun(id);
   }
 
   certifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; certified: boolean } {
-    const result = this.verifyLoopRun(id);
-    const allPass = result.gates.every(g => g.status === 'pass');
-    swarmEventBus.emit('convergence', {
-      run_id: id,
-      certified: allPass,
-      gates: result.gates.map(g => ({ name: g.name, status: g.status })),
-    });
-    return { ...result, certified: allPass };
+    return this.verification.certifyLoopRun(id);
   }
 
   completeLoopRun(id: string, input: { human_approval_ref?: string } = {}): { run: LoopRunRecord; gates: LoopGate[] } {
@@ -1368,7 +902,49 @@ export class LoopService {
         human_approval_ref: input.human_approval_ref,
       });
 
-      return { run: this.getLoopRun(id), gates: verified.gates };
+      const completedRun = this.getLoopRun(id);
+      const completedLeases = this.listWorkerLeases(id);
+      const durationMs = completedRun.completed_at && completedRun.created_at
+        ? new Date(completedRun.completed_at).getTime() - new Date(completedRun.created_at).getTime()
+        : 0;
+      const strategy = current.metadata?.strategy as string || 'default';
+      const completedCount = completedLeases.filter((l) => l.status === 'completed').length;
+      const failedCount = completedLeases.filter((l) => l.status === 'failed').length;
+
+      swarmEventBus.emit('loop_completed', {
+        loopRunId: id,
+        goalId: current.goal_id,
+        goalType: current.loop_name,
+        mode: current.mode,
+        status: 'completed',
+        durationMs,
+        strategy,
+        totalLeases: completedLeases.length,
+        completedLeases: completedCount,
+        failedLeases: failedCount,
+        startedAt: current.created_at,
+        completedAt: completedRun.completed_at,
+      });
+
+      // Meta-orchestration: record loop outcome for learning
+      if (this.metaOrchestration) {
+        this.metaOrchestration.recordOutcome({
+          taskId: id,
+          taskType: current.loop_name || 'loop',
+          title: current.loop_name || 'Loop run',
+          description: `Loop with ${completedLeases.length} leases, strategy: ${strategy}`,
+          provider: 'litellm',
+          model: strategy,
+          runtime: 'loop',
+          success: true,
+          durationMs,
+          costDollars: 0,
+          tags: ['loop', current.loop_name || 'unknown'],
+          metadata: { completed_leases: completedCount, failed_leases: failedCount },
+        });
+      }
+
+      return { run: completedRun, gates: verified.gates };
     }
 
     if (current.status === 'completed') {
@@ -1575,277 +1151,9 @@ export class LoopService {
     };
   }
 
-  async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; gates: LoopGate[]; stdout_path: string; stderr_path: string }> {
-    const run = this.getLoopRun(id);
-    this.assertWallClockBudgetAvailable(run);
-    const leases = this.listWorkerLeases(run.id);
-    const makerLease = input.lease_id
-      ? leases.find((lease) => lease.id === input.lease_id)
-      : leases.find((lease) => lease.role === 'maker' && lease.status === 'prepared');
-
-    if (!makerLease) {
-      throw new Error('MAKER_LEASE_NOT_FOUND');
-    }
-    if (makerLease.role !== 'maker') {
-      throw new Error('LEASE_NOT_MAKER');
-    }
-    if (makerLease.status !== 'prepared') {
-      throw new Error('MAKER_LEASE_NOT_PREPARED');
-    }
-    if (!makerLease.worktree_path || !fs.existsSync(makerLease.worktree_path)) {
-      this.recordMakerFailure(run.id, makerLease.id, 'MAKER_WORKTREE_NOT_FOUND', 'Worktree path does not exist');
-      throw new Error('MAKER_WORKTREE_NOT_FOUND');
-    }
-    if (makerLease.runtime === 'manual') {
-      this.recordMakerFailure(run.id, makerLease.id, 'MANUAL_MAKER_REQUIRES_HUMAN', 'Manual runtime requires human intervention');
-      throw new Error('MANUAL_MAKER_REQUIRES_HUMAN');
-    }
-
-    const manifestContract = this.getRuntimeContract(makerLease.runtime);
-    this.recordWorkerManifest({
-      decisionId: this.makeManifestDecisionId(run.id, makerLease.id, 'start'),
-      loopRunId: run.id,
-      leaseId: makerLease.id,
-      action: 'start',
-      runtimeContract: manifestContract,
-      capacitySnapshot: this.currentCapacitySnapshot(),
-      budgetSnapshot: this.currentBudgetSnapshot(run),
-      gateRefs: ['runtime_contract'],
-      blockedReasons: [],
-      metadata: {
-        worker_role: makerLease.role,
-        worker_runtime: makerLease.runtime,
-        started_from: 'executeMaker',
-      },
-    });
-
-    this.updateWorkerLeaseStatus(makerLease.id, 'running', { started_at: new Date().toISOString() });
-
-    const contract = this.getRuntimeContract(makerLease.runtime);
-    if (!contract.available || contract.status !== 'ok') {
-      this.recordWorkerManifest({
-        decisionId: this.makeManifestDecisionId(run.id, makerLease.id, 'fail'),
-        loopRunId: run.id,
-        leaseId: makerLease.id,
-        action: 'fail',
-        runtimeContract: contract,
-        capacitySnapshot: this.currentCapacitySnapshot(),
-        budgetSnapshot: this.currentBudgetSnapshot(run),
-        gateRefs: ['runtime_contract'],
-        blockedReasons: ['runtime_contract_drift'],
-        metadata: {
-          worker_role: makerLease.role,
-          worker_runtime: makerLease.runtime,
-          reason: 'runtime_contract_unavailable_or_drifted',
-          started_from: 'executeMaker',
-        },
-      });
-      this.updateWorkerLeaseStatus(makerLease.id, 'failed', {
-        runtime_contract: contract,
-        runtime_contract_failed_at: new Date().toISOString(),
-      });
-      throw new Error('RUNTIME_CONTRACT_DRIFTED');
-    }
-
-    const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
-    const prompt = fs.readFileSync(this.resolveWorkAssignmentPath(makerLease), 'utf8');
-    const skipPermissions = this.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = this.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path, prompt, skipPermissions);
-    const result = await this.executeRuntimeCommand(makerLease.id, command, args, {
-      cwd: makerLease.worktree_path,
-      timeoutMs,
-      enforceCwdBoundary: makerLease.runtime !== 'mock',
-      maxBuffer: 5 * 1024 * 1024,
-      env: this.buildNestedSpawnEnv(makerLease) ?? undefined,
-    });
-
-    const outputDir = path.join(this.evidenceRoot, run.id, 'worker-output', makerLease.id);
-    fs.mkdirSync(outputDir, { recursive: true });
-    const stdoutPath = path.join(outputDir, 'stdout.log');
-    const stderrPath = path.join(outputDir, 'stderr.log');
-    fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
-    fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
-
-    const diff = this.git(makerLease.worktree_path, ['diff', '--', '.']);
-    const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
-    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
-    const exitStatus = result.exitCode;
-    const timedOut = result.timedOut;
-    const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
-    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
-    const tokenBudget = this.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
-    const efficiency = this.calculateWorkerEfficiency(runtimeUsage, diffLines);
-    const budgetRisk = tokenBudget.efficiencyExceeded
-      ? {
-          type: 'token_efficiency' as const,
-          lease_id: makerLease.id,
-          runtime_usage: runtimeUsage ? { total_tokens: runtimeUsage.total_tokens } : { usage_source: 'unknown' },
-          budget: tokenBudget.budget,
-        }
-      : null;
-
-    const gates: LoopGate[] = [
-      {
-        name: 'maker_runtime_exit_zero',
-        status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
-        evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}, skip_permissions=${skipPermissions}`,
-      },
-      {
-        name: 'diff_under_threshold',
-        status: diffLines <= diffMaxLines ? 'pass' : 'fail',
-        evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.`,
-      },
-      tokenBudget.gate,
-      {
-        name: 'runtime_warning_gate',
-        status: this.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass',
-        evidence: this.runtimeWarningsEvidence(runtimeWarnings, run),
-      },
-      {
-        name: 'no_automatic_merge',
-        status: 'pass',
-        evidence: 'Maker execution did not merge, push, or deploy.',
-      },
-    ];
-
-    const failed = gates.some((gate) => gate.status === 'fail');
-    const completionStatus = failed ? 'failed' : 'completed';
-    const wasCancelled = this.isWorkerLeaseCancelled(makerLease.id);
-    const metadataPatch: Record<string, unknown> = {
-      completed_at: new Date().toISOString(),
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      diff_lines: diffLines,
-      diff_max_lines: diffMaxLines,
-      exit_status: exitStatus,
-      timed_out: timedOut,
-      runtime_adapter: makerLease.runtime,
-      runtime_contract: contract,
-      runtime_pid: result.runtimePid,
-      runtime_signal: result.signal,
-      runtime_timed_out: result.timedOut,
-      runtime_timed_out_at: result.timedOutAt,
-      runtime_warnings: runtimeWarnings,
-      token_efficiency: efficiency,
-    };
-    if (runtimeUsage) {
-      metadataPatch.runtime_usage = runtimeUsage;
-    } else {
-      metadataPatch.runtime_usage = { usage_source: 'unknown' };
-    }
-
-    if (wasCancelled) {
-      this.patchWorkerLeaseMetadata(makerLease.id, {
-        ...metadataPatch,
-        runtime_was_cancelled: true,
-      });
-    } else {
-      this.updateWorkerLeaseStatus(makerLease.id, completionStatus, {
-        ...metadataPatch,
-      });
-    }
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?,
-          metadata = json_set(COALESCE(metadata, '{}'), '$.budget_risk', json(?))
-      WHERE id = ?
-    `).run(
-      wasCancelled ? this.getLoopRun(run.id).status : (failed ? 'blocked' : 'verifying'),
-      JSON.stringify(gates),
-      JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
-      new Date().toISOString(),
-      JSON.stringify(budgetRisk),
-      run.id
-    );
-
-    this.recordLoopEvent(run.id, 'maker_executed', failed ? 'warning' : 'info', `Maker lease ${makerLease.id} ${failed ? 'failed gates' : wasCancelled ? 'stopped' : 'completed'}.`, {
-      lease_id: makerLease.id,
-      gates,
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      runtime_warnings: runtimeWarnings,
-      token_efficiency: efficiency,
-      runtime_cancelled: wasCancelled,
-    });
-
-    if (tokenBudget.exhausted) {
-      this.recordLoopEvent(run.id, 'loop_budget_exhausted', 'warning', 'Token budget exhausted by maker runtime usage.', {
-        budget_type: 'tokens',
-        lease_id: makerLease.id,
-        runtime_usage: runtimeUsage,
-        token_budget: tokenBudget.budget,
-      });
-    }
-
-    if (budgetRisk) {
-      this.recordLoopEvent(run.id, 'token_efficiency_budget_risk', 'warning', 'Token efficiency exceeded configured per-diff-line budget.', {
-        lease_id: makerLease.id,
-        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-        budget: tokenBudget.budget,
-      });
-    }
-
-    this.recordWorkerManifest({
-      decisionId: this.makeManifestDecisionId(run.id, makerLease.id, failed ? 'fail' : 'complete'),
-      loopRunId: run.id,
-      leaseId: makerLease.id,
-      action: wasCancelled ? 'stop' : failed ? 'fail' : 'complete',
-      runtimeContract: contract,
-      capacitySnapshot: this.currentCapacitySnapshot(),
-      budgetSnapshot: this.currentBudgetSnapshot(run, runtimeUsage),
-      gateRefs: gates.map((gate) => gate.name),
-      blockedReasons: gates.filter((gate) => gate.status === 'fail').map((gate) => `${gate.name}: ${gate.evidence}`),
-      metadata: {
-        worker_role: makerLease.role,
-        worker_runtime: makerLease.runtime,
-        exit_status: exitStatus,
-        timed_out: timedOut,
-        diff_lines: diffLines,
-        diff_threshold_lines: diffMaxLines,
-        runtime_pid: result.runtimePid,
-        runtime_signal: result.signal,
-        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-        runtime_warnings: runtimeWarnings,
-        token_efficiency: efficiency,
-        started_from: 'executeMaker',
-        run_canceled: wasCancelled,
-      },
-    });
-
-    const completedLease = this.getWorkerLease(makerLease.id);
-    if (!wasCancelled && completionStatus === 'completed') {
-      return {
-        run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'maker_execution_failed') : this.getLoopRun(run.id),
-        lease: completedLease,
-        gates,
-        stdout_path: stdoutPath,
-        stderr_path: stderrPath,
-      };
-    }
-
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      failed ? 'blocked' : 'verifying',
-      JSON.stringify(gates),
-      JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
-      new Date().toISOString(),
-      run.id
-    );
-
-    return {
-      run: this.getLoopRun(run.id),
-      lease: completedLease,
-      gates,
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-    };
+  async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
+    return this.workerExecutor.executeMaker(id, input);
   }
-
   async executeWorker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
@@ -1936,279 +1244,8 @@ export class LoopService {
   }
 
   async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
-    const run = this.getLoopRun(id);
-    const leases = this.listWorkerLeases(run.id);
-    const checker = input.lease_id
-      ? leases.find((candidate) => candidate.id === input.lease_id)
-      : leases.find((candidate) => candidate.role === 'checker' && candidate.status === 'prepared');
-
-    if (!checker) {
-      throw new Error('CHECKER_LEASE_NOT_FOUND');
-    }
-    if (checker.role !== 'checker') {
-      throw new Error('LEASE_NOT_CHECKER');
-    }
-
-    const makerLeaseId = checker.metadata.maker_lease_id as string | undefined;
-    if (!makerLeaseId) {
-      throw new Error('CHECKER_MAKER_LINK_MISSING');
-    }
-    const maker = leases.find((lease) => lease.id === makerLeaseId);
-    if (!maker || maker.status !== 'completed') {
-      throw new Error('CHECKER_MAKER_NOT_COMPLETED');
-    }
-    if (!maker.worktree_path || !fs.existsSync(maker.worktree_path)) {
-      throw new Error('MAKER_WORKTREE_NOT_FOUND');
-    }
-
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock' : 'mock');
-    const runtimeContract = this.getRuntimeContract(runtime);
-    this.recordWorkerManifest({
-      decisionId: this.makeManifestDecisionId(run.id, checker.id, 'start'),
-      loopRunId: run.id,
-      leaseId: checker.id,
-      action: 'start',
-      runtimeContract,
-      capacitySnapshot: this.currentCapacitySnapshot(),
-      budgetSnapshot: this.currentBudgetSnapshot(run),
-      gateRefs: ['runtime_contract'],
-      blockedReasons: [],
-      metadata: {
-        worker_role: checker.role,
-        worker_runtime: runtime,
-        maker_lease_id: checker.metadata.maker_lease_id,
-        started_from: 'executeChecker',
-      },
-    });
-    this.updateWorkerLeaseRuntime(checker.id, runtime);
-    if (!runtimeContract.available || runtimeContract.status !== 'ok') {
-      this.recordWorkerManifest({
-        decisionId: this.makeManifestDecisionId(run.id, checker.id, 'fail'),
-        loopRunId: run.id,
-        leaseId: checker.id,
-        action: 'fail',
-        runtimeContract,
-        capacitySnapshot: this.currentCapacitySnapshot(),
-        budgetSnapshot: this.currentBudgetSnapshot(run),
-        gateRefs: ['runtime_contract'],
-        blockedReasons: ['runtime_contract_drift'],
-        metadata: {
-          worker_role: checker.role,
-          worker_runtime: runtime,
-          maker_lease_id: checker.metadata.maker_lease_id,
-          reason: 'runtime_contract_unavailable_or_drifted',
-          started_from: 'executeChecker',
-        },
-      });
-      this.updateWorkerLeaseStatus(checker.id, 'failed', {
-        runtime_adapter: runtime,
-        runtime_contract: runtimeContract,
-        runtime_contract_failed_at: new Date().toISOString(),
-      });
-      throw new Error('RUNTIME_CONTRACT_DRIFTED');
-    }
-
-    const traceId = `loop-${run.id}-checker-${checker.id}`;
-    const checkpointBefore = this.assurance.createCheckpoint({
-      loop_run_id: run.id,
-      label: `before checker ${checker.id}`,
-      metadata: {
-        worker_lease_id: checker.id,
-        maker_lease_id: maker.id,
-        worker_role: checker.role,
-        worker_runtime: runtime,
-        phase: 'before_checker_execution',
-      },
-    });
-    this.patchWorkerLeaseMetadata(checker.id, {
-      checkpoint_before_id: checkpointBefore.id,
-      trace_id: traceId,
-      runtime_adapter: runtime,
-    });
-
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${checker.role}:${runtime}:spawn`,
-      status: 'running',
-      evidence_ref: `loop:${run.id}/checker:${checker.id}`,
-      metadata: {
-        worker_lease_id: checker.id,
-        maker_lease_id: maker.id,
-        role: checker.role,
-        runtime,
-        checkpoint_before_id: checkpointBefore.id,
-      },
-    });
-
-    this.updateWorkerLeaseStatus(checker.id, 'running', { started_at: new Date().toISOString(), runtime_adapter: runtime });
-
-    const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
-    const prompt = this.buildCheckerPrompt(run, maker, checker);
-    const skipPermissions = this.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = runtime === 'mock'
-      ? this.buildMockCheckerCommand(maker.worktree_path, prompt)
-      : this.buildRuntimeCommand(runtime, maker.worktree_path, prompt, skipPermissions);
-    const result = await this.executeRuntimeCommand(checker.id, command, args, {
-      cwd: maker.worktree_path,
-      timeoutMs,
-      enforceCwdBoundary: runtime !== 'mock',
-      maxBuffer: 5 * 1024 * 1024,
-      env: this.buildNestedSpawnEnv(checker) ?? undefined,
-    });
-
-    const outputDir = path.join(this.evidenceRoot, run.id, 'checker-output', checker.id);
-    fs.mkdirSync(outputDir, { recursive: true });
-    const stdoutPath = path.join(outputDir, 'stdout.log');
-    const stderrPath = path.join(outputDir, 'stderr.log');
-    fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
-    fs.writeFileSync(stderrPath, result.stderr || '', 'utf8');
-
-    const exitStatus = result.exitCode;
-    const timedOut = result.timedOut;
-    const runtimeUsage = this.extractRuntimeUsage(result.stdout || '');
-    const runtimeWarnings = this.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
-    const verdict = exitStatus === 0 && !timedOut
-      ? this.extractCheckerVerdict(result.stdout || '')
-      : 'insufficient_evidence';
-
-    this.updateWorkerLeaseStatus(checker.id, exitStatus === 0 && !timedOut ? 'completed' : 'failed', {
-      verdict,
-      notes: this.extractCheckerNotes(result.stdout || '') || `Checker runtime ${exitStatus === 0 && !timedOut ? 'completed' : 'failed'}.`,
-      maker_lease_id: maker.id,
-      completed_at: new Date().toISOString(),
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      exit_status: exitStatus,
-      timed_out: timedOut,
-      runtime_pid: result.runtimePid,
-      runtime_signal: result.signal,
-      runtime_timed_out: result.timedOut,
-      runtime_timed_out_at: result.timedOutAt,
-      runtime_adapter: runtime,
-      runtime_contract: runtimeContract,
-      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      runtime_warnings: runtimeWarnings,
-    });
-
-    const gates: LoopGate[] = [
-      {
-        name: 'checker_runtime_exit_zero',
-        status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
-        evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}`,
-      },
-      {
-        name: 'checker_verdict',
-        status: verdict === 'accepted' ? 'pass' : 'fail',
-        evidence: `checker verdict=${verdict}`,
-      },
-      {
-        name: 'checker_read_only_contract',
-        status: 'pass',
-        evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.',
-      },
-    ];
-
-    const failed = gates.some((gate) => gate.status === 'fail');
-    const existingRun = this.getLoopRun(run.id);
-    const mergedGates = this.mergeGates(existingRun.gates, gates);
-    this.db.prepare(`
-      UPDATE loop_runs
-      SET status = ?, gates_json = ?, next_actions_json = ?, updated_at = ?
-      WHERE id = ?
-    `).run(
-      failed ? 'blocked' : 'verifying',
-      JSON.stringify(mergedGates),
-      JSON.stringify(failed ? ['Inspect checker output and retry, split, or revise'] : ['Run verify gates before completion']),
-      new Date().toISOString(),
-      run.id
-    );
-
-    this.recordLoopEvent(run.id, 'checker_executed', failed ? 'warning' : 'info', `Checker lease ${checker.id} ${failed ? 'failed gates' : 'completed'}.`, {
-      checker_lease_id: checker.id,
-      maker_lease_id: maker.id,
-      verdict,
-      gates,
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      runtime_warnings: runtimeWarnings,
-    });
-
-    this.recordWorkerManifest({
-      decisionId: this.makeManifestDecisionId(run.id, checker.id, failed ? 'fail' : 'complete'),
-      loopRunId: run.id,
-      leaseId: checker.id,
-      action: failed ? 'fail' : 'complete',
-      runtimeContract,
-      capacitySnapshot: this.currentCapacitySnapshot(),
-      budgetSnapshot: this.currentBudgetSnapshot(run),
-      gateRefs: gates.map((gate) => gate.name),
-      blockedReasons: gates.filter((gate) => gate.status === 'fail').map((gate) => `${gate.name}: ${gate.evidence}`),
-      metadata: {
-        worker_role: checker.role,
-        worker_runtime: runtime,
-        maker_lease_id: maker.id,
-        verdict,
-        runtime_pid: result.runtimePid,
-        runtime_signal: result.signal,
-        runtime_timed_out: result.timedOut,
-        runtime_timed_out_at: result.timedOutAt,
-        exit_status: exitStatus,
-        timed_out: timedOut,
-        runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-        runtime_warnings: runtimeWarnings,
-        started_from: 'executeChecker',
-      },
-    });
-
-    this.assurance.createTraceSpan({
-      trace_id: traceId,
-      loop_run_id: run.id,
-      span_type: 'worker',
-      name: `${checker.role}:${runtime}:completion`,
-      status: failed ? 'error' : 'ok',
-      evidence_ref: stdoutPath,
-      metadata: {
-        worker_lease_id: checker.id,
-        maker_lease_id: maker.id,
-        role: checker.role,
-        runtime,
-        stdout_path: stdoutPath,
-        stderr_path: stderrPath,
-        gates,
-        verdict,
-      },
-    });
-
-    const checkpointAfter = this.assurance.createCheckpoint({
-      loop_run_id: run.id,
-      label: `after checker ${checker.id}`,
-      metadata: {
-        worker_lease_id: checker.id,
-        maker_lease_id: maker.id,
-        worker_role: checker.role,
-        worker_runtime: runtime,
-        phase: 'after_checker_execution',
-      },
-    });
-    this.patchWorkerLeaseMetadata(checker.id, {
-      checkpoint_after_id: checkpointAfter.id,
-    });
-
-    return {
-      run: failed ? this.escalateIfFailureThresholdExceeded(run.id, 'checker_execution_failed') : this.getLoopRun(run.id),
-      lease: this.listWorkerLeases(run.id).find((candidate) => candidate.id === checker.id)!,
-      gates,
-      stdout_path: stdoutPath,
-      stderr_path: stderrPath,
-      checkpoint_before: checkpointBefore,
-      checkpoint_after: checkpointAfter,
-      trace: this.assurance.getTrace(traceId),
-    };
+    return this.workerExecutor.executeChecker(id, input);
   }
-
   getCatalog() {
     return {
       loops: LOOP_CONTRACTS.map((contract) => ({
@@ -2277,19 +1314,19 @@ export class LoopService {
     return resolved;
   }
 
-  private assertNoFailedGates(run: LoopRunRecord): void {
+  public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
     }
   }
 
-  private assertLoopNotEscalated(run: LoopRunRecord): void {
+  public assertLoopNotEscalated(run: LoopRunRecord): void {
     if (run.status === 'escalated') {
       throw new Error('LOOP_ESCALATED_REQUIRES_HUMAN');
     }
   }
 
-  private assertTokenBudgetAvailable(run: LoopRunRecord): void {
+  public assertTokenBudgetAvailable(run: LoopRunRecord): void {
     const budget = this.getTokenBudget(run);
     if (!budget.maxTokens) {
       return;
@@ -2300,7 +1337,7 @@ export class LoopService {
     }
   }
 
-  private assertWallClockBudgetAvailable(run: LoopRunRecord): void {
+  public assertWallClockBudgetAvailable(run: LoopRunRecord): void {
     const budget = this.getWallClockBudget(run);
     if (!budget.maxRuntimeMs) {
       return;
@@ -2331,15 +1368,15 @@ export class LoopService {
     throw new Error('LOOP_WALL_CLOCK_BUDGET_EXHAUSTED');
   }
 
-  private isSplitFinding(finding: LoopFinding): boolean {
+  public isSplitFinding(finding: LoopFinding): boolean {
     return finding.metadata?.status === 'split';
   }
 
-  private getMakerLeaseBudget(run: LoopRunRecord, input: ContinueLoopInput): { maxMakerWorkers: number; source: 'goal' | 'request' | 'default' } {
+  public getMakerLeaseBudget(run: LoopRunRecord, input: ContinueLoopInput): { maxMakerWorkers: number; source: 'goal' | 'request' | 'default' } {
     return this.budget.getMakerLeaseBudget(run, input.max_maker_workers);
   }
 
-  private getRetryBudget(run: LoopRunRecord, maker: WorkerLeaseRecord, input: RetryLoopInput): { maxRetries: number; source: 'goal' | 'request' | 'lease' | 'default' } {
+  public getRetryBudget(run: LoopRunRecord, maker: WorkerLeaseRecord, input: RetryLoopInput): { maxRetries: number; source: 'goal' | 'request' | 'lease' | 'default' } {
     return this.budget.getRetryBudget(run, maker, input.max_retries);
   }
 
@@ -2347,7 +1384,7 @@ export class LoopService {
     return this.budget.getFailureThreshold(run);
   }
 
-  private getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'none' } {
+  public getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'none' } {
     return this.budget.getTokenBudget(run);
   }
 
@@ -2355,7 +1392,7 @@ export class LoopService {
     return this.budget.getWallClockBudget(run);
   }
 
-  private evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
+  public evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
     return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines);
   }
 
@@ -2367,7 +1404,7 @@ export class LoopService {
     }, 0);
   }
 
-  private extractRuntimeUsage(stdout: string): RuntimeUsage | null {
+  public extractRuntimeUsage(stdout: string): RuntimeUsage | null {
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) {
@@ -2449,13 +1486,13 @@ export class LoopService {
     };
   }
 
-  private escalateIfFailureThresholdExceeded(runId: string, reason: string): LoopRunRecord {
+  public escalateIfFailureThresholdExceeded(runId: string, reason: string): LoopRunRecord {
     return this.budget.escalateIfFailureThresholdExceeded(runId, reason);
   }
 
 
 
-  private recordMakerFailure(runId: string, leaseId: string, reason: string, details: string): void {
+  public recordMakerFailure(runId: string, leaseId: string, reason: string, details: string): void {
     try {
       this.updateWorkerLeaseStatus(leaseId, 'failed', {
         verdict: 'insufficient_evidence',
@@ -2473,7 +1510,7 @@ export class LoopService {
     }
   }
 
-  private isHighRiskRun(run: LoopRunRecord, finding?: LoopFinding): boolean {
+  public isHighRiskRun(run: LoopRunRecord, finding?: LoopFinding): boolean {
     if (run.goal_id) {
       const goal = this.getGoal(run.goal_id);
       if (goal.risk_class === 'high' || goal.risk_class === 'critical') {
@@ -2484,7 +1521,7 @@ export class LoopService {
     return candidates.some((candidate) => Boolean(this.highRiskReason(run, candidate)));
   }
 
-  private highRiskReason(run: LoopRunRecord, finding?: LoopFinding): string | null {
+  public highRiskReason(run: LoopRunRecord, finding?: LoopFinding): string | null {
     const runRisk = String(run.metadata.risk_class || '');
     if (runRisk === 'high' || runRisk === 'critical') {
       return `loop_risk_class:${runRisk}`;
@@ -2510,388 +1547,12 @@ export class LoopService {
     return null;
   }
 
-  private discoverLoopFindings(loopName: LoopName, repositoryPath: string, maxFindings: number): LoopFinding[] {
-    if (loopName === 'doc-drift-and-small-fix-loop') {
-      return this.discoverDocDrift(repositoryPath, maxFindings);
-    }
-    if (loopName === 'repo-maintenance-loop') {
-      return this.discoverRepoMaintenance(repositoryPath, maxFindings);
-    }
-    if (loopName === 'skill-quality-loop') {
-      return this.discoverSkillQuality(repositoryPath, maxFindings);
-    }
-    if (loopName === 'mcp-connector-validation-loop') {
-      return this.discoverMcpConnectorValidation(repositoryPath, maxFindings);
-    }
-    if (loopName === 'security-regression-loop') {
-      return this.discoverSecurityRegression(repositoryPath, maxFindings);
-    }
-    if (loopName === 'okf-synchronization-loop') {
-      return this.discoverOkfSynchronization(repositoryPath, maxFindings);
-    }
-    if (loopName === 'overwatch-policy-drift-loop') {
-      return this.discoverOverwatchPolicyDrift(repositoryPath, maxFindings);
-    }
-    return [];
+  discoverLoopFindings(loopName: LoopName, repositoryPath: string, maxFindings: number): LoopFinding[] {
+    return this.discovery.discoverLoopFindings(loopName, repositoryPath, maxFindings);
   }
 
-  private discoverDocDrift(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const scripts = this.collectPackageScripts(repositoryPath);
-    const markdownFiles = this.collectMarkdownFiles(repositoryPath);
-    const findings: LoopFinding[] = [];
 
-    for (const filePath of markdownFiles) {
-      if (findings.length >= maxFindings) break;
-      const rel = path.relative(repositoryPath, filePath);
-      const content = fs.readFileSync(filePath, 'utf8');
-      const lines = content.split(/\r?\n/);
-
-      for (let i = 0; i < lines.length && findings.length < maxFindings; i += 1) {
-        const line = lines[i];
-        const lineNumber = i + 1;
-        if (/\b(TODO|FIXME|XXX)\b/i.test(line)) {
-          findings.push({
-            id: randomUUID(),
-            type: 'doc_todo',
-            severity: 'info',
-            file: rel,
-            line: lineNumber,
-            message: 'Documentation contains an explicit TODO/FIXME marker.',
-            evidence: line.trim().slice(0, 240),
-            suggested_fix: 'Resolve the marker or convert it to a tracked issue with owner and acceptance criteria.',
-          });
-        }
-
-        const scriptMatches = line.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_-]+)/g);
-        for (const match of scriptMatches) {
-          const scriptName = match[1];
-          if (!scripts.has(scriptName) && findings.length < maxFindings) {
-            findings.push({
-              id: randomUUID(),
-              type: 'missing_script_reference',
-              severity: 'warning',
-              file: rel,
-              line: lineNumber,
-              message: `Markdown references npm script "${scriptName}", but no package.json in the scan scope defines it.`,
-              evidence: line.trim().slice(0, 240),
-              suggested_fix: `Update the command reference or add a real "${scriptName}" script where appropriate.`,
-            });
-          }
-        }
-
-        const linkMatches = line.matchAll(/\[[^\]]+\]\(([^)]+)\)/g);
-        for (const match of linkMatches) {
-          const target = match[1].split('#')[0].trim();
-          if (this.isCheckableRelativeLink(target) && !this.relativeTargetExists(path.dirname(filePath), target) && findings.length < maxFindings) {
-            findings.push({
-              id: randomUUID(),
-              type: 'broken_relative_link',
-              severity: 'warning',
-              file: rel,
-              line: lineNumber,
-              message: `Markdown link target does not exist: ${target}`,
-              evidence: line.trim().slice(0, 240),
-              suggested_fix: 'Fix the relative link target or remove the stale reference.',
-            });
-          }
-        }
-      }
-
-      if (rel.startsWith('packages/knowledge/skills/')) {
-        this.collectDraftSkillFinding(rel, content, findings, maxFindings);
-      }
-    }
-
-    return findings;
-  }
-
-  private discoverRepoMaintenance(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const packageJson = path.join(repositoryPath, 'package.json');
-    if (fs.existsSync(packageJson)) {
-      const scripts = this.readScriptsFromPackageJson(packageJson);
-      for (const scriptName of ['test', 'lint', 'type-check']) {
-        if (findings.length >= maxFindings) break;
-        if (!scripts.has(scriptName)) {
-          findings.push(this.createFinding('missing_validation_script', 'warning', repositoryPath, packageJson, `package.json does not define "${scriptName}".`, `script "${scriptName}" missing`, `Add a real "${scriptName}" script or document why this repository cannot run that gate.`));
-        }
-      }
-    }
-
-    this.collectTodoCommentFindings(repositoryPath, findings, maxFindings, {
-      type: 'repo_todo',
-      message: 'Repository source contains TODO/FIXME marker.',
-      suggested_fix: 'Resolve the marker or convert it to a tracked issue with owner and acceptance criteria.',
-    });
-
-    return findings;
-  }
-
-  private discoverSkillQuality(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const skillDir = path.join(repositoryPath, 'packages', 'knowledge', 'skills');
-    if (!fs.existsSync(skillDir)) {
-      findings.push(this.createFinding('skill_inventory_missing', 'warning', repositoryPath, skillDir, 'packages/knowledge/skills is missing.', 'skill directory missing', 'Create the loop skill inventory or configure the OKF skill root explicitly.'));
-      return findings.slice(0, maxFindings);
-    }
-
-    const skillFiles = this.collectFiles(skillDir, (file) => file.endsWith('.md'), 100);
-    for (const file of skillFiles) {
-      if (findings.length >= maxFindings) break;
-      const rel = path.relative(repositoryPath, file);
-      const content = fs.readFileSync(file, 'utf8');
-      this.collectDraftSkillFinding(rel, content, findings, maxFindings);
-      for (const field of ['actions_allowed:', 'actions_forbidden:', 'gates:', 'escalation:']) {
-        if (findings.length >= maxFindings) break;
-        if (!content.includes(field)) {
-          findings.push({
-            id: randomUUID(),
-            type: 'invalid_skill_contract',
-            severity: 'warning',
-            file: rel,
-            message: `Loop skill is missing required governance field ${field.replace(':', '')}.`,
-            evidence: `${field} not found`,
-            suggested_fix: `Add ${field.replace(':', '')} to the skill frontmatter before enabling orchestration.`,
-          });
-        }
-      }
-    }
-
-    return findings;
-  }
-
-  private discoverMcpConnectorValidation(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const seedPath = path.join(repositoryPath, 'packages', 'server', 'src', 'database', 'seed-mcp-servers.ts');
-    const routePath = path.join(repositoryPath, 'packages', 'server', 'src', 'routes', 'mcp.ts');
-
-    if (!fs.existsSync(seedPath)) {
-      findings.push(this.createFinding('mcp_inventory_missing', 'warning', repositoryPath, seedPath, 'MCP seed inventory file is missing.', 'seed-mcp-servers.ts missing', 'Add or document the canonical MCP inventory source.'));
-    }
-    if (!fs.existsSync(routePath)) {
-      findings.push(this.createFinding('mcp_permission_route_missing', 'warning', repositoryPath, routePath, 'MCP permission route is missing.', 'routes/mcp.ts missing', 'Add read-only inventory and explicit permission endpoints for MCP tools.'));
-    } else {
-      const routeContent = fs.readFileSync(routePath, 'utf8');
-      if (!routeContent.includes('mcp_tool_permissions') && findings.length < maxFindings) {
-        findings.push(this.createFinding('mcp_permission_gap', 'warning', repositoryPath, routePath, 'MCP route does not reference mcp_tool_permissions.', 'permission table not referenced', 'Wire MCP permission decisions into connector inventory responses.'));
-      }
-    }
-
-    return findings.slice(0, maxFindings);
-  }
-
-  private discoverSecurityRegression(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const packageJson = path.join(repositoryPath, 'package.json');
-    if (fs.existsSync(packageJson)) {
-      const scripts = this.readScriptsFromPackageJson(packageJson);
-      const hasSecurityScript = [...scripts].some((script) => /(security|secret|sast|audit|semgrep)/i.test(script));
-      if (!hasSecurityScript) {
-        findings.push(this.createFinding('missing_security_script', 'warning', repositoryPath, packageJson, 'No security/audit/secret scanning npm script is defined.', 'security script missing', 'Add a deterministic security gate such as audit, secret scan, SAST, or document the external CI gate.'));
-      }
-    }
-
-    const markdownFiles = this.collectMarkdownFiles(repositoryPath);
-    for (const file of markdownFiles) {
-      if (findings.length >= maxFindings) break;
-      const content = fs.readFileSync(file, 'utf8');
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length && findings.length < maxFindings; i += 1) {
-        const line = lines[i];
-        if (/\b(TODO|FIXME)\b.*\b(auth|oauth|oidc|secret|token|password|credential|policy)\b/i.test(line)) {
-          findings.push({
-            id: randomUUID(),
-            type: 'security_sensitive_todo',
-            severity: 'warning',
-            file: path.relative(repositoryPath, file),
-            line: i + 1,
-            message: 'Security-sensitive TODO/FIXME requires explicit tracking and review.',
-            evidence: line.trim().slice(0, 240),
-            suggested_fix: 'Resolve the security-sensitive TODO or split it into a tracked high-risk task with security checker review.',
-          });
-        }
-      }
-    }
-
-    return findings;
-  }
-
-  private discoverOkfSynchronization(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const knowledgeDir = path.join(repositoryPath, 'packages', 'knowledge');
-    if (!fs.existsSync(knowledgeDir)) {
-      findings.push(this.createFinding('okf_root_missing', 'warning', repositoryPath, knowledgeDir, 'packages/knowledge is missing.', 'OKF root missing', 'Create the OKF knowledge root or configure OKF_BASE.'));
-      return findings.slice(0, maxFindings);
-    }
-
-    for (const dirname of ['skills', 'agents', 'tasks', 'memory']) {
-      if (findings.length >= maxFindings) break;
-      const dir = path.join(knowledgeDir, dirname);
-      if (!fs.existsSync(dir)) {
-        findings.push(this.createFinding('okf_directory_missing', 'warning', repositoryPath, dir, `OKF directory packages/knowledge/${dirname} is missing.`, `${dirname} directory missing`, `Create packages/knowledge/${dirname} or document why this OKF facet is external.`));
-      }
-    }
-
-    const skillsIndex = path.join(knowledgeDir, 'skills', 'index.md');
-    if (fs.existsSync(path.join(knowledgeDir, 'skills')) && !fs.existsSync(skillsIndex) && findings.length < maxFindings) {
-      findings.push(this.createFinding('okf_index_missing', 'warning', repositoryPath, skillsIndex, 'packages/knowledge/skills/index.md is missing.', 'skills index missing', 'Generate a skill index so dashboard and agents can inspect available loop skills.'));
-    }
-
-    return findings;
-  }
-
-  private discoverOverwatchPolicyDrift(repositoryPath: string, maxFindings: number): LoopFinding[] {
-    const findings: LoopFinding[] = [];
-    const policyRoute = path.join(repositoryPath, 'packages', 'server', 'src', 'routes', 'policies.ts');
-    const migratePath = path.join(repositoryPath, 'packages', 'server', 'src', 'database', 'migrate.ts');
-    const riskClassifier = path.join(repositoryPath, 'packages', 'server', 'src', 'services', 'command-risk-classifier.ts');
-
-    for (const file of [policyRoute, migratePath, riskClassifier]) {
-      if (findings.length >= maxFindings) break;
-      if (!fs.existsSync(file)) {
-        findings.push(this.createFinding('policy_control_missing', 'warning', repositoryPath, file, `Expected policy control file is missing: ${path.relative(repositoryPath, file)}`, 'policy control file missing', 'Restore or document the policy control boundary before running mutating workers.'));
-      }
-    }
-
-    if (fs.existsSync(migratePath)) {
-      const content = fs.readFileSync(migratePath, 'utf8');
-      for (const requiredPolicy of ['policy-critical-secrets-deny', 'policy-medium-task-approval']) {
-        if (findings.length >= maxFindings) break;
-        if (!content.includes(requiredPolicy)) {
-          findings.push(this.createFinding('policy_seed_gap', 'warning', repositoryPath, migratePath, `Approval policy seed is missing ${requiredPolicy}.`, requiredPolicy, 'Add or document the required approval policy seed.'));
-        }
-      }
-    }
-
-    return findings;
-  }
-
-  private collectPackageScripts(repositoryPath: string): Set<string> {
-    const packageJsonFiles = this.collectFiles(repositoryPath, (file) => path.basename(file) === 'package.json', 40);
-    const scripts = new Set<string>();
-    for (const file of packageJsonFiles) {
-      for (const scriptName of this.readScriptsFromPackageJson(file)) {
-        scripts.add(scriptName);
-      }
-    }
-    return scripts;
-  }
-
-  private readScriptsFromPackageJson(file: string): Set<string> {
-    try {
-      const json = JSON.parse(fs.readFileSync(file, 'utf8')) as { scripts?: Record<string, string> };
-      return new Set(Object.keys(json.scripts || {}));
-    } catch {
-      return new Set();
-    }
-  }
-
-  private collectMarkdownFiles(repositoryPath: string): string[] {
-    return this.collectFiles(repositoryPath, (file) => file.endsWith('.md') && fs.statSync(file).size <= MAX_MARKDOWN_FILE_BYTES, 300);
-  }
-
-  private collectFiles(root: string, predicate: (file: string) => boolean, maxFiles: number): string[] {
-    const results: string[] = [];
-    const visit = (dir: string) => {
-      if (results.length >= maxFiles) return;
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (results.length >= maxFiles) break;
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (!EXCLUDED_DIRS.has(entry.name)) {
-            visit(fullPath);
-          }
-        } else if (entry.isFile() && predicate(fullPath)) {
-          results.push(fullPath);
-        }
-      }
-    };
-    visit(root);
-    return results.sort();
-  }
-
-  private isCheckableRelativeLink(target: string): boolean {
-    if (!target || target.startsWith('#')) return false;
-    if (/^[a-z][a-z0-9+.-]*:/i.test(target)) return false;
-    if (target.startsWith('/')) return false;
-    return true;
-  }
-
-  private relativeTargetExists(baseDir: string, target: string): boolean {
-    try {
-      const decoded = decodeURIComponent(target);
-      return fs.existsSync(path.resolve(baseDir, decoded));
-    } catch {
-      return false;
-    }
-  }
-
-  private collectDraftSkillFinding(rel: string, content: string, findings: LoopFinding[], maxFindings: number): void {
-    if (findings.length >= maxFindings) return;
-    if (content.includes('status: draft') || content.includes('trust_level: proposed')) {
-      findings.push({
-        id: randomUUID(),
-        type: 'draft_loop_skill',
-        severity: 'info',
-        file: rel,
-        message: 'Loop skill is still draft/proposed and cannot orchestrate live workers.',
-        evidence: 'status/trust_level indicates non-active loop skill',
-        suggested_fix: 'Run skill validation and governance review before allowing live worker orchestration.',
-      });
-    }
-  }
-
-  private collectTodoCommentFindings(
-    repositoryPath: string,
-    findings: LoopFinding[],
-    maxFindings: number,
-    template: { type: string; message: string; suggested_fix: string }
-  ): void {
-    const files = this.collectFiles(repositoryPath, (file) => /\.(ts|tsx|js|jsx|py|sh|md|yml|yaml)$/.test(file), 300);
-    for (const file of files) {
-      if (findings.length >= maxFindings) break;
-      const content = fs.readFileSync(file, 'utf8');
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length && findings.length < maxFindings; i += 1) {
-        const line = lines[i];
-        if (/\b(TODO|FIXME|XXX)\b/i.test(line)) {
-          findings.push({
-            id: randomUUID(),
-            type: template.type,
-            severity: 'info',
-            file: path.relative(repositoryPath, file),
-            line: i + 1,
-            message: template.message,
-            evidence: line.trim().slice(0, 240),
-            suggested_fix: template.suggested_fix,
-          });
-        }
-      }
-    }
-  }
-
-  private createFinding(
-    type: string,
-    severity: LoopFinding['severity'],
-    repositoryPath: string,
-    filePath: string,
-    message: string,
-    evidence: string,
-    suggestedFix: string
-  ): LoopFinding {
-    return {
-      id: randomUUID(),
-      type,
-      severity,
-      file: path.relative(repositoryPath, filePath) || path.basename(filePath),
-      message,
-      evidence,
-      suggested_fix: suggestedFix,
-    };
-  }
-
-  private createPlan(loopName: LoopName, findings: LoopFinding[]): Record<string, unknown> {
+  public createPlan(loopName: LoopName, findings: LoopFinding[]): Record<string, unknown> {
     const contract = this.getLoopContract(loopName);
     return {
       loop_name: loopName,
@@ -2915,11 +1576,11 @@ export class LoopService {
     };
   }
 
-  private branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
+  public branchNameFor(runId: string, findingId: string, retryAttempt?: number): string {
     return this.worktree.branchNameFor(runId, findingId, retryAttempt);
   }
 
-  private createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
+  public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
     return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName);
   }
 
@@ -3077,7 +1738,7 @@ export class LoopService {
    * what a caller passes in. This keeps unsandboxed autonomous execution an
    * intentional, operator-authorized act rather than a silent default.
    */
-  private resolveSkipPermissions(requested?: boolean): boolean {
+  public resolveSkipPermissions(requested?: boolean): boolean {
     if (!requested) return false;
     return process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true';
   }
@@ -3102,7 +1763,7 @@ export class LoopService {
     'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
   ];
 
-  private buildRuntimeEnv(): NodeJS.ProcessEnv {
+  public buildRuntimeEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = {
       RUNTIME_SANDBOX: '1',
       DJIMITFLO_RUNTIME_CHILD: '1',
@@ -3145,7 +1806,7 @@ export class LoopService {
    * `options.env || buildRuntimeEnv()` (override, not merge), so returning only the
    * DJIMITFLO_* vars would strip PATH/HOME and break codex/opencode.
    */
-  private buildNestedSpawnEnv(lease: WorkerLeaseRecord): NodeJS.ProcessEnv | undefined {
+  public buildNestedSpawnEnv(lease: WorkerLeaseRecord): NodeJS.ProcessEnv | undefined {
     const token = this.mintLeaseSpawnToken(lease);
     if (!token || !lease.spawn_tree_id) return undefined;
     const env: NodeJS.ProcessEnv = {
@@ -3202,7 +1863,7 @@ export class LoopService {
    * for tests — the system tmpdir). Refuses to spawn an autonomous runtime
    * pointed at an arbitrary directory (the main repo, /etc, …).
    */
-  private assertWithinWorktreeRoot(cwd: string): void {
+  public assertWithinWorktreeRoot(cwd: string): void {
     const resolvedCwd = this.safeRealpath(cwd);
     const candidates: string[] = [];
     const configured = process.env.LOOP_WORKTREE_ROOT;
@@ -3218,400 +1879,36 @@ export class LoopService {
     }
   }
 
-  private buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string, skipPermissions = false): { command: string; args: string[] } {
-    if (runtime === 'mock') {
-      // L1: the mock runtime is now a REAL (best-effort) nested-spawn control-loop
-      // client, not just an echo stub. When the lease is nested-spawn-armed, the
-      // child's env (injected by buildNestedSpawnEnv) carries DJIMITFLO_CONTROL_URL
-      // + a scoped DJIMITFLO_SPAWN_TOKEN + its own lease/tree/depth identity. The
-      // script POSTs to the control endpoint to spawn exactly one sub-agent, then
-      // polls that child's status — exercising the same HTTP path a codex/claude
-      // child would. The server-side gates (depth/budget/cycle/concurrency) are the
-      // real backstop: a depth-floor child gets a `gated_out` response, which is a
-      // legitimate terminal state, not a failure.
-      //
-      // Self-spawn is BEST-EFFORT and NON-FATAL: the mock's "work" is echo, which
-      // always succeeds (exit 0), and the spawn callback is a side-channel. A
-      // control-plane outage (dead port, timeout, non-2xx) is logged but does NOT
-      // fail the worker — this avoids wedging a runtime semaphore permit on a slow
-      // control plane and matches the existing "mock always completed" semantics.
-      // The spawn-tree ledger (sub_agent_spawns rows) is the real proof the loop ran.
-      //
-      // Uses the global `fetch` (Node 18+, available in both CJS and ESM) rather
-      // than `require('http')` so the script works inside a `"type":"module"`
-      // worktree (where `require` is undefined). Guards on typeof fetch so older
-      // nodes degrade to echo-only.
-      const script = [
-        'const dir = process.argv[1];',
-        'const log = (m) => console.log("[mock-worker] " + m);',
-        'log("starting");',
-        'console.log(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
-        'const caps = process.env.DJIMITFLO_CAPABILITIES;',
-        'let capsCount = 0; try { capsCount = caps ? JSON.parse(caps).length : 0; } catch (e) {}',
-        'log("capabilities=" + capsCount);',
-        'const url = process.env.DJIMITFLO_CONTROL_URL;',
-        'const token = process.env.DJIMITFLO_SPAWN_TOKEN;',
-        'const leaseId = process.env.DJIMITFLO_LEASE_ID;',
-        'const treeId = process.env.DJIMITFLO_SPAWN_TREE_ID;',
-        'const depth = process.env.DJIMITFLO_DEPTH;',
-        'if (!url || !token || !leaseId || !treeId || typeof fetch !== "function") {',
-        '  log("no control env / no fetch; echo-only");',
-        '  log("dir=" + dir);',
-        '} else {',
-        '  log("lease=" + leaseId + " tree=" + treeId + " depth=" + depth + " -> self-spawn via " + url);',
-        '  const body = JSON.stringify({ requested_by_lease_id: leaseId, parent_lease_id: leaseId, spawn_tree_id: treeId, role: "maker", runtime: "mock", prompt: "mock child of " + leaseId });',
-        '  const ctrl = new AbortController();',
-        '  const to = setTimeout(() => ctrl.abort(), 5000);',
-        '  fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Spawn-Token": token }, body, signal: ctrl.signal })',
-        '    .then((res) => res.text().then((text) => ({ status: res.status, text })))',
-        '    .then(({ status, text }) => {',
-        '      clearTimeout(to);',
-        '      log("spawn POST status=" + status + " body=" + text);',
-        '      let childId = null;',
-        '      let childToken = null;',
-        '      try { const parsed = JSON.parse(text); childId = parsed.child_lease_id || null; childToken = parsed.control_token || null; } catch (e) {}',
-        '      if (status >= 200 && status < 300 && childId && childToken) {',
-        '        return fetch(url + "/" + childId + "/status", { headers: { "X-Spawn-Token": childToken } })',
-        '          .then((s) => s.text())',
-        '          .then((st) => log("child status body=" + st));',
-        '      }',
-        '      if (status >= 200 && status < 300 && childId) {',
-        '        log("child status token unavailable at depth floor");',
-        '      }',
-        '      if (status >= 400 && status < 500 && text.indexOf("gated_out") >= 0) {',
-        '        log("child gated_out (legitimate terminal state at depth floor)");',
-        '      } else if (status >= 400) {',
-        '        log("control-plane error status=" + status + " (non-fatal; echo work already done)");',
-        '      }',
-        '    })',
-        '    .catch((e) => { clearTimeout(to); log("control-plane call failed: " + (e && e.message || e) + " (non-fatal)"); });',
-        '}',
-      ].join('\n');
-      return {
-        command: process.execPath,
-        args: ['-e', script, worktreePath],
-      };
-    }
-    if (runtime === 'codex') {
-      const args = skipPermissions
-        ? ['exec', '--sandbox', 'workspace-write', '-c', worktreePath, 'approval_policy=never', '--json', '--cd', worktreePath, prompt]
-        : ['exec', '--json', '--cd', worktreePath, prompt];
-      return {
-        command: process.env.CODEX_BIN_PATH || 'codex',
-        args,
-      };
-    }
-    if (runtime === 'opencode') {
-      const args = skipPermissions
-        ? ['run', '--dangerously-skip-permissions', '--format', 'json', '--dir', worktreePath, prompt]
-        : ['run', '--format', 'json', '--dir', worktreePath, prompt];
-      return {
-        command: process.env.OPENCODE_BIN_PATH || 'opencode',
-        args,
-      };
-    }
-    if (runtime === 'claude') {
-      // claude CLI headless: inherits the worktree as cwd via spawn (no --cd flag).
-      // --output-format json for parseable usage/verdict; --dangerously-skip-permissions
-      // is the approval/sandbox bypass, armed only via RUNTIME_ALLOW_SKIP_PERMISSIONS.
-      const args = ['-p', prompt, '--output-format', 'json'];
-      if (skipPermissions) args.push('--dangerously-skip-permissions');
-      const model = process.env.DJIMITFLO_CLAUDE_MODEL;
-      if (model) args.push('--model', model);
-      return {
-        command: process.env.CLAUDE_BIN_PATH || 'claude',
-        args,
-      };
-    }
-    if (runtime === 'gemini') {
-      // gemini CLI headless: inherits the worktree as cwd via spawn. -o json for
-      // parseable output; -y is the auto-approve bypass (armed only via the gate).
-      const args = ['-p', prompt, '-o', 'json'];
-      if (skipPermissions) args.push('-y');
-      const model = process.env.DJIMITFLO_GEMINI_MODEL;
-      if (model) args.push('-m', model);
-      return {
-        command: process.env.GEMINI_BIN_PATH || 'gemini',
-        args,
-      };
-    }
-    if (runtime === 'editor') {
-      // editor runtime = the cline CLI (autonomous AI editor-agent). cline uses its
-      // own -c <worktree> cwd flag (spawn also sets cwd=worktree; redundant, safe).
-      // --auto-approve reflects skipPermissions: true only when the operator has
-      // armed RUNTIME_ALLOW_SKIP_PERMISSIONS — without it cline cannot run fully
-      // headless (it would wait on interactive approval). See known limitations.
-      const args = ['--json', '--auto-approve', skipPermissions ? 'true' : 'false', '-c', worktreePath];
-      args.push('--thinking', process.env.DJIMITFLO_CLINE_THINKING || 'medium');
-      const model = process.env.DJIMITFLO_CLINE_MODEL;
-      if (model) args.push('-m', model);
-      args.push(prompt);
-      return {
-        command: process.env.CLINE_BIN_PATH || 'cline',
-        args,
-      };
-    }
-    if (runtime === 'pi') {
-      // Pi headless: `pi --mode json -p`. Pi uses the spawn cwd as its working
-      // directory (no --dir flag), so the lease worktree is the isolation unit and
-      // Pi's file tools (read/ls/edit/write) are cwd-scoped to it. Pi has NO
-      // permission popups, so skipPermissions maps to no Pi flag — risk control
-      // stays via PI_TOOLS (drop bash for low-risk) + djimitflo approval before
-      // the lease. Sovereign/zero-egress runs require PI_OFFLINE=1 +
-      // PI_SKIP_VERSION_CHECK=1 + PI_TELEMETRY=0 (Pi reads these env vars).
-      const args = ['--mode', 'json', '-p', '--no-session'];
-      if ((process.env.PI_NO_APPROVE ?? '1') === '1') args.push('--no-approve');
-      if (process.env.PI_NO_CONTEXT_FILES === '1') args.push('--no-context-files');
-      if ((process.env.PI_NO_EXTENSIONS ?? '1') === '1') args.push('--no-extensions');
-      if ((process.env.PI_NO_SKILLS ?? '1') === '1') args.push('--no-skills');
-      if (process.env.PI_OFFLINE === '1') args.push('--offline');
-      if (process.env.PI_TOOLS) args.push('--tools', process.env.PI_TOOLS);
-      if (process.env.PI_PROVIDER) args.push('--provider', process.env.PI_PROVIDER);
-      if (process.env.PI_MODEL) args.push('--model', process.env.PI_MODEL);
-      args.push(prompt);
-      return {
-        command: process.env.PI_BIN_PATH || 'pi',
-        args,
-      };
-    }
-    throw new Error('MAKER_RUNTIME_UNSUPPORTED');
+  public buildRuntimeCommand(runtime: string, worktreePath: string, prompt: string, skipPermissions = false): { command: string; args: string[] } {
+    return this.runtimeCommand.buildRuntimeCommand(runtime, worktreePath, prompt, skipPermissions);
   }
-
-  private assertRuntimeAvailable(runtime: string): void {
+  public getRuntimeContract(runtime: string): RuntimeContract {
+    return this.runtimeCommand.getRuntimeContract(runtime);
+  }
+  public assertRuntimeAvailable(runtime: string): void {
     const probe = this.getRuntimeContract(runtime);
-    if (!probe.available) {
-      throw new Error('RUNTIME_UNAVAILABLE');
-    }
+    if (!probe.available) throw new Error('RUNTIME_UNAVAILABLE');
+  }
+  public extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
+    return this.runtimeCommand.extractRuntimeWarnings(stdout, stderr);
+  }
+  public runtimeWarningsBlockCompletion(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): boolean {
+    return this.runtimeCommand.runtimeWarningsBlockCompletion(warnings, run);
   }
 
-  private getRuntimeContract(runtime: string): RuntimeContract {
-    if (runtime === 'manual') {
-      return {
-        runtime: 'manual',
-        available: true,
-        command: null,
-        version: 'manual',
-        status: 'ok',
-        supports_json_events: false,
-        supports_usage_parsing: false,
-        supports_timeout_kill: false,
-        evidence: ['manual runtime requires human execution'],
-      };
-    }
-    if (runtime === 'mock') {
-      return {
-        runtime: 'mock',
-        available: true,
-        command: process.execPath,
-        version: 'mock-runtime',
-        status: 'ok',
-        cwd_flag: 'argv',
-        json_flag: 'stdout-json',
-        supports_json_events: true,
-        supports_usage_parsing: true,
-        supports_timeout_kill: true,
-        evidence: ['deterministic in-process mock runtime'],
-      };
-    }
-    // Real runtime probes: each entry describes how to locate the binary, which
-    // help subcommand lists its flags, and which flags must be present for the
-    // loop's headless contract (a json/output flag + a cwd mechanism + a
-    // headless prompt flag). claude/gemini inherit the worktree as cwd via spawn
-    // (cwdFlag null → always "present"); codex/opencode/editor carry an explicit
-    // --cd/--dir/-c flag. `editor` maps to the cline CLI (autonomous editor-agent).
-    const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string }> = {
-      codex: { binEnv: 'CODEX_BIN_PATH', defaultBin: 'codex', helpArgs: ['exec', '--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '--cd', headlessFlag: '--json' },
-      opencode: { binEnv: 'OPENCODE_BIN_PATH', defaultBin: 'opencode', helpArgs: ['run', '--help'], jsonFlag: '--format', jsonFlagHelp: '--format', cwdFlag: '--dir', headlessFlag: '--format' },
-      claude: { binEnv: 'CLAUDE_BIN_PATH', defaultBin: 'claude', helpArgs: ['--help'], jsonFlag: '--output-format', jsonFlagHelp: '--output-format', cwdFlag: null, headlessFlag: '-p' },
-      gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
-      editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
-      pi: { binEnv: 'PI_BIN_PATH', defaultBin: 'pi', helpArgs: ['--help'], jsonFlag: '--mode', jsonFlagHelp: '--mode', cwdFlag: null, headlessFlag: '-p' },
-    };
-    const probe = PROBES[runtime];
-    if (!probe) {
-      return {
-        runtime: 'manual',
-        available: false,
-        command: null,
-        status: 'unavailable',
-        supports_json_events: false,
-        supports_usage_parsing: false,
-        supports_timeout_kill: false,
-        evidence: [],
-        reason: 'unsupported runtime',
-      };
-    }
-    const typedRuntime = runtime as RuntimeContract['runtime'];
-    const command = process.env[probe.binEnv] || probe.defaultBin;
-    const cacheKey = `${runtime}::${command}`;
-    const cached = this.runtimeContractCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return cached.contract;
-    }
-    // Evict expired entry (prevents unbounded memory growth)
-    if (cached) this.runtimeContractCache.delete(cacheKey);
-    // Periodic cleanup: evict all expired entries every 100 calls
-    if (this.runtimeContractCache.size > 100) {
-      const now = Date.now();
-      for (const [key, entry] of this.runtimeContractCache) {
-        if (entry.expiresAt <= now) this.runtimeContractCache.delete(key);
-      }
-    }
-    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS || 1_000), 5_000));
-    const result = spawnSync(command, ['--version'], {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      maxBuffer: 512 * 1024,
-    });
-    if (result.error) {
-      return {
-        runtime: typedRuntime,
-        available: false,
-        command,
-        status: 'unavailable',
-        supports_json_events: false,
-        supports_usage_parsing: false,
-        supports_timeout_kill: true,
-        evidence: [],
-        reason: result.error.message,
-      };
-    }
-    if (result.status !== 0) {
-      return {
-        runtime: typedRuntime,
-        available: false,
-        command,
-        status: 'unavailable',
-        supports_json_events: false,
-        supports_usage_parsing: false,
-        supports_timeout_kill: true,
-        evidence: [],
-        reason: result.stderr || `exit ${result.status}`,
-      };
-    }
-    const helpResult = spawnSync(command, probe.helpArgs, {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      maxBuffer: 512 * 1024,
-    });
-    const help = `${helpResult.stdout || ''}\n${helpResult.stderr || ''}`;
-    const evidence = [
-      (result.stdout || result.stderr || '').trim(),
-      help.split(/\r?\n/).slice(0, 20).join('\n'),
-    ].filter(Boolean);
-    const lowerHelp = help.toLowerCase();
-    const hasJsonFlag = lowerHelp.includes(probe.jsonFlagHelp.toLowerCase());
-    const hasCwdFlag = probe.cwdFlag ? lowerHelp.includes(probe.cwdFlag) : true;
-    const hasHeadlessFlag = lowerHelp.includes(probe.headlessFlag.toLowerCase());
-    const drifted = !hasJsonFlag || !hasCwdFlag || !hasHeadlessFlag;
-    const contract: RuntimeContract = {
-      runtime: typedRuntime,
-      available: !drifted,
-      command,
-      version: (result.stdout || result.stderr || '').trim() || 'unknown',
-      status: drifted ? 'drifted' : 'ok',
-      ...(probe.cwdFlag ? { cwd_flag: probe.cwdFlag } : {}),
-      json_flag: probe.jsonFlag === '--format' ? ['--format', 'json'] : probe.jsonFlag,
-      supports_json_events: !drifted,
-      supports_usage_parsing: !drifted,
-      supports_timeout_kill: true,
-      evidence,
-      ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
-    };
-    const probedAt = new Date().toISOString();
-    contract.probed_at = probedAt;
-    this.db.prepare(`
-      INSERT INTO runtime_contract_probes (runtime, command, status, available, contract_json, probed_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(runtime) DO UPDATE SET
-        command = excluded.command,
-        status = excluded.status,
-        available = excluded.available,
-        contract_json = excluded.contract_json,
-        probed_at = excluded.probed_at,
-        updated_at = excluded.updated_at
-    `).run(
-      contract.runtime,
-      contract.command,
-      contract.status,
-      contract.available ? 1 : 0,
-      JSON.stringify(contract),
-      probedAt,
-      probedAt,
-    );
-    this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
-    return contract;
+  public runtimeWarningsEvidence(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): string {
+    return this.runtimeCommand.runtimeWarningsEvidence(warnings, run);
   }
 
-  private extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
-    const text = `${stdout}\n${stderr}`;
-    const warnings: Array<Record<string, unknown>> = [];
-    const patterns: Array<{ pattern: RegExp; class_name: string; severity: 'advisory' | 'warning' | 'blocking' }> = [
-      { pattern: /failed to parse plugin hooks config[^\n]*/i, class_name: 'plugin_hook_config_parse', severity: 'warning' },
-      { pattern: /Skill descriptions were shortened[^\n]*/i, class_name: 'skill_context_budget', severity: 'advisory' },
-      { pattern: /fail to delete session[^\n]*/i, class_name: 'runtime_session_cleanup', severity: 'advisory' },
-      { pattern: /structured output unavailable[^\n]*/i, class_name: 'structured_output_unavailable', severity: 'warning' },
-      { pattern: /unknown field|unexpected argument[^\n]*/i, class_name: 'runtime_contract_warning', severity: 'warning' },
-      { pattern: /trust boundary[^\n]*/i, class_name: 'trust_boundary_warning', severity: 'blocking' },
-    ];
-    for (const item of patterns) {
-      const match = text.match(item.pattern);
-      if (match?.[0]) {
-        warnings.push({
-          class_name: item.class_name,
-          severity: item.severity,
-          message: match[0].slice(0, 500),
-        });
-      }
-    }
-    return warnings;
+  public calculateWorkerEfficiency(runtimeUsage: RuntimeUsage | null, diffLines: number): Record<string, unknown> {
+    return this.runtimeCommand.calculateWorkerEfficiency(runtimeUsage, diffLines);
   }
 
-  private runtimeWarningsBlockCompletion(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): boolean {
-    if (warnings.length === 0) {
-      return false;
-    }
-    const highRisk = this.isHighRiskRun(run);
-    return warnings.some((warning) => {
-      const message = String(warning.message || '').toLowerCase();
-      const severity = String(warning.severity || '').toLowerCase();
-      const className = String(warning.class_name || '').toLowerCase();
-      if (highRisk && (message.includes('trust boundary') || className.includes('trust_boundary'))) {
-        return true;
-      }
-      return severity === 'blocking';
-    });
-  }
-
-  private runtimeWarningsEvidence(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): string {
-    if (warnings.length === 0) {
-      return 'No runtime warnings detected.';
-    }
-    const classes = warnings.map((warning) => String(warning.class_name || 'unknown')).join(', ');
-    const blocked = this.runtimeWarningsBlockCompletion(warnings, run);
-    if (blocked) {
-      return `Runtime warnings include trust boundary classes on a high-risk run: ${classes}.`;
-    }
-    return `Runtime warnings are advisory on a non-high-risk run or do not affect trust boundaries: ${classes}.`;
-  }
-
-  private calculateWorkerEfficiency(runtimeUsage: RuntimeUsage | null, diffLines: number): Record<string, unknown> {
-    if (!runtimeUsage) {
-      return { usage_source: 'unknown' };
-    }
-    return {
-      total_tokens: runtimeUsage.total_tokens,
-      diff_lines: diffLines,
-      tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null,
-      tokens_per_successful_worker: runtimeUsage.total_tokens,
-    };
-  }
-
-  private makeManifestDecisionId(loopRunId: string, leaseId: string | null, action: RuntimeManifestAction): string {
+  public makeManifestDecisionId(loopRunId: string, leaseId: string | null, action: RuntimeManifestAction): string {
     return `${loopRunId}:${leaseId || 'unknown'}:${action}:${Date.now()}:${randomUUID().slice(0, 10)}`;
   }
 
-  private currentCapacitySnapshot() {
+  public currentCapacitySnapshot() {
     return {
       cpu_threads: os.cpus().length,
       total_memory_bytes: os.totalmem(),
@@ -3625,7 +1922,7 @@ export class LoopService {
     };
   }
 
-  private currentBudgetSnapshot(run: LoopRunRecord, runtimeUsage?: RuntimeUsage | null): Record<string, unknown> {
+  public currentBudgetSnapshot(run: LoopRunRecord, runtimeUsage?: RuntimeUsage | null): Record<string, unknown> {
     const tokenBudget = this.getTokenBudget(run);
     const wallClockBudget = this.getWallClockBudget(run);
     const failureThreshold = this.getFailureThreshold(run);
@@ -3643,7 +1940,7 @@ export class LoopService {
     };
   }
 
-  private recordWorkerManifest(input: {
+  public recordWorkerManifest(input: {
     decisionId: string;
     loopRunId: string;
     leaseId: string | null;
@@ -3683,21 +1980,7 @@ export class LoopService {
     }
   }
 
-  private leaseDiffWithinThreshold(lease: WorkerLeaseRecord): boolean {
-    const diffLines = Number(lease.metadata.diff_lines ?? 0);
-    const diffMaxLines = Number(lease.metadata.diff_max_lines ?? 0);
-    return diffMaxLines > 0 && diffLines <= diffMaxLines;
-  }
-
-  private hasAcceptedCheckerVerdict(makerLeaseId: string, checkerLeases: WorkerLeaseRecord[]): boolean {
-    return checkerLeases.some((lease) => lease.metadata.maker_lease_id === makerLeaseId && lease.metadata.verdict === 'accepted');
-  }
-
-  private hasAcceptedSecurityCheckerVerdict(makerLeaseId: string, securityCheckerLeases: WorkerLeaseRecord[]): boolean {
-    return securityCheckerLeases.some((lease) => lease.metadata.maker_lease_id === makerLeaseId && lease.metadata.verdict === 'accepted');
-  }
-
-  private isRetryableMakerLease(maker: WorkerLeaseRecord, checkerLeases: WorkerLeaseRecord[]): boolean {
+  public isRetryableMakerLease(maker: WorkerLeaseRecord, checkerLeases: WorkerLeaseRecord[]): boolean {
     if (maker.role !== 'maker' || this.isSupersededMakerLease(maker)) {
       return false;
     }
@@ -3710,11 +1993,11 @@ export class LoopService {
     ));
   }
 
-  private isSupersededMakerLease(lease: WorkerLeaseRecord): boolean {
+  public isSupersededMakerLease(lease: WorkerLeaseRecord): boolean {
     return lease.role === 'maker' && typeof lease.metadata.superseded_by_maker_lease_id === 'string';
   }
 
-  private retryRootFor(maker: WorkerLeaseRecord): string {
+  public retryRootFor(maker: WorkerLeaseRecord): string {
     return typeof maker.metadata.retry_root_maker_lease_id === 'string'
       ? maker.metadata.retry_root_maker_lease_id
       : maker.id;
@@ -3738,16 +2021,7 @@ export class LoopService {
     });
   }
 
-  private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {
-    const checks = lease.metadata.deterministic_checks;
-    if (!Array.isArray(checks) || checks.length === 0) {
-      return false;
-    }
-    return checks.every((check) => {
-      const status = (check as { status?: unknown }).status;
-      return status === 'pass' || status === 'skipped';
-    });
-  }
+
 
   private readNearestPackageScripts(worktreePath: string): Set<string> {
     const packageJsonPath = path.join(worktreePath, 'package.json');
@@ -3766,7 +2040,7 @@ export class LoopService {
     return path.join(worktreePath, CONTROL_DIR);
   }
 
-  private workAssignmentPath(worktreePath: string): string {
+  public workAssignmentPath(worktreePath: string): string {
     return path.join(this.controlDir(worktreePath), LOOP_WORK_FILE);
   }
 
@@ -3780,7 +2054,7 @@ export class LoopService {
     return dir;
   }
 
-  private ensureWorktreeControlIgnore(worktreePath: string): void {
+  public ensureWorktreeControlIgnore(worktreePath: string): void {
     try {
       const excludePath = this.git(worktreePath, ['rev-parse', '--git-path', 'info/exclude']).trim();
       const absoluteExcludePath = path.isAbsolute(excludePath) ? excludePath : path.join(worktreePath, excludePath);
@@ -3794,7 +2068,7 @@ export class LoopService {
     }
   }
 
-  private resolveWorkAssignmentPath(lease: WorkerLeaseRecord): string {
+  public resolveWorkAssignmentPath(lease: WorkerLeaseRecord): string {
     const metadataPath = typeof lease.metadata.assignment_file === 'string' ? lease.metadata.assignment_file : null;
     if (metadataPath && fs.existsSync(metadataPath)) {
       return metadataPath;
@@ -3809,7 +2083,7 @@ export class LoopService {
     return '';
   }
 
-  private writeWorkAssignment(
+  public writeWorkAssignment(
     worktreePath: string,
     run: LoopRunRecord,
     finding: LoopFinding,
@@ -3853,7 +2127,7 @@ export class LoopService {
     fs.writeFileSync(this.workAssignmentPath(worktreePath), content, 'utf8');
   }
 
-  private writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
+  public writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
     this.ensureControlDir(worktreePath);
     const packetPath = this.assignmentPacketPath(worktreePath);
     const contract = (run.metadata.contract && typeof run.metadata.contract === 'object')
@@ -3918,7 +2192,7 @@ export class LoopService {
     return packetPath;
   }
 
-  private buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
+  public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
     const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
     const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
@@ -3956,7 +2230,7 @@ export class LoopService {
     ].join('\n');
   }
 
-  private buildMockCheckerCommand(_worktreePath: string, _prompt: string): { command: string; args: string[] } {
+  public buildMockCheckerCommand(_worktreePath: string, _prompt: string): { command: string; args: string[] } {
     const script = [
       'console.log(JSON.stringify({ verdict: "accepted", notes: "mock checker accepted maker output", usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } }));',
     ].join('\n');
@@ -3966,7 +2240,7 @@ export class LoopService {
     };
   }
 
-  private extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
+  public extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
@@ -3986,7 +2260,7 @@ export class LoopService {
     return 'insufficient_evidence';
   }
 
-  private extractCheckerNotes(stdout: string): string {
+  public extractCheckerNotes(stdout: string): string {
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
@@ -4002,7 +2276,7 @@ export class LoopService {
     return stdout.trim().slice(0, 1_000);
   }
 
-  private mergeGates(existing: LoopGate[], patch: LoopGate[]): LoopGate[] {
+  public mergeGates(existing: LoopGate[], patch: LoopGate[]): LoopGate[] {
     const byName = new Map(existing.map((gate) => [gate.name, gate]));
     for (const gate of patch) {
       byName.set(gate.name, gate);
@@ -4010,7 +2284,7 @@ export class LoopService {
     return Array.from(byName.values());
   }
 
-  private insertWorkerLease(input: {
+  public insertWorkerLease(input: {
     id: string;
     loopRunId: string;
     role: WorkerRole;
@@ -4053,7 +2327,7 @@ export class LoopService {
     );
   }
 
-  private updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown>): void {
+  public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown>): void {
     const existing = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata?: string } | undefined;
     const metadata = {
       ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
@@ -4063,12 +2337,12 @@ export class LoopService {
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
   }
 
-  private updateWorkerLeaseRuntime(id: string, runtime: string): void {
+  public updateWorkerLeaseRuntime(id: string, runtime: string): void {
     this.db.prepare('UPDATE worker_leases SET runtime = ?, updated_at = ? WHERE id = ?')
       .run(runtime, new Date().toISOString(), id);
   }
 
-  private patchWorkerLeaseMetadata(id: string, metadataPatch: Record<string, unknown>): void {
+  public patchWorkerLeaseMetadata(id: string, metadataPatch: Record<string, unknown>): void {
     const existing = this.db.prepare('SELECT status, metadata FROM worker_leases WHERE id = ?').get(id) as { status?: WorkerLeaseRecord['status']; metadata?: string } | undefined;
     if (!existing?.status) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
@@ -4081,7 +2355,7 @@ export class LoopService {
       .run(JSON.stringify(metadata), new Date().toISOString(), id);
   }
 
-  private getWorkerLease(id: string): WorkerLeaseRecord {
+  public getWorkerLease(id: string): WorkerLeaseRecord {
     const row = this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(id) as any | undefined;
     if (!row) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
@@ -4114,33 +2388,7 @@ export class LoopService {
     };
   }
 
-  private registerRuntimeLease(
-    leaseId: string,
-    child: ChildProcess,
-    command: string,
-    args: string[],
-    timeoutHandle?: NodeJS.Timeout
-  ): void {
-    LoopService.runtimeLeases.set(leaseId, {
-      child,
-      leaseId,
-      command,
-      args,
-      startedAt: new Date().toISOString(),
-      timeoutHandle,
-    });
-  }
 
-  private clearRuntimeLease(leaseId: string): void {
-    const lease = LoopService.runtimeLeases.get(leaseId);
-    if (!lease) {
-      return;
-    }
-    if (lease.timeoutHandle) {
-      clearTimeout(lease.timeoutHandle);
-    }
-    LoopService.runtimeLeases.delete(leaseId);
-  }
 
   /**
    * Current semaphore limit. Read fresh on every acquire so an operator can tune
@@ -4148,73 +2396,27 @@ export class LoopService {
    * starving the rest of the fleet; the per-tree sub-limiter
    * (spawn_trees.max_concurrent_children) further bounds any one swarm.
    */
-  private runtimeSemaphoreLimit(): number {
-    const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    if (raw === undefined || raw === null || raw.trim() === '') return 4;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 4;
-  }
 
   /**
    * Acquire a runtime permit, awaiting if the concurrency cap is reached. A
    * queued waiter is rejectable via cancelRuntimePermit (used by stop), so a
    * lease stopped before it ever spawns does not hang the queue.
    */
-  private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = LoopService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) {
-      sem.active.add(leaseId);
-      return Promise.resolve();
-    }
-    return new Promise<void>((resolve, reject) => {
-      sem.queue.push({ leaseId, resolve, reject });
-    });
-  }
 
   /**
    * Release a permit and admit the next queued waiter. Idempotent — safe to call
    * on every exit path of executeRuntimeCommand.
    */
-  private releaseRuntimePermit(leaseId: string): void {
-    const sem = LoopService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) {
-        sem.active.add(next.leaseId);
-        next.resolve();
-      }
-    } else {
-      // Not active — maybe still queued (e.g. spawn threw after acquire). Remove
-      // the queued waiter without admitting a replacement; release() of an active
-      // slot below will admit the next.
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
-  }
 
   /**
    * Cancel a permit acquisition for a lease that was stopped before it could
    * spawn. Rejects the queued waiter so executeRuntimeCommand rejects promptly;
    * no active slot is freed (the lease never held one).
    */
-  private cancelRuntimePermit(leaseId: string): void {
-    const sem = LoopService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) {
-      const [waiter] = sem.queue.splice(idx, 1);
-      waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED'));
-    }
-  }
 
   /** Test/diagnostic: how many runtime children are live right now. */
   public runtimeConcurrencyInUse(): number {
-    return LoopService.runtimeSemaphore.active.size;
-  }
-
-  private getRuntimeLease(leaseId: string): RuntimeProcessHandle | null {
-    return LoopService.runtimeLeases.get(leaseId) || null;
+    return this.runtimeCommand.runtimeConcurrencyInUse();
   }
 
   public isWorkerLeaseCancelled(leaseId: string): boolean {
@@ -4224,169 +2426,7 @@ export class LoopService {
     return Boolean(stopped || wasStopped || lease.status === 'cancelled');
   }
 
-  private async executeRuntimeCommand(
-    leaseId: string,
-    command: string,
-    args: string[],
-    options: {
-      cwd?: string;
-      env?: NodeJS.ProcessEnv;
-      timeoutMs?: number;
-      maxBuffer?: number;
-      enforceCwdBoundary?: boolean;
-    } = {}
-  ): Promise<RuntimeExecutionResult> {
-    const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
-    const timeoutMs = options.timeoutMs || 120_000;
-
-    if (options.enforceCwdBoundary && options.cwd) {
-      this.assertWithinWorktreeRoot(options.cwd);
-    }
-
-    // P2: bound live runtime children. A lease stopped while queued here will
-    // have its acquire rejected (cancelRuntimePermit) and never spawn.
-    await this.acquireRuntimePermit(leaseId);
-
-    return new Promise<RuntimeExecutionResult>((resolve, reject) => {
-      let stdout = '';
-      let stderr = '';
-      let timedOut = false;
-      let timedOutAt: string | undefined;
-      let timedOutHandled = false;
-      let exitCode: number | null = null;
-      let signal: string | null = null;
-      let settled = false;
-
-      const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
-      let timeoutHandle: NodeJS.Timeout | undefined;
-      let child: ChildProcess;
-      try {
-        child = spawn(command, args, {
-          cwd: options.cwd,
-          env: options.env || this.buildRuntimeEnv(),
-          stdio: ['ignore', 'pipe', 'pipe'],
-        });
-      } catch (error) {
-        this.releaseRuntimePermit(leaseId);
-        reject(error instanceof Error ? error : new Error(String(error)));
-        return;
-      }
-
-      if (!child.pid) {
-        this.releaseRuntimePermit(leaseId);
-        reject(new Error('RUNTIME_PROCESS_START_FAILED'));
-        return;
-      }
-      if (timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (!timedOutHandled) {
-            timedOut = true;
-            timedOutAt = new Date().toISOString();
-            timedOutHandled = true;
-            try {
-              child.kill('SIGKILL');
-            } catch {
-              // best effort stop for timeout enforcement.
-            }
-          }
-        }, timeoutMs);
-      }
-
-      this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
-
-      const finalize = () => {
-        if (settled) return;
-        settled = true;
-        this.clearRuntimeLease(leaseId);
-        this.releaseRuntimePermit(leaseId);
-        resolve({
-          exitCode,
-          signal,
-          timedOut,
-          timedOutAt,
-          stdout: safeTrim(stdout),
-          stderr: safeTrim(stderr),
-          runtimePid: child.pid || undefined,
-        });
-      };
-
-      child.stdout?.setEncoding('utf8');
-      child.stderr?.setEncoding('utf8');
-      child.stdout?.on('data', (chunk: string) => {
-        stdout += chunk;
-        if (stdout.length > maxBuffer) {
-          stdout = stdout.slice(-maxBuffer);
-        }
-      });
-      child.stderr?.on('data', (chunk: string) => {
-        stderr += chunk;
-        if (stderr.length > maxBuffer) {
-          stderr = stderr.slice(-maxBuffer);
-        }
-      });
-
-      child.on('error', (error) => {
-        this.clearRuntimeLease(leaseId);
-        this.releaseRuntimePermit(leaseId);
-        if (!settled) {
-          settled = true;
-          reject(error);
-        }
-      });
-      child.on('close', (code, childSignal) => {
-        exitCode = code === null ? exitCode : code;
-        signal = childSignal || null;
-        if (timedOut && typeof code === 'number' && code === 0) {
-          // keep runtime timeout marker for explicit timeout termination paths.
-          timedOut = true;
-        }
-        finalize();
-      });
-    });
-  }
-
-  public stopWorkerLeaseRuntime(leaseId: string): RuntimeStopResult {
-    const runtimeLease = this.getRuntimeLease(leaseId);
-    if (!runtimeLease) {
-      // No live process handle: the lease may still be queued at the semaphore
-      // (stopped before it ever spawned). Cancel its permit so executeRuntimeCommand
-      // rejects promptly instead of hanging the queue.
-      this.cancelRuntimePermit(leaseId);
-      return { stopMode: 'best_effort_no_process_handle', killAttempted: false };
-    }
-
-    const child = runtimeLease.child;
-    let killAttempted = false;
-    try {
-      if (!child.killed) {
-        child.kill('SIGTERM');
-      }
-      killAttempted = true;
-      this.patchWorkerLeaseMetadata(leaseId, {
-        runtime_stop_requested_at: new Date().toISOString(),
-        runtime_stop_attempted: true,
-        runtime_stop_mode: 'stop',
-      });
-    } catch {
-      killAttempted = false;
-    }
-
-    if (child.killed) {
-      this.clearRuntimeLease(leaseId);
-      return { stopMode: 'stop', killAttempted };
-    }
-
-    try {
-      child.kill('SIGKILL');
-      killAttempted = killAttempted || true;
-      this.clearRuntimeLease(leaseId);
-      return { stopMode: 'kill', killAttempted };
-    } catch {
-      return { stopMode: 'best_effort_no_process_handle', killAttempted };
-    }
-  }
-
-  private listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
+  public listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
     const rows = this.db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
     return rows.map((row) => this.parseWorkerLease(row));
   }
@@ -4404,7 +2444,7 @@ export class LoopService {
     }));
   }
 
-  private git(repositoryPath: string, args: string[]): string {
+  public git(repositoryPath: string, args: string[]): string {
     try {
       return execFileSync('git', ['-C', repositoryPath, ...args], {
         encoding: 'utf8',
@@ -4428,7 +2468,7 @@ export class LoopService {
     return `Resolve loop finding in ${finding.file}`;
   }
 
-  private writeLoopState(runId: string, input: {
+  public writeLoopState(runId: string, input: {
     loopName: LoopName;
     runId: string;
     goal: GoalRecord | null;
@@ -4475,7 +2515,7 @@ export class LoopService {
     return statePath;
   }
 
-  private recordLoopEvent(loopRunId: string, eventType: string, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', message: string, metadata: Record<string, unknown>): void {
+  public recordLoopEvent(loopRunId: string, eventType: string, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', message: string, metadata: Record<string, unknown>): void {
     // Compress large metadata objects to save storage and tokens
     let metadataStr = JSON.stringify(metadata);
     if (metadataStr.length > 500) {

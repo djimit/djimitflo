@@ -255,7 +255,7 @@ export class DiffCaptureService {
         const filePath = pathParts.join('\t');
         let diff: string | null = null;
         try {
-          diff = execSync(`git diff ${diffTarget} -- "${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8', maxBuffer: 1024 * 1024 }).trim() || null;
+          diff = execSync(`git diff ${diffTarget} -- "${filePath}" 2>/dev/null`, { cwd: repoPath, encoding: 'utf-8', maxBuffer: 1024 * 1024, timeout: 10_000 }).trim() || null;
         } catch { diff = null; }
 
         let beforeHash: string | null = null;

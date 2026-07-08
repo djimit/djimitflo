@@ -1155,7 +1155,7 @@ export class SwarmStatusService {
     };
     let stopResult: { stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle'; killAttempted: boolean } | null = null;
     if (row.status === 'running') {
-      stopResult = this.loops.stopWorkerLeaseRuntime(leaseId);
+      stopResult = this.loops.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
       metadata.stop_mode = stopResult.stopMode;
       metadata.runtime_stop_attempted = stopResult.killAttempted;
       metadata.runtime_stop_requested_at = now;
