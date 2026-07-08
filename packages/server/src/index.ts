@@ -25,6 +25,8 @@ import { TrajectoryStore } from './services/trajectory-store';
 import { RetentionService } from './services/retention-service';
 import { MetaOrchestrationService } from './services/meta-orchestration-service';
 import { SelfModificationPipeline } from './services/self-modification-pipeline';
+import { ProactiveMemoryService } from './services/proactive-memory-service';
+import { ComplianceAuditService } from './services/compliance-audit-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
@@ -239,6 +241,12 @@ async function main() {
   const selfModification = new SelfModificationPipeline(db);
   // Run initial analysis to detect improvement opportunities
   selfModification.analyze();
+
+  // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)
+  const proactiveMemory = new ProactiveMemoryService(db);
+
+  // Compliance audit — immutable evidence chain and compliance reporting (Vector 7)
+  const complianceAudit = new ComplianceAuditService(db);
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
