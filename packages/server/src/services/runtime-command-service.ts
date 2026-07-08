@@ -20,7 +20,23 @@ export class RuntimeCommandService {
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
-  constructor(private db: Database, private loopService: LoopService) {}
+  constructor(private db: Database, private loopService: LoopService) {
+    this.ensureTables();
+  }
+
+  private ensureTables(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_contract_probes (
+        runtime TEXT PRIMARY KEY,
+        command TEXT,
+        status TEXT NOT NULL DEFAULT 'unknown',
+        available INTEGER NOT NULL DEFAULT 0,
+        contract_json TEXT NOT NULL DEFAULT '{}',
+        probed_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
 
   // ─── Command Building ─────────────────────────────────────────────────
 
@@ -157,7 +173,7 @@ export class RuntimeCommandService {
         if (entry.expiresAt <= now) this.runtimeContractCache.delete(key);
       }
     }
-    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS || 1_000), 5_000));
+    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS ?? 1_000), 5_000));
     const result = spawnSync(command, ['--version'], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 512 * 1024 });
     if (result.error) {
       return { runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.error.message };

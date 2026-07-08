@@ -132,7 +132,7 @@ export class MetaOrchestrationService {
     }
 
     // Pattern 3: Tags that historically correlate with failures
-    if (task.tags.length > 0) {
+    if (task.tags && task.tags.length > 0) {
       const tagFailures = this.db.prepare(`
         SELECT AVG(CASE WHEN outcome = 'failure' THEN 1.0 ELSE 0.0 END) as fail_rate
         FROM meta_task_history

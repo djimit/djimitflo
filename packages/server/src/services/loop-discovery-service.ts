@@ -353,6 +353,11 @@ export class LoopDiscoveryService {
     const files = this.collectFiles(repositoryPath, (file) => /\.(ts|tsx|js|jsx|py|sh|md|yml|yaml)$/.test(file), 300);
     for (const file of files) {
       if (findings.length >= maxFindings) break;
+      // Skip large files (>64KB) to avoid memory issues
+      try {
+        const stat = fs.statSync(file);
+        if (stat.size > 64 * 1024) continue;
+      } catch { continue; }
       const content = fs.readFileSync(file, 'utf8');
       const lines = content.split(/\r?\n/);
       for (let i = 0; i < lines.length && findings.length < maxFindings; i += 1) {

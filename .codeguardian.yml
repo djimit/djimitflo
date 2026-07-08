@@ -1,0 +1,23 @@
+fail_on: high
+
+suppressions:
+  - rule_id: "pii-bsn"
+    path: "packages/dashboard/src/styles/**"
+    reason: "CSS files contain numeric patterns that match BSN regex but are color codes/dimensions"
+
+  - rule_id: "repo-audit-plaintext-password"
+    path: "benchmarks/**"
+    reason: "Benchmark test fixtures use REDACTED_* placeholder values, not real secrets"
+
+  - rule_id: "repo-audit-tls-verify-bypass"
+    path: ".opencode/skills/codebase-review-swarm/references/**"
+    reason: "Documentation describing TLS bypass patterns, not actual bypass code"
+
+  - rule_id: "repo-audit-tls-verify-bypass"
+    path: "packages/dashboard/src/pages/GoalsLoopsPage.tsx"
+    reason: "False positive - React dashboard component with security gate variable names, no actual TLS bypass code"
+    expires: "2026-12-31"
+
+history:
+  enabled: true
+  retention_days: 90

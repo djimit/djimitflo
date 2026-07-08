@@ -100,6 +100,18 @@ export class ReasoningBankService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
         });
+      } else if (check.ok) {
+        // Verify dimension matches; if not, recreate collection
+        const existing = (await check.json()) as any;
+        const existingDim = existing?.result?.config?.params?.vectors?.size;
+        if (existingDim && existingDim !== EMBED_DIM) {
+          await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, { method: 'DELETE' });
+          await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
+          });
+        }
       }
 
       const embedRes = await fetch(`${OLLAMA_URL}/api/embeddings`, {
