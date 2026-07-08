@@ -24,6 +24,7 @@ import { VectorMemoryService } from './services/vector-memory-service';
 import { TrajectoryStore } from './services/trajectory-store';
 import { RetentionService } from './services/retention-service';
 import { MetaOrchestrationService } from './services/meta-orchestration-service';
+import { SelfModificationPipeline } from './services/self-modification-pipeline';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
@@ -233,6 +234,11 @@ async function main() {
   metaOrchestration.start();
   executionEngine.setMetaOrchestration(metaOrchestration);
   recoverySvc.setMetaOrchestration(metaOrchestration);
+
+  // Self-modification pipeline — autonomous code improvement (analyze on startup)
+  const selfModification = new SelfModificationPipeline(db);
+  // Run initial analysis to detect improvement opportunities
+  selfModification.analyze();
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
