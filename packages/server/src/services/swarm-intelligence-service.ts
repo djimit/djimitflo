@@ -12,6 +12,8 @@ import { HypothesisService } from './hypothesis-service';
 import { ClaimService } from './claim-service';
 import { ProofRunService } from './proof-run-service';
 import { SwarmEvidenceService } from './swarm-evidence-service';
+import { SwarmConcurrencyService } from './swarm-concurrency-service';
+import { SwarmOperationsService } from './swarm-operations-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -107,6 +109,8 @@ export class SwarmIntelligenceService {
   readonly hypotheses: HypothesisService;
   readonly claims: ClaimService;
   readonly evidence: SwarmEvidenceService;
+  readonly concurrency: SwarmConcurrencyService;
+  readonly operations: SwarmOperationsService;
 
   constructor(private db: Database) {
     this.panels = new SpecialistPanelService(db);
@@ -114,6 +118,8 @@ export class SwarmIntelligenceService {
     this.hypotheses = new HypothesisService(db);
     this.claims = new ClaimService(db);
     this.evidence = new SwarmEvidenceService(db);
+    this.concurrency = new SwarmConcurrencyService();
+    this.operations = new SwarmOperationsService(db);
   }
 
   private swarmStatus(): SwarmStatusService {
@@ -942,34 +948,20 @@ export class SwarmIntelligenceService {
     return this.getHypothesis(id);
   }
 
-  // G15.7: Runtime concurrency slots per adapter and risk class
-  private concurrencySlots: Map<string, { max: number; active: number }> = new Map();
-
   setConcurrencySlot(adapter: string, riskClass: string, maxConcurrent: number): void {
-    const key = `${adapter}:${riskClass}`;
-    this.concurrencySlots.set(key, { max: maxConcurrent, active: this.concurrencySlots.get(key)?.active || 0 });
+    this.concurrency.setConcurrencySlot(adapter, riskClass, maxConcurrent);
   }
 
   checkConcurrencySlot(adapter: string, riskClass: string): { available: boolean; active: number; max: number } {
-    const key = `${adapter}:${riskClass}`;
-    const slot = this.concurrencySlots.get(key);
-    if (!slot) return { available: true, active: 0, max: Infinity };
-    return { available: slot.active < slot.max, active: slot.active, max: slot.max };
+    return this.concurrency.checkConcurrencySlot(adapter, riskClass);
   }
 
   acquireConcurrencySlot(adapter: string, riskClass: string): boolean {
-    const key = `${adapter}:${riskClass}`;
-    const slot = this.concurrencySlots.get(key);
-    if (!slot) return true;
-    if (slot.active >= slot.max) return false;
-    slot.active++;
-    return true;
+    return this.concurrency.acquireConcurrencySlot(adapter, riskClass);
   }
 
   releaseConcurrencySlot(adapter: string, riskClass: string): void {
-    const key = `${adapter}:${riskClass}`;
-    const slot = this.concurrencySlots.get(key);
-    if (slot && slot.active > 0) slot.active--;
+    this.concurrency.releaseConcurrencySlot(adapter, riskClass);
   }
 
   // G15.8: Specialist profile version persistence
@@ -980,123 +972,19 @@ export class SwarmIntelligenceService {
   }
 
   planCapacityV2(input: WorkerPoolPlanInput = {}, existingStatusService?: SwarmStatusService): CapacityPlanV2Result {
-    const statusService = existingStatusService || this.swarmStatus();
-    const plan = statusService.planWorkerPool(input);
-    const queueClasses: Record<string, number> = {};
-    for (const decision of plan.decisions) {
-      const queueClass = this.queueClassFor(decision.role, decision.risk_class, decision.blocked_reasons);
-      queueClasses[queueClass] = (queueClasses[queueClass] || 0) + 1;
-    }
-    const fairShareOrder = Object.entries(queueClasses)
-      .sort(([left], [right]) => this.queueWeight(right) - this.queueWeight(left))
-      .map(([queueClass]) => queueClass);
-    return {
-      ...plan,
-      queue_classes: queueClasses,
-      fair_share_order: fairShareOrder,
-      audit_manifest_preview: plan.decisions.map((decision) => ({
-        decision_id: `preview:${decision.lease_id}`,
-        lease_id: decision.lease_id,
-        action: decision.eligible ? 'start' : 'skip',
-        policy_version: 'swarm-intelligence-v1',
-        blocked_reasons: decision.blocked_reasons,
-        queue_class: this.queueClassFor(decision.role, decision.risk_class, decision.blocked_reasons),
-      })),
-    };
+    return this.operations.planCapacityV2(input, existingStatusService);
   }
 
-  createRunnerManifest(input: {
-    decision_id?: string;
-    lease_id?: string | null;
-    loop_run_id?: string | null;
-    action?: RunnerManifestAction;
-    policy_version?: string;
-    runtime_contract?: Record<string, unknown>;
-    capacity_snapshot?: Record<string, unknown>;
-    budget_snapshot?: Record<string, unknown>;
-    gate_refs?: string[];
-    blocked_reasons?: string[];
-    metadata?: Record<string, unknown>;
-  }): RunnerManifestRecord {
-    if (!input.decision_id?.trim()) throw new Error('SWARM_RUNNER_DECISION_ID_REQUIRED');
-    if (!input.action || !RUNNER_ACTIONS.includes(input.action)) throw new Error('SWARM_RUNNER_ACTION_INVALID');
-    if (!input.policy_version?.trim()) throw new Error('SWARM_RUNNER_POLICY_VERSION_REQUIRED');
-    this.rejectSecretLike(input);
-    const id = randomUUID();
-    this.db.prepare(`
-      INSERT INTO swarm_runner_manifests (
-        id, decision_id, lease_id, loop_run_id, action, policy_version,
-        runtime_contract_json, capacity_snapshot_json, budget_snapshot_json,
-        gate_refs_json, blocked_reasons_json, metadata, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.decision_id.trim(),
-      input.lease_id || null,
-      input.loop_run_id || null,
-      input.action,
-      input.policy_version.trim(),
-      JSON.stringify(input.runtime_contract || {}),
-      JSON.stringify(input.capacity_snapshot || {}),
-      JSON.stringify(input.budget_snapshot || {}),
-      JSON.stringify(this.stringArray(input.gate_refs)),
-      JSON.stringify(this.stringArray(input.blocked_reasons)),
-      JSON.stringify(input.metadata || {}),
-      new Date().toISOString()
-    );
-    return this.parseRunnerManifest(this.db.prepare('SELECT * FROM swarm_runner_manifests WHERE id = ?').get(id));
+  createRunnerManifest(input: any): any {
+    return this.operations.createRunnerManifest(input);
   }
 
-  listRunnerManifests(limit = 50): RunnerManifestRecord[] {
-    return (this.db.prepare('SELECT * FROM swarm_runner_manifests ORDER BY created_at DESC LIMIT ?').all(this.limit(limit)) as any[])
-      .map((row) => this.parseRunnerManifest(row));
+  listRunnerManifests(limit = 50): any[] {
+    return this.operations.listRunnerManifests(limit);
   }
 
-  evaluateGovernance(input: {
-    risk_class?: RiskClass;
-    mutating?: boolean;
-    maker_pass?: boolean;
-    checker_pass?: boolean;
-    security_checker_pass?: boolean;
-    quorum_count?: number;
-    quorum_required?: number;
-    runtime_warnings?: string[];
-    human_approval_ref?: string | null;
-    ready_for_human_merge?: boolean;
-  }) {
-    const riskClass = input.risk_class || 'low';
-    if (!RISK_CLASSES.includes(riskClass)) throw new Error('SWARM_GOVERNANCE_RISK_INVALID');
-    const blocked: string[] = [];
-    const warnings = this.stringArray(input.runtime_warnings);
-    const quorumRequired = Math.max(0, Number(input.quorum_required || (['high', 'critical'].includes(riskClass) ? 2 : 0)));
-    const quorumCount = Math.max(0, Number(input.quorum_count || 0));
-
-    if (!input.maker_pass) blocked.push('maker_required');
-    if (!input.checker_pass) blocked.push('checker_required');
-    if (['high', 'critical'].includes(riskClass) && !input.security_checker_pass) blocked.push('security_checker_required');
-    if (quorumCount < quorumRequired) blocked.push('evaluator_quorum_missing');
-    if (['high', 'critical'].includes(riskClass) && warnings.some((warning) => /(trust|contract|auth|secret|token|permission)/i.test(warning))) {
-      blocked.push('runtime_warning_gate_failed');
-    }
-    if (input.mutating && input.ready_for_human_merge && !input.human_approval_ref) {
-      blocked.push('human_approval_required_for_completion');
-    }
-
-    return {
-      status: blocked.length > 0 ? 'blocked' : 'eligible',
-      blocked_reasons: [...new Set(blocked)],
-      gates: {
-        maker: input.maker_pass ? 'pass' : 'fail',
-        checker: input.checker_pass ? 'pass' : 'fail',
-        security_checker: ['high', 'critical'].includes(riskClass) ? (input.security_checker_pass ? 'pass' : 'fail') : 'skipped',
-        evaluator_quorum: quorumCount >= quorumRequired ? 'pass' : 'fail',
-        runtime_warning_gate: blocked.includes('runtime_warning_gate_failed') ? 'fail' : warnings.length ? 'advisory' : 'pass',
-        human_completion_gate: input.mutating && input.ready_for_human_merge ? (input.human_approval_ref ? 'pass' : 'fail') : 'skipped',
-      },
-      completion_state: input.ready_for_human_merge && input.mutating && !input.human_approval_ref
-        ? 'ready_for_human_merge'
-        : blocked.length > 0 ? 'blocked' : 'completed_eligible',
-    };
+  evaluateGovernance(input: any) {
+    return this.operations.evaluateGovernance(input);
   }
 
   okfDriftReport(okfBase = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true })) {
@@ -1824,41 +1712,16 @@ export class SwarmIntelligenceService {
     return (this.db.prepare(sql).all(...args) as any[]).map((row) => this.parseDecision(row));
   }
 
-  // ── G14.8: Circuit breaker ──
-
-  private circuitBreakerState: Map<string, { failures: number; tripped: boolean; lastFailureAt: string | null }> = new Map();
-  private static readonly CIRCUIT_BREAKER_THRESHOLD = 3;
-  private static readonly CIRCUIT_BREAKER_COOLDOWN_MS = 60_000;
-
   checkCircuitBreaker(scope: string): { tripped: boolean; failures: number; reason: string | null } {
-    const state = this.circuitBreakerState.get(scope);
-    if (!state) return { tripped: false, failures: 0, reason: null };
-    if (state.tripped) {
-      const cooldownElapsed = state.lastFailureAt
-        ? Date.now() - new Date(state.lastFailureAt).getTime() > SwarmIntelligenceService.CIRCUIT_BREAKER_COOLDOWN_MS
-        : false;
-      if (cooldownElapsed) {
-        this.circuitBreakerState.set(scope, { failures: 0, tripped: false, lastFailureAt: null });
-        return { tripped: false, failures: 0, reason: null };
-      }
-      return { tripped: true, failures: state.failures, reason: `circuit_breaker_tripped:${scope}:${state.failures}_failures` };
-    }
-    return { tripped: false, failures: state.failures, reason: null };
+    return this.concurrency.checkCircuitBreaker(scope);
   }
 
   recordCircuitBreakerFailure(scope: string): { tripped: boolean; failures: number } {
-    const state = this.circuitBreakerState.get(scope) || { failures: 0, tripped: false, lastFailureAt: null };
-    state.failures += 1;
-    state.lastFailureAt = new Date().toISOString();
-    if (state.failures >= SwarmIntelligenceService.CIRCUIT_BREAKER_THRESHOLD) {
-      state.tripped = true;
-    }
-    this.circuitBreakerState.set(scope, state);
-    return { tripped: state.tripped, failures: state.failures };
+    return this.concurrency.recordCircuitBreakerFailure(scope);
   }
 
   resetCircuitBreaker(scope: string): void {
-    this.circuitBreakerState.delete(scope);
+    this.concurrency.resetCircuitBreaker(scope);
   }
 
   // ── Parsers ──
