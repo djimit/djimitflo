@@ -21,12 +21,12 @@
   "dependencies": {
     "@djimitflo/shared": "*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.2.6"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }
