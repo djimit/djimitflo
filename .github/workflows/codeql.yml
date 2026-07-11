@@ -11,6 +11,21 @@ permissions:
   security-events: write
   contents: read
 
+# Inlined rather than calling djimit/.github's reusable workflow: that repo is
+# private with Actions access_level "none", so a public repo like this one
+# cannot call its reusable workflow (the call fails at startup).
 jobs:
   analyze:
-    uses: djimit/.github/.github/workflows/codeql.yml@main
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript, python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
