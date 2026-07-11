@@ -7,7 +7,7 @@ import { Task, ExecutionEventCreateInput } from '@djimitflo/shared';
 /**
  * Executor kinds supported by the system
  */
-export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'claude' | 'gemini' | 'editor' | 'pi' | 'custom';
+export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'claude' | 'gemini' | 'editor' | 'pi' | 'docker' | 'custom';
 
 /**
  * Execution session status
@@ -122,6 +122,19 @@ export interface ExecutorOptions {
   skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
   format?: 'json' | 'default'; // output format (default: json for structured parsing)
   approvalCallback?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
+
+  /**
+   * Docker sandbox isolation configuration
+   */
+  sandbox?: {
+    enabled: boolean;
+    image?: string;
+    cpuLimit?: string;
+    memoryLimit?: string;
+    networkMode?: 'none' | 'bridge' | 'host';
+    bindMounts?: Array<{ host: string; container: string; mode: 'ro' | 'rw' }>;
+  };
+
 }
 
 /**

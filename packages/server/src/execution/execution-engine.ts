@@ -21,6 +21,10 @@ import { ClaudeExecutor } from './executors/claude-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
+import { DockerSandboxExecutor, DEFAULT_SANDBOX_CONFIG } from './executors/docker-sandbox-executor';
+import { CircuitBreakerService } from '../services/circuit-breaker-service';
+import { FallbackChainService, ExecutionMode } from '../services/fallback-chain-service';
+import { ExecutionModePolicyService } from '../services/execution-mode-policy-service';
 import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
@@ -57,6 +61,9 @@ export class ExecutionEngine {
   private reasoningBankService?: ReasoningBankService;
   private trajectoryStore?: TrajectoryStore;
   private metaOrchestration?: MetaOrchestrationService;
+  private circuitBreaker: CircuitBreakerService;
+  private fallbackChain: FallbackChainService;
+  private executionModePolicy: ExecutionModePolicyService;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -78,6 +85,9 @@ export class ExecutionEngine {
     this.db = db;
     this.wsService = wsService;
     this.executors = new Map();
+    this.circuitBreaker = new CircuitBreakerService();
+    this.fallbackChain = new FallbackChainService();
+    this.executionModePolicy = new ExecutionModePolicyService();
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
@@ -140,7 +150,7 @@ export class ExecutionEngine {
     }
     
     // Get executor
-    const executor = this.executors.get(executorKind);
+    let executor = this.executors.get(executorKind);
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
@@ -281,8 +291,47 @@ export class ExecutionEngine {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as
         | string
         | undefined;
-      const session = await executor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
+      // Check circuit breaker before execution
+      if (!this.circuitBreaker.canExecute(executorKind)) {
+        const fallback = this.fallbackChain.getNextAvailable(
+          executorKind,
+          (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard',
+          this.circuitBreaker,
+        );
+        if (fallback) {
+          this.persistEvent({
+            task_id: taskId,
+            event_type: 'log' as any,
+            message: 'Circuit open for ' + executorKind + ', falling back to ' + fallback,
+            level: 'warning' as any,
+            metadata: { circuit: 'open', from: executorKind, to: fallback },
+          });
+          executorKind = fallback;
+          executor = this.executors.get(fallback)!;
+        } else {
+          throw new Error();
+        }
+      }
+
+      // Wrap executor in Docker sandbox if configured
+      const sandboxMeta = (parsedTask.metadata?.sandbox ?? {}) as Record<string, unknown>;
+      const sandboxEnabled = sandboxMeta.enabled === true;
+      const activeExecutor = sandboxEnabled
+        ? new DockerSandboxExecutor(executor, {
+            ...DEFAULT_SANDBOX_CONFIG,
+            image: (sandboxMeta.image as string) || DEFAULT_SANDBOX_CONFIG.image,
+            cpuLimit: (sandboxMeta.cpuLimit as string) || DEFAULT_SANDBOX_CONFIG.cpuLimit,
+            memoryLimit: (sandboxMeta.memoryLimit as string) || DEFAULT_SANDBOX_CONFIG.memoryLimit,
+            networkMode: (sandboxMeta.networkMode as 'none' | 'bridge' | 'host') || DEFAULT_SANDBOX_CONFIG.networkMode,
+            bindMounts: (sandboxMeta.bindMounts as Array<{ host: string; container: string; mode: 'ro' | 'rw' }>) || DEFAULT_SANDBOX_CONFIG.bindMounts,
+          })
+        : executor;
+
+      const session = await activeExecutor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
       this.activeSessions.set(taskId, session);
+
+      // Record success in circuit breaker
+      this.circuitBreaker.recordSuccess(executorKind);
 
       // Record trajectory step
       if (this.trajectoryStore) {
@@ -590,7 +639,13 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
-    
+
+    // Record failure in circuit breaker
+    const taskRecord = this.db.prepare("SELECT executor_kind FROM tasks WHERE id = ?").get(taskId) as any;
+    if (taskRecord?.executor_kind) {
+      this.circuitBreaker.recordFailure(taskRecord.executor_kind as ExecutorKind);
+    }
+
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);
 
@@ -614,6 +669,43 @@ export class ExecutionEngine {
     });
   }
   
+  /**
+   * Check if a task is compliant with its execution mode policy.
+   */
+  checkTaskCompliance(taskId: string): {
+    compliant: boolean;
+    missingEvidence: string[];
+    missingGates: string[];
+    reasons: string[];
+  } {
+    const task = this.getTask(taskId);
+    if (!task) {
+      return { compliant: false, missingEvidence: [], missingGates: [], reasons: ['Task not found'] };
+    }
+
+    const metadata = (task.metadata || {}) as Record<string, unknown>;
+    const mode = (metadata.executionMode as any) || 'standard';
+    const evidence: any[] = [];
+    const gatesPassed: string[] = [];
+    const hasHumanApproval = false;
+    const sandboxUsed = (metadata.sandbox as Record<string, unknown>)?.enabled === true;
+
+    const result = this.executionModePolicy.shouldBlockMerge(
+      mode as any,
+      evidence,
+      gatesPassed,
+      hasHumanApproval,
+      sandboxUsed,
+    );
+
+    return {
+      compliant: !result.blocked,
+      missingEvidence: [],
+      missingGates: [],
+      reasons: result.reasons,
+    };
+  }
+
   /**
    * Update task status in database
    */
