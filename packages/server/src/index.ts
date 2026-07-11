@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Djimitflo Server
  * Express + TypeScript + SQLite backend for agent orchestration control plane
@@ -244,10 +243,10 @@ async function main() {
   selfModification.analyze();
 
   // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)
-  const proactiveMemory = new ProactiveMemoryService(db);
-
   // Compliance audit — immutable evidence chain and compliance reporting (Vector 7)
-  const complianceAudit = new ComplianceAuditService(db);
+  // Constructed for startup side-effects (table setup / event registration).
+  new ProactiveMemoryService(db);
+  new ComplianceAuditService(db);
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));

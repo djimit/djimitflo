@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * AgentLifecycleService — agent retirement, decommissioning, and archival.
  *
@@ -41,7 +40,6 @@ export interface RetirementRecommendation {
 
 export class AgentLifecycleService {
   private readonly INACTIVITY_THRESHOLD_DAYS = 30;
-  private readonly FAILURE_THRESHOLD = 5;
 
   constructor(private db: Database) {
     this.ensureTables();
@@ -101,7 +99,7 @@ export class AgentLifecycleService {
   }
 
   private transition(agentId: string, toStatus: AgentLifecycleStatus, reason: string): AgentRecord {
-    const agent = this.getAgent(agentId);
+    this.getAgent(agentId); // validate agent exists (throws AGENT_NOT_FOUND)
     const now = new Date().toISOString();
     this.db.prepare(`
       UPDATE agent_lifecycle SET status = ?, retirement_reason = ?, retired_at = ?, updated_at = ? WHERE id = ?

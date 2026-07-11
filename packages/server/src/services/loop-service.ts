@@ -1,4 +1,3 @@
-// @ts-nocheck
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -18,7 +17,7 @@ import { RuntimeCommandService } from './runtime-command-service';
 import { LoopLifecycleService } from './loop-lifecycle-service';
 import { LoopDiscoveryService } from './loop-discovery-service';
 import { LoopVerificationService } from './loop-verification-service';
-export type { LoopFinding } from './loop-discovery-service';
+import type { LoopFinding } from './loop-discovery-service';
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
 type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
@@ -220,19 +219,7 @@ export type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' 
 
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
 const DEFAULT_MAX_FINDINGS = 50;
-const MAX_MARKDOWN_FILE_BYTES = 250_000;
 const LOOP_RUNTIME_MANIFEST_POLICY_VERSION = 'loop-runtime-bridge-v1';
-const EXCLUDED_DIRS = new Set([
-  '.git',
-  'node_modules',
-  'dist',
-  'build',
-  'coverage',
-  '.data',
-  '.next',
-  '.turbo',
-  'agent-evidence',
-]);
 
 const MONOREPO_ROOT = process.cwd().includes('/packages/server')
   ? path.resolve(process.cwd(), '../..')

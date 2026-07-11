@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SwarmOperationsService — capacity planning, runner manifests, governance evaluation.
  *

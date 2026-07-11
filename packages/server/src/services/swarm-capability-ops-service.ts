@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * SwarmCapabilityOpsService — capability lifecycle operations.
  *
@@ -6,7 +5,6 @@
  * capability registration, promotion, and evaluation logic.
  */
 
-import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { stringArray, normalizedScore, rejectSecretLike } from '../utils/swarm-helpers';
 

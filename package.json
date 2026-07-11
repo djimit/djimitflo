@@ -17,7 +17,7 @@
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "type-check": "npm run build --workspace=@djimitflo/shared && npm run type-check --workspaces --if-present",
+    "type-check": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present",
     "proof:test": "npm run test --workspace=@djimitflo/server -- proof-run-service.test.ts",
     "proof:lint": "npm run lint --workspace=@djimitflo/server",
     "proof:type-check": "npm run type-check --workspace=@djimitflo/server",
