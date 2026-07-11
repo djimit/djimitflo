@@ -685,14 +685,34 @@ export class ExecutionEngine {
 
     const metadata = (task.metadata || {}) as Record<string, unknown>;
     const mode = (metadata.executionMode as any) || 'standard';
-    const evidence: any[] = [];
+
+    // Collect actual evidence from database
+    const evidenceRows = this.db.prepare(
+      'SELECT evidence_type FROM execution_evidence WHERE task_id = ?'
+    ).all(taskId) as Array<{ evidence_type: string }>;
+    const evidence = evidenceRows.map((e) => e.evidence_type);
+
+    // Check which gates passed
+    const approvalRows = this.db.prepare(
+      'SELECT status FROM approvals WHERE task_id = ? AND status = ?'
+    ).all(taskId, 'approved') as Array<{ status: string }>;
+    const hasHumanApproval = approvalRows.length > 0;
+
+    // Check security gate (CodeGuardian scan present)
+    const hasSecurityScan = evidence.includes('repository_scan');
+    const hasTaskReview = evidence.includes('diff_summary');
+    const hasComplianceGate = evidence.includes('approval_decision');
+
     const gatesPassed: string[] = [];
-    const hasHumanApproval = false;
+    if (hasTaskReview) gatesPassed.push('task_review');
+    if (hasSecurityScan) gatesPassed.push('security_gate');
+    if (hasComplianceGate) gatesPassed.push('compliance_gate');
+
     const sandboxUsed = (metadata.sandbox as Record<string, unknown>)?.enabled === true;
 
     const result = this.executionModePolicy.shouldBlockMerge(
       mode as any,
-      evidence,
+      evidence as any[],
       gatesPassed,
       hasHumanApproval,
       sandboxUsed,
@@ -700,8 +720,8 @@ export class ExecutionEngine {
 
     return {
       compliant: !result.blocked,
-      missingEvidence: [],
-      missingGates: [],
+      missingEvidence: result.reasons.filter((r: string) => r.includes('evidence')),
+      missingGates: result.reasons.filter((r: string) => r.includes('gate')),
       reasons: result.reasons,
     };
   }
