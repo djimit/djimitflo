@@ -2,6 +2,8 @@
 node_modules/
 .pnp
 .pnp.js
+# workspace members share the root lock; nested locks are stray (Dependabot noise)
+packages/*/package-lock.json
 
 # Build output
 dist/
