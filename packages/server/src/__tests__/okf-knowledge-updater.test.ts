@@ -1,13 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 
 let db: Database.Database;
 let updater: OkfKnowledgeUpdater;
+let okfBase: string;
+const previousOkfBase = process.env.OKF_BASE;
 
 beforeEach(() => {
+  // Isolated writable OKF base so the updater doesn't depend on the repo
+  // knowledge symlink (which points outside the repo and is absent in CI).
+  okfBase = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-okf-updater-'));
+  fs.mkdirSync(path.join(okfBase, 'concepts'), { recursive: true });
+  process.env.OKF_BASE = okfBase;
+
   db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
@@ -17,6 +28,9 @@ beforeEach(() => {
 
 afterEach(() => {
   db?.close();
+  if (previousOkfBase) process.env.OKF_BASE = previousOkfBase;
+  else delete process.env.OKF_BASE;
+  if (okfBase) fs.rmSync(okfBase, { recursive: true, force: true });
 });
 
 describe('G100: OKF Knowledge Updater', () => {

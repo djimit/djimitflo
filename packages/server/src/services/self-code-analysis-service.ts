@@ -83,11 +83,12 @@ export class SelfCodeAnalysisService {
       } catch { /* skip */ }
     };
 
+    // Resolve from this file's location, not cwd or a hardcoded path, so the
+    // scan works in CI and in any checkout (repo root is four levels up).
+    const repoRoot = path.resolve(__dirname, '../../../..');
     const dirs = [
-      'packages/server/src',
-      'packages/shared/src',
-      '/Users/dlandman/djimitflo/packages/server/src',
-      '/Users/dlandman/djimitflo/packages/shared/src',
+      path.join(repoRoot, 'packages/server/src'),
+      path.join(repoRoot, 'packages/shared/src'),
     ];
     for (const dir of dirs) {
       try { scanDir(dir); } catch { /* skip */ }
