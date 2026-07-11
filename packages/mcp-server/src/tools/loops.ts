@@ -14,10 +14,10 @@ export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_list_loop_runs',
     {
       description: 'List recent loop runs with their status, loop name, and creation time',
-      inputSchema: z.object({
+      inputSchema: {
         limit: z.number().int().min(1).max(100).default(20).optional(),
         status: z.enum(['created', 'running', 'verifying', 'blocked', 'completed', 'escalated', 'failed']).optional(),
-      }),
+      },
     },
     async ({ limit = 20, status }) => {
       let query = 'SELECT id, loop_name, mode, status, created_at, updated_at, completed_at FROM loop_runs';
@@ -38,9 +38,9 @@ export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_get_loop_status',
     {
       description: 'Get detailed status of a loop run including gates, leases, and next actions',
-      inputSchema: z.object({
+      inputSchema: {
         runId: z.string().describe('The loop run ID'),
-      }),
+      },
     },
     async ({ runId }) => {
       const run = db.prepare('SELECT * FROM loop_runs WHERE id = ?').get(runId) as Record<string, unknown> | undefined;
@@ -73,7 +73,7 @@ export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_get_loop_catalog',
       {
         description: 'List available loop types (catalog of loop names and their descriptions)',
-        inputSchema: z.object({}),
+        inputSchema: {},
       },
     async () => {
       const catalog = [

@@ -1545,6 +1545,12 @@ class ApiClient {
     return this.request("/compliance/status");
   }
 
+  async getMetaStats(): Promise<{
+    totalDecisions: number; failuresPredicted: number; costSavingsDollars: number;
+  }> {
+    return this.request("/meta/stats");
+  }
+
 }
 
 export const api = new ApiClient();

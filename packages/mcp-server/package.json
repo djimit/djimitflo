@@ -21,7 +21,7 @@
   "dependencies": {
     "@djimitflo/shared": "*",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "zod": "^4.4.3"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

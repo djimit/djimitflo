@@ -75,7 +75,7 @@ export class BehavioralDetector {
     return null;
   }
 
-  private checkBeaconPattern(agentId: string, destination: string, metadata?: Record<string, unknown]): BehavioralSignal | null {
+  private checkBeaconPattern(agentId: string, destination: string, metadata?: Record<string, unknown>): BehavioralSignal | null {
     const events = this.outboundConnections.get(agentId) || [];
     if (events.length < 3) return null;
 

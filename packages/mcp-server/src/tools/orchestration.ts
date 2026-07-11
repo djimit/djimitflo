@@ -19,13 +19,13 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     'djimitflo_spawn_agent',
     {
       description: 'Spawn a sub-agent to handle a specific task with isolated context. The sub-agent gets its own context window, tool budget, and scratch space.',
-      inputSchema: z.object({
+      inputSchema: {
         task: z.string().describe('The task description for the sub-agent'),
         runtime: z.enum(['mock', 'codex', 'opencode', 'claude', 'gemini', 'editor']).default('mock').describe('Runtime to use for the sub-agent'),
         role: z.enum(['planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard']).default('maker').describe('Role of the sub-agent'),
         context_budget: z.number().int().min(500).max(100000).default(4000).describe('Token budget for the sub-agent context window'),
         parent_run_id: z.string().optional().describe('Parent loop run ID (if spawning from within a loop)'),
-      }),
+      },
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
       const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -64,12 +64,12 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     'djimitflo_handoff_agent',
     {
       description: 'Hand off work from one agent to another with context transfer. The receiving agent gets a summary of the work done so far.',
-      inputSchema: z.object({
+      inputSchema: {
         from_agent_id: z.string().describe('The agent ID that is handing off'),
         to_agent_id: z.string().describe('The agent ID that receives the work'),
         summary: z.string().describe('Summary of work completed and context for the receiving agent'),
         artifacts: z.array(z.string()).default([]).describe('List of artifact references (file paths, URLs, scratch keys)'),
-      }),
+      },
     },
     async ({ from_agent_id, to_agent_id, summary, artifacts }) => {
       // Update agent statuses
@@ -103,12 +103,12 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     'djimitflo_approve_action',
     {
       description: 'Request human approval for a high-risk action. Returns a pending approval that must be confirmed before the action proceeds.',
-      inputSchema: z.object({
+      inputSchema: {
         action: z.string().describe('The action requiring approval'),
         reason: z.string().describe('Why approval is needed'),
         risk_level: z.enum(['low', 'medium', 'high', 'critical']).describe('Risk level of the action'),
         context: z.record(z.unknown()).default({}).describe('Additional context for the approver'),
-      }),
+      },
     },
     async ({ action, reason, risk_level, context }) => {
       const approvalId = `approval-${Date.now()}`;
@@ -139,9 +139,9 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     'djimitflo_list_agents',
     {
       description: 'List all agents with their current status, capabilities, and active tasks',
-      inputSchema: z.object({
+      inputSchema: {
         status: z.enum(['idle', 'active', 'paused', 'error', 'offline', 'handoff_complete']).optional().describe('Filter by status'),
-      }),
+      },
     },
     async ({ status }) => {
       let query = 'SELECT id, name, description, status, capabilities, model, last_seen, created_at, updated_at FROM agents';

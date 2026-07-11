@@ -14,9 +14,9 @@ export function registerAgentTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_list_agents',
     {
       description: 'List registered agents with their status and capabilities',
-      inputSchema: z.object({
+      inputSchema: {
         status: z.enum(['idle', 'active', 'paused', 'error', 'offline']).optional(),
-      }),
+      },
     },
     async ({ status }) => {
       let query = 'SELECT id, name, status, agent_type, capabilities_json, last_seen FROM agents';
@@ -36,9 +36,9 @@ export function registerAgentTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_get_agent_status',
     {
       description: 'Get detailed status of a specific agent',
-      inputSchema: z.object({
+      inputSchema: {
         agentId: z.string().describe('The agent ID'),
-      }),
+      },
     },
     async ({ agentId }) => {
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId) as Record<string, unknown> | undefined;

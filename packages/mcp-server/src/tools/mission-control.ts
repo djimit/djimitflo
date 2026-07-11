@@ -14,7 +14,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
     'djimitflo_get_mission_control',
     {
       description: 'Get comprehensive mission control overview: active loops, pending goals, agent status, recent events',
-      inputSchema: z.object({}),
+      inputSchema: {},
     },
     async () => {
       const activeLoans = db.prepare("SELECT COUNT(*) as c FROM loop_runs WHERE status IN ('running','verifying')").get() as { c: number };
@@ -44,7 +44,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
     'djimitflo_get_system_health',
     {
       description: 'Get system health: database stats, table counts, recent errors',
-      inputSchema: z.object({}),
+      inputSchema: {},
     },
     async () => {
       const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{ name: string }>;

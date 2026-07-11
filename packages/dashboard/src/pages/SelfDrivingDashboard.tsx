@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { Brain, Zap, Shield, Database, TrendingUp, Activity, AlertTriangle, CheckCircle } from "lucide-react";
+import { Brain, Zap, Shield, Database, TrendingUp, Activity, CheckCircle } from "lucide-react";
 
 interface DashboardStats {
   cognitive: {
@@ -39,7 +39,7 @@ export function SelfDrivingDashboard() {
       api.getMemoryStats?.().catch(() => null),
       api.getMetaStats?.().catch(() => null),
       api.getComplianceStatus?.().catch(() => null),
-    ]).then(([cognitive, memory,, meta, compliance]: any) => {
+    ]).then(([cognitive, memory, meta, compliance]: any) => {
       setStats({
         cognitive: cognitive || { totalEpisodes: 0, totalPatterns: 0, totalStrategies: 0, overallSuccessRate: 0 },
         memory: memory || { total: 0, active: 0, candidates: 0, avgRelevance: 0, totalRelations: 0 },

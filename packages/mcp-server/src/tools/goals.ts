@@ -14,10 +14,10 @@ export function registerGoalTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_list_goals',
     {
       description: 'List goals with their status, risk class, and priority',
-      inputSchema: z.object({
+      inputSchema: {
         limit: z.number().int().min(1).max(100).default(20).optional(),
         status: z.enum(['created', 'approved', 'in_progress', 'completed', 'failed']).optional(),
-      }),
+      },
     },
     async ({ limit = 20, status }) => {
       let query = 'SELECT id, objective, status, risk_class, budget_json, created_at, updated_at FROM goals';
@@ -38,9 +38,9 @@ export function registerGoalTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_get_goal',
     {
       description: 'Get detailed information about a specific goal',
-      inputSchema: z.object({
+      inputSchema: {
         goalId: z.string().describe('The goal ID'),
-      }),
+      },
     },
     async ({ goalId }) => {
       const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId) as Record<string, unknown> | undefined;
