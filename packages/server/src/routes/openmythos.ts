@@ -20,8 +20,11 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // POST /api/openmythos/eval/:agentId — start evaluation run
   router.post('/eval/:agentId', requirePermission('write:governance'), async (req, res, next) => {
     try {
-      const { categories, model } = req.body || {};
-      const result = await evalService.runEval(req.params.agentId, categories, model);
+      const { categories, model, case_ids: caseIds } = req.body || {};
+      if (caseIds !== undefined && (!Array.isArray(caseIds) || caseIds.length > 500 || caseIds.some((id) => typeof id !== 'string' || !id.trim()))) {
+        throw createError(400, 'case_ids must be an array of at most 500 non-empty strings', 'VALIDATION_ERROR');
+      }
+      const result = await evalService.runEval(req.params.agentId, categories, model, caseIds);
       res.status(201).json(result);
     } catch (error) {
       next(error);

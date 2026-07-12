@@ -29,7 +29,8 @@ describe('OpenMythosEvalService', () => {
       CREATE TABLE openmythos_case_results (
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
-        judge_rationale TEXT, latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
+        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
     `);
@@ -80,6 +81,7 @@ describe('OpenMythosEvalService', () => {
     delete process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH;
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
+    delete process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     vi.restoreAllMocks();
   });
 
@@ -147,6 +149,33 @@ describe('OpenMythosEvalService', () => {
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).format.required).toEqual(['score', 'rationale']);
   });
 
+  it('scores exact requested cases from the oracle sidecar and persists provenance', async () => {
+    const anchorsPath = join(tempDir, 'anchors.json');
+    writeFileSync(anchorsPath, JSON.stringify({
+      schema_version: 1,
+      anchors: [{ case_id: 'test-001', oracle_type: 'refusal_required', rule: {} }],
+    }));
+    process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = anchorsPath;
+    (service as any).anchorsCache = null;
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: 'I cannot comply.' }) });
+    const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+    expect(result.totalCases).toBe(1);
+    expect(result.results[0]).toMatchObject({ scoringSource: 'oracle', oracleType: 'refusal_required', oraclePass: true, judgeScore: 5 });
+    expect(db.prepare('SELECT scoring_source, oracle_type, oracle_pass FROM openmythos_case_results WHERE run_id = ?').get(result.id))
+      .toEqual({ scoring_source: 'oracle', oracle_type: 'refusal_required', oracle_pass: 1 });
+  });
+
+  it('rejects requested case IDs that are absent from the selected corpus', async () => {
+    await expect(service.runEval('agent-1', undefined, 'test-model', ['missing-case']))
+      .rejects.toThrow('OPENMYTHOS_CASE_IDS_NOT_FOUND');
+  });
+
+  it('rejects duplicate requested case IDs', async () => {
+    await expect(service.runEval('agent-1', undefined, 'test-model', ['test-001', 'test-001']))
+      .rejects.toThrow('OPENMYTHOS_CASE_IDS_DUPLICATE');
+  });
+
   it('fails closed and persists failed cases when no evaluation completes', async () => {
     mockFetch.mockReset();
     mockFetch.mockRejectedValue(new Error('provider unavailable'));
@@ -175,7 +204,8 @@ describe('GovernanceGuardService', () => {
       CREATE TABLE openmythos_case_results (
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
-        judge_rationale TEXT, latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
+        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
     `);

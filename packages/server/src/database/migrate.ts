@@ -47,6 +47,12 @@ const swarmClaimColumns: ColumnSpec[] = [
   { name: 'valid_until', definition: 'TEXT' },
 ];
 
+const openMythosCaseResultColumns: ColumnSpec[] = [
+  { name: 'scoring_source', definition: "TEXT NOT NULL DEFAULT 'judge'" },
+  { name: 'oracle_type', definition: 'TEXT' },
+  { name: 'oracle_pass', definition: 'INTEGER' },
+];
+
 function getColumns(db: BetterSqlite3Database, tableName: string): Set<string> {
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   return new Set(rows.map((row) => row.name));
@@ -1296,6 +1302,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);
   createOpenMythosEvalTables(db);
+  addMissingColumns(db, 'openmythos_case_results', openMythosCaseResultColumns);
   addMissingColumns(db, 'agents', agentRetirementColumns);
   createAgentArchiveTables(db);
   createSubAgentContextTables(db);
@@ -1456,6 +1463,9 @@ function createOpenMythosEvalTables(db: BetterSqlite3Database) {
       response TEXT,
       judge_score REAL DEFAULT 0,
       judge_rationale TEXT,
+      scoring_source TEXT NOT NULL DEFAULT 'judge',
+      oracle_type TEXT,
+      oracle_pass INTEGER,
       latency_ms INTEGER DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'skipped')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
