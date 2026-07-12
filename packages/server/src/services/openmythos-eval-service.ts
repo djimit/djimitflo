@@ -66,7 +66,10 @@ export interface AgentScore {
 
 function getOllamaUrl(): string { return process.env.OLLAMA_URL || 'http://192.168.1.28:11434'; }
 function getJudgeModel(): string { return process.env.OPENMYTHOS_JUDGE_MODEL || 'qwen2.5:14b-instruct-q4_K_M'; }
-function getCorpusPath(): string { return process.env.OPENMYTHOS_CORPUS_PATH || '/Users/dlandman/OpenMythos/openmythos-benchmark/cases/corpus.jsonl'; }
+function getCorpusPath(): string {
+  if (!process.env.OPENMYTHOS_CORPUS_PATH?.trim()) throw new Error('OPENMYTHOS_CORPUS_PATH_REQUIRED');
+  return process.env.OPENMYTHOS_CORPUS_PATH.trim();
+}
 
 export class OpenMythosEvalService {
   private casesCache: OpenMythosCase[] | null = null;
@@ -80,6 +83,18 @@ export class OpenMythosEvalService {
       taskTimeoutMs: Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000'),
       maxRetries: 2,
     });
+  }
+
+  private resolveSubjectModel(agentId: string, requestedModel?: string): string {
+    if (requestedModel?.trim()) return requestedModel.trim();
+    try {
+      const agent = this.db.prepare('SELECT model FROM agents WHERE id = ?').get(agentId) as { model?: string } | undefined;
+      if (agent?.model?.trim()) return agent.model.trim();
+    } catch {
+      // Some isolated consumers do not have an agents table; explicit config still works.
+    }
+    if (process.env.OPENMYTHOS_AGENT_MODEL?.trim()) return process.env.OPENMYTHOS_AGENT_MODEL.trim();
+    throw new Error('OPENMYTHOS_SUBJECT_MODEL_REQUIRED');
   }
 
   /**
@@ -103,16 +118,18 @@ export class OpenMythosEvalService {
    * Run a full evaluation for an agent.
    * Uses WorkerPool for parallel case execution.
    */
-  async runEval(agentId: string, categories?: string[]): Promise<EvalRunResult> {
+  async runEval(agentId: string, categories?: string[], requestedModel?: string): Promise<EvalRunResult> {
+    const subjectModel = this.resolveSubjectModel(agentId, requestedModel);
     let cases = this.loadCases(categories);
+    if (cases.length === 0) throw new Error('OPENMYTHOS_NO_CASES');
     cases = this.filterDiscriminatingCases(cases);
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, categories_json, started_at)
-      VALUES (?, ?, 'running', ?, ?, ?)
-    `).run(runId, agentId, cases.length, JSON.stringify(categories || []), startedAt);
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, categories_json, metadata, started_at)
+      VALUES (?, ?, 'running', ?, ?, ?, ?)
+    `).run(runId, agentId, cases.length, JSON.stringify(categories || []), JSON.stringify({ subject_model: subjectModel }), startedAt);
 
     const results: CaseResult[] = [];
     let completed = 0;
@@ -120,7 +137,7 @@ export class OpenMythosEvalService {
 
     const tasks = cases.map((c, i) => ({ id: `${runId}-${i}`, input: c }));
     const workerResults = await this.workerPool.execute(tasks, (testCase) =>
-      this.runCase(testCase)
+      this.runCase(testCase, subjectModel)
     );
 
     for (const wr of workerResults) {
@@ -156,15 +173,30 @@ export class OpenMythosEvalService {
       });
     }
 
-    const overallScore = completed > 0 ? totalScore / completed : 0;
+    const overallScore = cases.length > 0 ? totalScore / cases.length : 0;
     const categoryScores = this.computeCategoryScores(results);
     const finishedAt = new Date().toISOString();
-
-    this.db.prepare(`
-      UPDATE openmythos_eval_runs
-      SET status = 'completed', finished_at = ?, completed_cases = ?, overall_score = ?
-      WHERE id = ?
-    `).run(finishedAt, completed, overallScore, runId);
+    const status: EvalRunResult['status'] = completed === 0 ? 'failed' : 'completed';
+    const persist = this.db.transaction(() => {
+      const insert = this.db.prepare(`
+        INSERT INTO openmythos_case_results (
+          id, run_id, case_id, category, difficulty, response, judge_score,
+          judge_rationale, latency_ms, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const result of results) {
+        insert.run(
+          randomUUID(), runId, result.caseId, result.category, result.difficulty,
+          result.response, result.judgeScore, result.judgeRationale, result.latencyMs, result.status,
+        );
+      }
+      this.db.prepare(`
+        UPDATE openmythos_eval_runs
+        SET status = ?, finished_at = ?, completed_cases = ?, overall_score = ?, metadata = ?
+        WHERE id = ?
+      `).run(status, finishedAt, completed, overallScore, JSON.stringify({ subject_model: subjectModel, category_scores: categoryScores }), runId);
+    });
+    persist();
 
     swarmEventBus.emit('eval:run:complete', {
       runId,
@@ -173,13 +205,13 @@ export class OpenMythosEvalService {
       categoryScores,
       completedCases: completed,
       totalCases: cases.length,
-      status: 'completed',
+      status,
     });
 
     return {
       id: runId,
       agentId,
-      status: 'completed',
+      status,
       totalCases: cases.length,
       completedCases: completed,
       overallScore,
@@ -193,9 +225,9 @@ export class OpenMythosEvalService {
   /**
    * Run a single case: send prompt to agent, get response, judge it.
    */
-  private async runCase(testCase: OpenMythosCase): Promise<CaseResult> {
+  private async runCase(testCase: OpenMythosCase, subjectModel: string): Promise<CaseResult> {
     const startTime = Date.now();
-    const agentResponse = await this.getAgentResponse(testCase.prompt);
+    const agentResponse = await this.getAgentResponse(testCase.prompt, subjectModel);
     const judgment = await this.judgeResponse(testCase, agentResponse);
     const latencyMs = Date.now() - startTime;
 
@@ -214,12 +246,12 @@ export class OpenMythosEvalService {
   /**
    * Send a prompt to the agent via Ollama and get its response.
    */
-  private async getAgentResponse(prompt: string): Promise<string> {
+  private async getAgentResponse(prompt: string, subjectModel: string): Promise<string> {
     const response = await fetch(`${getOllamaUrl()}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: process.env.OPENMYTHOS_AGENT_MODEL || 'qwen2.5:14b',
+        model: subjectModel,
         prompt,
         stream: false,
         options: { temperature: 0.7, num_predict: 1024 },
@@ -341,7 +373,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
    */
   getAgentScore(agentId: string): AgentScore | null {
     const run = this.db.prepare(`
-      SELECT id, overall_score, categories_json, completed_cases, finished_at
+      SELECT id, overall_score, completed_cases, finished_at, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed'
       ORDER BY finished_at DESC
@@ -364,10 +396,11 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       else if (diff < -0.1) trend = 'declining';
     }
 
+    const metadata = JSON.parse(run.metadata || '{}') as { category_scores?: Record<string, number> };
     return {
       agentId,
       overallScore: run.overall_score,
-      categoryScores: JSON.parse(run.categories_json || '{}'),
+      categoryScores: metadata.category_scores || {},
       totalCases: run.completed_cases,
       lastEvalAt: run.finished_at,
       trend,
@@ -466,9 +499,8 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
   private computeCategoryScores(results: CaseResult[]): Record<string, number> {
     const byCategory: Record<string, { total: number; count: number }> = {};
     for (const r of results) {
-      if (r.status !== 'completed') continue;
       if (!byCategory[r.category]) byCategory[r.category] = { total: 0, count: 0 };
-      byCategory[r.category].total += r.judgeScore;
+      byCategory[r.category].total += r.status === 'completed' ? r.judgeScore : 0;
       byCategory[r.category].count++;
     }
     const scores: Record<string, number> = {};

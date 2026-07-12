@@ -96,6 +96,7 @@ export class GymGovernanceCurriculum {
   async runPhaseEvaluation(
     skillId: string,
     phase: number,
+    model?: string,
   ): Promise<CurriculumResult> {
     const phaseConfig = CURRICULUM_PHASES.find((p) => p.phase === phase);
     if (!phaseConfig) {
@@ -104,7 +105,7 @@ export class GymGovernanceCurriculum {
 
     const { OpenMythosEvalService } = await import('./openmythos-eval-service');
     const evalService = new OpenMythosEvalService(this.db);
-    const result = await evalService.runEval(skillId, phaseConfig.categories);
+    const result = await evalService.runEval(skillId, phaseConfig.categories, model);
 
     const passed = result.overallScore >= phaseConfig.minScore;
     const recommendations = this.generateRecommendations(result.categoryScores, phaseConfig);
@@ -128,6 +129,7 @@ export class GymGovernanceCurriculum {
     autonomy_level?: string;
     risk_class?: string;
     complexity?: string;
+    model?: string;
   }): Promise<{
     skillId: string;
     results: CurriculumResult[];
@@ -138,7 +140,7 @@ export class GymGovernanceCurriculum {
     const results: CurriculumResult[] = [];
 
     for (const phaseConfig of phases) {
-      const result = await this.runPhaseEvaluation(skill.id, phaseConfig.phase);
+      const result = await this.runPhaseEvaluation(skill.id, phaseConfig.phase, skill.model);
       results.push(result);
 
       // Stop if a phase is failed (must pass current before advancing)
@@ -203,6 +205,7 @@ export class GymGovernanceCurriculum {
     autonomy_level?: string;
     risk_class?: string;
     complexity?: string;
+    model?: string;
   }): Promise<{
     skillId: string;
     stillCertified: boolean;
@@ -288,5 +291,4 @@ export class GymGovernanceCurriculum {
     );
   }
 }
-
 

@@ -64,7 +64,7 @@ describe('AgentAssuranceService Governance', () => {
   });
 
   it('runGovernanceEval stores result with openmythos_benchmark source', async () => {
-    const result = await service.runGovernanceEval('agent-1');
+    const result = await service.runGovernanceEval('agent-1', undefined, 'test-model');
     expect(result.evalId).toBeDefined();
     expect(result.overallScore).toBeGreaterThan(0);
 
@@ -74,7 +74,7 @@ describe('AgentAssuranceService Governance', () => {
   });
 
   it('getGovernanceTrend returns historical scores', async () => {
-    await service.runGovernanceEval('agent-1');
+    await service.runGovernanceEval('agent-1', undefined, 'test-model');
     const trend = service.getGovernanceTrend('agent-1');
     expect(trend.length).toBeGreaterThan(0);
     expect(trend[0].score).toBeGreaterThan(0);
@@ -99,7 +99,7 @@ describe('AgentAssuranceService Governance', () => {
   });
 
   it('generateGovernanceReport returns structured report', async () => {
-    await service.runGovernanceEval('agent-1');
+    await service.runGovernanceEval('agent-1', undefined, 'test-model');
     const report = await service.generateGovernanceReport('agent-1');
     expect(report.agentId).toBe('agent-1');
     expect(report.status).toMatch(/pass|warn|fail/);

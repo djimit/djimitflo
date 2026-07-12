@@ -95,11 +95,16 @@ describe('OpenMythosEvalService', () => {
   });
 
   it('runs evaluation and computes scores', async () => {
-    const result = await service.runEval('agent-1');
+    const result = await service.runEval('agent-1', undefined, 'test-model');
     expect(result.status).toBe('completed');
     expect(result.totalCases).toBe(3);
     expect(result.overallScore).toBeGreaterThan(0);
     expect(result.categoryScores).toBeDefined();
+    expect(mockFetch.mock.calls.every((call) => JSON.parse(call[1].body).model === 'test-model')).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ?').get(result.id)).toEqual({ count: 3 });
+    const stored = db.prepare('SELECT categories_json, metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
+    expect(JSON.parse(stored.categories_json)).toEqual([]);
+    expect(JSON.parse(stored.metadata)).toMatchObject({ subject_model: 'test-model', category_scores: result.categoryScores });
   });
 
   it('returns null for agent with no evaluations', () => {
@@ -108,7 +113,7 @@ describe('OpenMythosEvalService', () => {
   });
 
   it('returns agent score after evaluation', async () => {
-    await service.runEval('agent-1');
+    await service.runEval('agent-1', undefined, 'test-model');
     const score = service.getAgentScore('agent-1');
     expect(score).toBeDefined();
     expect(score?.agentId).toBe('agent-1');
@@ -116,11 +121,28 @@ describe('OpenMythosEvalService', () => {
   });
 
   it('generates a governance report', async () => {
-    await service.runEval('agent-1');
+    await service.runEval('agent-1', undefined, 'test-model');
     const report = service.generateReport('agent-1');
     expect(report.agentId).toBe('agent-1');
     expect(report.overallScore).toBeGreaterThan(0);
     expect(report.recommendations).toBeDefined();
+  });
+
+  it('requires an explicit, registered, or configured subject model', async () => {
+    const configured = process.env.OPENMYTHOS_AGENT_MODEL;
+    delete process.env.OPENMYTHOS_AGENT_MODEL;
+    await expect(service.runEval('unregistered-agent')).rejects.toThrow('OPENMYTHOS_SUBJECT_MODEL_REQUIRED');
+    if (configured) process.env.OPENMYTHOS_AGENT_MODEL = configured;
+  });
+
+  it('fails closed and persists failed cases when no evaluation completes', async () => {
+    mockFetch.mockReset();
+    mockFetch.mockRejectedValue(new Error('provider unavailable'));
+    const result = await service.runEval('agent-1', undefined, 'test-model');
+    expect(result.status).toBe('failed');
+    expect(result.completedCases).toBe(0);
+    expect(result.overallScore).toBe(0);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ? AND status = ?').get(result.id, 'failed')).toEqual({ count: 3 });
   });
 });
 
@@ -175,5 +197,15 @@ describe('GovernanceGuardService', () => {
 
   it('getLatestScore returns 0 for unevaluated skill', () => {
     expect(guardService.getLatestScore('new-skill')).toBe(0);
+  });
+
+  it('blocks when evaluation evidence is incomplete', async () => {
+    (guardService as any).evalService.runEval = vi.fn().mockResolvedValue({
+      id: 'run-1', agentId: 'skill-1', status: 'failed', totalCases: 3, completedCases: 0,
+      overallScore: 0, categoryScores: {}, results: [], startedAt: '', finishedAt: '',
+    });
+    const result = await guardService.runBenchmarkCheck('skill-1', { model: 'test-model' });
+    expect(result.blocked).toBe(true);
+    expect(result.approved).toBe(false);
   });
 });

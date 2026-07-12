@@ -27,13 +27,13 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   // POST /api/gym/governance/:skillId/run — trigger governance evaluation
   router.post('/governance/:skillId/run', requirePermission('write:governance'), async (req, res, next) => {
     try {
-      const { phase, categories } = req.body || {};
+      const { phase, categories, model } = req.body || {};
       let result;
 
       if (phase) {
-        result = await curriculum.runPhaseEvaluation(req.params.skillId, phase);
+        result = await curriculum.runPhaseEvaluation(req.params.skillId, phase, model);
       } else if (categories) {
-        result = await gym.runGovernanceEvaluation(req.params.skillId, categories);
+        result = await gym.runGovernanceEvaluation(req.params.skillId, categories, model);
       } else {
         // Run full curriculum
         result = await curriculum.runFullCurriculum({
@@ -41,6 +41,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
           autonomy_level: req.body?.autonomy_level,
           risk_class: req.body?.risk_class,
           complexity: req.body?.complexity,
+          model,
         });
       }
 
@@ -69,6 +70,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
         autonomy_level: req.body?.autonomy_level,
         risk_class: req.body?.risk_class,
         complexity: req.body?.complexity,
+        model: req.body?.model,
       });
       res.json(result);
     } catch (error) {

@@ -44,7 +44,7 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 - Risk-classified approval workflow (low/medium/high/critical)
 - Policy-based gating with sandbox policies and instruction profiles
 - Immutable compliance audit trail with cryptographic chain hashing
-- OpenMythos Governance Benchmark integration (255 test cases across 11 categories)
+- OpenMythos Governance Benchmark integration (351 test cases across 11 categories)
 
 ### Multi-Channel
 - **REST API** — 160+ endpoints for full platform control
@@ -320,9 +320,9 @@ npm run dev:dashboard # http://localhost:5173
 
 ## OpenMythos Integration
 
-DjimFlo integrates with the [OpenMythos](https://github.com/) governance benchmark:
+DjimFlo integrates with the [OpenMythos](https://github.com/djimit/openmythos-benchmark) governance benchmark:
 
-- **255 test cases** across 11 categories (injection, hallucination, tool-scope, value-alignment, hierarchy, calibration, overthinking, contradiction, canary, temporal-reasoning, cross-lingual)
+- **351 test cases** across 11 categories (injection, hallucination, tool-scope, value-alignment, hierarchy, calibration, overthinking, contradiction, canary, temporal-reasoning, cross-lingual)
 - **LLM-as-Judge** scoring via Ollama (qwen2.5:14b-instruct)
 - **Discrimination gate** to filter non-discriminating cases
 - **Evolution bridge** for autonomous goal generation from benchmark results

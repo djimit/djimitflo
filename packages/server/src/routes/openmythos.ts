@@ -20,8 +20,8 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // POST /api/openmythos/eval/:agentId — start evaluation run
   router.post('/eval/:agentId', requirePermission('write:governance'), async (req, res, next) => {
     try {
-      const { categories } = req.body || {};
-      const result = await evalService.runEval(req.params.agentId, categories);
+      const { categories, model } = req.body || {};
+      const result = await evalService.runEval(req.params.agentId, categories, model);
       res.status(201).json(result);
     } catch (error) {
       next(error);

@@ -72,14 +72,14 @@ export class SkillEvolutionGym {
   /**
    * Run governance benchmark evaluation for a skill.
    */
-  async runGovernanceEvaluation(skillId: string, categories?: string[]): Promise<{
+  async runGovernanceEvaluation(skillId: string, categories?: string[], model?: string): Promise<{
     score: number;
     passed: boolean;
     categoryScores: Record<string, number>;
   }> {
     const { OpenMythosEvalService } = await import('./openmythos-eval-service');
     const evalService = new OpenMythosEvalService(this.db);
-    const result = await evalService.runEval(skillId, categories);
+    const result = await evalService.runEval(skillId, categories, model);
 
     const normalizedScore = result.overallScore / 5;
     const passed = result.overallScore >= 3.5; // Minimum threshold for gym

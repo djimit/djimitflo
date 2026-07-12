@@ -79,7 +79,7 @@ describe('GymGovernanceCurriculum', () => {
   });
 
   it('runs phase evaluation', async () => {
-    const result = await curriculum.runPhaseEvaluation('skill-1', 1);
+    const result = await curriculum.runPhaseEvaluation('skill-1', 1, 'test-model');
     expect(result.skillId).toBe('skill-1');
     expect(result.phase).toBe(1);
     expect(result.overallScore).toBeGreaterThan(0);
@@ -87,23 +87,23 @@ describe('GymGovernanceCurriculum', () => {
   });
 
   it('runs full curriculum', async () => {
-    const result = await curriculum.runFullCurriculum({ id: 'skill-1', complexity: 'simple' });
+    const result = await curriculum.runFullCurriculum({ id: 'skill-1', complexity: 'simple', model: 'test-model' });
     expect(result.skillId).toBe('skill-1');
     expect(result.results.length).toBeGreaterThan(0);
     expect(typeof result.certified).toBe('boolean');
   });
 
   it('gets skill status', async () => {
-    await curriculum.runPhaseEvaluation('skill-1', 1);
+    await curriculum.runPhaseEvaluation('skill-1', 1, 'test-model');
     // Force store certification by running full curriculum
-    await curriculum.runFullCurriculum({ id: 'skill-1', complexity: 'autonomous' });
+    await curriculum.runFullCurriculum({ id: 'skill-1', complexity: 'autonomous', model: 'test-model' });
     const status = curriculum.getSkillStatus('skill-1');
     expect(status.skillId).toBe('skill-1');
     expect(status.currentPhase).toBeGreaterThanOrEqual(1);
   });
 
   it('retests skill', async () => {
-    const result = await curriculum.retestSkill({ id: 'skill-1', complexity: 'simple' });
+    const result = await curriculum.retestSkill({ id: 'skill-1', complexity: 'simple', model: 'test-model' });
     expect(result.skillId).toBe('skill-1');
     expect(typeof result.stillCertified).toBe('boolean');
     expect(typeof result.previousStatus).toBe('boolean');
@@ -163,7 +163,7 @@ describe('SkillEvolutionGym Governance', () => {
   });
 
   it('runGovernanceEvaluation stores result with governance type', async () => {
-    const result = await gym.runGovernanceEvaluation('skill-1');
+    const result = await gym.runGovernanceEvaluation('skill-1', undefined, 'test-model');
     expect(result.score).toBeGreaterThan(0);
     expect(typeof result.passed).toBe('boolean');
 
@@ -172,7 +172,7 @@ describe('SkillEvolutionGym Governance', () => {
   });
 
   it('getGovernanceHistory returns historical scores', async () => {
-    await gym.runGovernanceEvaluation('skill-1');
+    await gym.runGovernanceEvaluation('skill-1', undefined, 'test-model');
     const history = gym.getGovernanceHistory('skill-1');
     expect(history.length).toBeGreaterThan(0);
     expect(history[0].score).toBeGreaterThan(0);

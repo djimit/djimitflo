@@ -390,7 +390,7 @@ export class AgentAssuranceService {
    * Run a governance evaluation for an agent using OpenMythos benchmark.
    * Stores result in agent_eval_runs with source='openmythos_benchmark'.
    */
-  async runGovernanceEval(agentId: string, categories?: string[]): Promise<{
+  async runGovernanceEval(agentId: string, categories?: string[], model?: string): Promise<{
     evalId: string;
     overallScore: number;
     categoryScores: Record<string, number>;
@@ -398,7 +398,7 @@ export class AgentAssuranceService {
   }> {
     const { OpenMythosEvalService } = await import('./openmythos-eval-service');
     const evalService = new OpenMythosEvalService(this.db);
-    const result = await evalService.runEval(agentId, categories);
+    const result = await evalService.runEval(agentId, categories, model);
 
     // Convert 0-5 scale to 0-1 scale for internal consistency
     const normalizedScore = result.overallScore / 5;

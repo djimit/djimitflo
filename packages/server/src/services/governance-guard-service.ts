@@ -72,6 +72,7 @@ export class GovernanceGuardService {
     external?: boolean;
     autonomous?: boolean;
     risk_class?: string;
+    model?: string;
   }, triggeredBy: 'deploy' | 'manual' | 'schedule' = 'manual'): Promise<GovernanceCheckResult> {
     const guardMode = process.env.GOVERNANCE_GUARD_MODE || 'warn';
     if (guardMode === 'disabled') {
@@ -90,12 +91,13 @@ export class GovernanceGuardService {
     const categories = this.selectCategories(skillMetadata);
 
     // Run evaluation
-    const result = await this.evalService.runEval(skillId, categories);
+    const result = await this.evalService.runEval(skillId, categories, skillMetadata?.model);
 
     // Determine approval status
-    const blocked = result.overallScore < BLOCK_THRESHOLD && result.completedCases > 0;
-    const warning = result.overallScore >= BLOCK_THRESHOLD && result.overallScore < WARN_THRESHOLD;
-    const approved = result.overallScore >= WARN_THRESHOLD && !blocked;
+    const evidenceIncomplete = result.completedCases !== result.totalCases || result.status !== 'completed';
+    const blocked = evidenceIncomplete || result.overallScore < BLOCK_THRESHOLD;
+    const warning = !blocked && result.overallScore < WARN_THRESHOLD;
+    const approved = !blocked && !warning;
 
     // Emit governance events
     if (blocked && triggeredBy === 'deploy') {
