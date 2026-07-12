@@ -30,10 +30,7 @@ export function DashboardPage() {
 
   // Calculate uptime
   const uptimeHours = Math.floor(systemHealth.uptime_ms / 1000 / 60 / 60);
-  const uptimePercent = '99.9'; // Mock for now
-
-  // Memory usage (mock)
-  const memoryPercent = 42;
+  const memoryMb = Math.round(systemHealth.memory_usage_mb || 0);
 
   return (
     <div className="p-8 space-y-8">
@@ -104,13 +101,13 @@ export function DashboardPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <HealthMetric
             label="Uptime"
-            value={uptimeHours > 0 ? `${uptimeHours}h (${uptimePercent}%)` : `${uptimePercent}%`}
+            value={uptimeHours > 0 ? `${uptimeHours}h` : '<1h'}
             status="healthy"
           />
           <HealthMetric
             label="Memory Usage"
-            value={`${memoryPercent}%`}
-            status={memoryPercent > 80 ? 'warning' : 'healthy'}
+            value={`${memoryMb} MB`}
+            status={memoryMb > 500 ? 'warning' : 'healthy'}
           />
           <HealthMetric
             label="Active Agents"

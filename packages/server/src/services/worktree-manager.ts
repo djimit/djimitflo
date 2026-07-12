@@ -80,6 +80,7 @@ export class WorktreeManager {
 
     const resolvedWorktreePath = path.resolve(worktreePath);
     const resolvedRepositoryPath = path.resolve(repositoryPath);
+    let copied = 0;
 
     for (const relativePath of untracked) {
       if (relativePath.includes('..')) continue;
@@ -92,8 +93,10 @@ export class WorktreeManager {
       if (!stat.isFile()) continue;
       mkdirSync(path.dirname(targetFile), { recursive: true });
       copyFileSync(sourceFile, targetFile);
+      copied += 1;
     }
 
+    if (copied === 0) return;
     this.git(worktreePath, ['add', '.']);
     this.git(worktreePath, ['commit', '-m', 'Snapshot untracked source files into worker worktree', '--no-verify']);
   }

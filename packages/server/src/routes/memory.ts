@@ -91,10 +91,5 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
     res.json(result);
   });
 
-  // GET /api/memory/stats — memory statistics
-  router.get('/stats', requirePermission('read:evidence'), (_req, res) => {
-    res.json(service.getStats());
-  });
-
   return router;
 }

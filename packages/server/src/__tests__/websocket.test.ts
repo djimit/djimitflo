@@ -53,8 +53,10 @@ describe('WebSocketService', () => {
   describe('authenticateConnection', () => {
     it('rejects connection with no token', () => {
       const req = mockReq('/ws');
-      const result = wsService.authenticateConnection(req);
+      const ws = createMockWs();
+      const result = wsService.authenticateConnection(req, ws);
       expect(result).toBeNull();
+      expect(ws.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_REQUIRED, 'Authentication failed');
     });
 
     it('rejects connection with invalid token', () => {

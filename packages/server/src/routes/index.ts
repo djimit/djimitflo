@@ -4,6 +4,8 @@
 
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
+import { execFileSync } from 'child_process';
+import { hostname } from 'os';
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
 import { createCatalogRoutes } from './catalog';
@@ -123,30 +125,12 @@ export function createRoutes(
   // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
   router.use('/federation', requireAuth, createFederationRoutes(db, auth!));
 
-  // D2: workstation URLs — live ss -tlnp scan
+  // D2: runtime URLs — use the host OS' native listener inventory.
   router.get('/workstation/urls', requireAuth, (_req: any, res: any) => {
     try {
-      const { execFileSync } = require('child_process');
-      const output = execFileSync('ss', ['-tlnp'], { encoding: 'utf8', timeout: 5000 });
-      const lines = output.trim().split('\n').slice(1); // skip header
-      const ports = lines.map((line: string) => {
-        const match = line.match(/\S+\s+\S+\s+\S+\s+([\d.]+):(\d+)\s+/);
-        const pidMatch = line.match(/pid=(\d+)/);
-        const usersMatch = line.match(/users:\(\("([^"]+)"/);
-        if (match) {
-          return {
-            address: match[1],
-            port: parseInt(match[2]),
-            pid: pidMatch ? parseInt(pidMatch[1]) : null,
-            process: usersMatch ? usersMatch[1] : 'unknown',
-            bind: match[1] === '0.0.0.0' || match[1] === '*' ? 'LAN' : 'Localhost',
-          };
-        }
-        return null;
-      }).filter(Boolean);
-      res.json({ ports });
+      res.json({ host: hostname(), platform: process.platform, ports: scanListeningPorts() });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to scan workstation ports' });
+      res.status(503).json({ error: error instanceof Error ? error.message : 'Failed to scan listening ports' });
     }
   });
 
@@ -187,7 +171,7 @@ export function createRoutes(
   router.use('/legal', requireAuth, createLegalRoutes(db, auth));
   router.use('/research', requireAuth, createResearchRoutes(db, auth));
   router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
-  router.use('/telegram', createTelegramRoutes(db));
+  router.use('/telegram', createTelegramRoutes(db, auth));
   router.use('/apex', requireAuth, createApexRoutes(db, auth));
   router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
   router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
@@ -197,4 +181,40 @@ export function createRoutes(
   router.use('/meta', requireAuth, createMetaOrchestrationRoutes(db, auth, metaOrchestration));
 
   return router;
+}
+
+export function scanListeningPorts(): Array<{ address: string; port: number; pid: number | null; process: string; bind: string }> {
+  if (process.platform === 'darwin') {
+    const output = execFileSync('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], { encoding: 'utf8', timeout: 5_000 });
+    return output.trim().split('\n').slice(1).flatMap((line) => {
+      const columns = line.trim().split(/\s+/);
+      const match = line.match(/TCP\s+(.+):(\d+)\s+\(LISTEN\)$/);
+      if (!match) return [];
+      const address = match[1];
+      return [{
+        address,
+        port: Number(match[2]),
+        pid: Number(columns[1]) || null,
+        process: columns[0] || 'unknown',
+        bind: address === '*' || address === '0.0.0.0' || address === '[::]' ? 'LAN' : 'Localhost',
+      }];
+    });
+  }
+  if (process.platform === 'linux') {
+    const output = execFileSync('ss', ['-H', '-tlnp'], { encoding: 'utf8', timeout: 5_000 });
+    return output.trim().split('\n').flatMap((line) => {
+      const match = line.match(/\s(\S+):(\d+)\s+/);
+      if (!match) return [];
+      const processName = line.match(/users:\(\("([^"]+)"/)?.[1] || 'unknown';
+      const address = match[1];
+      return [{
+        address,
+        port: Number(match[2]),
+        pid: Number(line.match(/pid=(\d+)/)?.[1]) || null,
+        process: processName,
+        bind: address === '*' || address === '0.0.0.0' || address === '[::]' ? 'LAN' : 'Localhost',
+      }];
+    });
+  }
+  throw new Error(`Listening-port discovery is unsupported on ${process.platform}`);
 }

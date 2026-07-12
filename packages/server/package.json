@@ -19,17 +19,17 @@
     "demo:proof": "tsx src/scripts/swarm-demo-proof.ts"
   },
   "dependencies": {
-    "@djimitflo/telegram": "*",
+    "@djimitflo/agent-catalog": "*",
     "@djimitflo/shared": "*",
+    "@djimitflo/telegram": "*",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
-    "express": "^5.2.1",
+    "express": "^4.22.2",
     "jsonwebtoken": "^9.0.3",
     "tar-stream": "^2.2.0",
     "ws": "^8.20.1",
-    "zod": "^4.4.3",
-    "@djimitflo/agent-catalog": "*"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

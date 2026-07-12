@@ -17,7 +17,7 @@ interface AuthState {
 }
 
 async function apiRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+  const API_BASE = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_BASE || '/api';
   const token = localStorage.getItem(AUTH_SESSION_KEY);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) {

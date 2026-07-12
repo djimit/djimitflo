@@ -18,7 +18,7 @@ export function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="bg-background-secondary border border-border rounded-lg p-8">
           <div className="flex items-center justify-center gap-3 mb-2">
@@ -31,10 +31,11 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground-secondary mb-1">
+              <label htmlFor="login-email" className="block text-sm font-medium text-foreground-secondary mb-1">
                 Email
               </label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -46,10 +47,11 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground-secondary mb-1">
+              <label htmlFor="login-password" className="block text-sm font-medium text-foreground-secondary mb-1">
                 Password
               </label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

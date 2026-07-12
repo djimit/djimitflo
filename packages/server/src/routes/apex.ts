@@ -91,13 +91,17 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // ─── LLM Router ──────────────────────────────────────────────────────
-  router.post('/llm/route', requirePermission('read:evidence'), (req, res) => {
-    const decision = llm.route(req.body);
-    res.json(decision);
+  router.post('/llm/route', requirePermission('read:evidence'), async (req, res, next) => {
+    try {
+      await llm.refreshProviderHealth();
+      res.json(llm.route(req.body));
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.get('/llm/providers', requirePermission('read:evidence'), (_req, res) => {
-    res.json({ providers: llm.getProviderHealth() });
+  router.get('/llm/providers', requirePermission('read:evidence'), async (_req, res) => {
+    res.json({ providers: await llm.refreshProviderHealth() });
   });
 
   router.get('/llm/stats', requirePermission('read:evidence'), (_req, res) => {

@@ -96,17 +96,23 @@ export function SwarmMissionControlPage() {
     setLoading(true);
     setError(null);
     try {
-      const [missionControl, capabilityList, claimList, knowledgeRuntime] = await Promise.all([
+      const [missionResult, capabilitiesResult, claimsResult, knowledgeResult] = await Promise.allSettled([
         api.getSwarmMissionControl(),
         api.getSwarmCapabilities(50),
         api.getSwarmClaims(50),
         api.getKnowledgeRuntime(),
       ]);
-      setMission(missionControl);
-      setCapacity(missionControl.capacity);
-      setCapabilities(asArray<SwarmCapabilityRecord>(capabilityList.capabilities));
-      setClaims(asArray<ClaimLedgerRecord>(claimList.claims));
-      setKnowledge(knowledgeRuntime);
+      if (missionResult.status === 'fulfilled') {
+        setMission(missionResult.value);
+        setCapacity(missionResult.value.capacity);
+      }
+      if (capabilitiesResult.status === 'fulfilled') setCapabilities(asArray<SwarmCapabilityRecord>(capabilitiesResult.value.capabilities));
+      if (claimsResult.status === 'fulfilled') setClaims(asArray<ClaimLedgerRecord>(claimsResult.value.claims));
+      if (knowledgeResult.status === 'fulfilled') setKnowledge(knowledgeResult.value);
+      const failures = [missionResult, capabilitiesResult, claimsResult, knowledgeResult]
+        .filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+      if (failures.length === 4) throw failures[0].reason;
+      if (failures.length > 0) setError(`${failures.length} data source${failures.length === 1 ? '' : 's'} unavailable`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load swarm mission control');
     } finally {

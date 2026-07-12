@@ -49,3 +49,13 @@
 | Dashboard AGI views | 2 | **4** | +2 |
 | Database indexes | 130 | **140** | +10 |
 | Build | clean | **clean** | ✅ |
+
+## Phase 6 — Repository-Wide Correctness Audit (Complete, 2026-07-12)
+
+- [x] 6.1 Restore the combined production server, SPA fallback, auth-protected WebSocket, and same-origin production API contracts
+- [x] 6.2 Replace simulated integration health with explicit configured, disabled, healthy, and unavailable states
+- [x] 6.3 Restore mission-control API contracts, authenticated SSE, Telegram configuration checks, MCP refresh probes, and cross-platform runtime URL discovery
+- [x] 6.4 Correct model-routing, predictive analytics, skill evolution, vector-memory, and swarm execution semantics; add deterministic AI correctness tests
+- [x] 6.5 Make the dashboard responsive, remove fabricated metrics, align displayed versions, and split secondary pages into production chunks
+- [x] 6.6 Validate the production build in a real browser on desktop and 390x844 mobile; browser console clean
+- [x] 6.7 Validate the complete repository: lint, type-check, build, 1,289 passing tests, dependency tree, zero audit vulnerabilities, and no production source maps

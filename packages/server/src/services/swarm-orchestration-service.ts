@@ -87,26 +87,7 @@ export class SwarmOrchestrationService {
   executeSession(sessionId: string): void {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('SWARM_SESSION_NOT_FOUND');
-
-    session.status = 'executing';
-
-    // Find ready sub-tasks (all dependencies completed)
-    const readyTasks = this.getReadySubtasks(session);
-
-    for (const task of readyTasks) {
-      // Find best agent for this task
-      const agentId = this.findBestAgent(task);
-      if (!agentId) continue;
-
-      task.status = 'assigned';
-      task.assignedAgent = agentId;
-      session.agentPool.push(agentId);
-
-      // Execute (async — doesn't block)
-      this.executeSubTask(sessionId, task.id, agentId);
-    }
-
-    this.db.prepare("UPDATE swarm_sessions SET status = 'executing' WHERE id = ?").run(sessionId);
+    throw new Error('SWARM_RUNTIME_EXECUTOR_NOT_CONFIGURED');
   }
 
   /**
@@ -226,49 +207,6 @@ export class SwarmOrchestrationService {
       priority,
       createdAt: now,
     }];
-  }
-
-  private getReadySubtasks(session: SwarmSession): SubTask[] {
-    const completedIds = new Set(
-      session.subtasks.filter((t) => t.status === 'completed').map((t) => t.id)
-    );
-
-    return session.subtasks.filter((task) => {
-      if (task.status !== 'pending') return false;
-      // All dependencies must be completed
-      return task.dependencies.every((depId) => completedIds.has(depId));
-    });
-  }
-
-  private findBestAgent(task: SubTask): string | null {
-    // Find available agent with matching capabilities
-    // For v1, return a mock agent; v2 will use capability matching
-    return `agent-${task.priority}-${task.title.slice(0, 20)}`;
-  }
-
-  private async executeSubTask(sessionId: string, taskId: string, agentId: string): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-
-    const task = session.subtasks.find((t) => t.id === taskId);
-    if (!task) return;
-
-    task.status = 'running';
-
-    // Simulate execution (v2 will spawn actual agent processes)
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    task.status = 'completed';
-    task.completedAt = new Date().toISOString();
-    task.result = { agent: agentId, output: 'Task completed successfully' };
-
-    // Check if all subtasks are done
-    const allDone = session.subtasks.every((t) => t.status === 'completed' || t.status === 'failed');
-    if (allDone) {
-      session.status = 'completed';
-      session.completedAt = new Date().toISOString();
-      this.db.prepare("UPDATE swarm_sessions SET status = 'completed', completed_at = ? WHERE id = ?").run(session.completedAt, sessionId);
-    }
   }
 
   private ensureTables(): void {

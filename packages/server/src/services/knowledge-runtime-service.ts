@@ -296,7 +296,7 @@ export class KnowledgeRuntimeService {
   }
 
   private validateOkf(okfBase: string): KnowledgeRuntimeHealth['validate_okf'] {
-    const repo = path.resolve(okfBase, '..');
+    const repo = path.dirname(fs.realpathSync(okfBase));
     const script = path.join(repo, 'tools', 'validate_okf.py');
     if (!fs.existsSync(script)) return { status: 'skipped', command: null, stdout: '', stderr: 'tools/validate_okf.py not found' };
     try {

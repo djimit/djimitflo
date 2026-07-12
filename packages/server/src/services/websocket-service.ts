@@ -27,7 +27,7 @@ export class WebSocketService {
 
   private setupServer() {
     this.wss.on('connection', (ws: WebSocket, req: any) => {
-      const client = this.authenticateConnection(req);
+      const client = this.authenticateConnection(req, ws);
       if (!client) {
         return;
       }
@@ -59,7 +59,7 @@ export class WebSocketService {
     });
   }
 
-  authenticateConnection(req: any): AuthenticatedClient | null {
+  authenticateConnection(req: any, ws?: WebSocket): AuthenticatedClient | null {
     const url = req?.url || '';
     let token: string | null = null;
 
@@ -72,24 +72,24 @@ export class WebSocketService {
     }
 
     if (!token) {
-      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_REQUIRED);
+      this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_REQUIRED);
       return null;
     }
 
     const payload = this.authService.verifyToken(token);
     if (!payload) {
-      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_INVALID);
+      this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_INVALID);
       return null;
     }
 
     if (payload.exp && payload.exp < Date.now() / 1000) {
-      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_EXPIRED);
+      this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_EXPIRED);
       return null;
     }
 
     const user = this.authService.findUserById(payload.sub);
     if (!user || !user.isActive) {
-      this.rejectPendingConnection(req, WS_CLOSE_CODES.AUTH_INVALID);
+      this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_INVALID);
       return null;
     }
 
@@ -101,11 +101,8 @@ export class WebSocketService {
     };
   }
 
-  private rejectPendingConnection(req: any, code: number) {
-    const ws = req?.ws;
-    if (ws && typeof ws.close === 'function') {
-      ws.close(code, 'Authentication failed');
-    }
+  private rejectPendingConnection(ws: WebSocket | undefined, code: number) {
+    ws?.close(code, 'Authentication failed');
   }
 
   send(client: WebSocket, message: WebSocketMessage) {

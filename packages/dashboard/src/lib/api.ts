@@ -29,7 +29,7 @@ import type {
   ExportRequest,
 } from '@djimitflo/shared';
 
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+export const API_BASE = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_BASE || '/api';
 
 const AUTH_SESSION_KEY = 'djimitflo_auth_session';
 
@@ -845,7 +845,7 @@ class ApiClient {
 
   // MCP
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
-    return this.request('/mcp/servers');
+    return this.request('/mcp/servers?refresh=true');
   }
 
   async getMCPTools(serverId?: string): Promise<{ tools: MCPTool[] }> {

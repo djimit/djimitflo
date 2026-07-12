@@ -15,7 +15,7 @@
  * - Reproduction: Create new skills from successful patterns
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 interface SkillGenome {
@@ -35,8 +35,20 @@ interface SkillGenome {
   createdAt: string;
 }
 
+function seededRandom(seed?: string): () => number {
+  if (!seed) return Math.random;
+  let state = createHash('sha256').update(seed).digest().readUInt32LE(0);
+  return () => {
+    state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0;
+    return state / 0x1_0000_0000;
+  };
+}
+
 export class SkillEvolutionEngine {
-  constructor(private db: Database) {
+  private random: () => number;
+
+  constructor(private db: Database, random?: () => number) {
+    this.random = random || seededRandom(process.env.SKILL_EVOLUTION_SEED);
     this.ensureTables();
   }
 
@@ -84,7 +96,14 @@ export class SkillEvolutionEngine {
     // Keep top 50% (elitism)
     const sorted = [...currentGenomes].sort((a, b) => b.fitness - a.fitness);
     const elite = sorted.slice(0, Math.ceil(sorted.length / 2));
-    nextGen.push(...elite);
+    nextGen.push(...elite.map((genome) => ({
+      ...genome,
+      id: randomUUID(),
+      generation: genome.generation + 1,
+      parents: [genome.id],
+      mutations: [],
+      createdAt: new Date().toISOString(),
+    })));
 
     // Crossover: combine top performers
     for (let i = 0; i < elite.length - 1; i += 2) {
@@ -94,7 +113,7 @@ export class SkillEvolutionEngine {
 
     // Mutation: randomly modify some skills
     for (const genome of nextGen) {
-      if (Math.random() < 0.3) {
+      if (this.random() < 0.3) {
         this.mutate(genome);
       }
     }
@@ -187,11 +206,11 @@ export class SkillEvolutionEngine {
       generation: parent1.generation + 1,
       parents: [parent1.id, parent2.id],
       traits: {
-        efficiency: Math.random() < 0.5 ? parent1.traits.efficiency : parent2.traits.efficiency,
-        reliability: Math.random() < 0.5 ? parent1.traits.reliability : parent2.traits.reliability,
-        generality: Math.random() < 0.5 ? parent1.traits.generality : parent2.traits.generality,
-        complexity: Math.random() < 0.5 ? parent1.traits.complexity : parent2.traits.complexity,
-        adaptability: Math.random() < 0.5 ? parent1.traits.adaptability : parent2.traits.adaptability,
+        efficiency: this.random() < 0.5 ? parent1.traits.efficiency : parent2.traits.efficiency,
+        reliability: this.random() < 0.5 ? parent1.traits.reliability : parent2.traits.reliability,
+        generality: this.random() < 0.5 ? parent1.traits.generality : parent2.traits.generality,
+        complexity: this.random() < 0.5 ? parent1.traits.complexity : parent2.traits.complexity,
+        adaptability: this.random() < 0.5 ? parent1.traits.adaptability : parent2.traits.adaptability,
       },
       fitness: 0,
       mutations: [],
@@ -204,10 +223,10 @@ export class SkillEvolutionEngine {
 
   private mutate(genome: SkillGenome): void {
     const traits = ['efficiency', 'reliability', 'generality', 'complexity', 'adaptability'] as const;
-    const traitToMutate = traits[Math.floor(Math.random() * traits.length)];
+    const traitToMutate = traits[Math.floor(this.random() * traits.length)];
 
     // Small random adjustment (±0.1)
-    const adjustment = (Math.random() - 0.5) * 0.2;
+    const adjustment = (this.random() - 0.5) * 0.2;
     genome.traits[traitToMutate] = Math.max(0, Math.min(1, genome.traits[traitToMutate] + adjustment));
 
     genome.mutations.push(`mutated ${traitToMutate} by ${adjustment.toFixed(2)}`);

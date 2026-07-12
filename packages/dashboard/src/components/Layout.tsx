@@ -1,22 +1,34 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Settings, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain } from 'lucide-react';
+import { Activity, ListTodo, Users, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => setMobileNavOpen(false), [location.pathname]);
   
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
   };
   
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
+      {mobileNavOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-30 bg-black/60 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+        />
+      )}
       {/* Sidebar */}
-      <aside className="w-64 bg-background-secondary border-r border-border flex flex-col">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-background-secondary transition-transform md:static md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo */}
-        <div className="p-6 border-b border-border">
+        <div className="flex items-start justify-between border-b border-border p-6">
+          <div>
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <Activity className="w-6 h-6 text-accent" />
             Djimitflo
@@ -24,10 +36,14 @@ export function Layout() {
           <p className="text-sm text-foreground-tertiary mt-1">
             Agent Control Plane
           </p>
+          </div>
+          <button type="button" aria-label="Close navigation" className="p-1 text-foreground-secondary md:hidden" onClick={() => setMobileNavOpen(false)}>
+            <X className="h-5 w-5" />
+          </button>
         </div>
         
         {/* Navigation */}
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
           <NavLink
             to="/"
             icon={<Activity className="w-5 h-5" />}
@@ -115,7 +131,7 @@ export function Layout() {
           <NavLink
             to="/workstation-urls"
             icon={<Network className="w-5 h-5" />}
-            label="Workstation URLs"
+            label="Runtime URLs"
             active={isActive('/workstation-urls')}
           />
           <NavLink
@@ -164,12 +180,6 @@ export function Layout() {
               <div className="text-xs text-foreground-tertiary capitalize">{user.role}</div>
             </div>
           )}
-          <NavLink
-            to="/settings"
-            icon={<Settings className="w-5 h-5" />}
-            label="Settings"
-            active={isActive('/settings')}
-          />
           <button
             onClick={logout}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-foreground-secondary hover:bg-background-elevated hover:text-foreground transition-colors"
@@ -178,15 +188,23 @@ export function Layout() {
             <span className="font-medium">Sign out</span>
           </button>
           <div className="mt-4 text-xs text-foreground-muted">
-            v0.5.2 • {new Date().getFullYear()}
+            v{import.meta.env.VITE_APP_VERSION} • {new Date().getFullYear()}
           </div>
         </div>
       </aside>
       
       {/* Main content */}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center border-b border-border bg-background-secondary px-4 md:hidden">
+          <button type="button" aria-label="Open navigation" className="p-2 text-foreground" onClick={() => setMobileNavOpen(true)}>
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="ml-2 font-semibold text-foreground">Djimitflo</span>
+        </header>
+        <main className="min-w-0 flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

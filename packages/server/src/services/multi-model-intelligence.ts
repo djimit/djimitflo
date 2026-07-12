@@ -72,12 +72,12 @@ export class MultiModelIntelligence {
       provider: input.provider,
       capabilities: (input.capabilities || []).map((c) => ({
         taskType: c.taskType,
-        successRate: c.successRate || 0.5,
+        successRate: c.successRate ?? 0.5,
         avgScore: 0,
         sampleCount: 0,
         lastEvaluated: new Date().toISOString(),
       })),
-      costPerMtok: input.costPerMtok || 2.0,
+      costPerMtok: input.costPerMtok ?? 2.0,
       avgLatencyMs: 0,
       status: 'active',
     };
@@ -122,9 +122,11 @@ export class MultiModelIntelligence {
     // Score models by: success rate, cost efficiency, latency
     const scored = models.map((model) => {
       const taskCap = model.capabilities.find((c) => c.taskType === input.taskType);
-      const successScore = taskCap?.successRate || 0;
+      const successScore = taskCap?.successRate ?? 0;
       const costScore = input.maxCost ? Math.max(0, 1 - (model.costPerMtok / input.maxCost)) : 0.5;
-      const latencyScore = input.preferLowLatency ? 0.3 : 0;
+      const latencyScore = input.preferLowLatency && model.avgLatencyMs > 0
+        ? 1 / (1 + model.avgLatencyMs / 1_000)
+        : 0;
 
       const totalScore = (successScore * 0.6) + (costScore * 0.2) + (latencyScore * 0.2);
 
@@ -138,7 +140,7 @@ export class MultiModelIntelligence {
       id: randomUUID(),
       taskType: input.taskType,
       selectedModel: selected.model.modelId,
-      reason: `Best success rate (${((selected.taskCap?.successRate || 0) * 100).toFixed(0)}%) for ${input.taskType}`,
+      reason: `Best measured score (${((selected.taskCap?.successRate ?? 0) * 100).toFixed(0)}% success) for ${input.taskType}`,
       alternatives: scored.slice(1, 4).map((s) => s.model.modelId),
       confidence: selected.score,
       timestamp: new Date().toISOString(),
@@ -181,23 +183,29 @@ export class MultiModelIntelligence {
       cap.sampleCount++;
       cap.lastEvaluated = new Date().toISOString();
 
-      if (input.score) {
+      if (input.score !== undefined) {
         cap.avgScore = (cap.avgScore * (cap.sampleCount - 1) + input.score) / cap.sampleCount;
       }
     } else {
       model.capabilities.push({
         taskType: input.taskType,
         successRate: input.success ? 1 : 0,
-        avgScore: input.score || 0,
+        avgScore: input.score ?? 0,
         sampleCount: 1,
         lastEvaluated: new Date().toISOString(),
       });
     }
 
+    if (input.latencyMs !== undefined) {
+      model.avgLatencyMs = model.avgLatencyMs > 0
+        ? Math.round(model.avgLatencyMs * 0.7 + input.latencyMs * 0.3)
+        : input.latencyMs;
+    }
+
     // Update DB
     this.db.prepare(`
-      UPDATE model_capabilities SET capabilities_json = ?, updated_at = ? WHERE model_id = ?
-    `).run(JSON.stringify(model.capabilities), new Date().toISOString(), input.modelId);
+      UPDATE model_capabilities SET capabilities_json = ?, avg_latency_ms = ?, updated_at = ? WHERE model_id = ?
+    `).run(JSON.stringify(model.capabilities), model.avgLatencyMs, new Date().toISOString(), input.modelId);
 
     // Store outcome
     this.db.prepare(`
@@ -206,7 +214,7 @@ export class MultiModelIntelligence {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), input.modelId, input.taskType, input.success ? 1 : 0,
-      input.score || null, input.latencyMs || null, input.costDollars || null,
+      input.score ?? null, input.latencyMs ?? null, input.costDollars ?? null,
       new Date().toISOString(),
     );
   }

@@ -240,6 +240,7 @@ describe('Apex Integration Tests', () => {
     });
 
     it('routes coding tasks to optimal provider', () => {
+      service.recordPerformance({ provider: 'ollama', taskType: 'coding', latencyMs: 100, success: true });
       const decision = service.route({ taskType: 'coding', prompt: 'Write a function' });
       expect(decision.provider).toBeDefined();
       expect(decision.model).toBeDefined();
@@ -247,6 +248,7 @@ describe('Apex Integration Tests', () => {
     });
 
     it('routes analysis tasks', () => {
+      service.recordPerformance({ provider: 'ollama', taskType: 'analysis', latencyMs: 100, success: true });
       const decision = service.route({ taskType: 'analysis', prompt: 'Analyze this code' });
       expect(decision.provider).toBeDefined();
     });
@@ -273,7 +275,7 @@ describe('Apex Integration Tests', () => {
     it('provides stats', () => {
       const stats = service.getStats();
       expect(stats.totalProviders).toBe(5);
-      expect(stats.activeProviders).toBeGreaterThan(0);
+      expect(stats.activeProviders).toBe(0);
     });
   });
 
@@ -293,14 +295,13 @@ describe('Apex Integration Tests', () => {
       expect(session.subtasks.length).toBeGreaterThan(0);
     });
 
-    it('executes a swarm session', () => {
+    it('does not report simulated swarm execution as real work', () => {
       const session = service.createSession('Simple task');
-      expect(() => service.executeSession(session.id)).not.toThrow();
+      expect(() => service.executeSession(session.id)).toThrow('SWARM_RUNTIME_EXECUTOR_NOT_CONFIGURED');
     });
 
     it('tracks progress', () => {
       const session = service.createSession('Build something complex with multiple parts');
-      service.executeSession(session.id);
 
       const progress = service.getProgress(session.id);
       expect(progress.totalSubtasks).toBeGreaterThan(0);

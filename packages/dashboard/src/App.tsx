@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -6,38 +6,39 @@ import { WebSocketProvider } from './components/WebSocketProvider';
 import { GlobalErrorBoundary } from './components/GlobalErrorBoundary';
 import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
-import { TaskDetailPage } from './pages/TaskDetailPage';
 import { AgentsPage } from './pages/AgentsPage';
-import { SwarmOverviewPage } from './pages/SwarmOverviewPage';
-import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
-import { PolicyCenterPage } from './pages/PolicyCenterPage';
-import { MCPPermissionsPage } from './pages/MCPPermissionsPage';
-import { ObservabilityPage } from './pages/ObservabilityPage';
-import { ReviewPage } from './pages/ReviewPage';
-import { AuditPage } from './pages/AuditPage';
-import { RepositoriesPage } from './pages/RepositoriesPage';
-import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
-import { GoalsLoopsPage } from './pages/GoalsLoopsPage';
-import { FleetCockpitPage } from './pages/FleetCockpitPage';
-import { SwarmResourcesPage } from './pages/SwarmResourcesPage';
-import { SwarmMissionControlPage } from './pages/SwarmMissionControlPage';
-import { ProofRunDetailPage } from './pages/ProofRunDetailPage';
 import { LoginPage } from './pages/LoginPage';
-import { UsagePage } from './pages/UsagePage';
-import { WorkstationUrlsPage } from './pages/WorkstationUrlsPage';
-import { EconomyPage } from './pages/EconomyPage';
-import { PipelineBuilderPage } from './pages/PipelineBuilderPage';
-import { FederationPage } from './pages/FederationPage';
-import { AgentCatalogPage } from './pages/AgentCatalogPage';
-import { AgiReasoningPage } from './pages/AgiReasoningPage';
-import { ConsensusDebatePage } from './pages/ConsensusDebatePage';
-import { PredictiveAnalyticsPage } from './pages/PredictiveAnalyticsPage';
-import { SelfHealingPage } from './pages/SelfHealingPage';
-import { CognitiveRuntimePage } from './pages/CognitiveRuntimePage';
-import { SelfDrivingDashboard } from './pages/SelfDrivingDashboard';
 import { useStore } from './lib/store';
 import { useAuthStore } from './lib/auth-store';
 import { api } from './lib/api';
+
+const AgentCatalogPage = lazy(() => import('./pages/AgentCatalogPage').then((module) => ({ default: module.AgentCatalogPage })));
+const AgiReasoningPage = lazy(() => import('./pages/AgiReasoningPage').then((module) => ({ default: module.AgiReasoningPage })));
+const ConsensusDebatePage = lazy(() => import('./pages/ConsensusDebatePage').then((module) => ({ default: module.ConsensusDebatePage })));
+const PredictiveAnalyticsPage = lazy(() => import('./pages/PredictiveAnalyticsPage').then((module) => ({ default: module.PredictiveAnalyticsPage })));
+const SelfHealingPage = lazy(() => import('./pages/SelfHealingPage').then((module) => ({ default: module.SelfHealingPage })));
+const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').then((module) => ({ default: module.CognitiveRuntimePage })));
+const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
+const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
+const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
+const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
+const PolicyCenterPage = lazy(() => import('./pages/PolicyCenterPage').then((module) => ({ default: module.PolicyCenterPage })));
+const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then((module) => ({ default: module.MCPPermissionsPage })));
+const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
+const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
+const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })));
+const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
+const RepositoryDetailPage = lazy(() => import('./pages/RepositoryDetailPage').then((module) => ({ default: module.RepositoryDetailPage })));
+const GoalsLoopsPage = lazy(() => import('./pages/GoalsLoopsPage').then((module) => ({ default: module.GoalsLoopsPage })));
+const FleetCockpitPage = lazy(() => import('./pages/FleetCockpitPage').then((module) => ({ default: module.FleetCockpitPage })));
+const SwarmResourcesPage = lazy(() => import('./pages/SwarmResourcesPage').then((module) => ({ default: module.SwarmResourcesPage })));
+const SwarmMissionControlPage = lazy(() => import('./pages/SwarmMissionControlPage').then((module) => ({ default: module.SwarmMissionControlPage })));
+const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
+const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
+const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').then((module) => ({ default: module.WorkstationUrlsPage })));
+const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
+const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
+const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -71,6 +72,7 @@ export function App() {
   return (
     <GlobalErrorBoundary>
     <BrowserRouter>
+      <Suspense fallback={<div className="p-8 text-foreground-secondary">Loading...</div>}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={
@@ -114,7 +116,7 @@ export function App() {
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
         </Route>
       </Routes>
-    
+      </Suspense>
     </BrowserRouter>
     </GlobalErrorBoundary>
   );

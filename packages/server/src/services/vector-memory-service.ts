@@ -1,9 +1,8 @@
 /**
- * VectorMemoryService — semantic memory with Ollama embeddings + self-learning feedback.
+ * VectorMemoryService — local hash-vector memory with self-learning feedback.
  *
  * Features:
- * - Ollama nomic-embed-text embeddings (784d) when OLLAMA_EMBEDDINGS_ENABLED=true
- * - Hash-based fallback (128d) for offline mode
+ * - Deterministic hash embeddings (128d)
  * - Thompson Sampling bandit for result re-ranking (self-learning)
  * - Hybrid search: dense cosine + sparse BM25 with RRF fusion
  * - Memory clustering for topic discovery
@@ -37,14 +36,10 @@ interface BanditState {
 }
 
 const HASH_DIM = 128;
-const OLLAMA_DIM = 768; // nomic-embed-text = 768d
 const MAX_MEMORIES = 10000;
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://192.168.1.28:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
-const EMBEDDINGS_ENABLED = process.env.OLLAMA_EMBEDDINGS_ENABLED === 'true';
 
 function detectDim(embedding: number[]): number {
-  return embedding.length > 0 ? embedding.length : (EMBEDDINGS_ENABLED ? OLLAMA_DIM : HASH_DIM);
+  return embedding.length > 0 ? embedding.length : HASH_DIM;
 }
 
 export class VectorMemoryService {
@@ -235,7 +230,7 @@ export class VectorMemoryService {
       oldestMemory: memories.length > 0
         ? memories.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0].id
         : null,
-      embeddingMode: EMBEDDINGS_ENABLED ? `ollama:${OLLAMA_MODEL}` : 'hash-based',
+      embeddingMode: 'hash-based',
       feedbackCount: feedbackRows,
     };
   }
@@ -247,9 +242,7 @@ export class VectorMemoryService {
     const cached = this.embeddingCache.get(cacheKey);
     if (cached) return cached;
 
-    const embedding = EMBEDDINGS_ENABLED
-      ? this.generateOllamaEmbedding(text)
-      : this.generateHashEmbedding(text);
+    const embedding = this.generateHashEmbedding(text);
 
     // Cache last 500 embeddings
     if (this.embeddingCache.size > 500) {
@@ -260,37 +253,8 @@ export class VectorMemoryService {
     return embedding;
   }
 
-  private generateOllamaEmbedding(text: string): number[] {
-    try {
-      // Synchronous HTTP via fetch with keepalive — best effort
-      // For production, batch embeddings; for v1, use hash fallback on failure
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
-
-      // Use deasync-free approach: try sync via child_process spawnSync
-      const { spawnSync } = require('child_process');
-      const result = spawnSync('curl', [
-        '-s', '-X', 'POST',
-        `${OLLAMA_URL}/api/embeddings`,
-        '-H', 'Content-Type: application/json',
-        '-d', JSON.stringify({ model: OLLAMA_MODEL, prompt: text.slice(0, 2048) }),
-      ], { timeout: 3000, encoding: 'utf8' });
-
-      clearTimeout(timeout);
-
-      if (result.status === 0 && result.stdout) {
-        const parsed = JSON.parse(result.stdout);
-        if (parsed.embedding && Array.isArray(parsed.embedding)) {
-          return parsed.embedding;
-        }
-      }
-    } catch { /* fallback to hash */ }
-
-    return this.generateHashEmbedding(text);
-  }
-
   private generateHashEmbedding(text: string): number[] {
-    const dim = EMBEDDINGS_ENABLED ? OLLAMA_DIM : HASH_DIM;
+    const dim = HASH_DIM;
     const embedding: number[] = new Array(dim).fill(0);
     const words = text.toLowerCase().split(/\s+/);
 
@@ -363,7 +327,7 @@ export class VectorMemoryService {
 
   private detectIndexDim(): number {
     const first = this.index.values().next().value;
-    return first ? first.embedding.length : (EMBEDDINGS_ENABLED ? OLLAMA_DIM : HASH_DIM);
+    return first ? first.embedding.length : HASH_DIM;
   }
 
   private evictOldest(): void {

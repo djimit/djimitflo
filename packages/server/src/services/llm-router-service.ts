@@ -22,7 +22,7 @@ interface ProviderConfig {
   capabilities: string[];
   costPerMtok: number;
   avgLatencyMs: number;
-  status: 'active' | 'degraded' | 'offline';
+  status: 'unknown' | 'active' | 'degraded' | 'offline';
   lastHealthCheck: string;
 }
 
@@ -43,11 +43,11 @@ interface RoutingDecision {
 }
 
 const DEFAULT_PROVIDERS: ProviderConfig[] = [
-  { name: 'anthropic', model: 'claude-sonnet-4-20250514', baseUrl: 'https://api.anthropic.com/v1', apiKeyEnv: 'ANTHROPIC_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 3.0, avgLatencyMs: 2000, status: 'active', lastHealthCheck: '' },
-  { name: 'openai', model: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative'], costPerMtok: 2.5, avgLatencyMs: 1500, status: 'active', lastHealthCheck: '' },
-  { name: 'google', model: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1', apiKeyEnv: 'GOOGLE_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 1.25, avgLatencyMs: 1800, status: 'active', lastHealthCheck: '' },
-  { name: 'ollama', model: 'qwen2.5:14b-instruct-q4_K_M', baseUrl: process.env.OLLAMA_URL || 'http://192.168.1.28:11434', apiKeyEnv: '', capabilities: ['coding', 'analysis', 'reasoning', 'chat'], costPerMtok: 0, avgLatencyMs: 3000, status: 'active', lastHealthCheck: '' },
-  { name: 'litellm', model: 'workstation-litellm/coding', baseUrl: process.env.LITELLM_URL || 'http://192.168.1.28:4000/v1', apiKeyEnv: 'LITELLM_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative', 'embedding'], costPerMtok: 1.0, avgLatencyMs: 1200, status: 'active', lastHealthCheck: '' },
+  { name: 'anthropic', model: 'claude-sonnet-4-20250514', baseUrl: 'https://api.anthropic.com/v1', apiKeyEnv: 'ANTHROPIC_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 3.0, avgLatencyMs: 2000, status: 'unknown', lastHealthCheck: '' },
+  { name: 'openai', model: 'gpt-4o', baseUrl: 'https://api.openai.com/v1', apiKeyEnv: 'OPENAI_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative'], costPerMtok: 2.5, avgLatencyMs: 1500, status: 'unknown', lastHealthCheck: '' },
+  { name: 'google', model: 'gemini-2.5-pro', baseUrl: 'https://generativelanguage.googleapis.com/v1', apiKeyEnv: 'GOOGLE_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'creative'], costPerMtok: 1.25, avgLatencyMs: 1800, status: 'unknown', lastHealthCheck: '' },
+  { name: 'ollama', model: 'qwen2.5:14b-instruct-q4_K_M', baseUrl: process.env.OLLAMA_URL || 'http://192.168.1.28:11434', apiKeyEnv: '', capabilities: ['coding', 'analysis', 'reasoning', 'chat'], costPerMtok: 0, avgLatencyMs: 3000, status: 'unknown', lastHealthCheck: '' },
+  { name: 'litellm', model: 'workstation-litellm/coding', baseUrl: process.env.LITELLM_URL || 'http://192.168.1.28:4000/v1', apiKeyEnv: 'LITELLM_API_KEY', capabilities: ['coding', 'analysis', 'reasoning', 'chat', 'creative', 'embedding'], costPerMtok: 1.0, avgLatencyMs: 1200, status: 'unknown', lastHealthCheck: '' },
 ];
 
 export class LlmRouterService {
@@ -76,7 +76,7 @@ export class LlmRouterService {
     // Cascade hint: use model suggested by MultiModelIntelligence cascade
     if (cascadeHint?.modelId) {
       const provider = this.findProviderByModelId(cascadeHint.modelId);
-      if (provider && provider.status !== 'offline') {
+      if (provider?.status === 'active') {
         return {
           provider: provider.name,
           model: provider.model,
@@ -94,7 +94,7 @@ export class LlmRouterService {
     // Find first healthy candidate
     for (const providerName of candidates) {
       const provider = this.providers.get(providerName);
-      if (!provider || provider.status === 'offline') continue;
+      if (!provider || provider.status !== 'active') continue;
 
       // Check if API key is available (skip for Ollama)
       if (provider.apiKeyEnv && !process.env[provider.apiKeyEnv]) continue;
@@ -102,20 +102,13 @@ export class LlmRouterService {
       return {
         provider: provider.name,
         model: provider.model,
-        reason: `Selected ${provider.name} for ${request.taskType} (latency: ${provider.avgLatencyMs}ms, cost: $${provider.costPerMtok}/Mtok)`,
+        reason: `Selected ${provider.name} for ${request.taskType} (${provider.status}; measured latency: ${provider.avgLatencyMs}ms, cost: $${provider.costPerMtok}/Mtok)`,
         estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok,
         estimatedLatencyMs: provider.avgLatencyMs,
       };
     }
 
-    // Fallback to LiteLLM
-    return {
-      provider: 'litellm',
-      model: 'workstation-litellm/coding',
-      reason: 'Fallback: no healthy primary provider available',
-      estimatedCost: 0.001,
-      estimatedLatencyMs: 1500,
-    };
+    throw new Error('LLM_PROVIDER_UNAVAILABLE');
   }
 
   /**
@@ -138,7 +131,7 @@ export class LlmRouterService {
     // Update status based on success
     if (!input.success) {
       provider.status = 'degraded';
-    } else if (provider.status === 'degraded') {
+    } else if (provider.status !== 'active') {
       provider.status = 'active';
     }
 
@@ -165,8 +158,38 @@ export class LlmRouterService {
   getProviderHealth(): Array<ProviderConfig & { available: boolean }> {
     return Array.from(this.providers.values()).map((provider) => ({
       ...provider,
-      available: provider.status !== 'offline' && (!provider.apiKeyEnv || !!process.env[provider.apiKeyEnv]),
+      available: provider.status === 'active' && (!provider.apiKeyEnv || !!process.env[provider.apiKeyEnv]),
     }));
+  }
+
+  async refreshProviderHealth(): Promise<Array<ProviderConfig & { available: boolean }>> {
+    await Promise.all(Array.from(this.providers.values()).map(async (provider) => {
+      const apiKey = provider.apiKeyEnv ? process.env[provider.apiKeyEnv] : undefined;
+      if (provider.apiKeyEnv && !apiKey) {
+        provider.status = 'offline';
+        provider.lastHealthCheck = new Date().toISOString();
+        return;
+      }
+      const paths: Record<LlmProvider, string> = {
+        anthropic: '/models', openai: '/models', google: '/models', ollama: '/api/tags', litellm: '/models',
+      };
+      const headers: Record<string, string> = {};
+      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+      if (provider.name === 'anthropic' && apiKey) {
+        headers['x-api-key'] = apiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      }
+      let url = `${provider.baseUrl.replace(/\/$/, '')}${paths[provider.name]}`;
+      if (provider.name === 'google' && apiKey) url += `?key=${encodeURIComponent(apiKey)}`;
+      try {
+        const response = await fetch(url, { headers, signal: AbortSignal.timeout(2_000) });
+        provider.status = response.ok ? 'active' : 'degraded';
+      } catch {
+        provider.status = 'offline';
+      }
+      provider.lastHealthCheck = new Date().toISOString();
+    }));
+    return this.getProviderHealth();
   }
 
   /**

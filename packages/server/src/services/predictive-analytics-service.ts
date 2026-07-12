@@ -42,7 +42,7 @@ export class PredictiveAnalyticsService {
     mode: string;
     estimatedFindings?: number;
   }): Prediction {
-    const historical = this.getHistoricalData(input.goalType, input.runtime);
+    const historical = this.getHistoricalData(input.goalType || '', input.runtime || '', input.mode || '');
 
     // Calculate success probability
     const successRate = historical.length > 0
@@ -64,7 +64,7 @@ export class PredictiveAnalyticsService {
     const riskFactors = this.identifyRiskFactors(input, historical);
 
     // Generate recommendations
-    const recommendations = this.generateRecommendations(input, historical, riskFactors);
+    const recommendations = this.generateRecommendations(input, historical, riskFactors, successRate);
 
     // Calculate confidence based on data availability
     const confidence = Math.min(0.9, historical.length / 10);
@@ -87,9 +87,9 @@ export class PredictiveAnalyticsService {
 
     // Pattern by goal type
     const goalTypes = this.db.prepare(`
-      SELECT json_extract(metadata_json, '$.goal_type') as goal_type, COUNT(*) as count
+      SELECT json_extract(metadata, '$.goal_type') as goal_type, COUNT(*) as count
       FROM loop_runs
-      WHERE metadata_json IS NOT NULL
+      WHERE metadata IS NOT NULL
       GROUP BY goal_type
     `).all() as any[];
 
@@ -101,7 +101,7 @@ export class PredictiveAnalyticsService {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as successes,
           AVG(CASE WHEN completed_at IS NOT NULL THEN (julianday(completed_at) - julianday(created_at)) * 86400000 ELSE NULL END) as avg_duration
         FROM loop_runs
-        WHERE json_extract(metadata_json, '$.goal_type') = ?
+        WHERE json_extract(metadata, '$.goal_type') = ?
       `).get(gt.goal_type) as any;
 
       patterns.push({
@@ -162,7 +162,7 @@ export class PredictiveAnalyticsService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private getHistoricalData(_goalType: string, _runtime: string): Array<{
+  private getHistoricalData(goalType: string, runtime: string, mode: string): Array<{
     status: string;
     durationMs: number;
     totalCost: number;
@@ -175,14 +175,24 @@ export class PredictiveAnalyticsService {
           THEN (julianday(lr.completed_at) - julianday(lr.created_at)) * 86400000
           ELSE NULL END as duration_ms,
         COALESCE((
-          SELECT SUM(json_extract(wl.metadata, '$.total_tokens'))
+          SELECT SUM(COALESCE(
+            json_extract(wl.metadata, '$.runtime_usage.total_tokens'),
+            json_extract(wl.metadata, '$.total_tokens'),
+            0
+          ))
           FROM worker_leases wl
           WHERE wl.loop_run_id = lr.id
         ), 0) as total_tokens
       FROM loop_runs lr
+      WHERE (? = '' OR json_extract(lr.metadata, '$.goal_type') = ?)
+        AND (? = '' OR lr.mode = ?)
+        AND (? = '' OR EXISTS (
+          SELECT 1 FROM worker_leases runtime_lease
+          WHERE runtime_lease.loop_run_id = lr.id AND runtime_lease.runtime = ?
+        ))
       ORDER BY lr.created_at DESC
       LIMIT 100
-    `).all() as any[];
+    `).all(goalType, goalType, mode, mode, runtime, runtime) as any[];
 
 
 
@@ -227,7 +237,7 @@ export class PredictiveAnalyticsService {
   private generateRecommendations(input: {
     goalType: string;
     runtime: string;
-  }, historical: Array<{ status: string; durationMs: number }>, risks: string[]): string[] {
+  }, historical: Array<{ status: string; durationMs: number }>, risks: string[], successRate: number): string[] {
     const recommendations: string[] = [];
 
     // Use goal type for recommendations
@@ -243,16 +253,9 @@ export class PredictiveAnalyticsService {
       recommendations.push('Run a small test loop before committing to full execution');
     }
 
-    // Recommend optimal runtime
-    const runtimeStats = new Map<string, { total: number; success: number }>();
-    for (const h of historical) {
-      const stats = runtimeStats.get(input.runtime) || { total: 0, success: 0 };
-      stats.total++;
-      if (h.status === 'completed') stats.success++;
-      runtimeStats.set(input.runtime, stats);
-    }
-
-    recommendations.push(`Expected success rate: ${((runtimeStats.get(input.runtime)?.success || 0) / Math.max(1, runtimeStats.get(input.runtime)?.total || 1) * 100).toFixed(0)}%`);
+    recommendations.push(historical.length > 0
+      ? `Expected success rate: ${(successRate * 100).toFixed(0)}%`
+      : 'Expected success rate: 50% neutral prior; no matching history');
 
     return recommendations;
   }

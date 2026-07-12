@@ -25,11 +25,27 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   }
 
   // GET /api/mcp/servers - List all MCP servers
-  router.get('/servers', requireAuth, (req, res, next) => {
+  router.get('/servers', requireAuth, async (req, res, next) => {
     try {
       const user = getUser(req);
       const isAdmin = AuthorizationService.isAdmin(user);
-      const servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all();
+      let servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+      if (req.query.refresh === 'true') {
+        await Promise.all(servers.map(async (server) => {
+          if (!server.url) return;
+          const now = new Date().toISOString();
+          try {
+            const response = await fetch(server.url, { signal: AbortSignal.timeout(1_500) });
+            const running = response.status < 500;
+            db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
+              .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status}`, now, server.id);
+          } catch (error) {
+            db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
+              .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
+          }
+        }));
+        servers = db.prepare('SELECT * FROM mcp_servers ORDER BY created_at DESC').all() as any[];
+      }
 
       const parsed = servers.map((server: any) => {
         const result = {

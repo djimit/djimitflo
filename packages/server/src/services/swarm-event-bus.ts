@@ -37,6 +37,11 @@ export interface SwarmEvent {
 class SwarmEventBus extends EventEmitter {
   private droppedEvents = 0;
 
+  constructor() {
+    super();
+    this.setMaxListeners(100);
+  }
+
   emit(event: SwarmEventType, data: Record<string, unknown>): boolean {
     const swarmEvent: SwarmEvent = {
       type: event,

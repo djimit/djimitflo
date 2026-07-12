@@ -12,13 +12,18 @@ interface LivePort {
 
 export function WorkstationUrlsPage() {
   const [ports, setPorts] = useState<LivePort[]>([]);
+  const [source, setSource] = useState({ host: 'unknown', platform: 'unknown' });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = () => {
     setLoading(true);
     api.request('/workstation/urls')
-      .then((res: any) => { setPorts(res.ports || []); setError(null); })
+      .then((res: any) => {
+        setPorts(Array.isArray(res.ports) ? res.ports : []);
+        setSource({ host: String(res.host || 'unknown'), platform: String(res.platform || 'unknown') });
+        setError(null);
+      })
       .catch((e: any) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false));
   };
@@ -37,9 +42,9 @@ export function WorkstationUrlsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-3">
-            <Network className="w-8 h-8 text-accent" /> Workstation URLs
+            <Network className="w-8 h-8 text-accent" /> Runtime URLs
           </h1>
-          <p className="text-foreground-secondary mt-2">Live workstation endpoint map — auto-refreshes every 30 seconds</p>
+          <p className="text-foreground-secondary mt-2">Listening ports on {source.host} ({source.platform}) — refreshes every 30 seconds</p>
         </div>
         <button onClick={loadData} className="flex items-center gap-2 px-3 py-2 bg-background-secondary border border-border rounded-lg hover:bg-background-elevated">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh

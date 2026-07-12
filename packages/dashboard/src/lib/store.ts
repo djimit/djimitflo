@@ -28,6 +28,7 @@ interface DjimitfloState {
     uptime_ms: number;
     active_tasks: number;
     active_agents: number;
+    memory_usage_mb: number;
   };
   setSystemHealth: (health: Partial<DjimitfloState['systemHealth']>) => void;
 
@@ -75,6 +76,7 @@ export const useStore = create<DjimitfloState>((set) => ({
     uptime_ms: 0,
     active_tasks: 0,
     active_agents: 0,
+    memory_usage_mb: 0,
   },
   setSystemHealth: (health) =>
     set((state) => ({

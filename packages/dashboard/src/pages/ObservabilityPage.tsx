@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { Activity, AlertTriangle, CheckCircle, XCircle, Clock, Shield, BarChart3 } from 'lucide-react';
 import type { ObservabilityMetrics } from '@djimitflo/shared';
-import { api } from '../lib/api';
+import { API_BASE, api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 
 type LiveEvent = {
   timestamp?: string;
@@ -19,17 +20,49 @@ export function ObservabilityPage() {
   const [metrics, setMetrics] = useState<ObservabilityMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseEvents, setSseEvents] = useState<LiveEvent[]>([]);
-  const esRef = useRef<EventSource | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const streamActive = useRef(false);
+  const token = useAuthStore((state) => state.token);
 
   // D10: SSE live event feed
   useEffect(() => {
-    const es = new EventSource('/api/observability/stream');
-    esRef.current = es;
-    es.onmessage = (e) => {
-      try { const event = JSON.parse(e.data) as LiveEvent; setSseEvents((prev) => [...prev.slice(-99), event]); } catch {}
+    if (!token) return;
+    const controller = new AbortController();
+    streamActive.current = true;
+    void (async () => {
+      try {
+        const response = await fetch(`${API_BASE}/observability/stream`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error(`Stream unavailable (${response.status})`);
+        setStreamError(null);
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buffer = '';
+        while (streamActive.current) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          const messages = buffer.split('\n\n');
+          buffer = messages.pop() || '';
+          for (const message of messages) {
+            const data = message.split('\n').find((line) => line.startsWith('data: '))?.slice(6);
+            if (!data) continue;
+            try {
+              const event = JSON.parse(data) as LiveEvent;
+              setSseEvents((previous) => [...previous.slice(-99), event]);
+            } catch { /* Ignore malformed external events. */ }
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setStreamError(error instanceof Error ? error.message : 'Stream unavailable');
+      }
+    })();
+    return () => {
+      streamActive.current = false;
+      controller.abort();
     };
-    return () => { es.close(); };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     api.getObservabilityMetrics().then(setMetrics).finally(() => setLoading(false));
@@ -116,8 +149,10 @@ export function ObservabilityPage() {
       <div className="bg-background-secondary border border-border rounded-lg p-6">
         <h2 className="text-xl font-semibold text-foreground mb-4">Live Event Feed (SSE)</h2>
         <div className="space-y-2 max-h-96 overflow-y-auto">
-          {sseEvents.length === 0 ? (
-            <div className="text-center py-8 text-foreground-muted">Waiting for events...</div>
+          {streamError ? (
+            <div className="text-center py-8 text-status-error">{streamError}</div>
+          ) : sseEvents.length === 0 ? (
+            <div className="text-center py-8 text-foreground-muted">Connected. Waiting for events...</div>
           ) : (
             sseEvents.slice().reverse().map((event, i) => (
               <div key={i} className="flex items-start gap-3 p-3 bg-background-elevated rounded-lg border border-border text-sm">

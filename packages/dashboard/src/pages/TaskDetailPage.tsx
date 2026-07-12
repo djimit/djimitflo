@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, type ReactElement } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle, FileSearch, Download } from 'lucide-react';
 import { useStore } from '../lib/store';
@@ -396,7 +396,7 @@ export function TaskDetailPage() {
 }
 
 function getStatusConfig(status: string) {
-  const configs: Record<string, { icon: JSX.Element; color: string }> = {
+  const configs: Record<string, { icon: ReactElement; color: string }> = {
     pending: {
       icon: <Clock className="w-5 h-5 text-status-idle" />,
       color: 'bg-status-idle/10 text-status-idle border-status-idle/20',

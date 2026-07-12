@@ -32,8 +32,16 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // POST /api/swarm/sessions/:id/execute — start execution
   router.post('/sessions/:id/execute', requirePermission('write:swarm_action'), (req, res) => {
-    swarm.executeSession(req.params.id);
-    res.json({ started: true, sessionId: req.params.id });
+    try {
+      swarm.executeSession(req.params.id);
+      res.json({ started: true, sessionId: req.params.id });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SWARM_RUNTIME_EXECUTOR_NOT_CONFIGURED') {
+        res.status(503).json({ error: { code: error.message, message: 'No real swarm runtime executor is configured' } });
+        return;
+      }
+      throw error;
+    }
   });
 
   // GET /api/swarm/sessions/:id/progress — get progress

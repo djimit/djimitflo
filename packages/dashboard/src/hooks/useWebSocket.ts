@@ -5,7 +5,7 @@ import { WS_CLOSE_CODES } from '@djimitflo/shared';
 const AUTH_SESSION_KEY = 'djimitflo_auth_session';
 
 function getDefaultWsUrl(): string {
-  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (!import.meta.env.PROD && import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
   const protocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = typeof window !== 'undefined' ? window.location.host : 'localhost:3001';
   return `${protocol}//${host}/ws`;
@@ -24,7 +24,7 @@ const AUTH_CLOSE_CODES: Set<number> = new Set([
 export function useWebSocket(isAuthenticated: boolean) {
   const ws = useRef<WebSocket | null>(null);
   const handlers = useRef<Map<WebSocketEventType | 'all', Set<MessageHandler>>>(new Map());
-  const reconnectTimeout = useRef<number>();
+  const reconnectTimeout = useRef<number | undefined>(undefined);
   const isConnecting = useRef(false);
   const authFailed = useRef(false);
   const [isConnected, setIsConnected] = useState(false);

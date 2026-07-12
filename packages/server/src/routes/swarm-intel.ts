@@ -157,6 +157,10 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   // ─── Capabilities ──────────────────────────────────────────────────
+  router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res) => {
+    res.json({ capabilities: intelligence.listCapabilities(Number(req.query.limit) || 100) });
+  });
+
   router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
     try {
       const capability = intelligence.registerCapability(req.body);
@@ -193,6 +197,10 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   // ─── Claims ────────────────────────────────────────────────────────
+  router.get('/intelligence/claims', requirePermission('read:evidence'), (req, res) => {
+    res.json({ claims: intelligence.listClaims(Number(req.query.limit) || 100) });
+  });
+
   router.post('/intelligence/claims', requirePermission('write:claim'), (req, res, next) => {
     try {
       const claim = intelligence.submitClaim(req.body);

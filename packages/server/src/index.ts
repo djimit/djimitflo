@@ -174,7 +174,7 @@ async function main() {
   
   // Middleware
   app.use(cors({
-    origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'],
+    origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
   }));
   app.use(express.json());
@@ -207,7 +207,7 @@ async function main() {
   const reasoningBank = new ReasoningBankService(db);
   executionEngine.setReasoningBankService(reasoningBank);
 
-  // ruvnet capabilities: vector memory with Ollama embeddings + self-learning
+  // Local hash-vector memory with self-learning feedback
   const vectorMemory = new VectorMemoryService(db);
   reasoningBank.setVectorMemory(vectorMemory);
 
@@ -295,7 +295,7 @@ async function main() {
     app.use(express.static(dashboardPath));
     
     // SPA fallback: serve index.html for non-API, non-WebSocket GET requests
-    app.get('*', (req, res, next) => {
+    app.use((req, res, next) => {
       if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path === '/health') {
         return next();
       }

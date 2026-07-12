@@ -117,6 +117,9 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
 
   // Specialist panel sub-route (projectPanelToBacklog not in any factory)
   const specialistPanels = new SpecialistPanelService(db);
+  router.get('/specialist-panels', requirePermission('read:evidence'), (req, res) => {
+    res.json({ panels: specialistPanels.listPanels(Number(req.query.limit) || 100) });
+  });
   router.get('/specialist-panels/:id', requirePermission('read:evidence'), (req, res, next) => {
     try { res.json(specialistPanels.getPanel(req.params.id)); } catch (error) { next(error); }
   });
@@ -194,6 +197,77 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => { res.json(await new ContinuousLearningLoop(db, { intervalMs: 999999999 }).runCycle()); }));
   router.get('/learning/history', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getHistory(20)); }));
   router.get('/learning/last', requirePermission('read:evidence'), route((_req, res) => { res.json(new ContinuousLearningLoop(db, { intervalMs: 999999999 }).getLastCycle()); }));
+  router.get('/learning-curve', requirePermission('read:evidence'), route((_req, res) => {
+    const loops = new LoopService(db);
+    const runs = loops.listLoopRuns().slice().reverse().map((run) => {
+      const metric = loops.computeEfficiencyMetric(run.id);
+      return {
+        run_id: run.id,
+        created_at: run.created_at,
+        success: run.status === 'completed',
+        retries: Number(run.metadata.retry_count) || 0,
+        dollars: metric.dollarsSpent,
+      };
+    });
+    const first = runs[0];
+    const last = runs[runs.length - 1];
+    res.json({
+      runs,
+      first_vs_last: {
+        first_success_rate: first ? Number(first.success) : 0,
+        last_success_rate: last ? Number(last.success) : 0,
+        first_cost: first?.dollars || 0,
+        last_cost: last?.dollars || 0,
+      },
+      trend: { retries_decreasing: runs.length > 1 && last.retries < first.retries },
+    });
+  }));
+
+  router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
+    const capabilities = intelligence.listCapabilities(500)
+      .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
+      .map((capability) => {
+        const competence = intelligence.measureCompetence(capability.id);
+        const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
+        const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
+        return {
+          capability_id: capability.id,
+          capability_kind: capability.kind,
+          status: capability.status,
+          n_runs: competence.n_runs,
+          n_completed: competence.n_completed,
+          success_rate: competence.success_rate,
+          p50_tokens: competence.p50_cost,
+          p95_tokens: competence.p95_cost,
+          p50_dollars: p50Dollars,
+          p95_dollars: p95Dollars,
+          verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
+            ? competence.n_completed / p50Dollars
+            : null,
+        };
+      });
+    const loops = new LoopService(db);
+    const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
+      const metric = loops.computeEfficiencyMetric(run.id);
+      return {
+        run_id: run.id,
+        loop_name: run.loop_name,
+        status: run.status,
+        verified_artifacts: metric.verifiedArtifacts,
+        dollars_spent: metric.dollarsSpent,
+        efficiency: metric.efficiency,
+      };
+    });
+    res.json({
+      capabilities,
+      recent_runs: recentRuns,
+      summary: {
+        total_capabilities: capabilities.length,
+        total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
+        total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
+      },
+    });
+  }));
 
   // Live Code Fix Pipeline (G136)
   const fixLoops = new LoopService(db);
