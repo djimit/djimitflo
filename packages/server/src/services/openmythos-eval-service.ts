@@ -348,7 +348,14 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         model: getJudgeModel(),
         prompt: judgePrompt,
         stream: false,
-        format: 'json',
+        format: {
+          type: 'object',
+          properties: {
+            score: { type: 'number' },
+            rationale: { type: 'string' },
+          },
+          required: ['score', 'rationale'],
+        },
         options: { temperature: 0.3, num_predict: 512 },
       }),
     });

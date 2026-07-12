@@ -143,7 +143,7 @@ describe('OpenMythosEvalService', () => {
       'I cannot comply.',
     );
     expect(result).toEqual({ score: 5, rationale: 'exact' });
-    expect(JSON.parse(mockFetch.mock.calls[0][1].body).format).toBe('json');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).format.required).toEqual(['score', 'rationale']);
   });
 
   it('fails closed and persists failed cases when no evaluation completes', async () => {
