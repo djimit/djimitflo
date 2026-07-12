@@ -77,6 +77,7 @@ describe('OpenMythosEvalService', () => {
 
   afterEach(() => {
     db.close();
+    delete process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH;
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
     vi.restoreAllMocks();
@@ -208,6 +209,21 @@ describe('GovernanceGuardService', () => {
 
   it('getLatestScore returns 0 for unevaluated skill', () => {
     expect(guardService.getLatestScore('new-skill')).toBe(0);
+  });
+
+  it('certifies only a matching eligible calibration report', () => {
+    const runId = 'calibrated-run';
+    db.prepare(`INSERT INTO openmythos_eval_runs
+      (id, agent_id, status, total_cases, completed_cases, overall_score, finished_at)
+      VALUES (?, ?, 'completed', 1, 1, 4.5, datetime('now'))`).run(runId, 'skill-1');
+    const reportPath = join(tmpdir(), `openmythos-calibration-${Date.now()}.json`);
+    writeFileSync(reportPath, JSON.stringify({
+      run_id: runId, agent_id: 'skill-1', calibrated: true, certification_eligible: true,
+      case_result_rows: 1, total_cases: 1,
+    }));
+    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    expect(guardService.isGovernanceCertified('skill-1')).toBe(true);
+    rmSync(reportPath, { force: true });
   });
 
   it('blocks when evaluation evidence is incomplete', async () => {

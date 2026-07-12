@@ -13,6 +13,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { readFileSync } from 'fs';
 import { OpenMythosEvalService } from './openmythos-eval-service';
 import { swarmEventBus } from './swarm-event-bus';
 
@@ -59,7 +60,7 @@ function loadToolTaxonomy(): ToolTaxonomyEntry[] {
 export class GovernanceGuardService {
   private evalService: OpenMythosEvalService;
 
-  constructor(db: Database) {
+  constructor(private db: Database) {
     this.evalService = new OpenMythosEvalService(db);
   }
 
@@ -94,7 +95,8 @@ export class GovernanceGuardService {
     const result = await this.evalService.runEval(skillId, categories, skillMetadata?.model);
 
     // Determine approval status
-    const evidenceIncomplete = result.completedCases !== result.totalCases || result.status !== 'completed';
+    const calibrationEligible = this.isCalibrationEligible(result.id, skillId);
+    const evidenceIncomplete = result.completedCases !== result.totalCases || result.status !== 'completed' || !calibrationEligible;
     const blocked = evidenceIncomplete || result.overallScore < BLOCK_THRESHOLD;
     const warning = !blocked && result.overallScore < WARN_THRESHOLD;
     const approved = !blocked && !warning;
@@ -132,7 +134,7 @@ export class GovernanceGuardService {
       });
     }
 
-    const report = this.generateCheckReport(result.overallScore, result.categoryScores, blocked, warning);
+    const report = this.generateCheckReport(result.overallScore, result.categoryScores, blocked, warning, calibrationEligible);
 
     return {
       skillId,
@@ -199,7 +201,27 @@ export class GovernanceGuardService {
    * Check if a skill is governance-certified.
    */
   isGovernanceCertified(skillId: string): boolean {
-    return this.getLatestScore(skillId) >= WARN_THRESHOLD;
+    const run = this.db.prepare(`
+      SELECT id, overall_score FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'completed'
+      ORDER BY finished_at DESC LIMIT 1
+    `).get(skillId) as { id: string; overall_score: number } | undefined;
+    return Boolean(run && run.overall_score >= WARN_THRESHOLD && this.isCalibrationEligible(run.id, skillId));
+  }
+
+  private isCalibrationEligible(runId: string, skillId: string): boolean {
+    const path = process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH;
+    if (!path) return false;
+    try {
+      const report = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+      return report.run_id === runId
+        && report.agent_id === skillId
+        && report.calibrated === true
+        && report.certification_eligible === true
+        && report.case_result_rows === report.total_cases;
+    } catch {
+      return false;
+    }
   }
 
   private generateCheckReport(
@@ -207,6 +229,7 @@ export class GovernanceGuardService {
     categoryScores: Record<string, number>,
     blocked: boolean,
     warning: boolean,
+    calibrationEligible: boolean,
   ): string {
     const status = blocked ? 'BLOCKED' : warning ? 'WARNING' : 'APPROVED';
     const lines = [
@@ -222,10 +245,13 @@ export class GovernanceGuardService {
     }
 
     if (blocked) {
-      lines.push('', `DEPLOYMENT BLOCKED: Score ${overallScore.toFixed(2)} below threshold ${BLOCK_THRESHOLD}`);
+      lines.push('', overallScore < BLOCK_THRESHOLD
+        ? `DEPLOYMENT BLOCKED: Score ${overallScore.toFixed(2)} below threshold ${BLOCK_THRESHOLD}`
+        : 'DEPLOYMENT BLOCKED: evaluation evidence is incomplete or uncalibrated');
     } else if (warning) {
       lines.push('', `WARNING: Score ${overallScore.toFixed(2)} requires human review before deployment`);
     }
+    if (!calibrationEligible) lines.push('', 'CALIBRATION BLOCKED: no eligible OpenMythos calibration matches this run.');
 
     return lines.join('\n');
   }
