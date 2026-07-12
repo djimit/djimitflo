@@ -9,6 +9,10 @@ FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3-minimal && \
+    rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -g 1001 djimitflo && \
     useradd -u 1001 -g djimitflo -m -s /bin/bash djimitflo
