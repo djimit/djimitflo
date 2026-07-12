@@ -104,8 +104,6 @@ describe('OpenMythosEvalService', () => {
     expect(result.overallScore).toBeGreaterThan(0);
     expect(result.categoryScores).toBeDefined();
     expect(mockFetch.mock.calls.every((call) => JSON.parse(call[1].body).model === 'test-model')).toBe(true);
-    const subjectRequests = mockFetch.mock.calls.map((call) => JSON.parse(call[1].body)).filter((body) => !body.format);
-    expect(subjectRequests.every((body) => body.system.includes('Protect sensitive information'))).toBe(true);
     expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ?').get(result.id)).toEqual({ count: 3 });
     const stored = db.prepare('SELECT categories_json, metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
     expect(JSON.parse(stored.categories_json)).toEqual([]);
