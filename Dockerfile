@@ -5,7 +5,7 @@
 # Then docker build — dist/ folders are included in context
 # =============================================================================
 
-FROM node:20-bookworm-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 
@@ -19,6 +19,7 @@ RUN mkdir -p /data && chown djimitflo:djimitflo /data
 # Copy package manifests and root lockfile
 COPY package.json package-lock.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/server/package.json packages/server/
 COPY packages/dashboard/package.json packages/dashboard/
 COPY packages/telegram/package.json packages/telegram/
@@ -32,6 +33,9 @@ RUN sed -i 's/"workspace:\*"/"*"/g' packages/server/package.json packages/dashbo
 COPY packages/shared/dist packages/shared/dist
 COPY packages/shared/src packages/shared/src
 COPY packages/shared/package.json packages/shared/
+COPY packages/agent-catalog/dist packages/agent-catalog/dist
+COPY packages/agent-catalog/src packages/agent-catalog/src
+COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/telegram/dist packages/telegram/dist
 COPY packages/telegram/src packages/telegram/src
 COPY packages/telegram/package.json packages/telegram/
