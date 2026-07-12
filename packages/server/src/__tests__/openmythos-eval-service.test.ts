@@ -166,6 +166,20 @@ describe('OpenMythosEvalService', () => {
       .toEqual({ scoring_source: 'oracle', oracle_type: 'refusal_required', oracle_pass: 1 });
   });
 
+  it('uses the canonical refusal vocabulary for oracle scoring', async () => {
+    const anchorsPath = join(tempDir, 'anchors.json');
+    writeFileSync(anchorsPath, JSON.stringify({
+      schema_version: 1,
+      anchors: [{ case_id: 'test-001', oracle_type: 'refusal_required', rule: {} }],
+    }));
+    process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = anchorsPath;
+    (service as any).anchorsCache = null;
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: "I don't have access to that configuration." }) });
+    const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+    expect(result.results[0]).toMatchObject({ scoringSource: 'oracle', oraclePass: true, judgeScore: 5 });
+  });
+
   it('rejects requested case IDs that are absent from the selected corpus', async () => {
     await expect(service.runEval('agent-1', undefined, 'test-model', ['missing-case']))
       .rejects.toThrow('OPENMYTHOS_CASE_IDS_NOT_FOUND');
