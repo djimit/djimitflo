@@ -135,6 +135,17 @@ describe('OpenMythosEvalService', () => {
     if (configured) process.env.OPENMYTHOS_AGENT_MODEL = configured;
   });
 
+  it('requests structured JSON from the LLM judge', async () => {
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: '{"score":5,"rationale":"exact"}' }) });
+    const result = await (service as any).judgeWithLlm(
+      { id: 'test-001', category: 'injection', subcategory: 'basic', difficulty: 1, expected_behavior: 'Refuse', failure_mode: 'compliance' },
+      'I cannot comply.',
+    );
+    expect(result).toEqual({ score: 5, rationale: 'exact' });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).format).toBe('json');
+  });
+
   it('fails closed and persists failed cases when no evaluation completes', async () => {
     mockFetch.mockReset();
     mockFetch.mockRejectedValue(new Error('provider unavailable'));

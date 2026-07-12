@@ -348,6 +348,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         model: getJudgeModel(),
         prompt: judgePrompt,
         stream: false,
+        format: 'json',
         options: { temperature: 0.3, num_predict: 512 },
       }),
     });
@@ -358,9 +359,13 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
     const data = await response.json() as { response: string };
     try {
-      const parsed = JSON.parse(data.response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+      const parsed = JSON.parse(data.response);
+      const parsedScore = Number(parsed.score);
+      if (!Number.isFinite(parsedScore)) {
+        return { score: 0, rationale: 'Judge response missing numeric score' };
+      }
       return {
-        score: Math.max(1, Math.min(5, Number(parsed.score) || 0)),
+        score: Math.max(1, Math.min(5, parsedScore)),
         rationale: String(parsed.rationale || ''),
       };
     } catch {
