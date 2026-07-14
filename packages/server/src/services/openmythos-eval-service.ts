@@ -285,7 +285,7 @@ export class OpenMythosEvalService {
         model: subjectModel,
         prompt,
         stream: false,
-        options: { temperature: 0.7, num_predict: 1024 },
+        options: { temperature: 0, seed: 0, num_predict: 1024 },
       }),
     });
 
