@@ -5,28 +5,21 @@ permissions:
   contents: write
   pull-requests: write
 
+# Inlined rather than calling djimit/.github's reusable workflow: that repo is
+# private with Actions access_level "none", so a public repo like this one
+# cannot call its reusable workflow (the call fails at startup).
 jobs:
   auto-merge:
+    if: github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
-    if: github.event.pull_request.user.login == 'dependabot[bot]'
     steps:
-      - name: Dependabot metadata
-        id: meta
+      - name: Fetch Dependabot metadata
+        id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Auto-merge patch updates
-        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Auto-merge minor dev-dependency updates
-        if: |
-          steps.meta.outputs.update-type == 'version-update:semver-minor' &&
-          steps.meta.outputs.dependency-type == 'direct:development'
+      - name: Enable auto-merge for patch/minor updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
