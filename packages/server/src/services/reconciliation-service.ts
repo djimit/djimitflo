@@ -118,9 +118,13 @@ export class ReconciliationService {
   }
 
   private checkTestCoverageClaim(claim: string): ClaimVerdict | null {
-    const match = claim.match(/\[Test Coverage\][^A-Za-z]*Add tests? for (.+)$/i);
-    if (!match) return null;
-    const target = match[1].trim();
+    // Linear string ops instead of regex — claims are user-provided (ReDoS).
+    const lower = claim.toLowerCase();
+    if (!lower.includes('[test coverage]')) return null;
+    const marker = ['add tests for ', 'add test for '].find((m) => lower.includes(m));
+    if (!marker) return null;
+    const target = claim.slice(lower.indexOf(marker) + marker.length).trim();
+    if (!target) return null;
     const testFiles = this.listTestFiles();
 
     // Significant words of the target ("execution-engine.ts" → execution-engine; "middleware layer" → middleware)
@@ -138,7 +142,10 @@ export class ReconciliationService {
   }
 
   private checkExecTimeoutClaim(claim: string): ClaimVerdict | null {
-    if (!/execSync.*without timeout|\[Security\].*execSync/i.test(claim)) return null;
+    // Linear string ops instead of regex — claims are user-provided (ReDoS).
+    const lower = claim.toLowerCase();
+    if (!lower.includes('execsync')) return null;
+    if (!lower.includes('without timeout') && !lower.includes('[security]')) return null;
     const servicesDir = join(this.repoRoot, 'packages', 'server', 'src', 'services');
     const unsafe: string[] = [];
     let total = 0;
