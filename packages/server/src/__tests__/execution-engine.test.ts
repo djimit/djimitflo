@@ -95,14 +95,23 @@ describe('ExecutionEngine', () => {
       CREATE TABLE IF NOT EXISTS audit_events (
         id TEXT PRIMARY KEY,
         event_type TEXT NOT NULL,
-        action TEXT NOT NULL,
-        resource_type TEXT,
-        resource_id TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        user_id TEXT,
+        agent_id TEXT,
         task_id TEXT,
-        actor TEXT NOT NULL DEFAULT 'system',
-        risk_level TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        execution_event_id TEXT,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        actor TEXT,
+        risk_level TEXT NOT NULL DEFAULT 'low' CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
+        before TEXT,
+        after TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS evidence (
         id TEXT PRIMARY KEY,
@@ -201,5 +210,61 @@ describe('ExecutionEngine', () => {
 
     const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any;
     expect(['running', 'completed']).toContain(row.status);
+  });
+
+  describe('governance gate integration', () => {
+    const GATE_KEYS = ['GOVERNANCE_GATE_ENABLED', 'GOVERNANCE_GATE_FLOOR', 'GOVERNANCE_GATE_MODEL_MAP'];
+    const previousEnv: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      for (const key of GATE_KEYS) { previousEnv[key] = process.env[key]; delete process.env[key]; }
+    });
+
+    afterEach(() => {
+      for (const key of GATE_KEYS) {
+        if (previousEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[key];
+      }
+    });
+
+    function insertLowScoreRun(agentId: string, score: number) {
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata)
+        VALUES (?, ?, 'completed', 78, 78, ?, '2026-07-15T10:00:00Z', '2026-07-15T10:05:00Z', '{}')
+      `).run(`run-${Math.random().toString(36).slice(2)}`, agentId, score);
+    }
+
+    it('tightens allow to awaiting_approval when the benchmarked model is below the floor', async () => {
+      process.env.GOVERNANCE_GATE_ENABLED = 'true';
+      process.env.GOVERNANCE_GATE_MODEL_MAP = 'mock=weak-model';
+      insertLowScoreRun('nightly:weak-model', 1.9);
+
+      const task = createTask();
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+
+      const result = await engine.executeTask(task.id, 'mock');
+
+      expect(result.status).toBe('awaiting_approval');
+      expect(result.reason).toContain('Governance gate');
+
+      const evidence = db.prepare("SELECT * FROM execution_evidence WHERE task_id = ? AND source = 'governance-gate'").all(task.id);
+      expect(evidence.length).toBe(1);
+    });
+
+    it('does not fire when the benchmarked model clears the floor', async () => {
+      process.env.GOVERNANCE_GATE_ENABLED = 'true';
+      process.env.GOVERNANCE_GATE_MODEL_MAP = 'mock=strong-model';
+      insertLowScoreRun('nightly:strong-model', 4.2);
+
+      const task = createTask();
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+
+      const result = await engine.executeTask(task.id, 'mock');
+      expect(result.status).toBe('started');
+    });
   });
 });
