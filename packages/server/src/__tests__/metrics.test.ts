@@ -65,6 +65,14 @@ describe('GET /metrics', () => {
     expect(out.body).toMatch(/djimitflo_process_memory_rss_bytes \d+/);
   });
 
+  it('rate-limits scrapes per IP', () => {
+    const handler = createMetricsHandler(db);
+    for (let i = 0; i < 300; i++) {
+      expect(call(handler, 'Bearer scrape-secret').status).toBe(200);
+    }
+    expect(call(handler, 'Bearer scrape-secret').status).toBe(429);
+  });
+
   it('escapes label values', () => {
     db.prepare(`
       INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata)
