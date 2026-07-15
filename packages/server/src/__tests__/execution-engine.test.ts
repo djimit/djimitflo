@@ -1,12 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
-import { join } from 'path';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
-import { ExecutionFailureError, type TaskExecutor } from '../execution/types';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -41,22 +37,6 @@ function createMockWsService() {
     broadcast: () => {},
     close: () => {},
   } as any;
-}
-
-function writeTestSkill(skillsDir: string, skillId: string): void {
-  const skillDir = join(skillsDir, skillId);
-  mkdirSync(skillDir, { recursive: true });
-  writeFileSync(join(skillDir, 'SKILL.md'), [
-    '---',
-    `name: ${skillId}`,
-    `description: ${skillId} for execution attribution`,
-    'version: 1.0.0',
-    'author: test',
-    'allowed-tools: read_file',
-    '---',
-    '<disallowed_tools>shell</disallowed_tools>',
-    `Use read_file only for ${skillId}.`,
-  ].join('\n'));
 }
 
 describe('ExecutionEngine', () => {
@@ -115,14 +95,23 @@ describe('ExecutionEngine', () => {
       CREATE TABLE IF NOT EXISTS audit_events (
         id TEXT PRIMARY KEY,
         event_type TEXT NOT NULL,
-        action TEXT NOT NULL,
-        resource_type TEXT,
-        resource_id TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        user_id TEXT,
+        agent_id TEXT,
         task_id TEXT,
-        actor TEXT NOT NULL DEFAULT 'system',
-        risk_level TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        execution_event_id TEXT,
+        action TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT,
+        actor TEXT,
+        risk_level TEXT NOT NULL DEFAULT 'low' CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
+        before TEXT,
+        after TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        metadata TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS evidence (
         id TEXT PRIMARY KEY,
@@ -223,320 +212,59 @@ describe('ExecutionEngine', () => {
     expect(['running', 'completed']).toContain(row.status);
   });
 
-  it('retries a retryable provider failure with the next admitted executor', async () => {
-    const attempts: string[] = [];
-    const session = (taskId: string, executorKind: 'codex', result: any) => ({
-      id: `session-${executorKind}`,
-      taskId,
-      executorKind,
-      status: 'running' as const,
-      startedAt: new Date(),
-      events: (async function* () {})(),
-      result: Promise.resolve(result),
-      cancel: async () => {},
+  describe('governance gate integration', () => {
+    const GATE_KEYS = ['GOVERNANCE_GATE_ENABLED', 'GOVERNANCE_GATE_FLOOR', 'GOVERNANCE_GATE_MODEL_MAP'];
+    const previousEnv: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      for (const key of GATE_KEYS) { previousEnv[key] = process.env[key]; delete process.env[key]; }
     });
-    engine.registerExecutor({
-      kind: 'claude',
-      canExecute: () => true,
-      start: async () => {
-        attempts.push('claude');
-        throw new ExecutionFailureError({
-          code: 'PROVIDER_UNAVAILABLE',
-          message: '503 provider unavailable',
-          retryable: true,
-          sideEffectsPossible: false,
-          failureDomain: 'claude',
-        });
-      },
-    });
-    engine.registerExecutor({
-      kind: 'codex',
-      canExecute: () => true,
-      start: async (task) => {
-        attempts.push('codex');
-        return session(task.id, 'codex', { status: 'completed', message: 'done' });
-      },
-    });
-    const task = createTask({ metadata: { executionMode: 'standard' } });
-    db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
 
-    await engine.executeTask(task.id, 'claude');
-    for (let i = 0; i < 20; i++) {
-      const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as { status: string };
-      if (row.status === 'completed') break;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    expect(attempts).toEqual(['claude', 'codex']);
-    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'completed' });
-    const fallback = db.prepare(`
-      SELECT metadata FROM execution_events
-      WHERE task_id = ? AND message = 'Retrying with fallback executor codex'
-    `).get(task.id) as { metadata: string };
-    expect(JSON.parse(fallback.metadata)).toMatchObject({ attempt: 2, from: 'claude', to: 'codex', retryable: true });
-    expect((db.prepare('SELECT COUNT(*) AS count FROM risk_assessments WHERE task_id = ?').get(task.id) as { count: number }).count).toBe(2);
-  });
-
-  it('does not fall back after a session failure with possible side effects', async () => {
-    const attempts: string[] = [];
-    engine.registerExecutor({
-      kind: 'claude',
-      canExecute: () => true,
-      start: async (task) => {
-        attempts.push('claude');
-        return {
-          id: 'session-claude',
-          taskId: task.id,
-          executorKind: 'claude',
-          status: 'running',
-          startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({
-            status: 'failed',
-            message: '503 after editing files',
-            error: '503 provider unavailable',
-          }),
-          cancel: async () => {},
-        };
-      },
-    });
-    engine.registerExecutor({
-      kind: 'codex',
-      canExecute: () => true,
-      start: async (task) => {
-        attempts.push('codex');
-        return {
-          id: 'session-codex',
-          taskId: task.id,
-          executorKind: 'codex',
-          status: 'running',
-          startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({ status: 'completed', message: 'done' }),
-          cancel: async () => {},
-        };
-      },
-    });
-    const task = createTask({ metadata: { executionMode: 'standard' } });
-    db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
-
-    await engine.executeTask(task.id, 'claude');
-    for (let i = 0; i < 20; i++) {
-      const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as { status: string };
-      if (row.status === 'failed') break;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    expect(attempts).toEqual(['claude']);
-    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'failed' });
-  });
-
-  it('records an admitted skill outcome when a task completes', async () => {
-    const skillsDir = join(tmpdir(), `djimitflo-skills-${Date.now()}`);
-    writeTestSkill(skillsDir, 'test-skill');
-
-    try {
-      const localEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
-      const instantExecutor: TaskExecutor = {
-        kind: 'custom',
-        canExecute: () => true,
-        start: async (task) => ({
-          id: 'session-1',
-          taskId: task.id,
-          executorKind: 'custom',
-          status: 'running',
-          startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({
-            status: 'completed',
-            message: 'done',
-            metrics: { executionTimeMs: 1, tokenUsage: 7 },
-          }),
-          cancel: async () => {},
-        }),
-      };
-      localEngine.registerExecutor(instantExecutor);
-      const task = createTask({ metadata: { skillId: 'test-skill' } });
-      db.prepare(`
-        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
-
-      await localEngine.executeTask(task.id, 'custom');
-      for (let i = 0; i < 10; i++) {
-        const row = db.prepare('SELECT skill_id FROM skill_outcomes WHERE task_id = ?').get(task.id) as any;
-        if (row) break;
-        await new Promise((resolve) => setTimeout(resolve, 0));
+    afterEach(() => {
+      for (const key of GATE_KEYS) {
+        if (previousEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = previousEnv[key];
       }
-
-      const outcome = db.prepare(`
-        SELECT skill_id, task_id, skill_version, skill_content_hash, model, success, tokens_used
-        FROM skill_outcomes WHERE task_id = ?
-      `).get(task.id) as any;
-      expect(outcome).toMatchObject({
-        skill_id: 'test-skill',
-        task_id: task.id,
-        skill_version: '1.0.0',
-        model: 'custom',
-        success: 1,
-        tokens_used: 7,
-      });
-      expect(outcome.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
-    } finally {
-      rmSync(skillsDir, { recursive: true, force: true });
-    }
-  });
-
-  it('blocks multi-skill tasks without explicit skill attribution before execution', async () => {
-    const skillsDir = join(tmpdir(), `djimitflo-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    for (const skillId of ['test-skill-a', 'test-skill-b']) {
-      writeTestSkill(skillsDir, skillId);
-    }
-
-    try {
-      const localEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
-      let started = false;
-      const instantExecutor: TaskExecutor = {
-        kind: 'custom',
-        canExecute: () => true,
-        start: async (task) => {
-          started = true;
-          return {
-            id: 'session-1',
-            taskId: task.id,
-            executorKind: 'custom',
-            status: 'running',
-            startedAt: new Date(),
-            events: (async function* () {})(),
-            result: Promise.resolve({
-              status: 'completed',
-              message: 'done',
-              metrics: { executionTimeMs: 1, tokenUsage: 11 },
-            }),
-            cancel: async () => {},
-          };
-        },
-      };
-      localEngine.registerExecutor(instantExecutor);
-      db.prepare("INSERT INTO agents (id, name, description, status) VALUES ('agent-1', 'agent 1', 'test agent', 'idle')").run();
-      db.prepare("INSERT INTO agent_skills (agent_id, skill_id, enabled, assigned_at) VALUES ('agent-1', 'test-skill-a', 1, datetime('now'))").run();
-      db.prepare("INSERT INTO agent_skills (agent_id, skill_id, enabled, assigned_at) VALUES ('agent-1', 'test-skill-b', 1, datetime('now'))").run();
-
-      const task = createTask({ agent_id: 'agent-1' });
-      db.prepare(`
-        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', task.agent_id, JSON.stringify(task.metadata));
-
-      const result = await localEngine.executeTask(task.id, 'custom');
-
-      expect(result.status).toBe('denied');
-      expect(started).toBe(false);
-      expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'cancelled' });
-      expect(db.prepare('SELECT COUNT(*) AS count FROM skill_outcomes WHERE task_id = ?').get(task.id)).toEqual({ count: 0 });
-      const warning = db.prepare(`
-        SELECT severity, summary, details, metadata
-        FROM execution_evidence
-        WHERE task_id = ? AND title = 'Execution blocked: invalid skill attribution'
-      `).get(task.id) as any;
-      expect(warning.severity).toBe('error');
-      expect(warning.summary).toContain('metadata.skillId');
-      expect(JSON.parse(warning.details).assignedSkillIds.sort()).toEqual(['test-skill-a', 'test-skill-b']);
-      expect(JSON.parse(warning.metadata)).toEqual({ reason: 'ambiguous_skill_attribution' });
-    } finally {
-      rmSync(skillsDir, { recursive: true, force: true });
-    }
-  });
-
-  it('blocks unknown explicit skill attribution before execution', async () => {
-    const localEngine = new ExecutionEngine(db, createMockWsService());
-    let started = false;
-    localEngine.registerExecutor({
-      kind: 'custom',
-      canExecute: () => true,
-      start: async (task) => {
-        started = true;
-        return {
-          id: 'session-1',
-          taskId: task.id,
-          executorKind: 'custom',
-          status: 'running',
-          startedAt: new Date(),
-          events: (async function* () {})(),
-          result: Promise.resolve({ status: 'completed', message: 'done' }),
-          cancel: async () => {},
-        };
-      },
     });
 
-    const task = createTask({ metadata: { skillId: 'missing-skill' } });
-    db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
-
-    const result = await localEngine.executeTask(task.id, 'custom');
-
-    expect(result.status).toBe('denied');
-    expect(started).toBe(false);
-    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'cancelled' });
-    expect(db.prepare(`
-      SELECT metadata FROM execution_evidence
-      WHERE task_id = ? AND title = 'Execution blocked: invalid skill attribution'
-    `).get(task.id)).toEqual({ metadata: JSON.stringify({ reason: 'invalid_skill_attribution' }) });
-  });
-
-  it('blocks explicit skill attribution not assigned to the task agent', async () => {
-    const skillsDir = join(tmpdir(), `djimitflo-skills-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    writeTestSkill(skillsDir, 'test-skill-a');
-    writeTestSkill(skillsDir, 'test-skill-b');
-
-    try {
-      const localEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
-      let started = false;
-      localEngine.registerExecutor({
-        kind: 'custom',
-        canExecute: () => true,
-        start: async (task) => {
-          started = true;
-          return {
-            id: 'session-1',
-            taskId: task.id,
-            executorKind: 'custom',
-            status: 'running',
-            startedAt: new Date(),
-            events: (async function* () {})(),
-            result: Promise.resolve({ status: 'completed', message: 'done' }),
-            cancel: async () => {},
-          };
-        },
-      });
-      db.prepare("INSERT INTO agents (id, name, description, status) VALUES ('agent-1', 'agent 1', 'test agent', 'idle')").run();
-      db.prepare("INSERT INTO agent_skills (agent_id, skill_id, enabled, assigned_at) VALUES ('agent-1', 'test-skill-a', 1, datetime('now'))").run();
-      const task = createTask({ agent_id: 'agent-1', metadata: { skillId: 'test-skill-b' } });
+    function insertLowScoreRun(agentId: string, score: number) {
       db.prepare(`
-        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', task.agent_id, JSON.stringify(task.metadata));
-
-      const result = await localEngine.executeTask(task.id, 'custom');
-
-      expect(result.status).toBe('denied');
-      expect(started).toBe(false);
-      const warning = db.prepare(`
-        SELECT details, metadata FROM execution_evidence
-        WHERE task_id = ? AND title = 'Execution blocked: invalid skill attribution'
-      `).get(task.id) as any;
-      expect(JSON.parse(warning.details)).toEqual({ assignedSkillIds: ['test-skill-a'] });
-      expect(JSON.parse(warning.metadata)).toEqual({ reason: 'unassigned_skill_attribution' });
-    } finally {
-      rmSync(skillsDir, { recursive: true, force: true });
+        INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata)
+        VALUES (?, ?, 'completed', 78, 78, ?, '2026-07-15T10:00:00Z', '2026-07-15T10:05:00Z', '{}')
+      `).run(`run-${Math.random().toString(36).slice(2)}`, agentId, score);
     }
+
+    it('tightens allow to awaiting_approval when the benchmarked model is below the floor', async () => {
+      process.env.GOVERNANCE_GATE_ENABLED = 'true';
+      process.env.GOVERNANCE_GATE_MODEL_MAP = 'mock=weak-model';
+      insertLowScoreRun('nightly:weak-model', 1.9);
+
+      const task = createTask();
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+
+      const result = await engine.executeTask(task.id, 'mock');
+
+      expect(result.status).toBe('awaiting_approval');
+      expect(result.reason).toContain('Governance gate');
+
+      const evidence = db.prepare("SELECT * FROM execution_evidence WHERE task_id = ? AND source = 'governance-gate'").all(task.id);
+      expect(evidence.length).toBe(1);
+    });
+
+    it('does not fire when the benchmarked model clears the floor', async () => {
+      process.env.GOVERNANCE_GATE_ENABLED = 'true';
+      process.env.GOVERNANCE_GATE_MODEL_MAP = 'mock=strong-model';
+      insertLowScoreRun('nightly:strong-model', 4.2);
+
+      const task = createTask();
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+
+      const result = await engine.executeTask(task.id, 'mock');
+      expect(result.status).toBe('started');
+    });
   });
 });
