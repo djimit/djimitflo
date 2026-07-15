@@ -115,7 +115,7 @@ export function GovernanceScorecardPage() {
             {runs.map((run) => (
               <div key={run.id} className="flex items-center gap-3 flex-wrap border-l-2 border-border pl-3 py-1">
                 <FlaskConical className="w-3.5 h-3.5 text-foreground-tertiary" />
-                <span className="text-xs font-mono text-foreground-tertiary">{run.id.slice(0, 8)}</span>
+                <span className="text-xs font-mono text-foreground-tertiary">{(run.id ?? '').slice(0, 8)}</span>
                 <span className="text-sm text-foreground">{run.agentId}</span>
                 {run.subjectModel && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-background-elevated text-foreground-secondary font-mono">{run.subjectModel}</span>
