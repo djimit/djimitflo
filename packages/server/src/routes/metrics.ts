@@ -10,7 +10,19 @@
 import { timingSafeEqual } from 'crypto';
 import type { Request, Response } from 'express';
 import type { Database } from 'better-sqlite3';
-import { RateLimiter } from '../middleware/rate-limiter';
+import rateLimit from 'express-rate-limit';
+
+/**
+ * 300 scrapes / 15 min per IP — generous for any Prometheus interval, tight
+ * enough to blunt token brute-forcing. express-rate-limit (rather than the
+ * in-repo RateLimiter) so CodeQL's js/missing-rate-limiting recognizes it.
+ */
+export const metricsRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
 
 function escapeLabel(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
@@ -25,10 +37,6 @@ function authorized(req: Request): boolean {
 }
 
 export function createMetricsHandler(db: Database, getWsClients?: () => number) {
-  // 300 scrapes / 15 min per IP — generous for any Prometheus interval,
-  // tight enough to blunt token brute-forcing. Every request counts.
-  const scrapeRateLimiter = new RateLimiter(300, 15 * 60 * 1000);
-
   const statusGauge = (name: string, help: string, table: string): string[] => {
     const lines = [`# HELP ${name} ${help}`, `# TYPE ${name} gauge`];
     try {
@@ -39,14 +47,6 @@ export function createMetricsHandler(db: Database, getWsClients?: () => number) 
   };
 
   return (req: Request, res: Response): void => {
-    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
-    const rateCheck = scrapeRateLimiter.check(ip);
-    if (!rateCheck.allowed) {
-      res.status(429).end();
-      return;
-    }
-    scrapeRateLimiter.recordFailure(ip); // counts every request against the window
-
     if (!process.env.METRICS_TOKEN) {
       res.status(404).end();
       return;

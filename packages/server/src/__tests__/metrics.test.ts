@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Database } from 'better-sqlite3';
 import type { Request, Response } from 'express';
 import { createTestDb } from './helpers/test-db';
-import { createMetricsHandler } from '../routes/metrics';
+import { createMetricsHandler, metricsRateLimiter } from '../routes/metrics';
 
 function call(handler: ReturnType<typeof createMetricsHandler>, authorization?: string) {
   const req = { headers: authorization ? { authorization } : {} } as Request;
@@ -65,12 +65,27 @@ describe('GET /metrics', () => {
     expect(out.body).toMatch(/djimitflo_process_memory_rss_bytes \d+/);
   });
 
-  it('rate-limits scrapes per IP', () => {
-    const handler = createMetricsHandler(db);
+  it('rate-limits scrapes per IP', async () => {
+    const invoke = async () => {
+      const req = { ip: '203.0.113.7', headers: {}, method: 'GET', path: '/metrics', app: { get: () => false } } as unknown as Request;
+      const out = { status: 0, nextCalled: false };
+      const res = {
+        status(code: number) { out.status = code; return this; },
+        send() { return this; },
+        end() { return this; },
+        setHeader() { return this; },
+        getHeader() { return undefined; },
+      } as unknown as Response;
+      await metricsRateLimiter(req, res, () => { out.nextCalled = true; });
+      return out;
+    };
+
     for (let i = 0; i < 300; i++) {
-      expect(call(handler, 'Bearer scrape-secret').status).toBe(200);
+      expect((await invoke()).nextCalled).toBe(true);
     }
-    expect(call(handler, 'Bearer scrape-secret').status).toBe(429);
+    const blocked = await invoke();
+    expect(blocked.nextCalled).toBe(false);
+    expect(blocked.status).toBe(429);
   });
 
   it('escapes label values', () => {
