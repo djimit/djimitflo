@@ -78,9 +78,11 @@ describe('buildPiArgs', () => {
   it('prefers options.model over PI_MODEL env', () => {
     process.env.PI_MODEL = 'env-model';
     const optArgs = buildPiArgs(makeTask(), { model: 'option-model' });
+    expect(optArgs).toContain('--model');
     expect(optArgs[optArgs.indexOf('--model') + 1]).toBe('option-model');
 
     const envArgs = buildPiArgs(makeTask());
+    expect(envArgs).toContain('--model');
     expect(envArgs[envArgs.indexOf('--model') + 1]).toBe('env-model');
 
     delete process.env.PI_MODEL;
@@ -95,9 +97,13 @@ describe('buildPiArgs', () => {
     process.env.PI_OFFLINE = '1';
     const args = buildPiArgs(makeTask());
 
+    expect(args).toContain('--provider');
     expect(args[args.indexOf('--provider') + 1]).toBe('ollama');
+    expect(args).toContain('--thinking');
     expect(args[args.indexOf('--thinking') + 1]).toBe('high');
+    expect(args).toContain('--tools');
     expect(args[args.indexOf('--tools') + 1]).toBe('read,ls');
+    expect(args).toContain('--exclude-tools');
     expect(args[args.indexOf('--exclude-tools') + 1]).toBe('bash');
     expect(args).toContain('--offline');
   });
