@@ -32,6 +32,13 @@ interface RoutingRequest {
   maxTokens?: number;
   temperature?: number;
   preferredProvider?: LlmProvider;
+  /**
+   * OpenMythos risk category (e.g. 'injection', 'hallucination'). When set,
+   * routing prefers the healthy provider whose model has the best benchmark
+   * score for that category (from openmythos_eval_runs), if any scores
+   * >= GOVERNANCE_ROUTER_FLOOR. Otherwise static task routing applies.
+   */
+  riskCategory?: string;
 }
 
 interface RoutingDecision {
@@ -90,6 +97,12 @@ export class LlmRouterService {
     const candidates = request.preferredProvider
       ? [request.preferredProvider]
       : this.taskRouting[request.taskType] || ['litellm'];
+
+    // Governance override: benchmark evidence beats static preference order.
+    if (request.riskCategory) {
+      const governed = this.pickByGovernance(request, candidates);
+      if (governed) return governed;
+    }
 
     // Find first healthy candidate
     for (const providerName of candidates) {
@@ -210,6 +223,64 @@ export class LlmRouterService {
       totalRequests: metrics?.c || 0,
       avgLatencyMs: Math.round(metrics?.avg_latency || 0),
     };
+  }
+
+  /**
+   * Pick the healthy candidate whose model has the best OpenMythos score for
+   * the requested risk category, if any healthy candidate is scored at or
+   * above the floor. Returns null when governance data doesn't discriminate,
+   * so static routing decides.
+   */
+  private pickByGovernance(request: RoutingRequest, candidates: LlmProvider[]): RoutingDecision | null {
+    const scores = this.governanceScores(request.riskCategory!);
+    if (scores.size === 0) return null;
+
+    const floor = Number(process.env.GOVERNANCE_ROUTER_FLOOR ?? '3');
+    let best: { provider: ProviderConfig; score: number } | null = null;
+    for (const providerName of candidates) {
+      const provider = this.providers.get(providerName);
+      if (!provider || provider.status !== 'active') continue;
+      if (provider.apiKeyEnv && !process.env[provider.apiKeyEnv]) continue;
+      const score = scores.get(provider.model);
+      if (score === undefined || score < floor) continue;
+      if (!best || score > best.score) best = { provider, score };
+    }
+    if (!best) return null;
+
+    return {
+      provider: best.provider.name,
+      model: best.provider.model,
+      reason: `Governance: ${best.provider.model} scored ${best.score.toFixed(2)}/5 on '${request.riskCategory}' (OpenMythos benchmark)`,
+      estimatedCost: (request.maxTokens || 4096) / 1_000_000 * best.provider.costPerMtok,
+      estimatedLatencyMs: best.provider.avgLatencyMs,
+    };
+  }
+
+  /**
+   * Latest OpenMythos category score per subject model, from completed eval runs.
+   */
+  private governanceScores(category: string): Map<string, number> {
+    const scores = new Map<string, number>();
+    let rows: Array<{ metadata: string }>;
+    try {
+      rows = this.db.prepare(`
+        SELECT metadata FROM openmythos_eval_runs
+        WHERE status = 'completed'
+        ORDER BY finished_at ASC
+      `).all() as Array<{ metadata: string }>;
+    } catch {
+      return scores; // isolated consumers without the eval table
+    }
+    for (const row of rows) {
+      try {
+        const metadata = JSON.parse(row.metadata || '{}') as { subject_model?: string; category_scores?: Record<string, number> };
+        const score = metadata.category_scores?.[category];
+        if (metadata.subject_model && typeof score === 'number') {
+          scores.set(metadata.subject_model, score); // ascending order → latest run wins
+        }
+      } catch { /* skip malformed rows */ }
+    }
+    return scores;
   }
 
   private findProviderByModelId(modelId: string): ProviderConfig | undefined {
