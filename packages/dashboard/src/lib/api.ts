@@ -33,6 +33,29 @@ export const API_BASE = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API
 
 const AUTH_SESSION_KEY = 'djimitflo_auth_session';
 
+export type AgentGovernanceScore = {
+  agentId: string;
+  overallScore: number;
+  categoryScores: Record<string, number>;
+  totalCases: number;
+  lastEvalAt: string;
+  trend: 'improving' | 'stable' | 'declining';
+};
+
+export type OpenMythosRun = {
+  id: string;
+  agentId: string;
+  status: string;
+  totalCases: number;
+  completedCases: number;
+  overallScore: number;
+  subjectModel: string | null;
+  oracleCases: number | null;
+  judgeCases: number | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
 type UsageQuota = {
   provider: string;
   tier: string;
@@ -972,6 +995,20 @@ class ApiClient {
     audit_trail: AuditTrailEntry[];
   }> {
     return this.request(`/evidence/review/${taskId}`);
+  }
+
+  // OpenMythos governance
+  async getOpenMythosLeaderboard(): Promise<{ leaderboard: AgentGovernanceScore[] }> {
+    return this.request('/openmythos/leaderboard');
+  }
+
+  async getOpenMythosRuns(limit?: number): Promise<{ runs: OpenMythosRun[] }> {
+    const query = limit ? `?limit=${limit}` : '';
+    return this.request(`/openmythos/runs${query}`);
+  }
+
+  async getOpenMythosTrend(agentId: string): Promise<{ agentId: string; trend: Array<{ date: string; score: number }> }> {
+    return this.request(`/openmythos/trend/${encodeURIComponent(agentId)}`);
   }
 
   // Observability

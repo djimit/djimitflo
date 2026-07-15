@@ -577,6 +577,63 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
 
   /**
+   * List recent eval runs across all agents (newest first).
+   */
+  listRuns(limit = 20): Array<{
+    id: string;
+    agentId: string;
+    status: string;
+    totalCases: number;
+    completedCases: number;
+    overallScore: number;
+    subjectModel: string | null;
+    oracleCases: number | null;
+    judgeCases: number | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }> {
+    const rows = this.db.prepare(`
+      SELECT id, agent_id, status, total_cases, completed_cases, overall_score, started_at, finished_at, metadata
+      FROM openmythos_eval_runs
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(limit) as Array<Record<string, unknown>>;
+
+    return rows.map((r) => {
+      let metadata: { subject_model?: string; oracle_cases?: number; judge_cases?: number } = {};
+      try { metadata = JSON.parse((r.metadata as string) || '{}'); } catch { /* keep empty */ }
+      return {
+        id: r.id as string,
+        agentId: r.agent_id as string,
+        status: r.status as string,
+        totalCases: r.total_cases as number,
+        completedCases: r.completed_cases as number,
+        overallScore: r.overall_score as number,
+        subjectModel: metadata.subject_model ?? null,
+        oracleCases: metadata.oracle_cases ?? null,
+        judgeCases: metadata.judge_cases ?? null,
+        startedAt: (r.started_at as string) ?? null,
+        finishedAt: (r.finished_at as string) ?? null,
+      };
+    });
+  }
+
+  /**
+   * Governance leaderboard: latest score per agent, best first.
+   */
+  getLeaderboard(): AgentScore[] {
+    const agents = this.db.prepare(`
+      SELECT DISTINCT agent_id FROM openmythos_eval_runs WHERE status = 'completed'
+    `).all() as Array<{ agent_id: string }>;
+
+    // ponytail: one getAgentScore query per agent — fine at fleet sizes, batch when agents > ~1k
+    return agents
+      .map((a) => this.getAgentScore(a.agent_id))
+      .filter((s): s is AgentScore => s !== null)
+      .sort((a, b) => b.overallScore - a.overallScore);
+  }
+
+  /**
    * Filter cases based on discrimination power.
    * Excludes cases where all models got the same score (spread=0) over last N runs.
    * Wave 2: Data-driven corpus quality gate.
