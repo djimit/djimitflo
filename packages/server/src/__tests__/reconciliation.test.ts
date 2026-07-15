@@ -171,4 +171,67 @@ describe('ReconciliationService', () => {
       await expect(service.reconcileGitHub()).rejects.toThrow('GITHUB_REPOSITORY_REQUIRED');
     });
   });
+
+  describe('nightly cadence', () => {
+    const ENV = { ...process.env };
+    const NIGHTLY_KEYS = ['RECONCILIATION_NIGHTLY_ENABLED', 'RECONCILIATION_NIGHTLY_HOUR', 'RECONCILIATION_NIGHTLY_APPLY', 'GITHUB_REPOSITORY', 'GITHUB_TOKEN'];
+
+    beforeEach(() => {
+      for (const key of NIGHTLY_KEYS) delete process.env[key];
+    });
+
+    afterEach(() => {
+      service.stop();
+      for (const key of Object.keys(process.env)) if (!(key in ENV)) delete process.env[key];
+      Object.assign(process.env, ENV);
+    });
+
+    function at(hour: number): Date {
+      const d = new Date();
+      d.setHours(hour, 30, 0, 0);
+      return d;
+    }
+
+    it('does not arm unless enabled with GitHub credentials', () => {
+      expect(service.start()).toBe(false);
+
+      process.env.RECONCILIATION_NIGHTLY_ENABLED = 'true';
+      expect(service.start()).toBe(false); // no repo/token
+
+      process.env.GITHUB_REPOSITORY = 'djimit/djimitflo';
+      process.env.GITHUB_TOKEN = 'test-token';
+      process.env.RECONCILIATION_NIGHTLY_HOUR = '23'; // boot tick stays a no-op
+      expect(service.start()).toBe(true);
+    });
+
+    it('is due after the target hour and dedupes on a same-day github run', () => {
+      process.env.RECONCILIATION_NIGHTLY_HOUR = '4';
+      expect(service.shouldRun(at(3))).toBe(false);
+      expect(service.shouldRun(at(5))).toBe(true);
+
+      // a github-sourced run recorded today makes it not due
+      service.reconcile([{ title: 'x' }], 'github:djimit/djimitflo');
+      expect(service.shouldRun(at(5))).toBe(false);
+
+      // manual runs do not consume the nightly slot
+      db.prepare("DELETE FROM reconciliation_runs").run();
+      service.reconcile([{ title: 'x' }], 'manual');
+      expect(service.shouldRun(at(5))).toBe(true);
+    });
+
+    it('tick runs a github reconciliation honoring the apply flag', async () => {
+      process.env.GITHUB_REPOSITORY = 'djimit/djimitflo';
+      process.env.GITHUB_TOKEN = 'test-token';
+      process.env.RECONCILIATION_NIGHTLY_HOUR = '0';
+      const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] });
+      const svc = new ReconciliationService(db, repoRoot, fetchMock as any);
+
+      const report = await svc.tick(at(12));
+      expect(report?.applied).toBe(false);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      // deduped: second tick same day is a no-op
+      expect(await svc.tick(at(13))).toBeNull();
+    });
+  });
 });

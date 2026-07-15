@@ -18,6 +18,12 @@
  * GitHub apply needs GITHUB_TOKEN + GITHUB_REPOSITORY (owner/repo); without
  * them reconcile() still produces the report. Default is report-only —
  * closing requires apply: true.
+ *
+ * Nightly cadence (default-off, same pattern as the eval scheduler):
+ *   RECONCILIATION_NIGHTLY_ENABLED=true
+ *   RECONCILIATION_NIGHTLY_HOUR=4       (server-local hour, default 4)
+ *   RECONCILIATION_NIGHTLY_APPLY=true   (optional; default report-only)
+ * One GitHub reconciliation per UTC day, deduped against reconciliation_runs.
  */
 
 import { randomUUID } from 'crypto';
@@ -256,6 +262,56 @@ export class ReconciliationService {
       JSON.stringify(closedIssues), JSON.stringify(verdicts), report.createdAt);
 
     return report;
+  }
+
+  // ── nightly cadence ─────────────────────────────────────────────────────
+
+  private timer: ReturnType<typeof setInterval> | null = null;
+
+  /** Arm the hourly scheduler. Returns false (no-op) unless explicitly enabled. */
+  start(): boolean {
+    if (process.env.RECONCILIATION_NIGHTLY_ENABLED !== 'true') return false;
+    if (!process.env.GITHUB_REPOSITORY || !process.env.GITHUB_TOKEN) {
+      console.warn('Reconciliation nightly: enabled but GITHUB_REPOSITORY/GITHUB_TOKEN missing — not arming');
+      return false;
+    }
+    this.timer = setInterval(() => void this.tick(), 60 * 60 * 1000);
+    this.timer.unref();
+    void this.tick(); // catch-up on boot
+    return true;
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  targetHour(): number {
+    const hour = Number(process.env.RECONCILIATION_NIGHTLY_HOUR ?? '4');
+    return Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : 4;
+  }
+
+  /** Due when past the target hour and no GitHub reconciliation ran today (UTC). */
+  shouldRun(now: Date = new Date()): boolean {
+    if (now.getHours() < this.targetHour()) return false;
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS n FROM reconciliation_runs
+      WHERE source LIKE 'github:%' AND substr(created_at, 1, 10) = date('now')
+    `).get() as { n: number };
+    return row.n === 0;
+  }
+
+  async tick(now: Date = new Date()): Promise<ReconciliationReport | null> {
+    if (!this.shouldRun(now)) return null;
+    try {
+      const apply = process.env.RECONCILIATION_NIGHTLY_APPLY === 'true';
+      const report = await this.reconcileGitHub({ apply });
+      console.log(`Reconciliation nightly: ${report.totalClaims} claims → ${report.staleClaims} stale, precision ${report.generatorPrecision ?? 'n/a'}${apply ? `, closed ${report.closedIssues.length}` : ' (report-only)'}`);
+      return report;
+    } catch (error) {
+      console.error('Reconciliation nightly failed —', error instanceof Error ? error.message : error);
+      return null;
+    }
   }
 
   latestReport(): ReconciliationReport | null {

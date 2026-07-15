@@ -27,6 +27,7 @@ import { MetaOrchestrationService } from './services/meta-orchestration-service'
 import { SelfModificationPipeline } from './services/self-modification-pipeline';
 import { ProactiveMemoryService } from './services/proactive-memory-service';
 import { ComplianceAuditService } from './services/compliance-audit-service';
+import { ReconciliationService } from './services/reconciliation-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
@@ -247,6 +248,11 @@ async function main() {
   // Constructed for startup side-effects (table setup / event registration).
   new ProactiveMemoryService(db);
   new ComplianceAuditService(db);
+
+  // Nightly tracker reconciliation — re-verifies generated claims (default-off, see service header)
+  if (new ReconciliationService(db).start()) {
+    console.log('🔎 Reconciliation nightly scheduler armed');
+  }
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
