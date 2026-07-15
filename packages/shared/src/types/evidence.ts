@@ -31,7 +31,7 @@ export enum EvidenceSeverity {
   CRITICAL = 'critical',
 }
 
-export type EvidenceSource = 'system' | 'executor' | 'policy' | 'approval' | 'user' | 'mcp';
+export type EvidenceSource = 'system' | 'executor' | 'policy' | 'approval' | 'user' | 'mcp' | 'governance-gate';
 
 export interface ExecutionEvidence extends Timestamps {
   id: ID;

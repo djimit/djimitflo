@@ -30,6 +30,7 @@ import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ApprovalService } from '../services/approval-service';
+import { GovernanceGateService } from '../services/governance-gate-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
@@ -56,6 +57,7 @@ export class ExecutionEngine {
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
+  private governanceGate: GovernanceGateService;
   private diffCaptureService: DiffCaptureService;
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
@@ -95,6 +97,7 @@ export class ExecutionEngine {
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
+    this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
     
     // Register default executors
@@ -160,8 +163,30 @@ export class ExecutionEngine {
     }
 
     const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
-    const evaluation = this.policyDecisionService.evaluate(assessment);
+    let evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
+
+    // Governance gate: benchmark evidence can only TIGHTEN the policy decision.
+    const gateVerdict = this.governanceGate.assess(parsedTask, executorKind);
+    if (gateVerdict.action === 'require_approval' && evaluation.decision === 'allow') {
+      evaluation = { ...evaluation, decision: 'require_approval', explanation: gateVerdict.reason };
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.POLICY_DECISION,
+        severity: EvidenceSeverity.WARNING,
+        title: 'Governance gate tightened execution to require approval',
+        summary: gateVerdict.reason,
+        details: {
+          agentKey: gateVerdict.agentKey,
+          score: gateVerdict.score,
+          floor: gateVerdict.floor,
+          trend: gateVerdict.trend,
+          retirement_candidate: gateVerdict.flagRetirement,
+          executorKind,
+        },
+        source: 'governance-gate',
+      });
+    }
 
     if (evaluation.decision === 'deny') {
       this.evidenceService.captureEvidence({

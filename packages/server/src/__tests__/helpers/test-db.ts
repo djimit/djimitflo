@@ -618,16 +618,32 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
-    task_id TEXT,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied')),
+    task_id TEXT NOT NULL,
+    execution_event_id TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'denied', 'expired')),
     risk_level TEXT NOT NULL DEFAULT 'low' CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
-    request_type TEXT NOT NULL DEFAULT '',
+    request_type TEXT NOT NULL DEFAULT 'high_risk_action' CHECK(request_type IN ('tool_call', 'file_write', 'shell_command', 'network_request', 'high_risk_action')),
     request_message TEXT NOT NULL DEFAULT '',
     request_data TEXT NOT NULL DEFAULT '{}',
-    requested_by TEXT,
+    approved_by TEXT,
     approved_at TEXT,
     denied_at TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    denial_reason TEXT,
+    expires_at TEXT,
+    metadata TEXT,
+    action_type TEXT,
+    title TEXT,
+    description TEXT,
+    command TEXT,
+    tool_name TEXT,
+    target_path TEXT,
+    policy_id TEXT,
+    decided_at TEXT,
+    decided_by TEXT,
+    decision_reason TEXT,
+    requested_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS tasks (
