@@ -260,10 +260,14 @@ export class FleetMeshService {
     if (this.heartbeatInterval) return;
 
     this.heartbeatInterval = setInterval(() => {
-      const staleThreshold = new Date(Date.now() - intervalMs * 3).toISOString();
-      this.db.prepare(`
-        UPDATE fleet_nodes SET status = 'offline' WHERE last_heartbeat < ? AND status = 'online'
-      `).run(staleThreshold);
+      try {
+        const staleThreshold = new Date(Date.now() - intervalMs * 3).toISOString();
+        this.db.prepare(`
+          UPDATE fleet_nodes SET status = 'offline' WHERE last_heartbeat < ? AND status = 'online'
+        `).run(staleThreshold);
+      } catch (error) {
+        console.warn('[FleetMesh] Heartbeat update skipped:', error instanceof Error ? error.message : String(error));
+      }
     }, intervalMs);
   }
 

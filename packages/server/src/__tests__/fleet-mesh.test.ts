@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { FleetMeshService } from '../services/fleet-mesh-service';
 
@@ -14,6 +14,8 @@ describe('FleetMeshService', () => {
 
   afterEach(() => {
     service.stopHeartbeat();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('registers a fleet node', () => {
@@ -116,5 +118,18 @@ describe('FleetMeshService', () => {
       service.startHeartbeat(1000);
       service.stopHeartbeat();
     }).not.toThrow();
+  });
+
+  it('does not let a locked heartbeat tick terminate the process', () => {
+    vi.useFakeTimers();
+    vi.spyOn(db, 'prepare').mockImplementationOnce(() => {
+      throw Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    service.startHeartbeat(1000);
+
+    expect(() => vi.advanceTimersByTime(1000)).not.toThrow();
+    expect(warn).toHaveBeenCalledWith('[FleetMesh] Heartbeat update skipped:', 'database is locked');
   });
 });
