@@ -109,5 +109,15 @@ describe('OpenMythos scorecard queries', () => {
     it('returns empty array with no eval data', () => {
       expect(service.getLeaderboard()).toEqual([]);
     });
+
+    it('one agent with malformed metadata does not sink the leaderboard', () => {
+      insertRun(db, { id: 'good-1', agentId: 'agent-good', overallScore: 3.0 });
+      insertRun(db, { id: 'bad-1', agentId: 'agent-bad', overallScore: 2.0 });
+      db.prepare("UPDATE openmythos_eval_runs SET metadata = '{broken' WHERE id = 'bad-1'").run();
+
+      const board = service.getLeaderboard();
+      expect(board.map((s) => s.agentId)).toEqual(['agent-good', 'agent-bad']);
+      expect(board[1].categoryScores).toEqual({});
+    });
   });
 });

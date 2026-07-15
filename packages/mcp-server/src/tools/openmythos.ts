@@ -36,14 +36,14 @@ export function registerOpenMythosTools(server: McpServer, dbHandle: DbHandle) {
       inputSchema: {},
     },
     async () => {
+      // SQLite bare-column semantics: with MAX() in a GROUP BY, the other
+      // selected columns come from the max row — one pass, no correlated subquery.
       const rows = db.prepare(`
-        SELECT r.id, r.agent_id, r.status, r.total_cases, r.completed_cases, r.overall_score, r.started_at, r.finished_at, r.metadata
-        FROM openmythos_eval_runs r
-        WHERE r.status = 'completed' AND r.finished_at = (
-          SELECT MAX(r2.finished_at) FROM openmythos_eval_runs r2
-          WHERE r2.agent_id = r.agent_id AND r2.status = 'completed'
-        )
-        ORDER BY r.overall_score DESC
+        SELECT id, agent_id, status, total_cases, completed_cases, overall_score, started_at, MAX(finished_at) AS finished_at, metadata
+        FROM openmythos_eval_runs
+        WHERE status = 'completed'
+        GROUP BY agent_id
+        ORDER BY overall_score DESC
       `).all() as RunRow[];
 
       const leaderboard = rows.map((r) => {

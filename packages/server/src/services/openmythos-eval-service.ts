@@ -506,7 +506,8 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       else if (diff < -0.1) trend = 'declining';
     }
 
-    const metadata = JSON.parse(run.metadata || '{}') as { category_scores?: Record<string, number> };
+    let metadata: { category_scores?: Record<string, number> } = {};
+    try { metadata = JSON.parse(run.metadata || '{}'); } catch { /* malformed metadata must not sink the score */ }
     return {
       agentId,
       overallScore: run.overall_score,
