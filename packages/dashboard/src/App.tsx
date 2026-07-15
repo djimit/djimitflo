@@ -19,7 +19,6 @@ const PredictiveAnalyticsPage = lazy(() => import('./pages/PredictiveAnalyticsPa
 const SelfHealingPage = lazy(() => import('./pages/SelfHealingPage').then((module) => ({ default: module.SelfHealingPage })));
 const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').then((module) => ({ default: module.CognitiveRuntimePage })));
 const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
-const ExplainerFleetPage = lazy(() => import('./pages/explore/ExplainerFleetPage').then((module) => ({ default: module.ExplainerFleetPage })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
 const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
 const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
@@ -40,7 +39,7 @@ const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').the
 const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
-const SegmlGovernancePage = lazy(() => import('./pages/SegmlGovernancePage').then((module) => ({ default: module.SegmlGovernancePage })));
+const GovernanceScorecardPage = lazy(() => import('./pages/GovernanceScorecardPage').then((module) => ({ default: module.GovernanceScorecardPage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -94,6 +93,7 @@ export function App() {
           <Route path="swarm" element={<SwarmOverviewPage />} />
           <Route path="approvals" element={<ApprovalQueuePage />} />
           <Route path="policies" element={<PolicyCenterPage />} />
+          <Route path="governance" element={<GovernanceScorecardPage />} />
           <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
@@ -110,14 +110,12 @@ export function App() {
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />
-          <Route path="segml-governance" element={<SegmlGovernancePage />} />
           <Route path="agi-reasoning" element={<AgiReasoningPage />} />
           <Route path="consensus-debates" element={<ConsensusDebatePage />} />
           <Route path="predictive-analytics" element={<PredictiveAnalyticsPage />} />
           <Route path="self-healing" element={<SelfHealingPage />} />
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
-          <Route path="explainer-fleet" element={<ExplainerFleetPage />} />
         </Route>
       </Routes>
       </Suspense>

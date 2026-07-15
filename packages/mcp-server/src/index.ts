@@ -21,9 +21,7 @@ import { registerAgentTools } from './tools/agents.js';
 import { registerMissionControlTools } from './tools/mission-control.js';
 import { registerOrchestrationTools } from './tools/orchestration.js';
 import { registerOkfTools } from './tools/okf.js';
-import { registerGovernanceTools } from './tools/governance.js';
-import { registerNotebookTools } from './tools/notebooks.js';
-import { registerExplainerTools } from './tools/explainer.js';
+import { registerOpenMythosTools } from './tools/openmythos.js';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -55,9 +53,7 @@ async function main() {
   registerMissionControlTools(server, db);
   registerOrchestrationTools(server, db);
   registerOkfTools(server);
-  registerGovernanceTools(server, db);
-  registerNotebookTools(server);
-    registerExplainerTools(server, db);
+  registerOpenMythosTools(server, db);
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
