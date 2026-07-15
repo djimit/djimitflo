@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Task, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { ExecutionEventType, LogLevel } from '@djimitflo/shared';
-import type { TaskExecutor, ExecutionSession, ExecutorKind } from '../execution/types';
+import type { TaskExecutor, ExecutionSession, ExecutorKind, ExecutorOptions } from '../execution/types';
 import {
   DockerSandboxExecutor,
   DEFAULT_SANDBOX_CONFIG,
@@ -53,7 +53,7 @@ class StubExecutor implements TaskExecutor {
     return task.risk_level !== ('critical' as any);
   }
 
-  async start(task: Task, options?: { environment?: Record<string, string> }): Promise<ExecutionSession> {
+  async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     this.lastEnvironment = options?.environment;
     const events = (async function* (): AsyncIterable<ExecutionEventCreateInput> {
       yield {
@@ -81,10 +81,14 @@ describe('DockerSandboxExecutor.buildDockerArgs', () => {
     const args = DockerSandboxExecutor.buildDockerArgs('sandbox-1', testConfig, 'node', ['script.js']);
 
     expect(args.slice(0, 4)).toEqual(['run', '--rm', '--name', 'sandbox-1']);
+    expect(args).toContain('--cpus');
     expect(args[args.indexOf('--cpus') + 1]).toBe('2.0');
+    expect(args).toContain('--memory');
     expect(args[args.indexOf('--memory') + 1]).toBe('256m');
+    expect(args).toContain('--network');
     expect(args[args.indexOf('--network') + 1]).toBe('none');
     expect(args).toContain('--read-only');
+    expect(args).toContain('--tmpfs');
     expect(args[args.indexOf('--tmpfs') + 1]).toBe('/tmp:size=64m');
     // image, then command and its args, close the invocation
     expect(args.slice(-3)).toEqual(['test-image:latest', 'node', 'script.js']);
@@ -104,6 +108,7 @@ describe('DockerSandboxExecutor.buildDockerArgs', () => {
     const args = DockerSandboxExecutor.buildDockerArgs('sandbox-1', config, 'sh', [], '/host/project');
 
     expect(args).toContain('/host/project:/workspace:rw');
+    expect(args).toContain('-w');
     expect(args[args.indexOf('-w') + 1]).toBe('/workspace');
     expect(args).toContain('/host/cache:/cache:ro');
   });
