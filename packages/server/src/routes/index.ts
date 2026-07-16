@@ -44,7 +44,6 @@ import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
-import { createMemoryEvolutionRoutes } from './memory-evolution';
 import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
@@ -66,6 +65,7 @@ import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
 import { limitBodySize } from '../middleware/input-validation';
+import rateLimit from 'express-rate-limit';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -158,7 +158,6 @@ export function createRoutes(
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
-    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
@@ -191,8 +190,10 @@ export function createRoutes(
   }
 
   // Machine-readable API surface, derived from the mount table above.
+  // express-rate-limit so CodeQL recognizes the limiter (same policy as /metrics).
+  const openApiRateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false });
   let openApiSpec: Record<string, unknown> | null = null;
-  router.get('/openapi.json', requireAuth, (_req, res) => {
+  router.get('/openapi.json', openApiRateLimiter, requireAuth, (_req, res) => {
     openApiSpec ??= buildOpenApiSpec(collectRoutes(mounts), { title: 'Djimitflo API', version: getAppVersion() });
     res.json(openApiSpec);
   });
