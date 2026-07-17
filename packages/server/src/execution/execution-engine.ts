@@ -481,8 +481,11 @@ export class ExecutionEngine {
    * Process event stream from execution session
    */
   private async processEventStream(session: ExecutionSession): Promise<void> {
+    const streamTimeoutMs = Number(process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS || "300000");
     try {
+      const streamDeadline = Date.now() + streamTimeoutMs;
       for await (const event of session.events) {
+        if (Date.now() > streamDeadline) { break; }
         // Persist event to database
         const eventId = this.persistEvent(event);
         

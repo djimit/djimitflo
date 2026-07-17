@@ -1,3 +1,4 @@
+import { ReDoSGuard } from './redos-guard';
 import type { Database } from 'better-sqlite3';
 import { ExecutionPolicy, PolicyDecision, RiskAssessment, RiskLevel } from '@djimitflo/shared';
 
@@ -49,7 +50,8 @@ export class PolicyDecisionService {
     }
 
     if (policy.match_pattern) {
-      const pattern = new RegExp(policy.match_pattern, 'i');
+      const pattern = ReDoSGuard.compile(policy.match_pattern);
+      if (!pattern) return false;
       const subject = JSON.stringify(assessment.metadata);
       if (!pattern.test(subject)) {
         return false;
