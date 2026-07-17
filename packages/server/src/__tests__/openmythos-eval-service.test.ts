@@ -106,9 +106,23 @@ describe('OpenMythosEvalService', () => {
     expect(mockFetch.mock.calls.every((call) => JSON.parse(call[1].body).model === 'test-model')).toBe(true);
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).options).toEqual({ temperature: 0, seed: 0, num_predict: 1024 });
     expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ?').get(result.id)).toEqual({ count: 3 });
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM swarm_evidence_edges
+      WHERE from_ref = ? AND relation = 'has_case_result' AND to_ref LIKE 'case_result:%'
+    `).get(`eval:run:${result.id}`)).toEqual({ count: 3 });
     const stored = db.prepare('SELECT categories_json, metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
     expect(JSON.parse(stored.categories_json)).toEqual([]);
-    expect(JSON.parse(stored.metadata)).toMatchObject({ subject_model: 'test-model', category_scores: result.categoryScores });
+    expect(JSON.parse(stored.metadata)).toMatchObject({
+      subject_model: 'test-model',
+      category_scores: result.categoryScores,
+      oracle_anchors_configured: false,
+      oracle_anchor_cases: 0,
+      discrimination_gate_enabled: true,
+      discrimination_gate_has_prior_data: false,
+      discrimination_prior_cases: 0,
+      discrimination_filtered_cases: 0,
+    });
   });
 
   it('returns null for agent with no evaluations', () => {
@@ -165,6 +179,8 @@ describe('OpenMythosEvalService', () => {
     expect(result.results[0]).toMatchObject({ scoringSource: 'oracle', oracleType: 'refusal_required', oraclePass: true, judgeScore: 5 });
     expect(db.prepare('SELECT scoring_source, oracle_type, oracle_pass FROM openmythos_case_results WHERE run_id = ?').get(result.id))
       .toEqual({ scoring_source: 'oracle', oracle_type: 'refusal_required', oracle_pass: 1 });
+    const stored = db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
+    expect(JSON.parse(stored.metadata)).toMatchObject({ oracle_anchors_configured: true, oracle_anchor_cases: 1 });
   });
 
   it('uses the canonical refusal vocabulary for oracle scoring', async () => {
@@ -179,6 +195,64 @@ describe('OpenMythosEvalService', () => {
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: "I don't have access to that configuration." }) });
     const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
     expect(result.results[0]).toMatchObject({ scoringSource: 'oracle', oraclePass: true, judgeScore: 5 });
+  });
+
+  it('records discrimination gate readiness when prior case data exists', async () => {
+    db.prepare(`
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score)
+      VALUES ('prior-1', 'agent-x', 'completed', 1, 1, 1), ('prior-2', 'agent-y', 'completed', 1, 1, 5)
+    `).run();
+    db.prepare(`
+      INSERT INTO openmythos_case_results (id, run_id, case_id, category, difficulty, judge_score, status)
+      VALUES ('prior-result-1', 'prior-1', 'test-001', 'injection', 1, 1, 'completed'),
+             ('prior-result-2', 'prior-2', 'test-001', 'injection', 1, 5, 'completed')
+    `).run();
+    mockFetch.mockReset();
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ response: 'I cannot comply.' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ response: '{"score":5,"rationale":"ok"}' }) });
+
+    const result = await service.runEval('agent-1', undefined, 'test-model');
+
+    expect(result.totalCases).toBe(1);
+    const stored = db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
+    expect(JSON.parse(stored.metadata)).toMatchObject({
+      discrimination_gate_enabled: true,
+      discrimination_gate_has_prior_data: true,
+      discrimination_prior_cases: 1,
+      discrimination_filtered_cases: 2,
+    });
+  });
+
+  it('conditions exact-case evals on admitted skill instructions and hash', async () => {
+    const anchorsPath = join(tempDir, 'anchors.json');
+    writeFileSync(anchorsPath, JSON.stringify({
+      schema_version: 1,
+      anchors: [{ case_id: 'test-001', oracle_type: 'refusal_required', rule: {} }],
+    }));
+    process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH = anchorsPath;
+    (service as any).anchorsCache = null;
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ response: 'I cannot comply.' }) });
+
+    const result = await service.runEval('skill-1', undefined, 'test-model', ['test-001'], {
+      kind: 'skill',
+      id: 'skill-1',
+      version: '1.2.3',
+      contentHash: 'hash-abc',
+      instructions: 'UNIQUE_SKILL_INSTRUCTION',
+    });
+
+    const prompt = JSON.parse(mockFetch.mock.calls[0][1].body).prompt;
+    expect(prompt).toContain('UNIQUE_SKILL_INSTRUCTION');
+    expect(prompt).toContain('hash-abc');
+    const stored = db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
+    expect(JSON.parse(stored.metadata)).toMatchObject({
+      evaluation_mode: 'skill_conditioned_prompt',
+      skill_id: 'skill-1',
+      skill_version: '1.2.3',
+      skill_content_hash: 'hash-abc',
+    });
   });
 
   it('rejects requested case IDs that are absent from the selected corpus', async () => {
@@ -272,6 +346,13 @@ describe('GovernanceGuardService', () => {
   });
 
   it('blocks when evaluation evidence is incomplete', async () => {
+    (guardService as any).skillLoader.getSkill = vi.fn().mockReturnValue({
+      id: 'skill-1',
+      version: '1.0.0',
+      contentHash: 'hash-1',
+      instructions: 'Admitted skill instructions',
+      tools: [],
+    });
     (guardService as any).evalService.runEval = vi.fn().mockResolvedValue({
       id: 'run-1', agentId: 'skill-1', status: 'failed', totalCases: 3, completedCases: 0,
       overallScore: 0, categoryScores: {}, results: [], startedAt: '', finishedAt: '',

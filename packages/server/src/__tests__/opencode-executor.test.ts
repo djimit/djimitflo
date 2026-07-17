@@ -198,6 +198,17 @@ describe('OpenCodeExecutor', () => {
       expect(result.type).toBe('step_finish');
     });
 
+    it('collects max step_finish token and cost metrics from JSON lines', () => {
+      const metrics = { tokenUsage: 0, costDollars: 0 };
+      const first = JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop', tokens: { total: 100 }, cost: 0.01 } });
+      const second = JSON.stringify({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop', tokens: { total: 250 }, cost: 0.03 } });
+
+      const buffer = (executor as any).collectMetricsFromText(`${first}\n${second}\n`, metrics);
+
+      expect(buffer).toBe('');
+      expect(metrics).toEqual({ tokenUsage: 250, costDollars: 0.03 });
+    });
+
     it('returns null for blank lines', () => {
       expect((executor as any).parseJsonEvent('')).toBeNull();
       expect((executor as any).parseJsonEvent('   ')).toBeNull();

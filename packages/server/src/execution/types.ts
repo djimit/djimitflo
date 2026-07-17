@@ -49,6 +49,7 @@ export interface ExecutionArtifact {
 export interface ExecutionMetrics {
   executionTimeMs: number;
   tokenUsage?: number;
+  costDollars?: number;
   toolCalls?: number;
   approvalsRequested?: number;
 }
