@@ -138,11 +138,33 @@ export class SkillEvolutionEngine {
     tokensUsed: number;
     durationMs: number;
     domain: string;
+    taskId?: string;
+    agentId?: string;
+    skillVersion?: string;
+    skillContentHash?: string;
+    model?: string;
+    evidenceRefs?: string[];
   }): void {
     this.db.prepare(`
-      INSERT INTO skill_outcomes (id, skill_id, success, tokens_used, duration_ms, domain, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(randomUUID(), skillId, outcome.success ? 1 : 0, outcome.tokensUsed, outcome.durationMs, outcome.domain, new Date().toISOString());
+      INSERT INTO skill_outcomes (
+        id, skill_id, success, tokens_used, duration_ms, domain,
+        task_id, agent_id, skill_version, skill_content_hash, model, evidence_refs_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      skillId,
+      outcome.success ? 1 : 0,
+      outcome.tokensUsed,
+      outcome.durationMs,
+      outcome.domain,
+      outcome.taskId || null,
+      outcome.agentId || null,
+      outcome.skillVersion || null,
+      outcome.skillContentHash || null,
+      outcome.model || null,
+      JSON.stringify(outcome.evidenceRefs || []),
+      new Date().toISOString(),
+    );
 
     // Update skill traits based on outcome
     this.updateTraits(skillId, outcome);
@@ -279,6 +301,12 @@ export class SkillEvolutionEngine {
         tokens_used INTEGER NOT NULL DEFAULT 0,
         duration_ms INTEGER NOT NULL DEFAULT 0,
         domain TEXT NOT NULL DEFAULT '',
+        task_id TEXT,
+        agent_id TEXT,
+        skill_version TEXT,
+        skill_content_hash TEXT,
+        model TEXT,
+        evidence_refs_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -286,6 +314,18 @@ export class SkillEvolutionEngine {
       CREATE INDEX IF NOT EXISTS idx_skill_genomes_generation ON skill_genomes(generation);
       CREATE INDEX IF NOT EXISTS idx_skill_outcomes_skill_id ON skill_outcomes(skill_id);
     `);
+    for (const [name, ddl] of [
+      ['task_id', 'TEXT'],
+      ['agent_id', 'TEXT'],
+      ['skill_version', 'TEXT'],
+      ['skill_content_hash', 'TEXT'],
+      ['model', 'TEXT'],
+      ['evidence_refs_json', "TEXT NOT NULL DEFAULT '[]'"],
+    ] as const) {
+      const exists = (this.db.prepare('PRAGMA table_info(skill_outcomes)').all() as Array<{ name: string }>)
+        .some((column) => column.name === name);
+      if (!exists) this.db.exec(`ALTER TABLE skill_outcomes ADD COLUMN ${name} ${ddl}`);
+    }
   }
 }
 

@@ -9,11 +9,12 @@
  * - Public skill registry API for community sharing
  */
 
+import { createHash } from 'crypto';
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'better-sqlite3';
 
-interface SkillDefinition {
+export interface SkillDefinition {
   id: string;
   name: string;
   description: string;
@@ -24,6 +25,7 @@ interface SkillDefinition {
   author: string;
   enabled: boolean;
   metadata: Record<string, unknown>;
+  contentHash: string;
 }
 
 interface AgentSkillAssignment {
@@ -38,7 +40,7 @@ const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), '.ope
 export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
 
-  constructor(private db: Database) {
+  constructor(private db: Database, private skillsDir = SKILLS_DIR) {
     this.ensureTables();
     this.loadSkills();
   }
@@ -49,16 +51,16 @@ export class SkillLoaderService {
   loadSkills(): SkillDefinition[] {
     const loaded: SkillDefinition[] = [];
 
-    if (!existsSync(SKILLS_DIR)) {
+    if (!existsSync(this.skillsDir)) {
       return loaded;
     }
 
-    const entries = readdirSync(SKILLS_DIR, { withFileTypes: true });
+    const entries = readdirSync(this.skillsDir, { withFileTypes: true });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
 
-      const skillPath = join(SKILLS_DIR, entry.name);
+      const skillPath = join(this.skillsDir, entry.name);
       const skillMdPath = join(skillPath, 'SKILL.md');
 
       if (!existsSync(skillMdPath)) continue;
@@ -193,6 +195,7 @@ export class SkillLoaderService {
       author: (metadata.author as string) || 'unknown',
       enabled: true,
       metadata,
+      contentHash: createHash('sha256').update(content).digest('hex'),
     };
   }
 
