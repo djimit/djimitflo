@@ -399,6 +399,12 @@ const SCHEMA = `
     tokens_used INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL DEFAULT 0,
     domain TEXT NOT NULL DEFAULT '',
+    task_id TEXT,
+    agent_id TEXT,
+    skill_version TEXT,
+    skill_content_hash TEXT,
+    model TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 

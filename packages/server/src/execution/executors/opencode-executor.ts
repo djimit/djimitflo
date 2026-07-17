@@ -96,6 +96,11 @@ interface ParsedOutput {
   metadata?: Record<string, unknown>;
 }
 
+interface OpenCodeRunMetrics {
+  tokenUsage: number;
+  costDollars: number;
+}
+
 // ── Executor ────────────────────────────────────────────────────────────────
 
 export class OpenCodeExecutor implements TaskExecutor {
@@ -123,6 +128,8 @@ export class OpenCodeExecutor implements TaskExecutor {
     const args = this.buildOpenCodeArgs(task, options);
 
     const emitter = new EventEmitter();
+    const metrics: OpenCodeRunMetrics = { tokenUsage: 0, costDollars: 0 };
+    let metricsBuffer = '';
     let childProcess: ChildProcess | null = null;
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
@@ -152,15 +159,23 @@ export class OpenCodeExecutor implements TaskExecutor {
       }, this.executionTimeoutMs);
 
       child.stdout?.on('data', (data) => {
-        emitter.emit('output', data.toString(), 'stdout');
+        const text = data.toString();
+        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer);
+        emitter.emit('output', text, 'stdout');
       });
 
       child.stderr?.on('data', (data) => {
-        emitter.emit('output', data.toString(), 'stderr');
+        const text = data.toString();
+        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer);
+        emitter.emit('output', text, 'stderr');
       });
 
       child.on('close', (code) => {
         clearTimeout(timeoutHandle);
+        if (metricsBuffer.trim()) {
+          this.collectMetricsFromLine(metricsBuffer, metrics);
+          metricsBuffer = '';
+        }
         emitter.emit('exit', code);
       });
 
@@ -170,7 +185,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     };
 
     const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
-    const result = this.createResultPromise(task, emitter);
+    const result = this.createResultPromise(task, emitter, metrics);
 
     const session: ExecutionSession = {
       id: sessionId,
@@ -242,6 +257,29 @@ export class OpenCodeExecutor implements TaskExecutor {
       return null;
     } catch {
       return null;
+    }
+  }
+
+  private collectMetricsFromText(text: string, metrics: OpenCodeRunMetrics, buffer = ''): string {
+    const lines = `${buffer}${text}`.split('\n');
+    const nextBuffer = lines.pop() || '';
+    for (const line of lines) {
+      this.collectMetricsFromLine(line, metrics);
+    }
+    return nextBuffer;
+  }
+
+  private collectMetricsFromLine(line: string, metrics: OpenCodeRunMetrics): void {
+    const event = this.parseJsonEvent(line.trim());
+    if (event?.type !== 'step_finish') return;
+
+    const part = event.part as OpenCodeStepFinish;
+    const total = part.tokens?.total;
+    if (typeof total === 'number') {
+      metrics.tokenUsage = Math.max(metrics.tokenUsage, total);
+    }
+    if (typeof part.cost === 'number') {
+      metrics.costDollars = Math.max(metrics.costDollars, part.cost);
     }
   }
 
@@ -506,6 +544,7 @@ export class OpenCodeExecutor implements TaskExecutor {
   private async createResultPromise(
     _task: Task,
     emitter: EventEmitter,
+    metrics: OpenCodeRunMetrics,
   ): Promise<ExecutionResult> {
     return new Promise((resolve) => {
       emitter.on('exit', (code: number) => {
@@ -513,14 +552,14 @@ export class OpenCodeExecutor implements TaskExecutor {
           resolve({
             status: 'completed',
             message: 'OpenCode execution completed successfully',
-            metrics: { executionTimeMs: 0 },
+            metrics: { executionTimeMs: 0, tokenUsage: metrics.tokenUsage, costDollars: metrics.costDollars },
           });
         } else {
           resolve({
             status: 'failed',
             message: `OpenCode execution failed with exit code ${code}`,
             error: `Process exited with code ${code}`,
-            metrics: { executionTimeMs: 0 },
+            metrics: { executionTimeMs: 0, tokenUsage: metrics.tokenUsage, costDollars: metrics.costDollars },
           });
         }
       });
@@ -530,7 +569,7 @@ export class OpenCodeExecutor implements TaskExecutor {
           status: 'failed',
           message: `OpenCode execution error: ${error.message}`,
           error: error.stack,
-          metrics: { executionTimeMs: 0 },
+          metrics: { executionTimeMs: 0, tokenUsage: metrics.tokenUsage, costDollars: metrics.costDollars },
         });
       });
     });
