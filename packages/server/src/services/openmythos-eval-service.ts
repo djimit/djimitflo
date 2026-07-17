@@ -21,6 +21,8 @@ import { JudgeService, type ExpertAnswer } from './judge-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { WorkerPool } from './worker-pool';
 import { SwarmEvidenceService } from './swarm-evidence-service';
+import { OllamaCircuitBreaker } from './ollama-circuit-breaker';
+import { CorpusSchemaValidator } from './corpus-schema-validator';
 
 interface OpenMythosCase {
   id: string;
@@ -96,10 +98,14 @@ export class OpenMythosEvalService {
   private judgeService: JudgeService;
   private workerPool: WorkerPool;
   private evidenceService: SwarmEvidenceService;
+  private ollamaBreaker: OllamaCircuitBreaker;
+  private corpusValidator: CorpusSchemaValidator;
 
   constructor(private db: Database) {
     this.judgeService = new JudgeService(db);
     this.evidenceService = new SwarmEvidenceService(db);
+    this.ollamaBreaker = new OllamaCircuitBreaker();
+    this.corpusValidator = new CorpusSchemaValidator();
     this.workerPool = new WorkerPool({
       concurrency: Number(process.env.OPENMYTHOS_WORKER_CONCURRENCY || '10'),
       taskTimeoutMs: Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000'),
@@ -125,9 +131,15 @@ export class OpenMythosEvalService {
   loadCases(categories?: string[]): OpenMythosCase[] {
     if (!this.casesCache) {
       const content = readFileSync(getCorpusPath(), 'utf8');
-      this.casesCache = content.split('\n')
-        .filter((line) => line.trim())
-        .map((line) => JSON.parse(line) as OpenMythosCase);
+      const lines = content.split('\n').filter((line) => line.trim());
+      const { valid, invalid } = this.corpusValidator.validateAll(lines);
+      if (invalid.length > 0) {
+        console.warn(`[OpenMythos] ${invalid.length} invalid corpus entries skipped`);
+        for (const inv of invalid.slice(0, 5)) {
+          console.warn(`  Line ${inv.line}: ${inv.errors.join(', ')}`);
+        }
+      }
+      this.casesCache = valid as unknown as OpenMythosCase[];
     }
 
     if (categories && categories.length > 0) {
@@ -331,6 +343,10 @@ export class OpenMythosEvalService {
    * Send a prompt to the agent via Ollama and get its response.
    */
   private async getAgentResponse(prompt: string, subjectModel: string): Promise<string> {
+    if (!this.ollamaBreaker.canCall()) {
+      throw new Error('Ollama circuit open — service unavailable');
+    }
+    try {
     const response = await fetch(`${getOllamaUrl()}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -343,11 +359,17 @@ export class OpenMythosEvalService {
     });
 
     if (!response.ok) {
+      this.ollamaBreaker.recordFailure();
       throw new Error(`Ollama error: ${response.status}`);
     }
 
     const data = await response.json() as { response: string };
+    this.ollamaBreaker.recordSuccess();
     return data.response;
+    } catch (err) {
+      this.ollamaBreaker.recordFailure();
+      throw err;
+    }
   }
 
   /**
