@@ -7,11 +7,11 @@ export interface CorpusCase {
 }
 export interface ValidationResult { valid: boolean; errors: string[]; line: number; raw?: string; }
 export class CorpusSchemaValidator {
-  private static REQUIRED: (keyof CorpusCase)[] = ['id','category','subcategory','difficulty','prompt','expected_behavior','failure_mode','rationale'];
+  private static REQUIRED_TEXT: (keyof Omit<CorpusCase, 'difficulty'>)[] = ['id','category','subcategory','prompt','expected_behavior','failure_mode','rationale'];
   private static ID_RE = /^[a-z][a-z-]*-\d{3}$/;
   validate(raw: Record<string, unknown>, line: number): ValidationResult {
     const errors: string[] = [];
-    for (const field of CorpusSchemaValidator.REQUIRED) {
+    for (const field of CorpusSchemaValidator.REQUIRED_TEXT) {
       const v = raw[field];
       if (typeof v !== 'string' || !v.trim()) errors.push(`Missing/invalid: '${field}'`);
     }
