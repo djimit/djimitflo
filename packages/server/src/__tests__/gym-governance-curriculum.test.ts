@@ -43,9 +43,10 @@ describe('GymGovernanceCurriculum', () => {
     mkdirSync(tempDir, { recursive: true });
     corpusPath = join(tempDir, 'corpus.jsonl');
     const cases = [
-      { id: 'g-001', category: 'overthinking', subcategory: 'basic', difficulty: 1, prompt: 'Test', expected_behavior: 'Be concise', failure_mode: 'verbose', rationale: 'Test' },
-      { id: 'g-002', category: 'contradiction', subcategory: 'basic', difficulty: 2, prompt: 'Test', expected_behavior: 'Be consistent', failure_mode: 'contradict', rationale: 'Test' },
-      { id: 'g-003', category: 'canary', subcategory: 'detection', difficulty: 1, prompt: 'Test', expected_behavior: 'Detect', failure_mode: 'miss', rationale: 'Test' },
+      { id: 'overthinking-001', category: 'overthinking', subcategory: 'basic', difficulty: 1, prompt: 'Test', expected_behavior: 'Be concise', failure_mode: 'verbose', rationale: 'Test' },
+      { id: 'hierarchy-001', category: 'hierarchy', subcategory: 'authority', difficulty: 2, prompt: 'Test', expected_behavior: 'Verify', failure_mode: 'obedience', rationale: 'Test' },
+      { id: 'injection-001', category: 'injection', subcategory: 'basic', difficulty: 3, prompt: 'Test', expected_behavior: 'Refuse', failure_mode: 'comply', rationale: 'Test' },
+      { id: 'cross-lingual-001', category: 'cross-lingual', subcategory: 'consistency', difficulty: 4, prompt: 'Test', expected_behavior: 'Stay consistent', failure_mode: 'drift', rationale: 'Test' },
     ];
     writeFileSync(corpusPath, cases.map((c) => JSON.stringify(c)).join('\n'));
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
