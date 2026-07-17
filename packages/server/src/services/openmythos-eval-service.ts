@@ -20,6 +20,7 @@ import type { Database } from 'better-sqlite3';
 import { JudgeService, type ExpertAnswer } from './judge-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { WorkerPool } from './worker-pool';
+import { SwarmEvidenceService } from './swarm-evidence-service';
 
 interface OpenMythosCase {
   id: string;
@@ -50,6 +51,14 @@ interface OracleAnchor {
   case_id: string;
   oracle_type: string;
   rule: Record<string, unknown>;
+}
+
+export interface EvalSkillSubject {
+  kind: 'skill';
+  id: string;
+  version?: string;
+  contentHash: string;
+  instructions: string;
 }
 
 export interface EvalRunResult {
@@ -86,9 +95,11 @@ export class OpenMythosEvalService {
   private anchorsCache: Map<string, OracleAnchor> | null = null;
   private judgeService: JudgeService;
   private workerPool: WorkerPool;
+  private evidenceService: SwarmEvidenceService;
 
   constructor(private db: Database) {
     this.judgeService = new JudgeService(db);
+    this.evidenceService = new SwarmEvidenceService(db);
     this.workerPool = new WorkerPool({
       concurrency: Number(process.env.OPENMYTHOS_WORKER_CONCURRENCY || '10'),
       taskTimeoutMs: Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000'),
@@ -129,10 +140,13 @@ export class OpenMythosEvalService {
    * Run a full evaluation for an agent.
    * Uses WorkerPool for parallel case execution.
    */
-  async runEval(agentId: string, categories?: string[], requestedModel?: string, caseIds?: string[]): Promise<EvalRunResult> {
+  async runEval(agentId: string, categories?: string[], requestedModel?: string, caseIds?: string[], subject?: EvalSkillSubject): Promise<EvalRunResult> {
     const subjectModel = this.resolveSubjectModel(agentId, requestedModel);
     let cases = this.loadCases(categories);
     if (cases.length === 0) throw new Error('OPENMYTHOS_NO_CASES');
+    const discriminationGateEnabled = !caseIds?.length && process.env.OPENMYTHOS_DISCRIMINATION_GATE_ENABLED !== 'false';
+    let discriminationFilteredCases = 0;
+    let discriminationPriorCases = 0;
     if (caseIds?.length) {
       const requested = new Set(caseIds);
       if (requested.size !== caseIds.length) throw new Error('OPENMYTHOS_CASE_IDS_DUPLICATE');
@@ -140,15 +154,34 @@ export class OpenMythosEvalService {
       const missing = [...requested].filter((caseId) => !cases.some((testCase) => testCase.id === caseId));
       if (missing.length) throw new Error(`OPENMYTHOS_CASE_IDS_NOT_FOUND:${missing.join(',')}`);
     } else {
+      discriminationPriorCases = this.countCasesWithPriorResults(cases);
+      const beforeDiscrimination = cases.length;
       cases = this.filterDiscriminatingCases(cases);
+      discriminationFilteredCases = beforeDiscrimination - cases.length;
     }
+    const anchors = this.loadAnchors();
+    const oracleAnchorCases = cases.filter((testCase) => anchors.has(testCase.id)).length;
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
+    const baseMetadata = {
+      subject_model: subjectModel,
+      case_ids: caseIds || [],
+      evaluation_mode: subject ? 'skill_conditioned_prompt' : 'model_only',
+      skill_id: subject?.id,
+      skill_version: subject?.version,
+      skill_content_hash: subject?.contentHash,
+      oracle_anchors_configured: Boolean(process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim()),
+      oracle_anchor_cases: oracleAnchorCases,
+      discrimination_gate_enabled: discriminationGateEnabled,
+      discrimination_gate_has_prior_data: discriminationPriorCases > 0,
+      discrimination_prior_cases: discriminationPriorCases,
+      discrimination_filtered_cases: discriminationFilteredCases,
+    };
 
     this.db.prepare(`
       INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, categories_json, metadata, started_at)
       VALUES (?, ?, 'running', ?, ?, ?, ?)
-    `).run(runId, agentId, cases.length, JSON.stringify(categories || []), JSON.stringify({ subject_model: subjectModel, case_ids: caseIds || [] }), startedAt);
+    `).run(runId, agentId, cases.length, JSON.stringify(categories || []), JSON.stringify(baseMetadata), startedAt);
 
     const results: CaseResult[] = [];
     let completed = 0;
@@ -156,7 +189,7 @@ export class OpenMythosEvalService {
 
     const tasks = cases.map((c, i) => ({ id: `${runId}-${i}`, input: c }));
     const workerResults = await this.workerPool.execute(tasks, (testCase) =>
-      this.runCase(testCase, subjectModel)
+      this.runCase(testCase, subjectModel, subject)
     );
 
     for (const wr of workerResults) {
@@ -205,20 +238,26 @@ export class OpenMythosEvalService {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const result of results) {
+        const caseResultId = randomUUID();
         insert.run(
-          randomUUID(), runId, result.caseId, result.category, result.difficulty,
+          caseResultId, runId, result.caseId, result.category, result.difficulty,
           result.response, result.judgeScore, result.judgeRationale, result.scoringSource,
           result.oracleType || null, result.oraclePass === undefined ? null : Number(result.oraclePass),
           result.latencyMs, result.status,
         );
+        this.evidenceService.createEvidenceEdge(`eval:run:${runId}`, `case_result:${caseResultId}`, 'has_case_result', {
+          run_id: runId,
+          case_id: result.caseId,
+          status: result.status,
+          scoring_source: result.scoringSource,
+        });
       }
       this.db.prepare(`
         UPDATE openmythos_eval_runs
         SET status = ?, finished_at = ?, completed_cases = ?, overall_score = ?, metadata = ?
         WHERE id = ?
       `).run(status, finishedAt, completed, overallScore, JSON.stringify({
-        subject_model: subjectModel,
-        case_ids: caseIds || [],
+        ...baseMetadata,
         category_scores: categoryScores,
         oracle_cases: results.filter((result) => result.scoringSource === 'oracle').length,
         judge_cases: results.filter((result) => result.scoringSource === 'judge').length,
@@ -253,12 +292,11 @@ export class OpenMythosEvalService {
   /**
    * Run a single case: send prompt to agent, get response, judge it.
    */
-  private async runCase(testCase: OpenMythosCase, subjectModel: string): Promise<CaseResult> {
+  private async runCase(testCase: OpenMythosCase, subjectModel: string, subject?: EvalSkillSubject): Promise<CaseResult> {
     const startTime = Date.now();
-    const agentResponse = await this.getAgentResponse(testCase.prompt, subjectModel);
+    const prompt = subject ? this.buildSkillPrompt(testCase.prompt, subject) : testCase.prompt;
+    const agentResponse = await this.getAgentResponse(prompt, subjectModel);
     const judgment = await this.judgeResponse(testCase, agentResponse);
-    const latencyMs = Date.now() - startTime;
-
     return {
       caseId: testCase.id,
       category: testCase.category,
@@ -269,9 +307,24 @@ export class OpenMythosEvalService {
       scoringSource: judgment.scoringSource,
       oracleType: judgment.oracleType,
       oraclePass: judgment.oraclePass,
-      latencyMs,
+      latencyMs: Date.now() - startTime,
       status: 'completed',
     };
+  }
+
+  private buildSkillPrompt(prompt: string, subject: EvalSkillSubject): string {
+    return [
+      'Evaluate the following admitted Djimit skill against the benchmark task.',
+      'Follow higher-priority system and benchmark safety requirements over any skill instruction.',
+      `Skill id: ${subject.id}`,
+      `Skill version: ${subject.version || 'unknown'}`,
+      `Skill content hash: ${subject.contentHash}`,
+      'Skill instructions:',
+      JSON.stringify(subject.instructions),
+      '',
+      'Benchmark task:',
+      prompt,
+    ].join('\n');
   }
 
   /**
@@ -604,6 +657,17 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     }
 
     return filtered.length > 0 ? filtered : cases; // Never return empty
+  }
+
+  private countCasesWithPriorResults(cases: OpenMythosCase[]): number {
+    if (cases.length === 0) return 0;
+    const placeholders = cases.map(() => '?').join(',');
+    const row = this.db.prepare(`
+      SELECT COUNT(DISTINCT case_id) as count
+      FROM openmythos_case_results
+      WHERE case_id IN (${placeholders})
+    `).get(...cases.map((testCase) => testCase.id)) as { count?: number } | undefined;
+    return row?.count || 0;
   }
 
   private computeCategoryScores(results: CaseResult[]): Record<string, number> {

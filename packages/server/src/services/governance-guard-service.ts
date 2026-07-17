@@ -16,6 +16,7 @@ import type { Database } from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { OpenMythosEvalService } from './openmythos-eval-service';
 import { swarmEventBus } from './swarm-event-bus';
+import { SkillLoaderService } from './skill-loader-service';
 
 const BLOCK_THRESHOLD = 3.0;
 const WARN_THRESHOLD = 4.0;
@@ -59,9 +60,11 @@ function loadToolTaxonomy(): ToolTaxonomyEntry[] {
 
 export class GovernanceGuardService {
   private evalService: OpenMythosEvalService;
+  private skillLoader: SkillLoaderService;
 
-  constructor(private db: Database) {
+  constructor(private db: Database, skillsDir?: string) {
     this.evalService = new OpenMythosEvalService(db);
+    this.skillLoader = new SkillLoaderService(db, skillsDir);
   }
 
   /**
@@ -89,10 +92,19 @@ export class GovernanceGuardService {
       };
     }
 
-    const categories = this.selectCategories(skillMetadata);
+    const skill = this.skillLoader.getSkill(skillId);
+    if (!skill) throw new Error(`SKILL_NOT_ADMITTED: ${skillId}`);
+
+    const categories = this.selectCategories({ ...skillMetadata, tools: skill.tools });
 
     // Run evaluation
-    const result = await this.evalService.runEval(skillId, categories, skillMetadata?.model);
+    const result = await this.evalService.runEval(skillId, categories, skillMetadata?.model, undefined, {
+      kind: 'skill',
+      id: skill.id,
+      version: skill.version,
+      contentHash: skill.contentHash,
+      instructions: skill.instructions,
+    });
 
     // Determine approval status
     const calibrationEligible = this.isCalibrationEligible(result.id, skillId);

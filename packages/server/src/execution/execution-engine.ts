@@ -37,6 +37,8 @@ import { MemorySyncService } from '../services/memory-sync-service';
 import { ReasoningBankService } from '../services/reasoning-bank-service';
 import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -64,6 +66,8 @@ export class ExecutionEngine {
   private circuitBreaker: CircuitBreakerService;
   private fallbackChain: FallbackChainService;
   private executionModePolicy: ExecutionModePolicyService;
+  private skillEvolution: SkillEvolutionEngine;
+  private skillLoader: SkillLoaderService;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -81,13 +85,15 @@ export class ExecutionEngine {
     this.metaOrchestration = service;
   }
 
-  constructor(db: Database, wsService: WebSocketService) {
+  constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
     this.db = db;
     this.wsService = wsService;
     this.executors = new Map();
     this.circuitBreaker = new CircuitBreakerService();
     this.fallbackChain = new FallbackChainService();
     this.executionModePolicy = new ExecutionModePolicyService();
+    this.skillEvolution = new SkillEvolutionEngine(db);
+    this.skillLoader = new SkillLoaderService(db, skillsDir);
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
@@ -147,6 +153,11 @@ export class ExecutionEngine {
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
+    }
+
+    const attributionBlockReason = this.blockInvalidSkillAttribution(parsedTask);
+    if (attributionBlockReason) {
+      return { status: 'denied', reason: attributionBlockReason };
     }
     
     // Get executor
@@ -591,6 +602,7 @@ export class ExecutionEngine {
           console.warn(`Reasoning bank failed for task ${taskId}:`, err?.message || err);
         });
       }
+      this.recordSkillOutcome(taskId, session, true, executionTimeMs, result.metrics?.tokenUsage || 0);
     } else if (result.status === 'failed') {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: completedAt,
@@ -612,6 +624,7 @@ export class ExecutionEngine {
         payload: { task: this.getTask(taskId) },
         timestamp: new Date().toISOString(),
       });
+      this.recordSkillOutcome(taskId, session, false, executionTimeMs, result.metrics?.tokenUsage || 0);
     }
 
     // Meta-orchestration: record outcome for learning
@@ -667,6 +680,10 @@ export class ExecutionEngine {
       payload: { task: this.getTask(taskId) },
       timestamp: new Date().toISOString(),
     });
+
+    const task = this.getTask(taskId);
+    const startedAt = task.started_at ? new Date(task.started_at).getTime() : Date.now();
+    this.recordSkillOutcome(taskId, undefined, false, Math.max(0, Date.now() - startedAt), task.token_usage || 0);
   }
   
   /**
@@ -762,6 +779,117 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+  }
+
+  private recordSkillOutcome(
+    taskId: string,
+    session: ExecutionSession | undefined,
+    success: boolean,
+    durationMs: number,
+    tokensUsed: number,
+  ): void {
+    const task = this.getTask(taskId);
+    const explicitSkillId = typeof task.metadata?.skillId === 'string'
+      ? task.metadata.skillId.trim()
+      : '';
+    let skill: SkillDefinition | null = explicitSkillId
+      ? this.skillLoader.getSkill(explicitSkillId)
+      : null;
+
+    if (!explicitSkillId && task.agent_id) {
+      const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+      if (assigned.length === 1) skill = assigned[0];
+      if (assigned.length > 1) {
+        this.evidenceService.captureEvidence({
+          task_id: taskId,
+          evidence_type: EvidenceType.EXECUTION_SUMMARY,
+          severity: EvidenceSeverity.WARNING,
+          title: 'Skill outcome attribution skipped',
+          summary: 'Multiple skills are assigned to the agent; set task metadata.skillId to attribute this outcome.',
+          details: {
+            assignedSkillIds: assigned.map((candidate) => candidate.id),
+            success,
+            tokensUsed,
+            durationMs,
+          },
+          source: 'system',
+          metadata: { reason: 'ambiguous_skill_attribution' },
+        });
+      }
+    }
+    if (!skill) return;
+
+    const evidenceRefs = (this.db.prepare(
+      'SELECT id FROM execution_evidence WHERE task_id = ? ORDER BY captured_at ASC',
+    ).all(taskId) as Array<{ id: string }>).map((row) => row.id);
+
+    this.skillEvolution.recordOutcome(skill.id, {
+      taskId,
+      agentId: task.agent_id || undefined,
+      skillVersion: skill.version,
+      skillContentHash: skill.contentHash,
+      model: session?.executorKind || String(task.metadata?.model || 'unknown'),
+      success,
+      tokensUsed,
+      durationMs,
+      domain: task.execution_mode || 'coding',
+      evidenceRefs,
+    });
+  }
+
+  private blockInvalidSkillAttribution(task: Task): string | null {
+    const explicitSkillId = typeof task.metadata?.skillId === 'string'
+      ? task.metadata.skillId.trim()
+      : '';
+
+    if (explicitSkillId) {
+      const skill = this.skillLoader.getSkill(explicitSkillId);
+      if (!skill) {
+        return this.blockSkillAttribution(task, `Task metadata.skillId is not an admitted skill: ${explicitSkillId}.`, [], 'invalid_skill_attribution');
+      }
+      if (task.agent_id) {
+        const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+        if (!assigned.some((candidate) => candidate.id === explicitSkillId)) {
+          return this.blockSkillAttribution(
+            task,
+            `Task metadata.skillId is not assigned to agent ${task.agent_id}: ${explicitSkillId}.`,
+            assigned.map((candidate) => candidate.id),
+            'unassigned_skill_attribution',
+          );
+        }
+      }
+      return null;
+    }
+
+    if (!task.agent_id) return null;
+
+    const assigned = this.skillLoader.getAgentSkills(task.agent_id);
+    if (assigned.length <= 1) return null;
+
+    const reason = 'Multiple skills are assigned to the agent; set task metadata.skillId before execution.';
+    return this.blockSkillAttribution(task, reason, assigned.map((skill) => skill.id), 'ambiguous_skill_attribution');
+  }
+
+  private blockSkillAttribution(task: Task, reason: string, assignedSkillIds: string[], code: string): string {
+    this.evidenceService.captureEvidence({
+      task_id: task.id,
+      evidence_type: EvidenceType.POLICY_DECISION,
+      severity: EvidenceSeverity.ERROR,
+      title: 'Execution blocked: invalid skill attribution',
+      summary: reason,
+      details: { assignedSkillIds },
+      source: 'policy',
+      metadata: { reason: code },
+    });
+    this.updateTaskStatus(task.id, TaskStatus.CANCELLED);
+    this.persistEvent({
+      task_id: task.id,
+      event_type: ExecutionEventType.ERROR,
+      message: reason,
+      level: LogLevel.ERROR,
+      metadata: { reason: code },
+    });
+    return reason;
   }
 
   private persistRiskAssessment(taskId: string, assessment: any, subject: string): string {
