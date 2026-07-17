@@ -1,3 +1,4 @@
+import { redactSecrets as redactSecretsExpanded } from './secret-patterns';
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { join } from 'path';
@@ -321,6 +322,7 @@ export class DiffCaptureService {
     let redactedCount = 0;
     let result = diff;
 
+    // Built-in patterns
     for (const pattern of SECRET_PATTERNS) {
       const matches = result.match(new RegExp(pattern.source, 'gi'));
       if (matches) {
@@ -328,6 +330,11 @@ export class DiffCaptureService {
       }
       result = result.replace(new RegExp(pattern.source, 'gi'), '[REDACTED]');
     }
+
+    // Expanded patterns (GitHub PATs, OpenAI keys, PEM, etc.)
+    const expanded = redactSecretsExpanded(result);
+    redactedCount += expanded.count;
+    result = expanded.redacted;
 
     return { diff: result, redactedCount: redactedCount };
   }

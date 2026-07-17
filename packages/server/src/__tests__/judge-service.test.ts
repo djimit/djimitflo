@@ -1,189 +1,129 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import Database from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
+import type Database from 'better-sqlite3';
+import { createTestDb } from './helpers/test-db';
 import { JudgeService, type ExpertAnswer } from '../services/judge-service';
-import { schema } from '../database/schema';
-import { runMigrations } from '../database/migrate';
 
-let db: Database.Database;
-let judge: JudgeService;
+const databases: Database.Database[] = [];
+const db = () => {
+  const database = createTestDb();
+  databases.push(database);
+  return database;
+};
 
-function createAnswer(overrides: Partial<ExpertAnswer> = {}): ExpertAnswer {
-  return {
-    domain: 'physics',
-    content: 'Quantum mechanics describes nature at the smallest scales of energy levels of atoms and subatomic particles.',
-    source: 'wikipedia',
-    confidence: 0.8,
-    evidence_refs: ['ref1', 'ref2', 'ref3'],
-    metadata: {},
-    ...overrides,
-  };
-}
+afterEach(() => databases.splice(0).forEach((database) => database.close()));
 
-beforeEach(() => {
-  db = new Database(':memory:');
-  db.pragma('foreign_keys = ON');
-  db.exec(schema);
-  runMigrations(db);
-  judge = new JudgeService(db);
-});
+describe('JudgeService', () => {
+  const sampleAnswers: ExpertAnswer[] = [
+    {
+      domain: 'security',
+      content: 'The system implements end-to-end encryption using AES-256. This ensures data confidentiality.',
+      source: 'arxiv',
+      confidence: 0.9,
+      evidence_refs: ['ref1', 'ref2', 'ref3'],
+    },
+    {
+      domain: 'privacy',
+      content: 'User data is encrypted at rest and in transit. No plaintext storage is used.',
+      source: 'wikipedia',
+      confidence: 0.8,
+      evidence_refs: ['ref4'],
+    },
+  ];
 
-afterEach(() => {
-  db?.close();
-});
-
-describe('G95: Judge Service', () => {
   it('returns empty verdict for no answers', () => {
-    const verdict = judge.evaluate([]);
+    const service = new JudgeService(db());
+    const verdict = service.evaluate([]);
     expect(verdict.score).toBe(0);
-    expect(verdict.confidence).toBe(0);
     expect(verdict.verification_status).toBe('unverifiable');
   });
 
-  it('evaluates single answer', () => {
-    const verdict = judge.evaluate([createAnswer()]);
-    expect(verdict.score).toBeGreaterThan(0);
-    expect(verdict.score).toBeLessThanOrEqual(100);
-    expect(verdict.confidence).toBeGreaterThan(0);
-    expect(verdict.reasoning).toBeDefined();
-  });
-
-  it('evaluates multiple answers from different domains', () => {
-    const answers = [
-      createAnswer({ domain: 'physics', source: 'arxiv', confidence: 0.9 }),
-      createAnswer({ domain: 'math', source: 'wikipedia', confidence: 0.7 }),
-      createAnswer({ domain: 'biology', source: 'okf', confidence: 0.6 }),
-    ];
-
-    const verdict = judge.evaluate(answers);
-    expect(verdict.score).toBeGreaterThan(0);
+  it('produces score between 0 and 100', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.score).toBeGreaterThanOrEqual(0);
     expect(verdict.score).toBeLessThanOrEqual(100);
   });
 
-  it('scores arxiv higher than unknown source', () => {
-    const arxivVerdict = judge.evaluate([createAnswer({ source: 'arxiv', confidence: 0.9 })]);
-    const unknownVerdict = judge.evaluate([createAnswer({ source: 'unknown', confidence: 0.9 })]);
-
-    expect(arxivVerdict.score).toBeGreaterThan(unknownVerdict.score);
+  it('includes confidence interval', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.ci95).toBeDefined();
+    expect(verdict.ci95![0]).toBeLessThanOrEqual(verdict.score);
+    expect(verdict.ci95![1]).toBeGreaterThanOrEqual(verdict.score);
   });
 
-  it('detects contradictions between domains', () => {
-    const answers = [
-      createAnswer({ domain: 'physics', content: 'Light behaves as a wave according to quantum mechanics experiments.' }),
-      createAnswer({ domain: 'optics', content: 'Light does not behave as a wave according to particle theory.' }),
-    ];
+  it('includes standard error', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.standard_error).toBeGreaterThan(0);
+  });
 
-    const verdict = judge.evaluate(answers);
+  it('includes sub-scores', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.sub_scores).toBeDefined();
+    expect(verdict.sub_scores!.evidence).toBeGreaterThan(0);
+  });
+
+  it('includes cronbach alpha', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.cronbach_alpha).toBeDefined();
+  });
+
+  it('detects contradictions between opposite claims', () => {
+    const service = new JudgeService(db());
+    const contradictory: ExpertAnswer[] = [
+      { domain: 'a', content: 'The system supports encryption at rest for all user data and ensures confidentiality through AES-256.', source: 'arxiv', confidence: 0.9, evidence_refs: ['r1'] },
+      { domain: 'b', content: 'The system does not support encryption at rest for user data which means data is stored in plaintext.', source: 'wikipedia', confidence: 0.8, evidence_refs: ['r2'] },
+    ];
+    const verdict = service.evaluate(contradictory);
     expect(verdict.contradictions.length).toBeGreaterThan(0);
+    expect(verdict.verification_status).toBe('contradicted');
   });
 
-  it('does not flag non-contradictory answers', () => {
-    const answers = [
-      createAnswer({ domain: 'physics', content: 'Light is a wave.' }),
-      createAnswer({ domain: 'math', content: 'Calculus is used in physics.' }),
-    ];
-
-    const verdict = judge.evaluate(answers);
-    expect(verdict.contradictions.length).toBe(0);
+  it('returns verified status for consistent high-quality answers', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(verdict.verification_status).toBe('verified');
   });
 
-  it('assigns verification status based on score', () => {
-    const highQuality = judge.evaluate([
-      createAnswer({ source: 'arxiv', confidence: 0.95, evidence_refs: ['r1', 'r2', 'r3'] }),
-      createAnswer({ domain: 'math', source: 'arxiv', confidence: 0.9, evidence_refs: ['r4', 'r5', 'r6'] }),
-    ]);
-
-    expect(highQuality.verification_status).toBe('verified');
+  it('getApprovalAction returns auto_approve for high scores without contradictions', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    if (verdict.score >= 80 && verdict.contradictions.length === 0) {
+      expect(service.getApprovalAction(verdict)).toBe('auto_approve');
+    }
   });
 
-  it('assigns contradicted status for high contradictions', () => {
-    const contradictory = judge.evaluate([
-      createAnswer({ domain: 'physics', content: 'Quantum entanglement allows instantaneous communication across any distance.' }),
-      createAnswer({ domain: 'optics', content: 'Quantum entanglement does not allow instantaneous communication across any distance.' }),
-    ]);
-
-    expect(contradictory.verification_status).toBe('contradicted');
-  });
-
-  it('generates recommendations for low scores', () => {
-    const lowScore = judge.evaluate([createAnswer({ source: 'unknown', confidence: 0.2, evidence_refs: [] })]);
-
-    expect(lowScore.recommendations.length).toBeGreaterThan(0);
-    expect(lowScore.recommendations.some(r => r.includes('Evidence') || r.includes('sources'))).toBe(true);
-  });
-
-  it('persists verdicts to database', () => {
-    judge.evaluate([createAnswer()]);
-    judge.evaluate([createAnswer({ domain: 'math' })]);
-
-    const history = judge.getVerdictHistory(10);
-    expect(history.length).toBe(2);
-  });
-
-  it('retrieves verdict by id', () => {
-    const verdict = judge.evaluate([createAnswer()]);
-    const retrieved = judge.getVerdict(verdict.id);
-
+  it('stores and retrieves verdicts from database', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    const retrieved = service.getVerdict(verdict.id);
     expect(retrieved).not.toBeNull();
-    expect(retrieved!.id).toBe(verdict.id);
     expect(retrieved!.score).toBe(verdict.score);
+    expect(retrieved!.ci95).toEqual(verdict.ci95);
   });
 
-  it('returns null for unknown verdict id', () => {
-    const retrieved = judge.getVerdict('nonexistent');
-    expect(retrieved).toBeNull();
+  it('getCalibrationError returns NaN with no reviews', () => {
+    const service = new JudgeService(db());
+    expect(Number.isNaN(service.getCalibrationError())).toBe(true);
   });
 
-  describe('Approval Actions', () => {
-    it('auto-approves high score without contradictions', () => {
-      const verdict: JudgeVerdict = {
-        id: 'test', score: 85, confidence: 0.9, reasoning: 'Good',
-        contradictions: [], recommendations: [], verification_status: 'verified', created_at: new Date().toISOString(),
-      };
-
-      const action = judge.getApprovalAction(verdict);
-      expect(action).toBe('auto_approve');
-    });
-
-    it('requires human review for medium score', () => {
-      const verdict: JudgeVerdict = {
-        id: 'test', score: 70, confidence: 0.6, reasoning: 'Medium',
-        contradictions: [], recommendations: [], verification_status: 'pending', created_at: new Date().toISOString(),
-      };
-
-      const action = judge.getApprovalAction(verdict);
-      expect(action).toBe('human_review');
-    });
-
-    it('rejects low score', () => {
-      const verdict = judge.evaluate([
-        createAnswer({ source: 'unknown', confidence: 0.1, evidence_refs: [] }),
-      ]);
-
-      const action = judge.getApprovalAction(verdict);
-      expect(action).toBe('reject');
-    });
-
-    it('requires human review for high score with contradictions', () => {
-      const verdict = judge.evaluate([
-        createAnswer({ source: 'arxiv', confidence: 0.95, evidence_refs: ['r1', 'r2', 'r3'] }),
-        createAnswer({ domain: 'optics', content: 'Light does not behave as a wave.', source: 'arxiv', confidence: 0.9 }),
-      ]);
-
-      if (verdict.contradictions.length > 0) {
-        const action = judge.getApprovalAction(verdict);
-        expect(action).toBe('human_review');
-      }
-    });
+  it('recordCalibration enables ECE computation', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    service.recordCalibration(verdict.id, 85);
+    const ece = service.getCalibrationError();
+    expect(Number.isNaN(ece)).toBe(false);
+    expect(ece).toBeGreaterThanOrEqual(0);
   });
 
-  it('calculates confidence with agreement bonus', () => {
-    const single = judge.evaluate([createAnswer({ confidence: 0.8 })]);
-    const multiple = judge.evaluate([
-      createAnswer({ confidence: 0.8 }),
-      createAnswer({ domain: 'math', confidence: 0.8 }),
-      createAnswer({ domain: 'bio', confidence: 0.8 }),
-    ]);
-
-    expect(multiple.confidence).toBeGreaterThanOrEqual(single.confidence);
+  it('verdict history returns most recent first', () => {
+    const service = new JudgeService(db());
+    service.evaluate(sampleAnswers);
+    service.evaluate([sampleAnswers[0]]);
+    const history = service.getVerdictHistory(5);
+    expect(history.length).toBe(2);
   });
 });

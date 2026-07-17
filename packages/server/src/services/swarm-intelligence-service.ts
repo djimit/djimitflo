@@ -7,9 +7,6 @@ import { knowledgeBus } from './knowledge-bus';
 import { SwarmStatusService, type WorkerPoolPlanInput, type WorkerPoolPlanResult } from './swarm-status-service';
 import { SpecialistPanelService, type SpecialistProfile } from './specialist-panel-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
-import { CapabilityService } from './capability-service';
-import { HypothesisService } from './hypothesis-service';
-import { ClaimService } from './claim-service';
 import { ProofRunService } from './proof-run-service';
 import { SwarmEvidenceService } from './swarm-evidence-service';
 import { SwarmConcurrencyService } from './swarm-concurrency-service';
@@ -104,18 +101,12 @@ export interface RunnerManifestRecord {
 
 export class SwarmIntelligenceService {
   private panels: SpecialistPanelService;
-  readonly capabilities: CapabilityService;
-  readonly hypotheses: HypothesisService;
-  readonly claims: ClaimService;
   readonly evidence: SwarmEvidenceService;
   readonly concurrency: SwarmConcurrencyService;
   readonly operations: SwarmOperationsService;
 
   constructor(private db: Database) {
     this.panels = new SpecialistPanelService(db);
-    this.capabilities = new CapabilityService(db);
-    this.hypotheses = new HypothesisService(db);
-    this.claims = new ClaimService(db);
     this.evidence = new SwarmEvidenceService(db);
     this.concurrency = new SwarmConcurrencyService();
     this.operations = new SwarmOperationsService(db);
