@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -55,6 +56,8 @@ export interface CapabilityInput {
 }
 
 export class CapabilityService {
+  private skillTrainingGate = new SkillTrainingPromotionGate();
+
   constructor(private db: Database) {}
 
   registerCapability(input: CapabilityInput): SwarmCapabilityRecord {
@@ -91,6 +94,7 @@ export class CapabilityService {
     const existing = this.getCapability(id);
     if (!existing) throw new Error('SWARM_CAPABILITY_NOT_FOUND');
     if (existing.status === 'validated') return existing;
+    this.skillTrainingGate.assertPass(existing);
 
     const now = new Date().toISOString();
     this.db.prepare("UPDATE swarm_capabilities SET status = 'validated', updated_at = ? WHERE id = ?").run(now, id);

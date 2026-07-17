@@ -1,13 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 
 let db: Database.Database;
 let svc: SwarmIntelligenceService;
+let runnerDir: string;
+let previousRunner: string | undefined;
+
+function writeRunner(name: string, source: string) {
+  const file = join(runnerDir, name);
+  writeFileSync(file, source, 'utf8');
+  return file;
+}
 
 beforeEach(() => {
+  previousRunner = process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER;
+  runnerDir = mkdtempSync(join(tmpdir(), 'skill-training-gate-'));
+  process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = writeRunner('pass.mjs', 'console.log(JSON.stringify({ passed: true, summary: { generated_at: "test" } }));\n');
   db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   db.exec(schema);
@@ -15,7 +29,12 @@ beforeEach(() => {
   svc = new SwarmIntelligenceService(db);
 });
 
-afterEach(() => { db?.close(); });
+afterEach(() => {
+  db?.close();
+  if (previousRunner === undefined) delete process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER;
+  else process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = previousRunner;
+  rmSync(runnerDir, { recursive: true, force: true });
+});
 
 describe('G15.2 capability promotion', () => {
   it('creates a candidate that cannot route live workers', () => {
@@ -63,6 +82,31 @@ describe('G15.2 capability promotion', () => {
     expect(promoted.status).toBe('validated');
     expect(promoted.eval_score).toBe(0.9);
     expect(promoted.live_route_allowed).toBe(true);
+    expect(promoted.metadata.promotion_skill_training_gate_ref).toBe('skill_training_eval:test');
+  });
+
+  it('blocks skill promotion when the training gate fails', () => {
+    process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = writeRunner('fail.mjs', 'console.log(JSON.stringify({ passed: false, threshold_failures: ["regression"] })); process.exit(1);\n');
+    svc.createCandidate({
+      id: 'gate-blocked-skill',
+      kind: 'skill',
+      owner: 'test',
+      version: '0.1.0',
+      risk_ceiling: 'low',
+      input_schema_ref: 'none',
+      output_schema_ref: 'none',
+      allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'],
+      required_evidence: ['worker_lease'],
+      eval_threshold: 0.75,
+      removal_strategy: 'disable if eval fails',
+    });
+
+    expect(() => svc.promoteCapability('gate-blocked-skill', {
+      eval_score: 0.9,
+      evidence_refs: ['eval_run:test-1'],
+      validation_report: 'local evidence passed',
+    })).toThrow(/SKILL_TRAINING_PROMOTION_GATE_FAILED/);
   });
 
   it('blocks promotion when eval score is below threshold', () => {

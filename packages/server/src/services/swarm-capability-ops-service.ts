@@ -7,6 +7,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { stringArray, normalizedScore, rejectSecretLike } from '../utils/swarm-helpers';
+import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -28,6 +29,8 @@ export interface SwarmCapabilityRecord {
 }
 
 export class SwarmCapabilityOpsService {
+  private skillTrainingGate = new SkillTrainingPromotionGate();
+
   constructor(private db: Database) {}
 
   registerCapability(input: {
@@ -109,6 +112,7 @@ export class SwarmCapabilityOpsService {
       if (!input.human_approval_ref?.trim()) throw new Error('CAPABILITY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
     }
     rejectSecretLike(input);
+    const skillTrainingGate = this.skillTrainingGate.assertPass(capability);
     const now = new Date().toISOString();
     const metadata = {
       ...capability.metadata,
@@ -116,6 +120,7 @@ export class SwarmCapabilityOpsService {
       promotion_eval_scorecard_ref: input.eval_scorecard_ref,
       promotion_security_checker_ref: input.security_checker_ref || null,
       promotion_human_approval_ref: input.human_approval_ref || null,
+      promotion_skill_training_gate_ref: skillTrainingGate.evidenceRef,
       promoted_at: now,
     };
     this.db.prepare(`
