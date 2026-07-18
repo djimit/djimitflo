@@ -65,6 +65,8 @@ import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
 import { limitBodySize } from '../middleware/input-validation';
+import rateLimit from 'express-rate-limit';
+import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 
 export function createRoutes(
@@ -105,25 +107,27 @@ export function createRoutes(
     });
   });
 
-  // Auth routes (public + protected)
-  router.use('/auth', createAuthRoutes(authService!, auth!, auditService));
-
-  // Protected routes
-  router.use('/tasks', requireAuth, createTaskRoutes(db, executionEngine, auth));
-  router.use('/agents', requireAuth, createAgentRoutes(db, auth));
-  router.use('/catalog', requireAuth, createCatalogRoutes(db, auth));
-  router.use('/mcp', requireAuth, createMCPRoutes(db, auth));
-  router.use('/approvals', requireAuth, createApprovalRoutes(db, executionEngine, auth));
-  router.use('/policies', requireAuth, createPolicyRoutes(db, auth));
-  router.use('/risk', requireAuth, createRiskRoutes(db, auth));
-  router.use('/evidence', requireAuth, createEvidenceRoutes(db, auth!));
-  router.use('/observability', requireAuth, createObservabilityRoutes(db, auth!));
-
-  // G15: knowledge bus HTTP endpoints (federation transport scaffold)
-  router.use('/knowledge', requireAuth, createKnowledgeRoutes(auth!));
-
-  // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
-  router.use('/federation', requireAuth, createFederationRoutes(db, auth!));
+  // Declarative mount table — order matters (Express matches in registration
+  // order: /swarms/spawns must precede /swarms; the '/' diff routes go where
+  // they always did). The same table feeds the route inventory / openapi.json.
+  const mounts: RouteMount[] = [
+    // Auth routes (public + protected)
+    { prefix: '/auth', middleware: [], router: createAuthRoutes(authService!, auth!, auditService) },
+    // Protected routes
+    { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth) },
+    { prefix: '/agents', middleware: [requireAuth], router: createAgentRoutes(db, auth) },
+    { prefix: '/catalog', middleware: [requireAuth], router: createCatalogRoutes(db, auth) },
+    { prefix: '/mcp', middleware: [requireAuth], router: createMCPRoutes(db, auth) },
+    { prefix: '/approvals', middleware: [requireAuth], router: createApprovalRoutes(db, executionEngine, auth) },
+    { prefix: '/policies', middleware: [requireAuth], router: createPolicyRoutes(db, auth) },
+    { prefix: '/risk', middleware: [requireAuth], router: createRiskRoutes(db, auth) },
+    { prefix: '/evidence', middleware: [requireAuth], router: createEvidenceRoutes(db, auth!) },
+    { prefix: '/observability', middleware: [requireAuth], router: createObservabilityRoutes(db, auth!) },
+    // G15: knowledge bus HTTP endpoints (federation transport scaffold)
+    { prefix: '/knowledge', middleware: [requireAuth], router: createKnowledgeRoutes(auth!) },
+    // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
+    { prefix: '/federation', middleware: [requireAuth], router: createFederationRoutes(db, auth!) },
+  ];
 
   // D2: runtime URLs — use the host OS' native listener inventory.
   router.get('/workstation/urls', requireAuth, (_req: any, res: any) => {
@@ -135,50 +139,64 @@ export function createRoutes(
   });
 
   // G22: operator intervention (pause/resume/inject/override)
-  router.use('/intervention', requireAuth, createInterventionRoutes(db, auth!));
-  router.use('/goals', requireAuth, createGoalRoutes(db, auth));
-  router.use('/loops', requireAuth, createLoopRoutes(db, auth));
-  router.use('/work-items', requireAuth, createWorkItemRoutes(db, auth));
-  // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
-  // generic /swarms requireAuth mount so children can reach it with a spawn token.
-  router.use('/swarms/spawns', requireAuthOrSpawnToken, createSpawnRoutes(db, auth, wsService));
-  router.use('/swarms', requireAuth, createSwarmRoutes(db, auth, wsService));
-  router.use('/repositories', requireAuth, createRepositoryRoutes(db, auth));
-  router.use('/', requireAuth, createDiffRoutes(db, auth));
-  router.use('/audit', requireAuth, createAuditRoutes(db, auditService, auth));
-  router.use('/discussions', requireAuth, createDiscussionRoutes(db, auth, wsService));
-  router.use('/usage', requireAuth, createUsageRoutes(db, auth));
-  router.use('/learning', requireAuth, createLearningRoutes(db, auth));
+  mounts.push(
+    { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
+    { prefix: '/goals', middleware: [requireAuth], router: createGoalRoutes(db, auth) },
+    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth) },
+    { prefix: '/work-items', middleware: [requireAuth], router: createWorkItemRoutes(db, auth) },
+    // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
+    // generic /swarms requireAuth mount so children can reach it with a spawn token.
+    { prefix: '/swarms/spawns', middleware: [requireAuthOrSpawnToken], router: createSpawnRoutes(db, auth, wsService) },
+    { prefix: '/swarms', middleware: [requireAuth], router: createSwarmRoutes(db, auth, wsService) },
+    { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
+    { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
+    { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
+    { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
+    { prefix: '/usage', middleware: [requireAuth], router: createUsageRoutes(db, auth) },
+    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth) },
+    { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
+    { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
+    { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
+    { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
+    { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
+    { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
+    { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
+    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth) },
+    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth) },
+    { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
+    { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
+    { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
+    { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
+    { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
+    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth) },
+    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth) },
+    { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
+    { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
+    { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
+    { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
+    { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
+    { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth) },
+    { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
+    { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
+    { prefix: '/swarm-intel', middleware: [requireAuth], router: createSwarmIntelRoutes(db, auth) },
+    { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
+    { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
+    { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
+  );
 
-  router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
-  router.use('/exports', requireAuth, createExportRoutes(db, auth!));
-  router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
-  router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
-  router.use('/skills', requireAuth, createSkillRoutes(db, auth));
-  router.use('/openmythos', requireAuth, createOpenMythosRoutes(db, auth));
-  router.use('/gym', requireAuth, createGymRoutes(db, auth));
-  router.use('/runtime-governance', requireAuth, createRuntimeGovernanceRoutes(db, auth));
-  router.use('/cognitive', requireAuth, createCognitiveRoutes(db, auth));
-  router.use('/self-modification', requireAuth, createSelfModificationRoutes(db, auth));
-  router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
-  router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
-  router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
-  router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
-  router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
-  router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
-  router.use('/advanced', requireAuth, createAdvancedRoutes(db, auth));
-  router.use('/health', createHealthRoutes(db, auth));
-  router.use('/legal', requireAuth, createLegalRoutes(db, auth));
-  router.use('/research', requireAuth, createResearchRoutes(db, auth));
-  router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
-  router.use('/telegram', createTelegramRoutes(db, auth));
-  router.use('/apex', requireAuth, createApexRoutes(db, auth));
-  router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
-  router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
-  router.use('/swarm-intel', requireAuth, createSwarmIntelRoutes(db, auth));
-  router.use('/agi', requireAuth, createAgiRoutes(db, auth));
-  router.use('/intelligence', requireAuth, createIntelligenceRoutes(db, auth));
-  router.use('/meta', requireAuth, createMetaOrchestrationRoutes(db, auth, metaOrchestration));
+  for (const mount of mounts) {
+    router.use(mount.prefix, ...mount.middleware, mount.router);
+  }
+
+  // Machine-readable API surface, derived from the mount table above.
+  // express-rate-limit so CodeQL recognizes the limiter (same policy as /metrics).
+  const openApiRateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false });
+  let openApiSpec: Record<string, unknown> | null = null;
+  router.get('/openapi.json', openApiRateLimiter, requireAuth, (_req, res) => {
+    openApiSpec ??= buildOpenApiSpec(collectRoutes(mounts), { title: 'Djimitflo API', version: getAppVersion() });
+    res.json(openApiSpec);
+  });
 
   return router;
 }
