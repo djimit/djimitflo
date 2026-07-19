@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Shield, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X } from 'lucide-react';
+import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 
 export function Layout() {
@@ -85,6 +85,12 @@ export function Layout() {
             icon={<Shield className="w-5 h-5" />}
             label="Policies"
             active={isActive('/policies')}
+          />
+          <NavLink
+            to="/governance"
+            icon={<ShieldCheck className="w-5 h-5" />}
+            label="Governance"
+            active={isActive('/governance')}
           />
           <NavLink
             to="/mcp-permissions"

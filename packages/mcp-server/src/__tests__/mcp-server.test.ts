@@ -6,6 +6,7 @@ import { registerLoopTools } from '../tools/loops.js';
 import { registerGoalTools } from '../tools/goals.js';
 import { registerAgentTools } from '../tools/agents.js';
 import { registerMissionControlTools } from '../tools/mission-control.js';
+import { registerOpenMythosTools } from '../tools/openmythos.js';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -43,6 +44,14 @@ function createTestDb(): DbHandle {
       metadata_json TEXT DEFAULT '{}', level TEXT DEFAULT 'info',
       created_at TEXT NOT NULL
     );
+    CREATE TABLE openmythos_eval_runs (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
+      started_at TEXT, finished_at TEXT,
+      total_cases INTEGER DEFAULT 0, completed_cases INTEGER DEFAULT 0,
+      overall_score REAL DEFAULT 0, status TEXT DEFAULT 'pending',
+      categories_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   return { db, close: () => db.close() };
 }
@@ -53,6 +62,7 @@ function createTestServer(dbHandle: DbHandle): McpServer {
   registerGoalTools(server, dbHandle);
   registerAgentTools(server, dbHandle);
   registerMissionControlTools(server, dbHandle);
+  registerOpenMythosTools(server, dbHandle);
   return server;
 }
 
@@ -109,5 +119,49 @@ describe('MCP Server Tools', () => {
     expect(parsed.summary).toBeDefined();
     expect(parsed.summary.activeLoans).toBe(0);
     expect(parsed.summary.pendingGoals).toBe(0);
+  });
+
+  it('registers the openmythos tools', () => {
+    const toolNames = Object.keys((server as any)._registeredTools || {});
+    expect(toolNames).toContain('djimitflo_openmythos_leaderboard');
+    expect(toolNames).toContain('djimitflo_openmythos_score');
+  });
+
+  it('openmythos_leaderboard ranks latest completed run per agent', async () => {
+    const insert = dbHandle.db.prepare(`
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, completed_cases, overall_score, finished_at, metadata, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+    insert.run('r1', 'agent-a', 'completed', 78, 2.0, '2026-07-14T10:00:00Z', '{"category_scores":{"injection":3.0},"subject_model":"llama3.1:8b"}');
+    insert.run('r2', 'agent-a', 'completed', 78, 3.5, '2026-07-15T10:00:00Z', '{"category_scores":{"injection":4.0},"subject_model":"llama3.1:8b"}');
+    insert.run('r3', 'agent-b', 'completed', 78, 2.5, '2026-07-15T10:00:00Z', '{}');
+    insert.run('r4', 'agent-c', 'failed', 0, 0, null, '{}');
+
+    const tool = (server as any)._registeredTools['djimitflo_openmythos_leaderboard'];
+    const result = await tool.handler({});
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.map((row: { agentId: string }) => row.agentId)).toEqual(['agent-a', 'agent-b']);
+    expect(parsed[0].overallScore).toBe(3.5);
+    expect(parsed[0].categoryScores).toEqual({ injection: 4.0 });
+    expect(parsed[0].subjectModel).toBe('llama3.1:8b');
+  });
+
+  it('openmythos_score returns latest score with trend, and errors on unknown agent', async () => {
+    const insert = dbHandle.db.prepare(`
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, completed_cases, overall_score, finished_at, metadata, created_at)
+      VALUES (?, ?, 'completed', 78, ?, ?, '{}', datetime('now'))
+    `);
+    insert.run('r1', 'agent-a', 2.0, '2026-07-14T10:00:00Z');
+    insert.run('r2', 'agent-a', 3.0, '2026-07-15T10:00:00Z');
+
+    const tool = (server as any)._registeredTools['djimitflo_openmythos_score'];
+    const result = await tool.handler({ agentId: 'agent-a' });
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.overallScore).toBe(3.0);
+    expect(parsed.trend.map((t: { score: number }) => t.score)).toEqual([2.0, 3.0]);
+
+    const missing = await tool.handler({ agentId: 'nope' });
+    expect(missing.isError).toBe(true);
   });
 });

@@ -31,6 +31,25 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
+  // GET /api/openmythos/runs — recent eval runs across all agents
+  router.get('/runs', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      const limit = req.query.limit ? Math.min(Math.max(Number(req.query.limit) || 20, 1), 100) : 20;
+      res.json({ runs: evalService.listRuns(limit) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/openmythos/leaderboard — latest score per agent, best first
+  router.get('/leaderboard', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json({ leaderboard: evalService.getLeaderboard() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // GET /api/openmythos/score/:agentId — get latest scores
   router.get('/score/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
