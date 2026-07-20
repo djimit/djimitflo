@@ -48,7 +48,10 @@ export type SwarmEventType =
   | 'segml:trigger:predicted_decline'
   | 'segml:cpo:learning_complete'
   | 'segml:cpo:fleet_blind_spots'
-  | 'segml:red_team:campaign_queued';
+  | 'segml:red_team:campaign_queued'
+  | 'segml:skill:quarantined'
+  | 'segml:meta:adaptation'
+  | 'segml:meta:reverted';
 
 export interface SwarmEvent {
   type: SwarmEventType;
