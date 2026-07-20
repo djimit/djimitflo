@@ -51,7 +51,8 @@ export type SwarmEventType =
   | 'segml:red_team:campaign_queued'
   | 'segml:skill:quarantined'
   | 'segml:meta:adaptation'
-  | 'segml:meta:reverted';
+  | 'segml:meta:reverted'
+  | 'segml:twin:deployment_blocked';
 
 export interface SwarmEvent {
   type: SwarmEventType;
