@@ -92,6 +92,7 @@ export interface SegmlConfig {
   judge_update_min_evidence: number;
   validation_enabled: boolean;
   rollback_on_no_improvement: boolean;
+  max_corpus_size: number;
 }
 
 export const DEFAULT_SEGML_CONFIG: SegmlConfig = {
@@ -102,4 +103,5 @@ export const DEFAULT_SEGML_CONFIG: SegmlConfig = {
   judge_update_min_evidence: 3,
   validation_enabled: true,
   rollback_on_no_improvement: true,
+  max_corpus_size: 1000,
 };

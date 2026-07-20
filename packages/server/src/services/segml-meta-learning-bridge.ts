@@ -62,6 +62,7 @@ const PARAMETER_BOUNDS: Record<keyof SegmlConfig, ParameterBounds> = {
   judge_update_min_evidence: { min: 2, max: 15, safeMin: 3, safeMax: 10 },
   validation_enabled: { min: 0, max: 1, safeMin: 0, safeMax: 1 },
   rollback_on_no_improvement: { min: 0, max: 1, safeMin: 0, safeMax: 1 },
+  max_corpus_size: { min: 100, max: 10000, safeMin: 500, safeMax: 2000 },
 };
 
 export class SegmlMetaLearningBridge {

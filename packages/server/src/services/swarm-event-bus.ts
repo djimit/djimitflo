@@ -52,7 +52,8 @@ export type SwarmEventType =
   | 'segml:skill:quarantined'
   | 'segml:meta:adaptation'
   | 'segml:meta:reverted'
-  | 'segml:twin:deployment_blocked';
+  | 'segml:twin:deployment_blocked'
+  | 'segml:federation:synced';
 
 export interface SwarmEvent {
   type: SwarmEventType;
