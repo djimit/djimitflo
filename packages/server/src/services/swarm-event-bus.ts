@@ -66,7 +66,10 @@ export type SwarmEventType =
   | 'segml:l4:population_evolved'
   | 'segml:l4:coevolution_round'
   | 'segml:l5:evolution_step'
-  | 'segml:l5:modification_reverted';
+  | 'segml:l5:modification_reverted'
+  | 'segml:prod:dataset_created'
+  | 'segml:prod:adapter_created'
+  | 'segml:prod:cycle_complete';
 
 export interface SwarmEvent {
   type: SwarmEventType;
