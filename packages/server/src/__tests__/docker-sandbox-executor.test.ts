@@ -11,7 +11,7 @@ describe('DockerSandboxExecutor', () => {
       canExecute: () => true,
       start,
     } as unknown as TaskExecutor;
-    const sandbox = new DockerSandboxExecutor(inner);
+    const sandbox = new DockerSandboxExecutor(inner, undefined, 'docker-that-does-not-exist');
 
     await expect(sandbox.start({ id: 'task-1' } as Task)).rejects.toThrow('DOCKER_SANDBOX_UNAVAILABLE');
     expect(start).not.toHaveBeenCalled();
