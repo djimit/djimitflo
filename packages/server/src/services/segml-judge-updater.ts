@@ -20,6 +20,7 @@ interface CategoryScore {
 interface RubricWeight {
   category: string;
   weight: number;
+  previous_weight: number | null;
   evidence_count: number;
   last_updated: string;
 }
@@ -41,11 +42,22 @@ export class SegmlJudgeUpdater {
         id TEXT PRIMARY KEY,
         category TEXT NOT NULL UNIQUE,
         weight REAL NOT NULL DEFAULT 1.0,
+        previous_weight REAL,
         evidence_count INTEGER NOT NULL DEFAULT 0,
         last_updated TEXT NOT NULL DEFAULT (datetime('now')),
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE INDEX IF NOT EXISTS idx_segml_judge_rubrics_category ON segml_judge_rubrics(category);
+      CREATE TABLE IF NOT EXISTS segml_judge_rollback_log (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        from_weight REAL NOT NULL,
+        to_weight REAL NOT NULL,
+        reason TEXT NOT NULL,
+        score_before REAL,
+        score_after REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
   }
 
@@ -103,6 +115,7 @@ export class SegmlJudgeUpdater {
     return {
       category: row.category,
       weight: row.weight,
+      previous_weight: row.previous_weight ?? null,
       evidence_count: row.evidence_count,
       last_updated: row.last_updated,
     };
@@ -113,15 +126,37 @@ export class SegmlJudgeUpdater {
     if (existing) {
       this.db.prepare(`
         UPDATE segml_judge_rubrics
-        SET weight = ?, evidence_count = ?, last_updated = ?
+        SET previous_weight = ?, weight = ?, evidence_count = ?, last_updated = ?
         WHERE category = ?
-      `).run(weight, evidenceCount, new Date().toISOString(), category);
+      `).run(existing.weight, weight, evidenceCount, new Date().toISOString(), category);
     } else {
       this.db.prepare(`
         INSERT INTO segml_judge_rubrics (id, category, weight, evidence_count)
         VALUES (?, ?, ?, ?)
       `).run(randomUUID(), category, weight, evidenceCount);
     }
+  }
+
+  rollbackIfNeeded(category: string, scoreBefore: number, scoreAfter: number): boolean {
+    const rubric = this.getRubric(category);
+    if (!rubric || !rubric.previous_weight) return false;
+
+    if (scoreAfter < scoreBefore - 0.2) {
+      this.db.prepare(`
+        UPDATE segml_judge_rubrics SET weight = ?, last_updated = ? WHERE category = ?
+      `).run(rubric.previous_weight, new Date().toISOString(), category);
+
+      this.db.prepare(`
+        INSERT INTO segml_judge_rollback_log (id, category, from_weight, to_weight, reason, score_before, score_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(), category, rubric.weight, rubric.previous_weight,
+        `Score declined from ${scoreBefore.toFixed(2)} to ${scoreAfter.toFixed(2)} — rollback`,
+        scoreBefore, scoreAfter
+      );
+      return true;
+    }
+    return false;
   }
 
   getRubricWeights(): Record<string, number> {

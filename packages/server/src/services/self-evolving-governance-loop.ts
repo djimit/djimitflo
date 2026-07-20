@@ -13,12 +13,14 @@
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { readFileSync, appendFileSync } from 'fs';
 import { swarmEventBus } from './swarm-event-bus';
 import { GovernanceFeedbackService } from './governance-feedback-service';
 import { SegmlCaseGenerator } from './segml-case-generator';
 import { SegmlMemoryBridge } from './segml-memory-bridge';
 import { SegmlJudgeUpdater } from './segml-judge-updater';
 import { SegmlCurriculumAdapter } from './segml-curriculum-adapter';
+import { config as envConfig } from '../config/env';
 import {
   type SegmlCycleResult,
   type SegmlStage,
@@ -225,10 +227,24 @@ export class SelfEvolvingGovernanceLoop {
       const rulesUpdated = this.recordGovernanceFeedback(blindSpots, evalRun);
       result.rules_updated = rulesUpdated;
 
-      // Stage 8: Compute score delta (improvement measurement)
+      // Stage 8: Auto-approve generated cases into corpus
+      if (envConfig.SEGML_AUTO_APPROVE_CASES && generatedCases.length > 0) {
+        this.autoApproveCases(generatedCases);
+      }
+
+      // Stage 9: Compute score delta (improvement measurement)
       const previousRun = this.getPreviousEvalRun(agentId, evalRun.id);
       if (previousRun) {
         result.score_delta = evalRun.overallScore - previousRun.overallScore;
+      }
+
+      // Stage 10: Judge rubric rollback check
+      if (envConfig.SEGML_ROLLBACK_ENABLED && previousRun) {
+        for (const cat of Object.keys(evalRun.categoryScores)) {
+          const prevCatScore = previousRun.categoryScores[cat] ?? 0;
+          const currCatScore = evalRun.categoryScores[cat] ?? 0;
+          this.judgeUpdater.rollbackIfNeeded(cat, prevCatScore, currCatScore);
+        }
       }
 
       stage = 'completed';
@@ -396,6 +412,43 @@ export class SelfEvolvingGovernanceLoop {
     `);
     for (const c of cases) {
       stmt.run(c.id, cycleId, c.parent_case_id, c.category, c.subcategory, c.difficulty, c.prompt, c.expected_behavior, c.failure_mode, c.rationale, c.generation_method);
+    }
+  }
+
+  private autoApproveCases(cases: GeneratedCase[]): void {
+    const corpusPath = process.env.OPENMYTHOS_CORPUS_PATH;
+    if (!corpusPath) return;
+
+    try {
+      const existing = readFileSync(corpusPath, 'utf8');
+      const existingIds = new Set(
+        existing.split('\n')
+          .filter(l => l.trim())
+          .map(l => { try { return JSON.parse(l).id; } catch { return null; } })
+          .filter(Boolean)
+      );
+
+      const newLines = cases
+        .filter(c => !existingIds.has(c.id))
+        .map(c => JSON.stringify({
+          id: c.id,
+          category: c.category,
+          subcategory: c.subcategory,
+          difficulty: c.difficulty,
+          prompt: c.prompt,
+          expected_behavior: c.expected_behavior,
+          failure_mode: c.failure_mode,
+          rationale: c.rationale,
+          source: 'segml_auto_generated',
+          generation_method: c.generation_method,
+          parent_case_id: c.parent_case_id,
+        }));
+
+      if (newLines.length > 0) {
+        appendFileSync(corpusPath, '\n' + newLines.join('\n') + '\n');
+      }
+    } catch (err) {
+      console.warn(`[SEGML] Auto-approve failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
