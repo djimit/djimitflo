@@ -43,7 +43,7 @@ export class PromptIntelService {
         category TEXT NOT NULL,
         relevance_score REAL NOT NULL,
         content_hash TEXT NOT NULL,
-        imported_at TEXT NOT NULL DEFAULT (datetime("now")),
+        imported_at TEXT NOT NULL,
         UNIQUE(source_sha, file_path, category)
       )
     `);
@@ -60,8 +60,8 @@ export class PromptIntelService {
 
     const insertStmt = this.db.prepare(`
       INSERT OR IGNORE INTO prompt_intel_imports
-        (id, source_repo, source_sha, file_path, category, relevance_score, content_hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (id, source_repo, source_sha, file_path, category, relevance_score, content_hash, imported_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `);
 
     const registerPatternStmt = this.db.prepare(`
