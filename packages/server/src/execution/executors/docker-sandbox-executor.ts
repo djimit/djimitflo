@@ -50,6 +50,8 @@ export class DockerSandboxExecutor implements TaskExecutor {
   }
 
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
+    await this.ensureDockerAvailable();
+
     const sessionId = randomUUID();
     const startedAt = new Date();
 
@@ -140,6 +142,16 @@ export class DockerSandboxExecutor implements TaskExecutor {
       proc.on('close', () => resolve());
       proc.on('error', () => resolve());
       setTimeout(() => resolve(), 5000);
+    });
+  }
+
+  private async ensureDockerAvailable(): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(this.dockerPath, ['--version'], {
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      proc.on('close', (code) => code === 0 ? resolve() : reject(new Error('DOCKER_SANDBOX_UNAVAILABLE')));
+      proc.on('error', () => reject(new Error('DOCKER_SANDBOX_UNAVAILABLE')));
     });
   }
 

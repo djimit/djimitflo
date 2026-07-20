@@ -64,6 +64,7 @@ import { createSwarmIntelRoutes } from './swarm-intel';
 import { createAgiRoutes } from './agi';
 import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
+import { createCouncilRoutes } from './council';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -179,6 +180,7 @@ export function createRoutes(
   router.use('/agi', requireAuth, createAgiRoutes(db, auth));
   router.use('/intelligence', requireAuth, createIntelligenceRoutes(db, auth));
   router.use('/meta', requireAuth, createMetaOrchestrationRoutes(db, auth, metaOrchestration));
+  router.use('/council', requireAuth, createCouncilRoutes(db, auth));
 
   return router;
 }

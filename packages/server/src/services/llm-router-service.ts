@@ -177,6 +177,7 @@ export class LlmRouterService {
     return this.arms.map(arm => {
       const mean = arm.alpha / (arm.alpha + arm.beta);
       const n = Math.max(0, arm.alpha + arm.beta - 2);
+      if (n === 0) return { id: arm.id, meanSuccess: Math.round(mean * 1000) / 1000, ci95: [0, 1], nObservations: 0 };
       const z = 1.96;
       const denominator = 1 + z * z / n;
       const centre = (mean + z * z / (2 * n)) / denominator;

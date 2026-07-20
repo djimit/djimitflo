@@ -41,6 +41,7 @@ import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
 import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
 import { WorkerPool } from './services/worker-pool';
 import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
+import { PromptIntelService } from './services/prompt-intel-service';
 import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from './services/emergent-specialization-service';
 import { RsiSafetyGuard } from './services/rsi-safety-guard';
@@ -163,6 +164,19 @@ async function main() {
   } catch (error) {
     console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
+
+  // Prompt intelligence: ingest pending findings on startup
+  try {
+    const promptIntel = new PromptIntelService(db);
+    const pendingPath = process.env.PROMPT_INTEL_PENDING || (process.env.HOME || '/Users/djimit') + '/.djimit/roborev/paperclip-tasks.pending.jsonl';
+    const result = promptIntel.ingestFromPending(pendingPath);
+    if (result.imported > 0 || result.skipped > 0) {
+      console.log(`🔍 PromptIntel: imported ${result.imported} findings, skipped ${result.skipped} (threshold filter)`);
+    }
+  } catch (error) {
+    console.warn('⚠️  PromptIntel ingestion failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   // Initialize auth
   const authService = new AuthService(db);
   authService.bootstrapAdmin();

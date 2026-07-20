@@ -25,7 +25,22 @@ export type SwarmEventType =
   | 'governance:guard:approved'
   | 'governance:improvement:triggered'
   | 'agent_action'
-  | 'loop_completed';
+  | 'loop_completed'
+  | 'council:session:started'
+  | 'council:session:completed'
+  | 'council:session:failed'
+  | 'council:session:escalated'
+  | 'council:diverge:started'
+  | 'council:diverge:completed'
+  | 'council:review:started'
+  | 'council:review:completed'
+  | 'council:synthesize:started'
+  | 'council:synthesize:completed'
+  | 'council:model:registered'
+  | 'council:model:deprecated'
+  | 'council:approval:required'
+  | 'council:approval:granted'
+  | 'council:approval:denied';
 
 export interface SwarmEvent {
   type: SwarmEventType;

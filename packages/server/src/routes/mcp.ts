@@ -15,6 +15,31 @@ function sanitizeMCPServer(server: any, isAdmin: boolean): any {
   };
 }
 
+function metadata(server: any): Record<string, any> {
+  try {
+    return JSON.parse(server.metadata || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function probeSpec(server: any) {
+  const meta = metadata(server);
+  const url = String(meta.probe_url || new URL(String(meta.probe_path || ''), String(server.url)).toString());
+  const accept = Array.isArray(meta.probe_accept_statuses)
+    ? meta.probe_accept_statuses.map(Number)
+    : [];
+  return {
+    url,
+    accepts: (status: number) => (accept.length > 0 ? accept.includes(status) : status >= 200 && status < 400),
+  };
+}
+
+function queryString(value: unknown): string {
+  if (Array.isArray(value)) return queryString(value[0]);
+  return typeof value === 'string' ? value : '';
+}
+
 export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
@@ -34,11 +59,12 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
         await Promise.all(servers.map(async (server) => {
           if (!server.url) return;
           const now = new Date().toISOString();
+          const probe = probeSpec(server);
           try {
-            const response = await fetch(server.url, { signal: AbortSignal.timeout(1_500) });
-            const running = response.status < 500;
+            const response = await fetch(probe.url, { signal: AbortSignal.timeout(1_500) });
+            const running = probe.accepts(response.status);
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
-              .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status}`, now, server.id);
+              .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status} from ${probe.url}`, now, server.id);
           } catch (error) {
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
               .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
@@ -66,17 +92,43 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/mcp/tools - List all MCP tools
   router.get('/tools', requireAuth, requirePermission('read:repository'), (req, res, next) => {
     try {
-      const { server_id } = req.query;
+      const serverId = queryString(req.query.server_id);
+      const riskLevel = queryString(req.query.risk_level);
+      const permission = queryString(req.query.permission);
+      const q = queryString(req.query.q);
 
-      let query = 'SELECT * FROM mcp_tools';
+      let query = `
+        SELECT t.*, s.name AS server_name, p.decision AS effective_decision
+        FROM mcp_tools t
+        LEFT JOIN mcp_servers s ON s.id = t.server_id
+        LEFT JOIN mcp_tool_permissions p ON p.tool_id = t.id
+      `;
       const params: any[] = [];
+      const filters: string[] = [];
 
-      if (server_id) {
-        query += ' WHERE server_id = ?';
-        params.push(server_id);
+      if (serverId) {
+        filters.push('t.server_id = ?');
+        params.push(serverId);
+      }
+      if (riskLevel) {
+        filters.push('t.risk_level = ?');
+        params.push(riskLevel);
+      }
+      if (permission) {
+        filters.push('t.permission = ?');
+        params.push(permission);
+      }
+      if (q) {
+        const term = `%${String(q)}%`;
+        filters.push('(t.name LIKE ? OR t.description LIKE ? OR s.name LIKE ?)');
+        params.push(term, term, term);
       }
 
-      query += ' ORDER BY created_at DESC';
+      if (filters.length > 0) {
+        query += ` WHERE ${filters.join(' AND ')}`;
+      }
+
+      query += ' ORDER BY t.created_at DESC';
 
       const tools = db.prepare(query).all(...params);
 
@@ -92,14 +144,40 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
     }
   });
 
-  router.get('/permissions', requireAuth, requirePermission('read:repository'), (_req, res, next) => {
+  router.get('/permissions', requireAuth, requirePermission('read:repository'), (req, res, next) => {
     try {
+      const serverId = queryString(req.query.server_id);
+      const riskLevel = queryString(req.query.risk_level);
+      const decision = queryString(req.query.decision);
+      const q = queryString(req.query.q);
+      const params: any[] = [];
+      const filters: string[] = [];
+      if (serverId) {
+        filters.push('t.server_id = ?');
+        params.push(serverId);
+      }
+      if (riskLevel) {
+        filters.push('p.risk_level = ?');
+        params.push(riskLevel);
+      }
+      if (decision) {
+        filters.push('p.decision = ?');
+        params.push(decision);
+      }
+      if (q) {
+        const term = `%${String(q)}%`;
+        filters.push('(t.name LIKE ? OR t.description LIKE ? OR s.name LIKE ? OR p.reason LIKE ?)');
+        params.push(term, term, term, term);
+      }
+      const where = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
       const permissions = db.prepare(`
-        SELECT p.*, t.name as tool_name, t.server_id, t.description as tool_description
+        SELECT p.*, t.name as tool_name, t.server_id, t.description as tool_description, s.name as server_name
         FROM mcp_tool_permissions p
         JOIN mcp_tools t ON t.id = p.tool_id
+        LEFT JOIN mcp_servers s ON s.id = t.server_id
+        ${where}
         ORDER BY t.name ASC
-      `).all();
+      `).all(...params);
       res.json({ permissions });
     } catch (error) {
       next(error);

@@ -54,4 +54,11 @@ describe("LlmRouterService", () => {
     expect(stats.totalProviders).toBe(5);
     expect(stats.activeProviders).toBeGreaterThanOrEqual(1);
   });
+
+  it("returns finite stats before any observations", () => {
+    const fresh = new LlmRouterService(db());
+    const stats = fresh.getBanditStats();
+    expect(stats.every(s => Number.isFinite(s.meanSuccess) && s.ci95.every(Number.isFinite))).toBe(true);
+    expect(stats.every(s => s.ci95[0] === 0 && s.ci95[1] === 1)).toBe(true);
+  });
 });

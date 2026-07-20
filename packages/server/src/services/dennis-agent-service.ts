@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
-import type { Database } from 'better-sqlite3';
+import SQLite, { type Database } from 'better-sqlite3';
 import { AgentRegistryService } from './agent-registry-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { WorkItemService } from './work-item-service';
@@ -25,6 +25,7 @@ export interface DennisHeartbeatResult {
   okf_concept_path: string | null;
   trace_span_id: string | null;
   paperclip_import: DennisPaperclipImportResult;
+  dry_run_processing: DennisDryRunProcessingResult;
 }
 
 export interface DennisReadinessSnapshot {
@@ -33,6 +34,49 @@ export interface DennisReadinessSnapshot {
   knowledge_okf_valid: boolean;
   counts: Record<string, number>;
   blocked_reasons: string[];
+  approval_queue: DennisApprovalQueueItem[];
+  self_context: DennisSelfContext;
+}
+
+export interface DennisApprovalQueueItem {
+  id: string;
+  title: string;
+  risk_class: string;
+  source_ref: string | null;
+  task_id: string | null;
+  blocked_reason: string | null;
+  blocked_at: string | null;
+}
+
+export interface DennisSelfContext {
+  identity: {
+    agent_id: string;
+    owner: string;
+    sentience_claim: 'not_sentient';
+    behavior_model: string;
+  };
+  access_manifest: {
+    id: string;
+    kind: string;
+    owner: string;
+    version: string;
+    status: string;
+    risk_ceiling: string;
+    read_scopes: string[];
+    allowed_actions: string[];
+    approval_required_actions: string[];
+    forbidden_actions: string[];
+    required_evidence: string[];
+  };
+  evidence_sources: string[];
+  recent_memory_refs: Array<Record<string, string | null>>;
+  recent_task_refs: Array<Record<string, string | null>>;
+  recent_trace_refs: Array<Record<string, string | null>>;
+  ecosystem_contract: {
+    learned_from: string[];
+    rules: string[];
+    runtime_signals: Record<string, number | string>;
+  };
 }
 
 export interface DennisPaperclipImportResult {
@@ -40,6 +84,20 @@ export interface DennisPaperclipImportResult {
   imported_tasks: number;
   imported_work_items: number;
   skipped: number;
+}
+
+export interface DennisDryRunProcessingResult {
+  processed: number;
+  skipped: number;
+  work_items_blocked: number;
+}
+
+export interface DennisApprovedDryRunResult {
+  status: 'materialized' | 'skipped' | 'not_found';
+  approval_id: string;
+  task_id: string | null;
+  event_id: string | null;
+  reason?: string;
 }
 
 interface PaperclipEvent {
@@ -139,11 +197,13 @@ export class DennisAgentService {
     }
 
     const paperclipImport = this.importPaperclipPending();
+    const dryRunProcessing = this.processDryRunTasks();
     const traceSpanId = this.recordTrace(now, {
       okf_concept_path: okfConceptPath,
       capabilities: CAPABILITIES,
       metadata: baseMetadata,
       paperclip_import: paperclipImport,
+      dry_run_processing: dryRunProcessing,
     });
 
     return {
@@ -153,6 +213,7 @@ export class DennisAgentService {
       okf_concept_path: okfConceptPath,
       trace_span_id: traceSpanId,
       paperclip_import: paperclipImport,
+      dry_run_processing: dryRunProcessing,
     };
   }
 
@@ -236,10 +297,132 @@ export class DennisAgentService {
     return result;
   }
 
+  processDryRunTasks(limit = 5): DennisDryRunProcessingResult {
+    const result: DennisDryRunProcessingResult = { processed: 0, skipped: 0, work_items_blocked: 0 };
+    const tasks = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE agent_id = ? AND execution_mode = 'dry_run' AND status = 'pending'
+      ORDER BY created_at ASC
+      LIMIT ?
+    `).all(DENNIS_AGENT_ID, Math.max(1, Math.min(limit, 25))) as Array<{
+      id: string;
+      title: string;
+      description: string;
+      priority: string;
+      risk_level: string;
+      metadata: string | null;
+    }>;
+
+    for (const task of tasks) {
+      const metadata = this.safeJson(task.metadata || '{}');
+      if (metadata.autonomy_mode !== 'dry_run_only') {
+        result.skipped++;
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      const plan = this.dryRunPlan(task, metadata);
+      this.db.prepare(`
+        INSERT INTO execution_events (
+          id, task_id, event_type, message, level, tool_name, tool_input, tool_output, metadata, created_at, updated_at
+        ) VALUES (?, ?, 'dennis_dry_run_plan', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?)
+      `).run(
+        randomUUID(),
+        task.id,
+        plan.summary,
+        JSON.stringify({ task_id: task.id, mode: 'dry_run_only' }),
+        JSON.stringify(plan),
+        JSON.stringify({ source: 'dennis-agent', gates: plan.gates }),
+        now,
+        now,
+      );
+
+      this.db.prepare(`
+        UPDATE tasks
+        SET status = 'completed', completed_at = ?, updated_at = ?, metadata = ?
+        WHERE id = ?
+      `).run(
+        now,
+        now,
+        JSON.stringify({ ...metadata, dry_run_completed_at: now, dry_run_plan: plan }),
+        task.id,
+      );
+      result.work_items_blocked += this.blockWorkItemsForApproval(task.id, plan, now);
+      result.processed++;
+    }
+
+    return result;
+  }
+
+  materializeApprovedDryRun(approvalId: string, approvedBy = 'system'): DennisApprovedDryRunResult {
+    const approval = this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as { id: string; task_id: string; status: string } | undefined;
+    if (!approval) {
+      return { status: 'not_found', approval_id: approvalId, task_id: null, event_id: null, reason: 'approval_not_found' };
+    }
+    if (approval.status !== 'approved') {
+      return { status: 'skipped', approval_id: approvalId, task_id: approval.task_id, event_id: null, reason: 'approval_not_approved' };
+    }
+
+    const task = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(approval.task_id) as {
+      id: string;
+      title: string;
+      agent_id: string | null;
+      execution_mode: string;
+      metadata: string | null;
+    } | undefined;
+    if (!task || task.agent_id !== DENNIS_AGENT_ID || task.execution_mode !== 'dry_run') {
+      return { status: 'skipped', approval_id: approvalId, task_id: approval.task_id, event_id: null, reason: 'not_dennis_dry_run_task' };
+    }
+
+    const metadata = this.safeJson(task.metadata || '{}');
+    if (!metadata.dry_run_plan) {
+      return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'missing_dry_run_plan' };
+    }
+    if (metadata.approved_materialized_at) {
+      return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'already_materialized' };
+    }
+
+    const now = new Date().toISOString();
+    const eventId = randomUUID();
+    this.db.prepare(`
+      INSERT INTO execution_events (
+        id, task_id, event_type, message, level, tool_name, tool_input, tool_output, approval_id, metadata, created_at, updated_at
+      ) VALUES (?, ?, 'dennis_approved_dry_run_materialized', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?, ?)
+    `).run(
+      eventId,
+      task.id,
+      `Dennis approved dry-run materialized for ${task.title}`,
+      JSON.stringify({ task_id: task.id, approval_id: approvalId, approved_by: approvedBy }),
+      JSON.stringify({
+        mode: 'evidence_only',
+        executed_mutations: [],
+        plan: metadata.dry_run_plan,
+        gates: ['approval_present', 'no_shell', 'no_file_write', 'no_network_write'],
+      }),
+      approvalId,
+      JSON.stringify({ source: 'dennis-agent', approved_by: approvedBy }),
+      now,
+      now,
+    );
+
+    this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?').run(
+      JSON.stringify({ ...metadata, approved_materialized_at: now, approved_by: approvedBy, approved_execution_event_id: eventId, approval_id: approvalId }),
+      now,
+      task.id,
+    );
+    this.markWorkItemsDone(task.id, approvalId, eventId, now);
+    return { status: 'materialized', approval_id: approvalId, task_id: task.id, event_id: eventId };
+  }
+
   readinessSnapshot(maxHeartbeatAgeMs = 120_000): DennisReadinessSnapshot {
     const agent = this.db.prepare('SELECT last_heartbeat_at FROM agents WHERE id = ?').get(DENNIS_AGENT_ID) as { last_heartbeat_at?: string } | undefined;
     const lastHeartbeat = agent?.last_heartbeat_at ? Date.parse(agent.last_heartbeat_at) : 0;
     const blockedReasons: string[] = [];
+    const blockedPaperclipWorkItems = this.count('work_items', "assigned_agent_id = ? AND source = 'paperclip_pending_jsonl' AND status = 'blocked'", [DENNIS_AGENT_ID]);
+    const approvalQueue = this.approvalQueue();
+    if (blockedPaperclipWorkItems > 0) {
+      blockedReasons.push('paperclip_work_items_waiting_for_human_approval');
+    }
     let knowledgeOkfValid = false;
     try {
       const health = new KnowledgeRuntimeService(this.db).health();
@@ -258,9 +441,13 @@ export class DennisAgentService {
         central_memories: this.count('central_memories'),
         memory_candidates: this.count('memory_candidates'),
         openmythos_eval_runs: this.count('openmythos_eval_runs', 'agent_id = ?', [DENNIS_AGENT_ID]),
+        dry_run_pending_tasks: this.count('tasks', "agent_id = ? AND execution_mode = 'dry_run' AND status = 'pending'", [DENNIS_AGENT_ID]),
+        paperclip_blocked_work_items: blockedPaperclipWorkItems,
         trace_spans: this.count('agent_trace_spans', 'trace_id = ?', [`agent:${DENNIS_AGENT_ID}`]),
       },
       blocked_reasons: [...new Set(blockedReasons)],
+      approval_queue: approvalQueue,
+      self_context: this.selfContext(),
     };
   }
 
@@ -287,6 +474,319 @@ export class DennisAgentService {
 
   private hasColumn(table: string, column: string): boolean {
     return (this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).some((row) => row.name === column);
+  }
+
+  private dryRunPlan(task: { id: string; title: string; description: string; priority: string; risk_level: string }, metadata: Record<string, unknown>) {
+    const taskType = String(metadata.task_type || 'task');
+    const affected = Array.isArray(metadata.affected_files) ? metadata.affected_files : [];
+    return {
+      summary: `Dennis dry-run plan completed for ${task.title}`,
+      task_id: task.id,
+      task_type: taskType,
+      risk_level: task.risk_level,
+      priority: task.priority,
+      affected_files: affected,
+      next_actions: [
+        'Inspect referenced files and reproduce the finding locally.',
+        'Prepare the smallest safe patch in a branch or worktree.',
+        'Run targeted tests and OpenMythos/OKF gates when relevant.',
+        'Request human approval before external write, destructive action, production mutation, or skill promotion.',
+      ],
+      gates: [
+        'dry_run_only',
+        'no_external_write',
+        'no_destructive_action',
+        'human_approval_required_before_execution',
+      ],
+    };
+  }
+
+  private blockWorkItemsForApproval(taskId: string, plan: ReturnType<DennisAgentService['dryRunPlan']>, now: string): number {
+    if (!this.hasTable('work_items')) return 0;
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string }>;
+    let blocked = 0;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (metadata.task_id !== taskId) continue;
+      this.db.prepare(`
+        UPDATE work_items
+        SET status = 'blocked', metadata = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        JSON.stringify({
+          ...metadata,
+          dry_run_plan: plan,
+          approval_id: this.ensureDryRunApproval(taskId, plan, now),
+          blocked_reason: 'human_approval_required_before_execution',
+          blocked_at: now,
+        }),
+        now,
+        row.id,
+      );
+      blocked++;
+    }
+    return blocked;
+  }
+
+  private ensureDryRunApproval(taskId: string, plan: ReturnType<DennisAgentService['dryRunPlan']>, now: string): string {
+    const existing = (this.db.prepare('SELECT id, metadata FROM approvals WHERE task_id = ?').all(taskId) as Array<{ id: string; metadata: string | null }>)
+      .find((row) => this.safeJson(row.metadata || '{}').dennis_action === 'materialize_dry_run');
+    if (existing) return existing.id;
+
+    const id = `dennis-approval-${randomUUID()}`;
+    this.db.prepare(`
+      INSERT INTO approvals (
+        id, task_id, status, risk_level, request_type, request_message, request_data, metadata, created_at, updated_at
+      ) VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      taskId,
+      plan.risk_level,
+      `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
+      JSON.stringify({ action: 'materialize_dry_run', task_id: taskId, plan }),
+      JSON.stringify({ source: 'dennis-agent', dennis_action: 'materialize_dry_run' }),
+      now,
+      now,
+    );
+    return id;
+  }
+
+  private markWorkItemsDone(taskId: string, approvalId: string, eventId: string, now: string): void {
+    if (!this.hasTable('work_items')) return;
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND status = 'blocked'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string | null }>;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (metadata.task_id !== taskId) continue;
+      this.db.prepare('UPDATE work_items SET status = ?, metadata = ?, updated_at = ? WHERE id = ?').run(
+        'done',
+        JSON.stringify({ ...metadata, approval_id: approvalId, approved_execution_event_id: eventId, approved_materialized_at: now }),
+        now,
+        row.id,
+      );
+    }
+  }
+
+  private approvalQueue(limit = 5): DennisApprovalQueueItem[] {
+    if (!this.hasTable('work_items')) return [];
+    return (this.db.prepare(`
+      SELECT id, title, risk_class, source_ref, metadata
+      FROM work_items
+      WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl' AND status = 'blocked'
+      ORDER BY updated_at DESC
+      LIMIT ?
+    `).all(DENNIS_AGENT_ID, Math.max(1, Math.min(limit, 25))) as Array<{
+      id: string;
+      title: string;
+      risk_class: string;
+      source_ref: string | null;
+      metadata: string | null;
+    }>).map((row) => {
+      const metadata = this.safeJson(row.metadata || '{}');
+      return {
+        id: row.id,
+        title: row.title,
+        risk_class: row.risk_class,
+        source_ref: row.source_ref,
+        task_id: typeof metadata.task_id === 'string' ? metadata.task_id : null,
+        blocked_reason: typeof metadata.blocked_reason === 'string' ? metadata.blocked_reason : null,
+        blocked_at: typeof metadata.blocked_at === 'string' ? metadata.blocked_at : null,
+      };
+    });
+  }
+
+  private selfContext(): DennisSelfContext {
+    return {
+      identity: {
+        agent_id: DENNIS_AGENT_ID,
+        owner: 'dennis',
+        sentience_claim: 'not_sentient',
+        behavior_model: 'evidence_driven_digital_twin_context',
+      },
+      access_manifest: {
+        id: 'dennis-agent-safe-mode-v1',
+        kind: 'operator_agent',
+        owner: 'dennis',
+        version: '0.1.0',
+        status: 'candidate',
+        risk_ceiling: 'medium',
+        read_scopes: [
+          'djimitflo:agents',
+          'djimitflo:tasks',
+          'djimitflo:work_items',
+          'djimitflo:approvals',
+          'djimitflo:central_memories',
+          'djimitflo:memory_candidates',
+          'djimitflo:agent_trace_spans',
+          'okf:agents',
+          'openclaw:state_counts',
+          'hermes:presence',
+        ],
+        allowed_actions: [
+          'telegram:status',
+          'telegram:create_dry_run_task',
+          'paperclip:import_pending_jsonl',
+          'djimitflo:complete_dry_run_plan',
+          'djimitflo:block_work_item_for_approval',
+          'openmythos:run_skill_lifecycle_gate',
+          'okf:validate',
+        ],
+        approval_required_actions: [
+          'git:push',
+          'docker:mutation',
+          'production:mutation',
+          'external:message',
+          'secret:read',
+          'skill:promotion',
+          'memory:promotion',
+          'qdrant:write',
+          'scheduler:change',
+        ],
+        forbidden_actions: [
+          'secret:emit',
+          'destructive:delete',
+          'self_approve',
+          'silent_external_write',
+          'unapproved_production_change',
+        ],
+        required_evidence: [
+          'djimitflo:test',
+          'djimitflo:typecheck',
+          'openmythos:skill_lifecycle_gate',
+          'okf:validate',
+          'launchd:heartbeat',
+        ],
+      },
+      evidence_sources: [
+        'agents',
+        'central_memories',
+        'memory_candidates',
+        'tasks',
+        'work_items',
+        'agent_trace_spans',
+      ].filter((table) => this.hasTable(table)),
+      recent_memory_refs: [
+        ...this.centralMemoryRefs(3),
+        ...this.memoryCandidateRefs(3),
+      ].slice(0, 5),
+      recent_task_refs: this.taskRefs(5),
+      recent_trace_refs: this.traceRefs(5),
+      ecosystem_contract: {
+        learned_from: ['OpenClaw', 'Hermes', 'Paperclip', 'DjimitKBWiki', 'Djimitflo', 'OpenMythos'],
+        rules: [
+          'act_on_verified_runtime_state',
+          'workstation_first_for_execution',
+          'macbook_as_cockpit',
+          'read_memory_before_planning',
+          'use_bridges_without_replacing_them',
+          'never_emit_secrets_to_chat_or_logs',
+          'approval_required_for_push_docker_production_external_messages_and_destructive_actions',
+          'openmythos_gate_before_skill_or_behavior_promotion',
+        ],
+        runtime_signals: this.ecosystemSignals(),
+      },
+    };
+  }
+
+  private ecosystemSignals(): Record<string, number | string> {
+    const signals: Record<string, number | string> = {
+      hermes_cli: existsSync(`${process.env.HOME || '/Users/dlandman'}/.local/bin/hermes`) ? 'present' : 'missing',
+      openclaw_state: 'missing',
+    };
+    const openClawDb = `${process.env.HOME || '/Users/dlandman'}/.openclaw/state/openclaw.sqlite`;
+    if (!existsSync(openClawDb)) return signals;
+    let db: SQLite.Database | null = null;
+    try {
+      db = new SQLite(openClawDb, { readonly: true, fileMustExist: true });
+      signals.openclaw_state = 'readable';
+      for (const table of ['cron_jobs', 'task_runs', 'subagent_runs', 'config_health_entries']) {
+        signals[`openclaw_${table}`] = this.externalCount(db, table);
+      }
+    } catch {
+      signals.openclaw_state = 'unreadable';
+    } finally {
+      db?.close();
+    }
+    return signals;
+  }
+
+  private externalCount(db: SQLite.Database, table: string): number {
+    const row = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
+    if (!row) return 0;
+    return Number((db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as { c?: number })?.c || 0);
+  }
+
+  private centralMemoryRefs(limit: number): Array<Record<string, string | null>> {
+    if (!this.hasTable('central_memories')) return [];
+    return (this.db.prepare(`
+      SELECT id, type, source, created_at
+      FROM central_memories
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{ id: string; type: string; source: string; created_at: string }>).map((row) => ({
+      id: row.id,
+      kind: 'central_memory',
+      type: row.type,
+      source: row.source,
+      created_at: row.created_at,
+    }));
+  }
+
+  private memoryCandidateRefs(limit: number): Array<Record<string, string | null>> {
+    if (!this.hasTable('memory_candidates')) return [];
+    return (this.db.prepare(`
+      SELECT id, title, memory_type, status, source_ref, created_at
+      FROM memory_candidates
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(limit) as Array<{ id: string; title: string; memory_type: string; status: string; source_ref: string | null; created_at: string }>).map((row) => ({
+      id: row.id,
+      kind: 'memory_candidate',
+      title: row.title,
+      type: row.memory_type,
+      status: row.status,
+      source_ref: row.source_ref,
+      created_at: row.created_at,
+    }));
+  }
+
+  private taskRefs(limit: number): Array<Record<string, string | null>> {
+    if (!this.hasTable('tasks')) return [];
+    return (this.db.prepare(`
+      SELECT id, title, status, risk_level, created_at
+      FROM tasks
+      WHERE agent_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(DENNIS_AGENT_ID, limit) as Array<{ id: string; title: string; status: string; risk_level: string; created_at: string }>).map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      risk_level: row.risk_level,
+      created_at: row.created_at,
+    }));
+  }
+
+  private traceRefs(limit: number): Array<Record<string, string | null>> {
+    if (!this.hasTable('agent_trace_spans')) return [];
+    return (this.db.prepare(`
+      SELECT id, name, status, evidence_ref, created_at
+      FROM agent_trace_spans
+      WHERE trace_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(`agent:${DENNIS_AGENT_ID}`, limit) as Array<{ id: string; name: string; status: string; evidence_ref: string | null; created_at: string }>).map((row) => ({
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      evidence_ref: row.evidence_ref,
+      created_at: row.created_at,
+    }));
   }
 
   private ensureDennisIndexEntry(conceptPath: string, lastSeen: string): void {
@@ -323,5 +823,14 @@ export class DennisAgentService {
 
   private risk(value: unknown): 'low' | 'medium' | 'high' | 'critical' {
     return value === 'low' || value === 'medium' || value === 'high' || value === 'critical' ? value : 'medium';
+  }
+
+  private safeJson(value: string): Record<string, unknown> {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
   }
 }

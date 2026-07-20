@@ -42,6 +42,31 @@ describe('DennisAgentService', () => {
     expect(snapshot.agent_registered).toBe(true);
     expect(snapshot.heartbeat_fresh).toBe(true);
     expect(snapshot.counts.trace_spans).toBe(1);
+    expect(snapshot.self_context.identity).toMatchObject({
+      agent_id: DENNIS_AGENT_ID,
+      sentience_claim: 'not_sentient',
+      behavior_model: 'evidence_driven_digital_twin_context',
+    });
+    expect(snapshot.self_context.access_manifest).toMatchObject({
+      id: 'dennis-agent-safe-mode-v1',
+      status: 'candidate',
+      risk_ceiling: 'medium',
+    });
+    expect(snapshot.self_context.access_manifest.read_scopes).toContain('openclaw:state_counts');
+    expect(snapshot.self_context.access_manifest.read_scopes).toContain('hermes:presence');
+    expect(snapshot.self_context.access_manifest.allowed_actions).toContain('telegram:create_dry_run_task');
+    expect(snapshot.self_context.access_manifest.approval_required_actions).toContain('external:message');
+    expect(snapshot.self_context.access_manifest.forbidden_actions).toContain('self_approve');
+    expect(snapshot.self_context.access_manifest.required_evidence).toContain('openmythos:skill_lifecycle_gate');
+    expect(snapshot.self_context.evidence_sources).toContain('agent_trace_spans');
+    expect(snapshot.self_context.recent_trace_refs[0]).toMatchObject({
+      name: 'dennis-agent-heartbeat',
+      status: 'ok',
+    });
+    expect(snapshot.self_context.ecosystem_contract.learned_from).toContain('OpenClaw');
+    expect(snapshot.self_context.ecosystem_contract.learned_from).toContain('Hermes');
+    expect(snapshot.self_context.ecosystem_contract.rules).toContain('read_memory_before_planning');
+    expect(snapshot.self_context.ecosystem_contract.rules).toContain('openmythos_gate_before_skill_or_behavior_promotion');
   });
 
   it('upserts without duplicating the agent row', () => {
@@ -143,5 +168,64 @@ describe('DennisAgentService', () => {
     expect(task.title).toBe('Fix failing review');
     expect(task.risk_level).toBe('high');
     expect(JSON.parse(task.metadata).blocked_without_approval).toContain('production_mutation');
+  });
+
+  it('processes imported dry-run tasks into completion evidence without executing mutations', () => {
+    const pending = path.join(okfBase, 'paperclip.pending.jsonl');
+    fs.writeFileSync(pending, JSON.stringify({
+      event: 'review.failed',
+      task_type: 'review_fix',
+      task_title: 'Fix failing review',
+      severity: 'high',
+      dedupe_key: 'repo:sha:review.failed',
+      affected_files: ['src/a.ts'],
+    }));
+
+    const service = new DennisAgentService(db, { okfBase });
+    service.heartbeat();
+    service.importPaperclipPending(pending);
+
+    const result = service.processDryRunTasks();
+
+    expect(result.processed).toBe(1);
+    expect(result.work_items_blocked).toBe(1);
+    const task = db.prepare("SELECT * FROM tasks WHERE agent_id = ? AND execution_mode = 'dry_run'").get(DENNIS_AGENT_ID) as any;
+    expect(task.status).toBe('completed');
+    expect(task.completed_at).toBeTruthy();
+    const metadata = JSON.parse(task.metadata);
+    expect(metadata.dry_run_plan.gates).toContain('human_approval_required_before_execution');
+    const event = db.prepare("SELECT * FROM execution_events WHERE task_id = ? AND event_type = 'dennis_dry_run_plan'").get(task.id) as any;
+    expect(JSON.parse(event.tool_output).next_actions).toContain('Prepare the smallest safe patch in a branch or worktree.');
+    const workItem = db.prepare("SELECT * FROM work_items WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl'").get(DENNIS_AGENT_ID) as any;
+    expect(workItem.status).toBe('blocked');
+    expect(JSON.parse(workItem.metadata).blocked_reason).toBe('human_approval_required_before_execution');
+    const approvalId = JSON.parse(workItem.metadata).approval_id;
+    const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as any;
+    expect(approval.status).toBe('pending');
+    expect(JSON.parse(approval.metadata).dennis_action).toBe('materialize_dry_run');
+    const snapshot = service.readinessSnapshot();
+    expect(snapshot.counts.dry_run_pending_tasks).toBe(0);
+    expect(snapshot.counts.paperclip_blocked_work_items).toBe(1);
+    expect(snapshot.blocked_reasons).toContain('paperclip_work_items_waiting_for_human_approval');
+    expect(snapshot.approval_queue[0]).toMatchObject({
+      title: 'Fix failing review',
+      risk_class: 'high',
+      task_id: task.id,
+      blocked_reason: 'human_approval_required_before_execution',
+    });
+    expect(snapshot.self_context.recent_task_refs[0]).toMatchObject({
+      title: 'Fix failing review',
+      status: 'completed',
+      risk_level: 'high',
+    });
+
+    db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
+    const materialized = service.materializeApprovedDryRun(approvalId, 'test-user');
+    expect(materialized.status).toBe('materialized');
+    expect(materialized.event_id).toBeTruthy();
+    const materializedEvent = db.prepare("SELECT * FROM execution_events WHERE id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(materialized.event_id) as any;
+    expect(JSON.parse(materializedEvent.tool_output).executed_mutations).toEqual([]);
+    const doneWorkItem = db.prepare('SELECT * FROM work_items WHERE id = ?').get(workItem.id) as any;
+    expect(doneWorkItem.status).toBe('done');
   });
 });

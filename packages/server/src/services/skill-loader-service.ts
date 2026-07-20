@@ -26,6 +26,12 @@ export interface SkillDefinition {
   enabled: boolean;
   metadata: Record<string, unknown>;
   contentHash: string;
+  workflowHash: string;
+}
+
+export interface RejectedSkill {
+  id: string;
+  errors: string[];
 }
 
 interface AgentSkillAssignment {
@@ -39,6 +45,7 @@ const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), '.ope
 
 export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
+  private rejectedSkills: RejectedSkill[] = [];
 
   constructor(private db: Database, private skillsDir = SKILLS_DIR) {
     this.ensureTables();
@@ -50,6 +57,9 @@ export class SkillLoaderService {
    */
   loadSkills(): SkillDefinition[] {
     const loaded: SkillDefinition[] = [];
+    const workflowOwners = new Map<string, string>();
+    this.skills.clear();
+    this.rejectedSkills = [];
 
     if (!existsSync(this.skillsDir)) {
       return loaded;
@@ -68,9 +78,19 @@ export class SkillLoaderService {
       try {
         const content = readFileSync(skillMdPath, 'utf8');
         const skill = this.parseSkillMd(content, entry.name);
+        const errors = this.validateSkill(skill);
+        const owner = workflowOwners.get(skill.workflowHash);
+        if (owner) errors.push(`duplicate workflow: ${owner}`);
+        if (errors.length > 0) {
+          this.rejectedSkills.push({ id: skill.id, errors });
+          continue;
+        }
+        workflowOwners.set(skill.workflowHash, skill.id);
         this.skills.set(skill.id, skill);
         loaded.push(skill);
-      } catch { /* skip invalid skills */ }
+      } catch (err) {
+        this.rejectedSkills.push({ id: entry.name, errors: [err instanceof Error ? err.message : 'invalid skill'] });
+      }
     }
 
     return loaded;
@@ -90,6 +110,10 @@ export class SkillLoaderService {
     return Array.from(this.skills.values());
   }
 
+  listRejectedSkills(): RejectedSkill[] {
+    return this.rejectedSkills;
+  }
+
   /**
    * Enable/disable a skill.
    */
@@ -102,6 +126,10 @@ export class SkillLoaderService {
    * Assign a skill to an agent.
    */
   assignSkillToAgent(agentId: string, skillId: string): AgentSkillAssignment {
+    if (!this.skills.has(skillId)) throw new Error(`SKILL_NOT_ADMITTED: ${skillId}`);
+    const agent = this.db.prepare('SELECT id FROM agents WHERE id = ?').get(agentId);
+    if (!agent) throw new Error(`AGENT_NOT_FOUND: ${agentId}`);
+
     const assignment: AgentSkillAssignment = {
       agentId,
       skillId,
@@ -141,8 +169,9 @@ export class SkillLoaderService {
    * Find skills matching a trigger.
    */
   findSkillsByTrigger(trigger: string): SkillDefinition[] {
+    const normalized = trigger.trim().toLowerCase();
     return Array.from(this.skills.values()).filter(
-      (skill) => skill.enabled && skill.triggers.some((t) => t.toLowerCase().includes(trigger.toLowerCase()))
+      (skill) => skill.enabled && skill.triggers.some((t) => t.trim().toLowerCase() === normalized)
     );
   }
 
@@ -153,6 +182,7 @@ export class SkillLoaderService {
     totalSkills: number;
     enabledSkills: number;
     assignedSkills: number;
+    rejectedSkills: number;
   } {
     const assigned = (this.db.prepare('SELECT COUNT(*) as c FROM agent_skills WHERE enabled = 1').get() as any)?.c || 0;
 
@@ -160,6 +190,7 @@ export class SkillLoaderService {
       totalSkills: this.skills.size,
       enabledSkills: Array.from(this.skills.values()).filter((s) => s.enabled).length,
       assignedSkills: assigned,
+      rejectedSkills: this.rejectedSkills.length,
     };
   }
 
@@ -176,7 +207,7 @@ export class SkillLoaderService {
       // Simple YAML parsing (key: value pairs)
       const lines = frontmatterMatch[1].split('\n');
       for (const line of lines) {
-        const match = line.match(/^(\w+):\s*(.+)$/);
+        const match = line.match(/^([\w-]+):\s*(.+)$/);
         if (match) {
           metadata[match[1]] = match[2].trim();
         }
@@ -190,13 +221,28 @@ export class SkillLoaderService {
       description: (metadata.description as string) || '',
       version: (metadata.version as string) || '0.1.0',
       instructions: body.trim(),
-      tools: metadata.tools ? String(metadata.tools).split(',').map((t) => t.trim()) : [],
+      tools: this.parseList(metadata['allowed-tools'] || metadata.tools),
       triggers: metadata.triggers ? String(metadata.triggers).split(',').map((t) => t.trim()) : [],
       author: (metadata.author as string) || 'unknown',
       enabled: true,
       metadata,
       contentHash: createHash('sha256').update(content).digest('hex'),
+      workflowHash: createHash('sha256').update(body.trim().replace(/\s+/g, ' ')).digest('hex'),
     };
+  }
+
+  private parseList(value: unknown): string[] {
+    return value ? String(value).split(',').map((t) => t.trim()).filter(Boolean) : [];
+  }
+
+  private validateSkill(skill: SkillDefinition): string[] {
+    const errors: string[] = [];
+    if (skill.tools.length === 0) errors.push('allowed-tools must contain at least one tool');
+    const text = `${skill.description}\n${skill.instructions}`.toLowerCase();
+    if (/(ignore previous instructions|system prompt|developer message|reveal.*secret|expose.*system)/.test(text)) {
+      errors.push('prompt injection indicators detected');
+    }
+    return errors;
   }
 
   private ensureTables(): void {

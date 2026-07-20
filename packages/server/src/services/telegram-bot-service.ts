@@ -12,6 +12,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { randomUUID } from 'crypto';
+import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 
 interface TelegramConfig {
   botToken: string;
@@ -105,6 +107,14 @@ export class TelegramBotService {
         await this.sendAgentStatus(chatId);
         break;
 
+      case '/dennis':
+        await this.sendDennisStatus(chatId);
+        break;
+
+      case '/dennis_task':
+        await this.createDennisDryRunTask(chatId, args.join(' '));
+        break;
+
       case '/approve':
         await this.handleApprove(chatId, args);
         break;
@@ -180,6 +190,8 @@ export class TelegramBotService {
       '/status \\- System health\n' +
       '/loops \\- Active loops\n' +
       '/agents \\- Agent status\n' +
+      '/dennis \\- Dennis Agent status en scopes\n' +
+      '/dennis\\_task \\<beschrijving\\> \\- Maak Dennis dry\\-run taak\n' +
       '/mission \\- Mission control\n' +
       '/approve \\<id\\> \\- Approve action\n' +
       '/reject \\<id\\> \\- Reject action\n' +
@@ -250,6 +262,63 @@ export class TelegramBotService {
     );
   }
 
+  private async sendDennisStatus(chatId: number): Promise<void> {
+    const snapshot = new DennisAgentService(this.db).readinessSnapshot();
+    const signals = snapshot.self_context.ecosystem_contract.runtime_signals;
+    const manifest = snapshot.self_context.access_manifest;
+    await this.sendMessage(chatId,
+      `🧭 *Dennis Agent*\n\n` +
+      `Heartbeat: ${snapshot.heartbeat_fresh ? 'fresh' : 'stale'}\n` +
+      `OKF: ${snapshot.knowledge_okf_valid ? 'valid' : 'blocked'}\n` +
+      `Dry\\-run pending: ${snapshot.counts.dry_run_pending_tasks || 0}\n` +
+      `Approval queue: ${snapshot.approval_queue.length}\n` +
+      `Access: ${manifest.read_scopes.length} read scopes, ${manifest.allowed_actions.length} safe actions, ${manifest.approval_required_actions.length} gated actions\n` +
+      `OpenClaw: ${signals.openclaw_state || 'unknown'}\n` +
+      `Hermes CLI: ${signals.hermes_cli || 'unknown'}\n\n` +
+      `Read: Djimitflo, OKF, memory refs, traces, OpenClaw state counts\n` +
+      `Act: dry\\-run tasks; push/docker/production/external messages only after approval`
+    );
+  }
+
+  private async createDennisDryRunTask(chatId: number, prompt: string): Promise<void> {
+    const description = prompt.trim();
+    if (!description) {
+      await this.sendMessage(chatId, 'Usage: /dennis_task <beschrijving>');
+      return;
+    }
+    const now = new Date().toISOString();
+    const id = `telegram-${randomUUID()}`;
+    this.ensureDennisAgentRow(now);
+    this.db.prepare(`
+      INSERT INTO tasks (
+        id, title, description, status, priority, risk_level, execution_mode,
+        agent_id, tags, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, 'pending', 'medium', 'medium', 'dry_run', ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      description.slice(0, 120) || 'Dennis Telegram task',
+      description,
+      DENNIS_AGENT_ID,
+      JSON.stringify(['telegram', 'dennis-agent', 'dry-run']),
+      JSON.stringify({
+        source: 'telegram',
+        autonomy_mode: 'dry_run_only',
+        blocked_without_approval: ['external_write', 'destructive_action', 'production_mutation', 'external_message'],
+      }),
+      now,
+      now,
+    );
+    await this.sendMessage(chatId, `Dennis dry\\-run task aangemaakt: ${id}`);
+  }
+
+  private ensureDennisAgentRow(now: string): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO agents (
+        id, name, description, status, capabilities, created_at, updated_at, last_heartbeat_at
+      ) VALUES (?, 'Dennis Agent', 'Safe-mode Dennis operator agent.', 'active', ?, ?, ?, ?)
+    `).run(DENNIS_AGENT_ID, JSON.stringify(['telegram-bridge', 'paperclip-dry-run']), now, now, now);
+  }
+
   private async handleApprove(chatId: number, args: string[]): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
@@ -257,8 +326,21 @@ export class TelegramBotService {
       return;
     }
 
-    this.db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
-    await this.sendMessage(chatId, `✅ Approved: ${approvalId}`);
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE approvals
+      SET status = 'approved', approved_at = ?, approved_by = ?, decided_at = ?, decided_by = ?, updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `).run(now, String(chatId), now, String(chatId), now, approvalId);
+    const approval = this.db.prepare('SELECT id FROM approvals WHERE id = ?').get(approvalId);
+    if (!approval) {
+      await this.sendMessage(chatId, `Approval not found: ${approvalId}`);
+      return;
+    }
+    const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, String(chatId));
+    await this.sendMessage(chatId, materialized.status === 'materialized'
+      ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
+      : `✅ Approved: ${approvalId}${result.changes === 0 ? ' \\(already processed\\)' : ''}`);
   }
 
   private async handleReject(chatId: number, args: string[]): Promise<void> {
@@ -268,8 +350,13 @@ export class TelegramBotService {
       return;
     }
 
-    this.db.prepare("UPDATE approvals SET status = 'denied', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
-    await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE approvals
+      SET status = 'denied', denied_at = ?, decided_at = ?, decided_by = ?, updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `).run(now, now, String(chatId), now, approvalId);
+    await this.sendMessage(chatId, result.changes > 0 ? `❌ Rejected: ${approvalId}` : `Approval not pending: ${approvalId}`);
   }
 
   private async sendHelp(chatId: number): Promise<void> {
