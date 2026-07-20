@@ -61,7 +61,10 @@ export type SwarmEventType =
   | 'segml:finetuning:deployment_recommended'
   | 'segml:l3:dataset_created'
   | 'segml:l3:training_started'
-  | 'segml:l3:tool_synthesized';
+  | 'segml:l3:tool_synthesized'
+  | 'segml:l4:tournament_complete'
+  | 'segml:l4:population_evolved'
+  | 'segml:l4:coevolution_round';
 
 export interface SwarmEvent {
   type: SwarmEventType;
