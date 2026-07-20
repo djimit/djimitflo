@@ -55,7 +55,7 @@ interface MetaChangeEvent {
 }
 
 const PARAMETER_BOUNDS: Record<keyof SegmlConfig, ParameterBounds> = {
-  failure_threshold: { min: 1.0, max: 4.0, safeMin: 2.0, safeMax: 3.5 },
+  failure_threshold: { min: 1.5, max: 3.5, safeMin: 2.0, safeMax: 3.0 },
   min_cases_for_pattern: { min: 2, max: 10, safeMin: 3, safeMax: 7 },
   max_generated_cases_per_cycle: { min: 5, max: 50, safeMin: 10, safeMax: 30 },
   consolidation_confidence_threshold: { min: 0.3, max: 0.9, safeMin: 0.5, safeMax: 0.8 },
