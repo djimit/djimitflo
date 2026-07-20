@@ -40,7 +40,9 @@ export type SwarmEventType =
   | 'council:model:deprecated'
   | 'council:approval:required'
   | 'council:approval:granted'
-  | 'council:approval:denied';
+  | 'council:approval:denied'
+  | 'segml:cycle:started'
+  | 'segml:cycle:complete';
 
 export interface SwarmEvent {
   type: SwarmEventType;
