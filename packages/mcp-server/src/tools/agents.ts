@@ -19,13 +19,16 @@ export function registerAgentTools(server: McpServer, dbHandle: DbHandle) {
       },
     },
     async ({ status }) => {
-      let query = 'SELECT id, name, status, agent_type, capabilities_json, last_seen FROM agents';
+      let query = `
+        SELECT id, name, status, agent_type, capabilities, last_active_at, last_heartbeat_at
+        FROM agents
+      `;
       const params: unknown[] = [];
       if (status) {
         query += ' WHERE status = ?';
         params.push(status);
       }
-      query += ' ORDER BY last_seen DESC';
+      query += ' ORDER BY COALESCE(last_heartbeat_at, last_active_at, updated_at) DESC';
 
       const rows = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
       return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };

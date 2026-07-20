@@ -1,39 +1,43 @@
 /**
  * Database connection for MCP Server.
- * Uses better-sqlite3 to read from the DjimFlo SQLite database.
+ * Uses better-sqlite3 to access the DjimFlo SQLite database.
  */
 
 import Database from 'better-sqlite3';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, resolve } from 'path';
 
 export interface DbHandle {
   db: Database.Database;
   close: () => void;
 }
 
+export function monorepoRoot(cwd = process.cwd()): string {
+  return cwd.includes('/packages/') ? resolve(cwd.split('/packages/')[0]) : cwd;
+}
+
+function configuredPath(path: string, env = process.env, cwd = process.cwd()): string {
+  return isAbsolute(path) ? path : resolve(env.INIT_CWD || cwd, path);
+}
+
+export function resolveDatabasePath(dbPath?: string, env = process.env, cwd = process.cwd()): string | undefined {
+  const configured = dbPath || env.DJIMITFLO_DB || env.DB_PATH;
+  if (configured) return configuredPath(configured, env, cwd);
+
+  const root = monorepoRoot(cwd);
+  return [
+    join(root, '.data', 'djimitflo.sqlite'),
+    join(cwd, '.data', 'djimitflo.sqlite'),
+    join(cwd, 'djimitflo.sqlite'),
+  ].find((candidate) => existsSync(candidate));
+}
+
 export function createDatabase(dbPath?: string): DbHandle {
-  let path = dbPath;
-
-  if (!path) {
-    const candidates = [
-      process.env.DJIMITFLO_DB || '',
-      join(process.cwd(), '.data', 'djimitflo.sqlite'),
-      join(process.cwd(), 'djimitflo.sqlite'),
-      join(process.cwd(), '..', 'server', '.data', 'djimitflo.sqlite'),
-    ].filter(Boolean);
-
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) {
-        path = candidate;
-        break;
-      }
-    }
-  }
+  const path = resolveDatabasePath(dbPath);
 
   if (!path) {
     throw new Error(
-      'Could not find DjimFlo database. Set DJIMITFLO_DB env var or pass --db path.'
+      'Could not find DjimFlo database. Set DJIMITFLO_DB, DB_PATH, or pass --db path.'
     );
   }
 
@@ -41,7 +45,7 @@ export function createDatabase(dbPath?: string): DbHandle {
     throw new Error(`Database not found at: ${path}`);
   }
 
-  const db = new Database(path, { readonly: true });
+  const db = new Database(path);
   db.pragma('foreign_keys = ON');
 
   return {

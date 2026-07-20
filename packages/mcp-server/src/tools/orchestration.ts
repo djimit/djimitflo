@@ -136,7 +136,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
 
   // ─── list_agents ──────────────────────────────────────────────────────
   server.registerTool(
-    'djimitflo_list_agents',
+    'djimitflo_list_orchestration_agents',
     {
       description: 'List all agents with their current status, capabilities, and active tasks',
       inputSchema: {
