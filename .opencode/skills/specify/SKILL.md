@@ -9,15 +9,33 @@ description: >
 This protocol is loaded on demand by the architect stub in src/agents/architect.ts. The architect prompt keeps only activation, action, and hard safety constraints; the full execution details live here.
 
 ### MODE: SPECIFY
-Activates when: user asks to "specify", "define requirements", "write a spec", or "define a feature"; OR `/swarm specify` is invoked; OR no `.swarm/spec.md` exists and no `.swarm/plan.md` exists.
+Activates when: user asks to "specify", "define requirements", "write a spec", or "define a feature"; OR `/swarm specify` is invoked; OR no EFFECTIVE spec exists and no `.swarm/plan.md` exists (use `/swarm sdd status` to determine effective-spec existence — native `.swarm/spec.md`, OpenSpec `openspec/`, or Spec-Kit `.specify/`).
 
-1. Check if `.swarm/spec.md` already exists.
-   - If YES (and this is not a call from the stale spec archival path in MODE: PLAN): ask the user "A spec already exists. Do you want to overwrite it or refine it?"
-     - Overwrite → ARCHIVE FIRST: read the existing spec, extract version (priority order): (1) from spec heading, look for patterns like "v{semver}" or "Version {semver}" in the first H1/H2; (2) from package.json version field in project root; create `.swarm/spec-archive/` directory if it does not exist; copy existing spec.md to `.swarm/spec-archive/spec-v{version}.md`; if version cannot be determined, use date-based fallback: `.swarm/spec-archive/spec-{YYYY-MM-DD}.md`; log the archive location to the user ("Archived existing spec to .swarm/spec-archive/spec-v{version}.md"); then proceed to generation (step 2)
-     - Refine → delegate to MODE: CLARIFY-SPEC
-   - If NO: proceed to generation (step 2)
-   - If this is called from the stale spec archival path (MODE: PLAN option 1) — archival was already completed; skip this check and proceed directly to generation (step 2)
-1b. Run CODEBASE REALITY CHECK for any codebase references mentioned by the user or implied by the feature. Skip if work is purely greenfield (no existing codebase to check). Report discrepancies before proceeding to explorer.
+   1. Run `/swarm sdd status` to determine whether an effective spec exists and, if so, how it should be handled. An effective spec exists iff `/swarm sdd status` reports a resolved spec. `/swarm sdd status` reflects `readEffectiveSpecSync`, which returns null (NO effective spec) for: no sources, multiple competing sources (openspec+speckit), multi-feature Spec-Kit without a selected feature, or any unresolvable state. When `/swarm sdd status` reports a resolved spec, classify it as NATIVE (native `.swarm/spec.md`) vs NON-NATIVE (projected). When it reports NO resolved spec, do NOT treat any source as an effective spec. Based on this classification, branch to the appropriate sub-step:
+     - **NATIVE**: proceed to step 1a (overwrite/refine/archive).
+     - **NON-NATIVE**: proceed to step 1b (non-shadowing choice).
+     - **NO effective spec** (ambiguous or no sources): if multiple SDD sources are present, proceed to step 1c (disambiguation); otherwise proceed to step 1d (native authoring).
+     - If this is called from the stale spec archival path (MODE: PLAN option 1) — archival was already completed; skip all branches and proceed directly to generation (step 2).
+1a. **NATIVE SPEC — overwrite/refine/archive.** Ask the user "A spec already exists. Do you want to overwrite it or refine it?"
+      - Overwrite → ARCHIVE FIRST: read the existing spec, extract version (priority order): (1) from spec heading, look for patterns like "v{semver}" or "Version {semver}" in the first H1/H2; (2) from package.json version field in project root; create `.swarm/spec-archive/` directory if it does not exist; copy existing spec.md to `.swarm/spec-archive/spec-v{version}.md`; if version cannot be determined, use date-based fallback: `.swarm/spec-archive/spec-{YYYY-MM-DD}.md`; log the archive location to the user ("Archived existing spec to .swarm/spec-archive/spec-v{version}.md"); then proceed to generation (step 2)
+      - Refine → delegate to MODE: CLARIFY-SPEC
+1b. **NON-NATIVE SPEC — non-shadowing check (FR-002).** The effective spec comes from `openspec/` or `.specify/` sources with no native `.swarm/spec.md`. Do NOT silently author a competing native spec. Instead OFFER the user a choice:
+      - **(a) Project/ingest** the existing SDD sources into `.swarm/spec.md` via the agent-invocable `/swarm sdd project` command. Obtain EXPLICIT user consent before proceeding. (Do not pass `--overwrite` in this branch — no native spec exists yet.)
+      - **(b) Proceed with native authoring** (`/swarm specify`) if the user explicitly chooses to ignore the SDD sources and write a new spec from scratch.
+      - **(c) Cancel** — abort SPECIFY; the existing SDD sources remain the effective spec.
+     - If the user chooses option (a) and `/swarm sdd project` completes successfully: the projected spec is now materialized as `.swarm/spec.md` (NATIVE). Do NOT proceed to generation (step 2) — that would overwrite the just-projected spec. Instead route to step 1a (overwrite/refine/archive) so the user can refine, overwrite, or archive the projected spec.
+     - If the user chooses option (b): proceed directly to generation (step 2) with a note that existing SDD sources were bypassed per user decision.
+     - If the user chooses option (a) and `/swarm sdd project` fails: report the failure and re-offer the choices.
+1c. **AMBIGUOUS — multiple SDD sources detected.** Both `openspec/` AND `.specify/` exist with no native `.swarm/spec.md`. Per `readEffectiveSpecSync` semantics this is NOT an effective spec (the function returns null). Do NOT treat this as a single-source NON-NATIVE choice. Instead:
+        - Inform the user: "Multiple SDD sources detected (openspec AND speckit) but no native spec exists. This is ambiguous — there is no single effective spec. You must choose which source to project, or disambiguate via `/swarm sdd status --source`."
+       - Offer the user a choice:
+         - **(a) Project from openspec** — run `/swarm sdd project --source openspec` (after consent) to project the openspec source into `.swarm/spec.md`.
+          - **(b) Project from speckit** — run `/swarm sdd project --source speckit` (after consent) to project the speckit source into `.swarm/spec.md`.
+         - **(c) Cancel** — abort SPECIFY; the ambiguous sources remain as-is.
+       - After a successful projection (a or b): the spec is now NATIVE → route to step 1a (overwrite/refine/archive).
+       - After a failed projection: report the failure and re-offer the choices.
+1d. **NO EFFECTIVE SPEC.** Proceed directly to generation (step 2).
+1e. Run CODEBASE REALITY CHECK for any codebase references mentioned by the user or implied by the feature. Skip if work is purely greenfield (no existing codebase to check). Report discrepancies before proceeding to explorer.
 2. Delegate to `the active swarm's explorer agent` to scan the codebase for relevant context (existing patterns, related code, affected areas).
 3. Delegate to `the active swarm's sme agent` for domain research on the feature area to surface known constraints, best practices, and integration concerns.
 4. Generate `.swarm/spec.md` capturing:
@@ -32,7 +50,7 @@ Activates when: user asks to "specify", "define requirements", "write a spec", o
      - **Important:** If research is ongoing, monitor the timeout configured in `.swarm/config.json` under `research_needed_timeout_ms` (default: 300000ms / 5 minutes). If research does not complete before the timeout expires, automatically reclassify the item to `user_decision` with a note that research was incomplete, then surface it to the user. This prevents the clarification funnel from stalling while waiting for external research.
  5. Write the spec to `.swarm/spec.md`.
 5b. **QA GATE SELECTION, PARALLEL CODERS, COMMIT FREQUENCY, AND AUTO_PROCEED (dialogue only).**
-Ask the user which QA gates to enable for this plan, how many parallel coders to use, the commit frequency, and auto_proceed -- do not select on their behalf. Present all four items together as one unified exchange.
+Ask the user which QA gates to enable for this plan, how many parallel coders to use, the commit frequency, and auto_proceed -- do not select on their behalf. Present all four items together as one unified exchange. Exception: when SPECIFY is running inside MODE: LOOP with `autonomy=auto`, write the balanced-speed default `## Pending QA Gate Selection` instead (reviewer, test_engineer, sme_enabled, critic_pre_plan, sast_enabled, drift_check ON; council_mode, hallucination_guard, mutation_test, phase_council, final_council OFF), keep phase-level commits, and let MODE: PLAN choose safe parallelism after task scopes exist.
 
 Present the eleven gates with their defaults (DEFAULT_QA_GATES), parallel coder count, commit frequency, and auto_proceed as a single user-facing section. Offer the user a one-shot choice: accept defaults, or customize. The eleven gates are:
 - reviewer (default: ON) -- code review of coder output
@@ -48,7 +66,8 @@ Present the eleven gates with their defaults (DEFAULT_QA_GATES), parallel coder 
 - final_council (default: OFF) -- when enabled, after all phases complete the architect dispatches the full 5-member council (critic, reviewer, sme, test_engineer, explorer) -- NOT the General Council -- at project scope, collects `CouncilMemberVerdict` objects, and calls `write_final_council_evidence`. This does not require `council.general.enabled`.
 
 Additionally, present these three sub-items as part of the same exchange:
-- Parallel coders (default: 1, range: 1-4) -- how many coders should run in parallel. Parallel coders each run in an isolated git worktree (separate working dir + branch) and merge back automatically, so they never overwrite each other's files -- safe and faster, but only for tasks whose file scopes do NOT overlap. The per-task file scopes that determine a safe parallel count are not known until the plan is finalized, so default to 1 (serial) here; the precise recommendation is made at plan time once the tasks and their scopes exist.
+- Parallel coders (default: 1, range: 1-6) -- how many coders should run in parallel. Parallel coders each run in an isolated git worktree (separate working dir + branch) and merge back automatically, so they never overwrite each other's files -- safe and faster, but only for tasks whose file scopes do NOT overlap. The per-task file scopes that determine a safe parallel count are not known until the plan is finalized, so default to 1 (serial) here; the precise recommendation is made at plan time once the tasks and their scopes exist.
+  > COMMON MISCONCEPTION: worktree isolation is baseline for standard parallel coders, governed by the parallel execution profile plus top-level `worktree.policy`. It is not provided by Lean Turbo or Epic. Do not recommend Lean Turbo or Epic to obtain worktree isolation; recommend them only for what they add beyond baseline (Lean Turbo: lane planning, file locks, phase reviewer, integrated diff; Epic: co-change awareness and auto-decide). Worktrees also do not make overlapping scopes safe: dependency readiness, file-disjoint scopes, and merge-back ownership are still required.
 - Commit frequency (default: phase-level only) -- optional per-task checkpoint commit after each task completion.
 - auto_proceed (boolean, default: false) -- when true, auto-advance to the next phase without asking "Ready for Phase N+1?"; runtime toggle via /swarm auto-proceed on|off.
 
@@ -88,6 +107,8 @@ GATE SELECTION IS MANDATORY — these thoughts are WRONG and must be ignored:
     → WRONG: the architect does not configure gates. The user configures gates. Always ask.
 
 MANDATORY PAUSE: Do NOT write the spec summary (step 7). Do NOT suggest next steps.
+Exception: MODE: LOOP with `autonomy=auto` uses the balanced-speed defaults
+above and does not pause for this preference exchange.
 You are BLOCKED until ALL THREE of these conditions are met:
   (1) The unified gate/coders/commit/auto_proceed selection section has been presented to the user in a single message
   (2) The user has responded (accept defaults OR customized list for all four items)

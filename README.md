@@ -6,7 +6,7 @@
 [![Version](https://img.shields.io/badge/version-0.5.8-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6)]()
-[![MCP](https://img.shields.io/badge/MCP-13%20tools-purple)]()
+[![MCP](https://img.shields.io/badge/MCP-29%20tools-purple)]()
 
 DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows and audit trails.
 
@@ -19,7 +19,7 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 | **Version** | 0.5.8 |
 | **Tests** | 1445 passing (128 test files) |
 | **API Endpoints** | ~160 across 57 route modules |
-| **MCP Tools** | 13 |
+| **MCP Tools** | 29 |
 | **Database Tables** | 72 (21 base + 51 migration) |
 | **Agent Runtimes** | 9 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock, Data, Infra) |
 | **Last Updated** | 2026-07-06 |
@@ -258,7 +258,7 @@ npm run dev:dashboard # http://localhost:5173
 
 ## MCP Server
 
-13 tools exposed via stdio or HTTP transport:
+29 tools exposed via stdio or HTTP transport:
 
 | Tool | Category | Description |
 |------|----------|-------------|
@@ -274,7 +274,23 @@ npm run dev:dashboard # http://localhost:5173
 | `djimitflo_spawn_agent` | Orchestration | Spawn sub-agent with isolated context |
 | `djimitflo_handoff_agent` | Orchestration | Transfer work between agents |
 | `djimitflo_approve_action` | Orchestration | Request human approval |
-| `djimitflo_list_agents` | Orchestration | List all agents with status |
+| `djimitflo_list_orchestration_agents` | Orchestration | List all agents with status |
+| `djimitflo_mcp_doctor` | Governance | Diagnose registry, permission, and sidecar-state drift |
+| `djimitflo_sync_mcp_catalog` | Governance | Preview or apply runtime tool catalog sync |
+| `djimitflo_sync_http_sidecar_catalog` | Governance | Preview or apply OpenAPI sidecar tool inventory sync |
+| `djimitflo_probe_mcp_sidecars` | Governance | Preview or apply sidecar server health probes |
+| `okf_search` | Knowledge | Search the OKF bundle |
+| `okf_get` | Knowledge | Get an OKF concept by path |
+| `okf_related` | Knowledge | Traverse OKF concept links |
+| `okf_validate` | Knowledge | Validate OKF bundle conformance |
+| `okf_status` | Knowledge | Summarize OKF health |
+| `djimitflo_list_mcp_servers` | Governance | List registered MCP servers |
+| `djimitflo_list_mcp_tools` | Governance | List MCP tools and risk metadata |
+| `djimitflo_get_mcp_permissions` | Governance | List effective MCP decisions |
+| `djimitflo_get_cost_summary` | Governance | Summarize token and skill cost signals |
+| `djimitflo_get_evidence_chain` | Evidence | Return task evidence, events, approvals, and graph edges |
+| `djimitflo_list_openmythos_runs` | OpenMythos | List evaluation runs and result counts |
+| `djimitflo_list_skill_outcomes` | Skills | List recent skill outcomes |
 
 ### Claude Code / Cursor Integration
 

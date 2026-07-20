@@ -64,10 +64,25 @@ Use these baselines unless repository policy explicitly requires stricter or old
 7. Write `review-report.md` only after coverage closure and final critic PASS.
 8. Final response reports only the run path, selected tracks, counts summary, highest-risk items, coverage limitations, and confirmation that no source files were modified.
 
+## Pre-flight: PR Branch Checkout Before Explorer Dispatch
+
+When the review target is a PR branch or commit range, complete this before any
+explorer or candidate-generation dispatch:
+
+1. Verify the working tree is clean with `git status --porcelain`. If
+   uncommitted changes exist, stash them or abort the checkout to prevent data
+   loss.
+2. Fetch and check out the PR head branch locally. Explorer agents read the
+   working-tree filesystem (`Read`/`Glob`/`Grep`), not git history, so reviewing
+   a PR while the base branch is checked out produces invalid candidates.
+3. Record the exact commit range (`base_ref..head_ref`) in the source-of-truth
+   packet and pass that range in every explorer/candidate-generation delegation
+   so agents have revision context for targeted `git show` inspection.
+
 ## Async advisory lanes
 
 When selected-track inventory or candidate generation decomposes into independent read-only units, launch those units with `dispatch_lanes_async` when available. Record each returned `batch_id`, then continue architect-owned deterministic work that does not depend on lane output: update the coverage ledger shell, run safe local tools, prepare validation shards, and document unresolved coverage units. Do not mark coverage `REVIEWED`, promote candidates to findings, or write the final report from running lanes.
 
 **Incremental collection:** While lanes are running, poll with `collect_lane_results` (without `wait` or `wait: false`) to check progress and process any settled lanes immediately — call `retrieve_lane_output` for full text when `output_ref` is present, extract candidates, update coverage ledger entries, validate output quality — while continuing independent work between polls. Only use `wait: true` if lanes are still pending and no more independent architect work remains.
 
-At every coverage, validation, and synthesis boundary, all lanes in the relevant batch must be settled before proceeding. Missing, stale, cancelled, or failed lanes are coverage gaps that must be closed before proceeding — they map to the existing `BLOCKED` invariant (#2 Coverage Closure) but with stricter resolution: (1) retry max 2 times with materially different parameters; (2) if retries fail, deploy a verified equivalent alternative (same agent type, same prompt, same scope, same isolation — different dispatch mechanism acceptable when equivalence is verified); (3) if no equivalent exists, the coverage unit becomes `BLOCKED` and the run is reported INCOMPLETE to the user. `SKIPPED_WITH_REASON` is not acceptable for dispatch-lane failures — it must be `BLOCKED` with an explicit retry/equivalent/INCOMPLETE trail.
+At every coverage, validation, and synthesis boundary, all lanes in the relevant batch must be settled before proceeding. Missing, stale, cancelled, or failed lanes are coverage gaps that must be closed before proceeding — they map to the existing `BLOCKED` invariant (#2 Coverage Closure) but with stricter resolution: (1) retry max 2 times with materially different parameters; (2) if retries fail, deploy a verified equivalent alternative (same agent type, same prompt, same scope, same isolation — different dispatch mechanism acceptable when equivalence is verified, including Task-tool dispatch as the final fallback when lane tools do not work); (3) if no equivalent exists, the coverage unit becomes `BLOCKED` and the architect must surface the lane failure to the user before producing a report. `SKIPPED_WITH_REASON` is not acceptable for dispatch-lane failures — it must be `BLOCKED` with an explicit retry/equivalent/escalation trail, and no degraded review report is written.
