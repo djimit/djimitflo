@@ -40,7 +40,19 @@ export type SwarmEventType =
   | 'council:model:deprecated'
   | 'council:approval:required'
   | 'council:approval:granted'
-  | 'council:approval:denied';
+  | 'council:approval:denied'
+  | 'segml:cycle:started'
+  | 'segml:cycle:complete'
+  | 'governance_alert'
+  | 'segml:trigger:runtime'
+  | 'segml:trigger:predicted_decline'
+  | 'segml:cpo:learning_complete'
+  | 'segml:cpo:fleet_blind_spots'
+  | 'segml:red_team:campaign_queued'
+  | 'segml:skill:quarantined'
+  | 'segml:meta:adaptation'
+  | 'segml:meta:reverted'
+  | 'segml:twin:deployment_blocked';
 
 export interface SwarmEvent {
   type: SwarmEventType;

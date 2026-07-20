@@ -434,13 +434,15 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS governance_feedback (
     id TEXT PRIMARY KEY,
-    ecli TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'human_correction' CHECK(source IN ('openmythos_case', 'runtime_violation', 'human_correction', 'self_modification')),
+    category TEXT NOT NULL DEFAULT '',
     original_decision TEXT NOT NULL,
     corrected_decision TEXT NOT NULL,
     reason TEXT NOT NULL,
-    corrected_by TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    applied INTEGER NOT NULL DEFAULT 0
+    confidence REAL NOT NULL DEFAULT 0.5,
+    applied INTEGER NOT NULL DEFAULT 0,
+    applied_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS self_healing_log (

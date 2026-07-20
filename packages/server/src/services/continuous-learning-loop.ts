@@ -4,6 +4,8 @@ import { MemoryCurator } from './memory-curator';
 import { ReflectionEngine } from './reflection-engine';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { TrajectoryStore } from './trajectory-store';
+import { SelfEvolvingGovernanceLoop } from './self-evolving-governance-loop';
+import { config as envConfig } from '../config/env';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
@@ -16,6 +18,8 @@ export class ContinuousLearningLoop {
   private reflections: ReflectionEngine;
   private goals: AutonomousGoalGenerator;
   private _trajectories?: TrajectoryStore;
+  private segml?: SelfEvolvingGovernanceLoop;
+  private segmlTimer: ReturnType<typeof setInterval> | null = null;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastCycle: string | null = null;
@@ -32,8 +36,19 @@ export class ContinuousLearningLoop {
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
 
-  start(): void { if (this.timer) return; this.timer = setInterval((): void => { this.runCycle().catch((): void => {}); }, this.intervalMs); }
-  stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
+  start(): void {
+    if (this.timer) return;
+    this.timer = setInterval((): void => { this.runCycle().catch((): void => {}); }, this.intervalMs);
+    this.segml = new SelfEvolvingGovernanceLoop(this.db);
+    this.segmlTimer = setInterval((): void => {
+      this.segml?.runCycle('auto').catch((): void => {});
+    }, envConfig.SEGML_CYCLE_INTERVAL_MS);
+  }
+
+  stop(): void {
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
+    if (this.segmlTimer) { clearInterval(this.segmlTimer); this.segmlTimer = null; }
+  }
 
   async runCycle(): Promise<LearningCycleResult> {
     const start = Date.now();
