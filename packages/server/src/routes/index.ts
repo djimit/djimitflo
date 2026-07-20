@@ -68,6 +68,7 @@ import { createCouncilRoutes } from './council';
 import { createSegmlRoutes } from './segml';
 import { createSegmlFederationRoutes } from './segml-federation';
 import { createSegmlLiteratureRoutes } from './segml-literature';
+import { createSegmlFinetuningRoutes } from './segml-finetuning';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -187,6 +188,7 @@ export function createRoutes(
   router.use('/segml', requireAuth, createSegmlRoutes(db, auth));
   router.use('/segml/federation', requireAuth, createSegmlFederationRoutes(db, auth));
   router.use('/segml/literature', requireAuth, createSegmlLiteratureRoutes(db, auth));
+  router.use('/segml/finetuning', requireAuth, createSegmlFinetuningRoutes(db, auth));
 
   return router;
 }
