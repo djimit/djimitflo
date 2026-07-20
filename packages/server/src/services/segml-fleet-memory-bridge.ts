@@ -261,8 +261,8 @@ export class SegmlFleetMemoryBridge {
     const d = shape - 1 / 3;
     const c = 1 / Math.sqrt(9 * d);
     while (true) {
-      let x = this.sampleStandardNormal();
-      let v = Math.pow(1 + c * x, 3);
+      const x = this.sampleStandardNormal();
+      const v = Math.pow(1 + c * x, 3);
       if (v <= 0) continue;
       const u = Math.random();
       if (u < 1 - 0.0331 * x * x * x * x) return d * v;

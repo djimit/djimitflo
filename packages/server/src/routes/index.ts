@@ -90,17 +90,17 @@ export function createRoutes(
   router.use(limitBodySize(1_000_000));
 
   if (!authService || !auth) {
-    console.warn('WARNING: Running without authentication. All routes are unprotected.');
+    throw new Error('AUTH_MIDDLEWARE_REQUIRED');
   }
 
-  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
+  const requireAuth = auth.requireAuth;
   // L3: the nested-spawn control endpoint admits EITHER a user JWT OR a scoped
   // spawn token (X-Spawn-Token) so a runtime child with no user session can still
   // POST /spawns and poll /spawns/:id/status. Mounted BEFORE /swarms (Express
   // matches in registration order) so the specific path wins over the generic
   // requireAuth mount. POST /spawns/root still requires write:swarm_action inside
   // the router, so a token-only child cannot create roots.
-  const requireAuthOrSpawnToken = auth?.requireAuthOrSpawnToken ?? ((_req: any, _res: any, next: any) => next());
+  const requireAuthOrSpawnToken = auth.requireAuthOrSpawnToken;
   const auditService = new AuditService(db);
 
   // Security headers
@@ -115,7 +115,7 @@ export function createRoutes(
   });
 
   // Auth routes (public + protected)
-  router.use('/auth', createAuthRoutes(authService!, auth!, auditService));
+  router.use('/auth', createAuthRoutes(authService, auth, auditService));
 
   // Protected routes
   router.use('/tasks', requireAuth, createTaskRoutes(db, executionEngine, auth));

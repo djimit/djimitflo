@@ -45,6 +45,7 @@ import { PromptIntelService } from './services/prompt-intel-service';
 import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from './services/emergent-specialization-service';
 import { RsiSafetyGuard } from './services/rsi-safety-guard';
+import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -69,6 +70,10 @@ if (!process.env.DJIMITFLO_CONTROL_URL) {
 
 async function main() {
   console.log('🚀 Starting Djimitflo Server...');
+  const runtimeProfile = resolveRuntimeProfile();
+  const operatorRuntime = runtimeProfileEnablesOperator(runtimeProfile);
+  const autonomousRuntime = runtimeProfileEnablesAutonomy(runtimeProfile);
+  console.log(`🧭 Runtime profile: ${runtimeProfile}`);
   
   // Initialize database
   console.log('📦 Initializing database...');
@@ -91,90 +96,96 @@ async function main() {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
-  // G20+G23: start the negotiation coordinator + capability acquisition service.
-  const intelligence = new SwarmIntelligenceService(db);
-  const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
-  try {
-    const coordinator = new NegotiationCoordinator(recoverySvc, nestedSpawns, intelligence);
-    coordinator.start();
-    console.log('🤝 Negotiation coordinator started (inter-agent help_request protocol).');
-  } catch (error) {
-    console.warn('⚠️  Negotiation coordinator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-  try {
-    const acquisition = new CapabilityAcquisitionService(db, intelligence);
-    acquisition.start();
-    console.log('🧠 Capability acquisition service started (autonomous capability growth).');
-  } catch (error) {
-    console.warn('⚠️  Capability acquisition failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G32: start the meta-evolution service (periodic self-evaluation + pruning).
-  try {
-    const metaEvolution = new MetaEvolutionService(db, intelligence);
-    metaEvolution.start();
-    console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
-  } catch (error) {
-    console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G92: start the autonomous goal generator (self-improvement → goals → loop-daemon).
-  try {
-    const autonomousGoals = new AutonomousGoalGenerator(db);
-    const generated = autonomousGoals.generateAll();
-    if (generated.total > 0) {
-      console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+  if (autonomousRuntime) {
+    // G20+G23: start the negotiation coordinator + capability acquisition service.
+    const intelligence = new SwarmIntelligenceService(db);
+    const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
+    try {
+      const coordinator = new NegotiationCoordinator(recoverySvc, nestedSpawns, intelligence);
+      coordinator.start();
+      console.log('🤝 Negotiation coordinator started (inter-agent help_request protocol).');
+    } catch (error) {
+      console.warn('⚠️  Negotiation coordinator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
     }
-  } catch (error) {
-    console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
-  // G103-G106: RSI Engine services
-  try {
-    const safetyGuard = new RsiSafetyGuard(db);
-    const refactoringAnalyzer = new ServiceRefactoringAnalyzer(db);
-    const emergentSpec = new EmergentSpecializationService(db);
-    void safetyGuard;
-    void refactoringAnalyzer;
-    void emergentSpec;
-    console.log('🧬 RSI Engine ready (Refactor + Safety + Specialization).');
-  } catch (error) {
-    console.warn('⚠️  RSI Engine initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  try {
-    const workerPool = new WorkerPool({ concurrency: 10 });
-    const okfUpdater = new OkfKnowledgeUpdater(db);
-    void workerPool;
-    void okfUpdater;
-    new ExpertSwarmOrchestrator(db);
-    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
-  } catch (error) {
-    console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G16: start the continuous operation daemon (goal queue with priority scheduling).
-  // Share the same LoopService instance (recoverySvc) so the daemon and the server
-  // share in-memory state (runtimeSemaphore, runtimeLeases, etc.).
-  try {
-    const daemon = new LoopDaemon(db, recoverySvc);
-    daemon.start();
-    console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
-  } catch (error) {
-    console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // Prompt intelligence: ingest pending findings on startup
-  try {
-    const promptIntel = new PromptIntelService(db);
-    const pendingPath = process.env.PROMPT_INTEL_PENDING || (process.env.HOME || '/Users/djimit') + '/.djimit/roborev/paperclip-tasks.pending.jsonl';
-    const result = promptIntel.ingestFromPending(pendingPath);
-    if (result.imported > 0 || result.skipped > 0) {
-      console.log(`🔍 PromptIntel: imported ${result.imported} findings, skipped ${result.skipped} (threshold filter)`);
+    try {
+      const acquisition = new CapabilityAcquisitionService(db, intelligence);
+      acquisition.start();
+      console.log('🧠 Capability acquisition service started (autonomous capability growth).');
+    } catch (error) {
+      console.warn('⚠️  Capability acquisition failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
     }
-  } catch (error) {
-    console.warn('⚠️  PromptIntel ingestion failed (non-fatal):', error instanceof Error ? error.message : String(error));
+
+    // G32: start the meta-evolution service (periodic self-evaluation + pruning).
+    try {
+      const metaEvolution = new MetaEvolutionService(db, intelligence);
+      metaEvolution.start();
+      console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
+    } catch (error) {
+      console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+
+    // G92: start the autonomous goal generator (self-improvement → goals → loop-daemon).
+    try {
+      const autonomousGoals = new AutonomousGoalGenerator(db);
+      const generated = autonomousGoals.generateAll();
+      if (generated.total > 0) {
+        console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+      }
+    } catch (error) {
+      console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+
+    // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
+    // G103-G106: RSI Engine services
+    try {
+      const safetyGuard = new RsiSafetyGuard(db);
+      const refactoringAnalyzer = new ServiceRefactoringAnalyzer(db);
+      const emergentSpec = new EmergentSpecializationService(db);
+      void safetyGuard;
+      void refactoringAnalyzer;
+      void emergentSpec;
+      console.log('🧬 RSI Engine ready (Refactor + Safety + Specialization).');
+    } catch (error) {
+      console.warn('⚠️  RSI Engine initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+
+    try {
+      const workerPool = new WorkerPool({ concurrency: 10 });
+      const okfUpdater = new OkfKnowledgeUpdater(db);
+      void workerPool;
+      void okfUpdater;
+      new ExpertSwarmOrchestrator(db);
+      console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
+    } catch (error) {
+      console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+
+    // G16: start the continuous operation daemon (goal queue with priority scheduling).
+    // Share the same LoopService instance (recoverySvc) so the daemon and the server
+    // share in-memory state (runtimeSemaphore, runtimeLeases, etc.).
+    try {
+      const daemon = new LoopDaemon(db, recoverySvc);
+      daemon.start();
+      console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
+    } catch (error) {
+      console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
+  } else {
+    console.log('⏸️  Autonomous services disabled by runtime profile');
+  }
+
+  if (operatorRuntime) {
+    // Prompt intelligence: ingest pending findings on startup
+    try {
+      const promptIntel = new PromptIntelService(db);
+      const pendingPath = process.env.PROMPT_INTEL_PENDING || (process.env.HOME || '/Users/djimit') + '/.djimit/roborev/paperclip-tasks.pending.jsonl';
+      const result = promptIntel.ingestFromPending(pendingPath);
+      if (result.imported > 0 || result.skipped > 0) {
+        console.log(`🔍 PromptIntel: imported ${result.imported} findings, skipped ${result.skipped} (threshold filter)`);
+      }
+    } catch (error) {
+      console.warn('⚠️  PromptIntel ingestion failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }
   }
 
   // Initialize auth
@@ -229,13 +240,17 @@ async function main() {
   const trajectoryStore = new TrajectoryStore(db);
   executionEngine.setTrajectoryStore(trajectoryStore);
 
-  // Retention service — centralized data lifecycle management
-  const retention = new RetentionService(db);
-  retention.start();
+  if (operatorRuntime) {
+    // Retention service — centralized data lifecycle management
+    const retention = new RetentionService(db);
+    retention.start();
 
-  // Cognitive loop closure — learns from loop execution outcomes
-  const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
-  cognitiveLoopClosure.start();
+    // Cognitive loop closure — learns from loop execution outcomes
+    const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
+    cognitiveLoopClosure.start();
+  } else {
+    console.log('⏸️  Operator background services disabled by runtime profile');
+  }
 
   // Multi-model intelligence — capability-aware model routing
   const multiModelIntelligence = new MultiModelIntelligence(db);
@@ -245,16 +260,19 @@ async function main() {
     multiModelIntelligence.registerModel({ modelId: 'ollama-qwen25-14b', modelName: 'Qwen2.5 14B', provider: 'ollama', costPerMtok: 0 });
   }
 
-  // Meta-orchestration — self-driving optimization layer (connects all learning subsystems)
-  const metaOrchestration = new MetaOrchestrationService(db);
-  metaOrchestration.start();
-  executionEngine.setMetaOrchestration(metaOrchestration);
-  recoverySvc.setMetaOrchestration(metaOrchestration);
+  let metaOrchestration: MetaOrchestrationService | undefined;
+  if (autonomousRuntime) {
+    // Meta-orchestration — self-driving optimization layer (connects all learning subsystems)
+    metaOrchestration = new MetaOrchestrationService(db);
+    metaOrchestration.start();
+    executionEngine.setMetaOrchestration(metaOrchestration);
+    recoverySvc.setMetaOrchestration(metaOrchestration);
 
-  // Self-modification pipeline — autonomous code improvement (analyze on startup)
-  const selfModification = new SelfModificationPipeline(db);
-  // Run initial analysis to detect improvement opportunities
-  selfModification.analyze();
+    // Self-modification pipeline — autonomous code improvement (analyze on startup)
+    const selfModification = new SelfModificationPipeline(db);
+    // Run initial analysis to detect improvement opportunities
+    selfModification.analyze();
+  }
 
   // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)
   // Compliance audit — immutable evidence chain and compliance reporting (Vector 7)
@@ -267,7 +285,7 @@ async function main() {
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
-    if (raw) {
+    if (raw && operatorRuntime) {
       const configs = JSON.parse(raw) as TelegramBotConfig[];
       const { TelegramGatewayService } = await import('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
       const tg = new TelegramGatewayService(configs, {
@@ -285,6 +303,8 @@ async function main() {
         },
       });
       tg.startAll().catch((e: any) => console.warn('⚠️ Telegram startAll fout:', e?.message || e));
+    } else if (raw) {
+      console.log('ℹ️ TELEGRAM_BOTS_CONFIG gezet, maar Telegram gateway is uitgeschakeld door runtime profile');
     } else {
       console.log('ℹ️ TELEGRAM_BOTS_CONFIG niet gezet — Telegram gateway is uitgeschakeld');
     }

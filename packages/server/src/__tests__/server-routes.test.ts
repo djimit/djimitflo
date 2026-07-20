@@ -31,6 +31,10 @@ describe('Server route wiring', () => {
     expect(() => createRoutes(db, undefined, authService, auth)).not.toThrow();
   });
 
+  it('createRoutes fails closed without auth middleware', () => {
+    expect(() => createRoutes(db, undefined)).toThrow('AUTH_MIDDLEWARE_REQUIRED');
+  });
+
   it('createRoutes returns a valid Express router with mounted layers', () => {
     const authService = new AuthService(db);
     authService.bootstrapAdmin();

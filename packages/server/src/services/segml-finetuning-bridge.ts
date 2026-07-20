@@ -142,7 +142,7 @@ export class SegmlFinetuningBridge {
     const pairs: TrainingPair[] = [];
 
     // Extract failed cases from SEGML memory bridge logs
-    let query = `
+    const query = `
       SELECT case_id, category, bridge_type, confidence
       FROM segml_bridge_log
       WHERE bridge_type = 'failure'
