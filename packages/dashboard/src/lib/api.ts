@@ -848,8 +848,13 @@ class ApiClient {
     return this.request('/mcp/servers?refresh=true');
   }
 
-  async getMCPTools(serverId?: string): Promise<{ tools: MCPTool[] }> {
-    const query = serverId ? `?server_id=${serverId}` : '';
+  async getMCPTools(filters?: { serverId?: string; riskLevel?: string; permission?: string; q?: string }): Promise<{ tools: MCPTool[] }> {
+    const params = new URLSearchParams();
+    if (filters?.serverId) params.set('server_id', filters.serverId);
+    if (filters?.riskLevel) params.set('risk_level', filters.riskLevel);
+    if (filters?.permission) params.set('permission', filters.permission);
+    if (filters?.q) params.set('q', filters.q);
+    const query = params.toString() ? `?${params}` : '';
     return this.request(`/mcp/tools${query}`);
   }
 
@@ -925,8 +930,14 @@ class ApiClient {
     });
   }
 
-  async getMCPPermissions(): Promise<{ permissions: Array<Record<string, unknown>> }> {
-    return this.request('/mcp/permissions');
+  async getMCPPermissions(filters?: { serverId?: string; riskLevel?: string; decision?: string; q?: string }): Promise<{ permissions: Array<Record<string, unknown>> }> {
+    const params = new URLSearchParams();
+    if (filters?.serverId) params.set('server_id', filters.serverId);
+    if (filters?.riskLevel) params.set('risk_level', filters.riskLevel);
+    if (filters?.decision) params.set('decision', filters.decision);
+    if (filters?.q) params.set('q', filters.q);
+    const query = params.toString() ? `?${params}` : '';
+    return this.request(`/mcp/permissions${query}`);
   }
 
   async updateMCPPermission(toolId: string, input: Record<string, unknown>): Promise<{ permission: Record<string, unknown> }> {

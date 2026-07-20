@@ -20,22 +20,43 @@ const STATUS_LABEL: Record<string, string> = {
 export function MCPPermissionsPage() {
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [permissions, setPermissions] = useState<Array<Record<string, unknown>>>([]);
-  const [loading, setLoading] = useState(true);
+  const [serverId, setServerId] = useState('');
+  const [decision, setDecision] = useState('');
+  const [riskLevel, setRiskLevel] = useState('');
+  const [query, setQuery] = useState('');
+  const [serversLoading, setServersLoading] = useState(true);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const serverStats = permissions.reduce<Record<string, { tools: number; approvals: number }>>((stats, permission) => {
+    const id = String(permission.server_id || '');
+    if (!id) return stats;
+    stats[id] ||= { tools: 0, approvals: 0 };
+    stats[id].tools += 1;
+    if (permission.decision === 'requires_approval') stats[id].approvals += 1;
+    return stats;
+  }, {});
 
   useEffect(() => {
-    Promise.all([
-      api.getMCPServers(),
-      api.getMCPPermissions(),
-    ])
-      .then(([serversResult, permissionsResult]) => {
+    api.getMCPServers()
+      .then((serversResult) => {
         setServers(serversResult.servers);
+      })
+      .catch((error) => {
+        console.error('Failed to load MCP servers:', error);
+      })
+      .finally(() => setServersLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setPermissionsLoading(true);
+    api.getMCPPermissions({ serverId, decision, riskLevel, q: query.trim() })
+      .then((permissionsResult) => {
         setPermissions(permissionsResult.permissions);
       })
       .catch((error) => {
-        console.error('Failed to load MCP data:', error);
+        console.error('Failed to load MCP permissions:', error);
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setPermissionsLoading(false));
+  }, [serverId, decision, riskLevel, query]);
 
   return (
     <div className="p-8 space-y-8">
@@ -55,7 +76,7 @@ export function MCPPermissionsPage() {
           </span>
         </h2>
 
-        {loading ? (
+        {serversLoading ? (
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
             Loading…
           </div>
@@ -100,6 +121,11 @@ export function MCPPermissionsPage() {
                       Last ping: {new Date(server.last_ping_at).toLocaleTimeString()}
                     </div>
                   )}
+                  <div className="text-xs text-foreground-tertiary mt-2">
+                    Visible tools: {serverStats[server.id]?.tools || 0}
+                    <span className="mx-1">·</span>
+                    Approval gates: {serverStats[server.id]?.approvals || 0}
+                  </div>
                   {server.error_message && (
                     <div className="mt-2 text-xs text-red-400 truncate">{server.error_message}</div>
                   )}
@@ -118,8 +144,51 @@ export function MCPPermissionsPage() {
             ({permissions.length})
           </span>
         </h2>
+        <div className="flex flex-wrap gap-3">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tools"
+            className="bg-background-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+          />
+          <select
+            value={serverId}
+            onChange={(event) => setServerId(event.target.value)}
+            className="bg-background-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">All servers</option>
+            {servers.map((server) => (
+              <option key={server.id} value={server.id}>{server.name}</option>
+            ))}
+          </select>
+          <select
+            value={decision}
+            onChange={(event) => setDecision(event.target.value)}
+            className="bg-background-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">All decisions</option>
+            <option value="allowed">Allowed</option>
+            <option value="requires_approval">Requires approval</option>
+            <option value="denied">Denied</option>
+          </select>
+          <select
+            value={riskLevel}
+            onChange={(event) => setRiskLevel(event.target.value)}
+            className="bg-background-secondary border border-border rounded-md px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">All risk levels</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
 
-        {permissions.length === 0 ? (
+        {permissionsLoading ? (
+          <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
+            Loading…
+          </div>
+        ) : permissions.length === 0 ? (
           <div className="bg-background-secondary border border-border rounded-lg p-8 text-center">
             <Circle className="w-8 h-8 text-foreground-tertiary mx-auto mb-2" />
             <p className="text-foreground-secondary text-sm">
@@ -134,6 +203,7 @@ export function MCPPermissionsPage() {
             <table className="w-full text-sm">
               <thead className="bg-background-elevated text-left text-foreground-secondary">
                 <tr>
+                  <th className="px-4 py-3">Server</th>
                   <th className="px-4 py-3">Tool</th>
                   <th className="px-4 py-3">Decision</th>
                   <th className="px-4 py-3">Risk</th>
@@ -143,6 +213,9 @@ export function MCPPermissionsPage() {
               <tbody>
                 {permissions.map((permission) => (
                   <tr key={String(permission.id)} className="border-t border-border">
+                    <td className="px-4 py-3 text-foreground-secondary">
+                      {String(permission.server_name || permission.server_id || '-')}
+                    </td>
                     <td className="px-4 py-3 text-foreground">
                       {String(permission.tool_name || permission.tool_id || 'Unknown')}
                     </td>
