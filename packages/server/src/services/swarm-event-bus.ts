@@ -53,7 +53,9 @@ export type SwarmEventType =
   | 'segml:meta:adaptation'
   | 'segml:meta:reverted'
   | 'segml:twin:deployment_blocked'
-  | 'segml:federation:synced';
+  | 'segml:federation:synced'
+  | 'segml:literature:new_categories'
+  | 'segml:literature:category_approved';
 
 export interface SwarmEvent {
   type: SwarmEventType;
