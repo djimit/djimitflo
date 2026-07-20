@@ -1,0 +1,205 @@
+- generic [ref=e19]:
+  - complementary [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - heading "Djimitflo" [level=1] [ref=e23]
+        - paragraph [ref=e26]: Agent Control Plane
+      - button "Close navigation" [ref=e225] [cursor=pointer]
+    - navigation [ref=e27]:
+      - link "Dashboard" [ref=e28] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=e32] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=e37] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=e44] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=e50] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=e55] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=e60] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=e64] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=e72] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=e76] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=e81] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=e86] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=e92] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=e97] [cursor=pointer]:
+        - /url: /usage
+      - link "Runtime URLs" [active] [ref=e101] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=e108] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=e112] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=e119] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=e126] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=e140] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=e150] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e156]: audit@example.test
+        - generic [ref=e157]: admin
+      - button "Sign out" [ref=e158] [cursor=pointer]
+      - generic [ref=e163]: v0.5.8 • 2026
+  - generic [ref=e164]:
+    - banner [ref=e229]:
+      - button "Open navigation" [ref=e230] [cursor=pointer]
+      - generic [ref=e232]: Djimitflo
+    - main [ref=e165]:
+      - generic [ref=e315]:
+        - generic [ref=e316]:
+          - generic [ref=e317]:
+            - heading "Runtime URLs" [level=1] [ref=e318]
+            - paragraph [ref=e324]: Listening ports on MacBook-Pro.local (darwin) — refreshes every 30 seconds
+          - button "Refresh" [ref=e325] [cursor=pointer]
+        - generic [ref=e331]:
+          - generic [ref=e332]:
+            - generic [ref=e333]: Total Ports
+            - generic [ref=e334]: "19"
+          - generic [ref=e335]:
+            - generic [ref=e336]: LAN Accessible
+            - generic [ref=e337]: "9"
+          - generic [ref=e338]:
+            - generic [ref=e339]: Localhost Only
+            - generic [ref=e340]: "10"
+          - generic [ref=e341]:
+            - generic [ref=e342]: Processes
+            - generic [ref=e343]: "10"
+        - generic [ref=e344]:
+          - heading "Live Listening Ports" [level=2] [ref=e345]
+          - table [ref=e350]:
+            - rowgroup [ref=e351]:
+              - row [ref=e352]:
+                - columnheader "Port" [ref=e353]
+                - columnheader "Address" [ref=e354]
+                - columnheader "Process" [ref=e355]
+                - columnheader "PID" [ref=e356]
+                - columnheader "Exposure" [ref=e357]
+            - rowgroup [ref=e358]:
+              - row [ref=e359]:
+                - cell "3000" [ref=e360]
+                - cell "*" [ref=e361]
+                - cell "node" [ref=e362]
+                - cell "31963" [ref=e363]
+                - cell "LAN" [ref=e364]
+              - row [ref=e365]:
+                - cell "3011" [ref=e366]
+                - cell "127.0.0.1" [ref=e367]
+                - cell "node" [ref=e368]
+                - cell "68131" [ref=e369]
+                - cell "Localhost" [ref=e370]
+              - row [ref=e371]:
+                - cell "3283" [ref=e372]
+                - cell "*" [ref=e373]
+                - cell "ARDAgent" [ref=e374]
+                - cell "743" [ref=e375]
+                - cell "LAN" [ref=e376]
+              - row [ref=e377]:
+                - cell "5000" [ref=e378]
+                - cell "*" [ref=e379]
+                - cell "ControlCe" [ref=e380]
+                - cell "626" [ref=e381]
+                - cell "LAN" [ref=e382]
+              - row [ref=e383]:
+                - cell "5000" [ref=e384]
+                - cell "*" [ref=e385]
+                - cell "ControlCe" [ref=e386]
+                - cell "626" [ref=e387]
+                - cell "LAN" [ref=e388]
+              - row [ref=e389]:
+                - cell "7000" [ref=e390]
+                - cell "*" [ref=e391]
+                - cell "ControlCe" [ref=e392]
+                - cell "626" [ref=e393]
+                - cell "LAN" [ref=e394]
+              - row [ref=e395]:
+                - cell "7000" [ref=e396]
+                - cell "*" [ref=e397]
+                - cell "ControlCe" [ref=e398]
+                - cell "626" [ref=e399]
+                - cell "LAN" [ref=e400]
+              - row [ref=e401]:
+                - cell "7437" [ref=e402]
+                - cell "127.0.0.1" [ref=e403]
+                - cell "engram" [ref=e404]
+                - cell "5096" [ref=e405]
+                - cell "Localhost" [ref=e406]
+              - row [ref=e407]:
+                - cell "7679" [ref=e408]
+                - cell "[::1]" [ref=e409]
+                - cell "Google" [ref=e410]
+                - cell "978" [ref=e411]
+                - cell "Localhost" [ref=e412]
+              - row [ref=e413]:
+                - cell "8000" [ref=e414]
+                - cell "*" [ref=e415]
+                - cell "Python" [ref=e416]
+                - cell "932" [ref=e417]
+                - cell "LAN" [ref=e418]
+              - row [ref=e419]:
+                - cell "8082" [ref=e420]
+                - cell "127.0.0.1" [ref=e421]
+                - cell "ssh" [ref=e422]
+                - cell "32412" [ref=e423]
+                - cell "Localhost" [ref=e424]
+              - row [ref=e425]:
+                - cell "8082" [ref=e426]
+                - cell "[::1]" [ref=e427]
+                - cell "ssh" [ref=e428]
+                - cell "32412" [ref=e429]
+                - cell "Localhost" [ref=e430]
+              - row [ref=e431]:
+                - cell "8765" [ref=e432]
+                - cell "127.0.0.1" [ref=e433]
+                - cell "Python" [ref=e434]
+                - cell "925" [ref=e435]
+                - cell "Localhost" [ref=e436]
+              - row [ref=e437]:
+                - cell "11434" [ref=e438]
+                - cell "127.0.0.1" [ref=e439]
+                - cell "ollama" [ref=e440]
+                - cell "1027" [ref=e441]
+                - cell "Localhost" [ref=e442]
+              - row [ref=e443]:
+                - cell "18789" [ref=e444]
+                - cell "127.0.0.1" [ref=e445]
+                - cell "node" [ref=e446]
+                - cell "920" [ref=e447]
+                - cell "Localhost" [ref=e448]
+              - row [ref=e449]:
+                - cell "18789" [ref=e450]
+                - cell "[::1]" [ref=e451]
+                - cell "node" [ref=e452]
+                - cell "920" [ref=e453]
+                - cell "Localhost" [ref=e454]
+              - row [ref=e455]:
+                - cell "49342" [ref=e456]
+                - cell "127.0.0.1" [ref=e457]
+                - cell "Ollama" [ref=e458]
+                - cell "965" [ref=e459]
+                - cell "Localhost" [ref=e460]
+              - row [ref=e461]:
+                - cell "50469" [ref=e462]
+                - cell "*" [ref=e463]
+                - cell "rapportd" [ref=e464]
+                - cell "634" [ref=e465]
+                - cell "LAN" [ref=e466]
+              - row [ref=e467]:
+                - cell "50469" [ref=e468]
+                - cell "*" [ref=e469]
+                - cell "rapportd" [ref=e470]
+                - cell "634" [ref=e471]
+                - cell "LAN" [ref=e472]

@@ -1,0 +1,95 @@
+- generic [ref=e19]:
+  - complementary [ref=e20]:
+    - generic [ref=e22]:
+      - heading "Djimitflo" [level=1] [ref=e23]
+      - paragraph [ref=e26]: Agent Control Plane
+    - navigation [ref=e27]:
+      - link "Dashboard" [ref=e28] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=e32] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=e37] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=e44] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=e50] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=e55] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=e60] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=e64] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=e72] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=e76] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=e81] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=e86] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=e92] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=e97] [cursor=pointer]:
+        - /url: /usage
+      - link "Runtime URLs" [ref=e101] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=e108] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=e112] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=e119] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=e126] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=e140] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=e150] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e156]: audit@example.test
+        - generic [ref=e157]: admin
+      - button "Sign out" [ref=e158] [cursor=pointer]
+      - generic [ref=e163]: v0.5.8 • 2026
+  - main [ref=e165]:
+    - generic [ref=e166]:
+      - generic [ref=e167]:
+        - generic [ref=e168]:
+          - heading "Mission Control" [level=1] [ref=e169]
+          - paragraph [ref=e170]: Real-time agent orchestration and task execution monitoring
+        - generic [ref=e171]: Connected
+      - generic [ref=e174]:
+        - generic [ref=e175]:
+          - generic [ref=e176]: Active Tasks
+          - generic [ref=e180]: "0"
+          - generic [ref=e181]: 0 running now
+        - generic [ref=e182]:
+          - generic [ref=e183]: Completed
+          - generic [ref=e188]: "0"
+          - generic [ref=e189]: 0 successful
+        - generic [ref=e190]:
+          - generic [ref=e191]: Failed
+          - generic [ref=e197]: "0"
+          - generic [ref=e198]: All good
+        - generic [ref=e199]:
+          - generic [ref=e200]: Queued
+          - generic [ref=e205]: "0"
+          - generic [ref=e206]: 0 pending
+      - generic [ref=e207]:
+        - generic [ref=e208]:
+          - heading "System Health" [level=2] [ref=e209]
+          - generic [ref=e210]: Operational
+        - generic [ref=e211]:
+          - generic [ref=e212]:
+            - generic [ref=e213]: Uptime
+            - generic [ref=e214]: <1h
+          - generic [ref=e215]:
+            - generic [ref=e216]: Memory Usage
+            - generic [ref=e217]: 18 MB
+          - generic [ref=e218]:
+            - generic [ref=e219]: Active Agents
+            - generic [ref=e220]: 0/0
+      - generic [ref=e221]:
+        - heading "Recent Activity" [level=2] [ref=e222]
+        - generic [ref=e223]: No recent activity

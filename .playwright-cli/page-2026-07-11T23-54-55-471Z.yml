@@ -1,0 +1,70 @@
+- generic [ref=f3e3]:
+  - complementary [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - heading "Djimitflo" [level=1] [ref=f3e6]
+      - paragraph [ref=f3e9]: Agent Control Plane
+    - navigation [ref=f3e10]:
+      - link "Dashboard" [ref=f3e11] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f3e15] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f3e20] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f3e27] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f3e33] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f3e38] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f3e43] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f3e47] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f3e55] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f3e59] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f3e64] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f3e69] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f3e75] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f3e80] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f3e84] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f3e91] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f3e95] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f3e102] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f3e109] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f3e123] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f3e135] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f3e139]:
+      - link "Settings" [ref=f3e140] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f3e145] [cursor=pointer]
+      - generic [ref=f3e150]: v0.5.2 • 2026
+  - main [ref=f3e151]:
+    - generic [ref=f3e152]:
+      - generic [ref=f3e153]:
+        - heading "MCP Permissions" [level=1] [ref=f3e154]
+        - paragraph [ref=f3e155]: MCP server status and effective tool decisions.
+      - generic [ref=f3e156]:
+        - heading "Servers(0)" [level=2] [ref=f3e157]:
+          - text: Servers
+          - generic [ref=f3e158]: (0)
+        - generic [ref=f3e159]: Loading…
+      - generic [ref=f3e160]:
+        - heading "Tool Permissions(0)" [level=2] [ref=f3e161]:
+          - text: Tool Permissions
+          - generic [ref=f3e162]: (0)
+        - generic [ref=f3e163]:
+          - paragraph [ref=f3e166]: No tool-level permissions configured yet.
+          - paragraph [ref=f3e167]: Permissions are set automatically when agents invoke MCP tools.

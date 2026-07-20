@@ -55,13 +55,21 @@ interface MetaChangeEvent {
 }
 
 const PARAMETER_BOUNDS: Record<keyof SegmlConfig, ParameterBounds> = {
+<<<<<<< HEAD
   failure_threshold: { min: 1.0, max: 4.0, safeMin: 2.0, safeMax: 3.5 },
+=======
+  failure_threshold: { min: 1.5, max: 3.5, safeMin: 2.0, safeMax: 3.0 },
+>>>>>>> feat/segml-self-evolving-governance
   min_cases_for_pattern: { min: 2, max: 10, safeMin: 3, safeMax: 7 },
   max_generated_cases_per_cycle: { min: 5, max: 50, safeMin: 10, safeMax: 30 },
   consolidation_confidence_threshold: { min: 0.3, max: 0.9, safeMin: 0.5, safeMax: 0.8 },
   judge_update_min_evidence: { min: 2, max: 15, safeMin: 3, safeMax: 10 },
   validation_enabled: { min: 0, max: 1, safeMin: 0, safeMax: 1 },
   rollback_on_no_improvement: { min: 0, max: 1, safeMin: 0, safeMax: 1 },
+<<<<<<< HEAD
+=======
+  max_corpus_size: { min: 100, max: 10000, safeMin: 500, safeMax: 2000 },
+>>>>>>> feat/segml-self-evolving-governance
 };
 
 export class SegmlMetaLearningBridge {

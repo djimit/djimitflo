@@ -1,0 +1,112 @@
+- generic [ref=e19]:
+  - complementary [ref=e20]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - heading "Djimitflo" [level=1] [ref=e23]
+        - paragraph [ref=e26]: Agent Control Plane
+      - button "Close navigation" [ref=e225] [cursor=pointer]
+    - navigation [ref=e27]:
+      - link "Dashboard" [ref=e28] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=e32] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=e37] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=e44] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=e50] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=e55] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=e60] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=e64] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [active] [ref=e72] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=e76] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=e81] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=e86] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=e92] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=e97] [cursor=pointer]:
+        - /url: /usage
+      - link "Runtime URLs" [ref=e101] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=e108] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=e112] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=e119] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=e126] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=e140] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=e150] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=e154]:
+      - generic [ref=e155]:
+        - generic [ref=e156]: audit@example.test
+        - generic [ref=e157]: admin
+      - button "Sign out" [ref=e158] [cursor=pointer]
+      - generic [ref=e163]: v0.5.8 • 2026
+  - generic [ref=e164]:
+    - banner [ref=e229]:
+      - button "Open navigation" [ref=e230] [cursor=pointer]
+      - generic [ref=e232]: Djimitflo
+    - main [ref=e165]:
+      - generic [ref=e234]:
+        - generic [ref=e235]:
+          - heading "Observability" [level=1] [ref=e236]
+          - paragraph [ref=e237]: System-wide execution metrics, risk distribution, and policy decisions.
+        - generic [ref=e238]:
+          - generic [ref=e239]:
+            - generic [ref=e240]: Total Tasks
+            - generic [ref=e244]: "0"
+          - generic [ref=e245]:
+            - generic [ref=e246]: Completed
+            - generic [ref=e251]: "0"
+          - generic [ref=e252]:
+            - generic [ref=e253]: Failed
+            - generic [ref=e259]: "0"
+          - generic [ref=e260]:
+            - generic [ref=e261]: Pending Approvals
+            - generic [ref=e266]: "0"
+        - generic [ref=e267]:
+          - generic [ref=e268]:
+            - heading "Risk Distribution" [level=2] [ref=e269]
+            - generic [ref=e272]:
+              - generic [ref=e274]:
+                - generic [ref=e275]: Low
+                - generic [ref=e276]: 0 (0%)
+              - generic [ref=e279]:
+                - generic [ref=e280]: Medium
+                - generic [ref=e281]: 0 (0%)
+              - generic [ref=e284]:
+                - generic [ref=e285]: High
+                - generic [ref=e286]: 0 (0%)
+              - generic [ref=e289]:
+                - generic [ref=e290]: Critical
+                - generic [ref=e291]: 0 (0%)
+          - generic [ref=e293]:
+            - heading "Policy Decisions" [level=2] [ref=e294]
+            - generic [ref=e297]:
+              - generic [ref=e298]:
+                - generic [ref=e299]: Allowed
+                - generic [ref=e300]: "0"
+              - generic [ref=e301]:
+                - generic [ref=e302]: Require Approval
+                - generic [ref=e303]: "0"
+              - generic [ref=e304]:
+                - generic [ref=e305]: Denied
+                - generic [ref=e306]: "0"
+        - generic [ref=e307]:
+          - heading "Live Event Feed (SSE)" [level=2] [ref=e308]
+          - generic [ref=e310]:
+            - generic [ref=e311]: 02:35:10
+            - generic [ref=e312]: connected
+            - generic [ref=e313]: "{\"type\":\"connected\",\"timestamp\":\"2026-07-12T00:35:10.903Z\"}"

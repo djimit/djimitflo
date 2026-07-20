@@ -64,7 +64,7 @@ export class SelfEvolvingGovernanceLoop {
      private db: Database,
      config: Partial<SegmlConfig> = {}
    ) {
-     this.config = { ...DEFAULT_SEGML_CONFIG, ...config };
+     this.config = { ...DEFAULT_SEGML_CONFIG, ...config, max_corpus_size: envConfig.SEGML_MAX_CORPUS_SIZE };
      this.feedback = new GovernanceFeedbackService(db);
      this.caseGenerator = new SegmlCaseGenerator();
      this.memoryBridge = new SegmlMemoryBridge(db);
@@ -447,41 +447,49 @@ export class SelfEvolvingGovernanceLoop {
   }
 
   private autoApproveCases(cases: GeneratedCase[]): void {
-    const corpusPath = process.env.OPENMYTHOS_CORPUS_PATH;
-    if (!corpusPath) return;
+     const corpusPath = process.env.OPENMYTHOS_CORPUS_PATH;
+     if (!corpusPath) return;
 
-    try {
-      const existing = readFileSync(corpusPath, 'utf8');
-      const existingIds = new Set(
-        existing.split('\n')
-          .filter(l => l.trim())
-          .map(l => { try { return JSON.parse(l).id; } catch { return null; } })
-          .filter(Boolean)
-      );
+     try {
+       const existing = readFileSync(corpusPath, 'utf8');
+       const existingLines = existing.split('\n').filter(l => l.trim());
+       const existingIds = new Set(
+         existingLines
+           .map(l => { try { return JSON.parse(l).id; } catch { return null; } })
+           .filter(Boolean)
+       );
 
-      const newLines = cases
-        .filter(c => !existingIds.has(c.id))
-        .map(c => JSON.stringify({
-          id: c.id,
-          category: c.category,
-          subcategory: c.subcategory,
-          difficulty: c.difficulty,
-          prompt: c.prompt,
-          expected_behavior: c.expected_behavior,
-          failure_mode: c.failure_mode,
-          rationale: c.rationale,
-          source: 'segml_auto_generated',
-          generation_method: c.generation_method,
-          parent_case_id: c.parent_case_id,
-        }));
+       // Enforce corpus size limit
+       const maxCorpus = this.config.max_corpus_size;
+       const availableSlots = Math.max(0, maxCorpus - existingLines.length);
+       const casesToAdd = cases.filter(c => !existingIds.has(c.id)).slice(0, availableSlots);
 
-      if (newLines.length > 0) {
-        appendFileSync(corpusPath, '\n' + newLines.join('\n') + '\n');
-      }
-    } catch (err) {
-      console.warn(`[SEGML] Auto-approve failed: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
+       if (availableSlots < cases.length) {
+         console.warn(`[SEGML] Corpus size limit reached (${existingLines.length}/${maxCorpus}). Skipping ${cases.length - availableSlots} cases.`);
+       }
+
+       const newLines = casesToAdd
+         .map(c => JSON.stringify({
+           id: c.id,
+           category: c.category,
+           subcategory: c.subcategory,
+           difficulty: c.difficulty,
+           prompt: c.prompt,
+           expected_behavior: c.expected_behavior,
+           failure_mode: c.failure_mode,
+           rationale: c.rationale,
+           source: 'segml_auto_generated',
+           generation_method: c.generation_method,
+           parent_case_id: c.parent_case_id,
+         }));
+
+       if (newLines.length > 0) {
+         appendFileSync(corpusPath, '\n' + newLines.join('\n') + '\n');
+       }
+     } catch (err) {
+       console.warn(`[SEGML] Auto-approve failed: ${err instanceof Error ? err.message : String(err)}`);
+     }
+   }
 
   private updateStage(cycleId: string, stage: SegmlStage): void {
     this.db.prepare('UPDATE segml_cycles SET stage = ? WHERE id = ?').run(stage, cycleId);

@@ -1,0 +1,97 @@
+- generic [ref=f1e19]:
+  - complementary [ref=f1e20]:
+    - generic [ref=f1e21]:
+      - heading "Djimitflo" [level=1] [ref=f1e22]
+      - paragraph [ref=f1e25]: Agent Control Plane
+    - navigation [ref=f1e26]:
+      - link "Dashboard" [ref=f1e27] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f1e31] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f1e36] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f1e43] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f1e49] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f1e54] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f1e59] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f1e63] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f1e71] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f1e75] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f1e80] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f1e85] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f1e91] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f1e96] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f1e100] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f1e107] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f1e111] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f1e118] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f1e125] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f1e139] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f1e151] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f1e155]:
+      - generic [ref=f1e156]:
+        - generic [ref=f1e157]: ui-audit@example.invalid
+        - generic [ref=f1e158]: admin
+      - link "Settings" [ref=f1e159] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f1e164] [cursor=pointer]
+      - generic [ref=f1e169]: v0.5.2 • 2026
+  - main [ref=f1e170]:
+    - generic [ref=f1e171]:
+      - generic [ref=f1e172]:
+        - generic [ref=f1e173]:
+          - heading "Mission Control" [level=1] [ref=f1e174]
+          - paragraph [ref=f1e175]: Real-time agent orchestration and task execution monitoring
+        - generic [ref=f1e176]: Connected
+      - generic [ref=f1e179]:
+        - generic [ref=f1e180]:
+          - generic [ref=f1e181]: Active Tasks
+          - generic [ref=f1e185]: "0"
+          - generic [ref=f1e186]: 0 running now
+        - generic [ref=f1e187]:
+          - generic [ref=f1e188]: Completed
+          - generic [ref=f1e193]: "0"
+          - generic [ref=f1e194]: 0 successful
+        - generic [ref=f1e195]:
+          - generic [ref=f1e196]: Failed
+          - generic [ref=f1e202]: "0"
+          - generic [ref=f1e203]: All good
+        - generic [ref=f1e204]:
+          - generic [ref=f1e205]: Queued
+          - generic [ref=f1e210]: "0"
+          - generic [ref=f1e211]: 0 pending
+      - generic [ref=f1e212]:
+        - generic [ref=f1e213]:
+          - heading "System Health" [level=2] [ref=f1e214]
+          - generic [ref=f1e215]: Operational
+        - generic [ref=f1e216]:
+          - generic [ref=f1e217]:
+            - generic [ref=f1e218]: Uptime
+            - generic [ref=f1e219]: 99.9%
+          - generic [ref=f1e220]:
+            - generic [ref=f1e221]: Memory Usage
+            - generic [ref=f1e222]: 42%
+          - generic [ref=f1e223]:
+            - generic [ref=f1e224]: Active Agents
+            - generic [ref=f1e225]: 0/0
+      - generic [ref=f1e226]:
+        - heading "Recent Activity" [level=2] [ref=f1e227]
+        - generic [ref=f1e228]: No recent activity

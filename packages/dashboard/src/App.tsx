@@ -39,6 +39,7 @@ const WorkstationUrlsPage = lazy(() => import('./pages/WorkstationUrlsPage').the
 const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({ default: module.EconomyPage })));
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
+const SegmlGovernancePage = lazy(() => import('./pages/SegmlGovernancePage').then((module) => ({ default: module.SegmlGovernancePage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -108,6 +109,7 @@ export function App() {
           <Route path="economy" element={<EconomyPage />} />
           <Route path="pipeline-builder" element={<PipelineBuilderPage />} />
           <Route path="federation" element={<FederationPage />} />
+          <Route path="segml-governance" element={<SegmlGovernancePage />} />
           <Route path="agi-reasoning" element={<AgiReasoningPage />} />
           <Route path="consensus-debates" element={<ConsensusDebatePage />} />
           <Route path="predictive-analytics" element={<PredictiveAnalyticsPage />} />

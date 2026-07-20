@@ -66,6 +66,10 @@ import { createIntelligenceRoutes } from './intelligence';
 import { createMetaOrchestrationRoutes } from './meta-orchestration';
 import { createCouncilRoutes } from './council';
 import { createSegmlRoutes } from './segml';
+<<<<<<< HEAD
+=======
+import { createSegmlFederationRoutes } from './segml-federation';
+>>>>>>> feat/segml-self-evolving-governance
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -183,6 +187,10 @@ export function createRoutes(
   router.use('/meta', requireAuth, createMetaOrchestrationRoutes(db, auth, metaOrchestration));
   router.use('/council', requireAuth, createCouncilRoutes(db, auth));
   router.use('/segml', requireAuth, createSegmlRoutes(db, auth));
+<<<<<<< HEAD
+=======
+  router.use('/segml/federation', requireAuth, createSegmlFederationRoutes(db, auth));
+>>>>>>> feat/segml-self-evolving-governance
 
   return router;
 }

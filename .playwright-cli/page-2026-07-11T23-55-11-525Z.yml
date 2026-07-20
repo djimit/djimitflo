@@ -1,0 +1,76 @@
+- generic [ref=f4e3]:
+  - complementary [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - heading "Djimitflo" [level=1] [ref=f4e6]
+      - paragraph [ref=f4e9]: Agent Control Plane
+    - navigation [ref=f4e10]:
+      - link "Dashboard" [ref=f4e11] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f4e15] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f4e20] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f4e27] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f4e33] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f4e38] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f4e43] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f4e47] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f4e55] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f4e59] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f4e64] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f4e69] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f4e75] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f4e80] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f4e84] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f4e91] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f4e95] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f4e102] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f4e109] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f4e123] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f4e135] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f4e139]:
+      - link "Settings" [ref=f4e140] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f4e145] [cursor=pointer]
+      - generic [ref=f4e150]: v0.5.2 • 2026
+  - main [ref=f4e151]:
+    - generic [ref=f4e152]:
+      - generic [ref=f4e153]:
+        - generic [ref=f4e154]:
+          - heading "Workstation URLs" [level=1] [ref=f4e155]
+          - paragraph [ref=f4e161]: Live workstation endpoint map — auto-refreshes every 30 seconds
+        - button "Refresh" [ref=f4e162] [cursor=pointer]
+      - generic [ref=f4e168]:
+        - generic [ref=f4e169]:
+          - generic [ref=f4e170]: Total Ports
+          - generic [ref=f4e171]: "0"
+        - generic [ref=f4e172]:
+          - generic [ref=f4e173]: LAN Accessible
+          - generic [ref=f4e174]: "0"
+        - generic [ref=f4e175]:
+          - generic [ref=f4e176]: Localhost Only
+          - generic [ref=f4e177]: "0"
+        - generic [ref=f4e178]:
+          - generic [ref=f4e179]: Processes
+          - generic [ref=f4e180]: "0"
+      - generic [ref=f4e181]:
+        - heading "Live Listening Ports" [level=2] [ref=f4e182]
+        - generic [ref=f4e186]: Scanning workstation ports...

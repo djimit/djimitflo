@@ -65,7 +65,7 @@ interface DigitalTwinReport {
 }
 
 export class SegmlWorldModelBridge {
-  private readonly BLOCK_THRESHOLD = 0.5;      // >50% failures = block
+  private readonly BLOCK_THRESHOLD = 0.4;      // >40% failures = block
   private readonly WARNING_THRESHOLD = 0.3;    // >30% failures = warning
   constructor(private db: Database) {
     this.ensureTables();

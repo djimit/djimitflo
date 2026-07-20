@@ -1,0 +1,94 @@
+- generic [ref=f2e3]:
+  - complementary [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - heading "Djimitflo" [level=1] [ref=f2e6]
+      - paragraph [ref=f2e9]: Agent Control Plane
+    - navigation [ref=f2e10]:
+      - link "Dashboard" [ref=f2e11] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f2e15] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f2e20] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f2e27] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f2e33] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f2e38] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f2e43] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f2e47] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f2e55] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f2e59] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f2e64] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f2e69] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f2e75] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f2e80] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f2e84] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f2e91] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f2e95] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f2e102] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f2e109] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f2e123] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f2e135] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f2e139]:
+      - link "Settings" [ref=f2e140] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f2e145] [cursor=pointer]
+      - generic [ref=f2e150]: v0.5.2 • 2026
+  - main [ref=f2e151]:
+    - generic [ref=f2e152]:
+      - generic [ref=f2e153]:
+        - generic [ref=f2e154]:
+          - heading "Mission Control" [level=1] [ref=f2e155]
+          - paragraph [ref=f2e156]: Real-time agent orchestration and task execution monitoring
+        - generic [ref=f2e157]: Disconnected
+      - generic [ref=f2e160]:
+        - generic [ref=f2e161]:
+          - generic [ref=f2e162]: Active Tasks
+          - generic [ref=f2e166]: "0"
+          - generic [ref=f2e167]: 0 running now
+        - generic [ref=f2e168]:
+          - generic [ref=f2e169]: Completed
+          - generic [ref=f2e174]: "0"
+          - generic [ref=f2e175]: 0 successful
+        - generic [ref=f2e176]:
+          - generic [ref=f2e177]: Failed
+          - generic [ref=f2e183]: "0"
+          - generic [ref=f2e184]: All good
+        - generic [ref=f2e185]:
+          - generic [ref=f2e186]: Queued
+          - generic [ref=f2e191]: "0"
+          - generic [ref=f2e192]: 0 pending
+      - generic [ref=f2e193]:
+        - generic [ref=f2e194]:
+          - heading "System Health" [level=2] [ref=f2e195]
+          - generic [ref=f2e196]: Operational
+        - generic [ref=f2e197]:
+          - generic [ref=f2e198]:
+            - generic [ref=f2e199]: Uptime
+            - generic [ref=f2e200]: 99.9%
+          - generic [ref=f2e201]:
+            - generic [ref=f2e202]: Memory Usage
+            - generic [ref=f2e203]: 42%
+          - generic [ref=f2e204]:
+            - generic [ref=f2e205]: Active Agents
+            - generic [ref=f2e206]: 0/0
+      - generic [ref=f2e207]:
+        - heading "Recent Activity" [level=2] [ref=f2e208]
+        - generic [ref=f2e209]: No recent activity

@@ -92,14 +92,16 @@ export interface SegmlConfig {
   judge_update_min_evidence: number;
   validation_enabled: boolean;
   rollback_on_no_improvement: boolean;
+  max_corpus_size: number;
 }
 
 export const DEFAULT_SEGML_CONFIG: SegmlConfig = {
   failure_threshold: 2.5,
-  min_cases_for_pattern: 3,
+  min_cases_for_pattern: 5,
   max_generated_cases_per_cycle: 20,
   consolidation_confidence_threshold: 0.6,
-  judge_update_min_evidence: 5,
+  judge_update_min_evidence: 3,
   validation_enabled: true,
   rollback_on_no_improvement: true,
+  max_corpus_size: 1000,
 };

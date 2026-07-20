@@ -1,0 +1,54 @@
+- generic [ref=f5e3]:
+  - complementary [ref=f5e4]:
+    - generic [ref=f5e5]:
+      - heading "Djimitflo" [level=1] [ref=f5e6]
+      - paragraph [ref=f5e9]: Agent Control Plane
+    - navigation [ref=f5e10]:
+      - link "Dashboard" [ref=f5e11] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f5e15] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f5e20] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f5e27] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f5e33] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f5e38] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f5e43] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f5e47] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f5e55] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f5e59] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f5e64] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f5e69] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f5e75] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f5e80] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f5e84] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f5e91] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f5e95] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f5e102] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f5e109] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f5e123] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f5e135] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f5e139]:
+      - link "Settings" [ref=f5e140] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f5e145] [cursor=pointer]
+      - generic [ref=f5e150]: v0.5.2 • 2026
+  - main [ref=f5e151]

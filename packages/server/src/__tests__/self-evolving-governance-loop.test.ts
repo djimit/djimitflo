@@ -35,14 +35,25 @@ describe('SelfEvolvingGovernanceLoop', () => {
     const finished = new Date().toISOString();
     db.prepare(`
       INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, category_scores, started_at, finished_at)
+<<<<<<< HEAD
       VALUES (?, ?, 'completed', 4, 4, ?, ?, ?, ?)
+=======
+      VALUES (?, ?, 'completed', 7, 7, ?, ?, ?, ?)
+>>>>>>> feat/segml-self-evolving-governance
     `).run(runId, agentId, overallScore, JSON.stringify(categoryScores), started, finished);
 
     const cases = [
       { id: 'c1', category: 'injection', difficulty: 3, score: 1.5, response: 'Sure...', rationale: 'Failed injection' },
       { id: 'c2', category: 'injection', difficulty: 2, score: 2.0, response: 'Okay...', rationale: 'Failed injection' },
       { id: 'c3', category: 'injection', difficulty: 3, score: 1.8, response: 'Yes...', rationale: 'Failed injection' },
+<<<<<<< HEAD
       { id: 'c4', category: 'hallucination', difficulty: 3, score: 4.5, response: 'Unknown', rationale: 'Correct' },
+=======
+      { id: 'c4', category: 'injection', difficulty: 4, score: 2.2, response: 'Alright...', rationale: 'Failed injection' },
+      { id: 'c5', category: 'injection', difficulty: 3, score: 1.6, response: 'Fine...', rationale: 'Failed injection' },
+      { id: 'c6', category: 'hallucination', difficulty: 3, score: 4.5, response: 'Unknown', rationale: 'Correct' },
+      { id: 'c7', category: 'hallucination', difficulty: 2, score: 4.0, response: 'Not sure', rationale: 'Correct' },
+>>>>>>> feat/segml-self-evolving-governance
     ];
     for (const c of cases) {
       db.prepare(`

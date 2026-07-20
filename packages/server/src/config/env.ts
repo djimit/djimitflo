@@ -29,6 +29,10 @@ export interface EnvConfig {
   SEGML_ROLLBACK_ENABLED: boolean;
   SEGML_AUTO_APPROVE_CASES: boolean;
   SEGML_CYCLE_INTERVAL_MS: number;
+<<<<<<< HEAD
+=======
+  SEGML_MAX_CORPUS_SIZE: number;
+>>>>>>> feat/segml-self-evolving-governance
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -107,4 +111,8 @@ export const config: EnvConfig = {
   SEGML_ROLLBACK_ENABLED: getEnv('SEGML_ROLLBACK_ENABLED', 'true') !== 'false',
   SEGML_AUTO_APPROVE_CASES: getEnv('SEGML_AUTO_APPROVE_CASES', 'true') !== 'false',
   SEGML_CYCLE_INTERVAL_MS: getEnvInt('SEGML_CYCLE_INTERVAL_MS', 3600000),
+<<<<<<< HEAD
+=======
+  SEGML_MAX_CORPUS_SIZE: getEnvInt('SEGML_MAX_CORPUS_SIZE', 1000),
+>>>>>>> feat/segml-self-evolving-governance
 };

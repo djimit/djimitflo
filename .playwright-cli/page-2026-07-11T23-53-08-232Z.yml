@@ -1,0 +1,291 @@
+- generic [ref=f56e3]:
+  - complementary [ref=f56e4]:
+    - generic [ref=f56e5]:
+      - heading "Djimitflo" [level=1] [ref=f56e6]
+      - paragraph [ref=f56e9]: Agent Control Plane
+    - navigation [ref=f56e10]:
+      - link "Dashboard" [ref=f56e11] [cursor=pointer]:
+        - /url: /
+      - link "Tasks" [ref=f56e15] [cursor=pointer]:
+        - /url: /tasks
+      - link "Agents" [ref=f56e20] [cursor=pointer]:
+        - /url: /agents
+      - link "Agent Catalog" [ref=f56e27] [cursor=pointer]:
+        - /url: /catalog
+      - link "Swarm" [ref=f56e33] [cursor=pointer]:
+        - /url: /swarm
+      - link "Approvals" [ref=f56e38] [cursor=pointer]:
+        - /url: /approvals
+      - link "Policies" [ref=f56e43] [cursor=pointer]:
+        - /url: /policies
+      - link "MCP Permissions" [ref=f56e47] [cursor=pointer]:
+        - /url: /mcp-permissions
+      - link "Observability" [ref=f56e55] [cursor=pointer]:
+        - /url: /observability
+      - link "Audit Trail" [ref=f56e59] [cursor=pointer]:
+        - /url: /audit
+      - link "Repositories" [ref=f56e64] [cursor=pointer]:
+        - /url: /repositories
+      - link "Goals & Loops" [ref=f56e69] [cursor=pointer]:
+        - /url: /goals-loops
+      - link "Fleet Cockpit" [ref=f56e75] [cursor=pointer]:
+        - /url: /fleet-cockpit
+      - link "Usage" [ref=f56e80] [cursor=pointer]:
+        - /url: /usage
+      - link "Workstation URLs" [ref=f56e84] [cursor=pointer]:
+        - /url: /workstation-urls
+      - link "Economy" [ref=f56e91] [cursor=pointer]:
+        - /url: /economy
+      - link "Federation" [ref=f56e95] [cursor=pointer]:
+        - /url: /federation
+      - link "Swarm Resources" [ref=f56e102] [cursor=pointer]:
+        - /url: /swarm-resources
+      - link "Mission Control" [ref=f56e109] [cursor=pointer]:
+        - /url: /swarm-mission-control
+      - link "Cognitive" [ref=f56e123] [cursor=pointer]:
+        - /url: /cognitive
+      - link "Self-Driving" [ref=f56e135] [cursor=pointer]:
+        - /url: /self-driving
+    - generic [ref=f56e139]:
+      - link "Settings" [ref=f56e140] [cursor=pointer]:
+        - /url: /settings
+      - button "Sign out" [ref=f56e145] [cursor=pointer]
+      - generic [ref=f56e150]: v0.5.2 • 2026
+  - main [ref=f56e151]:
+    - generic [ref=f56e152]:
+      - generic [ref=f56e153]:
+        - generic [ref=f56e154]:
+          - heading "Swarm Mission Control" [level=1] [ref=f56e155]
+          - paragraph [ref=f56e156]: Evidence-first control surface for skills, specialist councils, claim ledger, capacity governor and runner governance.
+        - generic [ref=f56e157]:
+          - button "Run Proof" [ref=f56e158] [cursor=pointer]
+          - button "Plan Capacity" [ref=f56e162] [cursor=pointer]
+          - button "Refresh" [disabled] [ref=f56e167]
+      - generic [ref=f56e173]:
+        - generic [ref=f56e174]:
+          - generic [ref=f56e175]: "0"
+          - generic [ref=f56e183]: Registry
+        - generic [ref=f56e184]:
+          - generic [ref=f56e185]: "0"
+          - generic [ref=f56e191]: Live Agents
+        - generic [ref=f56e192]:
+          - generic [ref=f56e193]: "0"
+          - generic [ref=f56e200]: Prepared
+        - generic [ref=f56e201]:
+          - generic [ref=f56e202]: "0"
+          - generic [ref=f56e208]: Running
+        - generic [ref=f56e209]:
+          - generic [ref=f56e210]: "0"
+          - generic [ref=f56e225]: Active Exec
+      - generic [ref=f56e226]:
+        - generic [ref=f56e227]:
+          - generic [ref=f56e228]:
+            - heading "Production Swarm Proof" [level=2] [ref=f56e234]
+            - paragraph [ref=f56e235]: One closed-loop run writes real persisted evidence across capabilities, specialist review, claims, goals, leases, traces, checkpoints, manifests, backlog and memory.
+            - generic [ref=f56e236]:
+              - generic [ref=f56e237]: missing
+              - generic [ref=f56e238]: runtime none
+              - generic [ref=f56e239]: ready none
+          - generic [ref=f56e240]:
+            - combobox [ref=f56e241]:
+              - option "mock" [selected]
+              - option "codex"
+              - option "opencode"
+            - button "Run Proof" [ref=f56e242] [cursor=pointer]
+        - generic [ref=f56e246]:
+          - paragraph [ref=f56e247]: No proof run yet. Run one to create visible evidence across the swarm control plane.
+          - button "Seed demo proof run" [ref=f56e248] [cursor=pointer]
+      - generic [ref=f56e252]:
+        - generic [ref=f56e253]:
+          - generic [ref=f56e254]:
+            - generic [ref=f56e255]:
+              - heading "Knowledge Runtime" [level=2] [ref=f56e268]
+              - generic [ref=f56e269]: unknown
+            - paragraph [ref=f56e270]: "Canonical OKF: unknown"
+          - generic [ref=f56e271]: canonical
+        - generic [ref=f56e272]:
+          - generic [ref=f56e273]:
+            - generic [ref=f56e274]: "0"
+            - generic [ref=f56e275]: skills
+          - generic [ref=f56e276]:
+            - generic [ref=f56e277]: "0"
+            - generic [ref=f56e278]: agents
+          - generic [ref=f56e279]:
+            - generic [ref=f56e280]: "0"
+            - generic [ref=f56e281]: memory
+          - generic [ref=f56e282]:
+            - generic [ref=f56e283]: "0"
+            - generic [ref=f56e284]: services
+          - generic [ref=f56e285]:
+            - generic [ref=f56e286]: "0"
+            - generic [ref=f56e287]: repos
+          - generic [ref=f56e288]:
+            - generic [ref=f56e289]: "0"
+            - generic [ref=f56e290]: models
+          - generic [ref=f56e291]:
+            - generic [ref=f56e292]: "0"
+            - generic [ref=f56e293]: total
+        - generic [ref=f56e294]:
+          - generic [ref=f56e295]:
+            - generic [ref=f56e296]: Capability Sync Drift
+            - generic [ref=f56e297]:
+              - generic [ref=f56e298]: okf skills 0
+              - generic [ref=f56e299]: registered 0
+              - generic [ref=f56e300]: missing 0
+              - generic [ref=f56e301]: stale 0
+          - generic [ref=f56e302]:
+            - generic [ref=f56e303]: Validation
+            - generic [ref=f56e304]:
+              - generic [ref=f56e305]: status unknown
+              - generic [ref=f56e306]: projection unknown
+              - generic [ref=f56e307]: blocked 0
+          - generic [ref=f56e308]:
+            - generic [ref=f56e309]: Next Safe Actions
+            - generic [ref=f56e310]: Load knowledge runtime
+        - generic [ref=f56e312]:
+          - button "Validate OKF" [ref=f56e313] [cursor=pointer]
+          - button "Sync Preview" [ref=f56e319] [cursor=pointer]
+          - button "Apply Sync" [ref=f56e324] [cursor=pointer]
+          - button "Batch Preview" [ref=f56e328] [cursor=pointer]
+          - button "Import Goals" [ref=f56e333] [cursor=pointer]
+          - button "Low Capacity" [ref=f56e337] [cursor=pointer]
+          - button "Close Learning" [ref=f56e341] [cursor=pointer]
+      - generic [ref=f56e354]:
+        - generic [ref=f56e355]:
+          - generic [ref=f56e356]:
+            - generic [ref=f56e357]:
+              - heading "Integration Spine" [level=2] [ref=f56e362]
+              - generic [ref=f56e363]: empty
+            - paragraph [ref=f56e364]: No integration-origin work item yet.
+          - generic [ref=f56e365]: Import integration event
+        - generic [ref=f56e366]:
+          - generic [ref=f56e367]:
+            - generic [ref=f56e368]: Work Item
+            - generic [ref=f56e369]: none
+          - generic [ref=f56e370]:
+            - generic [ref=f56e371]: Loop
+            - generic [ref=f56e372]: none
+          - generic [ref=f56e373]:
+            - generic [ref=f56e374]: Runtime
+            - generic [ref=f56e375]: none
+          - generic [ref=f56e376]:
+            - generic [ref=f56e377]: Learning
+            - generic [ref=f56e378]: none
+        - table [ref=f56e380]:
+          - rowgroup [ref=f56e381]:
+            - row [ref=f56e382]:
+              - columnheader "Source" [ref=f56e383]
+              - columnheader "Work" [ref=f56e384]
+              - columnheader "Loop" [ref=f56e385]
+              - columnheader "Leases" [ref=f56e386]
+              - columnheader "Learning" [ref=f56e387]
+              - columnheader "Next" [ref=f56e388]
+          - rowgroup [ref=f56e389]:
+            - row [ref=f56e390]:
+              - cell "No integration chain evidence yet." [ref=f56e391]
+      - generic [ref=f56e392]:
+        - generic [ref=f56e393]:
+          - generic [ref=f56e394]:
+            - generic [ref=f56e395]:
+              - heading "Production Pilot" [level=2] [ref=f56e399]
+              - generic [ref=f56e400]: empty
+            - paragraph [ref=f56e401]: No production pilot runs marked yet.
+          - generic [ref=f56e402]: Run production pilot from a low-risk integration item
+        - generic [ref=f56e403]:
+          - generic [ref=f56e404]:
+            - generic [ref=f56e405]: Runs
+            - generic [ref=f56e406]: "0"
+          - generic [ref=f56e407]:
+            - generic [ref=f56e408]: Success
+            - generic [ref=f56e409]: 0%
+          - generic [ref=f56e410]:
+            - generic [ref=f56e411]: Checker Reject
+            - generic [ref=f56e412]: 0%
+          - generic [ref=f56e413]:
+            - generic [ref=f56e414]: Candidates
+            - generic [ref=f56e415]: "0"
+          - generic [ref=f56e416]:
+            - generic [ref=f56e417]: Interventions
+            - generic [ref=f56e418]: "0"
+        - table [ref=f56e420]:
+          - rowgroup [ref=f56e421]:
+            - row [ref=f56e422]:
+              - columnheader "Source" [ref=f56e423]
+              - columnheader "Work" [ref=f56e424]
+              - columnheader "Runtime" [ref=f56e425]
+              - columnheader "Closure" [ref=f56e426]
+              - columnheader "Next" [ref=f56e427]
+          - rowgroup [ref=f56e428]:
+            - row [ref=f56e429]:
+              - cell "No pilot run evidence yet." [ref=f56e430]
+      - generic [ref=f56e431]:
+        - generic [ref=f56e432]:
+          - generic [ref=f56e433]:
+            - heading "Execution Truth" [level=2] [ref=f56e434]
+            - paragraph [ref=f56e435]: MacBook dashboard observes; workstation executes. Active execution requires runtime evidence.
+          - generic [ref=f56e436]: unknown
+        - generic [ref=f56e437]:
+          - generic [ref=f56e438]:
+            - generic [ref=f56e439]: Capability Health
+            - generic [ref=f56e440]:
+              - generic [ref=f56e441]: total 0
+              - generic [ref=f56e442]: validated 0
+              - generic [ref=f56e443]: routable 0
+              - generic [ref=f56e444]: blocked 0
+          - generic [ref=f56e445]:
+            - generic [ref=f56e446]: Claim Health
+            - generic [ref=f56e447]:
+              - generic [ref=f56e448]: total 0
+              - generic [ref=f56e449]: supported 0
+              - generic [ref=f56e450]: proposed 0
+              - generic [ref=f56e451]: contradicted 0
+          - generic [ref=f56e452]:
+            - generic [ref=f56e453]: Specialist Panels
+            - generic [ref=f56e454]:
+              - generic [ref=f56e455]: total 0
+              - generic [ref=f56e456]: ready 0
+              - generic [ref=f56e457]: blocked/evidence 0
+      - generic [ref=f56e458]:
+        - generic [ref=f56e459]:
+          - heading "Capacity Governor v2" [level=2] [ref=f56e460]
+          - paragraph [ref=f56e461]: Queue classes, fair-share order, policy reasons and audit manifest previews before execution.
+        - generic [ref=f56e462]:
+          - generic [ref=f56e463]:
+            - generic [ref=f56e464]: Queue Classes
+            - paragraph [ref=f56e466]: No queued leases.
+          - generic [ref=f56e467]:
+            - generic [ref=f56e468]: Fair-Share Order
+            - paragraph [ref=f56e470]: No fair-share plan.
+          - generic [ref=f56e471]:
+            - generic [ref=f56e472]: Runner Decisions
+            - generic [ref=f56e473]:
+              - generic [ref=f56e474]:
+                - generic [ref=f56e475]: Eligible
+                - generic [ref=f56e476]: "0"
+              - generic [ref=f56e477]:
+                - generic [ref=f56e478]: Blocked
+                - generic [ref=f56e479]: "0"
+              - generic [ref=f56e480]:
+                - generic [ref=f56e481]: Running
+                - generic [ref=f56e482]: "0"
+        - table [ref=f56e484]:
+          - rowgroup [ref=f56e485]:
+            - row [ref=f56e486]:
+              - columnheader "Decision" [ref=f56e487]
+              - columnheader "Lease" [ref=f56e488]
+              - columnheader "Action" [ref=f56e489]
+              - columnheader "Queue" [ref=f56e490]
+              - columnheader "Blocked Reasons" [ref=f56e491]
+          - rowgroup [ref=f56e492]:
+            - row [ref=f56e493]:
+              - cell "No runner decisions to preview." [ref=f56e494]
+      - generic [ref=f56e495]:
+        - generic [ref=f56e496]:
+          - heading "Capability Registry" [level=2] [ref=f56e501]
+          - paragraph [ref=f56e503]: No capabilities registered.
+        - generic [ref=f56e504]:
+          - heading "Claim Ledger" [level=2] [ref=f56e510]
+          - paragraph [ref=f56e512]: No claims recorded.
+      - generic [ref=f56e513]:
+        - heading "Next Safe Actions" [level=2] [ref=f56e514]
+        - paragraph [ref=f56e516]: No action guidance available.
