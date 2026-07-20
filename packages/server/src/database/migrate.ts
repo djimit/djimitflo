@@ -3,10 +3,10 @@
  */
 
 import Database from 'better-sqlite3';
-import { join } from 'path';
 type BetterSqlite3Database = Database.Database;
 import { createPhase56Tables } from './migrate-phase56';
 import { seedMCPServers } from './seed-mcp-servers';
+import { resolveDbPath } from './path';
 
 type ColumnSpec = {
   name: string;
@@ -1477,14 +1477,6 @@ function createOpenMythosEvalTables(db: BetterSqlite3Database) {
   `);
 }
 
-if (require.main === module) {
-  const dbPath = process.env.DB_PATH || join(process.cwd(), '../../.data/djimitflo.sqlite');
-  const db = new Database(dbPath);
-  db.pragma('foreign_keys = ON');
-  runMigrations(db);
-  db.close();
-}
-
 const agentRetirementColumns: ColumnSpec[] = [
   { name: 'retired_at', definition: 'TEXT' },
   { name: 'retirement_reason', definition: 'TEXT DEFAULT ""' },
@@ -1530,4 +1522,12 @@ function createSubAgentContextTables(db: BetterSqlite3Database) {
 
     CREATE INDEX IF NOT EXISTS idx_sub_agent_scratch_lease_id ON sub_agent_scratch(lease_id);
   `);
+}
+
+if (require.main === module) {
+  const dbPath = resolveDbPath();
+  const db = new Database(dbPath);
+  db.pragma('foreign_keys = ON');
+  runMigrations(db);
+  db.close();
 }

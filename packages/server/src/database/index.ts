@@ -8,15 +8,12 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'fs'
 import { schema } from './schema';
 import { runMigrations } from './migrate';
 import { runPreSchemaMigrations } from './migrate';
+import { monorepoRoot, resolveBackupDir, resolveDbPath } from './path';
 
-// Get the monorepo root (3 levels up from packages/server/src)
-const MONOREPO_ROOT = process.cwd().includes('/packages/server')
-  ? join(process.cwd(), '../..')
-  : process.cwd();
-
+const MONOREPO_ROOT = monorepoRoot();
 const DATA_DIR = join(MONOREPO_ROOT, '.data');
-const DB_PATH = process.env.DB_PATH || join(DATA_DIR, 'djimitflo.sqlite');
-const BACKUP_DIR = process.env.BACKUP_DIR || join(DATA_DIR, 'backups');
+const DB_PATH = resolveDbPath();
+const BACKUP_DIR = resolveBackupDir();
 
 // Ensure data directory exists only when using the default path
 if (!process.env.DB_PATH) {

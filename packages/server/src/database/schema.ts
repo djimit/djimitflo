@@ -470,4 +470,126 @@ CREATE TABLE IF NOT EXISTS runtime_contract_probes (
   probed_at TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- ═══════════════════════════════════════════════════════════════
+-- Council Engine — Deliberatie systeem
+-- ═══════════════════════════════════════════════════════════════
+
+-- Council sessions
+CREATE TABLE IF NOT EXISTS council_sessions (
+  id TEXT PRIMARY KEY,
+  task_id TEXT REFERENCES tasks(id),
+  mode TEXT NOT NULL CHECK(mode IN ('fast', 'review', 'council')),
+  status TEXT NOT NULL CHECK(status IN ('diverging', 'reviewing', 'synthesizing', 'completed', 'failed', 'escalated')),
+  task_description TEXT NOT NULL,
+  risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+  model_count INTEGER NOT NULL DEFAULT 1,
+  max_reasoning_depth INTEGER DEFAULT 4,
+  convergence_threshold REAL DEFAULT 0.75,
+  synthesis_model TEXT,
+  final_output TEXT,
+  final_confidence REAL,
+  token_usage INTEGER DEFAULT 0,
+  cost_dollars REAL DEFAULT 0,
+  duration_ms INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_sessions_status ON council_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_council_sessions_task_id ON council_sessions(task_id);
+CREATE INDEX IF NOT EXISTS idx_council_sessions_mode ON council_sessions(mode);
+CREATE INDEX IF NOT EXISTS idx_council_sessions_created_at ON council_sessions(created_at DESC);
+
+-- Council model outputs (per fase)
+CREATE TABLE IF NOT EXISTS council_outputs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES council_sessions(id) ON DELETE CASCADE,
+  model TEXT NOT NULL,
+  phase TEXT NOT NULL CHECK(phase IN ('diverge', 'review', 'synthesize')),
+  anonymous_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  structured_score TEXT,
+  ranking_position INTEGER,
+  token_count INTEGER DEFAULT 0,
+  latency_ms INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_outputs_session_id ON council_outputs(session_id);
+CREATE INDEX IF NOT EXISTS idx_council_outputs_phase ON council_outputs(phase);
+CREATE INDEX IF NOT EXISTS idx_council_outputs_anon_id ON council_outputs(anonymous_id);
+
+-- Council evaluator scores (structured)
+CREATE TABLE IF NOT EXISTS council_evaluations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES council_sessions(id) ON DELETE CASCADE,
+  evaluator_model TEXT NOT NULL,
+  candidate_id TEXT NOT NULL,
+  correctness REAL NOT NULL DEFAULT 0,
+  evidence_quality REAL NOT NULL DEFAULT 0,
+  completeness REAL NOT NULL DEFAULT 0,
+  risk_score REAL NOT NULL DEFAULT 0,
+  policy_compliance REAL DEFAULT 0,
+  reasoning TEXT NOT NULL DEFAULT '',
+  confidence REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_evaluations_session_id ON council_evaluations(session_id);
+CREATE INDEX IF NOT EXISTS idx_council_evaluations_candidate_id ON council_evaluations(candidate_id);
+
+-- Model registry (LLM capabilities)
+CREATE TABLE IF NOT EXISTS council_models (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  model_name TEXT NOT NULL,
+  capabilities TEXT NOT NULL DEFAULT '[]',
+  reasoning_depth INTEGER DEFAULT 1,
+  cost_per_1m_tokens REAL DEFAULT 0,
+  privacy_class TEXT NOT NULL DEFAULT 'public_api' CHECK(privacy_class IN ('local', 'private_cloud', 'public_api')),
+  independence_score REAL DEFAULT 0.5,
+  avg_governance_score REAL DEFAULT 0,
+  total_sessions INTEGER DEFAULT 0,
+  total_tokens DEFAULT 0,
+  avg_latency_ms INTEGER DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'inactive', 'deprecated')),
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_models_status ON council_models(status);
+CREATE INDEX IF NOT EXISTS idx_council_models_provider ON council_models(provider);
+CREATE INDEX IF NOT EXISTS idx_council_models_privacy ON council_models(privacy_class);
+
+-- Reliability tracking
+CREATE TABLE IF NOT EXISTS council_reliability (
+  id TEXT PRIMARY KEY,
+  session_id TEXT REFERENCES council_sessions(id),
+  case_category TEXT,
+  score_range REAL,
+  pass_disagreement INTEGER DEFAULT 0,
+  judge_count INTEGER DEFAULT 0,
+  low_reliability INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_reliability_session_id ON council_reliability(session_id);
+CREATE INDEX IF NOT EXISTS idx_council_reliability_low_rel ON council_reliability(low_reliability);
+
+-- Aggregation results (Borda count, etc)
+CREATE TABLE IF NOT EXISTS council_aggregations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES council_sessions(id) ON DELETE CASCADE,
+  method TEXT NOT NULL CHECK(method IN ('borda', 'reciprocal_rank_fusion', 'weighted_borda', 'condorcet', 'weighted_borda_with_uncertainty')),
+  rankings TEXT NOT NULL,
+  weights TEXT NOT NULL DEFAULT '{}',
+  final_scores TEXT NOT NULL DEFAULT '{}',
+  disagreement_score REAL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_council_aggregations_session_id ON council_aggregations(session_id);
 `;
