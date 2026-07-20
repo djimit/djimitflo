@@ -45,6 +45,7 @@ export type SwarmEventType =
   | 'segml:cycle:complete'
   | 'governance_alert'
   | 'segml:trigger:runtime'
+  | 'segml:trigger:predicted_decline'
   | 'segml:cpo:learning_complete'
   | 'segml:cpo:fleet_blind_spots'
   | 'segml:red_team:campaign_queued';

@@ -20,6 +20,9 @@ import { SegmlCaseGenerator } from './segml-case-generator';
 import { SegmlMemoryBridge } from './segml-memory-bridge';
 import { SegmlJudgeUpdater } from './segml-judge-updater';
 import { SegmlCurriculumAdapter } from './segml-curriculum-adapter';
+import { SegmlComplianceBridge } from './segml-compliance-bridge';
+import { SegmlFleetMemoryBridge } from './segml-fleet-memory-bridge';
+import { SegmlPredictiveBridge } from './segml-predictive-bridge';
 import { config as envConfig } from '../config/env';
 import {
   type SegmlCycleResult,
@@ -47,25 +50,31 @@ interface EvalRunSummary {
 }
 
 export class SelfEvolvingGovernanceLoop {
-  private feedback: GovernanceFeedbackService;
-  private caseGenerator: SegmlCaseGenerator;
-  private memoryBridge: SegmlMemoryBridge;
-  private judgeUpdater: SegmlJudgeUpdater;
-  private curriculumAdapter: SegmlCurriculumAdapter;
-  private config: SegmlConfig;
+   private feedback: GovernanceFeedbackService;
+   private caseGenerator: SegmlCaseGenerator;
+   private memoryBridge: SegmlMemoryBridge;
+   private judgeUpdater: SegmlJudgeUpdater;
+   private curriculumAdapter: SegmlCurriculumAdapter;
+   private compliance: SegmlComplianceBridge;
+   private fleetMemory: SegmlFleetMemoryBridge;
+   private predictive: SegmlPredictiveBridge;
+   private config: SegmlConfig;
 
-  constructor(
-    private db: Database,
-    config: Partial<SegmlConfig> = {}
-  ) {
-    this.config = { ...DEFAULT_SEGML_CONFIG, ...config };
-    this.feedback = new GovernanceFeedbackService(db);
-    this.caseGenerator = new SegmlCaseGenerator();
-    this.memoryBridge = new SegmlMemoryBridge(db);
-    this.judgeUpdater = new SegmlJudgeUpdater(db);
-    this.curriculumAdapter = new SegmlCurriculumAdapter(db);
-    this.ensureTables();
-  }
+   constructor(
+     private db: Database,
+     config: Partial<SegmlConfig> = {}
+   ) {
+     this.config = { ...DEFAULT_SEGML_CONFIG, ...config };
+     this.feedback = new GovernanceFeedbackService(db);
+     this.caseGenerator = new SegmlCaseGenerator();
+     this.memoryBridge = new SegmlMemoryBridge(db);
+     this.judgeUpdater = new SegmlJudgeUpdater(db);
+     this.curriculumAdapter = new SegmlCurriculumAdapter(db);
+     this.compliance = new SegmlComplianceBridge(db);
+     this.fleetMemory = new SegmlFleetMemoryBridge(db);
+     this.predictive = new SegmlPredictiveBridge(db);
+     this.ensureTables();
+   }
 
   private ensureTables(): void {
     this.db.exec(`
@@ -245,6 +254,26 @@ export class SelfEvolvingGovernanceLoop {
           const currCatScore = evalRun.categoryScores[cat] ?? 0;
           this.judgeUpdater.rollbackIfNeeded(cat, prevCatScore, currCatScore);
         }
+      }
+
+      // Stage 11: Compliance audit logging
+      this.compliance.logSegmlCycle(result, agentId);
+
+      // Stage 12: Fleet-wide governance memory sharing
+      for (const spot of result.blind_spots_detected) {
+        this.fleetMemory.storePattern({
+          content: `Governance blind spot: ${spot} on agent ${agentId}`,
+          category: spot,
+          sourceAgent: agentId,
+          scope: 'fleet_wide',
+          confidence: 0.6,
+          metadata: { cycleId: result.id, scoreDelta: result.score_delta },
+        });
+      }
+
+      // Stage 13: Predictive governance analysis
+      for (const [category, score] of Object.entries(evalRun.categoryScores)) {
+        this.predictive.predictDecline(agentId, category, score);
       }
 
       stage = 'completed';
