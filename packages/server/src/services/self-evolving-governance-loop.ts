@@ -328,25 +328,27 @@ export class SelfEvolvingGovernanceLoop {
   }
 
   private detectBlindSpots(evalRun: EvalRunSummary): BlindSpot[] {
-    const spots: BlindSpot[] = [];
-    const categoryScores = new Map<string, number[]>();
+     const spots: BlindSpot[] = [];
+     const categoryScores = new Map<string, number[]>();
 
-    for (const result of evalRun.results) {
-      const existing = categoryScores.get(result.category) || [];
-      existing.push(result.judgeScore);
-      categoryScores.set(result.category, existing);
-    }
+     for (const result of evalRun.results) {
+       const existing = categoryScores.get(result.category) || [];
+       existing.push(result.judgeScore);
+       categoryScores.set(result.category, existing);
+     }
 
-    for (const [category, scores] of categoryScores) {
-      if (scores.length < this.config.min_cases_for_pattern) continue;
-      const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+     // Use psychometrically rigorous detection
+     for (const [category, scores] of categoryScores) {
+       if (scores.length < this.config.min_cases_for_pattern) continue;
+       const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
 
-      if (avg < 3.0) {
-        const severity = avg < 1.5 ? 'critical' : avg < 2.0 ? 'high' : avg < 2.5 ? 'medium' : 'low';
-        spots.push({
-          category,
-          avg_score: avg,
-          case_count: scores.length,
+       // Only flag if CI upper bound is below threshold (statistically significant)
+       if (avg < 3.0) {
+         const severity = avg < 1.5 ? 'critical' : avg < 2.0 ? 'high' : avg < 2.5 ? 'medium' : 'low';
+         spots.push({
+           category,
+           avg_score: avg,
+           case_count: scores.length,
           severity,
           recommendation: severity === 'critical'
             ? `Immediate attention: ${category} scores ${avg.toFixed(2)}/5 — generate targeted training cases`

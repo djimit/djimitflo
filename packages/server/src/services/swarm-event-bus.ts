@@ -42,7 +42,12 @@ export type SwarmEventType =
   | 'council:approval:granted'
   | 'council:approval:denied'
   | 'segml:cycle:started'
-  | 'segml:cycle:complete';
+  | 'segml:cycle:complete'
+  | 'governance_alert'
+  | 'segml:trigger:runtime'
+  | 'segml:cpo:learning_complete'
+  | 'segml:cpo:fleet_blind_spots'
+  | 'segml:red_team:campaign_queued';
 
 export interface SwarmEvent {
   type: SwarmEventType;
