@@ -711,9 +711,8 @@ export class LoopService {
     };
   }
 
-  private findCapabilityForFinding(finding: LoopFinding): { id: string } | undefined {
+  private findCapabilityForFinding(finding: LoopFinding, capabilities: Array<{ id: string }>): { id: string } | undefined {
     try {
-      const capabilities = this.intelligence.listCapabilities();
       const matching = capabilities.filter(c =>
         c.id.includes(finding.type) || finding.type.includes(c.id)
       );
@@ -727,6 +726,12 @@ export class LoopService {
     const plan: Array<{ findingId: string; runtime: string; capabilityId: string }> = [];
     const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
 
+    // PERFORMANCE: Batch load capabilities once instead of per-finding N+1
+    let allCapabilities: Array<{ id: string }> = [];
+    try {
+      allCapabilities = this.intelligence.listCapabilities();
+    } catch { /* best-effort */ }
+
     for (const finding of findings) {
       const runMeta = run.metadata as Record<string, unknown>;
       let selectedRuntime: string;
@@ -735,7 +740,7 @@ export class LoopService {
       if (runMeta.sovereign === true || process.env.PI_OFFLINE === '1') {
         selectedRuntime = 'pi';
       } else {
-        const capability = this.findCapabilityForFinding(finding);
+        const capability = this.findCapabilityForFinding(finding, allCapabilities);
         capabilityId = capability?.id || '';
         selectedRuntime = this.selectRuntimeForCapability(capabilityId, finding);
       }

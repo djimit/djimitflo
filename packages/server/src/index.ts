@@ -18,6 +18,7 @@ import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
+import { lifecycleManager } from './services/lifecycle-manager';
 import { MemorySyncService } from './services/memory-sync-service';
 import { ReasoningBankService } from './services/reasoning-bank-service';
 import { VectorMemoryService } from './services/vector-memory-service';
@@ -103,6 +104,7 @@ async function main() {
     try {
       const coordinator = new NegotiationCoordinator(recoverySvc, nestedSpawns, intelligence);
       coordinator.start();
+      lifecycleManager.register({ serviceName: 'NegotiationCoordinator', stop: () => (coordinator as any)?.stop?.() });
       console.log('🤝 Negotiation coordinator started (inter-agent help_request protocol).');
     } catch (error) {
       console.warn('⚠️  Negotiation coordinator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -110,6 +112,7 @@ async function main() {
     try {
       const acquisition = new CapabilityAcquisitionService(db, intelligence);
       acquisition.start();
+      lifecycleManager.register({ serviceName: 'CapabilityAcquisition', stop: () => (acquisition as any)?.stop?.() });
       console.log('🧠 Capability acquisition service started (autonomous capability growth).');
     } catch (error) {
       console.warn('⚠️  Capability acquisition failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -119,6 +122,7 @@ async function main() {
     try {
       const metaEvolution = new MetaEvolutionService(db, intelligence);
       metaEvolution.start();
+      lifecycleManager.register({ serviceName: 'MetaEvolution', stop: () => (metaEvolution as any)?.stop?.() });
       console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
     } catch (error) {
       console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -163,9 +167,11 @@ async function main() {
     // G16: start the continuous operation daemon (goal queue with priority scheduling).
     // Share the same LoopService instance (recoverySvc) so the daemon and the server
     // share in-memory state (runtimeSemaphore, runtimeLeases, etc.).
+    let daemon: LoopDaemon | undefined;
     try {
-      const daemon = new LoopDaemon(db, recoverySvc);
+      daemon = new LoopDaemon(db, recoverySvc);
       daemon.start();
+      lifecycleManager.register({ serviceName: 'LoopDaemon', stop: () => daemon?.stop() });
       console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
     } catch (error) {
       console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
@@ -178,6 +184,7 @@ async function main() {
     // Prompt intelligence: ingest pending findings on startup
     try {
       const promptIntel = new PromptIntelService(db);
+      lifecycleManager.register({ serviceName: 'PromptIntel', stop: () => (promptIntel as any)?.stop?.() });
       const pendingPath = process.env.PROMPT_INTEL_PENDING || (process.env.HOME || '/Users/djimit') + '/.djimit/roborev/paperclip-tasks.pending.jsonl';
       const result = promptIntel.ingestFromPending(pendingPath);
       if (result.imported > 0 || result.skipped > 0) {
@@ -244,10 +251,12 @@ async function main() {
     // Retention service — centralized data lifecycle management
     const retention = new RetentionService(db);
     retention.start();
+    lifecycleManager.register({ serviceName: 'RetentionService', stop: () => (retention as any)?.stop?.() });
 
     // Cognitive loop closure — learns from loop execution outcomes
     const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
     cognitiveLoopClosure.start();
+    lifecycleManager.register({ serviceName: 'CognitiveLoopClosure', stop: () => (cognitiveLoopClosure as any)?.stop?.() });
   } else {
     console.log('⏸️  Operator background services disabled by runtime profile');
   }
@@ -265,6 +274,7 @@ async function main() {
     // Meta-orchestration — self-driving optimization layer (connects all learning subsystems)
     metaOrchestration = new MetaOrchestrationService(db);
     metaOrchestration.start();
+    lifecycleManager.register({ serviceName: 'MetaOrchestration', stop: () => (metaOrchestration as any)?.stop?.() });
     executionEngine.setMetaOrchestration(metaOrchestration);
     recoverySvc.setMetaOrchestration(metaOrchestration);
 
@@ -358,15 +368,8 @@ async function main() {
     }
   });
   
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('⚠️  SIGTERM received, shutting down gracefully...');
-    httpServer.close(() => {
-      console.log('👋 Server closed');
-      db.close();
-      process.exit(0);
-    });
-  });
+  // Graceful shutdown via LifecycleManager
+  lifecycleManager.initSignalHandlers(httpServer);
 }
 
 main().catch((error) => {

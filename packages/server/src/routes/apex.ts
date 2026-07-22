@@ -9,6 +9,7 @@ import { PluginRegistryService } from '../services/plugin-registry-service';
 import { VectorMemoryService } from '../services/vector-memory-service';
 import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
+import { lifecycleManager } from '../services/lifecycle-manager';
 
 export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBackgroundWorkers = false): Router {
   const router = Router();
@@ -24,6 +25,10 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
   // violate the mutation-free guarantee.
   if (enableBackgroundWorkers) {
     workers.startAll();
+    lifecycleManager.register({
+      serviceName: 'BackgroundWorkerService',
+      stop: () => workers.stopAll(),
+    });
   }
 
   // ─── Plugins ─────────────────────────────────────────────────────────
