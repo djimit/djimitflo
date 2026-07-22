@@ -39,7 +39,7 @@ export const DATA_CLASSIFICATION_RULES: Record<DataClassification, DataClassific
     description: 'Internal operational data not for external distribution',
     encryption_required: false,
     retention_days: 730,
-    allowed_roles: ['maker', 'checker', 'approver', 'auditor', 'operator', 'platform_admin', 'admin'],
+    allowed_roles: ['viewer', 'maker', 'checker', 'approver', 'auditor', 'platform_admin', 'admin'],
     provider_routing: 'any',
     redaction_required: false,
     audit_required: true,
