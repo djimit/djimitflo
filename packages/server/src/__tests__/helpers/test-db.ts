@@ -18,7 +18,7 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'operator', 'viewer')),
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

@@ -37,7 +37,7 @@ describe('AuthService', () => {
 
   describe('user management', () => {
     it('creates a user and finds by email', () => {
-      const user = authService.createUser('test@example.com', 'pass123', 'operator');
+      const user = authService.createUser('test@example.com', 'pass123', 'maker');
       expect(user.id).toBeDefined();
       expect(user.email).toBe('test@example.com');
 
@@ -115,11 +115,31 @@ describe('AuthService', () => {
       }
     });
 
-    it('operator has operational permissions', () => {
-      authService.createUser('op@test.local', 'pass', 'operator');
-      expect(authService.hasPermission('operator', 'read:evidence')).toBe(true);
-      expect(authService.hasPermission('operator', 'write:swarm_action')).toBe(true);
-      expect(authService.hasPermission('operator', 'manage:config')).toBe(false);
+    it('maker has operational permissions', () => {
+      authService.createUser('maker@test.local', 'pass', 'maker');
+      expect(authService.hasPermission('maker', 'read:evidence')).toBe(true);
+      expect(authService.hasPermission('maker', 'write:swarm_action')).toBe(true);
+      expect(authService.hasPermission('maker', 'create:task')).toBe(true);
+      expect(authService.hasPermission('maker', 'approve:task')).toBe(false);
+      expect(authService.hasPermission('maker', 'manage:config')).toBe(false);
+    });
+
+    it('approver can approve but not execute', () => {
+      authService.createUser('approver@test.local', 'pass', 'approver');
+      expect(authService.hasPermission('approver', 'approve:task')).toBe(true);
+      expect(authService.hasPermission('approver', 'execute:task')).toBe(false);
+    });
+
+    it('auditor has read-only access to audit data', () => {
+      authService.createUser('auditor@test.local', 'pass', 'auditor');
+      expect(authService.hasPermission('auditor', 'read:audit')).toBe(true);
+      expect(authService.hasPermission('auditor', 'approve:task')).toBe(false);
+    });
+
+    it('platform_admin can manage config but not execute', () => {
+      authService.createUser('platform@test.local', 'pass', 'platform_admin');
+      expect(authService.hasPermission('platform_admin', 'manage:config')).toBe(true);
+      expect(authService.hasPermission('platform_admin', 'execute:task')).toBe(false);
     });
 
     it('viewer has read-only permissions', () => {

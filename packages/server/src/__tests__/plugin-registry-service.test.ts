@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('G51: Plugin Registry', () => {
-  it('installs plugin with valid signature', () => {
+  it('installs plugin with valid signature as inactive (quarantine first)', () => {
     const manifest = {
       id: 'test-plugin',
       name: 'Test Plugin',
@@ -38,6 +38,9 @@ describe('G51: Plugin Registry', () => {
       createdAt: new Date().toISOString(),
     };
     registry.installPlugin(manifest);
+    // SECURITY: plugins are installed as inactive — explicit enable required
+    expect(registry.getPluginStatus('test-plugin')).toBe('inactive');
+    registry.enablePlugin('test-plugin');
     expect(registry.getPluginStatus('test-plugin')).toBe('active');
   });
 
@@ -119,7 +122,7 @@ describe('G51: Plugin Registry', () => {
     expect(registry.getPluginStatus('nonexistent')).toBe('error');
   });
 
-  it('verifySignature accepts ed25519 prefix', () => {
+  it('rejects ed25519 signature without trusted keys configured', () => {
     const manifest = {
       id: 'ed25519-plugin',
       name: 'Ed25519 Plugin',
@@ -130,7 +133,8 @@ describe('G51: Plugin Registry', () => {
       signature: 'ed25519:abc123',
       createdAt: '',
     };
-    expect(() => registry.installPlugin(manifest)).not.toThrow();
+    // SECURITY: bare ed25519: prefix without trusted keys must be rejected
+    expect(() => registry.installPlugin(manifest)).toThrow('Invalid plugin signature');
   });
 
   it('installPlugin creates capabilities in swarm_capabilities', () => {

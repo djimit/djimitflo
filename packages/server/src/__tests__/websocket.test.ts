@@ -67,7 +67,7 @@ describe('WebSocketService', () => {
     });
 
     it('rejects connection with expired token', () => {
-      const payload = { sub: 'user-1', email: 'a@test.com', role: 'operator', exp: Math.floor(Date.now() / 1000) - 100 };
+      const payload = { sub: 'user-1', email: 'a@test.com', role: 'maker', exp: Math.floor(Date.now() / 1000) - 100 };
       authService.verifyToken.mockReturnValue(payload);
       const req = mockReq('/ws?token=expired');
       const result = wsService.authenticateConnection(req);
@@ -75,7 +75,7 @@ describe('WebSocketService', () => {
     });
 
     it('rejects connection with inactive user', () => {
-      const payload = { sub: 'user-1', email: 'a@test.com', role: 'operator', exp: Math.floor(Date.now() / 1000) + 3600 };
+      const payload = { sub: 'user-1', email: 'a@test.com', role: 'maker', exp: Math.floor(Date.now() / 1000) + 3600 };
       authService.verifyToken.mockReturnValue(payload);
       authService.findUserById.mockReturnValue(null);
       const req = mockReq('/ws?token=valid');

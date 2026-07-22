@@ -76,7 +76,7 @@ describe('Apex Integration Tests', () => {
       service = new PluginRegistryService(db);
     });
 
-    it('installs plugin with valid signature', () => {
+    it('installs plugin with valid signature as inactive (quarantine first)', () => {
       const crypto = require('crypto');
       const data = 'test-plugin-Test Plugin-1.0.0-test-cap';
       const signature = crypto.createHash('sha256').update(data).digest('hex');
@@ -92,6 +92,9 @@ describe('Apex Integration Tests', () => {
         createdAt: new Date().toISOString(),
       });
 
+      // SECURITY: plugins installed as inactive — explicit enable required
+      expect(service.getPluginStatus('test-plugin')).toBe('inactive');
+      service.enablePlugin('test-plugin');
       expect(service.getPluginStatus('test-plugin')).toBe('active');
     });
 
