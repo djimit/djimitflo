@@ -128,6 +128,7 @@ export interface ApprovalRequest extends Timestamps {
   target_path: string | null;
   risk_level: RiskLevel;
   status: ApprovalStatus;
+  requested_by: string | null;
   requested_at: string;
   decided_at: string | null;
   decided_by: string | null;
