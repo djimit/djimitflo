@@ -356,12 +356,15 @@ export class SelfModificationPipeline {
     }
   }
 
-  private rollback(_planId: string): void {
-    try {
-      execSync('git checkout -- .', { cwd: this.repoRoot, stdio: 'ignore', timeout: 10_000 });
-    } catch {
-      // Best-effort rollback
-    }
+  private rollback(planId: string): void {
+    // SECURITY: Never run `git checkout -- .` — it destroys all uncommitted
+    // changes in the working tree, not just our modifications.
+    // Instead, record the rollback failure for manual intervention.
+    this.db.prepare(`
+      UPDATE self_modification_results
+      SET evidence_json = json_set(evidence_json, '$.rollbackMethod', 'manual_required')
+      WHERE plan_id = ?
+    `).run(planId);
   }
 
   private ensureTables(): void {

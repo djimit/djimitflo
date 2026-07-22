@@ -9,7 +9,25 @@ import type { Database } from 'better-sqlite3';
 import { UserRole, ROLE_PERMISSIONS, type User, type AuthTokenPayload } from '@djimitflo/shared';
 
 const BCRYPT_ROUNDS = 12;
-const DEFAULT_JWT_EXPIRES_IN = '24h';
+const DEFAULT_JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
+const REFRESH_TOKEN_TTL_DAYS = 30;
+
+export interface RefreshTokenRecord {
+  token_hash: string;
+  user_id: string;
+  session_id: string;
+  issued_at: string;
+  expires_at: string;
+  rotated_from: string | null;
+  revoked: boolean;
+}
+
+export interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+  token_type: 'Bearer';
+}
 
 export class AuthService {
   private db: Database;
@@ -30,6 +48,7 @@ export class AuthService {
       this.jwtSecret = secret;
     }
     this.jwtExpiresIn = process.env.JWT_EXPIRES_IN || DEFAULT_JWT_EXPIRES_IN;
+    this.ensureRefreshTokensTable();
   }
 
   hashPassword(plain: string): string {
@@ -68,7 +87,7 @@ export class AuthService {
     };
   }
 
-  createUser(email: string, password: string, role: UserRole = UserRole.OPERATOR): User {
+  createUser(email: string, password: string, role: UserRole = UserRole.MAKER): User {
     const id = randomUUID();
     const passwordHash = this.hashPassword(password);
     const now = new Date().toISOString();
@@ -110,9 +129,123 @@ export class AuthService {
     return { user, token };
   }
 
-  hasPermission(role: UserRole, permission: string): boolean {
-    const permissions = ROLE_PERMISSIONS[role];
+  /**
+   * Authenticate and return a token pair (access + refresh).
+   * The refresh token is hashed before storage — raw token never persisted.
+   */
+  authenticateWithRefresh(email: string, password: string): { user: User; tokens: TokenPair } | null {
+    const row = this.db.prepare('SELECT * FROM users WHERE email = ? AND is_active = 1').get(email.toLowerCase().trim());
+    if (!row) return null;
+
+    const userRow = row as Record<string, unknown>;
+    if (!this.verifyPassword(password, userRow.password_hash as string)) return null;
+
+    const user = this.sanitizeUser(userRow);
+    return {
+      user,
+      tokens: this.generateTokenPair(user),
+    };
+  }
+
+  /**
+   * Generate a token pair: short-lived access token + long-lived refresh token.
+   */
+  generateTokenPair(user: User): TokenPair {
+    const accessToken = this.generateToken(user);
+    const refreshToken = randomUUID() + randomUUID();
+    const sessionId = randomUUID();
+
+    const refreshTokenHash = this.hashToken(refreshToken);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    this.db.prepare(`
+      INSERT INTO refresh_tokens (token_hash, user_id, session_id, issued_at, expires_at, rotated_from, revoked)
+      VALUES (?, ?, ?, ?, ?, NULL, 0)
+    `).run(refreshTokenHash, user.id, sessionId, now.toISOString(), expiresAt.toISOString());
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 900,
+      token_type: 'Bearer',
+    };
+  }
+
+  /**
+   * Rotate a refresh token: validate the old token, issue a new pair,
+   * revoke the old token. Detects token reuse (replay attack).
+   */
+  rotateRefreshToken(refreshToken: string): TokenPair | null {
+    const tokenHash = this.hashToken(refreshToken);
+
+    const record = this.db.prepare(`
+      SELECT * FROM refresh_tokens
+      WHERE token_hash = ? AND revoked = 0 AND expires_at > datetime('now')
+    `).get(tokenHash) as RefreshTokenRecord | undefined;
+
+    if (!record) {
+      const reused = this.db.prepare(`
+        SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 1
+      `).get(tokenHash) as RefreshTokenRecord | undefined;
+
+      if (reused) {
+        this.revokeAllUserTokens(reused.user_id);
+      }
+
+      return null;
+    }
+
+    this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+
+    const user = this.findUserById(record.user_id);
+    if (!user || !user.isActive) return null;
+
+    return this.generateTokenPair(user);
+  }
+
+  /**
+   * Revoke all refresh tokens for a user.
+   * Called on password change or detected token reuse.
+   */
+  revokeAllUserTokens(userId: string): void {
+    this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').run(userId);
+  }
+
+  /**
+   * Revoke a specific refresh token.
+   */
+  revokeRefreshToken(refreshToken: string): void {
+    const tokenHash = this.hashToken(refreshToken);
+    this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+  }
+
+  private hashToken(token: string): string {
+    return require('crypto').createHash('sha256').update(token).digest('hex');
+  }
+
+  hasPermission(role: UserRole | string, permission: string): boolean {
+    const permissions = ROLE_PERMISSIONS[role as UserRole];
     return permissions ? permissions.includes(permission) : false;
+  }
+
+  private ensureRefreshTokensTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS refresh_tokens (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        rotated_from TEXT,
+        revoked INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_revoked ON refresh_tokens(revoked);
+    `);
   }
 
   bootstrapAdmin(): void {

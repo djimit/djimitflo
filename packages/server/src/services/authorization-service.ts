@@ -11,32 +11,36 @@ export class AuthorizationService {
     return user.role === UserRole.ADMIN;
   }
 
+  static isPrivileged(user: AuthTokenPayload): boolean {
+    return user.role === UserRole.ADMIN || user.role === UserRole.PLATFORM_ADMIN;
+  }
+
   static canReadTask(user: AuthTokenPayload, task: OwnableResource): boolean {
-    if (user.role === UserRole.ADMIN) return true;
+    if (AuthorizationService.isPrivileged(user)) return true;
     return AuthorizationService.isOwner(user, task);
   }
 
   static canModifyTask(user: AuthTokenPayload, task: OwnableResource): boolean {
-    if (user.role === UserRole.ADMIN) return true;
+    if (AuthorizationService.isPrivileged(user)) return true;
     if (!AuthorizationService.hasPermission(user, 'create:task')) return false;
     return AuthorizationService.isOwner(user, task);
   }
 
   static canExecuteTask(user: AuthTokenPayload, task: OwnableResource): boolean {
-    if (user.role === UserRole.ADMIN) return true;
+    if (AuthorizationService.isPrivileged(user)) return true;
     if (!AuthorizationService.hasPermission(user, 'execute:task')) return false;
     return AuthorizationService.isOwner(user, task);
   }
 
   static canDeleteTask(user: AuthTokenPayload, _task: OwnableResource): boolean {
-    if (user.role === UserRole.ADMIN) return true;
-    return false;
+    return AuthorizationService.isPrivileged(user);
   }
 
   static canApproveForTask(user: AuthTokenPayload, task: OwnableResource): boolean {
-    if (user.role === UserRole.ADMIN) return true;
+    if (AuthorizationService.isPrivileged(user)) return true;
     if (!AuthorizationService.hasPermission(user, 'approve:task')) return false;
-    return AuthorizationService.isOwner(user, task);
+    if (AuthorizationService.isOwner(user, task)) return false;
+    return true;
   }
 
   static canReadEvidenceForTask(user: AuthTokenPayload, task: OwnableResource): boolean {
@@ -56,7 +60,7 @@ export class AuthorizationService {
   }
 
   static canAccessObservability(user: AuthTokenPayload): boolean {
-    return user.role === UserRole.ADMIN;
+    return AuthorizationService.isPrivileged(user) || AuthorizationService.hasPermission(user, 'read:audit');
   }
 
   static isOwner(user: AuthTokenPayload, resource: OwnableResource): boolean {
@@ -66,8 +70,9 @@ export class AuthorizationService {
     return false;
   }
 
-  static hasPermission(user: AuthTokenPayload, permission: string): boolean {
-    const permissions = ROLE_PERMISSIONS[user.role as UserRole];
+  static hasPermission(userOrRole: AuthTokenPayload | string, permission: string): boolean {
+    const role = typeof userOrRole === 'string' ? userOrRole : userOrRole.role;
+    const permissions = ROLE_PERMISSIONS[role as UserRole];
     return permissions ? permissions.includes(permission) : false;
   }
 
@@ -80,7 +85,8 @@ export class AuthorizationService {
   }
 
   static getApprovalTaskVisibilityWhere(user: AuthTokenPayload): { clause: string; params: string[] } | null {
-    if (user.role === UserRole.ADMIN) return null;
+    if (AuthorizationService.isPrivileged(user)) return null;
+    if (user.role === UserRole.AUDITOR || user.role === UserRole.APPROVER) return null;
     return {
       clause: '(tasks.owner_user_id = ? OR tasks.created_by = ?)',
       params: [user.sub, user.sub],

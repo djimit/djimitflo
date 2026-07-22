@@ -70,6 +70,10 @@ export class PluginRegistryService {
 
   /**
    * Discover and load all plugins from the plugins directory.
+   *
+   * SECURITY: Discovered plugins are always disabled by default.
+   * Signature validation is required before enable.
+   * Use installPlugin() for new plugins with proper signature verification.
    */
   discoverPlugins(): PluginManifest[] {
     const loaded: PluginManifest[] = [];
@@ -93,7 +97,7 @@ export class PluginRegistryService {
         const manifest = JSON.parse(manifestContent) as PluginManifest;
 
         manifest.id = entry.name;
-        manifest.enabled = manifest.enabled ?? true;
+        manifest.enabled = false;
         manifest.installedAt = manifest.installedAt || new Date().toISOString();
         manifest.updatedAt = new Date().toISOString();
 
@@ -220,22 +224,25 @@ export class PluginRegistryService {
 
   /**
    * Install a plugin with signature verification (G51).
+   *
+   * SECURITY: Plugins are disabled by default after installation.
+   * Explicit enable via enablePlugin() is required after manual review.
+   * Signature must be a valid SHA256 of canonical manifest fields,
+   * or a proper ed25519:<hex> signature from a trusted key.
    */
   installPlugin(manifest: PluginManifest): void {
-    // Validate signature
     this.validatePluginSignature(manifest);
 
     const now = new Date().toISOString();
     const plugin: PluginManifest = {
       ...manifest,
-      enabled: true,
+      enabled: false,
       installedAt: now,
       updatedAt: now,
     };
 
     this.plugins.set(manifest.id, plugin);
 
-    // Create capability records for each declared capability
     if (manifest.capabilities) {
       for (const capId of manifest.capabilities) {
         this.db.prepare(`
@@ -248,30 +255,64 @@ export class PluginRegistryService {
       }
     }
 
-    // Persist
     this.db.prepare(`
       INSERT OR REPLACE INTO plugins (id, name, version, enabled, manifest_json, installed_at, updated_at)
-      VALUES (?, ?, ?, 1, ?, ?, ?)
+      VALUES (?, ?, ?, 0, ?, ?, ?)
     `).run(manifest.id, manifest.name, manifest.version, JSON.stringify(plugin), now, now);
   }
 
   /**
-   * Validate plugin signature (SHA256 or ed25519).
+   * Validate plugin signature.
+   *
+   * Accepts:
+   * - SHA256 hash of canonical manifest fields (id-name-version-capabilities)
+   * - ed25519:<hex> from PLUGIN_TRUST_KEYS (comma-separated trusted public keys)
+   *
+   * Rejects:
+   * - Bare "ed25519:" prefix without valid key reference
+   * - Any signature that doesn't match the trust store
    */
   validatePluginSignature(manifest: PluginManifest): void {
-    if (!manifest.signature) throw new Error('Invalid plugin signature');
+    if (!manifest.signature) throw new Error('Invalid plugin signature: missing signature');
 
-    // Accept ed25519 prefix signatures
-    if (manifest.signature.startsWith('ed25519:')) return;
-
-    // Verify SHA256 signature
     const crypto = require('crypto');
-    const data = `${manifest.id}-${manifest.name}-${manifest.version}-${(manifest.capabilities || []).join(',')}`;
-    const expected = crypto.createHash('sha256').update(data).digest('hex');
 
-    if (manifest.signature !== expected) {
-      throw new Error('Invalid plugin signature');
+    if (manifest.signature.startsWith('ed25519:')) {
+      const sigValue = manifest.signature.slice('ed2519:'.length);
+      const trustKeys = (process.env.PLUGIN_TRUST_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
+
+      if (trustKeys.length === 0) {
+        throw new Error('Invalid plugin signature: no trusted keys configured (set PLUGIN_TRUST_KEYS)');
+      }
+
+      const data = this.canonicalManifestData(manifest);
+      for (const pubKey of trustKeys) {
+        try {
+          const verify = crypto.createVerify('SHA256');
+          verify.update(data);
+          verify.end();
+          if (verify.verify(pubKey, Buffer.from(sigValue, 'hex'))) return;
+        } catch {
+          // Try next key
+        }
+      }
+      throw new Error('Invalid plugin signature: ed25519 signature does not match any trusted key');
     }
+
+    const expected = this.computeManifestHash(manifest);
+    if (manifest.signature !== expected) {
+      throw new Error('Invalid plugin signature: hash mismatch');
+    }
+  }
+
+  private canonicalManifestData(manifest: PluginManifest): string {
+    return `${manifest.id}-${manifest.name}-${manifest.version}-${(manifest.capabilities || []).join(',')}`;
+  }
+
+  private computeManifestHash(manifest: PluginManifest): string {
+    const crypto = require('crypto');
+    const data = this.canonicalManifestData(manifest);
+    return crypto.createHash('sha256').update(data).digest('hex');
   }
 
   /**

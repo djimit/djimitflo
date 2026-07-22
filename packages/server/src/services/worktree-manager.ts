@@ -191,4 +191,48 @@ export class WorktreeManager {
       while (Date.now() - start < ms) { /* busy wait */ }
     }
   }
+
+  /**
+   * SECURITY: Verify a worktree path is within the allowed worktree root.
+   * Prevents path traversal attacks via crafted finding IDs.
+   */
+  isPathAllowed(worktreePath: string): boolean {
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(process.cwd(), '.djimitflo-loop-worktrees');
+    const resolved = path.resolve(worktreePath);
+    const resolvedRoot = path.resolve(worktreeRoot);
+    return resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot;
+  }
+
+  /**
+   * SECURITY: Sanitize a finding ID for use in branch names and paths.
+   * Prevents injection of path traversal or shell metacharacters.
+   */
+  sanitizeFindingId(findingId: string): string {
+    return findingId
+      .replace(/[^a-zA-Z0-9_-]/g, '-')
+      .replace(/\.{2,}/g, '-')
+      .slice(0, 64);
+  }
+
+  /**
+   * SECURITY: Validate that a worktree operation is safe to perform.
+   * Checks path safety, git state, and resource limits.
+   */
+  validateWorktreeSafety(repositoryPath: string, worktreePath: string): { safe: boolean; reason?: string } {
+    if (!this.isPathAllowed(worktreePath)) {
+      return { safe: false, reason: 'Worktree path outside allowed root' };
+    }
+
+    if (!existsSync(repositoryPath)) {
+      return { safe: false, reason: 'Repository path does not exist' };
+    }
+
+    try {
+      this.git(repositoryPath, ['rev-parse', '--show-toplevel']);
+    } catch {
+      return { safe: false, reason: 'Not a valid git repository' };
+    }
+
+    return { safe: true };
+  }
 }

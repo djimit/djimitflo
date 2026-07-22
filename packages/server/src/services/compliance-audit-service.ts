@@ -322,7 +322,7 @@ export class ComplianceAuditService {
   }
 
   private checkRuntimeGovernance(start: string, end: string): ComplianceFinding[] {
-    const hasRuntimeGovernance = true; // RuntimeGovernanceService exists and is mounted
+    const hasRuntimeGovernance = this.isRuntimeGovernanceActive();
     let totalViolations = 0;
     try {
       totalViolations = (this.db.prepare("SELECT COUNT(*) as c FROM compliance_audit_log WHERE action = 'governance_violation' AND timestamp BETWEEN ? AND ?").get(start, end) as any)?.c || 0;
@@ -337,6 +337,15 @@ export class ComplianceAuditService {
       evidence: [`Runtime governance service: ${hasRuntimeGovernance ? 'mounted' : 'not mounted'}`, `${totalViolations} violations`],
       recommendation: hasRuntimeGovernance ? '' : 'Mount RuntimeGovernanceService',
     }];
+  }
+
+  private isRuntimeGovernanceActive(): boolean {
+    try {
+      const row = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='governance_policies'").get() as any;
+      return !!row;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -416,6 +425,22 @@ export class ComplianceAuditService {
       CREATE INDEX IF NOT EXISTS idx_compliance_audit_timestamp ON compliance_audit_log(timestamp);
       CREATE INDEX IF NOT EXISTS idx_compliance_audit_actor ON compliance_audit_log(actor);
       CREATE INDEX IF NOT EXISTS idx_compliance_audit_action ON compliance_audit_log(action);
+
+      -- SECURITY: Block updates and deletes on the audit log at DB level.
+      -- This makes the chain tamper-evident even against database admins.
+      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_update
+        BEFORE UPDATE ON compliance_audit_log
+        FOR EACH ROW
+        BEGIN
+          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: updates are forbidden');
+        END;
+
+      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_delete
+        BEFORE DELETE ON compliance_audit_log
+        FOR EACH ROW
+        BEGIN
+          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: deletes are forbidden');
+        END;
 
       CREATE TABLE IF NOT EXISTS compliance_reports (
         id TEXT PRIMARY KEY,
