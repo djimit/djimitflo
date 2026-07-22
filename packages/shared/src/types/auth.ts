@@ -54,6 +54,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   ],
   [UserRole.MAKER]: [
     'create:task',
+    'execute:task',
     'write:evidence',
     'write:agents',
     'write:skills',

@@ -95,14 +95,16 @@ describe('ComplianceAuditService', () => {
     expect(result.entriesChecked).toBe(3);
   });
 
-  it('detects chain tampering', () => {
+  it('detects chain tampering via append-only trigger', () => {
     service.appendEntry({ actor: 'a', action: 'test1', resource: 'r1', outcome: 'success', evidence: { ts: 1 } });
 
-    // Tamper with the entry
-    db.prepare('UPDATE compliance_audit_log SET action = ? WHERE actor = ?').run('tampered', 'a');
+    // Attempt to tamper with the entry — should be blocked by append-only trigger
+    expect(() => {
+      db.prepare('UPDATE compliance_audit_log SET action = ? WHERE actor = ?').run('tampered', 'a');
+    }).toThrow(/append-only/);
 
     const result = service.verifyChain();
-    expect(result.valid).toBe(false);
+    expect(result.valid).toBe(true);
   });
 
   it('generates compliance report', () => {

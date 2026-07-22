@@ -60,28 +60,28 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.canReadTask(admin, task)).toBe(true);
   });
 
-  it('operator can read own task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-1', created_by: 'op-1' };
-    expect(AuthorizationService.canReadTask(op, task)).toBe(true);
+  it('maker can read own task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canReadTask(maker, task)).toBe(true);
   });
 
-  it('operator can read task where they are creator', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-2', created_by: 'op-1' };
-    expect(AuthorizationService.canReadTask(op, task)).toBe(true);
+  it('maker can read task where they are creator', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-2', created_by: 'm-1' };
+    expect(AuthorizationService.canReadTask(maker, task)).toBe(true);
   });
 
-  it('operator cannot read another operator task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-2', created_by: 'op-2' };
-    expect(AuthorizationService.canReadTask(op, task)).toBe(false);
+  it('maker cannot read another maker task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-2', created_by: 'm-2' };
+    expect(AuthorizationService.canReadTask(maker, task)).toBe(false);
   });
 
-  it('operator cannot read null-owned (legacy) task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
+  it('maker cannot read null-owned (legacy) task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
     const task = { owner_user_id: null, created_by: null };
-    expect(AuthorizationService.canReadTask(op, task)).toBe(false);
+    expect(AuthorizationService.canReadTask(maker, task)).toBe(false);
   });
 
   it('viewer can read own task', () => {
@@ -102,16 +102,16 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.canReadTask(viewer, task)).toBe(false);
   });
 
-  it('operator can modify own task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-1', created_by: 'op-1' };
-    expect(AuthorizationService.canModifyTask(op, task)).toBe(true);
+  it('maker can modify own task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canModifyTask(maker, task)).toBe(true);
   });
 
-  it('operator cannot modify another operator task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-2', created_by: 'op-2' };
-    expect(AuthorizationService.canModifyTask(op, task)).toBe(false);
+  it('maker cannot modify another maker task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-2', created_by: 'm-2' };
+    expect(AuthorizationService.canModifyTask(maker, task)).toBe(false);
   });
 
   it('admin can modify any task', () => {
@@ -120,16 +120,16 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.canModifyTask(admin, task)).toBe(true);
   });
 
-  it('operator can execute own task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-1', created_by: 'op-1' };
-    expect(AuthorizationService.canExecuteTask(op, task)).toBe(true);
+  it('maker can execute own task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canExecuteTask(maker, task)).toBe(true);
   });
 
-  it('operator cannot execute another operator task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-2', created_by: 'op-2' };
-    expect(AuthorizationService.canExecuteTask(op, task)).toBe(false);
+  it('maker cannot execute another maker task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const task = { owner_user_id: 'm-2', created_by: 'm-2' };
+    expect(AuthorizationService.canExecuteTask(maker, task)).toBe(false);
   });
 
   it('viewer cannot execute any task', () => {
@@ -144,10 +144,10 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.canDeleteTask(admin, task)).toBe(true);
   });
 
-  it('operator cannot delete task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const ownTask = { owner_user_id: 'op-1', created_by: 'op-1' };
-    expect(AuthorizationService.canDeleteTask(op, ownTask)).toBe(false);
+  it('maker cannot delete task', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const ownTask = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canDeleteTask(maker, ownTask)).toBe(false);
   });
 
   it('viewer cannot delete task', () => {
@@ -162,16 +162,22 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.canApproveForTask(admin, task)).toBe(true);
   });
 
-  it('operator can approve own task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-1', created_by: 'op-1' };
-    expect(AuthorizationService.canApproveForTask(op, task)).toBe(true);
+  it('approver can approve tasks they do not own (separation of duties)', () => {
+    const approver = { sub: 'a-1', email: 'a@test.local', role: UserRole.APPROVER, iat: 0, exp: 0 };
+    const otherTask = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canApproveForTask(approver, otherTask)).toBe(true);
   });
 
-  it('operator cannot approve another operator task', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const task = { owner_user_id: 'op-2', created_by: 'op-2' };
-    expect(AuthorizationService.canApproveForTask(op, task)).toBe(false);
+  it('approver cannot approve own task (separation of duties)', () => {
+    const approver = { sub: 'a-1', email: 'a@test.local', role: UserRole.APPROVER, iat: 0, exp: 0 };
+    const ownTask = { owner_user_id: 'a-1', created_by: 'a-1' };
+    expect(AuthorizationService.canApproveForTask(approver, ownTask)).toBe(false);
+  });
+
+  it('maker cannot approve any task (separation of duties)', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const ownTask = { owner_user_id: 'm-1', created_by: 'm-1' };
+    expect(AuthorizationService.canApproveForTask(maker, ownTask)).toBe(false);
   });
 
   it('viewer cannot approve any task', () => {
@@ -182,14 +188,14 @@ describe('AuthorizationService', () => {
 
   it('evidence access follows task access', () => {
     const admin = { sub: 'admin-id', email: 'admin@test.local', role: UserRole.ADMIN, iat: 0, exp: 0 };
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
     const viewer = { sub: 'v-1', email: 'v@test.local', role: UserRole.VIEWER, iat: 0, exp: 0 };
-    const ownTask = { owner_user_id: 'op-1', created_by: 'op-1' };
-    const otherTask = { owner_user_id: 'op-2', created_by: 'op-2' };
+    const ownTask = { owner_user_id: 'm-1', created_by: 'm-1' };
+    const otherTask = { owner_user_id: 'm-2', created_by: 'm-2' };
 
     expect(AuthorizationService.canReadEvidenceForTask(admin, ownTask)).toBe(true);
-    expect(AuthorizationService.canReadEvidenceForTask(op, ownTask)).toBe(true);
-    expect(AuthorizationService.canReadEvidenceForTask(op, otherTask)).toBe(false);
+    expect(AuthorizationService.canReadEvidenceForTask(maker, ownTask)).toBe(true);
+    expect(AuthorizationService.canReadEvidenceForTask(maker, otherTask)).toBe(false);
     expect(AuthorizationService.canReadEvidenceForTask(viewer, ownTask)).toBe(false);
   });
 
@@ -198,12 +204,12 @@ describe('AuthorizationService', () => {
     expect(AuthorizationService.getTaskVisibilityWhere(admin)).toBeNull();
   });
 
-  it('getTaskVisibilityWhere returns owner filter for operator', () => {
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
-    const result = AuthorizationService.getTaskVisibilityWhere(op);
+  it('getTaskVisibilityWhere returns owner filter for maker', () => {
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
+    const result = AuthorizationService.getTaskVisibilityWhere(maker);
     expect(result).not.toBeNull();
     expect(result!.clause).toBe('(tasks.owner_user_id = ? OR tasks.created_by = ?)');
-    expect(result!.params).toEqual(['op-1', 'op-1']);
+    expect(result!.params).toEqual(['m-1', 'm-1']);
   });
 
   it('getTaskVisibilityWhere returns owner filter for viewer', () => {
@@ -214,28 +220,34 @@ describe('AuthorizationService', () => {
     expect(result!.params).toEqual(['v-1', 'v-1']);
   });
 
-  it('canManageBackups only for admin', () => {
+  it('canManageBackups only for admin and platform_admin', () => {
     const admin = { sub: 'admin-id', email: 'admin@test.local', role: UserRole.ADMIN, iat: 0, exp: 0 };
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
+    const platformAdmin = { sub: 'pa-1', email: 'pa@test.local', role: UserRole.PLATFORM_ADMIN, iat: 0, exp: 0 };
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
     const viewer = { sub: 'v-1', email: 'v@test.local', role: UserRole.VIEWER, iat: 0, exp: 0 };
     expect(AuthorizationService.canManageBackups(admin)).toBe(true);
-    expect(AuthorizationService.canManageBackups(op)).toBe(false);
+    expect(AuthorizationService.canManageBackups(platformAdmin)).toBe(true);
+    expect(AuthorizationService.canManageBackups(maker)).toBe(false);
     expect(AuthorizationService.canManageBackups(viewer)).toBe(false);
   });
 
-  it('canAccessObservability only for admin', () => {
+  it('canAccessObservability for admin, platform_admin, and auditor', () => {
     const admin = { sub: 'admin-id', email: 'admin@test.local', role: UserRole.ADMIN, iat: 0, exp: 0 };
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
+    const platformAdmin = { sub: 'pa-1', email: 'pa@test.local', role: UserRole.PLATFORM_ADMIN, iat: 0, exp: 0 };
+    const auditor = { sub: 'a-1', email: 'a@test.local', role: UserRole.AUDITOR, iat: 0, exp: 0 };
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
     expect(AuthorizationService.canAccessObservability(admin)).toBe(true);
-    expect(AuthorizationService.canAccessObservability(op)).toBe(false);
+    expect(AuthorizationService.canAccessObservability(platformAdmin)).toBe(true);
+    expect(AuthorizationService.canAccessObservability(auditor)).toBe(true);
+    expect(AuthorizationService.canAccessObservability(maker)).toBe(false);
   });
 
-  it('canReadRepositoryDetail for operator and admin', () => {
+  it('canReadRepositoryDetail for all authenticated roles', () => {
     const admin = { sub: 'admin-id', email: 'admin@test.local', role: UserRole.ADMIN, iat: 0, exp: 0 };
-    const op = { sub: 'op-1', email: 'op@test.local', role: UserRole.OPERATOR, iat: 0, exp: 0 };
+    const maker = { sub: 'm-1', email: 'm@test.local', role: UserRole.MAKER, iat: 0, exp: 0 };
     const viewer = { sub: 'v-1', email: 'v@test.local', role: UserRole.VIEWER, iat: 0, exp: 0 };
     expect(AuthorizationService.canReadRepositoryDetail(admin)).toBe(true);
-    expect(AuthorizationService.canReadRepositoryDetail(op)).toBe(true);
+    expect(AuthorizationService.canReadRepositoryDetail(maker)).toBe(true);
     expect(AuthorizationService.canReadRepositoryDetail(viewer)).toBe(true);
   });
 });

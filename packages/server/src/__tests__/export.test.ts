@@ -237,9 +237,9 @@ describe('ExportService', () => {
     });
 
     it('denies non-admin from audit export (403)', () => {
-      const operator = makeUser(UserRole.OPERATOR, 'op-1');
-      expect(() => exportService.exportAudit(operator, { format: ExportFormat.JSON })).toThrow(ExportError);
-      try { exportService.exportAudit(operator, { format: ExportFormat.JSON }); } catch (e: any) {
+      const maker = makeUser(UserRole.MAKER, 'm-1');
+      expect(() => exportService.exportAudit(maker, { format: ExportFormat.JSON })).toThrow(ExportError);
+      try { exportService.exportAudit(maker, { format: ExportFormat.JSON }); } catch (e: any) {
         expect(e.statusCode).toBe(403);
       }
     });
@@ -253,8 +253,8 @@ describe('ExportService', () => {
   describe('exportRepository', () => {
     it('redacts path and metadata for non-admin', () => {
       const repoId = seedRepository(db, { path: '/secret/path', metadata: '{}' });
-      const operator = makeUser(UserRole.OPERATOR, 'op-1');
-      const result = exportService.exportRepository(repoId, operator, { format: ExportFormat.JSON });
+      const maker = makeUser(UserRole.MAKER, 'm-1');
+      const result = exportService.exportRepository(repoId, maker, { format: ExportFormat.JSON });
       const parsed = JSON.parse(result.data);
       expect(parsed.manifest.redactionApplied).toBe(true);
       expect(parsed.repository.path).toBeNull();
