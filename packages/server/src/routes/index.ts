@@ -58,6 +58,7 @@ import { createResearchRoutes } from './research';
 import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
 import { createSBOMRoutes } from './sbom';
+import { createGovernanceFeedbackRoutes } from './governance-feedback';
 import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
@@ -175,6 +176,7 @@ export function createRoutes(
   router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
   router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
   router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
+  router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth));
   router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
   router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
   router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
