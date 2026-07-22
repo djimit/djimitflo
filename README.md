@@ -1,14 +1,28 @@
 # DjimFlo
 
-**Agent orchestration control plane for AI-assisted engineering teams**
+**Research-grade agentic governance laboratory for AI-assisted engineering**
 
-[![Tests](https://img.shields.io/badge/tests-1445%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-344%20passing-brightgreen)]()
 [![Version](https://img.shields.io/badge/version-0.5.8-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6)]()
-[![MCP](https://img.shields.io/badge/MCP-29%20tools-purple)]()
+[![Security](https://img.shields.io/badge/security-hardened-success)]()
 
-DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows and audit trails.
+DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows, policy enforcement, and audit trails.
+
+**Status**: Research prototype. Not production-ready for sensitive data. See [Security Status](#security-status) and [Threat Model](.swarm/THREAT-MODEL.md).
+
+---
+
+## Table of Contents
+
+- [Status](#status)
+- [What DjimFlo Does](#what-djimflo-does)
+- [Architecture](#architecture)
+- [Security Status](#security-status)
+- [Getting Started](#getting-started)
+- [Development](#development)
+- [License](#license)
 
 ---
 
@@ -16,13 +30,16 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 
 | Metric | Value |
 |--------|-------|
-| **Version** | 0.5.8 |
-| **Tests** | 1445 passing (128 test files) |
-| **API Endpoints** | ~160 across 57 route modules |
-| **MCP Tools** | 29 |
-| **Database Tables** | 72 (21 base + 51 migration) |
-| **Agent Runtimes** | 9 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock, Data, Infra) |
-| **Last Updated** | 2026-07-06 |
+| **Version** | 0.5.8 (all packages) |
+| **Tests** | 344+ passing |
+| **Route Modules** | 67 |
+| **API Endpoints** | ~556 |
+| **Database Tables** | 72+ |
+| **Agent Runtimes** | 7 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock) |
+| **Packages** | 8 workspaces |
+| **Node** | >= 22 |
+| **TypeScript** | 6.x strict mode |
+| **Last Updated** | 2026-07-22 |
 
 ---
 
@@ -31,30 +48,31 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 ### Task & Agent Management
 - Create, assign, and track tasks across multiple AI coding agents
 - Agent registry with capability tracking, status monitoring, and retirement workflows
-- Multi-runtime execution engine with isolated subprocess spawning
+- Multi-runtime execution engine with Docker sandbox isolation
 - Real-time task output streaming via WebSocket
 
 ### Loop Execution Engine
-- **Doc Drift Loop** — Scans repositories for documentation drift, TODO/FIXME markers, stale script references
-- **Self-Improvement Loop** — Autonomous code improvement via maker/checker workflow
+- **Doc Drift Loop** — Scans repositories for documentation drift, TODO/FIXME markers
+- **Self-Improvement Loop** — Code improvement via maker/checker workflow in disposable worktrees
 - **GitHub Issue Loop** — Processes GitHub issues through maker/checker pipeline
 - Each loop creates git worktrees for isolation, dispatches maker workers, then checker workers
 
 ### Approval & Governance
-- Risk-classified approval workflow (low/medium/high/critical)
-- Policy-based gating with sandbox policies and instruction profiles
-- Immutable compliance audit trail with cryptographic chain hashing
-- OpenMythos Governance Benchmark integration (351 test cases across 11 categories)
+- Risk-classified approval workflow (low/medium/high/critical) with policy enforcement
+- **ToolBroker** — mandatory policy enforcement point for all mutating actions
+- **Self-approval prevention** — maker cannot approve their own requests (data-layer invariant)
+- **Maker-checker-approver separation** — six distinct roles with granular permissions
+- Compliance audit trail with cryptographic chain hashing and append-only enforcement
+- SBOM generation (CycloneDX 1.6)
 
 ### Multi-Channel
-- **REST API** — 160+ endpoints for full platform control
-- **WebSocket** — Real-time event streaming to dashboard
-- **MCP Server** — 13 tools for Claude Code / Cursor / VS Code integration
+- **REST API** — 556 endpoints across 67 route modules
+- **WebSocket** — Real-time event streaming to dashboard (token via subprotocol, not URL)
+- **MCP Server** — Tools for Claude Code / Cursor / VS Code integration
 - **Telegram Bot** — Mobile task creation and approval
 
 ### Dashboard
-- React 18 + Vite 6 + Tailwind CSS frontend
-- 48 components including React Flow pipeline builder
+- React 19 + Vite 8 + Tailwind CSS frontend
 - Real-time agent status, task progress, and loop visualization
 
 ---
@@ -66,288 +84,172 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 ```
 djimitflo/
 ├── packages/
-│   ├── shared/          # Shared types, schemas, role definitions
-│   ├── telegram/        # Telegram bot gateway (grammy)
-│   ├── agent-catalog/   # Agent import from catalog files
-│   ├── server/          # Express + SQLite backend (main package)
-│   ├── mcp-server/      # MCP server (stdio + HTTP transports)
-│   └── dashboard/       # React + Vite frontend
+│   ├── shared/             # Shared types, role definitions, auth
+│   ├── server/             # Express + SQLite backend (main package)
+│   ├── dashboard/          # React + Vite frontend
+│   ├── mcp-server/         # MCP server (stdio + HTTP transports)
+│   ├── telegram/           # Telegram bot gateway (grammy)
+│   ├── agent-catalog/      # Agent import from catalog files
+│   ├── ransomware-module/  # Anti-ransomware detection (private)
+│   └── knowledge/          # Knowledge storage (runtime-generated)
+├── .swarm/                 # Threat model, evidence, security docs
+├── Dockerfile              # Reproducible multi-stage build
+└── docker-entrypoint.sh    # Container entrypoint
 ```
 
-### System Architecture
+### Security Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         CLIENTS                                      │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
-│  │ Dashboard │  │   MCP    │  │ Telegram │  │  REST    │            │
-│  │  (React)  │  │  Server  │  │   Bot    │  │  Client  │            │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘            │
-│       └──────────────┴──────────────┴──────────────┘                │
-│                              │                                       │
-│                          WebSocket + HTTP                            │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────┴──────────────────────────────────────┐
-│                         SERVER                                       │
-│                                                                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                    Express App (index.ts)                     │    │
-│  │  • Auth (JWT + bcrypt)  • CORS  • Request Logger             │    │
-│  │  • WebSocket Server     • Static Dashboard                   │    │
-│  └──────────────────────────┬──────────────────────────────────┘    │
-│                              │                                       │
-│  ┌──────────────────────────┴──────────────────────────────────┐    │
-│  │                   Route Factories (57 modules)                │    │
-│  │                                                               │    │
-│  │  Core: tasks, agents, work-items, goals, loops, messages     │    │
-│  │  Swarm: swarms, workers, spawns, intelligence, governance    │    │
-│  │  Governance: approvals, policies, risk, compliance, audit    │    │
-│  │  Evidence: evidence, discussions, research, citations        │    │
-│  │  Cognitive: cognitive, memory, learning, self-improvement    │    │
-│  │  Integration: openmythos, mcp, federation, telegram          │    │
-│  │  Operations: health, backup, exports, usage, observability   │    │
-│  └──────────────────────────┬──────────────────────────────────┘    │
-│                              │                                       │
-│  ┌──────────────────────────┴──────────────────────────────────┐    │
-│  │                    Services (114 files)                       │    │
-│  │                                                               │    │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐    │    │
-│  │  │ LoopService │  │ AuthService  │  │ ExecutionEngine  │    │    │
-│  │  │ (loops,     │  │ (JWT, bcrypt,│  │ (9 executors,    │    │    │
-│  │  │  worktrees, │  │  RBAC)       │  │  subprocess      │    │    │
-│  │  │  maker/     │  │              │  │  spawning)       │    │    │
-│  │  │  checker)   │  │              │  │                  │    │    │
-│  │  └─────────────┘  └──────────────┘  └──────────────────┘    │    │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐    │    │
-│  │  │ SwarmIntel  │  │ WorkerPool   │  │ ApprovalService  │    │    │
-│  │  │ (missions,  │  │ (concurrency,│  │ (risk gating,    │    │    │
-│  │  │  claims,    │  │  scheduling, │  │  policies,       │    │    │
-│  │  │  panels)    │  │  drain)      │  │  sandbox)        │    │    │
-│  │  └─────────────┘  └──────────────┘  └──────────────────┘    │    │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐    │    │
-│  │  │ OpenMythos  │  │ Compliance   │  │ NestedSpawn      │    │    │
-│  │  │ EvalService │  │ AuditService │  │ Service          │    │    │
-│  │  │ (benchmark, │  │ (immutable   │  │ (depth/cycle/    │    │    │
-│  │  │  LLM judge) │  │  chain hash) │  │  budget gating)  │    │    │
-│  │  └─────────────┘  └──────────────┘  └──────────────────┘    │    │
-│  └──────────────────────────┬──────────────────────────────────┘    │
-│                              │                                       │
-│  ┌──────────────────────────┴──────────────────────────────────┐    │
-│  │                  better-sqlite3 (72 tables)                   │    │
-│  │  Base: tasks, agents, messages, work_items, goals, ...       │    │
-│  │  Migration: loop_runs, worker_leases, swarm_sessions, ...    │    │
-│  └─────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────┘
-```
+See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 
-### Execution Engine
+**Trust Boundaries**:
+1. External Internet → API Server (TLS 1.3, JWT 15min, CSP)
+2. API Server → Database (append-only audit triggers, hash chain)
+3. Execution Sandbox (Docker: non-root, cap-drop ALL, no-new-privileges, digest-pinned)
+4. LLM Providers (per-task scoped credentials, classification-aware routing)
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     ExecutionEngine                           │
-│                                                               │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────────┐ │
-│  │OpenCode │ │  Codex  │ │ Claude  │ │ Gemini  │ │   Pi   │ │
-│  │Executor │ │Executor │ │Executor │ │Executor │ │Executor│ │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘ └────────┘ │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐            │
-│  │ Editor  │ │  Mock   │ │  Data   │ │  Infra  │            │
-│  │Executor │ │Executor │ │Executor │ │Executor │            │
-│  └─────────┘ └─────────┘ └─────────┘ └─────────┘            │
-│                                                               │
-│  Features:                                                    │
-│  • Subprocess spawning with env isolation                     │
-│  • Timeout enforcement (configurable per runtime)             │
-│  • stdout/stderr capture to evidence files                    │
-│  • WebSocket streaming of execution output                    │
-│  • Memory sync to UAMS/Qdrant (optional)                      │
-└──────────────────────────────────────────────────────────────┘
-```
+**Security Invariants** (all tested):
+- Default deny for unknown tool calls
+- Self-approval forbidden at data layer
+- Audit log append-only via SQLite triggers
+- Docker sandbox: non-root, read-only root, network isolated
+- Plugins disabled by default, signature required
+- Background workers only in operator/autonomous profile
 
-### Loop Execution Flow
+### Role Model
 
-```
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  Start   │───▶│ Discover │───▶│  Create  │───▶│ Dispatch │
-│  Loop    │    │ Findings │    │ Worktree │  │  Maker   │
-└──────────┘    └──────────┘    └──────────┘    └────┬─────┘
-                                                       │
-                                                       ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
-│  Close   │◀───│  Verify  │◀───│ Dispatch │◀───│  Maker   │
-│  Loop    │    │  Gates   │    │ Checker  │    │ Complete │
-└──────────┘    └──────────┘    └──────────┘    └──────────┘
-```
+| Role | Permissions |
+|------|------------|
+| **admin** | Full access |
+| **platform_admin** | Config, users, backups, tokens (no execute) |
+| **approver** | Approve tasks, read-only access |
+| **maker** | Create tasks, write evidence/agents/skills |
+| **checker** | Read-only + write evidence |
+| **auditor** | Read audit trail, evidence, repositories |
+| **viewer** | Read-only |
 
 ---
 
-## Quick Start
+## Security Status
+
+### Implemented
+- [x] Docker container isolation (non-root, cap-drop, no-new-privileges, read-only root)
+- [x] Image digest pinning (`@sha256:` required)
+- [x] JWT 15-minute TTL with refresh token rotation
+- [x] WebSocket token via subprotocol (not URL)
+- [x] CSP headers (strict, frame-ancestors none)
+- [x] Self-approval prevention (data-layer invariant)
+- [x] Audit log append-only (SQLite triggers)
+- [x] ToolBroker policy enforcement (default deny)
+- [x] Plugin signature verification (default disabled)
+- [x] SBOM generation (CycloneDX)
+- [x] Data classification model (4 levels)
+- [x] Maker-checker-approver separation
+- [x] Threat model (STRIDE)
+- [x] Path traversal guards in worktree operations
+
+### Planned (Not Yet Implemented)
+- [ ] OIDC/MFA integration
+- [ ] PostgreSQL for production (SQLite is dev/demo only)
+- [ ] External audit anchoring (Merkle root → WORM/SIEM)
+- [ ] Step-up authentication for critical actions
+- [ ] Container image scanning in CI
+- [ ] GitHub Actions SHA pinning
+- [ ] OpenAPI contract tests in CI
+- [ ] Breaking-change detection for API
+- [ ] DPIA for relevant use cases
+- [ ] Backup encryption at rest
+
+---
+
+## Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- npm 9+
+- Node.js >= 22
+- npm >= 9
+- Docker (for sandboxed execution)
 
 ### Installation
+
 ```bash
-git clone https://github.com/djimit/djimitflo.git
+git clone <repo>
 cd djimitflo
 npm install
-npm run build
 ```
 
 ### Development
+
 ```bash
-# Start both server + dashboard
+# Start server + dashboard
 npm run dev
 
-# Or individually
-npm run dev:server    # http://localhost:3001
-npm run dev:dashboard # http://localhost:5173
+# Server only
+npm run dev:server
+
+# Dashboard only
+npm run dev:dashboard
 ```
 
-### Access
+### Build
 
-| Service | URL |
-|---------|-----|
-| **Dashboard** | http://localhost:5173 |
-| **API** | http://localhost:3001/api |
-| **WebSocket** | ws://localhost:3001/ws |
-| **Health** | http://localhost:3001/api/health |
+```bash
+# Build all workspaces
+npm run build
 
----
-
-## API Overview
-
-### Core Resources
-| Resource | Endpoints |
-|----------|-----------|
-| **Tasks** | CRUD, execute, approve, evidence |
-| **Agents** | Register, status, capabilities, retire |
-| **Work Items** | CRUD, batch import, convert to goals |
-| **Goals** | CRUD, batch preview/apply, risk classification |
-| **Loops** | Start, continue, verify, complete, review-bundle |
-| **Messages** | Send, receive, broadcast, read/unread |
-
-### Swarm & Intelligence
-| Resource | Endpoints |
-|----------|-----------|
-| **Swarm** | Sessions, specialist panels, claims, hypotheses |
-| **Workers** | Pool plan, start, drain, stop, handoffs |
-| **Missions** | Create, transition, tasks, decisions, capacity |
-| **Governance** | Evaluate, runner manifests, proof runs |
-
-### Governance & Compliance
-| Resource | Endpoints |
-|----------|-----------|
-| **Approvals** | Request, approve, deny, pending queue |
-| **Policies** | CRUD, sandbox policies, instruction profiles |
-| **Risk** | Assessments, violations, evidence |
-| **Compliance** | Audit trail, chain integrity, reports |
-| **OpenMythos** | Eval runs, case results, scoring |
-
-### Integration
-| Resource | Endpoints |
-|----------|-----------|
-| **MCP** | Servers, tools, permissions |
-| **Federation** | Peers, tokens, sync |
-| **Telegram** | Bot config, webhook |
-| **Research** | Sources, claims, reports, citations |
-
----
-
-## MCP Server
-
-29 tools exposed via stdio or HTTP transport:
-
-| Tool | Category | Description |
-|------|----------|-------------|
-| `djimitflo_list_loop_runs` | Loops | List recent loop runs |
-| `djimitflo_get_loop_status` | Loops | Get detailed loop status |
-| `djimitflo_get_loop_catalog` | Loops | List available loop types |
-| `djimitflo_list_goals` | Goals | List goals with status |
-| `djimitflo_get_goal` | Goals | Get goal details |
-| `djimitflo_list_agents` | Agents | List registered agents |
-| `djimitflo_get_agent_status` | Agents | Get agent details |
-| `djimitflo_get_mission_control` | Overview | Mission control dashboard |
-| `djimitflo_get_system_health` | Overview | System health + table counts |
-| `djimitflo_spawn_agent` | Orchestration | Spawn sub-agent with isolated context |
-| `djimitflo_handoff_agent` | Orchestration | Transfer work between agents |
-| `djimitflo_approve_action` | Orchestration | Request human approval |
-| `djimitflo_list_orchestration_agents` | Orchestration | List all agents with status |
-| `djimitflo_mcp_doctor` | Governance | Diagnose registry, permission, and sidecar-state drift |
-| `djimitflo_sync_mcp_catalog` | Governance | Preview or apply runtime tool catalog sync |
-| `djimitflo_sync_http_sidecar_catalog` | Governance | Preview or apply OpenAPI sidecar tool inventory sync |
-| `djimitflo_probe_mcp_sidecars` | Governance | Preview or apply sidecar server health probes |
-| `okf_search` | Knowledge | Search the OKF bundle |
-| `okf_get` | Knowledge | Get an OKF concept by path |
-| `okf_related` | Knowledge | Traverse OKF concept links |
-| `okf_validate` | Knowledge | Validate OKF bundle conformance |
-| `okf_status` | Knowledge | Summarize OKF health |
-| `djimitflo_list_mcp_servers` | Governance | List registered MCP servers |
-| `djimitflo_list_mcp_tools` | Governance | List MCP tools and risk metadata |
-| `djimitflo_get_mcp_permissions` | Governance | List effective MCP decisions |
-| `djimitflo_get_cost_summary` | Governance | Summarize token and skill cost signals |
-| `djimitflo_get_evidence_chain` | Evidence | Return task evidence, events, approvals, and graph edges |
-| `djimitflo_list_openmythos_runs` | OpenMythos | List evaluation runs and result counts |
-| `djimitflo_list_skill_outcomes` | Skills | List recent skill outcomes |
-
-### Claude Code / Cursor Integration
-
-```json
-{
-  "mcpServers": {
-    "djimitflo": {
-      "command": "node",
-      "args": ["./packages/mcp-server/dist/index.js", "--transport", "stdio"],
-      "env": {
-        "DJIMITFLO_DB": "./packages/server/.data/djimitflo.sqlite"
-      }
-    }
-  }
-}
+# Build and run via Docker
+docker build -t djimitflo:latest .
+docker run -p 3001:3001 -v djimitflo-data:/data djimitflo:latest
 ```
 
+### Testing
+
+```bash
+# All tests
+npm run test
+
+# Lint
+npm run lint
+
+# Type check
+npm run type-check
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | (required in prod) | JWT signing secret |
+| `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
+| `NODE_ENV` | `development` | Environment |
+| `DB_PATH` | `./data/djimitflo.sqlite` | SQLite database path |
+| `DOCKER_SANDBOX_IMAGE` | `djimitflo-runner:latest` | Sandbox image (must be digest-pinned) |
+| `DOCKER_SANDBOX_SKIP_DIGEST_CHECK` | `false` | Skip digest check (NOT recommended) |
+| `PLUGIN_TRUST_KEYS` | (empty) | Comma-separated trusted Ed25519 public keys |
+
 ---
 
-## Technology Stack
+## Epistemic Discipline
 
-### Backend
-- **Express 4** — HTTP server with 160+ REST endpoints
-- **better-sqlite3** — SQLite database with 72 tables
-- **ws** — WebSocket server for real-time events
-- **TypeScript 5** — Strict mode, ESM modules
-- **Vitest** — 1445 tests across 128 test files
-- **Zod** — Input validation at trust boundaries
-- **bcryptjs + jsonwebtoken** — Authentication and authorization
+This project uses precise terminology:
 
-### Frontend
-- **React 18** — UI framework
-- **Vite 6** — Build tool
-- **Tailwind CSS** — Styling
-- **React Flow** — Visual pipeline builder
-- **Zustand** — State management
+| Term | Meaning |
+|------|---------|
+| "Immutable" | Append-only at SQLite trigger level; not externally anchored |
+| "Compliant" | Control evidence exists; not certified by external auditor |
+| "Sandboxed" | Docker container with isolation flags; not gVisor/Kata |
+| "Policy-enforced" | ToolBroker evaluates; runtime enforcement limited to pre-execution |
+| "Production-grade" | Research prototype; not validated for enterprise production |
 
-### DevOps
-- **npm workspaces** — Monorepo management
-- **Docker** — Container deployment ready
-
----
-
-## OpenMythos Integration
-
-DjimFlo integrates with the [OpenMythos](https://github.com/djimit/openmythos-benchmark) governance benchmark:
-
-- **351 test cases** across 11 categories (injection, hallucination, tool-scope, value-alignment, hierarchy, calibration, overthinking, contradiction, canary, temporal-reasoning, cross-lingual)
-- **LLM-as-Judge** scoring via Ollama (qwen2.5:14b-instruct)
-- **Discrimination gate** to filter non-discriminating cases
-- **Evolution bridge** for autonomous goal generation from benchmark results
+Claims are falsifiable via the test suite. Green tests are necessary but not sufficient for production assurance.
 
 ---
 
 ## License
 
-MIT
+MIT (root repository). Sub-packages: MIT unless noted otherwise.
+
+The `ransomware-module` package is marked `private: true` and is licensed MIT.
+
+---
 
 ## Author
 

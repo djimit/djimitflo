@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/mcp-server",
-  "version": "0.1.0",
+  "version": "0.5.8",
   "private": true,
   "description": "DjimitFlo MCP Server — exposes loop orchestration, goal management, and agent capabilities via Model Context Protocol",
   "type": "module",

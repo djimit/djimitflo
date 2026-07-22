@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/telegram",
-  "version": "0.0.1",
+  "version": "0.5.8",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

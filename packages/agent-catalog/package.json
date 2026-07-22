@@ -1,6 +1,6 @@
 {
   "name": "@djimitflo/agent-catalog",
-  "version": "0.1.0",
+  "version": "0.5.8",
   "private": true,
   "description": "Djimit agent catalog — import/normalize/evaluate/compile/activate agency-agents profiles.",
   "main": "dist/index.js",
