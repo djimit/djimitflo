@@ -281,7 +281,7 @@ async function main() {
   new ComplianceAuditService(db);
 
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, operatorRuntime));
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;

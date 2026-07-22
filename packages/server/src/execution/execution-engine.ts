@@ -29,6 +29,7 @@ import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
+import { ToolBroker } from '../services/tool-broker';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
@@ -68,6 +69,7 @@ export class ExecutionEngine {
   private executionModePolicy: ExecutionModePolicyService;
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
+  private toolBroker: ToolBroker;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -85,6 +87,10 @@ export class ExecutionEngine {
     this.metaOrchestration = service;
   }
 
+  getToolBroker(): ToolBroker {
+    return this.toolBroker;
+  }
+
   constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
     this.db = db;
     this.wsService = wsService;
@@ -98,6 +104,7 @@ export class ExecutionEngine {
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
     this.policyDecisionService = new PolicyDecisionService(db);
+    this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);

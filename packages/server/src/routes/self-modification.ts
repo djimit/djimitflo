@@ -1,5 +1,9 @@
 /**
  * Self-Modification routes — autonomous code improvement with evidence gating.
+ *
+ * SECURITY: Execute route is disabled. Self-modification in the source checkout
+ * is a hard no-go without disposable worktree, independent approvals, and
+ * sandboxed execution. See security review finding #2.
  */
 
 import { Router } from 'express';
@@ -17,13 +21,13 @@ export function createSelfModificationRoutes(db: Database, auth?: AuthMiddleware
     res.json(pipeline.getStatus());
   });
 
-  // POST /api/self-modification/analyze — analyze codebase for improvements
+  // POST /api/self-modification/analyze — analyze codebase for improvements (read-only)
   router.post('/analyze', requirePermission('write:governance'), (__req, res) => {
     const opportunities = pipeline.analyze();
     res.json({ opportunitiesFound: opportunities.length, opportunities });
   });
 
-  // POST /api/self-modification/plan — create plan for an opportunity
+  // POST /api/self-modification/plan — create plan for an opportunity (read-only)
   router.post('/plan', requirePermission('write:governance'), (req, res) => {
     const { opportunityId } = req.body;
     if (!opportunityId) {
@@ -38,19 +42,17 @@ export function createSelfModificationRoutes(db: Database, auth?: AuthMiddleware
     res.status(201).json(plan);
   });
 
-  // POST /api/self-modification/execute — execute a plan
-  router.post('/execute', requirePermission('write:governance'), async (req, res) => {
-    const { planId } = req.body;
-    if (!planId) {
-      res.status(400).json({ error: { message: 'planId is required', code: 'VALIDATION_ERROR' } });
-      return;
-    }
-    try {
-      const result = await pipeline.executePlan(planId);
-      res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error) } });
-    }
+  // POST /api/self-modification/execute — DISABLED
+  // Re-enabling requires: disposable worktree, RsiSafetyGuard coupling,
+  // maker-checker-approver separation, and sandboxed execution.
+  router.post('/execute', requirePermission('write:governance'), (_req, res) => {
+    res.status(451).json({
+      error: {
+        message: 'Self-modification execute is disabled for security. Use analyze+plan to generate a PR manually.',
+        code: 'SELF_MODIFICATION_DISABLED',
+        details: 'Direct code mutation via API is blocked. Create a plan, apply changes in an isolated worktree, and submit via PR with independent review.',
+      },
+    });
   });
 
   return router;

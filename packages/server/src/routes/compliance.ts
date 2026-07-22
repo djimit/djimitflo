@@ -18,13 +18,16 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   // POST /api/compliance/audit/append — append audit entry
+  // SECURITY: actor is derived from authenticated principal, never from request body.
+  // This prevents audit trail spoofing where a user could impersonate another actor.
   router.post('/audit/append', requirePermission('write:governance'), (req, res) => {
-    const { actor, action, resource, outcome, evidence } = req.body;
+    const { action, resource, outcome, evidence } = req.body;
     if (!action) {
       res.status(400).json({ error: { message: 'action is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const entry = service.appendEntry({ actor: actor || 'system', action, resource: resource || '', outcome: outcome || 'success', evidence });
+    const actor = req.user?.sub || req.user?.email || 'system';
+    const entry = service.appendEntry({ actor, action, resource: resource || '', outcome: outcome || 'success', evidence });
     res.status(201).json(entry);
   });
 

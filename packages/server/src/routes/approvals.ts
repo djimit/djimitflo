@@ -121,7 +121,16 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       }
 
       const decidedBy = user?.sub || 'system';
-      await executionEngine.handleApprovalDecision(id, Boolean(approved), decidedBy, reason);
+
+      try {
+        await executionEngine.handleApprovalDecision(id, Boolean(approved), decidedBy, reason);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
+          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
+          return;
+        }
+        throw error;
+      }
 
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as any;
       res.json(parseApproval(updated));
@@ -148,7 +157,17 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       }
 
       const decidedBy = user?.sub || 'system';
-      await executionEngine.handleApprovalDecision(req.params.id, true, decidedBy, req.body.reason);
+
+      try {
+        await executionEngine.handleApprovalDecision(req.params.id, true, decidedBy, req.body.reason);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
+          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
+          return;
+        }
+        throw error;
+      }
+
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(req.params.id) as any;
       res.json(parseApproval(updated));
     } catch (error) {
@@ -174,7 +193,16 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       }
 
       const decidedBy = user?.sub || 'system';
-      await executionEngine.handleApprovalDecision(req.params.id, false, decidedBy, req.body.reason);
+
+      try {
+        await executionEngine.handleApprovalDecision(req.params.id, false, decidedBy, req.body.reason);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
+          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
+          return;
+        }
+        throw error;
+      }
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(req.params.id) as any;
       res.json(parseApproval(updated));
     } catch (error) {

@@ -10,7 +10,7 @@ import { VectorMemoryService } from '../services/vector-memory-service';
 import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
 
-export function createApexRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBackgroundWorkers = false): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
@@ -19,8 +19,12 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware): Router {
   const workers = new BackgroundWorkerService(db);
   const llm = new LlmRouterService(db);
 
-  // Start background workers
-  workers.startAll();
+  // SECURITY: background workers only start in operator/autonomous profile.
+  // In api profile they would perform DB mutations (cleanup, archival) that
+  // violate the mutation-free guarantee.
+  if (enableBackgroundWorkers) {
+    workers.startAll();
+  }
 
   // ─── Plugins ─────────────────────────────────────────────────────────
   router.get('/plugins', requirePermission('read:evidence'), (_req, res) => {

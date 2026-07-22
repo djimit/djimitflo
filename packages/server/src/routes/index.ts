@@ -57,6 +57,7 @@ import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
 import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
+import { createSBOMRoutes } from './sbom';
 import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
@@ -82,7 +83,8 @@ export function createRoutes(
   authService?: AuthService,
   auth?: AuthMiddleware,
   wsService?: WebSocketService,
-  metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService
+  metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService,
+  operatorRuntime?: boolean,
 ): Router {
   const router = Router();
 
@@ -172,6 +174,7 @@ export function createRoutes(
   router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
   router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
   router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
+  router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
   router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
   router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
   router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
@@ -181,7 +184,7 @@ export function createRoutes(
   router.use('/research', requireAuth, createResearchRoutes(db, auth));
   router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
   router.use('/telegram', createTelegramRoutes(db, auth));
-  router.use('/apex', requireAuth, createApexRoutes(db, auth));
+  router.use('/apex', requireAuth, createApexRoutes(db, auth, operatorRuntime));
   router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
   router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
   router.use('/swarm-intel', requireAuth, createSwarmIntelRoutes(db, auth));
