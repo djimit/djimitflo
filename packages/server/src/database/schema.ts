@@ -233,6 +233,10 @@ CREATE TABLE IF NOT EXISTS approvals (
   request_type TEXT NOT NULL CHECK(request_type IN ('tool_call', 'file_write', 'shell_command', 'network_request', 'high_risk_action')),
   request_message TEXT NOT NULL,
   request_data TEXT NOT NULL, -- JSON object
+  requested_by TEXT NOT NULL DEFAULT 'system',
+  decided_by TEXT,
+  decided_at TEXT,
+  decision_reason TEXT,
   approved_by TEXT,
   approved_at TEXT,
   denied_at TEXT,

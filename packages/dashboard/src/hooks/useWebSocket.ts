@@ -44,10 +44,13 @@ export function useWebSocket(isAuthenticated: boolean) {
     }
 
     isConnecting.current = true;
-    const url = `${WS_BASE_URL}?token=${encodeURIComponent(token)}`;
+    // SECURITY: Token sent as subprotocol (not query string) to avoid
+    // token leakage via access logs, browser history, or referrer headers.
+    // Server must validate the "bearer" subprotocol and extract the token.
+    const socketProtocol = `bearer.${token}`;
 
     try {
-      const socket = new WebSocket(url);
+      const socket = new WebSocket(WS_BASE_URL, socketProtocol);
 
       socket.onopen = () => {
         isConnecting.current = false;
