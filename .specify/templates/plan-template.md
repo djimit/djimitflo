@@ -42,6 +42,39 @@
 
 [Gates determined based on constitution file]
 
+### Specification Quality Gates Checklist
+
+<!--
+  Constitution v1.1.0, Article: Specification Quality Gates.
+  Verify all 7 layers are present in the source spec before proceeding.
+-->
+
+- [ ] **L1 (CRITICAL)**: All functional requirements use EARS SHALL-format (FR-###)
+- [ ] **L2 (SHOULD)**: Non-Goals section + Forbidden Libraries list present
+- [ ] **L3 (CRITICAL)**: Success criteria have number + unit (SC-###)
+- [ ] **L4 (SHOULD)**: Hard Constraints section with allowed/forbidden tech
+- [ ] **L5 (SHOULD)**: Codebase Anchoring table with FR→file mappings
+- [ ] **L6 (CRITICAL)**: Named edge cases (EC-###) in IF-THEN format
+- [ ] **L7 (SHOULD)**: Verified Library Specs with versions + API constraints
+
+## Traceability Matrix
+
+<!--
+  S5: FR→Task→Test traceability.
+  Every FR MUST map to at least one task and one test.
+  This matrix is the contract: no orphan FRs, no untested requirements.
+  
+  Populated during /speckit.tasks. Verified by req_coverage gate at phase_complete.
+-->
+
+| FR | Description | Tasks | Tests | Status |
+|----|-------------|-------|-------|--------|
+| FR-001 | [brief description] | [T001, T002] | [test-file.test.ts] | TODO |
+| FR-002 | [brief description] | [T003] | [test-file.test.ts] | TODO |
+
+**Coverage rule**: Every FR-### from the spec MUST appear in this matrix.
+req_coverage gate blocks phase completion if any FR has zero tasks or zero tests.
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -57,12 +90,6 @@ specs/[###-feature]/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
 
 ```text
 # [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
@@ -100,8 +127,7 @@ ios/ or android/
 └── [platform-specific structure: feature modules, UI flows, platform tests]
 ```
 
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure Decision**: [Document the selected structure and reference the real directories captured above]
 
 ## Complexity Tracking
 

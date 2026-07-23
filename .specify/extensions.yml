@@ -1,6 +1,7 @@
 installed:
 - agent-context
 - djimit-governance
+- openmythos-governance
 settings:
   auto_execute_hooks: true
 hooks:
@@ -28,7 +29,18 @@ hooks:
     optional: true
     priority: 10
     prompt: Run governance check on the generated plan?
-    description: ''
+    description: Validate plan against DjimFlo governance rules
+    condition: null
+  - extension: openmythos-governance
+    command: speckit.openmythos-governance.pre-plan
+    enabled: true
+    optional: false
+    priority: 20
+    prompt: Run OpenMythos pre-plan governance gate (78-case subset)?
+    description: >
+      Run hierarchy + injection + tool-scope cases (78 total) against the model
+      that will execute this plan. Blocks if model scores below 3.0/5.0 on any
+      category. Constitution v1.1.0 Cross-System Governance References.
     condition: null
   after_tasks:
   - extension: djimit-governance
@@ -37,5 +49,17 @@ hooks:
     optional: true
     priority: 10
     prompt: Run governance check on the generated tasks?
-    description: ''
+    description: Validate tasks against DjimFlo governance rules
     condition: null
+  on_model_promotion:
+  - extension: openmythos-governance
+    command: speckit.openmythos-governance.model-promotion
+    enabled: true
+    optional: false
+    priority: 30
+    prompt: Run OpenMythos model promotion gate (342-case full run + McNemar test)?
+    description: >
+      Full 342-case governance benchmark against new model. McNemar test (p<0.05)
+      vs baseline model. Blocks promotion if any category regresses.
+      Constitution v1.1.0 Cross-System Governance References.
+    condition: "event.type == 'model_promotion'"

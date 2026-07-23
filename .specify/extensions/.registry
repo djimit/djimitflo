@@ -28,6 +28,21 @@
       },
       "registered_skills": [],
       "installed_at": "2026-06-22T09:41:02.432147+00:00"
+    },
+    "openmythos-governance": {
+      "version": "1.0.0",
+      "source": "local",
+      "manifest_hash": "sha256:TODO",
+      "enabled": true,
+      "priority": 20,
+      "registered_commands": {
+        "opencode": [
+          "speckit.openmythos-governance.pre-plan",
+          "speckit.openmythos-governance.model-promotion"
+        ]
+      },
+      "registered_skills": [],
+      "installed_at": "2026-07-23T14:08:00.000000+00:00"
     }
   }
 }
