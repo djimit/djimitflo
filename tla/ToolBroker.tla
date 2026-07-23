@@ -69,9 +69,11 @@ RiskLevel(tool) ==
 (* Actions *)
 EvaluateToolCall(principal, tool, policy) ==
     /\ LET decision_id == Hash(principal, tool)
-           decision == IF policy \in Policies
-                        THEN policy.decision
-                        ELSE DENY
+           decision == IF RiskLevel(tool) \in {HIGH, CRITICAL}
+                        THEN REQUIRE_APPROVAL
+                        ELSE IF policy \in Policies
+                             THEN policy.decision
+                             ELSE DENY
        IN /\ decisions' = decisions @@ (decision_id -> [tool |-> tool, principal |-> principal, decision |-> decision])
           /\ audit_log' = Append(audit_log, [decision_id |-> decision_id, action |-> decision, timestamp |-> Len(audit_log)])
     /\ UNCHANGED capability_tokens
