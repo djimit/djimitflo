@@ -10,6 +10,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
+import { ApexReportService } from '../services/apex-report-service';
 
 export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -60,6 +61,34 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
       const limit = req.query.limit ? Number(req.query.limit) : 10;
       const trend = evalService.getGovernanceTrend(req.params.agentId, limit);
       res.json({ agentId: req.params.agentId, trend });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  const apexReports = new ApexReportService();
+
+  // GET /api/openmythos/apex/reports — APEX research round index
+  router.get('/apex/reports', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json({ reports: apexReports.list() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/openmythos/apex/reports/:round — all reports for one round, with bodies
+  router.get('/apex/reports/:round', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      const round = Number(req.params.round);
+      if (!Number.isInteger(round) || round < 0) {
+        throw createError(400, 'round must be a non-negative integer', 'VALIDATION_ERROR');
+      }
+      const reports = apexReports.get(round);
+      if (reports.length === 0) {
+        throw createError(404, `No APEX reports for round ${round}`, 'NOT_FOUND');
+      }
+      res.json({ round, reports });
     } catch (error) {
       next(error);
     }
