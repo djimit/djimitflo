@@ -18,6 +18,7 @@ import { LoopLifecycleService } from './loop-lifecycle-service';
 import { LoopDiscoveryService } from './loop-discovery-service';
 import { LoopVerificationService } from './loop-verification-service';
 import type { ExecuteWorkerResult } from './loop-worker-executor-service';
+import { LoopEventService } from './loop-event-service';
 import type {
   LoopName,
   WorkerRole,
@@ -282,6 +283,7 @@ export class LoopService {
   private budget: LoopBudgetService;
   private worktree: WorktreeManager;
   private goals: GoalService;
+  private events: LoopEventService;
   public workerExecutor: LoopWorkerExecutorService;
   public runtimeCommand: RuntimeCommandService;
   public lifecycle: LoopLifecycleService;
@@ -312,6 +314,7 @@ export class LoopService {
     });
     this.worktree = new WorktreeManager(db);
     this.goals = new GoalService(db);
+    this.events = new LoopEventService(db);
     this.workerExecutor = new LoopWorkerExecutorService(db, this);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
@@ -2344,18 +2347,7 @@ export class LoopService {
     return rows.map((row) => this.parseWorkerLease(row));
   }
 
-  private listLoopEvents(loopRunId: string): LoopEventRecord[] {
-    const rows = this.db.prepare('SELECT * FROM loop_events WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
-    return rows.map((row) => ({
-      id: row.id,
-      loop_run_id: row.loop_run_id,
-      event_type: row.event_type,
-      level: row.level,
-      message: row.message,
-      metadata: JSON.parse(row.metadata || '{}'),
-      created_at: row.created_at,
-    }));
-  }
+
 
   public git(repositoryPath: string, args: string[]): string {
     try {
@@ -2429,22 +2421,35 @@ export class LoopService {
   }
 
   public recordLoopEvent(loopRunId: string, eventType: string, level: 'debug' | 'info' | 'warning' | 'error' | 'critical', message: string, metadata: Record<string, unknown>): void {
-    // Compress large metadata objects to save storage and tokens
-    let metadataStr = JSON.stringify(metadata);
-    if (metadataStr.length > 500) {
-      try {
-        const { ContextCompressionService } = require('./context-compression-service');
-        const compressor = new ContextCompressionService(this.db);
-        const result = compressor.compress(metadataStr, 'json');
-        if (result.ratio < 0.9) {
-          metadataStr = JSON.stringify({ _compressed: true, _hash: result.hash, data: result.compressed });
-        }
-      } catch { /* fallback to uncompressed */ }
-    }
-    this.db.prepare(`
-      INSERT INTO loop_events (id, loop_run_id, event_type, level, message, metadata, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(randomUUID(), loopRunId, eventType, level, message, metadataStr, new Date().toISOString());
+    this.events.recordEvent(loopRunId, eventType, level, message, metadata);
+  }
+
+  /**
+   * List events for a loop run. Delegates to LoopEventService.
+   */
+  public listLoopEvents(loopRunId: string): import('./loop-types').LoopEventRecord[] {
+    return this.events.listEvents(loopRunId);
+  }
+
+  /**
+   * Aggregate events by type for a loop run.
+   */
+  public aggregateLoopEvents(loopRunId: string): import('./loop-event-service').EventAggregation[] {
+    return this.events.aggregateEvents(loopRunId);
+  }
+
+  /**
+   * Get the latest event for a loop run.
+   */
+  public getLatestLoopEvent(loopRunId: string): import('./loop-types').LoopEventRecord | null {
+    return this.events.getLatestEvent(loopRunId);
+  }
+
+  /**
+   * Count events for a loop run.
+   */
+  public countLoopEvents(loopRunId: string): number {
+    return this.events.countEvents(loopRunId);
   }
 
   private parseLoopRun(row: any): LoopRunRecord {
