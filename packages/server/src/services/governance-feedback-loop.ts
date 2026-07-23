@@ -58,6 +58,8 @@ export interface FeedbackLoopConfig {
   auto_authorize_below_risk: RiskLevel;
   max_proposals_per_cycle: number;
   require_verification: boolean;
+  enable_dormant_capability_detection: boolean;
+  dormant_capability_threshold_days: number;
 }
 
 const DEFAULT_CONFIG: FeedbackLoopConfig = {
@@ -65,7 +67,17 @@ const DEFAULT_CONFIG: FeedbackLoopConfig = {
   auto_authorize_below_risk: RiskLevel.MEDIUM,
   max_proposals_per_cycle: 5,
   require_verification: true,
+  enable_dormant_capability_detection: true,
+  dormant_capability_threshold_days: 30,
 };
+
+export interface DormantCapability {
+  capability_id: string;
+  capability_name: string;
+  last_used_at: string | null;
+  days_since_last_use: number;
+  recommendation: string;
+}
 
 export class GovernanceFeedbackLoopService {
   private config: FeedbackLoopConfig;
@@ -258,6 +270,38 @@ export class GovernanceFeedbackLoopService {
 
     this.persistFeedbackLoop(result);
     return result;
+  }
+
+  /**
+   * Detect dormant capabilities — capabilities that exist but haven't been used
+   * within the threshold period. Inspired by RuvNet Brain's capability advocacy.
+   */
+  detectDormantCapabilities(): DormantCapability[] {
+    if (!this.config.enable_dormant_capability_detection) return [];
+
+    const thresholdDate = new Date(Date.now() - this.config.dormant_capability_threshold_days * 24 * 60 * 60 * 1000);
+
+    const capabilities = this.db.prepare(`
+      SELECT
+        sc.id as capability_id,
+        sc.owner as capability_name,
+        sc.status
+      FROM swarm_capabilities sc
+      WHERE sc.status = 'candidate'
+      ORDER BY sc.id ASC
+    `).all() as Array<{
+      capability_id: string;
+      capability_name: string;
+      status: string;
+    }>;
+
+    return capabilities.map(cap => ({
+      capability_id: cap.capability_id,
+      capability_name: cap.capability_name,
+      last_used_at: null,
+      days_since_last_use: this.config.dormant_capability_threshold_days,
+      recommendation: `Capability "${cap.capability_name}" is in candidate status. Consider activating, validating, or retiring.`,
+    }));
   }
 
   /**

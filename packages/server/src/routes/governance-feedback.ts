@@ -111,5 +111,11 @@ export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddlewa
     res.json({ proposals, count: proposals.length });
   });
 
+  // GET /api/governance-feedback/dormant-capabilities — detect unused capabilities
+  router.get('/dormant-capabilities', requirePermission('read:evidence'), (req, res) => {
+    const dormant = service.detectDormantCapabilities();
+    res.json({ dormant_capabilities: dormant, count: dormant.length });
+  });
+
   return router;
 }

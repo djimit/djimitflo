@@ -407,7 +407,45 @@ describe('GovernanceFeedbackLoopService', () => {
     });
   });
 
-  describe('getProposalsByStatus', () => {
+  describe('detectDormantCapabilities', () => {
+  it('returns empty when detection disabled', () => {
+    const serviceDisabled = new GovernanceFeedbackLoopService(db, {
+      enable_dormant_capability_detection: false,
+    });
+    const result = serviceDisabled.detectDormantCapabilities();
+    expect(result).toEqual([]);
+  });
+
+  it('returns empty when no capabilities exist', () => {
+    const dormant = service.detectDormantCapabilities();
+    expect(dormant).toEqual([]);
+  });
+
+  it('detects never-used capabilities', () => {
+    db.prepare(`
+      INSERT INTO swarm_capabilities (id, owner, kind, version, status, risk_ceiling, input_schema_ref, output_schema_ref, removal_strategy)
+      VALUES ('cap-1', 'test-owner', 'skill', '1.0.0', 'candidate', 'low', '', '', 'manual_review')
+    `).run();
+
+    const dormant = service.detectDormantCapabilities();
+    expect(dormant.length).toBe(1);
+    expect(dormant[0].capability_id).toBe('cap-1');
+    expect(dormant[0].last_used_at).toBeNull();
+    expect(dormant[0].recommendation).toContain('candidate status');
+  });
+
+  it('does not flag validated/recently-used capabilities', () => {
+    db.prepare(`
+      INSERT INTO swarm_capabilities (id, owner, kind, version, status, risk_ceiling, input_schema_ref, output_schema_ref, removal_strategy)
+      VALUES ('cap-3', 'test-owner', 'skill', '1.0.0', 'validated', 'low', '', '', 'manual_review')
+    `).run();
+
+    const dormant = service.detectDormantCapabilities();
+    expect(dormant).toEqual([]);
+  });
+});
+
+describe('getProposalsByStatus', () => {
     it('returns proposals filtered by status', async () => {
       const runId = 'run-1';
       db.prepare(`
