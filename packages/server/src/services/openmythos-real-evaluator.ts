@@ -334,7 +334,7 @@ export class OpenMythosRealEvaluator {
     // Failure mode recommendations
     for (const fail of failures.slice(0, 5)) {
       if (fail.severity === 'critical' || fail.severity === 'high') {
-        recs.push(`Address failure mode "${fail.fail_mode}" (${fail.count} cases across ${fail.categories.join(', ')})`);
+        recs.push(`Address failure mode "${fail.failure_mode}" (${fail.count} cases across ${fail.categories.join(', ')})`);
       }
     }
 

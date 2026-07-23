@@ -55,7 +55,7 @@ describe('Integration: Full Loop Lifecycle', () => {
     db.close();
   });
 
-  it('completes a full loop lifecycle with episode recording', async () => {
+  it('completes a full loop lifecycle with episode recording', { timeout: 10000 }, async () => {
     // 1. Create a goal
     const goal = loopService.createGoal({
       objective: 'Test goal for integration',
@@ -96,7 +96,7 @@ describe('Integration: Full Loop Lifecycle', () => {
     // 4. Verify stats
     const stats = cognitive.getStats();
     expect(stats.totalEpisodes).toBe(1);
-  }, { timeout: 10000 });
+  });
 
   it('compresses large metadata in loop events', () => {
     const compressor = new ContextCompressionService(db);

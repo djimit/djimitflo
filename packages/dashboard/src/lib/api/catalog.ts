@@ -5,7 +5,7 @@
 import { request } from "../api-client";
 // Local types (defined in original api.ts)
 export interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number }
-export interface CatalogAgent { id: string; name: string; division: string; status: string; evaluation_score: number | null; evaluation: { score: number; details: string } | null; activation: { target: string; status: string } | null }
+export interface CatalogAgent { id: string; name: string; division: string; status: string; evaluation_score: number | null; evaluation: { score: number; details: string; verdict: string } | null; activation: { target: string; status: string; active: boolean } | null }
 export interface CatalogSearchResult { agents: CatalogAgent[]; total: number }
 
 

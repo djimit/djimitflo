@@ -17,8 +17,8 @@ export { exportsApi } from './api/exports';
 export { cognitiveApi } from './api/cognitive';
 
 // Backward-compatible namespace (for gradual migration)
-import { tasksApi } from './api/tasks';
 import { request } from './api-client';
+import { tasksApi } from './api/tasks';
 import { agentsApi } from './api/agents';
 import { governanceApi } from './api/governance';
 import { loopsApi } from './api/loops';
@@ -43,7 +43,3 @@ export const api = {
   ...exportsApi,
   ...cognitiveApi,
 };
-
-// Re-export types that consumers import from api
-export type { CatalogCounts, CatalogAgent, CatalogSearchResult } from './api/catalog';
-export type { UsageQuota, UsageBreakdown, UsageLog } from './api/evidence';
