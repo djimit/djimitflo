@@ -4,38 +4,8 @@
  * 
  * Extracted from api.ts (Task 5.3: ApiClient domain split)
  */
-import type {
-  ApprovalRequest,
-  ApprovalPolicy,
-  ExecutionPolicy,
-  RiskAssessment,
-  Task,
-  TaskCreateInput,
-  TaskUpdateInput,
-  Agent,
-  MCPServer,
-  MCPTool,
-  ExecutionEvent,
-  Approval,
-  ApprovalDecision,
-  ExecutionEvidence,
-  ExecutionSummary,
-  FileChange,
-  ObservabilityMetrics,
-  AuditTrailEntry,
-  Repository,
-  RepositoryScanResult,
-  RepositoryHealthFinding,
-  AgentsMdIssue,
-  ExportFormat,
-  ExportRequest,
-} from '@djimitflo/shared';
-
 export const API_BASE = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_BASE || '/api';
 const AUTH_SESSION_KEY = 'djimitflo_auth_session';
-
-// Re-export types for convenience
-export type * from '@djimitflo/shared';
 
 export async function getToken(): Promise<string | null> {
   return localStorage.getItem(AUTH_SESSION_KEY);

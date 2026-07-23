@@ -3,7 +3,6 @@
  * Extracted from api.ts (Task 5.3: ApiClient domain split)
  */
 import { request } from "../api-client";
-import type * from "../api-client";
 
 export const cognitiveApi = {
     async getCognitiveStats(): Promise<{
@@ -13,8 +12,8 @@ export const cognitiveApi = {
       overallSuccessRate: number;
       bestGoalType: string | null;
     }> {
-      return this.request("/cognitive/stats");
-    }
+      return request("/cognitive/stats");
+    },
     async getCognitiveMetaLearning(): Promise<{ records: Array<{
       goalType: string;
       bestStrategy: string;
@@ -23,8 +22,8 @@ export const cognitiveApi = {
       totalStrategies: number;
       lastUpdated: string;
     }> }> {
-      return this.request("/cognitive/meta-learning");
-    }
+      return request("/cognitive/meta-learning");
+    },
     async getBestStrategy(goalType: string): Promise<{
       id: string;
       name: string;
@@ -35,23 +34,23 @@ export const cognitiveApi = {
       avgDurationMs: number;
       avgCostDollars: number;
     } | null> {
-      return this.request(`/cognitive/strategy/${encodeURIComponent(goalType)}`);
-    }
+      return request(`/cognitive/strategy/${encodeURIComponent(goalType)}`);
+    },
     async getMemoryStats(): Promise<{
       total: number; active: number; candidates: number; archived: number;
       decayed: number; avgRelevance: number; totalRelations: number;
     }> {
-      return this.request("/memory/stats");
-    }
+      return request("/memory/stats");
+    },
     async getComplianceStatus(): Promise<{
       totalAuditEntries: number; chainIntegrity: boolean;
       lastReportScore: number; lastReportStatus: string | null;
     }> {
-      return this.request("/compliance/status");
-    }
+      return request("/compliance/status");
+    },
     async getMetaStats(): Promise<{
       totalDecisions: number; failuresPredicted: number; costSavingsDollars: number;
     }> {
-      return this.request("/meta/stats");
+      return request("/meta/stats");
     }
 };

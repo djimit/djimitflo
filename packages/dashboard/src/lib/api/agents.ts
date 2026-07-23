@@ -3,18 +3,19 @@
  * Extracted from api.ts (Task 5.3: ApiClient domain split)
  */
 import { request } from "../api-client";
-import type * from "../api-client";
+import type { Agent, MCPServer, MCPTool, ExecutionEvent } from '@djimitflo/shared';
+
 
 export const agentsApi = {
     async getAgents(): Promise<{ agents: Agent[] }> {
-      return this.request('/agents');
-    }
+      return request('/agents');
+    },
     async getAgent(id: string): Promise<Agent> {
-      return this.request(`/agents/${id}`);
-    }
+      return request(`/agents/${id}`);
+    },
     async getMCPServers(): Promise<{ servers: MCPServer[] }> {
-      return this.request('/mcp/servers?refresh=true');
-    }
+      return request('/mcp/servers?refresh=true');
+    },
     async getMCPTools(filters?: { serverId?: string; riskLevel?: string; permission?: string; q?: string }): Promise<{ tools: MCPTool[] }> {
       const params = new URLSearchParams();
       if (filters?.serverId) params.set('server_id', filters.serverId);
@@ -22,9 +23,9 @@ export const agentsApi = {
       if (filters?.permission) params.set('permission', filters.permission);
       if (filters?.q) params.set('q', filters.q);
       const query = params.toString() ? `?${params}` : '';
-      return this.request(`/mcp/tools${query}`);
-    }
+      return request(`/mcp/tools${query}`);
+    },
     async getExecutionEvents(taskId: string): Promise<{ events: ExecutionEvent[] }> {
-      return this.request(`/tasks/${taskId}/events`);
+      return request(`/tasks/${taskId}/events`);
     }
 };

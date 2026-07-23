@@ -3,12 +3,25 @@
  * Extracted from api.ts (Task 5.3: ApiClient domain split)
  */
 import { request } from "../api-client";
-import type * from "../api-client";
+// Local types (not in @djimitflo/shared)
+interface GoalRecord { id: string; objective: string; status: string }
+interface LoopRunRecord { id: string; goal_id: string; loop_name: string; status: string }
+interface LoopCatalogItem { name: string; description: string }
+interface RuntimeContract { runtime: string; capabilities: string[] }
+interface LoopReviewBundle { run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] }
+interface WorkerLeaseRecord { id: string; loop_run_id: string; role: string; status: string }
+interface LoopGate { name: string; passed: boolean }
+interface LoopFinding { id: string; message: string }
+interface LoopEventRecord { id: string; event_type: string; message: string }
+interface GoalBatchPreviewResult { goals: GoalRecord[]; total: number }
+interface GoalBatchApplyResult { created: number; errors: string[] }
+interface ExecuteWorkerResult { run: LoopRunRecord; lease: WorkerLeaseRecord }
+
 
 export const loopsApi = {
     async getGoals(): Promise<{ goals: GoalRecord[] }> {
-      return this.request('/goals');
-    }
+      return request('/goals');
+    },
     async createGoal(input: {
       objective: string;
       constraints?: string[];
@@ -16,96 +29,96 @@ export const loopsApi = {
       risk_class?: 'low' | 'medium' | 'high' | 'critical';
       budget?: Record<string, unknown>;
     }): Promise<GoalRecord> {
-      return this.request('/goals', {
+      return request('/goals', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async previewGoalBatch(input: { path?: string; batch?: unknown; selected_ids?: string[] } = {}): Promise<GoalBatchPreviewResult> {
-      return this.request('/goals/batch/preview', {
+      return request('/goals/batch/preview', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async applyGoalBatch(input: { path?: string; batch?: unknown; selected_ids?: string[] } = {}): Promise<GoalBatchApplyResult> {
-      return this.request('/goals/batch/apply', {
+      return request('/goals/batch/apply', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async getLoopRuns(): Promise<{ runs: LoopRunRecord[] }> {
-      return this.request('/loops/runs');
-    }
+      return request('/loops/runs');
+    },
     async getLoopCatalog(): Promise<{ loops: LoopCatalogItem[] }> {
-      return this.request('/loops/catalog');
-    }
+      return request('/loops/catalog');
+    },
     async getRuntimeContracts(): Promise<{ runtimes: Record<string, RuntimeContract> }> {
-      return this.request('/loops/runtime-contracts');
-    }
+      return request('/loops/runtime-contracts');
+    },
     async getLoopReviewBundle(runId: string): Promise<LoopReviewBundle> {
-      return this.request(`/loops/runs/${runId}/review-bundle`);
-    }
+      return request(`/loops/runs/${runId}/review-bundle`);
+    },
     async startLoop(input: { loop_name: string; repository_path: string; goal_id?: string; max_findings?: number }): Promise<LoopRunRecord> {
-      return this.request('/loops/start', {
+      return request('/loops/start', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async startDocDriftLoop(input: { repository_path: string; goal_id?: string; max_findings?: number }): Promise<LoopRunRecord> {
       return this.startLoop({ loop_name: 'doc-drift-and-small-fix-loop', ...input });
-    }
+    },
     async continueLoopRun(runId: string, input: { max_assignments?: number; runtime?: 'manual' | 'codex' | 'opencode' | 'mock' } = {}): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[] }> {
-      return this.request(`/loops/runs/${runId}/continue`, {
+      return request(`/loops/runs/${runId}/continue`, {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async executeWorker(runId: string, leaseId: string, input: { timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
-      return this.request(`/loops/runs/${runId}/execute-worker`, {
+      return request(`/loops/runs/${runId}/execute-worker`, {
         method: 'POST',
         body: JSON.stringify({ lease_id: leaseId, ...input }),
       });
-    }
+    },
     async executeChecker(runId: string, leaseId: string, input: { runtime?: 'codex' | 'opencode' | 'mock'; timeout_ms?: number; diff_max_lines?: number } = {}): Promise<ExecuteWorkerResult> {
-      return this.request(`/loops/runs/${runId}/execute-checker`, {
+      return request(`/loops/runs/${runId}/execute-checker`, {
         method: 'POST',
         body: JSON.stringify({ lease_id: leaseId, ...input }),
       });
-    }
+    },
     async verifyLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] }> {
-      return this.request(`/loops/runs/${runId}/verify`, { method: 'POST' });
-    }
+      return request(`/loops/runs/${runId}/verify`, { method: 'POST' });
+    },
     async stepLoopRun(runId: string): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; decision: string; next_actions: string[] }> {
-      return this.request(`/loops/runs/${runId}/step`, { method: 'POST' });
-    }
+      return request(`/loops/runs/${runId}/step`, { method: 'POST' });
+    },
     async retryLoopRun(runId: string, makerLeaseId: string, runtime: 'manual' | 'codex' | 'opencode' | 'mock' = 'manual'): Promise<{ run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord }> {
-      return this.request(`/loops/runs/${runId}/retry`, {
+      return request(`/loops/runs/${runId}/retry`, {
         method: 'POST',
         body: JSON.stringify({ maker_lease_id: makerLeaseId, runtime }),
       });
-    }
+    },
     async splitLoopFinding(runId: string, input: { finding_id: string; reason: string; children: Array<{ message: string; suggested_fix: string }> }): Promise<{ run: LoopRunRecord; parent: LoopFinding; children: LoopFinding[]; leases: WorkerLeaseRecord[] }> {
-      return this.request(`/loops/runs/${runId}/split`, {
+      return request(`/loops/runs/${runId}/split`, {
         method: 'POST',
         body: JSON.stringify(input),
       });
-    }
+    },
     async submitCheckerVerdict(runId: string, leaseId: string, verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence', notes?: string): Promise<{ run: LoopRunRecord; checker: WorkerLeaseRecord }> {
-      return this.request(`/loops/runs/${runId}/checker-verdict`, {
+      return request(`/loops/runs/${runId}/checker-verdict`, {
         method: 'POST',
         body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),
       });
-    }
+    },
     async submitSecurityVerdict(runId: string, leaseId: string, verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence', notes?: string): Promise<{ run: LoopRunRecord; security_checker: WorkerLeaseRecord }> {
-      return this.request(`/loops/runs/${runId}/security-verdict`, {
+      return request(`/loops/runs/${runId}/security-verdict`, {
         method: 'POST',
         body: JSON.stringify({ lease_id: leaseId, verdict, notes: notes || '' }),
       });
-    }
+    },
     async completeLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[] }> {
-      return this.request(`/loops/runs/${runId}/complete`, { method: 'POST' });
-    }
+      return request(`/loops/runs/${runId}/complete`, { method: 'POST' });
+    },
     async stopLoopRun(runId: string): Promise<{ run: LoopRunRecord; events: LoopEventRecord[] }> {
-      return this.request(`/loops/runs/${runId}/stop`, { method: 'POST' });
+      return request(`/loops/runs/${runId}/stop`, { method: 'POST' });
     }
 };
