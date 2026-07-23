@@ -6,7 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
-import { generateComplianceReport } from '../services/spec-compliance-service';
+import { generateComplianceReport, exportReportAsJson, exportReportAsCsv, scanSpecsDirectory } from '../services/spec-compliance-service';
 
 export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -90,5 +90,35 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
-    return router;
+  
+  // GET /api/compliance/export — export compliance report as JSON or CSV
+  router.get('/export', requirePermission('read:evidence'), (req, res) => {
+    const format = (req.query.format as string) || 'json';
+
+    if (!['json', 'csv'].includes(format)) {
+      res.status(400).json({ error: { message: 'Unsupported format. Use ?format=json or ?format=csv', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+
+    try {
+      const specs = scanSpecsDirectory();
+      const report = generateComplianceReport(specs);
+
+      if (format === 'csv') {
+        const csv = exportReportAsCsv(report);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', 'attachment; filename="compliance-report.csv"');
+        res.send(csv);
+      } else {
+        const json = exportReportAsJson(report);
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', 'attachment; filename="compliance-report.json"');
+        res.send(json);
+      }
+    } catch (error) {
+      res.status(500).json({ error: { message: 'Export failed', details: error instanceof Error ? error.message : String(error) } });
+    }
+  });
+
+  return router;
 }

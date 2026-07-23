@@ -86,3 +86,56 @@ export function generateComplianceReport(specs: Array<{ name: string; path: stri
     specs: results,
   };
 }
+
+
+export function exportReportAsJson(report: ComplianceReport): string {
+  return JSON.stringify(report, null, 2);
+}
+
+export function exportReportAsCsv(report: ComplianceReport): string {
+  const headers = ['spec_name', 'lifecycle_state', 'score', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'];
+  const rows = report.specs.map(spec => [
+    spec.specName,
+    spec.lifecycleState,
+    String(spec.score),
+    ...spec.layers.map(l => l.present ? 'pass' : 'fail'),
+  ]);
+
+  // Escape CSV values (wrap in quotes if contains comma, quote, or newline)
+  const escape = (val: string) => {
+    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+      return '"' + val.replace(/"/g, '""') + '"';
+    }
+    return val;
+  };
+
+  const csvLines = [
+    headers.join(','),
+    ...rows.map(row => row.map(escape).join(',')),
+  ];
+
+  return csvLines.join('\n');
+}
+
+export function scanSpecsDirectory(): Array<{ name: string; path: string; content: string }> {
+  const fs = require('fs');
+  const path = require('path');
+  const specsDir = path.resolve(process.cwd(), 'specs');
+  const archiveDir = path.resolve(process.cwd(), 'specs/archive');
+  const specs: Array<{ name: string; path: string; content: string }> = [];
+
+  for (const dir of [specsDir, archiveDir]) {
+    if (!fs.existsSync(dir)) continue;
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const specFile = path.join(dir, entry.name, 'spec.md');
+        if (fs.existsSync(specFile)) {
+          const content = fs.readFileSync(specFile, 'utf-8');
+          specs.push({ name: entry.name, path: specFile, content });
+        }
+      }
+    }
+  }
+  return specs;
+}
