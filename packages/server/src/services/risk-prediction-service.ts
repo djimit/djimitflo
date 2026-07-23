@@ -197,7 +197,7 @@ export class RiskPredictionService {
   /**
    * Generate recommendations based on risk assessment.
    */
-  private generateRecommendations(currentRisk: number, predictedRisk: number, indicators: LeadingIndicator[]): string[] {
+  private generateRecommendations(_currentRisk: number, predictedRisk: number, indicators: LeadingIndicator[]): string[] {
     const recs: string[] = [];
 
     if (predictedRisk > this.RISK_THRESHOLDS.critical) {
