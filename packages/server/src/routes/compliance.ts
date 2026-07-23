@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
+import { generateComplianceReport } from '../services/spec-compliance-service';
 
 export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -56,5 +57,38 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
     res.json(report);
   });
 
-  return router;
+
+  // GET /api/compliance/specs — SDD v1.1.0 spec compliance report
+  router.get('/specs', requirePermission('read:evidence'), (_req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const specsDir = path.resolve(process.cwd(), 'specs');
+      const archiveDir = path.resolve(process.cwd(), 'specs/archive');
+
+      const specs: Array<{ name: string; path: string; content: string }> = [];
+
+      // Scan specs/ directory
+      for (const dir of [specsDir, archiveDir]) {
+        if (!fs.existsSync(dir)) continue;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const specFile = path.join(dir, entry.name, 'spec.md');
+            if (fs.existsSync(specFile)) {
+              const content = fs.readFileSync(specFile, 'utf-8');
+              specs.push({ name: entry.name, path: specFile, content });
+            }
+          }
+        }
+      }
+
+      const report = generateComplianceReport(specs);
+      res.json(report);
+    } catch (error) {
+      res.status(500).json({ error: { message: 'Failed to scan specs', details: error instanceof Error ? error.message : String(error) } });
+    }
+  });
+
+    return router;
 }

@@ -3,6 +3,7 @@ import { Activity, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-re
 import { useEffect } from 'react';
 import { useStore, selectActiveTasks, selectCompletedTasks, selectFailedTasks } from '../lib/store';
 import { api } from '../lib/api';
+import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
 
 export function DashboardPage() {
   const tasks = useStore((state) => state.tasks);
@@ -116,6 +117,9 @@ export function DashboardPage() {
           />
         </div>
       </div>
+      
+      {/* SDD Compliance */}
+      <SpecComplianceWidget />
       
       {/* Recent Activity */}
       <div className="bg-background-secondary border border-border rounded-lg p-6">
