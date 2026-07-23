@@ -4,9 +4,8 @@
  * 
  * Constitution v1.1.0 — Task 4.4: Mock factories for untested services
  */
-import { vi, beforeEach, afterEach } from 'vitest';
+import { vi } from 'vitest';
 import Database from 'better-sqlite3';
-import type { Mock } from 'vitest';
 
 /**
  * Create an in-memory test database with all required tables.
