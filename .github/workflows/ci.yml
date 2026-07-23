@@ -2,41 +2,84 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feature/**']
+    branches: [main]
   pull_request:
     branches: [main]
 
-# Cancel superseded runs on the same ref.
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build-test:
-    name: type-check · lint · build · test
+  build-and-test:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [20, 22]
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check (all workspaces)
-        run: npm run type-check
-
-      - name: Lint (all workspaces)
+      - name: Lint
         run: npm run lint
 
-      - name: Build (all workspaces)
+      - name: Type check
+        run: npm run type-check
+
+      - name: Build
         run: npm run build
 
-      - name: Test (all workspaces with tests)
-        # Root `test` runs `npm run test --workspaces --if-present`, skipping
-        # workspaces that define no `test` script (e.g. telegram).
-        run: npm test
+      - name: Test
+        run: npm run test -- --reporter=verbose
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  sbom:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate SBOM
+        run: |
+          cd packages/server
+          curl -sL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft packages/server -o spdx-json > sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: packages/server/sbom.json
