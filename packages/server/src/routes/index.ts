@@ -48,6 +48,7 @@ import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
 import { createComplianceRoutes } from './compliance';
+import { createTraceabilityRoutes } from './traceability';
 import { createRetirementRoutes } from './retirement';
 import { createRedTeamRoutes } from './red-team';
 import { createPlatformRoutes } from './platform';
@@ -177,6 +178,7 @@ export function createRoutes(
   router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
   router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
   router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
+  router.use('/traceability', requireAuth, createTraceabilityRoutes(auth));
   router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
   router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth));
   router.use('/repo-index', requireAuth, createRepositoryIndexRoutes(db, auth));
