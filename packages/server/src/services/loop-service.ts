@@ -237,6 +237,30 @@ const LOOP_CONTRACTS: LoopContract[] = [
   },
 ];
 
+/**
+ * LoopService — facade for the loop subsystem.
+ *
+ * Sub-services:
+ *   - LoopLifecycleService: continue/retry/split loop runs
+ *   - LoopWorkerExecutorService: maker/checker worker execution
+ *   - LoopVerificationService: gates and certification
+ *   - LoopDiscoveryService: finding discovery
+ *   - LoopBudgetService: token/wall-clock budgets
+ *   - WorktreeManager: git worktree lifecycle
+ *   - RuntimeCommandService: runtime process management
+ *   - GoalService: goal CRUD
+ *   - AgentAssuranceService: agent governance
+ *   - SwarmIntelligenceService: task decomposition
+ *
+ * Decomposition status (Slice 2):
+ *   ✅ loop-types.ts extracted (shared types, ~220 regeln)
+ *   ✅ Dormant capability detection added
+ *   ⏳ LoopEventService — planned (Fase 1, Dag 3)
+ *   ⏳ LoopRunRepo — planned (Fase 1, Dag 4-5)
+ *
+ * Public API: 60 methods → target < 20.
+ * Line count: ~2445 → target < 500 (facade only).
+ */
 export class LoopService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
   /**
