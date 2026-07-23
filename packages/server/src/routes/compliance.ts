@@ -120,5 +120,47 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
   });
 
+
+  // GET /api/compliance/reports/export — export generated report as JSON/CSV/text
+  router.get('/reports/export', requirePermission('read:evidence'), (req, res) => {
+    const { type = 'nora', format = 'json', periodStart, periodEnd } = req.query as {
+      type?: string;
+      format?: string;
+      periodStart?: string;
+      periodEnd?: string;
+    };
+
+    if (!['json', 'csv', 'text'].includes(format)) {
+      res.status(400).json({ error: { message: 'Unsupported format. Use ?format=json|csv|text', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+
+    try {
+      const report = service.generateReport({
+        type: type as 'nora' | 'soc2' | 'iso27001' | 'custom',
+        periodStart,
+        periodEnd,
+      });
+
+      if (format === 'csv') {
+        const csv = service.exportReportAsCsv(report);
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="governance-report-${type}.csv"`);
+        res.send(csv);
+      } else if (format === 'text') {
+        const text = service.exportReportAsText(report);
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Content-Disposition', `attachment; filename="governance-report-${type}.txt"`);
+        res.send(text);
+      } else {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="governance-report-${type}.json"`);
+        res.json(report);
+      }
+    } catch (error) {
+      res.status(500).json({ error: { message: 'Export failed', details: error instanceof Error ? error.message : String(error) } });
+    }
+  });
+
   return router;
 }
