@@ -20,6 +20,8 @@ import { LoopVerificationService } from './loop-verification-service';
 import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
+import { WorkerLeaseRepo } from './loop-worker-lease-repo';
+import { LoopRecoveryService } from './loop-recovery-service';
 import type {
   LoopName,
   WorkerRole,
@@ -264,7 +266,7 @@ const LOOP_CONTRACTS: LoopContract[] = [
  * Line count: ~2445 → target < 500 (facade only).
  */
 export class LoopService {
-  private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
+
   /**
    * RuntimeSemaphore (P2): a single chokepoint bounding how many runtime child
    * processes may be alive at once. Both the serial fleet (drainWorkerPool, which
@@ -286,6 +288,8 @@ export class LoopService {
   private goals: GoalService;
   private events: LoopEventService;
   private queries: LoopRunQueryService;
+  private workerLeases: WorkerLeaseRepo;
+  private recovery: LoopRecoveryService;
   public workerExecutor: LoopWorkerExecutorService;
   public runtimeCommand: RuntimeCommandService;
   public lifecycle: LoopLifecycleService;
@@ -318,6 +322,8 @@ export class LoopService {
     this.goals = new GoalService(db);
     this.events = new LoopEventService(db);
     this.queries = new LoopRunQueryService(db);
+    this.workerLeases = new WorkerLeaseRepo(db);
+    this.recovery = new LoopRecoveryService(db);
     this.workerExecutor = new LoopWorkerExecutorService(db, this);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
@@ -340,57 +346,9 @@ export class LoopService {
    * Also prunes stale, orphaned worktrees. Idempotent.
    */
   recoverInterruptedRuns(): { interruptedRuns: number; failedLeases: number; prunedWorktrees: number } {
-    const now = new Date().toISOString();
-    const liveLeaseIds = new Set(LoopService.runtimeLeases.keys());
-
-    // Fail 'running' leases whose child process is gone (not in the live map).
-    const orphanedLeases = this.db.prepare(
-      `SELECT id, metadata FROM worker_leases WHERE status = 'running'`,
-    ).all() as Array<{ id: string; metadata: string }>;
-    const updateLease = this.db.prepare(
-      `UPDATE worker_leases SET status = 'failed', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
-    );
-    let failedLeases = 0;
-    for (const lease of orphanedLeases) {
-      if (liveLeaseIds.has(lease.id)) continue;
-      const metadata = {
-        ...(JSON.parse(lease.metadata || '{}') as Record<string, unknown>),
-        failed_reason: 'server_restart',
-        failed_at: now,
-      };
-      updateLease.run(JSON.stringify(metadata), lease.id);
-      failedLeases += 1;
-    }
-
-    // Runs in an active status whose worker leases are all non-live are orphaned.
-    const liveRunIds = new Set<string>();
-    if (liveLeaseIds.size > 0) {
-      const placeholders = Array.from(liveLeaseIds).map(() => '?').join(',');
-      const rows = this.db
-        .prepare(`SELECT DISTINCT loop_run_id FROM worker_leases WHERE id IN (${placeholders})`)
-        .all(...liveLeaseIds) as Array<{ loop_run_id: string }>;
-      for (const row of rows) liveRunIds.add(row.loop_run_id);
-    }
-    const activeRuns = this.db.prepare(
-      `SELECT id, metadata FROM loop_runs WHERE status IN ('running', 'verifying', 'planning')`,
-    ).all() as Array<{ id: string; metadata: string }>;
-    const updateRun = this.db.prepare(
-      `UPDATE loop_runs SET status = 'interrupted', metadata = ?, updated_at = datetime('now') WHERE id = ?`,
-    );
-    let interruptedRuns = 0;
-    for (const run of activeRuns) {
-      if (liveRunIds.has(run.id)) continue;
-      const metadata = {
-        ...(JSON.parse(run.metadata || '{}') as Record<string, unknown>),
-        interrupted_reason: 'server_restart',
-        interrupted_at: now,
-      };
-      updateRun.run(JSON.stringify(metadata), run.id);
-      interruptedRuns += 1;
-    }
-
+    const result = this.recovery.recoverInterruptedRuns();
     const prunedWorktrees = this.pruneOrphanedWorktrees();
-    return { interruptedRuns, failedLeases, prunedWorktrees };
+    return { ...result, prunedWorktrees };
   }
 
   resumeInterruptedRun(runId: string, maxResumeAttempts = 3): {
@@ -400,63 +358,11 @@ export class LoopService {
     requeuedFindings: string[];
     skippedFindings: string[];
   } {
-    const run = this.db.prepare('SELECT id, status, metadata FROM loop_runs WHERE id = ?').get(runId) as { id: string; status: string; metadata: string } | undefined;
-    if (!run || run.status !== 'interrupted') {
-      throw new Error('LOOP_RUN_NOT_INTERRUPTED');
-    }
-
-    const metadata = JSON.parse(run.metadata || '{}') as Record<string, unknown>;
-    const resumeAttempts = (metadata.resume_attempts as number ?? 0) + 1;
-
-    if (resumeAttempts > maxResumeAttempts) {
-      this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').run('failed', runId);
-      return { resumed: false, boundedFail: true, resumeAttempt: resumeAttempts, requeuedFindings: [], skippedFindings: [] };
-    }
-
-    const runRow = this.db.prepare('SELECT findings_json FROM loop_runs WHERE id = ?').get(runId) as { findings_json: string } | undefined;
-    const findings = JSON.parse(runRow?.findings_json || '[]') as Array<{ id: string }>;
-    const completedFindings = new Set<string>();
-    const leases = this.db.prepare('SELECT finding_id, status FROM worker_leases WHERE loop_run_id = ?').all(runId) as Array<{ finding_id: string | null; status: string }>;
-    for (const lease of leases) {
-      if (lease.status === 'completed' && lease.finding_id) completedFindings.add(lease.finding_id);
-    }
-
-    const requeuedFindings: string[] = [];
-    const skippedFindings: string[] = [];
-
-    for (const finding of findings) {
-      if (completedFindings.has(finding.id)) {
-        skippedFindings.push(finding.id);
-      } else {
-        requeuedFindings.push(finding.id);
-      }
-    }
-
-    this.db.prepare('UPDATE loop_runs SET status = ?, metadata = ?, updated_at = datetime(\'now\') WHERE id = ?').run('running', JSON.stringify({ ...metadata, resume_attempts: resumeAttempts }), runId);
-
-    swarmEventBus.emit('recovery', {
-      run_id: runId,
-      resumed: true,
-      requeued_findings: requeuedFindings.length,
-    });
-
-    return { resumed: true, boundedFail: false, resumeAttempt: resumeAttempts, requeuedFindings, skippedFindings };
+    return this.recovery.resumeInterruptedRun(runId, maxResumeAttempts);
   }
 
   resumeInterruptedRuns(): { resumed: number; boundedFailed: number; details: Array<{ runId: string; resumed: boolean }> } {
-    const interruptedRuns = this.db.prepare('SELECT id FROM loop_runs WHERE status = ?').all('interrupted') as Array<{ id: string }>;
-    const details: Array<{ runId: string; resumed: boolean }> = [];
-    let resumed = 0;
-    let boundedFailed = 0;
-
-    for (const run of interruptedRuns) {
-      const result = this.resumeInterruptedRun(run.id);
-      details.push({ runId: run.id, resumed: result.resumed });
-      if (result.resumed) resumed++;
-      else boundedFailed++;
-    }
-
-    return { resumed, boundedFailed, details };
+    return this.recovery.resumeInterruptedRuns();
   }
 
   /**
@@ -2198,108 +2104,36 @@ export class LoopService {
     return Array.from(byName.values());
   }
 
-  public insertWorkerLease(input: {
-    id: string;
-    loopRunId: string;
-    role: WorkerRole;
-    runtime: string;
-    findingId: string;
-    worktreePath: string | null;
-    branchName: string | null;
-    metadata: Record<string, unknown>;
-    now: string;
-    // Nested-spawn lineage (P1). Optional: legacy continueLoopRun callers omit
-    // these and get a root lease (parent=null, depth=0, no tree).
-    parentLeaseId?: string | null;
-    spawnTreeId?: string | null;
-    depth?: number;
-    spawnedByAgentId?: string | null;
-  }): void {
-    this.db.prepare(`
-      INSERT INTO worker_leases (
-        id, loop_run_id, role, runtime, status, finding_id, worktree_path,
-        branch_name, budget_json, metadata, created_at, updated_at,
-        parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      input.id,
-      input.loopRunId,
-      input.role,
-      input.runtime,
-      'prepared',
-      input.findingId,
-      input.worktreePath,
-      input.branchName,
-      JSON.stringify({ max_runtime_minutes: 30, max_retries: 1 }),
-      JSON.stringify(input.metadata),
-      input.now,
-      input.now,
-      input.parentLeaseId ?? null,
-      input.spawnTreeId ?? null,
-      input.depth ?? 0,
-      input.spawnedByAgentId ?? null
-    );
+  public insertWorkerLease(input: Parameters<WorkerLeaseRepo['insert']>[0]): void {
+    this.workerLeases.insert(input);
   }
 
-  public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown>): void {
-    const existing = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata?: string } | undefined;
-    const metadata = {
-      ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
-      ...metadataPatch,
-    };
-    this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
-      .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
+  public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
+    this.workerLeases.updateStatus(id, status, metadataPatch);
   }
 
   public updateWorkerLeaseRuntime(id: string, runtime: string): void {
-    this.db.prepare('UPDATE worker_leases SET runtime = ?, updated_at = ? WHERE id = ?')
-      .run(runtime, new Date().toISOString(), id);
+    this.workerLeases.updateRuntime(id, runtime);
   }
 
   public patchWorkerLeaseMetadata(id: string, metadataPatch: Record<string, unknown>): void {
-    const existing = this.db.prepare('SELECT status, metadata FROM worker_leases WHERE id = ?').get(id) as { status?: WorkerLeaseRecord['status']; metadata?: string } | undefined;
-    if (!existing?.status) {
-      throw new Error('MAKER_LEASE_NOT_FOUND');
-    }
-    const metadata = {
-      ...JSON.parse(existing.metadata || '{}'),
-      ...metadataPatch,
-    };
-    this.db.prepare('UPDATE worker_leases SET metadata = ?, updated_at = ? WHERE id = ?')
-      .run(JSON.stringify(metadata), new Date().toISOString(), id);
+    this.workerLeases.patchMetadata(id, metadataPatch);
   }
 
   public getWorkerLease(id: string): WorkerLeaseRecord {
-    const row = this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(id) as any | undefined;
-    if (!row) {
-      throw new Error('MAKER_LEASE_NOT_FOUND');
-    }
-    return this.parseWorkerLease(row);
+    return this.workerLeases.getById(id);
   }
 
   getWorkerLeasePublic(id: string): WorkerLeaseRecord {
     return this.getWorkerLease(id);
   }
 
-  private parseWorkerLease(row: any): WorkerLeaseRecord {
-    return {
-      id: row.id,
-      loop_run_id: row.loop_run_id,
-      role: row.role,
-      runtime: row.runtime,
-      status: row.status,
-      finding_id: row.finding_id || null,
-      worktree_path: row.worktree_path || null,
-      branch_name: row.branch_name || null,
-      budget: JSON.parse(row.budget_json || '{}'),
-      metadata: JSON.parse(row.metadata || '{}'),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      parent_lease_id: row.parent_lease_id ?? null,
-      spawn_tree_id: row.spawn_tree_id ?? null,
-      depth: typeof row.depth === 'number' ? row.depth : Number(row.depth ?? 0),
-      spawned_by_agent_id: row.spawned_by_agent_id ?? null,
-    };
+  public listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
+    return this.workerLeases.listByLoopRun(loopRunId);
+  }
+
+  public isWorkerLeaseCancelled(leaseId: string): boolean {
+    return this.recovery.isWorkerLeaseCancelled(leaseId);
   }
 
 
@@ -2332,20 +2166,6 @@ export class LoopService {
   public runtimeConcurrencyInUse(): number {
     return this.runtimeCommand.runtimeConcurrencyInUse();
   }
-
-  public isWorkerLeaseCancelled(leaseId: string): boolean {
-    const lease = this.getWorkerLease(leaseId);
-    const stopped = lease.metadata.stop_requested_at;
-    const wasStopped = lease.metadata.stopped_by_runner || lease.metadata.runtime_was_cancelled;
-    return Boolean(stopped || wasStopped || lease.status === 'cancelled');
-  }
-
-  public listWorkerLeases(loopRunId: string): WorkerLeaseRecord[] {
-    const rows = this.db.prepare('SELECT * FROM worker_leases WHERE loop_run_id = ? ORDER BY created_at ASC').all(loopRunId) as any[];
-    return rows.map((row) => this.parseWorkerLease(row));
-  }
-
-
 
   public git(repositoryPath: string, args: string[]): string {
     try {
