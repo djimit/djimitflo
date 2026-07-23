@@ -7,7 +7,7 @@
  * - Webhook notification for critical security events
  */
 
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export interface AuditAnchor {
@@ -19,9 +19,25 @@ export interface AuditAnchor {
   anchored_at: string;
   anchor_type: 'local' | 'webhook' | 'siem';
   destination?: string;
-  status: 'pending' | 'confirmed' | 'failed';
+  status: 'pending' | 'confirmed' | 'failed' | 'dead_letter';
   retry_count: number;
+  next_retry_at?: string;
+  last_error?: string;
 }
+
+export interface RetryConfig {
+  max_retries: number;
+  initial_delay_ms: number;
+  max_delay_ms: number;
+  backoff_multiplier: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  max_retries: 3,
+  initial_delay_ms: 1_000,
+  max_delay_ms: 60_000,
+  backoff_multiplier: 2,
+};
 
 export interface SIEMConfig {
   webhook_url?: string;
@@ -44,15 +60,16 @@ export interface AuditEvent {
 
 export class AuditAnchoringService {
   private anchors: AuditAnchor[] = [];
-  private db: Database;
-  private siemConfig?: SIEMConfig;
+  private deadLetterQueue: AuditAnchor[] = [];
+  private retryConfig: RetryConfig;
+  private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   constructor(
-    db: Database,
-    siemConfig?: SIEMConfig,
+    private db: Database,
+    private siemConfig?: SIEMConfig,
+    retryConfig: Partial<RetryConfig> = {},
   ) {
-    this.db = db;
-    this.siemConfig = siemConfig;
+    this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
     this.ensureTables();
   }
 
@@ -88,13 +105,14 @@ export class AuditAnchoringService {
 
   /**
    * Anchor the current Merkle root to an external system.
+   * Implements exponential backoff retry with dead letter queue.
    */
   async anchorToExternal(destination: string, type: 'webhook' | 'siem'): Promise<AuditAnchor> {
     const { root, eventCount } = this.computeMerkleRoot();
     const now = new Date().toISOString();
 
     const anchor: AuditAnchor = {
-      anchor_id: `anchor-${Date.now()}`,
+      anchor_id: `anchor-${Date.now()}-${randomUUID().slice(0, 4)}`,
       merkle_root: root,
       chain_start: now,
       chain_end: now,
@@ -106,23 +124,95 @@ export class AuditAnchoringService {
       retry_count: 0,
     };
 
+    await this.attemptAnchor(anchor);
+    return anchor;
+  }
+
+  /**
+   * Attempt to anchor with retry logic.
+   */
+  private async attemptAnchor(anchor: AuditAnchor): Promise<void> {
     try {
-      if (type === 'webhook' && this.siemConfig?.webhook_url) {
+      if (anchor.anchor_type === 'webhook' && this.siemConfig?.webhook_url) {
         await this.sendWebhook(anchor);
-      } else if (type === 'siem' && this.siemConfig) {
+      } else if (anchor.anchor_type === 'siem' && this.siemConfig) {
         await this.sendToSIEM(anchor);
       }
 
       anchor.status = 'confirmed';
+      this.anchors.push(anchor);
+      this.persistAnchor(anchor);
     } catch (error) {
-      anchor.status = 'failed';
+      anchor.last_error = error instanceof Error ? error.message : String(error);
       anchor.retry_count++;
+
+      if (anchor.retry_count > this.retryConfig.max_retries) {
+        anchor.status = 'dead_letter';
+        this.deadLetterQueue.push(anchor);
+        this.persistAnchor(anchor);
+      } else {
+        anchor.status = 'failed';
+        const delay = this.calculateBackoff(anchor.retry_count);
+        anchor.next_retry_at = new Date(Date.now() + delay).toISOString();
+        this.scheduleRetry(anchor);
+        this.persistAnchor(anchor);
+      }
+    }
+  }
+
+  /**
+   * Calculate exponential backoff delay.
+   */
+  private calculateBackoff(retryCount: number): number {
+    const delay = this.retryConfig.initial_delay_ms * Math.pow(this.retryConfig.backoff_multiplier, retryCount - 1);
+    return Math.min(delay, this.retryConfig.max_delay_ms);
+  }
+
+  /**
+   * Schedule a retry attempt.
+   */
+  private scheduleRetry(anchor: AuditAnchor): void {
+    const delay = this.calculateBackoff(anchor.retry_count);
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(anchor.anchor_id);
+      this.attemptAnchor(anchor);
+    }, delay);
+    this.retryTimers.set(anchor.anchor_id, timer);
+  }
+
+  /**
+   * Retry all dead letter anchors (manual intervention).
+   */
+  async retryDeadLetters(): Promise<{ retried: number; succeeded: number; }> {
+    const letters = [...this.deadLetterQueue];
+    this.deadLetterQueue = [];
+
+    let succeeded = 0;
+    for (const anchor of letters) {
+      anchor.retry_count = 0;
+      anchor.status = 'pending' as AuditAnchor['status'];
+      await this.attemptAnchor(anchor);
+      if (anchor.status === 'confirmed') succeeded++;
     }
 
-    this.anchors.push(anchor);
-    this.persistAnchor(anchor);
+    return { retried: letters.length, succeeded };
+  }
 
-    return anchor;
+  /**
+   * Get dead letter queue contents.
+   */
+  getDeadLetterQueue(): AuditAnchor[] {
+    return [...this.deadLetterQueue];
+  }
+
+  /**
+   * Clear pending retry timers (for graceful shutdown).
+   */
+  clearRetryTimers(): void {
+    for (const timer of this.retryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.retryTimers.clear();
   }
 
   /**

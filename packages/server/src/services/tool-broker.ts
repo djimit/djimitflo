@@ -61,6 +61,10 @@ export interface ToolBrokerConfig {
   token_ttl_seconds: number;
   enable_separation_of_duties: boolean;
   require_approval_above_risk: RiskLevel;
+  rate_limit_enabled: boolean;
+  rate_limit_window_ms: number;
+  rate_limit_max_requests: number;
+  rate_limit_burst: number;
 }
 
 const DEFAULT_CONFIG: ToolBrokerConfig = {
@@ -68,7 +72,27 @@ const DEFAULT_CONFIG: ToolBrokerConfig = {
   token_ttl_seconds: 900,
   enable_separation_of_duties: true,
   require_approval_above_risk: RiskLevel.HIGH,
+  rate_limit_enabled: true,
+  rate_limit_window_ms: 60_000,
+  rate_limit_max_requests: 100,
+  rate_limit_burst: 10,
 };
+
+export interface RateLimitState {
+  timestamps: number[];
+  burst_count: number;
+  burst_reset_at: number;
+}
+
+export class RateLimitExceeded extends Error {
+  constructor(
+    public principal_id: string,
+    public retry_after_ms: number,
+  ) {
+    super(`Rate limit exceeded for principal ${principal_id}. Retry after ${retry_after_ms}ms.`);
+    this.name = 'RateLimitExceeded';
+  }
+}
 
 const RISK_ORDER: Record<RiskLevel, number> = {
   [RiskLevel.LOW]: 0,
@@ -80,6 +104,7 @@ const RISK_ORDER: Record<RiskLevel, number> = {
 export class ToolBroker {
   private config: ToolBrokerConfig;
   private capability_tokens: Map<string, CapabilityToken> = new Map();
+  private rate_limits: Map<string, RateLimitState> = new Map();
 
   constructor(
     private db: Database,
@@ -90,6 +115,65 @@ export class ToolBroker {
   }
 
   /**
+   * Check rate limit for a principal. Uses sliding window + burst protection.
+   * @throws RateLimitExceeded if limit is exceeded
+   */
+  private checkRateLimit(principal_id: string): void {
+    if (!this.config.rate_limit_enabled) return;
+
+    const now = Date.now();
+    let state = this.rate_limits.get(principal_id);
+
+    if (!state) {
+      state = { timestamps: [], burst_count: 0, burst_reset_at: now + 1000 };
+      this.rate_limits.set(principal_id, state);
+    }
+
+    // Reset burst counter every second
+    if (now >= state.burst_reset_at) {
+      state.burst_count = 0;
+      state.burst_reset_at = now + 1000;
+    }
+
+    // Check burst limit (per second)
+    state.burst_count++;
+    if (state.burst_count > this.config.rate_limit_burst) {
+      const retry_after = state.burst_reset_at - now;
+      throw new RateLimitExceeded(principal_id, retry_after);
+    }
+
+    // Clean old timestamps outside the window
+    const window_start = now - this.config.rate_limit_window_ms;
+    state.timestamps = state.timestamps.filter(t => t > window_start);
+
+    // Check sliding window limit
+    if (state.timestamps.length >= this.config.rate_limit_max_requests) {
+      const oldest = state.timestamps[0];
+      const retry_after = oldest + this.config.rate_limit_window_ms - now;
+      throw new RateLimitExceeded(principal_id, retry_after);
+    }
+
+    state.timestamps.push(now);
+  }
+
+  /**
+   * Get current rate limit status for a principal (for monitoring).
+   */
+  getRateLimitStatus(principal_id: string): { remaining: number; reset_at: number; } | null {
+    const state = this.rate_limits.get(principal_id);
+    if (!state) return null;
+
+    const now = Date.now();
+    const window_start = now - this.config.rate_limit_window_ms;
+    const active = state.timestamps.filter(t => t > window_start);
+
+    return {
+      remaining: Math.max(0, this.config.rate_limit_max_requests - active.length),
+      reset_at: state.burst_reset_at,
+    };
+  }
+
+  /**
    * Evaluate a tool call against all policies. This is the SINGLE ENTRY POINT
    * for all mutating actions. No executor may bypass this method.
    *
@@ -97,6 +181,10 @@ export class ToolBroker {
    */
   evaluateToolCall(request: ToolCallRequest): ToolCallDecision {
     const decision_id = `dec-${randomUUID()}`;
+
+    // Security: rate limit check before policy evaluation
+    this.checkRateLimit(request.principal.sub);
+
     const matched_policies = this.getMatchingPolicies(request);
 
     let decision: PolicyDecision;
