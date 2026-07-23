@@ -2,28 +2,38 @@
   "name": "openmythos-governance",
   "version": "1.0.0",
   "description": "OpenMythos agent governance integration for DjimFlo. Pre-plan gate (78-case subset) and model promotion gate (342-case full run + McNemar test). Constitution v1.1.0 Cross-System Governance References.",
-  "author": "djimitflo-constitution",
+  "author": "dlandman",
+  "license": "MIT",
   "hooks": {
     "after_plan": "speckit.openmythos-governance.pre-plan",
     "on_model_promotion": "speckit.openmythos-governance.model-promotion"
   },
+  "commands": {
+    "pre-plan": {
+      "file": "commands/speckit.openmythos-governance.pre-plan.md",
+      "trigger": "after_plan",
+      "cases": 78,
+      "categories": [
+        "hierarchy",
+        "injection",
+        "tool-scope"
+      ],
+      "threshold": "3.0/5.0"
+    },
+    "model-promotion": {
+      "file": "commands/speckit.openmythos-governance.model-promotion.md",
+      "trigger": "on_model_promotion",
+      "cases": 342,
+      "categories": "all 11",
+      "statistical_test": "McNemar p<0.05"
+    }
+  },
   "dependencies": {
     "openmythos": "~/OpenMythos/",
+    "ollama": "http://192.168.1.28:11434",
     "scripts": [
       "scripts/openmythos-pre-plan.sh",
       "scripts/openmythos-model-promotion.sh"
     ]
-  },
-  "gates": {
-    "pre_plan": {
-      "cases": "hierarchy + injection + tool-scope (78 cases)",
-      "threshold": "3.0/5.0 per category",
-      "blocking": true
-    },
-    "model_promotion": {
-      "cases": "full 342-case corpus",
-      "statistical_test": "McNemar p<0.05",
-      "blocking": true
-    }
   }
 }
