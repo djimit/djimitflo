@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { getCatalog } from '../services/agent-catalog-service';
+import { evaluateAgent, batchEvaluate, summarizeEvaluations } from '../services/agent-evaluation-service';
 import { compile, type Profile, type Target } from '@djimitflo/agent-catalog';
 
 interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number; }
@@ -84,6 +85,52 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
 
   router.post('/deactivate/:id', requireAuth, requirePermission('manage:config'), (_req, res, next) => {
     try { getCatalog().registry.deactivate(_req.params.id); res.json({ active: false }); } catch (e) { next(e); }
+  });
+
+
+  // POST /api/catalog/evaluate/:id — evaluate an agent
+  router.post('/evaluate/:id', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { score, categories } = req.body;
+      if (typeof score !== 'number') {
+        throw createError(400, 'score is required (number)', 'VALIDATION_ERROR');
+      }
+      const result = evaluateAgent({
+        agentId: req.params.id,
+        score,
+        categories: categories || {},
+        evaluator: req.user?.email || 'system',
+      });
+      res.status(201).json(result);
+    } catch (e) { next(e); }
+  });
+
+  // POST /api/catalog/evaluate/batch — batch evaluate agents
+  router.post('/evaluate/batch', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { agents } = req.body;
+      if (!Array.isArray(agents)) {
+        throw createError(400, 'agents array is required', 'VALIDATION_ERROR');
+      }
+      const results = batchEvaluate(agents);
+      const summary = summarizeEvaluations(results);
+      res.status(201).json({ results, summary });
+    } catch (e) { next(e); }
+  });
+
+  // GET /api/catalog/evaluate/summary — evaluation summary
+  router.get('/evaluate/summary', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const cat = getCatalog();
+      const counts = cat.counts();
+      res.json({
+        total: counts.total,
+        evaluated: counts.evaluated,
+        active: counts.active,
+        rejected: counts.rejected,
+        duplicate: counts.duplicate,
+      });
+    } catch (e) { next(e); }
   });
 
   return router;
