@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { execFileSync, spawnSync } from 'child_process';
-import type { ChildProcess } from 'child_process';
+
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
@@ -11,33 +11,64 @@ import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
 import { LoopBudgetService } from './loop-budget-service';
 import { WorktreeManager } from './worktree-manager';
-import { GoalService, type GoalRecord, type GoalCreateInput, type GoalUpdateInput, type DecomposedLoopCandidate } from './goal-service';
-import { LoopWorkerExecutorService, type ExecuteWorkerResult } from './loop-worker-executor-service';
+import { GoalService } from './goal-service';
+import { LoopWorkerExecutorService } from './loop-worker-executor-service';
 import { RuntimeCommandService } from './runtime-command-service';
 import { LoopLifecycleService } from './loop-lifecycle-service';
 import { LoopDiscoveryService } from './loop-discovery-service';
 import { LoopVerificationService } from './loop-verification-service';
+import type { ExecuteWorkerResult } from './loop-worker-executor-service';
+import type {
+  LoopName,
+  WorkerRole,
+  LoopGate,
+  LoopRunRecord,
+  WorkerLeaseRecord,
+  ContinueLoopInput,
+  RetryLoopInput,
+  SplitLoopInput,
+  RuntimeContract,
+  RuntimeUsage,
+  RuntimeExecutionResult,
+  RuntimeStopResult,
+  RuntimeProcessHandle,
+  RuntimeManifestAction,
+  StartDocDriftLoopInput,
+} from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
+import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
+
+export type {
+  LoopName,
+  WorkerRole,
+  LoopGate,
+  LoopRunRecord,
+  WorkerLeaseRecord,
+  ContinueLoopInput,
+  RetryLoopInput,
+  SplitLoopInput,
+  RuntimeContract,
+  RuntimeUsage,
+  RuntimeExecutionResult,
+  RuntimeStopResult,
+  RuntimeProcessHandle,
+  RuntimeManifestAction,
+  StartDocDriftLoopInput,
+  GoalRecord,
+  GoalCreateInput,
+  GoalUpdateInput,
+  DecomposedLoopCandidate,
+  LoopFinding,
+};
 
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
-type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | 'ready_for_human_merge' | 'blocked' | 'completed' | 'failed' | 'escalated' | 'cancelled' | 'interrupted';
-type GateStatus = 'pass' | 'fail' | 'skipped';
-export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
-export type LoopName =
-  | 'doc-drift-and-small-fix-loop'
-  | 'repo-maintenance-loop'
-  | 'skill-quality-loop'
-  | 'mcp-connector-validation-loop'
-  | 'security-regression-loop'
-  | 'okf-synchronization-loop'
-  | 'overwatch-policy-drift-loop';
 
 interface LoopContract {
   name: LoopName;
   title: string;
   description: string;
   mode: 'closed';
-  risk_class: RiskClass;
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
   trigger: string[];
   context_sources: string[];
   actions_allowed: string[];
@@ -46,54 +77,6 @@ interface LoopContract {
   state: string[];
   escalation: string[];
   stop_conditions: string[];
-}
-
-export type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
-
-export type { LoopFinding } from './loop-discovery-service';
-
-export interface LoopGate {
-  name: string;
-  status: GateStatus;
-  evidence: string;
-}
-
-export interface LoopRunRecord {
-  id: string;
-  goal_id: string | null;
-  loop_name: string;
-  mode: 'closed' | 'open';
-  status: LoopRunStatus;
-  repository_path: string | null;
-  state_file: string | null;
-  findings: LoopFinding[];
-  plan: Record<string, unknown>;
-  gates: LoopGate[];
-  next_actions: string[];
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  completed_at: string | null;
-}
-
-export interface WorkerLeaseRecord {
-  id: string;
-  loop_run_id: string;
-  role: WorkerRole;
-  runtime: string;
-  status: 'prepared' | 'running' | 'completed' | 'failed' | 'cancelled';
-  finding_id: string | null;
-  worktree_path: string | null;
-  branch_name: string | null;
-  budget: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-  // Nested-spawn lineage (P1). Null/0 for root leases created by continueLoopRun.
-  parent_lease_id: string | null;
-  spawn_tree_id: string | null;
-  depth: number;
-  spawned_by_agent_id: string | null;
 }
 
 interface LoopEventRecord {
@@ -106,69 +89,15 @@ interface LoopEventRecord {
   created_at: string;
 }
 
-interface StartDocDriftLoopInput {
-  loop_name?: LoopName;
-  goal_id?: string;
-  repository_path?: string;
-  max_findings?: number;
-  sovereign?: boolean;
-}
-
-export interface ContinueLoopInput {
-  finding_ids?: string[];
-  max_assignments?: number;
-  max_maker_workers?: number;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
-}
-
-export interface RetryLoopInput {
-  maker_lease_id?: string;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
-  max_retries?: number;
-}
-
-export interface SplitLoopInput {
-  finding_id?: string;
-  reason?: string;
-  children?: Array<{
-    message?: string;
-    suggested_fix?: string;
-    file?: string;
-    line?: number;
-  }>;
-}
-
 interface ExecuteMakerInput {
   lease_id?: string;
   timeout_ms?: number;
   diff_max_lines?: number;
-  /**
-   * Per-task request to run the runtime with approvals/sandbox bypassed so a
-   * non-interactive codex/opencode maker can actually apply writes and exit
-   * zero. This is a REQUEST only: it is honored solely when the operator has
-   * opted in via RUNTIME_ALLOW_SKIP_PERMISSIONS=true. See resolveSkipPermissions.
-   */
   skip_permissions?: boolean;
 }
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
-}
-
-export interface RuntimeContract {
-  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi';
-  available: boolean;
-  command: string | null;
-  version?: string;
-  status: 'ok' | 'drifted' | 'unavailable';
-  probed_at?: string;
-  cwd_flag?: string;
-  json_flag?: string | string[];
-  supports_json_events: boolean;
-  supports_usage_parsing: boolean;
-  supports_timeout_kill: boolean;
-  evidence: string[];
-  reason?: string;
 }
 
 interface CheckerVerdictInput {
@@ -183,39 +112,6 @@ interface RunChecksInput {
   timeout_ms?: number;
   scripts?: string[];
 }
-
-export interface RuntimeUsage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens: number;
-  usage_source: 'runtime_stdout';
-}
-
-export interface RuntimeExecutionResult {
-  exitCode: number | null;
-  signal: string | null;
-  timedOut: boolean;
-  timedOutAt?: string;
-  stdout: string;
-  stderr: string;
-  runtimePid?: number;
-}
-
-export interface RuntimeStopResult {
-  stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle';
-  killAttempted: boolean;
-}
-
-export interface RuntimeProcessHandle {
-  child: ChildProcess;
-  leaseId: string;
-  command: string;
-  args: string[];
-  startedAt: string;
-  timeoutHandle?: NodeJS.Timeout;
-}
-
-export type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';
 
 const LOOP_NAME = 'doc-drift-and-small-fix-loop';
 const DEFAULT_MAX_FINDINGS = 50;

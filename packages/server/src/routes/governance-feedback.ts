@@ -112,7 +112,7 @@ export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddlewa
   });
 
   // GET /api/governance-feedback/dormant-capabilities — detect unused capabilities
-  router.get('/dormant-capabilities', requirePermission('read:evidence'), (req, res) => {
+  router.get('/dormant-capabilities', requirePermission('read:evidence'), (_req, res) => {
     const dormant = service.detectDormantCapabilities();
     res.json({ dormant_capabilities: dormant, count: dormant.length });
   });

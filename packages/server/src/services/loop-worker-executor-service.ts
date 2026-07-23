@@ -8,14 +8,14 @@
 
 import fs from 'fs';
 import path from 'path';
+import type { LoopService } from './loop-service';
 import type {
-  LoopService,
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
   RuntimeContract,
   RuntimeUsage,
-} from './loop-service';
+} from './loop-types';
 
 export interface ExecuteMakerInput {
   lease_id?: string;

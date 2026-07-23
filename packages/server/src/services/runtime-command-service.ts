@@ -8,9 +8,9 @@
 
 import { spawn, spawnSync } from 'child_process';
 import type { ChildProcess } from 'child_process';
-import type { RuntimeProcessHandle } from './loop-service';
 import type { Database } from 'better-sqlite3';
-import type { LoopService, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-service';
+import type { LoopService } from './loop-service';
+import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
 
 const DEFAULT_MAX_CONCURRENCY = 4;
 

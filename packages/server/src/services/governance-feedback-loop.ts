@@ -279,8 +279,6 @@ export class GovernanceFeedbackLoopService {
   detectDormantCapabilities(): DormantCapability[] {
     if (!this.config.enable_dormant_capability_detection) return [];
 
-    const thresholdDate = new Date(Date.now() - this.config.dormant_capability_threshold_days * 24 * 60 * 60 * 1000);
-
     const capabilities = this.db.prepare(`
       SELECT
         sc.id as capability_id,

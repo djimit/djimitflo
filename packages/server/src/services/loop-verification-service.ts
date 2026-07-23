@@ -11,10 +11,12 @@ import fs from 'fs';
 import { swarmEventBus } from './swarm-event-bus';
 import type {
   LoopService,
+} from './loop-service';
+import type {
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
-} from './loop-service';
+} from './loop-types';
 
 export interface VerificationResult {
   run: LoopRunRecord;
