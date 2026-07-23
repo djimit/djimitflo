@@ -43,3 +43,6 @@ export const api = {
   ...exportsApi,
   ...cognitiveApi,
 };
+
+// Re-export all types for backward compatibility
+export type * from './api-types';

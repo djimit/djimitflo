@@ -4,21 +4,192 @@
  */
 import { request } from "../api-client";
 
-export interface SwarmRealityStatus { active: number; pending: number; total: number }
-export interface SchedulerTickResult { processed: number; errors: string[] }
-export interface BacklogFleetSyncResult { synced: number; errors: string[] }
-export interface KnowledgeRuntimeHealth { status: string; last_sync: string }
-export interface KnowledgeSyncResult { applied: number; errors: string[] }
-export interface WorkerPoolPlanResult { plan: string[]; capacity: number }
-export interface WorkerPoolStartResult { lease_id: string; status: string }
-export interface WorkerPoolDrainResult { drained: number }
-export interface WorkerPoolStopResult { stopped: boolean }
-export interface WorkItemRecord { id: string; title: string; status: string; assigned_runtime: string; recommended_loop: string }
-export interface MemoryCandidateRecord { id: string; content: string; score: number }
-export interface SpecialistProfile { id: string; name: string; expertise: string[] }
-export interface SpecialistPanelRecord { id: string; title: string; status: string }
-export interface WorkerRuntime { type: string; concurrency: number }
-export interface CheckerRuntime { type: string; concurrency: number }
+export interface WorkerRuntime {
+  type: string;
+  concurrency: number;
+  capabilities?: string[];
+}
+export type CheckerRuntime = Exclude<WorkerRuntime, { type: 'manual' }>;
+
+export type WorkerPoolDecision = {
+
+  lease_id: string;
+  loop_run_id: string;
+  role: string;
+  runtime: string;
+  effective_runtime: string;
+  status: string;
+  risk_class: string;
+  eligible: boolean;
+  blocked_reasons: string[];
+  priority_score: number;
+  queue_age_ms: number;
+  bottleneck_reason: string | null;
+  next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+
+};
+
+export type WorkerPoolPlanResult = {
+
+  decisions: WorkerPoolDecision[];
+  eligible_count: number;
+  blocked_count: number;
+  running_count: number;
+  max_workers: number;
+  capacity_snapshot: SwarmRealityStatus['resource_snapshot'];
+
+};
+
+export type WorkerPoolStartResult = {
+
+  action: 'started' | 'blocked';
+  decision: WorkerPoolDecision | null;
+  plan: WorkerPoolPlanResult;
+  execution?: ExecuteWorkerResult;
+
+};
+
+export type WorkerPoolDrainResult = {
+
+  action: 'drained';
+  started: WorkerPoolStartResult[];
+  final_plan: WorkerPoolPlanResult;
+
+};
+
+export type WorkerPoolStopResult = {
+
+  lease: WorkerLeaseRecord;
+  event: LoopEventRecord;
+
+};
+
+export type SchedulerTickResult = {
+
+  created_work_items: WorkItemRecord[];
+  planned_work_items: WorkItemRecord[];
+  prepared_work_items: WorkItemRecord[];
+  skipped_existing: number;
+  inspected_loop_runs: number;
+  leases_created: number;
+
+};
+
+export type BacklogFleetSyncResult = {
+
+  inspected_work_items: number;
+  updated_work_items: WorkItemRecord[];
+
+};
+
+export type KnowledgeRuntimeHealth = {
+
+  okf_base: string | null;
+  canonical_candidate: string;
+  symlink_target: string | null;
+  exists: boolean;
+  valid: boolean;
+  validate_okf: {
+    status: 'pass' | 'fail' | 'skipped';
+    command: string | null;
+    stdout: string;
+    stderr: string;
+  
+};
+
+export type KnowledgeSyncResult = {
+
+  dry_run: boolean;
+  okf_base: string;
+  created: number;
+  updated: number;
+  blocked: number;
+  unchanged: number;
+  capabilities: Array<Record<string, unknown>>;
+
+};
+
+export type SwarmRealityStatus = {
+
+  registry_agent_count: number;
+  live_agent_count: number;
+  worker_lease_count: number;
+  active_execution_count: number;
+  task_count: {
+    open_work_items: number;
+    open_loop_runs: number;
+    open_tasks: number;
+    total: number;
+  
+};
+
+export type WorkItemRecord = {
+
+  id: string;
+  title: string;
+  description: string;
+  source: string;
+  source_ref: string | null;
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  value_score: number;
+  confidence: number;
+  status: 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
+  recommended_loop: string | null;
+  assigned_agent_id: string | null;
+  assigned_runtime: string | null;
+  parent_goal_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+
+};
+
+export type MemoryCandidateRecord = {
+
+  id: string;
+  title: string;
+  content: string;
+  memory_type: 'operational_memory' | 'engineering_rule' | 'policy_rule';
+  source_ref: string | null;
+  status: 'candidate' | 'review_required' | 'rejected' | 'promoted';
+  promotion_status: 'proposed' | 'blocked_pending_review' | 'blocked_pending_human' | 'rejected' | 'promoted';
+  human_required: boolean;
+  sensitivity: 'normal' | 'security_sensitive' | 'secret_detected';
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+
+};
+
+export type SpecialistProfile = {
+
+  id: string;
+  title: string;
+  domains: string[];
+  default_questions: string[];
+  required_evidence: string[];
+  forbidden_claims: string[];
+  output_schema: string[];
+
+};
+
+export type SpecialistPanelRecord = {
+
+  id: string;
+  topic: string;
+  question: string;
+  status: 'planned' | 'reviewing' | 'consensus_ready' | 'backlog_created' | 'goal_created' | 'cancelled';
+  risk_class: 'low' | 'medium' | 'high' | 'critical';
+  panel: SpecialistProfile[];
+  context: Record<string, unknown>;
+  consensus: SpecialistConsensus;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  reviews?: SpecialistReviewRecord[];
+
+};
 
 export const swarmApi = {
 

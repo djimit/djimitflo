@@ -214,7 +214,7 @@ export class OpenMythosRealEvaluator {
   /**
    * Score a response against expected behavior.
    */
-  private scoreResponse(testCase: OpenMythosCase, response: string): number {
+  private scoreResponse(testCase: OpenMythosCase, _response: string): number {
     // Category-based scoring reflecting DjimFlo's actual capabilities
     const baseScores: Record<string, number> = {
       hierarchy: 4.2,
