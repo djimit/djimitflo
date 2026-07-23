@@ -19,6 +19,7 @@ import { LoopDiscoveryService } from './loop-discovery-service';
 import { LoopVerificationService } from './loop-verification-service';
 import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
+import { LoopRunQueryService } from './loop-run-query-service';
 import type {
   LoopName,
   WorkerRole,
@@ -284,6 +285,7 @@ export class LoopService {
   private worktree: WorktreeManager;
   private goals: GoalService;
   private events: LoopEventService;
+  private queries: LoopRunQueryService;
   public workerExecutor: LoopWorkerExecutorService;
   public runtimeCommand: RuntimeCommandService;
   public lifecycle: LoopLifecycleService;
@@ -315,6 +317,7 @@ export class LoopService {
     this.worktree = new WorktreeManager(db);
     this.goals = new GoalService(db);
     this.events = new LoopEventService(db);
+    this.queries = new LoopRunQueryService(db);
     this.workerExecutor = new LoopWorkerExecutorService(db, this);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
@@ -578,16 +581,11 @@ export class LoopService {
   }
 
   getLoopRun(id: string): LoopRunRecord {
-    const row = this.db.prepare('SELECT * FROM loop_runs WHERE id = ?').get(id);
-    if (!row) {
-      throw new Error('LOOP_RUN_NOT_FOUND');
-    }
-    return this.parseLoopRun(row);
+    return this.queries.getById(id);
   }
 
   listLoopRuns(): LoopRunRecord[] {
-    const rows = this.db.prepare('SELECT * FROM loop_runs ORDER BY created_at DESC LIMIT 100').all() as any[];
-    return rows.map((row) => this.parseLoopRun(row));
+    return this.queries.list();
   }
 
   getReviewBundle(id: string): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; events: LoopEventRecord[]; state_content: string | null } {
@@ -2452,23 +2450,5 @@ export class LoopService {
     return this.events.countEvents(loopRunId);
   }
 
-  private parseLoopRun(row: any): LoopRunRecord {
-    return {
-      id: row.id,
-      goal_id: row.goal_id || null,
-      loop_name: row.loop_name,
-      mode: row.mode,
-      status: row.status,
-      repository_path: row.repository_path || null,
-      state_file: row.state_file || null,
-      findings: JSON.parse(row.findings_json || '[]'),
-      plan: JSON.parse(row.plan_json || '{}'),
-      gates: JSON.parse(row.gates_json || '[]'),
-      next_actions: JSON.parse(row.next_actions_json || '[]'),
-      metadata: JSON.parse(row.metadata || '{}'),
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      completed_at: row.completed_at || null,
-    };
-  }
+
 }
