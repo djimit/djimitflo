@@ -16,6 +16,7 @@ import { requestLogger } from './middleware/request-logger';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
+import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
 import { lifecycleManager } from './services/lifecycle-manager';
@@ -229,6 +230,9 @@ async function main() {
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
   
+  // Prometheus exposition — default-off, armed by METRICS_TOKEN (see routes/metrics.ts)
+  app.get('/metrics', metricsRateLimiter, createMetricsHandler(db, () => wsService.getClientCount()));
+
   // Create execution engine
   const executionEngine = new ExecutionEngine(db, wsService);
   console.log('⚙️  Execution engine initialized');
