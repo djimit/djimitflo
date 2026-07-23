@@ -108,10 +108,10 @@ A feature is "done" only when ALL of the following hold:
 3. **Lint clean**: `npm run lint` passes with zero warnings.
 4. **FR coverage**: Every FR-### in the spec has at least one implementing task and one test.
 5. **Spec lifecycle**: Spec status transitions to `implemented`; changelog entry added.
-6. **Constitution compliance**: No Article I-V violations introduced.
+6. **Constitution compliance**: No Article I–V violations introduced.
 7. **Audit evidence**: All gate evidence files written to `.swarm/evidence/`.
 
-Reviewer MAY override items 4-5 with documented justification (see Specification Quality Gates).
+Reviewer MAY override items 4–5 with documented justification (see Specification Quality Gates).
 
 ## Specification Quality Gates
 
