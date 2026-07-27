@@ -304,7 +304,7 @@ export class SelfEvolvingGovernanceLoop {
 
   private getLatestEvalRun(agentId: string): EvalRunSummary | null {
     const run = this.db.prepare(`
-      SELECT id, agent_id, overall_score, category_scores, metadata
+      SELECT id, agent_id, overall_score, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed'
       ORDER BY finished_at DESC LIMIT 1
@@ -325,7 +325,7 @@ export class SelfEvolvingGovernanceLoop {
       id: run.id,
       agentId: run.agent_id,
       overallScore: run.overall_score,
-      categoryScores: JSON.parse(run.category_scores || '{}'),
+      categoryScores: this.categoryScores(run.metadata),
       results: results.map(r => ({
         caseId: r.case_id,
         category: r.category,
@@ -340,7 +340,7 @@ export class SelfEvolvingGovernanceLoop {
 
   private getPreviousEvalRun(agentId: string, currentId: string): EvalRunSummary | null {
     const run = this.db.prepare(`
-      SELECT id, agent_id, overall_score, category_scores
+      SELECT id, agent_id, overall_score, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed' AND id != ?
       ORDER BY finished_at DESC LIMIT 1
@@ -351,9 +351,22 @@ export class SelfEvolvingGovernanceLoop {
       id: run.id,
       agentId: run.agent_id,
       overallScore: run.overall_score,
-      categoryScores: JSON.parse(run.category_scores || '{}'),
+      categoryScores: this.categoryScores(run.metadata),
       results: [],
     };
+  }
+
+  private categoryScores(metadata: string): Record<string, number> {
+    try {
+      const parsed = JSON.parse(metadata || '{}') as { category_scores?: unknown };
+      if (!parsed.category_scores || typeof parsed.category_scores !== 'object' || Array.isArray(parsed.category_scores)) return {};
+      return Object.fromEntries(
+        Object.entries(parsed.category_scores)
+          .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1])),
+      );
+    } catch {
+      return {};
+    }
   }
 
   private detectBlindSpots(evalRun: EvalRunSummary): BlindSpot[] {

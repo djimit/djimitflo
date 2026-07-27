@@ -7,6 +7,8 @@ import { AgentAssuranceService, type EvalRunRecord, type ReflectionCandidateReco
 import { LoopService } from './loop-service';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
+import { TrajectoryStore } from './trajectory-store';
+import { CognitiveLoopClosureService } from './cognitive-loop-closure-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
@@ -64,6 +66,8 @@ export interface LoopLearningClosureResult {
   memory_candidate: MemoryCandidateRecord | null;
   follow_up_work_item: WorkItemRecord | null;
   skill_improvement_work_item: WorkItemRecord | null;
+  capability_outcomes_materialized: number;
+  cognitive_episode_materialized: boolean;
 }
 
 interface ParsedOkfFile {
@@ -272,6 +276,10 @@ export class KnowledgeRuntimeService {
       recommended_loop: 'skill-quality-loop',
       metadata: { loop_run_id: loopRunId, eval_run_id: evalRun.id, reflection_id: reflection.id },
     }).work_item : null;
+    const materialized = this.db.transaction(() => ({
+      capabilityOutcomes: this.materializeCapabilityOutcomes(loopRunId),
+      cognitiveEpisode: this.materializeCognitiveEpisode(loopRunId),
+    }))();
 
     return {
       action: 'closed_loop_learning',
@@ -285,6 +293,8 @@ export class KnowledgeRuntimeService {
       memory_candidate: memoryCandidate,
       follow_up_work_item: followUp,
       skill_improvement_work_item: skillImprovement,
+      capability_outcomes_materialized: materialized.capabilityOutcomes,
+      cognitive_episode_materialized: materialized.cognitiveEpisode,
     };
   }
 
@@ -527,7 +537,85 @@ export class KnowledgeRuntimeService {
       memory_candidate: null,
       follow_up_work_item: null,
       skill_improvement_work_item: null,
+      capability_outcomes_materialized: 0,
+      cognitive_episode_materialized: false,
     };
+  }
+
+  private materializeCapabilityOutcomes(loopRunId: string): number {
+    const leases = this.db.prepare(`
+      SELECT id, capability_id, runtime, status, metadata
+      FROM worker_leases
+      WHERE loop_run_id = ? AND role = 'maker' AND capability_id IS NOT NULL
+    `).all(loopRunId) as Array<{ id: string; capability_id: string; runtime: string; status: string; metadata: string }>;
+    const trajectories = new TrajectoryStore(this.db, { enabled: true });
+    let created = 0;
+    for (const lease of leases) {
+      const existing = this.db.prepare(`
+        SELECT 1 FROM trajectory_steps
+        WHERE run_id = ? AND action_type = 'complete' AND capability_id = ?
+          AND json_extract(metadata_json, '$.worker_lease_id') = ?
+      `).get(loopRunId, lease.capability_id, lease.id);
+      if (existing) continue;
+      trajectories.recordStep({
+        runId: loopRunId,
+        actionType: 'complete',
+        capabilityId: lease.capability_id,
+        runtime: lease.runtime,
+        outcome: lease.status === 'completed' ? 'success' : 'failure',
+        metadata: {
+          worker_lease_id: lease.id,
+          source: 'knowledge_runtime_closure',
+          predicted_confidence: this.safeJson<Record<string, unknown>>(lease.metadata, {}).predicted_confidence ?? null,
+        },
+      });
+      created++;
+    }
+    return created;
+  }
+
+  private materializeCognitiveEpisode(loopRunId: string): boolean {
+    const cognitive = new CognitiveLoopClosureService(this.db);
+    if (this.db.prepare('SELECT 1 FROM cognitive_episodes WHERE loop_run_id = ?').get(loopRunId)) return false;
+    const run = this.db.prepare(`
+      SELECT goal_id, loop_name, mode, created_at, COALESCE(completed_at, updated_at) AS completed_at
+      FROM loop_runs WHERE id = ?
+    `).get(loopRunId) as { goal_id: string | null; loop_name: string; mode: string; created_at: string; completed_at: string };
+    const leases = this.db.prepare('SELECT role, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(loopRunId) as Array<{ role: string; status: string; metadata: string }>;
+    const gates = this.db.prepare('SELECT gates_json FROM loop_runs WHERE id = ?').get(loopRunId) as { gates_json: string };
+    const parsedGates = this.safeJson<Array<{ status?: string }>>(gates.gates_json, []);
+    const startedAt = new Date(run.created_at).getTime();
+    const completedAt = new Date(run.completed_at).getTime();
+    cognitive.recordEpisode({
+      loopRunId,
+      goalId: run.goal_id || loopRunId,
+      goalType: run.loop_name,
+      mode: run.mode,
+      startedAt: run.created_at,
+      completedAt: run.completed_at,
+      durationMs: Number.isFinite(startedAt) && Number.isFinite(completedAt) ? Math.max(0, completedAt - startedAt) : 0,
+      outcome: 'success',
+      strategy: run.loop_name,
+      actions: leases.map((lease) => ({
+        type: lease.role,
+        timestamp: run.completed_at,
+        details: this.safeJson<Record<string, unknown>>(lease.metadata, {}),
+        result: lease.status === 'completed' ? 'success' : lease.status === 'failed' ? 'failure' : 'skipped',
+      })),
+      metrics: {
+        totalLeases: leases.length,
+        completedLeases: leases.filter((lease) => lease.status === 'completed').length,
+        failedLeases: leases.filter((lease) => lease.status === 'failed').length,
+        totalTokens: 0,
+        totalCostDollars: 0,
+        diffLinesChanged: 0,
+        filesModified: 0,
+        gatesPassed: parsedGates.filter((gate) => gate.status === 'pass').length,
+        gatesFailed: parsedGates.filter((gate) => gate.status === 'fail').length,
+      },
+      metadata: { source: 'knowledge_runtime_closure' },
+    });
+    return true;
   }
 
   private latestEval(suiteName: string, targetType: string, targetRef: string): { id: string; score: number } | null {

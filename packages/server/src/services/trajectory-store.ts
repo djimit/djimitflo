@@ -37,10 +37,11 @@ export interface TrajectoryPattern {
   description: string;
 }
 
-const TRAJECTORY_ENABLED = process.env.TRAJECTORY_BRIDGE_ENABLED === 'true';
-
 export class TrajectoryStore {
-  constructor(private db: Database) {
+  private enabled: boolean;
+
+  constructor(private db: Database, options: { enabled?: boolean } = {}) {
+    this.enabled = options.enabled ?? process.env.TRAJECTORY_BRIDGE_ENABLED === 'true';
     this.ensureTables();
   }
 
@@ -56,7 +57,7 @@ export class TrajectoryStore {
     durationMs?: number;
     metadata?: Record<string, unknown>;
   }): TrajectoryStep | null {
-    if (!TRAJECTORY_ENABLED) return null;
+    if (!this.enabled) return null;
 
     const stepNumber = this.getNextStepNumber(input.runId);
     const step: TrajectoryStep = {
@@ -197,7 +198,7 @@ export class TrajectoryStore {
       totalSteps,
       avgStepsPerRun: totalRuns > 0 ? Math.round(totalSteps / totalRuns) : 0,
       successRate: totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 0,
-      enabled: TRAJECTORY_ENABLED,
+      enabled: this.enabled,
     };
   }
 

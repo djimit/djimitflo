@@ -43,11 +43,7 @@ export class ServiceRefactoringAnalyzer {
     const methods = (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*(?::\s*\w+\s*)?=>/g) || []).length +
                    (content.match(/(?:async\s+)?(?:private\s+|public\s+)?(?:static\s+)?\w+\s*\([^)]*\)\s*\{/g) || []).length;
     const importStatements = content.match(/import\s+[^'"]+from\s+['"][^'"]+['"];?/g) || [];
-    const dependencies = importStatements.reduce((sum, statement) => {
-      const names = statement.match(/[a-zA-Z_$][\w$]*/g) || [];
-      const keywords = new Set(['import', 'from', 'type', 'as']);
-      return sum + names.filter((name) => !keywords.has(name)).length;
-    }, 0);
+    const dependencies = importStatements.length;
     const complexity = (content.match(/\b(if|else|switch|case|for|while|catch)\b/g) || []).length +
                       (content.match(/\{\s*\{/g) || []).length * 2;
 
@@ -75,9 +71,9 @@ export class ServiceRefactoringAnalyzer {
 
     if (dependencies > 15) {
       proposals.push(this.createProposal(targetService, 'simplify',
-        `Service has ${dependencies} import dependencies — consider dependency injection or facade pattern`,
+        `Service has ${dependencies} import statements — review whether its module boundary is too broad`,
         { loc, methods, dependencies, complexity },
-        ['Introduce dependency injection container', 'Create facade for external services', 'Lazy-load heavy dependencies'],
+        ['Remove unused imports', 'Group imports by existing domain boundary', 'Split only if callers prove separate responsibilities'],
         { locReduction: 0, complexityReduction: 15, testabilityImprovement: 25 },
         'medium'
       ));

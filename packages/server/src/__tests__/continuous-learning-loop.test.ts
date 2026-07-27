@@ -35,6 +35,21 @@ describe('G127: Continuous Learning Loop', () => {
     expect(loop.getLastCycle()).not.toBeNull();
   });
 
+  it('does not reprocess completed runs across service instances', async () => {
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, created_at, updated_at)
+      VALUES ('learn-once', 'repo-maintenance-loop', 'closed', 'completed', datetime('now', '-1 minute'), datetime('now'))
+    `).run();
+    const first = await loop.runCycle();
+    const restarted = new ContinuousLearningLoop(db);
+    const second = await restarted.runCycle();
+    expect(first.episodesIngested).toBe(1);
+    expect(first.reflectionsGenerated).toBe(1);
+    expect(second.episodesIngested).toBe(0);
+    expect(second.reflectionsGenerated).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM self_model_snapshots').get() as { count: number }).count).toBe(2);
+  });
+
   it('start/stop timer', () => {
     vi.useFakeTimers();
     const runCycle = vi.spyOn(loop, 'runCycle').mockResolvedValue({} as any);

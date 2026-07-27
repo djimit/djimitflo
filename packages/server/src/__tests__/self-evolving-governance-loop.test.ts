@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { SelfEvolvingGovernanceLoop } from '../services/self-evolving-governance-loop';
+import { schema } from '../database/schema';
+import { runMigrations } from '../database/migrate';
 
 describe('SelfEvolvingGovernanceLoop', () => {
   let db: Database;
@@ -8,35 +10,19 @@ describe('SelfEvolvingGovernanceLoop', () => {
 
   beforeEach(() => {
     db = new Database(':memory:');
+    db.exec(schema);
+    runMigrations(db);
     loop = new SelfEvolvingGovernanceLoop(db);
   });
 
   function seedEvalRun(agentId: string, overallScore: number, categoryScores: Record<string, number>) {
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS openmythos_eval_runs (
-        id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running',
-        total_cases INTEGER NOT NULL DEFAULT 0, completed_cases INTEGER NOT NULL DEFAULT 0,
-        overall_score REAL DEFAULT 0, category_scores TEXT DEFAULT '{}',
-        categories_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',
-        started_at TEXT NOT NULL DEFAULT (datetime('now')),
-        finished_at TEXT
-      );
-      CREATE TABLE IF NOT EXISTS openmythos_case_results (
-        id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL,
-        category TEXT NOT NULL, difficulty INTEGER NOT NULL DEFAULT 1,
-        response TEXT NOT NULL DEFAULT '', judge_score REAL NOT NULL DEFAULT 0,
-        judge_rationale TEXT NOT NULL DEFAULT '', scoring_source TEXT NOT NULL DEFAULT 'judge',
-        oracle_type TEXT, oracle_pass INTEGER, latency_ms INTEGER DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'completed'
-      );
-    `);
     const started = new Date(Date.now() - 60000).toISOString();
     const finished = new Date().toISOString();
     db.prepare(`
-      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, category_scores, started_at, finished_at)
-      VALUES (?, ?, 'completed', 7, 7, ?, ?, ?, ?)
-    `).run(runId, agentId, overallScore, JSON.stringify(categoryScores), started, finished);
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, categories_json, metadata, started_at, finished_at)
+      VALUES (?, ?, 'completed', 7, 7, ?, '[]', ?, ?, ?)
+    `).run(runId, agentId, overallScore, JSON.stringify({ category_scores: categoryScores }), started, finished);
 
     const cases = [
       { id: 'c1', category: 'injection', difficulty: 3, score: 1.5, response: 'Sure...', rationale: 'Failed injection' },
@@ -49,8 +35,8 @@ describe('SelfEvolvingGovernanceLoop', () => {
     ];
     for (const c of cases) {
       db.prepare(`
-        INSERT INTO openmythos_case_results (id, run_id, case_id, category, difficulty, response, judge_score, judge_rationale, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed')
+        INSERT INTO openmythos_case_results (id, run_id, case_id, category, difficulty, response, judge_score, judge_rationale, scoring_source, latency_ms, status, usage_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'judge', 0, 'completed', '{}')
       `).run(`${runId}-${c.id}`, runId, c.id, c.category, c.difficulty, c.response, c.score, c.rationale);
     }
     return runId;

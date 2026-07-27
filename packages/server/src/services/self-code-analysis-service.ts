@@ -14,6 +14,8 @@ export interface CodeAnalysisReport {
   architecturalIssues: string[];
   complexityHotspots: Array<{ file: string; complexity: number }>;
   recommendations: string[];
+  findingCounts: Record<string, number>;
+  analysisMethod: 'static-heuristic-candidates';
 }
 
 export class SelfCodeAnalysisService {
@@ -43,14 +45,24 @@ export class SelfCodeAnalysisService {
       timestamp: new Date().toISOString(),
       totalFiles: files.length,
       totalLines,
-      deadExports,
-      unreachableBranches: unreachable,
-      performanceIssues: perfIssues,
-      securityIssues: secIssues,
-      testCoverageGaps: coverageGaps,
-      architecturalIssues: archIssues,
-      complexityHotspots: hotspots,
+      deadExports: deadExports.slice(0, 20),
+      unreachableBranches: unreachable.slice(0, 10),
+      performanceIssues: perfIssues.slice(0, 10),
+      securityIssues: secIssues.slice(0, 10),
+      testCoverageGaps: coverageGaps.slice(0, 20),
+      architecturalIssues: archIssues.slice(0, 10),
+      complexityHotspots: hotspots.slice(0, 10),
       recommendations: this.generateRecommendations(deadExports, secIssues, archIssues, hotspots),
+      findingCounts: {
+        deadExportCandidates: deadExports.length,
+        unreachableBranchCandidates: unreachable.length,
+        performanceCandidates: perfIssues.length,
+        securityCandidates: secIssues.length,
+        testCoverageCandidates: coverageGaps.length,
+        architecturalCandidates: archIssues.length,
+        complexityHotspots: hotspots.length,
+      },
+      analysisMethod: 'static-heuristic-candidates',
     };
 
     this.db.prepare('INSERT INTO self_code_analysis (id, report_json) VALUES (?, ?)').run(report.id, JSON.stringify(report));
@@ -113,34 +125,32 @@ export class SelfCodeAnalysisService {
     const dead: string[] = [];
     const fs = require('fs');
     const exported = new Map<string, string[]>();
-    const imported = new Set<string>();
+    const source = new Map<string, string>();
 
     for (const f of files) {
       try {
         const content = fs.readFileSync(f, 'utf8');
+        source.set(f, content);
         const exportMatches = content.matchAll(/export\s+(?:class|function|const|interface|type)\s+(\w+)/g);
         for (const m of exportMatches) {
           const name = m[1];
           if (!exported.has(f)) exported.set(f, []);
           exported.get(f)!.push(name);
         }
-        const importMatches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
-        for (const m of importMatches) {
-          imported.add(m[1]);
-        }
       } catch { /* skip */ }
     }
 
     for (const [file, names] of exported) {
       for (const name of names) {
-        const isImported = [...imported].some(imp => imp.includes(file.replace('packages/server/src/services/', './').replace('.ts', '')));
-        if (!isImported && name !== 'main' && name !== 'default') {
+        const referencedElsewhere = [...source.entries()].some(([candidate, content]) =>
+          candidate !== file && new RegExp(`\\b${name}\\b`).test(content));
+        if (!referencedElsewhere && name !== 'main' && name !== 'default') {
           dead.push(`${file}:${name}`);
         }
       }
     }
 
-    return dead.slice(0, 20);
+    return dead;
   }
 
   private findUnreachableCode(files: string[]): string[] {
@@ -155,7 +165,7 @@ export class SelfCodeAnalysisService {
         }
       } catch { /* skip */ }
     }
-    return unreachable.slice(0, 10);
+    return unreachable;
   }
 
   private findPerformanceIssues(files: string[]): string[] {
@@ -172,7 +182,7 @@ export class SelfCodeAnalysisService {
         }
       } catch { /* skip */ }
     }
-    return issues.slice(0, 10);
+    return issues;
   }
 
   private findSecurityIssues(files: string[]): string[] {
@@ -189,7 +199,7 @@ export class SelfCodeAnalysisService {
         }
       } catch { /* skip */ }
     }
-    return issues.slice(0, 10);
+    return issues;
   }
 
   private findTestCoverageGaps(files: string[]): string[] {
@@ -212,7 +222,7 @@ export class SelfCodeAnalysisService {
       }
     }
 
-    return gaps.slice(0, 20);
+    return gaps;
   }
 
   private findArchitecturalIssues(files: string[]): string[] {
@@ -235,17 +245,16 @@ export class SelfCodeAnalysisService {
         }
       } catch { /* skip */ }
     }
-    return hotspots.sort((a, b) => b.complexity - a.complexity).slice(0, 10);
+    return hotspots.sort((a, b) => b.complexity - a.complexity);
   }
 
   private generateRecommendations(dead: string[], sec: string[], arch: string[], hotspots: Array<{ file: string; complexity: number }>): string[] {
     const recs: string[] = [];
-    if (dead.length > 0) recs.push(`Remove ${dead.length} dead exports to reduce bundle size`);
-    if (sec.length > 0) recs.push(`Fix ${sec.length} security issues`);
-    if (hotspots.length > 0) recs.push(`Refactor ${hotspots.length} large files (>200 lines)`);
+    if (dead.length > 0) recs.push(`Review ${dead.length} unreferenced export candidates before removal`);
+    if (sec.length > 0) recs.push(`Validate ${sec.length} security candidates`);
+    if (hotspots.length > 0) recs.push(`Review ${hotspots.length} large-file hotspots; split only at proven boundaries`);
     if (arch.length > 0) recs.push(...arch);
-    recs.push('Add integration tests for all new Level-9/Level-10 services');
-    recs.push('Implement automated performance benchmarking');
+    recs.push('Prioritize route-to-service integration gaps over filename-based coverage');
     return recs;
   }
 }

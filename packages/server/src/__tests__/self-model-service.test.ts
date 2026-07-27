@@ -12,19 +12,12 @@ beforeEach(() => {
   db.pragma('foreign_keys = ON');
   db.exec(schema);
   runMigrations(db);
-  ensureConfidenceColumn();
   selfModel = new SelfModelService(db);
 });
 
 afterEach(() => {
   db?.close();
 });
-
-function ensureConfidenceColumn() {
-  try {
-    db.exec('ALTER TABLE worker_leases ADD COLUMN confidence REAL DEFAULT 0.5');
-  } catch { /* column may already exist in newer schemas */ }
-}
 
 function insertCapability(id: string, status: string = 'validated') {
   db.prepare(`
@@ -45,9 +38,9 @@ function insertWorkerLease(capabilityId: string, status: string, confidence: num
     VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'completed', datetime('now'), datetime('now'))
   `).run(runId);
   db.prepare(`
-    INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, capability_id, confidence, created_at, updated_at)
+    INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, capability_id, metadata, created_at, updated_at)
     VALUES (?, ?, 'maker', 'codex', ?, ?, ?, datetime('now'), datetime('now'))
-  `).run(`lease-${Math.random().toString(36).slice(2, 10)}`, runId, status, capabilityId, confidence);
+  `).run(`lease-${Math.random().toString(36).slice(2, 10)}`, runId, status, capabilityId, JSON.stringify({ predicted_confidence: confidence }));
 }
 
 describe('G35: Self-Model Service', () => {

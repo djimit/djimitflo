@@ -17,10 +17,20 @@ import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
   const intelligence = new SwarmIntelligenceService(db);
   const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
+
+  try {
+    const learning = new ContinuousLearningLoop(db);
+    learning.start();
+    lifecycleManager.register({ serviceName: 'ContinuousLearningLoop', stop: () => learning.stop() });
+    console.log('📚 Continuous learning loop started (persistent evidence watermark).');
+  } catch (error) {
+    console.warn('⚠️  Continuous learning loop failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
 
   try {
     const coordinator = new NegotiationCoordinator(recoverySvc, nestedSpawns, intelligence);

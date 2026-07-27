@@ -18,16 +18,16 @@ function makeDb() {
   return database;
 }
 
-function seedRun(db: Database.Database, id: string, checkerAccepted = true) {
+function seedRun(db: Database.Database, id: string, checkerAccepted = true, capabilityId: string | null = null) {
   const now = new Date().toISOString();
   db.prepare(`
     INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, findings_json, plan_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, 'repo-maintenance-loop', 'closed', 'ready_for_human_merge', JSON.stringify([{ name: 'checker_verdict', status: 'pass', evidence: 'accepted' }]), '[]', '{}', '[]', '{}', now, now);
   db.prepare(`
-    INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(`${id}-maker`, id, 'maker', 'mock', 'completed', '{}', now, now);
+    INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, capability_id, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(`${id}-maker`, id, 'maker', 'mock', 'completed', capabilityId, '{"predicted_confidence":0.8}', now, now);
   db.prepare(`
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -94,6 +94,27 @@ describe('loop learning closure', () => {
         recommended_loop: 'skill-quality-loop',
       });
       expect(result.follow_up_work_item).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('materializes each attributed capability outcome exactly once', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'loop-capability', true, 'capability:test');
+      const service = new KnowledgeRuntimeService(db);
+      const first = service.closeLoop({ loop_run_id: 'loop-capability' });
+      const second = service.closeLoop({ loop_run_id: 'loop-capability' });
+      expect(first.capability_outcomes_materialized).toBe(1);
+      expect(first.cognitive_episode_materialized).toBe(true);
+      expect(second.capability_outcomes_materialized).toBe(0);
+      expect(second.cognitive_episode_materialized).toBe(false);
+      expect(db.prepare(`
+        SELECT COUNT(*) AS count FROM trajectory_steps
+        WHERE run_id = 'loop-capability' AND capability_id = 'capability:test' AND outcome = 'success'
+      `).get()).toMatchObject({ count: 1 });
+      expect(db.prepare("SELECT COUNT(*) AS count FROM cognitive_episodes WHERE loop_run_id = 'loop-capability'").get()).toMatchObject({ count: 1 });
     } finally {
       db.close();
     }
