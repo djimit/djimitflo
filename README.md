@@ -2,7 +2,7 @@
 
 **Research-grade agentic governance laboratory for AI-assisted engineering**
 
-[![Tests](https://img.shields.io/badge/tests-344%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-1600%2B%20passing-brightgreen)]()
 [![Version](https://img.shields.io/badge/version-0.5.8-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6)]()
@@ -31,13 +31,13 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 | Metric | Value |
 |--------|-------|
 | **Version** | 0.5.8 (all packages) |
-| **Tests** | 344+ passing |
+| **Tests** | 1600+ passing |
 | **Route Modules** | 67 |
 | **API Endpoints** | ~556 |
 | **Database Tables** | 72+ |
 | **Agent Runtimes** | 7 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock) |
-| **Packages** | 8 workspaces |
-| **Node** | >= 22 |
+| **Packages** | 7 workspaces |
+| **Node** | >= 20, < 25 |
 | **TypeScript** | 6.x strict mode |
 | **Last Updated** | 2026-07-22 |
 
@@ -69,7 +69,7 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 - **REST API** — 556 endpoints across 67 route modules
 - **WebSocket** — Real-time event streaming to dashboard (token via subprotocol, not URL)
 - **MCP Server** — Tools for Claude Code / Cursor / VS Code integration
-- **Telegram Bot** — Mobile task creation and approval
+- **Telegram Bot** — Mobile task creation and status
 
 ### Dashboard
 - React 19 + Vite 8 + Tailwind CSS frontend
@@ -90,8 +90,7 @@ djimitflo/
 │   ├── mcp-server/         # MCP server (stdio + HTTP transports)
 │   ├── telegram/           # Telegram bot gateway (grammy)
 │   ├── agent-catalog/      # Agent import from catalog files
-│   ├── ransomware-module/  # Anti-ransomware detection (private)
-│   └── knowledge/          # Knowledge storage (runtime-generated)
+│   └── ransomware-module/  # Anti-ransomware detection (private)
 ├── .swarm/                 # Threat model, evidence, security docs
 ├── Dockerfile              # Reproducible multi-stage build
 └── docker-entrypoint.sh    # Container entrypoint
@@ -164,7 +163,7 @@ See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 22
+- Node.js >= 20 and < 25
 - npm >= 9
 - Docker (for sandboxed execution)
 

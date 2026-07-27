@@ -1,8 +1,8 @@
 import type { Profile } from './db';
 
-export type Target = 'openclaw' | 'codex' | 'claude-code' | 'cursor' | 'gemini-cli' | 'djimit-native';
-export const TARGETS: Target[] = ['openclaw', 'codex', 'claude-code', 'cursor', 'gemini-cli', 'djimit-native'];
-export interface CompiledArtifact { target: Target; files: Record<string, string>; stub?: boolean }
+export const TARGETS = ['openclaw', 'codex', 'djimit-native'] as const;
+export type Target = typeof TARGETS[number];
+export interface CompiledArtifact { target: Target; files: Record<string, string> }
 
 function clamp(s?: string): string { return String(s ?? '').trim(); }
 
@@ -10,9 +10,6 @@ export function compile(profile: Profile, target: Target): CompiledArtifact {
   switch (target) {
     case 'openclaw': return compileOpenClaw(profile);
     case 'codex': return compileCodex(profile);
-    case 'claude-code': return { target, files: { [`${profile.id}.md`]: stub(profile, 'Claude Code .md agent') }, stub: true };
-    case 'cursor': return { target, files: { [`${profile.id}.mdc`]: stub(profile, 'Cursor .mdc rule') }, stub: true };
-    case 'gemini-cli': return { target, files: { 'SKILL.md': stub(profile, 'Gemini CLI SKILL.md') }, stub: true };
     case 'djimit-native': return { target, files: { 'djimit-agent.yaml': `id: ${profile.id}\nname: ${profile.name}\ndivision: ${profile.division}\nmission: ${JSON.stringify(profile.mission)}\nruntime_targets: [${profile.runtime_targets.join(', ')}]\n` } };
   }
 }
@@ -44,5 +41,3 @@ function compileCodex(p: Profile): CompiledArtifact {
   ].filter(Boolean).join('\n\n');
   return { target: 'codex', files: { 'agent.toml': `[agent]\nname = ${JSON.stringify(p.name)}\nmodel = "gpt-4o"\ninstructions = ${JSON.stringify(instructions)}\n` } };
 }
-
-function stub(p: Profile, label: string): string { return `# ${p.name} — ${label} (F5 stub, not implemented)\n\nMission: ${p.mission}\n`; }

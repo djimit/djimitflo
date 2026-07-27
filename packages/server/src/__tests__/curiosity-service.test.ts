@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { CuriosityService } from '../services/curiosity-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
@@ -15,7 +15,7 @@ beforeEach(() => {
   db.exec(schema);
   runMigrations(db);
   intelligence = new SwarmIntelligenceService(db);
-  curiosity = new CuriosityService(db, intelligence);
+  curiosity = new CuriosityService(db, intelligence, { intervalMs: 100 });
 });
 
 afterEach(() => {
@@ -77,8 +77,14 @@ describe('G41: Curiosity Service', () => {
   });
 
   it('start/stop timer works', () => {
+    vi.useFakeTimers();
+    const scan = vi.spyOn(curiosity, 'scanForGaps').mockResolvedValue({ gapsFound: 0, published: 0, gaps: [] });
     curiosity.start();
+    vi.advanceTimersByTime(100);
+    expect(scan).toHaveBeenCalledTimes(1);
     curiosity.stop();
-    expect(true).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(scan).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

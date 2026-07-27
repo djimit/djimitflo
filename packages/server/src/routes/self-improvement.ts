@@ -50,13 +50,6 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
     res.json({ results, count: results.length });
   });
 
-  // POST /api/self-improve/tests/write — write generated tests to disk
-  router.post('/tests/write', requirePermission('write:governance'), (_req, res) => {
-    const results = testGen.generateAll();
-    const written = testGen.writeTests(results);
-    res.json({ written, total: results.length });
-  });
-
   // GET /api/self-improve/tests/stats — test coverage statistics
   router.get('/tests/stats', requirePermission('read:evidence'), (_req, res) => {
     res.json(testGen.getStats());

@@ -22,11 +22,13 @@ import { initDatabase, recoverInterruptedRuns } from './bootstrap/recovery';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { initOperatorServices } from './bootstrap/operator-services';
 import { initCoreServices } from './bootstrap/core-services';
+import { validateEnv } from './config/env';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
-async function main() {
+export async function main() {
   console.log('🚀 Starting Djimitflo Server...');
+  validateEnv();
   ensureControlUrl();
   logRansomwareStatus();
 
@@ -154,7 +156,9 @@ function serveDashboard(app: import('express').Express): void {
   });
 }
 
-main().catch((error) => {
-  console.error('❌ Failed to start server:', error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  });
+}

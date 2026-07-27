@@ -189,7 +189,7 @@ export class ToolBroker {
 
     let decision: PolicyDecision;
     let reason: string;
-    let risk_level = this.assessRisk(request);
+    const risk_level = this.assessRisk(request);
 
     if (matched_policies.length === 0) {
       decision = this.config.default_decision;

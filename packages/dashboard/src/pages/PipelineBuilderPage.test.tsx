@@ -1,11 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { PipelineBuilderPage } from './PipelineBuilderPage';
 
 describe('PipelineBuilderPage', () => {
-  it('renders the pipeline builder heading', () => {
-    // Minimal smoke test — React Flow requires jsdom canvas which is complex to mock
-    // This verifies the component at least has the expected structure
-    expect(true).toBe(true);
+  it('renders the editable pipeline and node palette', () => {
+    vi.stubGlobal('ResizeObserver', class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    render(<PipelineBuilderPage />);
+
+    expect(screen.getByDisplayValue('Untitled Pipeline')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /goal/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /export/i })).toBeTruthy();
   });
 });

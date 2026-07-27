@@ -5,7 +5,7 @@ describe('LifecycleManager', () => {
   let manager: LifecycleManager;
 
   beforeEach(() => {
-    manager = new LifecycleManager();
+    manager = new LifecycleManager(() => {});
   });
 
   function createMockService(name: string): Stoppable & { stop: ReturnType<typeof vi.fn> } {

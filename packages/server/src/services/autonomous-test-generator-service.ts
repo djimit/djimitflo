@@ -1,8 +1,8 @@
 /**
  * AutonomousTestGeneratorService — generates tests for untested code.
  *
- * Scans the codebase for untested public methods and generates
- * vitest test files with proper mocking and assertions.
+ * Scans the codebase for untested public methods and proposes
+ * explicit Vitest TODOs for the governed self-improvement loop.
  *
  * Strategy:
  * 1. Find all public methods in service files
@@ -15,7 +15,7 @@
  *    - Edge case tests
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
@@ -98,24 +98,6 @@ export class AutonomousTestGeneratorService {
   }
 
   /**
-   * Write generated tests to disk.
-   */
-  writeTests(results: TestGenerationResult[]): number {
-    let written = 0;
-    for (const result of results) {
-      const testPath = join(this.testsDir, result.testFile);
-      if (existsSync(testPath)) continue;
-
-      try {
-        writeFileSync(testPath, result.testContent);
-        result.generated = true;
-        written++;
-      } catch { /* skip */ }
-    }
-    return written;
-  }
-
-  /**
    * Get statistics.
    */
   getStats(): {
@@ -192,32 +174,13 @@ export class AutonomousTestGeneratorService {
     const serviceName = basename(sourceFile, '.ts');
     const className = this.toPascalCase(serviceName);
 
-    const testCases = methods.slice(0, 5).map((method) => {
-      return `  it('${method} executes without throwing', async () => {
-    const service = new ${className}(db);
-    // TODO: Add proper test setup and assertions
-    expect(service).toBeDefined();
-  });`;
-    }).join('\n\n');
+    const testCases = methods.slice(0, 5)
+      .map((method) => `  it.todo('${method}: define observable behavior and a failing oracle');`)
+      .join('\n');
 
-    return `import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
-import { ${className} } from '../services/${serviceName}';
+    return `import { describe, it } from 'vitest';
 
 describe('${className}', () => {
-  let db: Database.Database;
-  let service: ${className};
-
-  beforeEach(() => {
-    db = new Database(':memory:');
-    db.pragma('foreign_keys = ON');
-    service = new ${className}(db);
-  });
-
-  afterEach(() => {
-    db.close();
-  });
-
 ${testCases});
 });
 `;
@@ -227,5 +190,4 @@ ${testCases});
     return str.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
   }
 }
-
 

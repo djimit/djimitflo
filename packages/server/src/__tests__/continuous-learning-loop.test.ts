@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { createTestDb } from './helpers/test-db';
@@ -12,7 +12,7 @@ beforeEach(() => {
   db.pragma('foreign_keys = ON');
   
   
-  loop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
+  loop = new ContinuousLearningLoop(db, { intervalMs: 100 });
 });
 
 afterEach(() => { db?.close(); loop.stop(); });
@@ -36,8 +36,14 @@ describe('G127: Continuous Learning Loop', () => {
   });
 
   it('start/stop timer', () => {
+    vi.useFakeTimers();
+    const runCycle = vi.spyOn(loop, 'runCycle').mockResolvedValue({} as any);
     loop.start();
+    vi.advanceTimersByTime(100);
+    expect(runCycle).toHaveBeenCalledTimes(1);
     loop.stop();
-    expect(true).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(runCycle).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

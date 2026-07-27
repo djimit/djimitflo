@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { AgentCatalog, parseAgentMarkdown, normalizeAgent, runStaticGate, validateSchema, scanInjection, overlapScore, compile } from '../src';
+import { AgentCatalog, parseAgentMarkdown, normalizeAgent, runStaticGate, validateSchema, scanInjection, overlapScore, compile, TARGETS } from '../src';
 
 const FIX = (f: string) => readFileSync(join(process.cwd(), 'fixtures/agents', f), 'utf8');
 
@@ -93,6 +93,10 @@ describe('activation', () => {
 });
 
 describe('compile', () => {
+  it('advertises only implemented targets', () => {
+    expect(TARGETS).toEqual(['openclaw', 'codex', 'djimit-native']);
+  });
+
   it('OpenClaw + Codex produce artifacts', () => {
     const prof = normalizeAgent(parseAgentMarkdown(FIX('secure-coder.md'), { sourceRepo: 'r', sourcePath: 'engineering/a.md' }));
     const oc = compile(prof, 'openclaw');
@@ -101,8 +105,8 @@ describe('compile', () => {
     expect(cx.files['agent.toml']).toContain('[agent]');
     expect(cx.files['agent.toml']).toContain('Secure Coder');
   });
-  it('stub targets flagged', () => {
+  it('DjimFlo native produces an artifact', () => {
     const prof = normalizeAgent(parseAgentMarkdown(FIX('secure-coder.md'), { sourceRepo: 'r', sourcePath: 'engineering/a.md' }));
-    for (const t of ['claude-code', 'cursor', 'gemini-cli'] as const) expect(compile(prof, t).stub).toBe(true);
+    expect(compile(prof, 'djimit-native').files['djimit-agent.yaml']).toContain('id: engineering-secure-coder');
   });
 });

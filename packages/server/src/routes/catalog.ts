@@ -4,7 +4,7 @@ import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { getCatalog } from '../services/agent-catalog-service';
 import { evaluateAgent, batchEvaluate, summarizeEvaluations } from '../services/agent-evaluation-service';
-import { compile, type Profile, type Target } from '@djimitflo/agent-catalog';
+import { compile, TARGETS, type Profile, type Target } from '@djimitflo/agent-catalog';
 
 interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number; }
 interface CatalogAgent {
@@ -70,8 +70,11 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
       const cat = getCatalog();
       const profile = cat.db.getProfile(req.params.id);
       if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
-      const target = (req.query.target as Target) || 'openclaw';
-      res.json({ target, files: compile(profile, target).files });
+      const requestedTarget = String(req.query.target || 'openclaw');
+      if (!TARGETS.includes(requestedTarget as Target)) {
+        throw createError(422, `Unsupported compile target: ${requestedTarget}`, 'UNSUPPORTED_COMPILE_TARGET');
+      }
+      res.json(compile(profile, requestedTarget as Target));
     } catch (e) { next(e); }
   });
 

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -53,9 +53,14 @@ describe('G32: Meta-evolution loop', () => {
   });
 
   it('start/stop controls the timer', () => {
+    vi.useFakeTimers();
+    const evaluate = vi.spyOn(meta, 'evaluate');
     meta.start();
+    vi.advanceTimersByTime(100);
+    expect(evaluate).toHaveBeenCalledTimes(1);
     meta.stop();
-    // Just verify it doesn't throw.
-    expect(true).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });
