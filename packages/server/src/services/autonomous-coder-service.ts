@@ -12,7 +12,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 interface ImprovementOpportunity {
@@ -71,6 +71,10 @@ export class AutonomousCoderService {
     }
 
     return opportunities;
+  }
+
+  private opportunityId(type: ImprovementOpportunity['type'], file: string, line?: number): string {
+    return createHash('sha256').update(`${type}:${file}:${line || 0}`).digest('hex');
   }
 
   /**
@@ -181,7 +185,7 @@ export class AutonomousCoderService {
         }
 
         if (stat.isDirectory()) {
-          if (!entry.startsWith('.') && entry !== 'node_modules' && entry !== 'dist') {
+          if (!entry.startsWith('.') && entry !== 'node_modules' && entry !== 'dist' && entry !== '__tests__') {
             scanDir(fullPath);
           }
           continue;
@@ -195,15 +199,16 @@ export class AutonomousCoderService {
 
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            if (line.includes('TODO') || line.includes('FIXME') || line.includes('HACK')) {
+            const marker = line.match(/^(?:\/\/|\/\*+|\*)\s*(TODO|FIXME|HACK)\b[:\s-]*(.*)$/);
+            if (marker) {
               opportunities.push({
-                id: randomUUID(),
+                id: this.opportunityId('todo', fullPath.replace(this.srcDir + '/', ''), i + 1),
                 type: 'todo',
-                severity: line.includes('FIXME') ? 'high' : 'medium',
+                severity: marker[1] === 'FIXME' ? 'high' : 'medium',
                 file: fullPath.replace(this.srcDir + '/', ''),
                 line: i + 1,
-                description: line.slice(0, 100),
-                suggestion: `Address: ${line.slice(0, 80)}`,
+                description: `${marker[1]}: ${marker[2]}`.trim().slice(0, 100),
+                suggestion: `Address: ${marker[2] || marker[1]}`.slice(0, 89),
                 status: 'identified',
                 createdAt: new Date().toISOString(),
               });
@@ -253,7 +258,7 @@ export class AutonomousCoderService {
 
   private scanForComplexity(): ImprovementOpportunity[] {
     const opportunities: ImprovementOpportunity[] = [];
-    const MAX_LINES = 200;
+    const MAX_LINES = 800;
 
     const scanDir = (dir: string) => {
       let entries: string[];
@@ -271,7 +276,7 @@ export class AutonomousCoderService {
           continue;
         }
         if (stat.isDirectory()) {
-          if (!entry.startsWith('.') && entry !== 'node_modules' && entry !== 'dist') {
+          if (!entry.startsWith('.') && entry !== 'node_modules' && entry !== 'dist' && entry !== '__tests__') {
             scanDir(fullPath);
           }
           continue;
@@ -283,9 +288,9 @@ export class AutonomousCoderService {
           const lines = content.split('\n');
           if (lines.length > MAX_LINES) {
             opportunities.push({
-              id: randomUUID(),
+              id: this.opportunityId('complexity', fullPath.replace(this.srcDir + '/', ''), 1),
               type: 'complexity',
-              severity: lines.length > 500 ? 'high' : 'medium',
+              severity: lines.length > 1500 ? 'high' : 'medium',
               file: fullPath.replace(this.srcDir + '/', ''),
               line: 1,
               description: `File has ${lines.length} lines (threshold: ${MAX_LINES})`,

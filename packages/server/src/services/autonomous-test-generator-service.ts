@@ -106,7 +106,10 @@ export class AutonomousTestGeneratorService {
     untestedServices: number;
     coverage: number;
   } {
-    const serviceFiles = this.getServiceFiles();
+    const serviceFiles = this.getServiceFiles().filter((file) => {
+      const content = readFileSync(file, 'utf8');
+      return this.extractPublicMethods(content).length > 0;
+    });
     let tested = 0;
 
     for (const file of serviceFiles) {
@@ -155,16 +158,27 @@ export class AutonomousTestGeneratorService {
   private extractPublicMethods(content: string): string[] {
     const methods: string[] = [];
     const lines = content.split('\n');
+    let braceDepth = 0;
+    let classDepth = 0;
+    let inClass = false;
 
     for (const line of lines) {
-      // Match public methods (not private/protected)
-      const match = line.match(/^\s+(?:async\s+)?(\w+)\s*\(/);
+      if (!inClass && /^\s*export\s+class\s+\w+/.test(line)) {
+        inClass = true;
+        classDepth = braceDepth + 1;
+      }
+
+      const match = inClass && braceDepth === classDepth
+        ? line.match(/^  (?:async\s+)?(\w+)\s*\(/)
+        : null;
       if (match && !line.includes('private') && !line.includes('protected') && !line.includes('constructor')) {
         const methodName = match[1];
-        // Skip common non-testable methods
         if (['if', 'for', 'while', 'switch', 'catch', 'return'].includes(methodName)) continue;
         methods.push(methodName);
       }
+
+      braceDepth += (line.match(/{/g) || []).length - (line.match(/}/g) || []).length;
+      if (inClass && braceDepth < classDepth) inClass = false;
     }
 
     return [...new Set(methods)];
@@ -190,4 +204,3 @@ ${testCases});
     return str.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
   }
 }
-

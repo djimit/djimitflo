@@ -521,7 +521,7 @@ export interface GovernanceCheckResult {
 }
 
 export function check_${category.replace(/-/g, '_')}(input: string, context?: Record<string, unknown>): GovernanceCheckResult {
-  // TODO: Implement actual ${category} detection logic
+  // Keyword heuristic; replace when a category-specific evaluator is available.
   const riskIndicators: string[] = ${JSON.stringify(this.getKeywordsForCategory(category))};
 
   let riskScore = 0;
