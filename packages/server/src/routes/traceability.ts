@@ -1,14 +1,12 @@
 import { Router } from 'express';
-import type { AuthMiddleware } from '../middleware/auth';
 import { buildTraceabilityMatrix } from '../services/traceability-service';
 import { scanSpecsDirectory } from '../services/spec-compliance-service';
 
-export function createTraceabilityRoutes(auth?: AuthMiddleware): Router {
+export function createTraceabilityRoutes(): Router {
   const router = Router();
-  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
   // GET /api/traceability/matrix — full traceability matrix
-  router.get('/matrix', requireAuth, (_req, res) => {
+  router.get('/matrix', (_req, res) => {
     try {
       const specs = scanSpecsDirectory();
       const matrix = buildTraceabilityMatrix(specs);
