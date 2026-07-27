@@ -223,6 +223,61 @@ describe('ExecutionEngine', () => {
     expect(['running', 'completed']).toContain(row.status);
   });
 
+  it('retries a retryable provider failure with the next admitted executor', async () => {
+    const attempts: string[] = [];
+    const session = (taskId: string, executorKind: 'claude' | 'codex', result: any) => ({
+      id: `session-${executorKind}`,
+      taskId,
+      executorKind,
+      status: 'running' as const,
+      startedAt: new Date(),
+      events: (async function* () {})(),
+      result: Promise.resolve(result),
+      cancel: async () => {},
+    });
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async (task) => {
+        attempts.push('claude');
+        return session(task.id, 'claude', {
+          status: 'failed',
+          message: 'Claude provider unavailable',
+          error: '503 provider unavailable',
+        });
+      },
+    });
+    engine.registerExecutor({
+      kind: 'codex',
+      canExecute: () => true,
+      start: async (task) => {
+        attempts.push('codex');
+        return session(task.id, 'codex', { status: 'completed', message: 'done' });
+      },
+    });
+    const task = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
+
+    await engine.executeTask(task.id, 'claude');
+    for (let i = 0; i < 20; i++) {
+      const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as { status: string };
+      if (row.status === 'completed') break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(attempts).toEqual(['claude', 'codex']);
+    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'completed' });
+    const fallback = db.prepare(`
+      SELECT metadata FROM execution_events
+      WHERE task_id = ? AND message = 'Retrying with fallback executor codex'
+    `).get(task.id) as { metadata: string };
+    expect(JSON.parse(fallback.metadata)).toMatchObject({ attempt: 2, from: 'claude', to: 'codex', retryable: true });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM risk_assessments WHERE task_id = ?').get(task.id) as { count: number }).count).toBe(2);
+  });
+
   it('records an admitted skill outcome when a task completes', async () => {
     const skillsDir = join(tmpdir(), `djimitflo-skills-${Date.now()}`);
     writeTestSkill(skillsDir, 'test-skill');
