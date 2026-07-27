@@ -64,16 +64,27 @@ describe('G98: Worker Pool', () => {
   });
 
   it('handles timeout', async () => {
-    const pool = new WorkerPool({ concurrency: 1, taskTimeoutMs: 100 });
+    const pool = new WorkerPool({ concurrency: 1, taskTimeoutMs: 20, maxRetries: 2 });
+    let attempts = 0;
+    let aborted = false;
 
     const tasks = [{ id: '1', input: 'test' }];
-    const results = await pool.execute(tasks, async () => {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return 'done';
+    const results = await pool.execute(tasks, async (_input, signal) => {
+      attempts++;
+      await new Promise<void>((resolve) => {
+        signal.addEventListener('abort', () => {
+          aborted = true;
+          resolve();
+        }, { once: true });
+      });
+      throw new Error('aborted');
     });
 
     expect(results[0].error).toBeDefined();
     expect(results[0].error?.message).toBe('TIMEOUT');
+    expect(results[0].attempts).toBe(1);
+    expect(attempts).toBe(1);
+    expect(aborted).toBe(true);
   });
 
   it('returns empty for empty tasks', async () => {

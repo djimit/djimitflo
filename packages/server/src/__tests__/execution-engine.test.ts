@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -7,6 +7,7 @@ import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
 import type { TaskExecutor } from '../execution/types';
+import { releaseRuntimeAdmission, runtimeAdmissionSnapshot } from '../services/runtime-admission';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -147,6 +148,12 @@ describe('ExecutionEngine', () => {
       );
     `);
     engine = new ExecutionEngine(db, createMockWsService());
+  });
+
+  afterEach(() => {
+    for (const id of runtimeAdmissionSnapshot().active.filter((item) => item.startsWith('task:'))) {
+      releaseRuntimeAdmission(id);
+    }
   });
 
   it('registers default executors on construction', () => {

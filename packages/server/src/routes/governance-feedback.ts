@@ -16,11 +16,57 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { GovernanceFeedbackLoopService } from '../services/governance-feedback-loop';
+import { OpenMythosEvalService } from '../services/openmythos-eval-service';
+import type { ExecutionEngine } from '../execution/execution-engine';
+import type { ExecutorKind } from '../execution/types';
+import { randomUUID } from 'crypto';
 
-export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createGovernanceFeedbackRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  executionEngine?: ExecutionEngine,
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const service = new GovernanceFeedbackLoopService(db);
+  const evaluator = new OpenMythosEvalService(db);
+  const service = new GovernanceFeedbackLoopService(db, {}, {
+    dispatchImprovement: async (proposal, agentId) => {
+      if (!executionEngine) throw new Error('GOVERNANCE_EXECUTION_ENGINE_UNAVAILABLE');
+      const taskId = randomUUID();
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO tasks (
+          id, title, description, status, priority, risk_level, execution_mode,
+          tags, metadata, created_at, updated_at
+        ) VALUES (?, ?, ?, 'pending', 'high', ?, 'local', ?, ?, ?, ?)
+      `).run(
+        taskId,
+        proposal.title,
+        proposal.description,
+        proposal.risk_level,
+        JSON.stringify(['governance-feedback', proposal.category]),
+        JSON.stringify({
+          governance_proposal_id: proposal.id,
+          target_finding_ids: proposal.target_finding_ids,
+          subject_agent_id: agentId,
+        }),
+        now,
+        now,
+      );
+      const result = await executionEngine.executeTask(
+        taskId,
+        (process.env.GOVERNANCE_FEEDBACK_EXECUTOR || 'opencode') as ExecutorKind,
+      );
+      const status = result.status === 'started'
+        ? await executionEngine.waitForTaskCompletion(taskId)
+        : result.status;
+      return { taskId, status };
+    },
+    rerunEvaluation: async (agentId, caseIds) => {
+      const result = await evaluator.runEval(agentId, undefined, undefined, caseIds);
+      return { runId: result.id };
+    },
+  });
 
   // GET /api/governance-feedback/health — loop health status
   router.get('/health', requirePermission('read:evidence'), (_req, res) => {

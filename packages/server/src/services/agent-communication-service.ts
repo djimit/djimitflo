@@ -44,9 +44,6 @@ interface CommunicationStats {
 }
 
 export class AgentCommunicationService {
-  private messageQueue: AgentMessage[] = [];
-  private deliveryLog: Array<{ messageId: string; deliveredAt: string; latencyMs: number }> = [];
-
   constructor(private db: Database) {
     this.ensureTables();
   }
@@ -78,19 +75,10 @@ export class AgentCommunicationService {
         evidence: input.evidence,
       },
       timestamp: new Date().toISOString(),
-      ttl: input.ttl || 300, // 5 minutes default
+      ttl: input.ttl ?? 300, // 5 minutes default
       status: 'pending',
     };
 
-    // Insert in priority order
-    const insertIndex = this.messageQueue.findIndex((m) => m.priority > message.priority);
-    if (insertIndex === -1) {
-      this.messageQueue.push(message);
-    } else {
-      this.messageQueue.splice(insertIndex, 0, message);
-    }
-
-    // Persist
     this.db.prepare(`
       INSERT INTO agent_messages (id, from_agent, to_agent, type, priority, payload_json, timestamp, ttl, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
@@ -124,68 +112,63 @@ export class AgentCommunicationService {
    * Receive messages for a specific agent.
    */
   receive(agentId: string, limit = 10): AgentMessage[] {
-    const now = Date.now();
-    const messages: AgentMessage[] = [];
-
-    // Get pending messages for this agent (or broadcast)
-    const pending = this.messageQueue.filter(
-      (m) => m.status === 'pending' && (m.to === agentId || m.to === 'broadcast')
-    );
-
-    for (const message of pending) {
-      // Check TTL
-      const messageAge = now - new Date(message.timestamp).getTime();
-      if (messageAge > message.ttl * 1000) {
-        message.status = 'expired';
-        continue;
+    this.cleanup();
+    const receive = this.db.transaction(() => {
+      const rows = this.db.prepare(`
+        SELECT * FROM agent_messages
+        WHERE status = 'pending' AND (to_agent = ? OR to_agent = 'broadcast')
+        ORDER BY priority ASC, timestamp ASC
+        LIMIT ?
+      `).all(agentId, Math.max(1, Math.min(limit, 100))) as AgentMessageRow[];
+      const deliveredAt = new Date().toISOString();
+      const messages: AgentMessage[] = [];
+      for (const row of rows) {
+        const update = this.db.prepare(`
+          UPDATE agent_messages
+          SET status = 'delivered', delivered_at = ?
+          WHERE id = ? AND status = 'pending'
+        `).run(deliveredAt, row.id);
+        if (update.changes === 1) messages.push(this.parseMessage(row, 'delivered'));
       }
-
-      message.status = 'delivered';
-      messages.push(message);
-
-      // Log delivery
-      this.deliveryLog.push({
-        messageId: message.id,
-        deliveredAt: new Date().toISOString(),
-        latencyMs: messageAge,
-      });
-
-      if (messages.length >= limit) break;
-    }
-
-    return messages;
+      return messages;
+    });
+    return receive();
   }
 
   /**
    * Acknowledge message receipt.
    */
   acknowledge(messageId: string): void {
-    const message = this.messageQueue.find((m) => m.id === messageId);
-    if (message) {
-      message.status = 'read';
-      this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(messageId);
-    }
+    this.db.prepare(`
+      UPDATE agent_messages
+      SET status = 'read', read_at = ?
+      WHERE id = ? AND status IN ('pending', 'delivered')
+    `).run(new Date().toISOString(), messageId);
   }
 
   /**
    * Get communication statistics.
    */
   getStats(): CommunicationStats {
-    const total = this.messageQueue.length;
-    const pending = this.messageQueue.filter((m) => m.status === 'pending').length;
-    const delivered = this.messageQueue.filter((m) => m.status === 'delivered' || m.status === 'read').length;
-    const expired = this.messageQueue.filter((m) => m.status === 'expired').length;
-
-    const avgLatency = this.deliveryLog.length > 0
-      ? this.deliveryLog.reduce((sum, d) => sum + d.latencyMs, 0) / this.deliveryLog.length
-      : 0;
+    this.cleanup();
+    const row = this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status IN ('delivered', 'read') THEN 1 ELSE 0 END) AS delivered,
+        SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) AS expired,
+        AVG(CASE WHEN delivered_at IS NOT NULL
+          THEN (julianday(delivered_at) - julianday(timestamp)) * 86400000
+          ELSE NULL END) AS avg_latency
+      FROM agent_messages
+    `).get() as { total: number; pending: number; delivered: number; expired: number; avg_latency: number | null };
 
     return {
-      totalMessages: total,
-      pendingMessages: pending,
-      deliveredMessages: delivered,
-      expiredMessages: expired,
-      avgDeliveryTimeMs: Math.round(avgLatency),
+      totalMessages: row.total,
+      pendingMessages: row.pending || 0,
+      deliveredMessages: row.delivered || 0,
+      expiredMessages: row.expired || 0,
+      avgDeliveryTimeMs: Math.round(row.avg_latency || 0),
     };
   }
 
@@ -193,20 +176,12 @@ export class AgentCommunicationService {
    * Clean up expired messages.
    */
   cleanup(): number {
-    const now = Date.now();
-    let cleaned = 0;
-
-    this.messageQueue = this.messageQueue.filter((message) => {
-      const age = now - new Date(message.timestamp).getTime();
-      if (age > message.ttl * 1000 && message.status === 'pending') {
-        message.status = 'expired';
-        cleaned++;
-        return false;
-      }
-      return true;
-    });
-
-    return cleaned;
+    return this.db.prepare(`
+      UPDATE agent_messages
+      SET status = 'expired'
+      WHERE status = 'pending'
+        AND (julianday('now') - julianday(timestamp)) * 86400 >= ttl
+    `).run().changes;
   }
 
   private ensureTables(): void {
@@ -220,12 +195,49 @@ export class AgentCommunicationService {
         payload_json TEXT NOT NULL DEFAULT '{}',
         timestamp TEXT NOT NULL DEFAULT (datetime('now')),
         ttl INTEGER NOT NULL DEFAULT 300,
-        status TEXT NOT NULL DEFAULT 'pending'
+        status TEXT NOT NULL DEFAULT 'pending',
+        delivered_at TEXT,
+        read_at TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_agent_messages_to_agent ON agent_messages(to_agent);
       CREATE INDEX IF NOT EXISTS idx_agent_messages_status ON agent_messages(status);
       CREATE INDEX IF NOT EXISTS idx_agent_messages_priority ON agent_messages(priority);
     `);
+    this.addColumnIfMissing('delivered_at', 'TEXT');
+    this.addColumnIfMissing('read_at', 'TEXT');
   }
+
+  private addColumnIfMissing(column: string, definition: string): void {
+    const columns = this.db.prepare('PRAGMA table_info(agent_messages)').all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) {
+      this.db.exec(`ALTER TABLE agent_messages ADD COLUMN ${column} ${definition}`);
+    }
+  }
+
+  private parseMessage(row: AgentMessageRow, status = row.status): AgentMessage {
+    return {
+      id: row.id,
+      from: row.from_agent,
+      to: row.to_agent,
+      type: row.type,
+      priority: row.priority,
+      payload: JSON.parse(row.payload_json),
+      timestamp: row.timestamp,
+      ttl: row.ttl,
+      status,
+    };
+  }
+}
+
+interface AgentMessageRow {
+  id: string;
+  from_agent: string;
+  to_agent: string;
+  type: MessageType;
+  priority: Priority;
+  payload_json: string;
+  timestamp: string;
+  ttl: number;
+  status: AgentMessage['status'];
 }

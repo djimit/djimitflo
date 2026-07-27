@@ -23,6 +23,7 @@ export interface KnowledgeBusClaim {
   provenance_run: string | null;
   evidence_refs: string[];
   created_from: string | null;
+  payload?: Record<string, unknown>;
 }
 
 type ClaimCallback = (claim: KnowledgeBusClaim) => void;

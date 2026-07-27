@@ -180,7 +180,7 @@ export function createRoutes(
   router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
   router.use('/traceability', requireAuth, createTraceabilityRoutes(auth));
   router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
-  router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth));
+  router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth, executionEngine));
   router.use('/repo-index', requireAuth, createRepositoryIndexRoutes(db, auth));
   router.use('/console', requireAuth, createConsoleRoutes(db, auth));
   router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));

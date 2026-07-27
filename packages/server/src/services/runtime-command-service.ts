@@ -11,12 +11,15 @@ import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
-
-const DEFAULT_MAX_CONCURRENCY = 4;
+import {
+  acquireRuntimeAdmission,
+  cancelRuntimeAdmission,
+  releaseRuntimeAdmission,
+  runtimeAdmissionSnapshot,
+} from './runtime-admission';
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
-  private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }> } = { active: new Set(), queue: [] };
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
@@ -325,40 +328,20 @@ export class RuntimeCommandService {
     return { total_tokens: runtimeUsage.total_tokens, diff_lines: diffLines, tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null, tokens_per_successful_worker: runtimeUsage.total_tokens };
   }
 
-  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.active.size; }
+  runtimeConcurrencyInUse(): number { return runtimeAdmissionSnapshot().active.length; }
 
   // ─── Semaphore ────────────────────────────────────────────────────────
 
-  private runtimeSemaphoreLimit(): number {
-    const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    if (raw === undefined || raw === null || raw.trim() === '') return DEFAULT_MAX_CONCURRENCY;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : DEFAULT_MAX_CONCURRENCY;
-  }
-
   private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) { sem.active.add(leaseId); return Promise.resolve(); }
-    return new Promise<void>((resolve, reject) => { sem.queue.push({ leaseId, resolve, reject }); });
+    return acquireRuntimeAdmission(leaseId);
   }
 
   private releaseRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) { sem.active.add(next.leaseId); next.resolve(); }
-    } else {
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
+    releaseRuntimeAdmission(leaseId);
   }
 
   private cancelRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) { const [waiter] = sem.queue.splice(idx, 1); waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED')); }
+    cancelRuntimeAdmission(leaseId);
   }
 
   private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): void {

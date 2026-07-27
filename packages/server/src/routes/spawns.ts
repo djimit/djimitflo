@@ -63,6 +63,7 @@ export function createSpawnRoutes(db: Database, auth?: AuthMiddleware, wsService
         total_wall_budget_ms: body.total_wall_budget_ms,
         max_concurrent_children: body.max_concurrent_children,
         risk_class: body.risk_class,
+        context_budget: body.context_budget,
       });
       res.status(201).json(result);
     } catch (error) {

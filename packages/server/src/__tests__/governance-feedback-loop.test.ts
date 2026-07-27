@@ -327,6 +327,62 @@ describe('GovernanceFeedbackLoopService', () => {
       expect(result.proposals_created).toBeGreaterThan(0);
       expect(result.loop_id).toMatch(/^gfl-/);
     });
+
+    it('persists real execution lineage and verifies a new evaluation before completion', async () => {
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, metadata, started_at, finished_at)
+        VALUES ('baseline-run', 'agent-1', 'completed', 1, '{}', datetime('now', '-1 hour'), datetime('now', '-1 minute'))
+      `).run();
+      db.prepare(`
+        INSERT INTO openmythos_case_results
+          (id, run_id, case_id, category, judge_score, judge_rationale, oracle_type, oracle_pass, status)
+        VALUES ('baseline-case', 'baseline-run', 'c1', 'quality', 2.6, 'needs work', 'test', 0, 'completed')
+      `).run();
+
+      const closedLoop = new GovernanceFeedbackLoopService(db, {
+        min_score_threshold: 3,
+        auto_authorize_below_risk: RiskLevel.MEDIUM,
+        require_verification: true,
+      }, {
+        dispatchImprovement: async () => ({ taskId: 'task-1', status: 'completed' }),
+        rerunEvaluation: async () => {
+          db.prepare(`
+            INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, metadata, started_at, finished_at)
+            VALUES ('verification-run', 'agent-1', 'completed', 1, '{}', datetime('now'), datetime('now'))
+          `).run();
+          db.prepare(`
+            INSERT INTO openmythos_case_results
+              (id, run_id, case_id, category, judge_score, judge_rationale, oracle_type, oracle_pass, status)
+            VALUES ('verification-case', 'verification-run', 'c1', 'quality', 4.5, 'improved', 'test', 1, 'completed')
+          `).run();
+          return { runId: 'verification-run' };
+        },
+      });
+
+      const result = await closedLoop.runFeedbackLoop('agent-1', {
+        sub: 'admin-1',
+        email: 'admin@test.com',
+        role: 'admin',
+        iat: 0,
+        exp: 0,
+      });
+
+      expect(result).toMatchObject({
+        eval_run_id: 'baseline-run',
+        proposals_executed: 1,
+        improvement_detected: true,
+      });
+      expect(result.score_delta).toBeCloseTo(1.9);
+      expect(db.prepare(`
+        SELECT status, task_id, execution_status, verification_run_id
+        FROM governance_improvement_proposals
+      `).get()).toEqual({
+        status: 'completed',
+        task_id: 'task-1',
+        execution_status: 'completed',
+        verification_run_id: 'verification-run',
+      });
+    });
   });
 
   describe('verifyImprovement', () => {

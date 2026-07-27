@@ -5,7 +5,15 @@ import { SkillPatternMiner } from './skill-pattern-miner';
 import { PromptPatternRegistry } from './prompt-pattern-registry';
 
 export interface GymEvaluation {
-  id: string; skillId: string; score: number; metrics: Record<string, number>; timestamp: string;
+  id: string; skillId: string; score: number; metrics: SkillFitnessMetrics; timestamp: string;
+}
+
+export interface SkillFitnessMetrics {
+  success: number;
+  correctness?: number;
+  governance?: number;
+  duration_ms?: number;
+  steps?: number;
 }
 
 export interface ExplorationResult {
@@ -29,9 +37,12 @@ export class SkillEvolutionGym {
     )`);
   }
 
-  evaluateSkill(skillId: string, metrics: Record<string, number>): GymEvaluation {
+  evaluateSkill(skillId: string, metrics: SkillFitnessMetrics): GymEvaluation {
     const id = randomUUID();
-    const score = Object.values(metrics).reduce((sum, v) => sum + v, 0) / Math.max(1, Object.keys(metrics).length);
+    const clamp = (value: number | undefined) => Math.max(0, Math.min(1, Number(value) || 0));
+    const score = clamp(metrics.success) * 0.8
+      + clamp(metrics.correctness) * 0.1
+      + clamp(metrics.governance) * 0.1;
     this.db.prepare('INSERT INTO gym_evaluations (id, skill_id, score, metrics_json) VALUES (?, ?, ?, ?)').run(id, skillId, score, JSON.stringify(metrics));
     return { id, skillId, score, metrics, timestamp: new Date().toISOString() };
   }
@@ -50,7 +61,13 @@ export class SkillEvolutionGym {
     const patterns = this.miner.mineFromEpisode(episode);
     let evaluation: GymEvaluation | null = null;
     if (patterns.length > 0) {
-      evaluation = this.evaluateSkill(patterns[0].id, { success: episode.success ? 1 : 0, duration: Math.min(1, episode.durationMs / 60000), steps: episode.steps.length });
+      const successfulSteps = episode.steps.filter((step) => step.outcome === 'success').length;
+      evaluation = this.evaluateSkill(patterns[0].id, {
+        success: episode.success ? 1 : 0,
+        correctness: successfulSteps / Math.max(1, episode.steps.length),
+        duration_ms: episode.durationMs,
+        steps: episode.steps.length,
+      });
     }
     return { patterns, evaluation };
   }

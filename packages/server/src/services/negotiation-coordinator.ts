@@ -2,6 +2,7 @@ import { LoopService } from './loop-service';
 import { NestedSpawnService } from './nested-spawn-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { knowledgeBus } from './knowledge-bus';
+import type { KnowledgeBusClaim } from './knowledge-bus';
 import { swarmEventBus } from './swarm-event-bus';
 
 /**
@@ -51,7 +52,8 @@ export class NegotiationCoordinator {
   start(): void {
     this.unsub = knowledgeBus.subscribe('*', (claim) => {
       if (claim.predicate === 'help_request') {
-        this.handleHelpRequest(claim as unknown as HelpRequest & { claim_id: string });
+        const request = this.parseHelpRequest(claim);
+        if (request) this.handleHelpRequest(request);
       }
     });
   }
@@ -144,6 +146,14 @@ export class NegotiationCoordinator {
       provenance_run: req.from_run_id,
       evidence_refs: spawnedLeaseId ? [spawnedLeaseId] : [],
       created_from: 'negotiation_coordinator',
+      payload: {
+        type: 'help_response',
+        to_lease_id: req.from_lease_id,
+        spawned_lease_id: spawnedLeaseId,
+        runtime: _runtime,
+        status,
+        reason,
+      },
     });
 
     // Emit on the SSE stream for observability.
@@ -164,7 +174,7 @@ export class NegotiationCoordinator {
   static emitHelpRequest(
     fromLeaseId: string,
     fromRunId: string,
-    _spawnTreeId: string,
+    spawnTreeId: string,
     capabilityNeeded: string,
     reason: string,
     urgency: 'low' | 'medium' | 'high' = 'medium',
@@ -180,6 +190,15 @@ export class NegotiationCoordinator {
       provenance_run: fromRunId,
       evidence_refs: [],
       created_from: fromLeaseId,
+      payload: {
+        type: 'help_request',
+        from_lease_id: fromLeaseId,
+        from_run_id: fromRunId,
+        spawn_tree_id: spawnTreeId,
+        capability_needed: capabilityNeeded,
+        reason,
+        urgency,
+      },
     });
 
     swarmEventBus.emit('convergence', {
@@ -189,5 +208,29 @@ export class NegotiationCoordinator {
       reason,
       urgency,
     });
+  }
+
+  private parseHelpRequest(claim: KnowledgeBusClaim): (HelpRequest & { claim_id: string }) | null {
+    const payload = claim.payload;
+    if (!payload
+      || payload.type !== 'help_request'
+      || typeof payload.from_lease_id !== 'string'
+      || typeof payload.from_run_id !== 'string'
+      || typeof payload.spawn_tree_id !== 'string'
+      || typeof payload.capability_needed !== 'string'
+      || typeof payload.reason !== 'string'
+      || !['low', 'medium', 'high'].includes(String(payload.urgency))) {
+      return null;
+    }
+    return {
+      claim_id: claim.claim_id,
+      type: 'help_request',
+      from_lease_id: payload.from_lease_id,
+      from_run_id: payload.from_run_id,
+      spawn_tree_id: payload.spawn_tree_id,
+      capability_needed: payload.capability_needed,
+      reason: payload.reason,
+      urgency: payload.urgency as HelpRequest['urgency'],
+    };
   }
 }

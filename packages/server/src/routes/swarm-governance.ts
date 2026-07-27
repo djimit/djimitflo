@@ -171,7 +171,13 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.post('/memory/candidates/:id/promote', requirePermission('write:claim'), (req, res, next) => {
-    try { res.json(memoryCandidates.promote(req.params.id, req.body || {})); } catch (error) { try { mapMemoryCandidateError(error); } catch (mapped) { next(mapped); } next(error); }
+    try {
+      const input = req.body || {};
+      res.json(memoryCandidates.promote(req.params.id, {
+        ...input,
+        approved_by: req.user?.sub || input.approved_by,
+      }));
+    } catch (error) { try { mapMemoryCandidateError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   return router;

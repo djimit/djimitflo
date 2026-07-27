@@ -731,3 +731,20 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
     }
   );
 }
+
+export async function syncRuntimeMcpCatalog(server: McpServer): Promise<void> {
+  const tools = (server as unknown as {
+    _registeredTools?: Record<string, {
+      handler: (input: { apply: boolean }) => Promise<{
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      }>;
+    }>;
+  })._registeredTools;
+  const sync = tools?.djimitflo_sync_mcp_catalog;
+  if (!sync) throw new Error('MCP_RUNTIME_CATALOG_SYNC_TOOL_UNAVAILABLE');
+  const result = await sync.handler({ apply: true });
+  if (result.isError) {
+    throw new Error(`MCP_RUNTIME_CATALOG_SYNC_FAILED:${result.content?.[0]?.text || 'unknown error'}`);
+  }
+}

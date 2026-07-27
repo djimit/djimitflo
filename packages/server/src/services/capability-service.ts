@@ -90,11 +90,11 @@ export class CapabilityService {
     return this.registerCapability({ ...input, status: 'candidate' } as CapabilityInput);
   }
 
-  promoteCapability(id: string, _input: { evidence_refs?: string[]; approved_by?: string }): SwarmCapabilityRecord {
+  promoteCapability(id: string, input: { evidence_refs?: string[]; approved_by?: string }): SwarmCapabilityRecord {
     const existing = this.getCapability(id);
     if (!existing) throw new Error('SWARM_CAPABILITY_NOT_FOUND');
     if (existing.status === 'validated') return existing;
-    this.skillTrainingGate.assertPass(existing);
+    this.skillTrainingGate.assertPass(existing, input.evidence_refs);
 
     const now = new Date().toISOString();
     this.db.prepare("UPDATE swarm_capabilities SET status = 'validated', updated_at = ? WHERE id = ?").run(now, id);

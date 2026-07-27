@@ -3,6 +3,8 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { runtimeAdmissionLimit, runtimeAdmissionSnapshot } from '../services/runtime-admission';
+import { ExecutionEngine } from '../execution/execution-engine';
 
 /**
  * P2 RuntimeSemaphore — deterministic proof that executeRuntimeCommand's
@@ -12,27 +14,13 @@ import { LoopService } from '../services/loop-service';
  * now owned by RuntimeCommandService (accessed via loops.runtimeCommand).
  */
 
-interface SemState {
-  active: Set<string>;
-  queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }>;
-}
-
 let loops: LoopService;
-
-function semState(): SemState {
-  // runtimeSemaphore is a private static on RuntimeCommandService
-  return (loops.runtimeCommand.constructor as any).runtimeSemaphore;
-}
 
 function resetSemaphore(): void {
   if (!loops) return; // beforeEach hasn't run yet
-  const sem = semState();
-  if (!sem) return;
-  for (const waiter of sem.queue) {
-    try { waiter.reject(new Error('test reset')); } catch { /* ignore */ }
-  }
-  sem.queue.length = 0;
-  sem.active.clear();
+  const snapshot = runtimeAdmissionSnapshot();
+  for (const id of snapshot.queued) (loops.runtimeCommand as any).cancelRuntimePermit(id);
+  for (const id of snapshot.active) (loops.runtimeCommand as any).releaseRuntimePermit(id);
 }
 
 describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
@@ -56,7 +44,7 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
 
   it('admits up to the limit and queues the rest until a slot frees', async () => {
     process.env.RUNTIME_MAX_CONCURRENCY = '2';
-    expect((loops.runtimeCommand as any).runtimeSemaphoreLimit()).toBe(2);
+    expect(runtimeAdmissionLimit()).toBe(2);
 
     await (loops.runtimeCommand as any).acquireRuntimePermit('a');
     await (loops.runtimeCommand as any).acquireRuntimePermit('b');
@@ -68,7 +56,7 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     await Promise.resolve();
     expect(thirdAdmitted).toBe(false);
     expect(loops.runtimeConcurrencyInUse()).toBe(2);
-    expect(semState().queue.map((w) => w.leaseId)).toEqual(['c']);
+    expect(runtimeAdmissionSnapshot().queued).toEqual(['c']);
 
     (loops.runtimeCommand as any).releaseRuntimePermit('a');
     await third;
@@ -85,16 +73,15 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     await (loops.runtimeCommand as any).acquireRuntimePermit('a');
     expect(loops.runtimeConcurrencyInUse()).toBe(1);
 
-    expect(semState().active.size).toBe(1);
-    expect(semState().queue.length).toBe(0);
+    expect(runtimeAdmissionSnapshot().active).toHaveLength(1);
+    expect(runtimeAdmissionSnapshot().queued).toHaveLength(0);
     const queued = (loops.runtimeCommand as any).acquireRuntimePermit('b');
-    expect(semState().active.size).toBe(1);
-    expect(semState().queue.length).toBe(1);
-    expect(semState().queue.map((w) => w.leaseId)).toEqual(['b']);
+    expect(runtimeAdmissionSnapshot().active).toHaveLength(1);
+    expect(runtimeAdmissionSnapshot().queued).toEqual(['b']);
 
     (loops.runtimeCommand as any).cancelRuntimePermit('b');
     await expect(queued).rejects.toThrow(/RUNTIME_PERMIT_CANCELLED/);
-    expect(semState().queue.map((w) => w.leaseId)).toEqual([]);
+    expect(runtimeAdmissionSnapshot().queued).toEqual([]);
     expect(loops.runtimeConcurrencyInUse()).toBe(1);
 
     (loops.runtimeCommand as any).releaseRuntimePermit('a');
@@ -105,5 +92,38 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     process.env.RUNTIME_MAX_CONCURRENCY = '4';
     expect(() => (loops.runtimeCommand as any).releaseRuntimePermit('never-acquired')).not.toThrow();
     expect(loops.runtimeConcurrencyInUse()).toBe(0);
+  });
+
+  it('shares the same admission limit with task execution', async () => {
+    process.env.RUNTIME_MAX_CONCURRENCY = '1';
+    await (loops.runtimeCommand as any).acquireRuntimePermit('loop-worker');
+    const engine = new ExecutionEngine(db, {
+      broadcastTaskEvent: () => undefined,
+      broadcastTaskEventById: () => undefined,
+      broadcastExecutionEvent: () => undefined,
+    } as any);
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO tasks (
+        id, title, description, status, priority, risk_level, execution_mode,
+        tags, metadata, created_at, updated_at
+      ) VALUES ('task-shared-admission', 'shared admission', 'run mock task', 'pending',
+        'low', 'low', 'local', '[]', '{}', ?, ?)
+    `).run(now, now);
+
+    let admitted = false;
+    const execution = engine.executeTask('task-shared-admission', 'mock').then((result) => {
+      admitted = true;
+      return result;
+    });
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+    expect(runtimeAdmissionSnapshot()).toMatchObject({
+      active: ['loop-worker'],
+      queued: ['task:task-shared-admission'],
+    });
+
+    (loops.runtimeCommand as any).releaseRuntimePermit('loop-worker');
+    await expect(execution).resolves.toMatchObject({ status: 'started' });
   });
 });

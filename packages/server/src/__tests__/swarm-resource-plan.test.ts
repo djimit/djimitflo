@@ -167,6 +167,8 @@ describe('workstation swarm resource plan', () => {
       queue_depth_by_risk: { low: 1 },
     });
     expect(mockPool.available).toEqual(expect.any(Boolean));
+    expect(mockPool.runtime_available).toEqual(expect.any(Boolean));
+    expect(mockPool.capacity_available).toEqual(expect.any(Boolean));
     expect(mockPool.recommended_concurrency).toBeGreaterThanOrEqual(0);
     expect(status.fleet_topology).toEqual(expect.arrayContaining([
       expect.objectContaining({

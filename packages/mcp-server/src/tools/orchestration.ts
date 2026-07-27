@@ -11,8 +11,28 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DbHandle } from '../db.js';
 
-export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle) {
+interface OrchestrationOptions {
+  controlUrl?: string;
+  apiToken?: string;
+  fetch?: typeof fetch;
+}
+
+function spawnRootUrl(controlUrl: string): string {
+  const base = controlUrl.replace(/\/+$/, '');
+  if (base.endsWith('/api/swarms/spawns')) return `${base}/root`;
+  if (base.endsWith('/api')) return `${base}/swarms/spawns/root`;
+  return `${base}/api/swarms/spawns/root`;
+}
+
+export function registerOrchestrationTools(
+  server: McpServer,
+  dbHandle: DbHandle,
+  options: OrchestrationOptions = {},
+) {
   const { db } = dbHandle;
+  const controlUrl = options.controlUrl || process.env.DJIMITFLO_CONTROL_URL || '';
+  const apiToken = options.apiToken || process.env.DJIMITFLO_API_TOKEN || '';
+  const fetchFn = options.fetch || fetch;
 
   // ─── spawn_agent ──────────────────────────────────────────────────────
   server.registerTool(
@@ -24,35 +44,50 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
         runtime: z.enum(['mock', 'codex', 'opencode', 'claude', 'gemini', 'editor']).default('mock').describe('Runtime to use for the sub-agent'),
         role: z.enum(['planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard']).default('maker').describe('Role of the sub-agent'),
         context_budget: z.number().int().min(500).max(100000).default(4000).describe('Token budget for the sub-agent context window'),
-        parent_run_id: z.string().optional().describe('Parent loop run ID (if spawning from within a loop)'),
+        parent_run_id: z.string().describe('Existing loop run ID that owns the spawned root lease'),
       },
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
-      const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (!controlUrl) {
+        return {
+          content: [{ type: 'text' as const, text: 'DJIMITFLO_CONTROL_URL is required for real agent spawning' }],
+          isError: true,
+        };
+      }
 
-      // Register the sub-agent
-      db.prepare(`
-        INSERT INTO agents (id, name, description, status, capabilities, model, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, 'idle', ?, 'workstation-litellm/coding', ?, datetime('now'), datetime('now'))
-      `).run(
-        agentId,
-        `${role}-${runtime}`,
-        task,
-        JSON.stringify([role]),
-        JSON.stringify({ parent_run_id, context_budget, spawned_by: 'mcp-orchestrator' })
-      );
+      const response = await fetchFn(spawnRootUrl(controlUrl), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(apiToken ? { authorization: `Bearer ${apiToken}` } : {}),
+        },
+        body: JSON.stringify({
+          loop_run_id: parent_run_id,
+          runtime,
+          role,
+          prompt: task,
+          context_budget,
+        }),
+      });
+      const body = await response.json() as Record<string, unknown>;
+      if (!response.ok) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(body, null, 2) }],
+          isError: true,
+        };
+      }
 
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            agent_id: agentId,
-            status: 'spawned',
+            ...body,
+            status: 'prepared',
             runtime,
             role,
             context_budget,
             task: task.slice(0, 200),
-            message: `Sub-agent spawned with ${context_budget} token budget. Use djimitflo_get_agent_status to monitor progress.`,
+            message: 'Agent root lease prepared by the Djimitflo control plane.',
           }, null, 2),
         }],
       };
@@ -72,16 +107,20 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       },
     },
     async ({ from_agent_id, to_agent_id, summary, artifacts }) => {
-      // Update agent statuses
-      db.prepare("UPDATE agents SET status = 'handoff_complete', updated_at = datetime('now') WHERE id = ?").run(from_agent_id);
-      db.prepare("UPDATE agents SET status = 'active', updated_at = datetime('now') WHERE id = ?").run(to_agent_id);
-
-      // Store handoff record
       const handoffId = `handoff-${Date.now()}`;
-      db.prepare(`
-        INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, context_json, status, priority, created_at)
-        VALUES (?, ?, ?, ?, ?, 'completed', 'medium', datetime('now'))
-      `).run(handoffId, from_agent_id, to_agent_id, to_agent_id, JSON.stringify({ summary, artifacts }));
+      const handoff = db.transaction(() => {
+        const from = db.prepare('SELECT id FROM agents WHERE id = ?').get(from_agent_id);
+        const to = db.prepare('SELECT id FROM agents WHERE id = ?').get(to_agent_id);
+        if (!from || !to) throw new Error('HANDOFF_AGENT_NOT_FOUND');
+
+        db.prepare("UPDATE agents SET status = 'idle', last_active_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(from_agent_id);
+        db.prepare("UPDATE agents SET status = 'active', last_active_at = datetime('now'), updated_at = datetime('now') WHERE id = ?").run(to_agent_id);
+        db.prepare(`
+          INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, context_json, status, priority, created_at)
+          VALUES (?, ?, ?, ?, ?, 'completed', 'medium', datetime('now'))
+        `).run(handoffId, from_agent_id, to_agent_id, to_agent_id, JSON.stringify({ summary, artifacts }));
+      });
+      handoff();
 
       return {
         content: [{
@@ -104,20 +143,20 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     {
       description: 'Request human approval for a high-risk action. Returns a pending approval that must be confirmed before the action proceeds.',
       inputSchema: {
+        task_id: z.string().describe('Existing task ID that owns the approval request'),
         action: z.string().describe('The action requiring approval'),
         reason: z.string().describe('Why approval is needed'),
         risk_level: z.enum(['low', 'medium', 'high', 'critical']).describe('Risk level of the action'),
         context: z.record(z.unknown()).default({}).describe('Additional context for the approver'),
       },
     },
-    async ({ action, reason, risk_level, context }) => {
+    async ({ task_id, action, reason, risk_level, context }) => {
       const approvalId = `approval-${Date.now()}`;
 
-      // Store approval request using existing approvals table
       db.prepare(`
         INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, created_at)
-        VALUES (?, 'mcp-orchestrator', 'pending', ?, 'high_risk_action', ?, ?, datetime('now'))
-      `).run(approvalId, risk_level, action, JSON.stringify({ reason, context }));
+        VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, datetime('now'))
+      `).run(approvalId, task_id, risk_level, action, JSON.stringify({ reason, context }));
 
       return {
         content: [{
@@ -140,11 +179,11 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     {
       description: 'List all agents with their current status, capabilities, and active tasks',
       inputSchema: {
-        status: z.enum(['idle', 'active', 'paused', 'error', 'offline', 'handoff_complete']).optional().describe('Filter by status'),
+        status: z.enum(['idle', 'active', 'paused', 'error', 'offline', 'pending_approval']).optional().describe('Filter by status'),
       },
     },
     async ({ status }) => {
-      let query = 'SELECT id, name, description, status, capabilities, model, last_seen, created_at, updated_at FROM agents';
+      let query = 'SELECT id, name, description, status, capabilities, model, last_active_at, last_heartbeat_at, created_at, updated_at FROM agents';
       const params: unknown[] = [];
 
       if (status) {
@@ -163,7 +202,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
         status: row.status,
         capabilities: JSON.parse(row.capabilities || '[]'),
         model: row.model,
-        last_seen: row.last_seen,
+        last_seen: row.last_heartbeat_at || row.last_active_at,
         created_at: row.created_at,
       }));
 

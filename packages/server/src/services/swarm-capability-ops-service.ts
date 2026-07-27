@@ -112,7 +112,7 @@ export class SwarmCapabilityOpsService {
       if (!input.human_approval_ref?.trim()) throw new Error('CAPABILITY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
     }
     rejectSecretLike(input);
-    const skillTrainingGate = this.skillTrainingGate.assertPass(capability);
+    const skillTrainingGate = this.skillTrainingGate.assertPass(capability, input.evidence_refs);
     const now = new Date().toISOString();
     const metadata = {
       ...capability.metadata,

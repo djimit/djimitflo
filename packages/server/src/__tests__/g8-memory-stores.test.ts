@@ -79,4 +79,27 @@ describe('G8: Memory store formalization', () => {
     const colNames = cols.map(c => c.name);
     expect(colNames).toContain('store');
   });
+
+  it('does not promote when a requested durable sink is only skipped', () => {
+    const candidate = svc.create({
+      title: 'Durable sink required',
+      content: 'Only promote this memory after the configured sink confirms persistence.',
+      memory_type: 'operational_memory',
+    });
+
+    expect(() => svc.promote(candidate.id, { sinks: ['qdrant'] }))
+      .toThrow('MEMORY_PROMOTION_SINK_FAILED');
+    expect(svc.get(candidate.id).promotion_status).not.toBe('promoted');
+  });
+
+  it('requires both explicit human approval and an approver identity for policy memory', () => {
+    const candidate = svc.create({
+      title: 'Policy approval binding',
+      content: 'Policy rules require an identified human decision.',
+      memory_type: 'policy_rule',
+    });
+
+    expect(() => svc.promote(candidate.id, { human_approved: true, sinks: ['okf'] }))
+      .toThrow('MEMORY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
+  });
 });

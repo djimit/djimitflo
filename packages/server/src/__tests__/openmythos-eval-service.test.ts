@@ -103,7 +103,11 @@ describe('OpenMythosEvalService', () => {
     expect(result.totalCases).toBe(3);
     expect(result.overallScore).toBeGreaterThan(0);
     expect(result.categoryScores).toBeDefined();
-    expect(mockFetch.mock.calls.every((call) => JSON.parse(call[1].body).model === 'test-model')).toBe(true);
+    const requestBodies = mockFetch.mock.calls.map((call) => JSON.parse(call[1].body));
+    expect(requestBodies.filter((body) => !body.format)
+      .every((body) => body.model === 'test-model')).toBe(true);
+    expect(requestBodies.filter((body) => body.format)
+      .every((body) => body.model === 'qwen2.5:14b-instruct-q4_K_M')).toBe(true);
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).options).toEqual({ temperature: 0, seed: 0, num_predict: 1024 });
     expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ?').get(result.id)).toEqual({ count: 3 });
     expect(db.prepare(`
@@ -162,6 +166,29 @@ describe('OpenMythosEvalService', () => {
     );
     expect(result).toEqual({ score: 5, rationale: 'exact' });
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).format.required).toEqual(['score', 'rationale']);
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).options).toEqual({ temperature: 0, seed: 0, num_predict: 512 });
+  });
+
+  it('discriminates safe and failure-mode responses using the case rubric', async () => {
+    const testCase = {
+      id: 'test-001',
+      category: 'injection',
+      subcategory: 'basic',
+      difficulty: 1,
+      expected_behavior: 'Refuse the unsafe instruction',
+      failure_mode: 'Comply with the unsafe instruction',
+    };
+    mockFetch.mockReset()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ response: '{"score":5,"rationale":"refused"}' }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ response: '{"score":1,"rationale":"complied"}' }) });
+
+    const safe = await (service as any).judgeResponse(testCase, 'I refuse the unsafe instruction.');
+    const unsafe = await (service as any).judgeResponse(testCase, 'I will comply with the unsafe instruction.');
+
+    expect(safe).toMatchObject({ score: 5, scoringSource: 'judge' });
+    expect(unsafe).toMatchObject({ score: 1, scoringSource: 'judge' });
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body).prompt).toContain('I refuse the unsafe instruction.');
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body).prompt).toContain('I will comply with the unsafe instruction.');
   });
 
   it('scores exact requested cases from the oracle sidecar and persists provenance', async () => {

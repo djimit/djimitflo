@@ -62,6 +62,14 @@ export interface FeedbackLoopConfig {
   dormant_capability_threshold_days: number;
 }
 
+export interface FeedbackLoopDependencies {
+  dispatchImprovement?: (
+    proposal: ImprovementProposal,
+    agentId: string,
+  ) => Promise<{ taskId: string; status: string }>;
+  rerunEvaluation?: (agentId: string, caseIds: string[]) => Promise<{ runId: string }>;
+}
+
 const DEFAULT_CONFIG: FeedbackLoopConfig = {
   min_score_threshold: 3.0,
   auto_authorize_below_risk: RiskLevel.MEDIUM,
@@ -85,6 +93,7 @@ export class GovernanceFeedbackLoopService {
   constructor(
     private db: Database,
     config: Partial<FeedbackLoopConfig> = {},
+    private dependencies: FeedbackLoopDependencies = {},
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.ensureTables();
@@ -222,6 +231,7 @@ export class GovernanceFeedbackLoopService {
    */
   async runFeedbackLoop(agentId: string, principal: AuthTokenPayload): Promise<FeedbackLoopResult> {
     const loopId = `gfl-${randomUUID().slice(0, 8)}`;
+    const baselineRunId = this.latestCompletedRunId(agentId);
 
     const failures = this.analyzeFailures(agentId);
     if (failures.length === 0) {
@@ -239,33 +249,66 @@ export class GovernanceFeedbackLoopService {
 
     const proposals = this.createProposals(failures);
     const authorized = this.authorizeProposals(proposals, principal);
+    const authorizedCount = authorized.filter(({ proposal }) => proposal.status === 'authorized').length;
 
     const autoExecutable = authorized.filter(
       ({ proposal }) =>
         proposal.status === 'authorized' &&
-        proposal.risk_level <= this.config.auto_authorize_below_risk
+        this.riskRank(proposal.risk_level) <= this.riskRank(this.config.auto_authorize_below_risk)
     );
 
     let executed = 0;
+    const executedProposals: ImprovementProposal[] = [];
     for (const { proposal } of autoExecutable) {
       try {
-        this.dispatchImprovement(proposal);
+        if (!this.dependencies.dispatchImprovement) {
+          proposal.status = 'failed';
+          this.persistProposal(proposal);
+          continue;
+        }
         proposal.status = 'executing';
-        executed++;
+        this.persistProposal(proposal);
+        const execution = await this.dependencies.dispatchImprovement(proposal, agentId);
+        this.persistProposalExecution(proposal.id, execution.taskId, execution.status);
+        if (execution.status === 'completed') {
+          executed++;
+          executedProposals.push(proposal);
+        } else if (execution.status !== 'awaiting_approval') {
+          proposal.status = 'failed';
+          this.persistProposal(proposal);
+        }
       } catch {
         proposal.status = 'failed';
+        this.persistProposal(proposal);
+      }
+    }
+
+    let improvement = { improved: false, delta: 0 };
+    if (executed > 0 && this.config.require_verification && baselineRunId && this.dependencies.rerunEvaluation) {
+      const caseIds = [...new Set(failures.flatMap((failure) => failure.case_ids))];
+      const verification = await this.dependencies.rerunEvaluation(agentId, caseIds);
+      improvement = this.verifyImprovement(agentId, baselineRunId);
+      for (const proposal of executedProposals) {
+        proposal.status = improvement.improved ? 'completed' : 'failed';
+        this.persistProposal(proposal);
+        this.persistProposalVerification(proposal.id, verification.runId);
+      }
+    } else if (!this.config.require_verification) {
+      for (const proposal of executedProposals) {
+        proposal.status = 'completed';
+        this.persistProposal(proposal);
       }
     }
 
     const result: FeedbackLoopResult = {
       loop_id: loopId,
-      eval_run_id: failures[0]?.case_ids[0] || '',
+      eval_run_id: baselineRunId || '',
       failures_detected: failures.length,
       proposals_created: proposals.length,
-      proposals_authorized: authorized.filter(a => a.proposal.status === 'authorized').length,
+      proposals_authorized: authorizedCount,
       proposals_executed: executed,
-      improvement_detected: false,
-      score_delta: 0,
+      improvement_detected: improvement.improved,
+      score_delta: improvement.delta,
     };
 
     this.persistFeedbackLoop(result);
@@ -447,15 +490,38 @@ export class GovernanceFeedbackLoopService {
       `Consider updating policies, skills, or agent instructions to prevent recurrence.`;
   }
 
-  private dispatchImprovement(proposal: ImprovementProposal): void {
-    void proposal;
+  private latestCompletedRunId(agentId: string): string | null {
+    const row = this.db.prepare(`
+      SELECT id FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'completed'
+      ORDER BY finished_at DESC LIMIT 1
+    `).get(agentId) as { id: string } | undefined;
+    return row?.id || null;
+  }
+
+  private riskRank(risk: RiskLevel): number {
+    return {
+      [RiskLevel.LOW]: 0,
+      [RiskLevel.MEDIUM]: 1,
+      [RiskLevel.HIGH]: 2,
+      [RiskLevel.CRITICAL]: 3,
+    }[risk];
   }
 
   private persistProposal(proposal: ImprovementProposal): void {
     this.db.prepare(`
-      INSERT OR REPLACE INTO governance_improvement_proposals
+      INSERT INTO governance_improvement_proposals
         (id, title, description, category, target_finding_ids, proposed_action, risk_level, status, decision_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        description = excluded.description,
+        category = excluded.category,
+        target_finding_ids = excluded.target_finding_ids,
+        proposed_action = excluded.proposed_action,
+        risk_level = excluded.risk_level,
+        status = excluded.status,
+        decision_id = excluded.decision_id
     `).run(
       proposal.id,
       proposal.title,
@@ -487,6 +553,22 @@ export class GovernanceFeedbackLoopService {
     );
   }
 
+  private persistProposalExecution(proposalId: string, taskId: string, executionStatus: string): void {
+    this.db.prepare(`
+      UPDATE governance_improvement_proposals
+      SET task_id = ?, execution_status = ?
+      WHERE id = ?
+    `).run(taskId, executionStatus, proposalId);
+  }
+
+  private persistProposalVerification(proposalId: string, runId: string): void {
+    this.db.prepare(`
+      UPDATE governance_improvement_proposals
+      SET verification_run_id = ?
+      WHERE id = ?
+    `).run(runId, proposalId);
+  }
+
   private ensureTables(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS governance_feedback_loops (
@@ -512,6 +594,9 @@ export class GovernanceFeedbackLoopService {
         risk_level TEXT NOT NULL CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
         status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed', 'authorized', 'rejected', 'executing', 'completed', 'failed')),
         decision_id TEXT,
+        task_id TEXT,
+        execution_status TEXT,
+        verification_run_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -520,5 +605,15 @@ export class GovernanceFeedbackLoopService {
       CREATE INDEX IF NOT EXISTS idx_gip_status ON governance_improvement_proposals(status);
       CREATE INDEX IF NOT EXISTS idx_gip_category ON governance_improvement_proposals(category);
     `);
+    this.addColumnIfMissing('governance_improvement_proposals', 'task_id', 'TEXT');
+    this.addColumnIfMissing('governance_improvement_proposals', 'execution_status', 'TEXT');
+    this.addColumnIfMissing('governance_improvement_proposals', 'verification_run_id', 'TEXT');
+  }
+
+  private addColumnIfMissing(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!columns.some((item) => item.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    }
   }
 }

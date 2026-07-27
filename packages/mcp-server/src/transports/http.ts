@@ -4,31 +4,37 @@
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'crypto';
 import http from 'http';
 
-export async function startHttpServer(server: McpServer, port: number): Promise<void> {
-  const transports: Map<string, SSEServerTransport> = new Map();
+export async function startHttpServer(createServer: () => McpServer, port: number): Promise<http.Server> {
+  const transports = new Map<string, StreamableHTTPServerTransport>();
 
   const httpServer = http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://localhost:${port}`);
 
-    if (url.pathname === '/mcp' && req.method === 'GET') {
-      const transport = new SSEServerTransport('/mcp', res);
-      transports.set(transport.sessionId, transport);
-      res.on('close', () => { transports.delete(transport.sessionId); });
-      await server.connect(transport);
-      return;
-    }
-
-    if (url.pathname === '/mcp' && req.method === 'POST') {
-      const sessionId = req.headers['mcp-session-id'] as string | undefined;
-      const transport = sessionId ? transports.get(sessionId) : undefined;
+    if (url.pathname === '/mcp' && ['GET', 'POST', 'DELETE'].includes(req.method || '')) {
+      const sessionId = req.headers['mcp-session-id'];
+      let transport = typeof sessionId === 'string' ? transports.get(sessionId) : undefined;
+      if (!transport && req.method === 'POST' && !sessionId) {
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: randomUUID,
+          enableJsonResponse: true,
+          onsessioninitialized: (id) => { transports.set(id, transport!); },
+          onsessionclosed: (id) => { transports.delete(id); },
+        });
+        transport.onerror = (error) => {
+          console.error('DjimFlo MCP HTTP transport error:', error);
+        };
+        await createServer().connect(transport);
+      }
       if (!transport) {
-        res.writeHead(404).end('Session not found');
+        res.writeHead(404, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Session not found' }));
         return;
       }
-      await transport.handlePostMessage(req, res);
+      await transport.handleRequest(req, res);
       return;
     }
 
@@ -44,4 +50,5 @@ export async function startHttpServer(server: McpServer, port: number): Promise<
   await new Promise<void>((resolve) => {
     httpServer.listen(port, '0.0.0.0', resolve);
   });
+  return httpServer;
 }

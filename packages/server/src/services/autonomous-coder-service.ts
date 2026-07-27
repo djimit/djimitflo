@@ -14,6 +14,7 @@ import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, extname } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 interface ImprovementOpportunity {
   id: string;
@@ -42,8 +43,8 @@ interface CodePatch {
 export class AutonomousCoderService {
   private srcDir: string;
 
-  constructor(private db: Database) {
-    this.srcDir = join(process.cwd(), 'packages', 'server', 'src');
+  constructor(private db: Database, repositoryRoot = resolveRepositoryRoot()) {
+    this.srcDir = join(repositoryRoot, 'packages', 'server', 'src');
     this.ensureTables();
   }
 

@@ -38,7 +38,7 @@ export class WorkerPool {
 
   async execute<T, R>(
     tasks: WorkerTaskInput<T>[],
-    fn: (input: T) => Promise<R>
+    fn: (input: T, signal: AbortSignal) => Promise<R>
   ): Promise<WorkerTaskResult<T, R>[]> {
     if (tasks.length === 0) return [];
 
@@ -58,18 +58,29 @@ export class WorkerPool {
       };
 
       const runTask = async (item: QueueItem<T>) => {
+        const controller = new AbortController();
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        let timedOut = false;
         try {
           const result = await Promise.race([
-            fn(item.task.input),
+            fn(item.task.input, controller.signal),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('TIMEOUT')), this.taskTimeoutMs)
+              {
+                timeoutHandle = setTimeout(() => {
+                  timedOut = true;
+                  controller.abort();
+                  reject(new Error('TIMEOUT'));
+                }, this.taskTimeoutMs);
+              }
             ),
           ]);
 
           results.set(item.task.id, { id: item.task.id, input: item.task.input, result, attempts: item.attempts });
           this.stats.completed++;
         } catch (error) {
-          if (item.attempts <= this.maxRetries) {
+          // A timed-out operation may ignore AbortSignal and continue producing
+          // side effects. Never overlap it with a retry.
+          if (!timedOut && item.attempts <= this.maxRetries) {
             this.stats.retried++;
             queue.push({ task: item.task, attempts: item.attempts + 1 });
             activeCount--;
@@ -84,6 +95,8 @@ export class WorkerPool {
             attempts: item.attempts,
           });
           this.stats.failed++;
+        } finally {
+          if (timeoutHandle) clearTimeout(timeoutHandle);
         }
 
         activeCount--;

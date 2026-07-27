@@ -166,6 +166,85 @@ describe('MCP Server Tools', () => {
     expect(toolNames.length).toBe(new Set(toolNames).size);
   });
 
+  it('routes orchestration spawn through the real control-plane boundary', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      root_lease_id: 'lease-1',
+      spawn_tree_id: 'tree-1',
+      assignment_path: '/tmp/assignment.md',
+    }), { status: 201, headers: { 'content-type': 'application/json' } }));
+    const isolated = new McpServer({ name: 'orchestration-test', version: '0.0.0' });
+    registerOrchestrationTools(isolated, dbHandle, {
+      controlUrl: 'http://control.test/api',
+      apiToken: 'test-token',
+      fetch: fetchMock,
+    });
+
+    const tool = (isolated as any)._registeredTools.djimitflo_spawn_agent;
+    const result = await tool.handler({
+      task: 'Validate the capability chain',
+      runtime: 'mock',
+      role: 'checker',
+      context_budget: 4000,
+      parent_run_id: 'loop-1',
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      root_lease_id: 'lease-1',
+      spawn_tree_id: 'tree-1',
+      status: 'prepared',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://control.test/api/swarms/spawns/root',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ authorization: 'Bearer test-token' }),
+      }),
+    );
+    expect((dbHandle.db.prepare('SELECT COUNT(*) AS c FROM agents').get() as { c: number }).c).toBe(0);
+  });
+
+  it('uses schema-valid agent handoff, listing, and task-bound approval contracts', async () => {
+    const now = new Date().toISOString();
+    dbHandle.db.prepare(`
+      INSERT INTO agents (id, name, description, status, capabilities, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, '[]', '{}', ?, ?)
+    `).run('agent-from', 'from', 'from agent', 'active', now, now);
+    dbHandle.db.prepare(`
+      INSERT INTO agents (id, name, description, status, capabilities, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, '[]', '{}', ?, ?)
+    `).run('agent-to', 'to', 'to agent', 'idle', now, now);
+    dbHandle.db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at)
+      VALUES ('task-approval', 'approval', 'approval task', 'pending', 'medium', 'medium', 'controlled', ?, ?)
+    `).run(now, now);
+
+    const tools = (server as any)._registeredTools;
+    const handoff = await tools.djimitflo_handoff_agent.handler({
+      from_agent_id: 'agent-from',
+      to_agent_id: 'agent-to',
+      summary: 'ready',
+      artifacts: [],
+    });
+    expect(JSON.parse(handoff.content[0].text)).toMatchObject({ status: 'completed' });
+    expect(dbHandle.db.prepare('SELECT status FROM agents WHERE id = ?').get('agent-from')).toEqual({ status: 'idle' });
+    expect(dbHandle.db.prepare('SELECT status FROM agents WHERE id = ?').get('agent-to')).toEqual({ status: 'active' });
+
+    const listed = await tools.djimitflo_list_orchestration_agents.handler({});
+    expect(JSON.parse(listed.content[0].text).total).toBe(2);
+
+    const approval = await tools.djimitflo_approve_action.handler({
+      task_id: 'task-approval',
+      action: 'run controlled change',
+      reason: 'material mutation',
+      risk_level: 'high',
+      context: {},
+    });
+    const approvalBody = JSON.parse(approval.content[0].text);
+    expect(dbHandle.db.prepare('SELECT task_id FROM approvals WHERE id = ?').get(approvalBody.approval_id))
+      .toEqual({ task_id: 'task-approval' });
+  });
+
   it('list_loop_runs returns empty array when no runs', async () => {
     const registeredTools = (server as any)._registeredTools;
     const tool = registeredTools['djimitflo_list_loop_runs'];

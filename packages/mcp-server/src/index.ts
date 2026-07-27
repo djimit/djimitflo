@@ -21,7 +21,7 @@ import { registerAgentTools } from './tools/agents.js';
 import { registerMissionControlTools } from './tools/mission-control.js';
 import { registerOrchestrationTools } from './tools/orchestration.js';
 import { registerOkfTools } from './tools/okf.js';
-import { registerGovernanceTools } from './tools/governance.js';
+import { registerGovernanceTools, syncRuntimeMcpCatalog } from './tools/governance.js';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -42,18 +42,22 @@ async function main() {
   const opts = parseArgs();
   const db = createDatabase(opts.dbPath);
 
-  const server = new McpServer({
-    name: 'djimitflo',
-    version: '0.1.0',
-  });
-
-  registerLoopTools(server, db);
-  registerGoalTools(server, db);
-  registerAgentTools(server, db);
-  registerMissionControlTools(server, db);
-  registerOrchestrationTools(server, db);
-  registerOkfTools(server);
-  registerGovernanceTools(server, db);
+  const createServer = () => {
+    const server = new McpServer({
+      name: 'djimitflo',
+      version: '0.1.0',
+    });
+    registerLoopTools(server, db);
+    registerGoalTools(server, db);
+    registerAgentTools(server, db);
+    registerMissionControlTools(server, db);
+    registerOrchestrationTools(server, db);
+    registerOkfTools(server);
+    registerGovernanceTools(server, db);
+    return server;
+  };
+  const server = createServer();
+  await syncRuntimeMcpCatalog(server);
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
@@ -61,7 +65,7 @@ async function main() {
     console.error('DjimFlo MCP Server running on stdio');
   } else {
     const { startHttpServer } = await import('./transports/http.js');
-    await startHttpServer(server, opts.port);
+    await startHttpServer(createServer, opts.port);
     console.error(`DjimFlo MCP Server running on http://0.0.0.0:${opts.port}/mcp`);
   }
 }

@@ -127,7 +127,7 @@ export class MemoryCandidateService {
     if (candidate.promotion_status === 'rejected' || candidate.status === 'rejected') {
       throw new Error('MEMORY_PROMOTION_REJECTED_CANDIDATE');
     }
-    if (candidate.human_required && !input.human_approved && !input.approved_by) {
+    if (candidate.human_required && (input.human_approved !== true || !input.approved_by?.trim())) {
       throw new Error('MEMORY_PROMOTION_HUMAN_APPROVAL_REQUIRED');
     }
     if (candidate.status === 'review_required' && candidate.memory_type !== 'policy_rule' && !input.approved_by) {
@@ -137,7 +137,7 @@ export class MemoryCandidateService {
     const sinks = input.sinks && input.sinks.length > 0 ? input.sinks : ['okf' as const];
     const results = sinks.map((sink) => this.writeSink(sink, candidate, input));
     const now = new Date().toISOString();
-    const ok = results.every((result) => result.status === 'pass' || result.status === 'skipped');
+    const ok = results.every((result) => result.status === 'pass');
     if (!ok) {
       throw new Error('MEMORY_PROMOTION_SINK_FAILED');
     }

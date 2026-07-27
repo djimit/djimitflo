@@ -477,7 +477,7 @@ export class ProofRunService {
         source_ref: `proof:${proofRunId}`,
         metadata: base,
       });
-      this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+      this.memory.promote(candidate.id, { sinks: ['okf'], approved_by: 'proof-run-service' });
       this.createNestedSpawnProof(loopRunId, proofRunId, 'mock', base);
 
       this.db.prepare(`
@@ -811,7 +811,7 @@ export class ProofRunService {
           proof_type: 'runtime_bridge',
         },
       });
-      this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+      this.memory.promote(candidate.id, { sinks: ['okf'], approved_by: 'proof-run-service' });
       await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
       // G12: distill an actionable rule from this run's evidence (procedural memory).
       // This closes the self-improvement loop: the distilled rule is stored in the
@@ -828,7 +828,7 @@ export class ProofRunService {
           keyLearning: `Runtime ${runtime} proof run succeeded with ${makerLease ? 'maker' : 'no'} lease. The approach (codex headless, sandboxed, --ignore-user-config) is effective for this capability.`,
           metadata: base,
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+        this.memory.promote(distilled.id, { sinks: ['okf'], approved_by: 'proof-run-service' });
         await this.memory.upsertToSwarmMemory(distilled.id);
       } catch { /* best-effort: never fail the proof on distillation */ }
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
@@ -850,7 +850,7 @@ export class ProofRunService {
           keyLearning: `Runtime ${runtime} proof run FAILED: ${proofRunError.message}. Consider a different runtime, splitting the finding, or checking the worktree state before retrying.`,
           metadata: { ...base, error: proofRunError.message },
         });
-        this.memory.promote(failureRule.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
+        this.memory.promote(failureRule.id, { sinks: ['okf'], approved_by: 'proof-run-service' });
         await this.memory.upsertToSwarmMemory(failureRule.id);
       } catch { /* best-effort */ }
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
@@ -1234,7 +1234,7 @@ export class ProofRunService {
           keyLearning: `Memory curator distilled: runtime ${curatorResult.lease.runtime} succeeded. The nested specialist approach (planner + curator, parallel, sandboxed) is effective.`,
           metadata: { curator_active: true, curator_lease_id: curatorLeaseId },
         });
-        this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'memory_curator' });
+        this.memory.promote(distilled.id, { sinks: ['okf'], approved_by: 'memory_curator' });
         await this.memory.upsertToSwarmMemory(distilled.id);
       }
     } catch { /* best-effort: never fail the proof on curator distillation */ }

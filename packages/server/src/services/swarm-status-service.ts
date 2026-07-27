@@ -59,6 +59,8 @@ export interface SwarmRealityStatus {
   };
   fleet_pools: Array<{
     runtime: string;
+    runtime_available: boolean;
+    capacity_available: boolean;
     available: boolean;
     prepared_leases: number;
     queued_leases: number;
@@ -805,13 +807,15 @@ export class SwarmStatusService {
       const successfulWorkers = Math.max(1, completed24h.length);
       const totalFinished24h = completed24h.length + failed24h.length;
       const blocked: string[] = [];
-      if (runtime !== 'manual' && runtime !== 'mock' && !this.runtimeCommandAvailable(runtime)) {
+      const runtimeAvailable = runtime === 'manual' || runtime === 'mock' || this.runtimeCommandAvailable(runtime);
+      if (!runtimeAvailable) {
         blocked.push('runtime_unavailable');
       }
       if (freeMemoryRatio < 0.05) blocked.push('low_free_memory');
       if (load > resourceSnapshot.cpu_threads * 1.5) blocked.push('high_cpu_load');
       const baseConcurrency = runtime === 'manual' ? 0 : Math.max(1, Math.floor(resourceSnapshot.cpu_threads / 4));
-      const recommended = blocked.length > 0 ? 0 : Math.max(0, baseConcurrency - running.length);
+      const capacityAvailable = !blocked.some((reason) => reason !== 'runtime_unavailable');
+      const recommended = runtimeAvailable && capacityAvailable ? Math.max(0, baseConcurrency - running.length) : 0;
       const oldestQueuedAgeMs = prepared.length > 0
         ? Math.max(...prepared.map((row) => Date.now() - Date.parse(row.created_at || new Date().toISOString())))
         : null;
@@ -826,7 +830,9 @@ export class SwarmStatusService {
         || (prepared.length === 0 ? 'queue_empty' : null);
       return {
         runtime,
-        available: blocked.length === 0,
+        runtime_available: runtimeAvailable,
+        capacity_available: capacityAvailable,
+        available: runtimeAvailable,
         prepared_leases: prepared.length,
         queued_leases: prepared.length,
         running_leases: running.length,

@@ -86,18 +86,9 @@ describe('G20: Inter-agent negotiation', () => {
       if (claim.predicate === 'help_response') responses.push(claim);
     });
 
-    knowledgeBus.publish({
-      claim_id: 'help-req-1',
-      capability_id: 'non-existent-cap',
-      predicate: 'help_request',
-      subject_ref: 'lease:test-1',
-      confidence: 0.5,
-      status: 'supported',
-      trust: 0.5,
-      provenance_run: 'run-test',
-      evidence_refs: [],
-      created_from: 'lease:test-1',
-    });
+    NegotiationCoordinator.emitHelpRequest(
+      'lease:test-1', 'run-test', 'tree-test', 'non-existent-cap', 'Need missing capability'
+    );
 
     expect(responses.length).toBe(1);
     expect(responses[0].status).toBe('contradicted');
@@ -125,21 +116,23 @@ describe('G20: Inter-agent negotiation', () => {
       risk_class: 'low',
     });
 
-    knowledgeBus.publish({
-      claim_id: 'help-req-2',
-      capability_id: 'cap-debug',
-      predicate: 'help_request',
-      subject_ref: 'lease:root-maker',
-      confidence: 0.5,
-      status: 'supported',
-      trust: 0.5,
-      provenance_run: 'run-neg',
-      evidence_refs: [],
-      created_from: root.root_lease_id,
-    });
+    NegotiationCoordinator.emitHelpRequest(
+      root.root_lease_id,
+      'run-neg',
+      root.spawn_tree_id,
+      'cap-debug',
+      'Need the debugging specialist',
+      'high',
+    );
 
-    // The coordinator should respond (accepted or rejected depending on spawn gate).
-    expect(responses.length).toBeGreaterThanOrEqual(0);
+    expect(responses).toHaveLength(1);
+    expect(responses[0].status).toBe('supported');
+    expect(responses[0].payload).toMatchObject({
+      type: 'help_response',
+      to_lease_id: root.root_lease_id,
+      status: 'accepted',
+    });
+    expect(responses[0].payload.spawned_lease_id).toEqual(expect.any(String));
   });
 
   it('emits negotiation events on the SSE stream', () => {
@@ -148,18 +141,9 @@ describe('G20: Inter-agent negotiation', () => {
 
     coordinator.start();
 
-    knowledgeBus.publish({
-      claim_id: 'help-req-3',
-      capability_id: 'test-cap',
-      predicate: 'help_request',
-      subject_ref: 'lease:test-3',
-      confidence: 0.5,
-      status: 'supported',
-      trust: 0.5,
-      provenance_run: 'run-test',
-      evidence_refs: [],
-      created_from: 'lease:test-3',
-    });
+    NegotiationCoordinator.emitHelpRequest(
+      'lease:test-3', 'run-test', 'tree-test', 'test-cap', 'Need help'
+    );
 
     const negotiationEvent = events.find((e) => e.data?.negotiation === 'help_response');
     expect(negotiationEvent).toBeDefined();
@@ -172,18 +156,9 @@ describe('G20: Inter-agent negotiation', () => {
     const events: any[] = [];
     swarmEventBus.subscribe((e) => events.push(e));
 
-    knowledgeBus.publish({
-      claim_id: 'help-req-4',
-      capability_id: 'test-cap',
-      predicate: 'help_request',
-      subject_ref: 'lease:test-4',
-      confidence: 0.5,
-      status: 'supported',
-      trust: 0.5,
-      provenance_run: 'run-test',
-      evidence_refs: [],
-      created_from: 'lease:test-4',
-    });
+    NegotiationCoordinator.emitHelpRequest(
+      'lease:test-4', 'run-test', 'tree-test', 'test-cap', 'Need help'
+    );
 
     const responseEvent = events.find((e) => e.data?.negotiation === 'help_response');
     expect(responseEvent).toBeUndefined();

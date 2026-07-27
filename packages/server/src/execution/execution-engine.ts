@@ -41,6 +41,7 @@ import { MetaOrchestrationService } from '../services/meta-orchestration-service
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
+import { acquireRuntimeAdmission, releaseRuntimeAdmission } from '../services/runtime-admission';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
@@ -302,6 +303,8 @@ export class ExecutionEngine {
       }
     }
 
+    const runtimeAdmissionId = `task:${taskId}`;
+    await acquireRuntimeAdmission(runtimeAdmissionId);
     try {
       // Start execution
       // Resolve a working directory from task metadata (operator/loop may pin a worktree);
@@ -382,6 +385,7 @@ export class ExecutionEngine {
       });
       return { status: 'started' };
     } catch (error) {
+      releaseRuntimeAdmission(runtimeAdmissionId);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -444,6 +448,21 @@ export class ExecutionEngine {
     });
     const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
     return this.executeTask(approval.task_id, executorKind);
+  }
+
+  async waitForTaskCompletion(taskId: string): Promise<string> {
+    const session = this.activeSessions.get(taskId);
+    if (session) {
+      try {
+        await session.result;
+      } catch {
+        // The registered result handler persists the failed terminal state.
+      }
+      await Promise.resolve();
+    }
+    const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined;
+    if (!task) throw new Error('Task not found');
+    return task.status;
   }
   
   /**
@@ -570,6 +589,7 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    releaseRuntimeAdmission(`task:${taskId}`);
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);
@@ -662,6 +682,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
+    releaseRuntimeAdmission(`task:${taskId}`);
 
     // Record failure in circuit breaker
     const taskRecord = this.db.prepare("SELECT executor_kind FROM tasks WHERE id = ?").get(taskId) as any;

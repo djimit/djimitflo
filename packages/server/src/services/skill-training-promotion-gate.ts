@@ -1,11 +1,14 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { spawnSync } from 'child_process';
+import { createHash } from 'crypto';
 
 const DEFAULT_RUNNER = '/Users/dlandman/agent-skills/common/skill-training-eval-runner/scripts/run_skill_training_eval.mjs';
 
 export interface PromotionGateCapability {
   id: string;
   kind: string;
+  version?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SkillTrainingPromotionGateResult {
@@ -15,9 +18,27 @@ export interface SkillTrainingPromotionGateResult {
 }
 
 export class SkillTrainingPromotionGate {
-  assertPass(capability: PromotionGateCapability): SkillTrainingPromotionGateResult {
+  assertPass(capability: PromotionGateCapability, evidenceRefs: string[] = []): SkillTrainingPromotionGateResult {
     if (capability.kind !== 'skill' && capability.kind !== 'openai_skill') {
       return { passed: true, skipped: true, evidenceRef: null };
+    }
+
+    const skillPath = capability.metadata?.skill_path;
+    const expectedHash = capability.metadata?.skill_content_hash;
+    if (typeof skillPath !== 'string' || !existsSync(skillPath)) {
+      throw new Error(`SKILL_TRAINING_PROMOTION_CANDIDATE_NOT_FOUND:${capability.id}`);
+    }
+    if (typeof expectedHash !== 'string' || !/^[a-f0-9]{64}$/.test(expectedHash)) {
+      throw new Error(`SKILL_TRAINING_PROMOTION_CONTENT_HASH_REQUIRED:${capability.id}`);
+    }
+    const actualHash = createHash('sha256').update(readFileSync(skillPath)).digest('hex');
+    if (actualHash !== expectedHash) {
+      throw new Error(`SKILL_TRAINING_PROMOTION_CONTENT_HASH_MISMATCH:${capability.id}`);
+    }
+    const version = capability.version || 'unknown';
+    const evidencePrefix = `openmythos:skill:${capability.id}:${version}:${actualHash}:run:`;
+    if (!evidenceRefs.some((ref) => ref.startsWith(evidencePrefix))) {
+      throw new Error(`SKILL_TRAINING_PROMOTION_CANDIDATE_EVIDENCE_REQUIRED:${capability.id}`);
     }
 
     const runner = process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER || DEFAULT_RUNNER;
@@ -49,7 +70,7 @@ export class SkillTrainingPromotionGate {
     return {
       passed: true,
       skipped: false,
-      evidenceRef: `skill_training_eval:${report.summary?.generated_at || 'passed'}`,
+      evidenceRef: `skill_training_eval:${capability.id}:${version}:${actualHash}:${report.summary?.generated_at || 'passed'}`,
     };
   }
 }

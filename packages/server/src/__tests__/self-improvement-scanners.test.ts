@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { AutonomousCoderService } from '../services/autonomous-coder-service';
 import { AutonomousTestGeneratorService } from '../services/autonomous-test-generator-service';
+import { AutonomousDocsService } from '../services/autonomous-docs-service';
+import { resolveRepositoryRoot } from '../utils/repository-root';
+import { join } from 'path';
 
 describe('self-improvement scanners', () => {
   it('keeps repeated scans stable and ignores test fixtures', () => {
@@ -31,6 +34,18 @@ describe('self-improvement scanners', () => {
     });
     expect(candidates.flatMap((item) => item.methods)).not.toContain('VALUES');
     expect(candidates.flatMap((item) => item.methods)).not.toContain('mkdirSync');
+    db.close();
+  });
+
+  it('resolves the monorepo when the server starts from its workspace', () => {
+    const root = resolveRepositoryRoot();
+    const workspace = join(root, 'packages', 'server');
+    const db = new Database(':memory:');
+
+    expect(resolveRepositoryRoot(workspace)).toBe(root);
+    expect(new AutonomousTestGeneratorService(db, root).getStats().totalServices).toBeGreaterThan(0);
+    expect(new AutonomousDocsService(db, root).scan().length).toBeGreaterThan(0);
+
     db.close();
   });
 });

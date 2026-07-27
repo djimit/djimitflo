@@ -19,6 +19,7 @@ import { readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, basename } from 'path';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 interface TestGenerationResult {
   id: string;
@@ -34,9 +35,9 @@ export class AutonomousTestGeneratorService {
   private srcDir: string;
   private testsDir: string;
 
-  constructor(_db: Database) {
-    this.srcDir = join(process.cwd(), 'packages', 'server', 'src', 'services');
-    this.testsDir = join(process.cwd(), 'packages', 'server', 'src', '__tests__');
+  constructor(_db: Database, repositoryRoot = resolveRepositoryRoot()) {
+    this.srcDir = join(repositoryRoot, 'packages', 'server', 'src', 'services');
+    this.testsDir = join(repositoryRoot, 'packages', 'server', 'src', '__tests__');
   }
 
   /**

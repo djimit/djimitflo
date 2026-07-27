@@ -19,9 +19,27 @@ afterEach(() => { db?.close(); });
 
 describe('G126: SkillEvolutionGym', () => {
   it('evaluates skill', () => {
-    const result = gym.evaluateSkill('skill-1', { success: 1, duration: 0.5, steps: 3 });
+    const result = gym.evaluateSkill('skill-1', { success: 1, correctness: 0.5, duration_ms: 30_000, steps: 3 });
     expect(result.score).toBeGreaterThan(0);
     expect(result.skillId).toBe('skill-1');
+  });
+
+  it('never rewards a failed slow verbose run above a successful run', () => {
+    const failed = gym.evaluateSkill('failed', {
+      success: 0,
+      correctness: 1,
+      governance: 1,
+      duration_ms: 600_000,
+      steps: 100,
+    });
+    const successful = gym.evaluateSkill('successful', {
+      success: 1,
+      correctness: 0,
+      governance: 0,
+      duration_ms: 1,
+      steps: 1,
+    });
+    expect(successful.score).toBeGreaterThan(failed.score);
   });
 
   it('explores domain', () => {

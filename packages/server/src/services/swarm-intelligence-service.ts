@@ -314,7 +314,7 @@ export class SwarmIntelligenceService {
     }
 
     this.rejectSecretLike(input);
-    const skillTrainingGate = this.skillTrainingGate.assertPass(capability);
+    const skillTrainingGate = this.skillTrainingGate.assertPass(capability, input.evidence_refs);
     const now = new Date().toISOString();
     const metadata = {
       ...capability.metadata,

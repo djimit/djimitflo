@@ -370,5 +370,24 @@ describe('Apex Integration Tests', () => {
       const stats = service.getStats();
       expect(stats.totalMessages).toBe(1);
     });
+
+    it('delivers and acknowledges durably across service instances', () => {
+      const sent = service.send({ from: 'a', to: 'b', type: 'result', action: 'durable-result' });
+      const restarted = new AgentCommunicationService(db);
+      expect(restarted.receive('b')).toMatchObject([{
+        id: sent.id,
+        status: 'delivered',
+        payload: { action: 'durable-result' },
+      }]);
+
+      const otherInstance = new AgentCommunicationService(db);
+      expect(otherInstance.receive('b')).toEqual([]);
+      otherInstance.acknowledge(sent.id);
+      expect(new AgentCommunicationService(db).getStats()).toMatchObject({
+        totalMessages: 1,
+        pendingMessages: 0,
+        deliveredMessages: 1,
+      });
+    });
   });
 });
