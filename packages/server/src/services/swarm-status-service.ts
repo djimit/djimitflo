@@ -23,6 +23,7 @@ const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
 // a short TTL so each binary is probed at most once per window, process-wide.
 const RUNTIME_BIN_CACHE_TTL_MS = 30_000;
 const runtimeBinCache = new Map<string, { available: boolean; expiresAt: number }>();
+let macosAvailableMemoryCache: { bytes: number; expiresAt: number } | null = null;
 const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
   'doc-drift-and-small-fix-loop',
   'repo-maintenance-loop',
@@ -35,6 +36,7 @@ const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
 
 interface SwarmStatusOptions {
   staleAfterMs?: number;
+  availableMemoryBytes?: () => number;
 }
 
 export interface SwarmRealityStatus {
@@ -54,6 +56,8 @@ export interface SwarmRealityStatus {
     cpu_threads: number;
     total_memory_bytes: number;
     free_memory_bytes: number;
+    available_memory_bytes: number;
+    memory_availability_source: 'macos_memory_pressure' | 'os_freemem' | 'injected';
     load_average: number[];
     uptime_seconds: number;
   };
@@ -288,13 +292,7 @@ export class SwarmStatusService {
     const openTasks = this.countRows("SELECT COUNT(*) as count FROM tasks WHERE status IN ('pending', 'queued', 'running', 'paused', 'awaiting_approval', 'failed')");
     const backlogCount = this.backlogCounts();
 
-    const resourceSnapshot = {
-      cpu_threads: os.cpus().length,
-      total_memory_bytes: os.totalmem(),
-      free_memory_bytes: os.freemem(),
-      load_average: os.loadavg(),
-      uptime_seconds: os.uptime(),
-    };
+    const resourceSnapshot = this.currentCapacitySnapshot();
 
     const fleetPools = this.fleetPools(resourceSnapshot);
     return {
@@ -781,7 +779,7 @@ export class SwarmStatusService {
     const runtimes = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'mock', 'manual'];
     const load = resourceSnapshot.load_average[0] || 0;
     const freeMemoryRatio = resourceSnapshot.total_memory_bytes > 0
-      ? resourceSnapshot.free_memory_bytes / resourceSnapshot.total_memory_bytes
+      ? resourceSnapshot.available_memory_bytes / resourceSnapshot.total_memory_bytes
       : 0;
     return runtimes.map((runtime) => {
       const leases = rows.filter((row) => row.runtime === runtime);
@@ -919,6 +917,8 @@ export class SwarmStatusService {
       cpu_threads: 8,
       total_memory_bytes: 100,
       free_memory_bytes: 1,
+      available_memory_bytes: 1,
+      memory_availability_source: 'injected',
       load_average: [99, 99, 99],
       uptime_seconds: os.uptime(),
     };
@@ -1801,10 +1801,43 @@ export class SwarmStatusService {
   }
 
   private currentCapacitySnapshot() {
+    const totalMemory = os.totalmem();
+    const freeMemory = os.freemem();
+    const injected = this.options.availableMemoryBytes;
+    let availableMemory = injected ? injected() : freeMemory;
+    let source: SwarmRealityStatus['resource_snapshot']['memory_availability_source'] = injected
+      ? 'injected'
+      : 'os_freemem';
+    if (!injected && process.platform === 'darwin') {
+      try {
+        if (!macosAvailableMemoryCache || macosAvailableMemoryCache.expiresAt <= Date.now()) {
+          const output = execFileSync('memory_pressure', ['-Q'], {
+            encoding: 'utf8',
+            timeout: 1000,
+            stdio: ['ignore', 'pipe', 'ignore'],
+          });
+          const match = output.match(/System-wide memory free percentage:\s*(\d+)%/);
+          if (match) {
+            macosAvailableMemoryCache = {
+              bytes: Math.round(totalMemory * Number(match[1]) / 100),
+              expiresAt: Date.now() + RUNTIME_BIN_CACHE_TTL_MS,
+            };
+          }
+        }
+        if (macosAvailableMemoryCache) {
+          availableMemory = macosAvailableMemoryCache.bytes;
+          source = 'macos_memory_pressure';
+        }
+      } catch {
+        // os.freemem remains the portable fallback.
+      }
+    }
     return {
       cpu_threads: os.cpus().length,
-      total_memory_bytes: os.totalmem(),
-      free_memory_bytes: os.freemem(),
+      total_memory_bytes: totalMemory,
+      free_memory_bytes: freeMemory,
+      available_memory_bytes: Math.max(0, Math.min(totalMemory, availableMemory)),
+      memory_availability_source: source,
       load_average: os.loadavg(),
       uptime_seconds: os.uptime(),
     };

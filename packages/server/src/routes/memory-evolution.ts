@@ -22,8 +22,17 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
   router.post('/ingest', (req, res) => {
     const { agent_id, content, memory_type, metadata } = req.body;
     if (!agent_id || !content) { res.status(400).json({ error: 'agent_id and content required' }); return; }
+    if (memory_type && !['operational_memory', 'engineering_rule', 'policy_rule'].includes(memory_type)) {
+      res.status(400).json({ error: 'invalid memory_type' });
+      return;
+    }
     try {
-      const candidate = { id: 'mc-'+Date.now(), title: metadata?.title || 'Trace from '+agent_id, content, memory_type: memory_type || 'operational_memory', status: 'candidate', promotion_status: 'proposed', created_at: new Date().toISOString() };
+      const candidate = service.ingestTrace({
+        agentId: agent_id,
+        content,
+        memoryType: memory_type,
+        metadata,
+      });
       res.status(201).json({ status: 'ingested', candidate });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });

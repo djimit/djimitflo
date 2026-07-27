@@ -29,7 +29,7 @@ describe('GymGovernanceCurriculum', () => {
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
         judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
-        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        usage_json TEXT DEFAULT '{}', latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
       CREATE TABLE gym_evaluations (
@@ -132,7 +132,7 @@ describe('SkillEvolutionGym Governance', () => {
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
         judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
-        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        usage_json TEXT DEFAULT '{}', latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
       CREATE TABLE gym_evaluations (

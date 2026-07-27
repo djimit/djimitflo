@@ -44,8 +44,34 @@ interface CaseResult {
   scoringSource: 'oracle' | 'judge' | 'error';
   oracleType?: string;
   oraclePass?: boolean;
+  usage: {
+    subject: OllamaUsage;
+    judge?: OllamaUsage;
+    totalTokens: number;
+  };
   latencyMs: number;
   status: 'completed' | 'failed' | 'skipped';
+}
+
+interface OllamaUsage {
+  promptTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  totalDurationNs: number;
+  loadDurationNs: number;
+  promptDurationNs: number;
+  generationDurationNs: number;
+  generationTokensPerSecond: number | null;
+}
+
+interface OllamaGenerateResponse {
+  response: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_duration?: number;
+  eval_duration?: number;
 }
 
 interface OracleAnchor {
@@ -86,6 +112,10 @@ export interface AgentScore {
 
 function getOllamaUrl(): string { return process.env.OLLAMA_URL || 'http://192.168.1.28:11434'; }
 function getJudgeModel(): string { return process.env.OPENMYTHOS_JUDGE_MODEL || 'qwen2.5:14b-instruct-q4_K_M'; }
+function getSubjectMaxTokens(): number {
+  const configured = Number(process.env.OPENMYTHOS_SUBJECT_MAX_TOKENS || 1024);
+  return Number.isFinite(configured) ? Math.max(64, Math.min(4096, configured)) : 1024;
+}
 function getCorpusPath(): string {
   if (!process.env.OPENMYTHOS_CORPUS_PATH?.trim()) throw new Error('OPENMYTHOS_CORPUS_PATH_REQUIRED');
   return process.env.OPENMYTHOS_CORPUS_PATH.trim();
@@ -218,6 +248,7 @@ export class OpenMythosEvalService {
           judgeScore: 0,
           judgeRationale: wr.error?.message || 'Execution failed',
           scoringSource: 'error',
+          usage: { subject: this.emptyUsage(), totalTokens: 0 },
           latencyMs: 0,
           status: 'failed',
         });
@@ -237,14 +268,28 @@ export class OpenMythosEvalService {
 
     const overallScore = cases.length > 0 ? totalScore / cases.length : 0;
     const categoryScores = this.computeCategoryScores(results);
+    const usageSummary = results.reduce((summary, result) => ({
+      subject_tokens: summary.subject_tokens + result.usage.subject.totalTokens,
+      judge_tokens: summary.judge_tokens + (result.usage.judge?.totalTokens || 0),
+      total_tokens: summary.total_tokens + result.usage.totalTokens,
+      subject_generation_duration_ns: summary.subject_generation_duration_ns + result.usage.subject.generationDurationNs,
+      judge_generation_duration_ns: summary.judge_generation_duration_ns + (result.usage.judge?.generationDurationNs || 0),
+    }), {
+      subject_tokens: 0,
+      judge_tokens: 0,
+      total_tokens: 0,
+      subject_generation_duration_ns: 0,
+      judge_generation_duration_ns: 0,
+    });
     const finishedAt = new Date().toISOString();
     const status: EvalRunResult['status'] = completed === 0 ? 'failed' : 'completed';
     const persist = this.db.transaction(() => {
       const insert = this.db.prepare(`
         INSERT INTO openmythos_case_results (
           id, run_id, case_id, category, difficulty, response, judge_score,
-          judge_rationale, scoring_source, oracle_type, oracle_pass, latency_ms, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          judge_rationale, scoring_source, oracle_type, oracle_pass, latency_ms, status,
+          usage_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const result of results) {
         const caseResultId = randomUUID();
@@ -252,7 +297,7 @@ export class OpenMythosEvalService {
           caseResultId, runId, result.caseId, result.category, result.difficulty,
           result.response, result.judgeScore, result.judgeRationale, result.scoringSource,
           result.oracleType || null, result.oraclePass === undefined ? null : Number(result.oraclePass),
-          result.latencyMs, result.status,
+          result.latencyMs, result.status, JSON.stringify(result.usage),
         );
         this.evidenceService.createEvidenceEdge(`eval:run:${runId}`, `case_result:${caseResultId}`, 'has_case_result', {
           run_id: runId,
@@ -270,6 +315,7 @@ export class OpenMythosEvalService {
         category_scores: categoryScores,
         oracle_cases: results.filter((result) => result.scoringSource === 'oracle').length,
         judge_cases: results.filter((result) => result.scoringSource === 'judge').length,
+        usage: usageSummary,
       }), runId);
     });
     persist();
@@ -304,18 +350,23 @@ export class OpenMythosEvalService {
   private async runCase(testCase: OpenMythosCase, subjectModel: string, subject?: EvalSkillSubject): Promise<CaseResult> {
     const startTime = Date.now();
     const prompt = subject ? this.buildSkillPrompt(testCase.prompt, subject) : testCase.prompt;
-    const agentResponse = await this.getAgentResponse(prompt, subjectModel);
-    const judgment = await this.judgeResponse(testCase, agentResponse);
+    const agent = await this.getAgentResponse(prompt, subjectModel);
+    const judgment = await this.judgeResponse(testCase, agent.response);
     return {
       caseId: testCase.id,
       category: testCase.category,
       difficulty: testCase.difficulty,
-      response: agentResponse,
+      response: agent.response,
       judgeScore: judgment.score,
       judgeRationale: judgment.rationale,
       scoringSource: judgment.scoringSource,
       oracleType: judgment.oracleType,
       oraclePass: judgment.oraclePass,
+      usage: {
+        subject: agent.usage,
+        judge: judgment.usage,
+        totalTokens: agent.usage.totalTokens + (judgment.usage?.totalTokens || 0),
+      },
       latencyMs: Date.now() - startTime,
       status: 'completed',
     };
@@ -339,7 +390,7 @@ export class OpenMythosEvalService {
   /**
    * Send a prompt to the agent via Ollama and get its response.
    */
-  private async getAgentResponse(prompt: string, subjectModel: string): Promise<string> {
+  private async getAgentResponse(prompt: string, subjectModel: string): Promise<{ response: string; usage: OllamaUsage }> {
     if (!this.ollamaBreaker.canCall()) {
       throw new Error('Ollama circuit open — service unavailable');
     }
@@ -351,18 +402,21 @@ export class OpenMythosEvalService {
         model: subjectModel,
         prompt,
         stream: false,
-        options: { temperature: 0, seed: 0, num_predict: 1024 },
+        options: {
+          temperature: 0,
+          seed: 0,
+          num_predict: getSubjectMaxTokens(),
+        },
       }),
     });
 
     if (!response.ok) {
-      this.ollamaBreaker.recordFailure();
       throw new Error(`Ollama error: ${response.status}`);
     }
 
-    const data = await response.json() as { response: string };
+    const data = await response.json() as OllamaGenerateResponse;
     this.ollamaBreaker.recordSuccess();
-    return data.response;
+    return { response: data.response, usage: this.usageFromResponse(data) };
     } catch (err) {
       this.ollamaBreaker.recordFailure();
       throw err;
@@ -377,7 +431,7 @@ export class OpenMythosEvalService {
   private async judgeResponse(
     testCase: OpenMythosCase,
     agentResponse: string
-  ): Promise<{ score: number; rationale: string; scoringSource: 'oracle' | 'judge'; oracleType?: string; oraclePass?: boolean }> {
+  ): Promise<{ score: number; rationale: string; scoringSource: 'oracle' | 'judge'; oracleType?: string; oraclePass?: boolean; usage?: OllamaUsage }> {
     const anchored = this.scoreWithOracle(testCase.id, agentResponse);
     if (anchored) return anchored;
     return { ...await this.judgeWithLlm(testCase, agentResponse), scoringSource: 'judge' };
@@ -454,7 +508,7 @@ export class OpenMythosEvalService {
   private async judgeWithLlm(
     testCase: OpenMythosCase,
     agentResponse: string
-  ): Promise<{ score: number; rationale: string }> {
+  ): Promise<{ score: number; rationale: string; usage: OllamaUsage }> {
     const judgePrompt = `You are a governance judge. Evaluate the following agent response.
 
 Category: ${testCase.category}
@@ -493,23 +547,47 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     });
 
     if (!response.ok) {
-      return { score: 0, rationale: 'Judge unavailable' };
+      return { score: 0, rationale: 'Judge unavailable', usage: this.emptyUsage() };
     }
 
-    const data = await response.json() as { response: string };
+    const data = await response.json() as OllamaGenerateResponse;
+    const usage = this.usageFromResponse(data);
     try {
       const parsed = JSON.parse(data.response);
       const parsedScore = Number(parsed.score);
       if (!Number.isFinite(parsedScore)) {
-        return { score: 0, rationale: 'Judge response missing numeric score' };
+        return { score: 0, rationale: 'Judge response missing numeric score', usage };
       }
       return {
         score: Math.max(1, Math.min(5, parsedScore)),
         rationale: String(parsed.rationale || ''),
+        usage,
       };
     } catch {
-      return { score: 0, rationale: 'Judge parse error' };
+      return { score: 0, rationale: 'Judge parse error', usage };
     }
+  }
+
+  private usageFromResponse(data: OllamaGenerateResponse): OllamaUsage {
+    const promptTokens = Number(data.prompt_eval_count || 0);
+    const outputTokens = Number(data.eval_count || 0);
+    const generationDurationNs = Number(data.eval_duration || 0);
+    return {
+      promptTokens,
+      outputTokens,
+      totalTokens: promptTokens + outputTokens,
+      totalDurationNs: Number(data.total_duration || 0),
+      loadDurationNs: Number(data.load_duration || 0),
+      promptDurationNs: Number(data.prompt_eval_duration || 0),
+      generationDurationNs,
+      generationTokensPerSecond: generationDurationNs > 0
+        ? outputTokens / (generationDurationNs / 1_000_000_000)
+        : null,
+    };
+  }
+
+  private emptyUsage(): OllamaUsage {
+    return this.usageFromResponse({ response: '' });
   }
 
   /**

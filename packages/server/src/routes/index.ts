@@ -44,6 +44,7 @@ import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
+import { createMemoryEvolutionRoutes } from './memory-evolution';
 import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
@@ -188,6 +189,7 @@ export function createRoutes(
   router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
   router.use('/advanced', requireAuth, createAdvancedRoutes(db, auth));
   router.use('/health', createHealthRoutes(db, auth));
+  router.use('/memory-evolution', requireAuth, createMemoryEvolutionRoutes(db));
   router.use('/legal', requireAuth, createLegalRoutes(db, auth));
   router.use('/research', requireAuth, createResearchRoutes(db, auth));
   router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));

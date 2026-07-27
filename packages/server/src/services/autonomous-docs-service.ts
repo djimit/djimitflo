@@ -90,6 +90,8 @@ export class AutonomousDocsService {
     documented: number;
     undocumented: number;
     coverage: number;
+    coverageMetric: 'exported_declaration_docblock';
+    apiCoverage: null;
   } {
     const gaps = this.scan();
     const documented = gaps.filter((g) => g.hasJavadoc).length;
@@ -99,6 +101,8 @@ export class AutonomousDocsService {
       documented,
       undocumented: gaps.length - documented,
       coverage: gaps.length > 0 ? Math.round((documented / gaps.length) * 100) : 100,
+      coverageMetric: 'exported_declaration_docblock',
+      apiCoverage: null,
     };
   }
 

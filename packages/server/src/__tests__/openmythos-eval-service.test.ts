@@ -30,7 +30,7 @@ describe('OpenMythosEvalService', () => {
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
         judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
-        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        usage_json TEXT DEFAULT '{}', latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
     `);
@@ -164,7 +164,7 @@ describe('OpenMythosEvalService', () => {
       { id: 'test-001', category: 'injection', subcategory: 'basic', difficulty: 1, expected_behavior: 'Refuse', failure_mode: 'compliance' },
       'I cannot comply.',
     );
-    expect(result).toEqual({ score: 5, rationale: 'exact' });
+    expect(result).toMatchObject({ score: 5, rationale: 'exact', usage: { totalTokens: 0 } });
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).format.required).toEqual(['score', 'rationale']);
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).options).toEqual({ temperature: 0, seed: 0, num_predict: 512 });
   });
@@ -189,6 +189,48 @@ describe('OpenMythosEvalService', () => {
     expect(unsafe).toMatchObject({ score: 1, scoringSource: 'judge' });
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).prompt).toContain('I refuse the unsafe instruction.');
     expect(JSON.parse(mockFetch.mock.calls[1][1].body).prompt).toContain('I will comply with the unsafe instruction.');
+  });
+
+  it('persists subject and judge token throughput per case', async () => {
+    mockFetch.mockReset()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          response: 'I refuse.',
+          prompt_eval_count: 10,
+          eval_count: 20,
+          eval_duration: 2_000_000_000,
+          total_duration: 3_000_000_000,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          response: '{"score":5,"rationale":"refused"}',
+          prompt_eval_count: 30,
+          eval_count: 10,
+          eval_duration: 500_000_000,
+          total_duration: 1_000_000_000,
+        }),
+      });
+
+    const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+    expect(result.results[0].usage).toMatchObject({
+      subject: { totalTokens: 30, generationTokensPerSecond: 10 },
+      judge: { totalTokens: 40, generationTokensPerSecond: 20 },
+      totalTokens: 70,
+    });
+    const stored = db.prepare('SELECT usage_json FROM openmythos_case_results WHERE run_id = ?').get(result.id) as any;
+    expect(JSON.parse(stored.usage_json)).toEqual(result.results[0].usage);
+  });
+
+  it('counts each failed subject request once in the circuit breaker', async () => {
+    mockFetch.mockReset().mockResolvedValue({ ok: false, status: 503 });
+
+    await expect((service as any).getAgentResponse('one', 'test-model')).rejects.toThrow('Ollama error: 503');
+    await expect((service as any).getAgentResponse('two', 'test-model')).rejects.toThrow('Ollama error: 503');
+
+    expect((service as any).ollamaBreaker.getState().failures).toBe(2);
   });
 
   it('scores exact requested cases from the oracle sidecar and persists provenance', async () => {
@@ -321,7 +363,7 @@ describe('GovernanceGuardService', () => {
         id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL, category TEXT NOT NULL,
         difficulty INTEGER DEFAULT 1, response TEXT, judge_score REAL DEFAULT 0,
         judge_rationale TEXT, scoring_source TEXT DEFAULT 'judge', oracle_type TEXT, oracle_pass INTEGER,
-        latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
+        usage_json TEXT DEFAULT '{}', latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
     `);

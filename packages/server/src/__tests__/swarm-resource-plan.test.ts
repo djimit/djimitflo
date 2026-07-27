@@ -179,6 +179,26 @@ describe('workstation swarm resource plan', () => {
     ]));
   }, 15000);
 
+  it('uses available memory rather than raw free pages for worker admission', () => {
+    const service = new SwarmStatusService(db, {
+      availableMemoryBytes: () => os.totalmem() * 0.5,
+    });
+
+    const status = service.getStatus();
+    const mockPool = status.fleet_pools.find((pool) => pool.runtime === 'mock');
+
+    expect(status.resource_snapshot).toMatchObject({
+      memory_availability_source: 'injected',
+      available_memory_bytes: os.totalmem() * 0.5,
+    });
+    expect(mockPool).toMatchObject({
+      runtime_available: true,
+      capacity_available: true,
+    });
+    expect(mockPool!.blocked_capacity_reasons).not.toContain('low_free_memory');
+    expect(mockPool!.recommended_concurrency).toBeGreaterThan(0);
+  });
+
   it('creates and accepts agent handoffs through the swarm message queue', async () => {
     const now = new Date().toISOString();
     for (const [id, name] of [['agent-maker', 'Maker Agent'], ['agent-memory', 'Memory Agent']]) {

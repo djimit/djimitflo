@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { MemoryCandidateService, type MemoryCandidateRecord, type MemoryType } from './memory-candidate-service';
 
 export type EvolutionLeaseRole = 'memory_evaluator' | 'memory_consolidator' | 'memory_pruner';
 export type EvolutionLeaseStatus = 'prepared' | 'running' | 'completed' | 'failed';
@@ -40,6 +41,21 @@ export interface GoalTemplate {
 export class MemoryEvolutionService {
   private readonly WEIGHTS = { w1: 0.25, w2: 0.20, w3: 0.15, w4: 0.15, w5: 0.15, w6: 0.10 };
   constructor(private db: Database) { this.ensureTables(); }
+
+  ingestTrace(input: {
+    agentId: string;
+    content: string;
+    memoryType?: MemoryType;
+    metadata?: Record<string, unknown>;
+  }): MemoryCandidateRecord {
+    return new MemoryCandidateService(this.db).create({
+      title: String(input.metadata?.title || `Trace from ${input.agentId}`),
+      content: input.content,
+      memory_type: input.memoryType || 'operational_memory',
+      source_ref: `agent:${input.agentId}:${randomUUID()}`,
+      metadata: { ...input.metadata, agent_id: input.agentId, source_agent: input.agentId },
+    });
+  }
 
   private ensureTables(): void {
     this.db.exec("CREATE TABLE IF NOT EXISTS memory_evolution_leases (id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('memory_evaluator','memory_consolidator','memory_pruner')), runtime TEXT NOT NULL DEFAULT 'local', status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared','running','completed','failed')), memory_candidate_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_mel_loop_run ON memory_evolution_leases(loop_run_id);CREATE INDEX IF NOT EXISTS idx_mel_role ON memory_evolution_leases(role);CREATE INDEX IF NOT EXISTS idx_mel_candidate ON memory_evolution_leases(memory_candidate_id);");

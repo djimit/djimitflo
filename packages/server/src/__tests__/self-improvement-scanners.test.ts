@@ -27,11 +27,14 @@ describe('self-improvement scanners', () => {
     const candidates = generator.generateAll();
     const stats = generator.getStats();
 
-    expect(stats.testedServices + candidates.length).toBe(stats.totalServices);
     expect(stats).toMatchObject({
-      coverageMetric: 'direct_test_file_match',
-      integrationCoverage: null,
+      coverageMetric: 'route_service_test_reference',
+      integrationCoverage: expect.any(Number),
     });
+    expect(stats.routedServicesTested + candidates.length).toBe(stats.routedServices);
+    expect(stats.directTestFileMatches).toBeLessThanOrEqual(stats.testedServices);
+    expect(candidates.map((item) => item.sourceFile.replace('.ts', '')))
+      .toEqual(stats.routedServicesWithoutEvidence);
     expect(candidates.flatMap((item) => item.methods)).not.toContain('VALUES');
     expect(candidates.flatMap((item) => item.methods)).not.toContain('mkdirSync');
     db.close();
@@ -44,7 +47,12 @@ describe('self-improvement scanners', () => {
 
     expect(resolveRepositoryRoot(workspace)).toBe(root);
     expect(new AutonomousTestGeneratorService(db, root).getStats().totalServices).toBeGreaterThan(0);
-    expect(new AutonomousDocsService(db, root).scan().length).toBeGreaterThan(0);
+    const docs = new AutonomousDocsService(db, root);
+    expect(docs.scan().length).toBeGreaterThan(0);
+    expect(docs.getStats()).toMatchObject({
+      coverageMetric: 'exported_declaration_docblock',
+      apiCoverage: null,
+    });
 
     db.close();
   });

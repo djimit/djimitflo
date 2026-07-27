@@ -51,6 +51,7 @@ const openMythosCaseResultColumns: ColumnSpec[] = [
   { name: 'scoring_source', definition: "TEXT NOT NULL DEFAULT 'judge'" },
   { name: 'oracle_type', definition: 'TEXT' },
   { name: 'oracle_pass', definition: 'INTEGER' },
+  { name: 'usage_json', definition: "TEXT NOT NULL DEFAULT '{}'" },
 ];
 
 function getColumns(db: BetterSqlite3Database, tableName: string): Set<string> {
@@ -1466,6 +1467,7 @@ function createOpenMythosEvalTables(db: BetterSqlite3Database) {
       scoring_source TEXT NOT NULL DEFAULT 'judge',
       oracle_type TEXT,
       oracle_pass INTEGER,
+      usage_json TEXT NOT NULL DEFAULT '{}',
       latency_ms INTEGER DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed', 'skipped')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),

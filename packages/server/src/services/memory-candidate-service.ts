@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 
-type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
+export type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
 // G8: Memory store classification — the four cognitive stores.
 // episodic: what happened (run logs, immutable, retrieval by time/run)
