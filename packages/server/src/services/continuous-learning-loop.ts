@@ -11,6 +11,7 @@ export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
   reflectionsGenerated: number; patternsDetected: number;
   goalsGenerated: number; durationMs: number;
+  producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
 export class ContinuousLearningLoop {
@@ -22,7 +23,6 @@ export class ContinuousLearningLoop {
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
   private intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private lastCycle: string | null = null;
 
   setTrajectoryStore(store: TrajectoryStore): void {
     this._trajectories = store;
@@ -56,31 +56,50 @@ export class ContinuousLearningLoop {
     const pendingEpisodes = this.collectPendingEpisodes();
     let episodesIngested = 0;
     for (const episode of pendingEpisodes) { this.curator.curate(episode); episodesIngested++; }
-    const recentRuns = this.db.prepare("SELECT id FROM loop_runs WHERE status = 'completed' AND created_at > ? ORDER BY created_at DESC LIMIT 10").all(this.lastCycle ?? '1970-01-01') as Array<{ id: string }>;
+    const recentRuns = this.getUnlearnedCompletedRuns(10);
     let reflectionsGenerated = 0;
     for (const run of recentRuns) { this.reflections.reflectOnRun(run.id); reflectionsGenerated++; }
     const patternReport = this.reflections.analyzeReflectionPatterns(50);
     const generatedGoals = this.goals.generateAll();
-    const result: LearningCycleResult = { id, timestamp: new Date().toISOString(), episodesIngested, reflectionsGenerated, patternsDetected: patternReport.recurringPatterns.length, goalsGenerated: generatedGoals.total, durationMs: Date.now() - start };
+    const result: LearningCycleResult = {
+      id,
+      timestamp: new Date().toISOString(),
+      episodesIngested,
+      reflectionsGenerated,
+      patternsDetected: patternReport.recurringPatterns.length,
+      goalsGenerated: generatedGoals.total,
+      durationMs: Date.now() - start,
+      producer: 'continuous-learning-loop',
+      schemaVersion: 1,
+    };
     this.db.prepare('INSERT INTO learning_cycles (id, result_json) VALUES (?, ?)').run(id, JSON.stringify(result));
-    this.lastCycle = result.timestamp;
     return result;
   }
 
   getHistory(limit: number = 20): LearningCycleResult[] {
-    const rows = this.db.prepare('SELECT result_json FROM learning_cycles ORDER BY created_at DESC LIMIT ?').all(limit) as Array<{ result_json: string }>;
+    const rows = this.db.prepare(`
+      SELECT result_json FROM learning_cycles
+      WHERE json_extract(result_json, '$.producer') = 'continuous-learning-loop'
+        AND json_extract(result_json, '$.schemaVersion') = 1
+      ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as Array<{ result_json: string }>;
     return rows.map(r => JSON.parse(r.result_json) as LearningCycleResult);
   }
 
   getLastCycle(): LearningCycleResult | null {
-    const row = this.db.prepare('SELECT result_json FROM learning_cycles ORDER BY created_at DESC LIMIT 1').get() as { result_json: string } | undefined;
+    const row = this.db.prepare(`
+      SELECT result_json FROM learning_cycles
+      WHERE json_extract(result_json, '$.producer') = 'continuous-learning-loop'
+        AND json_extract(result_json, '$.schemaVersion') = 1
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as { result_json: string } | undefined;
     return row ? JSON.parse(row.result_json) as LearningCycleResult : null;
   }
 
   private collectPendingEpisodes(): Array<{ id: string; type: string; content: string; source: string; timestamp: string }> {
     const episodes: Array<{ id: string; type: string; content: string; source: string; timestamp: string }> = [];
     try {
-      const runs = this.db.prepare("SELECT id, loop_name, status, created_at FROM loop_runs WHERE created_at > ? AND status = 'completed' ORDER BY created_at DESC LIMIT 5").all(this.lastCycle ?? '1970-01-01') as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
+      const runs = this.getUnlearnedCompletedRuns(5);
       for (const run of runs) {
         let content = 'Completed ' + run.loop_name;
         // Enrich with trajectory summary when available
@@ -94,5 +113,20 @@ export class ContinuousLearningLoop {
       }
     } catch { /* ok */ }
     return episodes;
+  }
+
+  private getUnlearnedCompletedRuns(limit: number): Array<{ id: string; loop_name: string; status: string; created_at: string }> {
+    return this.db.prepare(`
+      SELECT lr.id, lr.loop_name, lr.status, lr.created_at
+      FROM loop_runs lr
+      WHERE lr.status = 'completed'
+        AND EXISTS (
+          SELECT 1 FROM worker_leases wl
+          WHERE wl.loop_run_id = lr.id AND wl.role = 'maker' AND wl.status = 'completed'
+        )
+        AND NOT EXISTS (SELECT 1 FROM reflections r WHERE r.loop_run_id = lr.id)
+      ORDER BY COALESCE(lr.completed_at, lr.updated_at, lr.created_at) DESC
+      LIMIT ?
+    `).all(limit) as Array<{ id: string; loop_name: string; status: string; created_at: string }>;
   }
 }

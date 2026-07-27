@@ -13,7 +13,7 @@ import {
   TaskStatus,
   WebSocketEventType,
 } from '@djimitflo/shared';
-import { TaskExecutor, ExecutionSession, ExecutorKind } from './types';
+import { TaskExecutor, ExecutionSession, ExecutorKind, type ExecutionResult } from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
@@ -168,7 +168,7 @@ export class ExecutionEngine {
     }
     
     // Get executor
-    let executor = this.executors.get(executorKind);
+    const executor = this.executors.get(executorKind);
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
@@ -303,83 +303,10 @@ export class ExecutionEngine {
     }
 
     try {
-      // Start execution
-      // Resolve a working directory from task metadata (operator/loop may pin a worktree);
-      // executors fall back to process.cwd() when undefined (unchanged default behavior).
-      const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as
-        | string
-        | undefined;
-      // Check circuit breaker before execution
-      if (!this.circuitBreaker.canExecute(executorKind)) {
-        const fallback = this.fallbackChain.getNextAvailable(
-          executorKind,
-          (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard',
-          this.circuitBreaker,
-        );
-        if (fallback) {
-          this.persistEvent({
-            task_id: taskId,
-            event_type: 'log' as any,
-            message: 'Circuit open for ' + executorKind + ', falling back to ' + fallback,
-            level: 'warning' as any,
-            metadata: { circuit: 'open', from: executorKind, to: fallback },
-          });
-          executorKind = fallback;
-          executor = this.executors.get(fallback)!;
-        } else {
-          throw new Error();
-        }
-      }
-
-      // Wrap executor in Docker sandbox if configured
-      const sandboxMeta = (parsedTask.metadata?.sandbox ?? {}) as Record<string, unknown>;
-      const sandboxEnabled = sandboxMeta.enabled === true;
-      const activeExecutor = sandboxEnabled
-        ? new DockerSandboxExecutor(executor, {
-            ...DEFAULT_SANDBOX_CONFIG,
-            image: (sandboxMeta.image as string) || DEFAULT_SANDBOX_CONFIG.image,
-            cpuLimit: (sandboxMeta.cpuLimit as string) || DEFAULT_SANDBOX_CONFIG.cpuLimit,
-            memoryLimit: (sandboxMeta.memoryLimit as string) || DEFAULT_SANDBOX_CONFIG.memoryLimit,
-            networkMode: (sandboxMeta.networkMode as 'none' | 'bridge' | 'host') || DEFAULT_SANDBOX_CONFIG.networkMode,
-            bindMounts: (sandboxMeta.bindMounts as Array<{ host: string; container: string; mode: 'ro' | 'rw' }>) || DEFAULT_SANDBOX_CONFIG.bindMounts,
-          })
-        : executor;
-
-      const session = await activeExecutor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
-      this.activeSessions.set(taskId, session);
-
-      // Record success in circuit breaker
-      this.circuitBreaker.recordSuccess(executorKind);
-
-      // Record trajectory step
-      if (this.trajectoryStore) {
-        this.trajectoryStore.recordStep({
-          runId: taskId,
-          actionType: 'execute',
-          capabilityId: parsedTask.execution_mode || null,
-          runtime: executor.kind,
-          outcome: 'success',
-          metadata: { title: parsedTask.title },
-        });
-      }
-
-      // Update task status to running
-      this.updateTaskStatus(taskId, TaskStatus.RUNNING, {
-        started_at: session.startedAt.toISOString(),
-      });
-
-      // Process event stream in background
-      this.processEventStream(session).catch((error) => {
-        console.error(`Error processing event stream for task ${taskId}:`, error);
-        this.handleExecutionError(taskId, error);
-      });
-
-      // Wait for result and update task
-      session.result.then((result) => {
-        this.handleExecutionComplete(taskId, session, result);
-      }).catch((error) => {
-        this.handleExecutionError(taskId, error);
-      });
+      const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
+      const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
+      const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
+      await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
       return { status: 'started' };
     } catch (error) {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
@@ -387,6 +314,160 @@ export class ExecutionEngine {
       });
       throw error;
     }
+  }
+
+  private async startExecutionAttempt(
+    task: Task,
+    executorKind: ExecutorKind,
+    mode: ExecutionMode,
+    attempt: number,
+    maxRetries: number,
+    workingDirectory?: string,
+  ): Promise<ExecutionSession> {
+    const executor = this.executors.get(executorKind);
+    if (!executor || !executor.canExecute(task)) {
+      throw new Error(`Executor ${executorKind} cannot execute this task`);
+    }
+    if (!this.circuitBreaker.canExecute(executorKind)) {
+      const fallback = this.fallbackChain.getNextAvailable(executorKind, mode, this.circuitBreaker);
+      if (!fallback || attempt >= maxRetries) throw new Error(`No fallback available for ${executorKind}`);
+      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+    }
+    if (attempt > 0 && !this.fallbackAdmitted(task, executorKind)) {
+      throw new Error(`Fallback executor ${executorKind} was not admitted by policy`);
+    }
+
+    const sandboxMeta = (task.metadata?.sandbox ?? {}) as Record<string, unknown>;
+    const activeExecutor = sandboxMeta.enabled === true
+      ? new DockerSandboxExecutor(executor, {
+          ...DEFAULT_SANDBOX_CONFIG,
+          image: (sandboxMeta.image as string) || DEFAULT_SANDBOX_CONFIG.image,
+          cpuLimit: (sandboxMeta.cpuLimit as string) || DEFAULT_SANDBOX_CONFIG.cpuLimit,
+          memoryLimit: (sandboxMeta.memoryLimit as string) || DEFAULT_SANDBOX_CONFIG.memoryLimit,
+          networkMode: (sandboxMeta.networkMode as 'none' | 'bridge' | 'host') || DEFAULT_SANDBOX_CONFIG.networkMode,
+          bindMounts: (sandboxMeta.bindMounts as Array<{ host: string; container: string; mode: 'ro' | 'rw' }>) || DEFAULT_SANDBOX_CONFIG.bindMounts,
+        })
+      : executor;
+
+    try {
+      const session = await activeExecutor.start(task, workingDirectory ? { workingDirectory } : undefined);
+      this.activeSessions.set(task.id, session);
+      this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
+        started_at: session.startedAt.toISOString(),
+      });
+      this.persistEvent({
+        task_id: task.id,
+        event_type: 'log' as any,
+        message: `Execution attempt ${attempt + 1} started with ${executorKind}`,
+        level: 'info' as any,
+        metadata: { attempt: attempt + 1, executorKind, maxRetries },
+      });
+      this.processEventStream(session).catch((error) => {
+        console.error(`Error processing event stream for task ${task.id}:`, error);
+      });
+      session.result.then((result) => {
+        void this.handleAttemptResult(task, session, result, mode, attempt, maxRetries, workingDirectory);
+      }).catch((error: Error) => {
+        void this.handleAttemptFailure(task, session, error, mode, attempt, maxRetries, workingDirectory);
+      });
+      return session;
+    } catch (error) {
+      this.circuitBreaker.recordFailure(executorKind);
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, normalized.message);
+      if (!fallback) throw normalized;
+      this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, normalized.message);
+      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+    }
+  }
+
+  private async handleAttemptResult(
+    task: Task,
+    session: ExecutionSession,
+    result: ExecutionResult,
+    mode: ExecutionMode,
+    attempt: number,
+    maxRetries: number,
+    workingDirectory?: string,
+  ): Promise<void> {
+    if (result.status === 'completed') {
+      this.circuitBreaker.recordSuccess(session.executorKind);
+      if (this.trajectoryStore) {
+        this.trajectoryStore.recordStep({
+          runId: task.id,
+          actionType: 'execute',
+          capabilityId: task.execution_mode || null,
+          runtime: session.executorKind,
+          outcome: 'success',
+          metadata: { title: task.title, attempt: attempt + 1 },
+        });
+      }
+      this.handleExecutionComplete(task.id, session, result);
+      return;
+    }
+    const error = new Error(result.error || result.message);
+    if (result.status === 'failed') {
+      await this.handleAttemptFailure(task, session, error, mode, attempt, maxRetries, workingDirectory, result);
+      return;
+    }
+    this.handleExecutionComplete(task.id, session, result);
+  }
+
+  private async handleAttemptFailure(
+    task: Task,
+    session: ExecutionSession,
+    error: Error,
+    mode: ExecutionMode,
+    attempt: number,
+    maxRetries: number,
+    workingDirectory?: string,
+    failedResult?: ExecutionResult,
+  ): Promise<void> {
+    this.activeSessions.delete(task.id);
+    this.circuitBreaker.recordFailure(session.executorKind);
+    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, error.message);
+    if (fallback) {
+      this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, error.message);
+      try {
+        await this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+        return;
+      } catch (fallbackError) {
+        error = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+      }
+    }
+    if (failedResult) this.handleExecutionComplete(task.id, session, failedResult);
+    else this.handleExecutionError(task.id, error);
+  }
+
+  private nextRetryExecutor(
+    current: ExecutorKind,
+    mode: ExecutionMode,
+    attempt: number,
+    maxRetries: number,
+    reason: string,
+  ): ExecutorKind | null {
+    if (attempt >= maxRetries || !/(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i.test(reason)) {
+      return null;
+    }
+    return this.fallbackChain.getNextAvailable(current, mode, this.circuitBreaker);
+  }
+
+  private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
+    const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
+    const evaluation = this.policyDecisionService.evaluate(assessment);
+    this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
+    if (evaluation.decision === 'deny') return false;
+    return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
+  }
+
+  private persistFallbackEvent(taskId: string, from: ExecutorKind, to: ExecutorKind, attempt: number, reason: string): void {
+    this.persistEvent({
+      task_id: taskId,
+      event_type: 'log' as any,
+      message: `Retrying with fallback executor ${to}`,
+      level: 'warning' as any,
+      metadata: { attempt, from, to, reason, retryable: true },
+    });
   }
 
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
@@ -662,12 +743,6 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
-
-    // Record failure in circuit breaker
-    const taskRecord = this.db.prepare("SELECT executor_kind FROM tasks WHERE id = ?").get(taskId) as any;
-    if (taskRecord?.executor_kind) {
-      this.circuitBreaker.recordFailure(taskRecord.executor_kind as ExecutorKind);
-    }
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);

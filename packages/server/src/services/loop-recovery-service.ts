@@ -97,6 +97,7 @@ export class LoopRecoveryService {
     const activeRuns = this.queries.getActive();
     let interruptedRuns = 0;
     for (const run of activeRuns) {
+      if (run.status === 'planning') continue;
       if (liveRunIds.has(run.id)) continue;
       this.mutations.updateStatus(run.id, 'interrupted', {
         interrupted_reason: 'server_restart',

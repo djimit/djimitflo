@@ -432,6 +432,8 @@ export class LoopService {
         contract.name === LOOP_NAME ? 'Approve maker/checker worker execution for selected low-risk findings' : 'Approve maker/checker worker execution for selected bounded findings',
       ]
       : [`No ${contract.title.toLowerCase()} findings detected within scan budget`];
+    const runStatus = findings.length > 0 ? 'planning' : 'completed';
+    const outcome = findings.length > 0 ? 'plan_ready' : 'no_change_required';
     const stateFile = this.writeLoopState(runId, {
       loopName: contract.name,
       runId,
@@ -455,7 +457,7 @@ export class LoopService {
       goal?.id || null,
       contract.name,
       contract.mode,
-      'completed',
+      runStatus,
       repositoryPath,
       stateFile,
       JSON.stringify(findings),
@@ -466,24 +468,34 @@ export class LoopService {
         dry_run: true,
         workers_leased: 0,
         mutating_actions: false,
+        outcome,
         risk_class: runRiskClass,
         contract,
         sovereign: input.sovereign === true,
       }),
       now,
       now,
-      now
+      findings.length > 0 ? null : now
     );
 
-    this.recordLoopEvent(runId, 'loop_completed', 'info', `${contract.name} completed with ${findings.length} finding(s).`, {
+    this.recordLoopEvent(runId, findings.length > 0 ? 'loop_planned' : 'loop_completed', 'info', findings.length > 0
+      ? `${contract.name} produced ${findings.length} finding(s) for review.`
+      : `${contract.name} completed with no changes required.`, {
       loop_name: contract.name,
       finding_count: findings.length,
       state_file: stateFile,
+      outcome,
     });
 
     if (goal) {
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
-        .run('completed', now, goal.id);
+        .run('running', now, goal.id);
+      if (findings.length === 0 && this.completeGoalIfSettled(goal.id, runId, now)) {
+        const improvementId = typeof goal.metadata?.improvement_id === 'string' ? goal.metadata.improvement_id : null;
+        if (improvementId) {
+          this.db.prepare("UPDATE self_improvements SET status = 'no_change' WHERE id = ?").run(improvementId);
+        }
+      }
     }
 
     return this.getLoopRun(runId);
@@ -521,7 +533,7 @@ export class LoopService {
     let decision = 'inspect';
     if (run.status === 'escalated' || run.status === 'blocked') {
       decision = 'human_review';
-    } else if (run.status === 'completed' && run.findings.length > 0 && makerLeases.length === 0) {
+    } else if (run.status === 'planning' && run.findings.length > 0 && makerLeases.length === 0) {
       decision = 'continue';
     } else if (makerLeases.some((lease) => lease.status === 'prepared')) {
       decision = 'execute_maker';
@@ -719,6 +731,14 @@ export class LoopService {
         SET status = ?, next_actions_json = ?, updated_at = ?, completed_at = ?, metadata = json_set(COALESCE(metadata, '{}'), '$.human_approval_ref', ?)
         WHERE id = ?
       `).run('completed', JSON.stringify(['Loop completed; ready for human review before merge']), now, now, input.human_approval_ref, id);
+      if (current.goal_id) {
+        const goal = this.getGoal(current.goal_id);
+        const improvementId = typeof goal.metadata?.improvement_id === 'string' ? goal.metadata.improvement_id : null;
+        const goalSettled = this.completeGoalIfSettled(current.goal_id, id, now);
+        if (improvementId && goalSettled) {
+          this.db.prepare("UPDATE self_improvements SET status = 'applied' WHERE id = ?").run(improvementId);
+        }
+      }
 
       this.recordLoopEvent(id, 'loop_completed', 'info', 'Loop run completed after verification gates passed.', {
         gates: verified.gates,
@@ -775,6 +795,18 @@ export class LoopService {
     }
 
     throw new Error('LOOP_COMPLETION_NO_WORKERS');
+  }
+
+  private completeGoalIfSettled(goalId: string, terminalRunId: string, now: string): boolean {
+    const remaining = this.db.prepare(`
+      SELECT 1 FROM loop_runs
+      WHERE goal_id = ? AND id != ?
+        AND status NOT IN ('completed', 'failed', 'cancelled', 'escalated')
+      LIMIT 1
+    `).get(goalId, terminalRunId);
+    if (remaining) return false;
+    this.db.prepare("UPDATE goals SET status = 'completed', updated_at = ? WHERE id = ?").run(now, goalId);
+    return true;
   }
 
   submitCheckerVerdict(id: string, input: CheckerVerdictInput): { run: LoopRunRecord; checker: WorkerLeaseRecord } {

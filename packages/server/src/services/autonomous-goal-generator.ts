@@ -44,7 +44,7 @@ export class AutonomousGoalGenerator {
         JSON.stringify({ source: 'self-improvement', improvement_id: imp.id, type: imp.type, autonomous: true })
       );
 
-      this.db.prepare("UPDATE self_improvements SET status = 'approved' WHERE id = ?").run(imp.id);
+      this.db.prepare("UPDATE self_improvements SET status = 'scheduled' WHERE id = ?").run(imp.id);
       created++;
     }
 

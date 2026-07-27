@@ -8,7 +8,7 @@ export interface ImprovementProposal {
   description: string;
   rationale: string;
   source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
-  status: 'proposed' | 'approved' | 'in_progress' | 'completed' | 'rejected';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
   priority: number;
   createdAt: string;
 }
@@ -140,11 +140,11 @@ export class SelfImprovementService {
   }
 
   approveImprovement(id: string): void {
-    this.db.prepare("UPDATE self_improvements SET status = 'approved' WHERE id = ?").run(id);
+    this.db.prepare("UPDATE self_improvements SET status = 'scheduled' WHERE id = ?").run(id);
   }
 
   completeImprovement(id: string): void {
-    this.db.prepare("UPDATE self_improvements SET status = 'completed' WHERE id = ?").run(id);
+    this.db.prepare("UPDATE self_improvements SET status = 'applied' WHERE id = ?").run(id);
   }
 
   rejectImprovement(id: string): void {
