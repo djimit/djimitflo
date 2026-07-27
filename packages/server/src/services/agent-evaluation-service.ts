@@ -23,6 +23,13 @@ const PASS_THRESHOLD = 70;
 const REVIEW_RANGE = [50, 70];
 
 export function evaluateAgent(input: AgentEvaluationInput): AgentEvaluationResult {
+  if (!input.agentId.trim()) throw new Error('agentId is required');
+  if (!Number.isFinite(input.score) || input.score < 0 || input.score > 100) {
+    throw new Error('score must be between 0 and 100');
+  }
+  if (Object.values(input.categories).some((score) => !Number.isFinite(score))) {
+    throw new Error('category scores must be finite numbers');
+  }
   let verdict: 'approved' | 'rejected' | 'pending_review';
   if (input.score >= PASS_THRESHOLD) {
     verdict = 'approved';

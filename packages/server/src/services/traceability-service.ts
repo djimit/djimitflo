@@ -30,8 +30,8 @@ export interface TraceabilityMatrix {
 }
 
 const FR_PATTERN = /(FR-\d{3})[：:]\s*(.+?)(?=\n|$)/g;
-const FILE_PATTERN = /`([^`]+\.(ts|tsx|js|jsx|py|rs|go|sql))`/g;
-const TEST_PATTERN = /(test|spec|__tests__).*?\.(test|spec)\.(ts|tsx|js)/gi;
+const FILE_PATTERN = /`([^`]+\.(?:ts|tsx|js|jsx|py|rs|go|sql))`/g;
+const TEST_PATTERN = /(?:^|\/)(?:__tests__\/.*|[^/]*\.(?:test|spec))\.(?:ts|tsx|js)$/i;
 
 export function buildTraceabilityMatrix(
   specs: Array<{ name: string; content: string }>
@@ -46,13 +46,16 @@ export function buildTraceabilityMatrix(
       frs.push({ id: match[1], description: match[2].trim() });
     }
 
-    // Extract files from codebase anchoring section
-    const files: string[] = [];
+    // Extract exact FR -> file mappings from codebase anchoring table rows.
+    const filesByFr = new Map<string, string[]>();
     const anchoringMatch = spec.content.match(/## Codebase Anchoring[\s\S]*?(?=\n## |$)/);
     if (anchoringMatch) {
-      let fileMatch;
-      while ((fileMatch = FILE_PATTERN.exec(anchoringMatch[0])) !== null) {
-        files.push(fileMatch[1]);
+      for (const line of anchoringMatch[0].split('\n')) {
+        const frIds = [...line.matchAll(/FR-\d{3}/g)].map((match) => match[0]);
+        const paths = [...line.matchAll(FILE_PATTERN)].map((match) => match[1]);
+        for (const frId of frIds) {
+          filesByFr.set(frId, [...new Set([...(filesByFr.get(frId) || []), ...paths])]);
+        }
       }
     }
 
@@ -69,7 +72,8 @@ export function buildTraceabilityMatrix(
 
     // Build entry per FR
     for (const fr of frs) {
-      const testFiles = files.filter(f => TEST_PATTERN.test(f));
+      const files = filesByFr.get(fr.id) || [];
+      const testFiles = files.filter((file) => TEST_PATTERN.test(file));
       entries.push({
         frId: fr.id,
         frDescription: fr.description,

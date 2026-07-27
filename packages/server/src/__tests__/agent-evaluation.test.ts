@@ -30,6 +30,11 @@ describe('Agent Evaluation Workflow', () => {
       expect(result.evaluator).toBe('system');
     });
 
+    it('rejects out-of-range and non-finite scores', () => {
+      expect(() => evaluateAgent({ agentId: 'agent-1', score: 101, categories: {} })).toThrow('between 0 and 100');
+      expect(() => evaluateAgent({ agentId: 'agent-1', score: Number.NaN, categories: {} })).toThrow('between 0 and 100');
+    });
+
     it('includes categories in result', () => {
       const categories = { hierarchy: 4, injection: 5, toolScope: 3 };
       const result = evaluateAgent({ agentId: 'agent-1', score: 80, categories });

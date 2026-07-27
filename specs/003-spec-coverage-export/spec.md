@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: draft
 created: 2026-07-23
 ---
 
@@ -9,7 +9,7 @@ created: 2026-07-23
 
 **Created**: 2026-07-23
 
-**Status**: Implemented
+**Status**: Draft
 
 **Input**: User description: "Add the ability to export SDD compliance reports as JSON or CSV for audit purposes."
 

@@ -3,8 +3,8 @@ import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { getCatalog } from '../services/agent-catalog-service';
-import { evaluateAgent, batchEvaluate, summarizeEvaluations } from '../services/agent-evaluation-service';
-import { compile, type Profile, type Target } from '@djimitflo/agent-catalog';
+import { evaluateAgent, summarizeEvaluations } from '../services/agent-evaluation-service';
+import { compile, type Evaluation, type Profile, type Target } from '@djimitflo/agent-catalog';
 
 interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number; }
 interface CatalogAgent {
@@ -36,6 +36,38 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? (() => (_req: any, _res: any, next: any) => next());
+
+  function evaluateAndPersist(input: Parameters<typeof evaluateAgent>[0]) {
+    const catalog = getCatalog();
+    const profile = catalog.db.getProfile(input.agentId);
+    if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
+    let result;
+    try {
+      result = evaluateAgent(input);
+    } catch (error) {
+      throw createError(400, error instanceof Error ? error.message : 'Invalid evaluation', 'VALIDATION_ERROR');
+    }
+    const status: Evaluation['status'] = result.verdict === 'approved'
+      ? 'passed'
+      : result.verdict === 'rejected' ? 'rejected' : 'pending';
+    catalog.db.setEvaluation({
+      profile_id: profile.id,
+      schema_valid: true,
+      schema_errors: [],
+      injection_score: result.categories.injection || 0,
+      injection_flags: [],
+      overlap_score: result.categories.overlap || 0,
+      overlap_with: null,
+      overlaps: [],
+      risk_level: result.score >= 70 ? 'low' : result.score >= 50 ? 'medium' : 'high',
+      flags: [`manual-evaluation:${result.evaluator}`],
+      status,
+    }, profile.version_hash);
+    profile.evaluation_status = status;
+    catalog.db.upsertProfile(profile);
+    catalog.db.audit(profile.id, 'manual_evaluation', JSON.stringify(result));
+    return result;
+  }
 
   router.get('/counts', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -88,48 +120,33 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   });
 
 
-  // POST /api/catalog/evaluate/:id — evaluate an agent
+  // Static routes must precede /:id.
+  router.post('/evaluate/batch', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      const { agents } = req.body;
+      if (!Array.isArray(agents)) throw createError(400, 'agents array is required', 'VALIDATION_ERROR');
+      const results = agents.map((agent) => evaluateAndPersist({ ...agent, evaluator: req.user?.email || agent.evaluator || 'system' }));
+      res.status(201).json({ results, summary: summarizeEvaluations(results) });
+    } catch (e) { next(e); }
+  });
+
+  router.get('/evaluate/summary', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      const counts = getCatalog().counts();
+      res.json({ total: counts.total, evaluated: counts.evaluated, active: counts.active, rejected: counts.rejected, duplicate: counts.duplicate });
+    } catch (e) { next(e); }
+  });
+
   router.post('/evaluate/:id', requirePermission('manage:config'), (req, res, next) => {
     try {
       const { score, categories } = req.body;
-      if (typeof score !== 'number') {
-        throw createError(400, 'score is required (number)', 'VALIDATION_ERROR');
-      }
-      const result = evaluateAgent({
+      const result = evaluateAndPersist({
         agentId: req.params.id,
         score,
         categories: categories || {},
         evaluator: req.user?.email || 'system',
       });
       res.status(201).json(result);
-    } catch (e) { next(e); }
-  });
-
-  // POST /api/catalog/evaluate/batch — batch evaluate agents
-  router.post('/evaluate/batch', requirePermission('manage:config'), (req, res, next) => {
-    try {
-      const { agents } = req.body;
-      if (!Array.isArray(agents)) {
-        throw createError(400, 'agents array is required', 'VALIDATION_ERROR');
-      }
-      const results = batchEvaluate(agents);
-      const summary = summarizeEvaluations(results);
-      res.status(201).json({ results, summary });
-    } catch (e) { next(e); }
-  });
-
-  // GET /api/catalog/evaluate/summary — evaluation summary
-  router.get('/evaluate/summary', requirePermission('read:evidence'), (_req, res, next) => {
-    try {
-      const cat = getCatalog();
-      const counts = cat.counts();
-      res.json({
-        total: counts.total,
-        evaluated: counts.evaluated,
-        active: counts.active,
-        rejected: counts.rejected,
-        duplicate: counts.duplicate,
-      });
     } catch (e) { next(e); }
   });
 

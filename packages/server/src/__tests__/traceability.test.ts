@@ -28,6 +28,7 @@ describe('Spec Traceability Matrix', () => {
         '| FR | File | Action |',
         '|----|------|--------|',
         '| FR-001 | `src/auth/AuthService.ts` | Create |',
+        '| FR-001 | `src/auth/AuthService.test.ts` | Test |',
         '| FR-002 | `src/crypto.ts` | Create |',
         '',
         '## Edge cases',
@@ -77,6 +78,13 @@ describe('Spec Traceability Matrix', () => {
       const matrix = buildTraceabilityMatrix(sampleSpecs);
       const fr003 = matrix.entries.find(e => e.frId === 'FR-003');
       expect(fr003?.hasTest).toBe(false);
+    });
+
+    it('does not leak files between requirements', () => {
+      const matrix = buildTraceabilityMatrix(sampleSpecs);
+      const fr002 = matrix.entries.find(e => e.frId === 'FR-002');
+      expect(fr002?.files).toEqual(['src/crypto.ts']);
+      expect(fr002?.hasTest).toBe(false);
     });
 
     it('calculates coverage percent', () => {

@@ -134,6 +134,10 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
       res.status(400).json({ error: { message: 'Unsupported format. Use ?format=json|csv|text', code: 'VALIDATION_ERROR' } });
       return;
     }
+    if (!['nora', 'soc2', 'iso27001'].includes(type)) {
+      res.status(400).json({ error: { message: 'Unsupported report type. Use ?type=nora|soc2|iso27001', code: 'VALIDATION_ERROR' } });
+      return;
+    }
 
     try {
       const report = service.generateReport({
