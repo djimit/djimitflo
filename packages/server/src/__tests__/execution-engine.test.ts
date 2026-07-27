@@ -44,6 +44,28 @@ function createMockWsService() {
   } as any;
 }
 
+function sessionFor(taskId: string, executorKind: TaskExecutor['kind'], result: Promise<any>) {
+  return {
+    id: `session-${executorKind}`,
+    taskId,
+    executorKind,
+    status: 'running' as const,
+    startedAt: new Date(),
+    events: (async function* () {})(),
+    result,
+    cancel: async () => {},
+  };
+}
+
+async function waitForTaskStatus(db: ReturnType<typeof createTestDb>, taskId: string, status: string): Promise<void> {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string };
+    if (row.status === status) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(`Task ${taskId} did not reach ${status}`);
+}
+
 function writeTestSkill(skillsDir: string, skillId: string): void {
   const skillDir = join(skillsDir, skillId);
   mkdirSync(skillDir, { recursive: true });
@@ -181,6 +203,129 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('retries a provider start failure with policy re-evaluation and completes', async () => {
+    const calls: string[] = [];
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async () => {
+        calls.push('claude');
+        throw new Error('provider unavailable');
+      },
+    });
+    engine.registerExecutor({
+      kind: 'codex',
+      canExecute: () => true,
+      start: async (task) => {
+        calls.push('codex');
+        return sessionFor(task.id, 'codex', Promise.resolve({ status: 'completed', message: 'done' }));
+      },
+    });
+    const task = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata),
+    );
+
+    expect(await engine.executeTask(task.id, 'claude')).toMatchObject({ status: 'started' });
+    await waitForTaskStatus(db, task.id, 'completed');
+
+    expect(calls).toEqual(['claude', 'codex']);
+    const events = db.prepare("SELECT message, metadata FROM execution_events WHERE task_id = ? AND message LIKE 'Execution attempt %' ORDER BY created_at, rowid").all(task.id) as Array<{ message: string; metadata: string }>;
+    expect(events.map((event) => JSON.parse(event.metadata).provider)).toEqual(['claude', 'claude', 'codex', 'codex']);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM risk_assessments WHERE task_id = ?').get(task.id) as { count: number }).count).toBe(2);
+  });
+
+  it('retries a rejected provider result but not a content failure', async () => {
+    let codexCalls = 0;
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async (task) => sessionFor(task.id, 'claude', Promise.reject(new Error('network timeout'))),
+    });
+    engine.registerExecutor({
+      kind: 'codex',
+      canExecute: () => true,
+      start: async (task) => {
+        codexCalls++;
+        return sessionFor(task.id, 'codex', Promise.resolve({ status: 'completed', message: 'done' }));
+      },
+    });
+    const retryTask = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      retryTask.id, retryTask.title, retryTask.description, 'pending', 'medium', 'low', 'local', JSON.stringify(retryTask.metadata),
+    );
+    await engine.executeTask(retryTask.id, 'claude');
+    await waitForTaskStatus(db, retryTask.id, 'completed');
+    expect(codexCalls).toBe(1);
+
+    const terminalTask = createTask({ metadata: { executionMode: 'standard' } });
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async (task) => sessionFor(task.id, 'claude', Promise.resolve({ status: 'failed', message: 'checker rejected content' })),
+    });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      terminalTask.id, terminalTask.title, terminalTask.description, 'pending', 'medium', 'low', 'local', JSON.stringify(terminalTask.metadata),
+    );
+    await engine.executeTask(terminalTask.id, 'claude');
+    await waitForTaskStatus(db, terminalTask.id, 'failed');
+    expect(codexCalls).toBe(1);
+  });
+
+  it('does not retry cancellation or restricted execution', async () => {
+    let codexCalls = 0;
+    engine.registerExecutor({
+      kind: 'codex',
+      canExecute: () => true,
+      start: async (task) => {
+        codexCalls++;
+        return sessionFor(task.id, 'codex', Promise.resolve({ status: 'completed', message: 'done' }));
+      },
+    });
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async (task) => sessionFor(task.id, 'claude', Promise.resolve({ status: 'cancelled', message: 'operator cancelled' })),
+    });
+    const cancelled = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      cancelled.id, cancelled.title, cancelled.description, 'pending', 'medium', 'low', 'local', JSON.stringify(cancelled.metadata),
+    );
+    await engine.executeTask(cancelled.id, 'claude');
+    await waitForTaskStatus(db, cancelled.id, 'cancelled');
+
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async () => { throw new Error('provider unavailable'); },
+    });
+    const restricted = createTask({ metadata: { executionMode: 'restricted' } });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      restricted.id, restricted.title, restricted.description, 'pending', 'medium', 'low', 'local', JSON.stringify(restricted.metadata),
+    );
+    await expect(engine.executeTask(restricted.id, 'claude')).rejects.toThrow('provider unavailable');
+    expect(codexCalls).toBe(0);
+  });
+
+  it('stops after the execution-mode retry budget is exhausted', async () => {
+    for (const kind of ['claude', 'codex', 'gemini'] as const) {
+      engine.registerExecutor({
+        kind,
+        canExecute: () => true,
+        start: async () => { throw new Error(`${kind} service unavailable`); },
+      });
+    }
+    const task = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata),
+    );
+
+    await expect(engine.executeTask(task.id, 'claude')).rejects.toThrow('gemini service unavailable');
+    const starts = db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND message LIKE 'Execution attempt % starting%'").all(task.id) as Array<{ metadata: string }>;
+    expect(starts.map((row) => JSON.parse(row.metadata).provider)).toEqual(['claude', 'codex', 'gemini']);
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as { status: string }).status).toBe('failed');
   });
 
   it('throws when task not found', async () => {

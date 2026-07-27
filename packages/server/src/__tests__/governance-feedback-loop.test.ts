@@ -343,6 +343,7 @@ describe('GovernanceFeedbackLoopService', () => {
         min_score_threshold: 3,
         auto_authorize_below_risk: RiskLevel.MEDIUM,
         require_verification: true,
+        verification_repeats: 1,
       }, {
         dispatchImprovement: async () => ({ taskId: 'task-1', status: 'completed' }),
         rerunEvaluation: async () => {
@@ -374,13 +375,22 @@ describe('GovernanceFeedbackLoopService', () => {
       });
       expect(result.score_delta).toBeCloseTo(1.9);
       expect(db.prepare(`
-        SELECT status, task_id, execution_status, verification_run_id
+        SELECT status, task_id, execution_status, verification_run_id, verification_manifest
         FROM governance_improvement_proposals
-      `).get()).toEqual({
+      `).get() as any).toMatchObject({
         status: 'completed',
         task_id: 'task-1',
         execution_status: 'completed',
         verification_run_id: 'verification-run',
+      });
+      const manifest = JSON.parse((db.prepare(
+        'SELECT verification_manifest FROM governance_improvement_proposals'
+      ).get() as any).verification_manifest);
+      expect(manifest).toMatchObject({
+        promoted: true,
+        repeat_count: 1,
+        baseline_run_ids: ['baseline-run'],
+        candidate_run_ids: ['verification-run'],
       });
     });
   });
@@ -426,6 +436,54 @@ describe('GovernanceFeedbackLoopService', () => {
       const result = service.verifyImprovement('agent-1', 'run-baseline');
       expect(result.improved).toBe(true);
       expect(result.delta).toBeGreaterThan(0);
+    });
+
+    it('requires repeated gain and rejects holdout regression', () => {
+      const insertRun = (id: string, target: number, holdout: number) => {
+        db.prepare(`
+          INSERT INTO openmythos_eval_runs
+            (id, agent_id, status, total_cases, metadata, started_at, finished_at)
+          VALUES (?, 'agent-1', 'completed', 2, '{"subject_model":"test-model","corpus_sha256":"abc"}',
+            datetime('now'), datetime('now'))
+        `).run(id);
+        db.prepare(`
+          INSERT INTO openmythos_case_results
+            (id, run_id, case_id, category, judge_score, judge_rationale, status)
+          VALUES (?, ?, 'target', 'quality', ?, 'target', 'completed')
+        `).run(`${id}-target`, id, target);
+        db.prepare(`
+          INSERT INTO openmythos_case_results
+            (id, run_id, case_id, category, judge_score, judge_rationale, status)
+          VALUES (?, ?, 'holdout', 'quality', ?, 'holdout', 'completed')
+        `).run(`${id}-holdout`, id, holdout);
+      };
+
+      insertRun('b1', 2, 5);
+      insertRun('b2', 2, 5);
+      insertRun('b3', 2, 5);
+      insertRun('c1', 4, 4.5);
+      insertRun('c2', 4, 4.5);
+      insertRun('c3', 4, 4.5);
+
+      const verification = service.verifyRepeatedImprovement(
+        ['b1', 'b2', 'b3'],
+        ['c1', 'c2', 'c3'],
+        ['target'],
+        ['holdout'],
+      );
+      expect(verification).toMatchObject({
+        promoted: false,
+        reason: 'holdout_regression',
+        repeat_count: 3,
+        paired_deltas: [2, 2, 2],
+        mean_delta: 2,
+        confidence_lower_bound: 2,
+        holdout_delta: -0.5,
+      });
+      expect(verification.evaluation_runs[0].metadata).toMatchObject({
+        subject_model: 'test-model',
+        corpus_sha256: 'abc',
+      });
     });
   });
 

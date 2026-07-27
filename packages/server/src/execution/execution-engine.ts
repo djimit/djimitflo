@@ -49,6 +49,15 @@ export interface ExecuteTaskResult {
   reason?: string;
 }
 
+interface ExecutionAttemptContext {
+  task: Task;
+  mode: ExecutionMode;
+  maxRetries: number;
+  attempt: number;
+  attemptedProviders: Set<ExecutorKind>;
+  workingDirectory?: string;
+}
+
 export class ExecutionEngine {
   private db: Database;
   private wsService: WebSocketService;
@@ -169,7 +178,7 @@ export class ExecutionEngine {
     }
     
     // Get executor
-    let executor = this.executors.get(executorKind);
+    const executor = this.executors.get(executorKind);
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
@@ -306,82 +315,17 @@ export class ExecutionEngine {
     const runtimeAdmissionId = `task:${taskId}`;
     await acquireRuntimeAdmission(runtimeAdmissionId);
     try {
-      // Start execution
-      // Resolve a working directory from task metadata (operator/loop may pin a worktree);
-      // executors fall back to process.cwd() when undefined (unchanged default behavior).
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as
         | string
         | undefined;
-      // Check circuit breaker before execution
-      if (!this.circuitBreaker.canExecute(executorKind)) {
-        const fallback = this.fallbackChain.getNextAvailable(
-          executorKind,
-          (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard',
-          this.circuitBreaker,
-        );
-        if (fallback) {
-          this.persistEvent({
-            task_id: taskId,
-            event_type: 'log' as any,
-            message: 'Circuit open for ' + executorKind + ', falling back to ' + fallback,
-            level: 'warning' as any,
-            metadata: { circuit: 'open', from: executorKind, to: fallback },
-          });
-          executorKind = fallback;
-          executor = this.executors.get(fallback)!;
-        } else {
-          throw new Error();
-        }
-      }
-
-      // Wrap executor in Docker sandbox if configured
-      const sandboxMeta = (parsedTask.metadata?.sandbox ?? {}) as Record<string, unknown>;
-      const sandboxEnabled = sandboxMeta.enabled === true;
-      const activeExecutor = sandboxEnabled
-        ? new DockerSandboxExecutor(executor, {
-            ...DEFAULT_SANDBOX_CONFIG,
-            image: (sandboxMeta.image as string) || DEFAULT_SANDBOX_CONFIG.image,
-            cpuLimit: (sandboxMeta.cpuLimit as string) || DEFAULT_SANDBOX_CONFIG.cpuLimit,
-            memoryLimit: (sandboxMeta.memoryLimit as string) || DEFAULT_SANDBOX_CONFIG.memoryLimit,
-            networkMode: (sandboxMeta.networkMode as 'none' | 'bridge' | 'host') || DEFAULT_SANDBOX_CONFIG.networkMode,
-            bindMounts: (sandboxMeta.bindMounts as Array<{ host: string; container: string; mode: 'ro' | 'rw' }>) || DEFAULT_SANDBOX_CONFIG.bindMounts,
-          })
-        : executor;
-
-      const session = await activeExecutor.start(parsedTask, workingDirectory ? { workingDirectory } : undefined);
-      this.activeSessions.set(taskId, session);
-
-      // Record success in circuit breaker
-      this.circuitBreaker.recordSuccess(executorKind);
-
-      // Record trajectory step
-      if (this.trajectoryStore) {
-        this.trajectoryStore.recordStep({
-          runId: taskId,
-          actionType: 'execute',
-          capabilityId: parsedTask.execution_mode || null,
-          runtime: executor.kind,
-          outcome: 'success',
-          metadata: { title: parsedTask.title },
-        });
-      }
-
-      // Update task status to running
-      this.updateTaskStatus(taskId, TaskStatus.RUNNING, {
-        started_at: session.startedAt.toISOString(),
-      });
-
-      // Process event stream in background
-      this.processEventStream(session).catch((error) => {
-        console.error(`Error processing event stream for task ${taskId}:`, error);
-        this.handleExecutionError(taskId, error);
-      });
-
-      // Wait for result and update task
-      session.result.then((result) => {
-        this.handleExecutionComplete(taskId, session, result);
-      }).catch((error) => {
-        this.handleExecutionError(taskId, error);
+      const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
+      await this.startExecutionAttempt(executorKind, {
+        task: parsedTask,
+        mode,
+        maxRetries: this.executionModePolicy.getConfig(mode).maxRetries,
+        attempt: 1,
+        attemptedProviders: new Set<ExecutorKind>(),
+        workingDirectory,
       });
       return { status: 'started' };
     } catch (error) {
@@ -391,6 +335,111 @@ export class ExecutionEngine {
       });
       throw error;
     }
+  }
+
+  private async startExecutionAttempt(requestedKind: ExecutorKind, context: ExecutionAttemptContext): Promise<void> {
+    const executorKind = this.selectAttemptProvider(requestedKind, context);
+    const executor = this.executors.get(executorKind);
+    if (!executor) throw new Error(`Executor not found: ${executorKind}`);
+    if (!executor.canExecute(context.task)) throw new Error(`Executor ${executorKind} cannot execute this task`);
+    if (context.attempt > 1 || executorKind !== requestedKind) this.validateFallbackPolicy(context.task, executorKind, context.attempt);
+
+    context.attemptedProviders.add(executorKind);
+    const sandboxMeta = (context.task.metadata?.sandbox ?? {}) as Record<string, unknown>;
+    const activeExecutor = sandboxMeta.enabled === true
+      ? new DockerSandboxExecutor(executor, {
+          ...DEFAULT_SANDBOX_CONFIG,
+          image: (sandboxMeta.image as string) || DEFAULT_SANDBOX_CONFIG.image,
+          cpuLimit: (sandboxMeta.cpuLimit as string) || DEFAULT_SANDBOX_CONFIG.cpuLimit,
+          memoryLimit: (sandboxMeta.memoryLimit as string) || DEFAULT_SANDBOX_CONFIG.memoryLimit,
+          networkMode: (sandboxMeta.networkMode as 'none' | 'bridge' | 'host') || DEFAULT_SANDBOX_CONFIG.networkMode,
+          bindMounts: (sandboxMeta.bindMounts as Array<{ host: string; container: string; mode: 'ro' | 'rw' }>) || DEFAULT_SANDBOX_CONFIG.bindMounts,
+        })
+      : executor;
+
+    this.recordAttemptEvent(context.task.id, context, executorKind, 'starting');
+    let session: ExecutionSession;
+    try {
+      session = await activeExecutor.start(context.task, context.workingDirectory ? { workingDirectory: context.workingDirectory } : undefined);
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.circuitBreaker.recordFailure(executorKind);
+      this.recordAttemptFailure(context, executorKind, failure);
+      if (this.canRetryAttempt(context, failure)) {
+        await this.startExecutionAttempt(executorKind, { ...context, attempt: context.attempt + 1 });
+        return;
+      }
+      throw failure;
+    }
+
+    this.activeSessions.set(context.task.id, session);
+    this.updateTaskStatus(context.task.id, TaskStatus.RUNNING, {
+      started_at: session.startedAt.toISOString(),
+    });
+
+    this.processEventStream(session).catch((error) => {
+      this.persistEvent({
+        task_id: context.task.id,
+        event_type: 'error' as any,
+        message: `Execution event stream error: ${error instanceof Error ? error.message : String(error)}`,
+        level: 'warning' as any,
+        metadata: { attempt: context.attempt, provider: executorKind, stream_only: true },
+      });
+    });
+
+    session.result.then(async (result) => {
+      if (result.status === 'completed') {
+        this.circuitBreaker.recordSuccess(executorKind);
+        this.recordAttemptEvent(context.task.id, context, executorKind, 'completed');
+        this.recordAttemptTrajectory(context, executorKind, 'success');
+        this.handleExecutionComplete(context.task.id, session, result);
+        return;
+      }
+
+      if (result.status === 'cancelled') {
+        this.recordAttemptEvent(context.task.id, context, executorKind, 'cancelled');
+        this.recordAttemptTrajectory(context, executorKind, 'skipped');
+        this.handleExecutionComplete(context.task.id, session, result);
+        return;
+      }
+
+      const failure = new Error(result.error || result.message || 'Task execution failed');
+      const retryable = this.isRetryableProviderFailure(failure);
+      if (retryable) this.circuitBreaker.recordFailure(executorKind);
+      this.recordAttemptFailure(context, executorKind, failure);
+      if (retryable && this.canRetryAttempt(context, failure)) {
+        this.activeSessions.delete(context.task.id);
+        try {
+          await this.startExecutionAttempt(executorKind, { ...context, attempt: context.attempt + 1 });
+        } catch (retryError) {
+          this.handleExecutionError(
+            context.task.id,
+            retryError instanceof Error ? retryError : new Error(String(retryError)),
+            executorKind,
+          );
+        }
+        return;
+      }
+      this.handleExecutionComplete(context.task.id, session, result);
+    }).catch(async (error) => {
+      const failure = error instanceof Error ? error : new Error(String(error));
+      this.circuitBreaker.recordFailure(executorKind);
+      this.recordAttemptFailure(context, executorKind, failure);
+      if (this.canRetryAttempt(context, failure)) {
+        this.activeSessions.delete(context.task.id);
+        try {
+          await this.startExecutionAttempt(executorKind, { ...context, attempt: context.attempt + 1 });
+        } catch (retryError) {
+          this.handleExecutionError(
+            context.task.id,
+            retryError instanceof Error ? retryError : new Error(String(retryError)),
+            executorKind,
+          );
+        }
+        return;
+      }
+      this.handleExecutionError(context.task.id, failure, executorKind);
+    });
   }
 
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
@@ -579,6 +628,110 @@ export class ExecutionEngine {
       timestamp: new Date().toISOString(),
     });
   }
+
+  private selectAttemptProvider(requestedKind: ExecutorKind, context: ExecutionAttemptContext): ExecutorKind {
+    if (!context.attemptedProviders.has(requestedKind) && this.circuitBreaker.canExecute(requestedKind)) return requestedKind;
+
+    let current = requestedKind;
+    while (true) {
+      const fallback = this.fallbackChain.getNextAvailable(current, context.mode, this.circuitBreaker);
+      if (!fallback) {
+        throw new Error(`No available executor after ${requestedKind}; attempted: ${[...context.attemptedProviders].join(', ') || 'none'}`);
+      }
+      if (!context.attemptedProviders.has(fallback)) return fallback;
+      current = fallback;
+    }
+  }
+
+  private validateFallbackPolicy(task: Task, executorKind: ExecutorKind, attempt: number): void {
+    const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
+    const evaluation = this.policyDecisionService.evaluate(assessment);
+    this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
+    this.persistEvent({
+      task_id: task.id,
+      event_type: 'log' as any,
+      message: `Fallback policy re-evaluated for ${executorKind}: ${evaluation.decision}`,
+      level: evaluation.decision === 'allow' ? 'info' as any : 'warning' as any,
+      metadata: { attempt, provider: executorKind, policy_decision: evaluation.decision },
+    });
+    if (evaluation.decision !== 'allow') {
+      throw new Error(`Fallback blocked by policy (${evaluation.decision}) for executor ${executorKind}`);
+    }
+  }
+
+  private canRetryAttempt(context: ExecutionAttemptContext, error: Error): boolean {
+    return this.isRetryableProviderFailure(error) && context.attempt - 1 < context.maxRetries;
+  }
+
+  private isRetryableProviderFailure(error: Error): boolean {
+    return /\b(timeout|timed out|econn\w*|enotfound|fetch failed|network|socket|rate limit|429|502|503|504|provider unavailable|service unavailable|circuit open)\b/i.test(error.message);
+  }
+
+  private failureClass(error: Error): 'timeout' | 'transport_error' | 'provider_unavailable' | 'task_failure' {
+    if (/\b(timeout|timed out)\b/i.test(error.message)) return 'timeout';
+    if (/\b(econn\w*|enotfound|fetch failed|network|socket|429|502|503|504|rate limit)\b/i.test(error.message)) return 'transport_error';
+    if (/\b(provider unavailable|service unavailable|circuit open)\b/i.test(error.message)) return 'provider_unavailable';
+    return 'task_failure';
+  }
+
+  private recordAttemptEvent(
+    taskId: string,
+    context: ExecutionAttemptContext,
+    executorKind: ExecutorKind,
+    phase: 'starting' | 'completed' | 'cancelled',
+  ): void {
+    this.persistEvent({
+      task_id: taskId,
+      event_type: 'log' as any,
+      message: `Execution attempt ${context.attempt} ${phase} with ${executorKind}`,
+      level: phase === 'cancelled' ? 'warning' as any : 'info' as any,
+      metadata: {
+        attempt: context.attempt,
+        max_retries: context.maxRetries,
+        provider: executorKind,
+        phase,
+      },
+    });
+  }
+
+  private recordAttemptFailure(context: ExecutionAttemptContext, executorKind: ExecutorKind, error: Error): void {
+    const failureClass = this.failureClass(error);
+    this.persistEvent({
+      task_id: context.task.id,
+      event_type: 'error' as any,
+      message: `Execution attempt ${context.attempt} failed with ${executorKind}: ${error.message}`,
+      level: 'error' as any,
+      metadata: {
+        attempt: context.attempt,
+        max_retries: context.maxRetries,
+        provider: executorKind,
+        failure_class: failureClass,
+        retryable: this.isRetryableProviderFailure(error),
+      },
+    });
+    this.recordAttemptTrajectory(context, executorKind, 'failure', failureClass);
+  }
+
+  private recordAttemptTrajectory(
+    context: ExecutionAttemptContext,
+    executorKind: ExecutorKind,
+    outcome: 'success' | 'failure' | 'skipped',
+    failureClass?: string,
+  ): void {
+    this.trajectoryStore?.recordStep({
+      runId: context.task.id,
+      actionType: 'execute',
+      capabilityId: context.task.execution_mode || null,
+      runtime: executorKind,
+      outcome,
+      metadata: {
+        title: context.task.title,
+        attempt: context.attempt,
+        max_retries: context.maxRetries,
+        failure_class: failureClass || null,
+      },
+    });
+  }
   
   /**
    * Handle execution completion
@@ -655,6 +808,16 @@ export class ExecutionEngine {
         timestamp: new Date().toISOString(),
       });
       this.recordSkillOutcome(taskId, session, false, executionTimeMs, result.metrics?.tokenUsage || 0);
+    } else if (result.status === 'cancelled') {
+      this.updateTaskStatus(taskId, TaskStatus.CANCELLED, {
+        failed_at: completedAt,
+        execution_time_ms: executionTimeMs,
+      });
+      this.wsService.broadcastTaskEvent(this.getTask(taskId), {
+        type: WebSocketEventType.TASK_FAILED,
+        payload: { task: this.getTask(taskId) },
+        timestamp: new Date().toISOString(),
+      });
     }
 
     // Meta-orchestration: record outcome for learning
@@ -680,15 +843,9 @@ export class ExecutionEngine {
   /**
    * Handle execution error
    */
-  private handleExecutionError(taskId: string, error: Error): void {
+  private handleExecutionError(taskId: string, error: Error, executorKind: ExecutorKind): void {
     this.activeSessions.delete(taskId);
     releaseRuntimeAdmission(`task:${taskId}`);
-
-    // Record failure in circuit breaker
-    const taskRecord = this.db.prepare("SELECT executor_kind FROM tasks WHERE id = ?").get(taskId) as any;
-    if (taskRecord?.executor_kind) {
-      this.circuitBreaker.recordFailure(taskRecord.executor_kind as ExecutorKind);
-    }
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);
@@ -703,7 +860,7 @@ export class ExecutionEngine {
       event_type: 'error' as any,
       message: `Execution error: ${error.message}`,
       level: 'error' as any,
-      metadata: { error: error.stack },
+      metadata: { error: error.stack, provider: executorKind },
     });
     
     this.wsService.broadcastTaskEvent(this.getTask(taskId), {

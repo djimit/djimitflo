@@ -249,7 +249,12 @@ describe('OpenMythosEvalService', () => {
     expect(db.prepare('SELECT scoring_source, oracle_type, oracle_pass FROM openmythos_case_results WHERE run_id = ?').get(result.id))
       .toEqual({ scoring_source: 'oracle', oracle_type: 'refusal_required', oracle_pass: 1 });
     const stored = db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
-    expect(JSON.parse(stored.metadata)).toMatchObject({ oracle_anchors_configured: true, oracle_anchor_cases: 1 });
+    expect(JSON.parse(stored.metadata)).toMatchObject({
+      oracle_anchors_configured: true,
+      oracle_anchor_cases: 1,
+      corpus_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      oracle_anchors_sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
   });
 
   it('uses the canonical refusal vocabulary for oracle scoring', async () => {

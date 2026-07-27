@@ -11,12 +11,6 @@ import { NegotiationCoordinator } from '../services/negotiation-coordinator';
 import { CapabilityAcquisitionService } from '../services/capability-acquisition';
 import { MetaEvolutionService } from '../services/meta-evolution-service';
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
-import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
-import { WorkerPool } from '../services/worker-pool';
-import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
-import { RsiSafetyGuard } from '../services/rsi-safety-guard';
-import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
-import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
@@ -69,26 +63,4 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
-  try {
-    const safetyGuard = new RsiSafetyGuard(db);
-    const refactoringAnalyzer = new ServiceRefactoringAnalyzer(db);
-    const emergentSpec = new EmergentSpecializationService(db);
-    void safetyGuard;
-    void refactoringAnalyzer;
-    void emergentSpec;
-    console.log('🧬 RSI Engine ready (Refactor + Safety + Specialization).');
-  } catch (error) {
-    console.warn('⚠️  RSI Engine initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  try {
-    const workerPool = new WorkerPool({ concurrency: 10 });
-    const okfUpdater = new OkfKnowledgeUpdater(db);
-    void workerPool;
-    void okfUpdater;
-    new ExpertSwarmOrchestrator(db);
-    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater registered; invocation evidence required for validated status.');
-  } catch (error) {
-    console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
 }

@@ -10,9 +10,10 @@
 
 import { randomUUID } from 'crypto';
 import { execSync } from 'child_process';
-import { writeFileSync, existsSync } from 'fs';
+import { writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'better-sqlite3';
+import { SelfCodeAnalysisService } from './self-code-analysis-service';
 
 interface ImprovementOpportunity {
   id: string;
@@ -206,7 +207,7 @@ export class SelfModificationPipeline {
     const opportunities: ImprovementOpportunity[] = [];
 
     try {
-      // Use simple heuristics: files > 500 lines with many methods
+      // File size is a triage signal, not a complexity measurement.
       const output = execSync(
         'find packages/server/src/services -name "*.ts" -exec wc -l {} + 2>/dev/null | sort -rn | head -10',
         { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
@@ -218,6 +219,7 @@ export class SelfModificationPipeline {
 
         const lines = parseInt(match[1]);
         const filePath = match[2];
+        if (filePath === 'total') continue;
 
         if (lines > 800) {
           opportunities.push({
@@ -225,8 +227,8 @@ export class SelfModificationPipeline {
             type: 'complexity',
             severity: lines > 1500 ? 'high' : 'medium',
             file: filePath,
-            description: `File has ${lines} lines — consider decomposition`,
-            suggestion: 'Extract focused services following single-responsibility principle',
+            description: `Large file has ${lines} lines — inspect before proposing decomposition`,
+            suggestion: 'Confirm a real responsibility or testability boundary before extracting code',
             estimatedEffort: lines > 1500 ? '4-8 hours' : '1-2 hours',
             detectedAt: new Date().toISOString(),
           });
@@ -240,35 +242,21 @@ export class SelfModificationPipeline {
   }
 
   private detectTestGaps(): ImprovementOpportunity[] {
-    const opportunities: ImprovementOpportunity[] = [];
-
-    try {
-      // Find route files without corresponding test files
-      const output = execSync(
-        'find packages/server/src/routes -name "*.ts" ! -name "*.test.ts" 2>/dev/null',
-        { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
-      );
-
-      for (const filePath of output.split('\n').filter(Boolean)) {
-        const testPath = filePath.replace('.ts', '.test.ts');
-        if (!existsSync(join(this.repoRoot, testPath))) {
-          opportunities.push({
-            id: randomUUID(),
-            type: 'test_gap',
-            severity: 'medium',
-            file: filePath,
-            description: `No test file found for ${filePath}`,
-            suggestion: 'Create integration tests for route handlers',
-            estimatedEffort: '30-60 minutes',
-            detectedAt: new Date().toISOString(),
-          });
-        }
-      }
-    } catch {
-      // Best-effort analysis
-    }
-
-    return opportunities;
+    const report = new SelfCodeAnalysisService(this.db).analyze();
+    return report.integrationReachability
+      .filter((entry) => entry.coverage !== 'http-and-service')
+      .map((entry) => ({
+        id: randomUUID(),
+        type: 'test_gap' as const,
+        severity: 'medium' as const,
+        file: entry.routeFile,
+        description: `${entry.coverage} integration evidence for ${entry.routeFile}`,
+        suggestion: entry.coverage === 'service-only'
+          ? 'Add one HTTP route-chain test'
+          : 'Add direct service behavior evidence',
+        estimatedEffort: '30-60 minutes',
+        detectedAt: new Date().toISOString(),
+      }));
   }
 
   private detectTodoComments(): ImprovementOpportunity[] {

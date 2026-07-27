@@ -44,5 +44,26 @@
   No broad `npm audit fix` was applied because this change has no validated
   exploit finding and dependency churn could reduce runtime compatibility.
 - The original dirty worktree and its untracked spec edits remain untouched.
-- Commit, push, merge, deployment, and destructive service retirement remain
-  the final human gate.
+- Commit, push, merge, and deployment remain the final human gate.
+
+## Runtime truth follow-up — 2026-07-27
+
+- Removed five constructor-only bootstrap registrations and their misleading
+  readiness messages.
+- Retired `EmergentSpecializationService`, its read-only route, and synthetic
+  unit suite because no production caller recorded outcomes.
+- RSI kill-switch state now survives the route layer's per-request service
+  construction by reading the latest persisted audit event.
+- Recovery contract proves completed findings are skipped and only unfinished
+  findings are requeued; verification gates remain unchanged.
+- Runtime route contract proves `/meta/stats` stays mounted but returns
+  `enabled:false` without autonomous injection and `enabled:true` with it.
+- Focused validation: 9 files passed; 94 tests passed, 12 skipped.
+- Server validation: 190 files passed; 1,656 tests passed, 19 skipped.
+- Workspace validation: 1,750 tests passed, 19 skipped.
+- Three functional benchmarks each passed 3/3 checks.
+- Three self-analysis runs each reported 353 source files, 80,248 lines,
+  69 executable routes, 22 HTTP-and-service, 12 HTTP-only, 35 service-only,
+  and 0 uncovered.
+- Lint, type-check, production build, and `git diff --check` passed.
+- No Judge-to-recovery coupling or LoopService singleton was added.

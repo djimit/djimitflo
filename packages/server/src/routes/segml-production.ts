@@ -1,5 +1,8 @@
 /**
- * SEGML Production routes — real fine-tuning + real LLM evaluation.
+ * SEGML Production routes — training-data export and Ollama model packaging.
+ *
+ * Evaluation and promotion use /api/openmythos and
+ * /api/governance-feedback; this router does not maintain a competing scorer.
  */
 
 import { Router } from 'express';
@@ -26,37 +29,13 @@ export function createSegmlProductionRoutes(db: Database, auth?: AuthMiddleware)
     }
   });
 
-  // POST /api/segml/production/train — create Ollama adapter
+  // POST /api/segml/production/train — package an Ollama model
   router.post('/train', requireAuth('write:governance'), async (req, res, next) => {
     try {
       const bridge = new SegmlProductionBridge(db);
       const { datasetId, adapterName } = req.body;
       if (!datasetId) { res.status(400).json({ error: 'datasetId required' }); return; }
       const result = await bridge.createOllamaAdapter(datasetId, adapterName || `segml-gov-${Date.now()}`);
-      res.json(result);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // POST /api/segml/production/evaluate — evaluate model via LiteLLM
-  router.post('/evaluate', requireAuth('write:governance'), async (req, res, next) => {
-    try {
-      const bridge = new SegmlProductionBridge(db);
-      const { model, categories, apiKey } = req.body;
-      if (!model || !apiKey) { res.status(400).json({ error: 'model and apiKey required' }); return; }
-      const results = await bridge.evaluateModel(model, categories || ['injection', 'hallucination', 'calibration'], apiKey);
-      res.json({ results, averageScore: results.reduce((s, r) => s + r.score, 0) / results.length });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  // POST /api/segml/production/cycle — run full production cycle
-  router.post('/cycle', requireAuth('write:governance'), async (req, res, next) => {
-    try {
-      const bridge = new SegmlProductionBridge(db);
-      const result = await bridge.runProductionCycle(req.body?.apiKey);
       res.json(result);
     } catch (error) {
       next(error);

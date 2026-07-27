@@ -54,14 +54,19 @@ export class LoopVerificationService {
         const makerLeaseId = lease.metadata.maker_lease_id;
         return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
       });
-    const completedMakerLeases = activeMakerLeases.filter((lease) => lease.status === 'completed');
+    const completedMakerLeases = activeMakerLeases.filter((lease) =>
+      lease.status === 'completed' && lease.metadata.work_disposition !== 'no_change_required'
+    );
+    const noChangeMakerLeases = activeMakerLeases.filter((lease) =>
+      lease.status === 'completed' && lease.metadata.work_disposition === 'no_change_required'
+    );
     const highRisk = this.loopService.isHighRiskRun(run);
 
     const gates: LoopGate[] = [
       {
         name: 'maker_checker_separation',
-        status: activeMakerLeases.length > 0 && checkerLeases.length >= activeMakerLeases.length ? 'pass' : 'fail',
-        evidence: `${activeMakerLeases.length} active maker lease(s), ${checkerLeases.length} active checker lease(s), ${supersededMakerIds.size} superseded maker lease(s).`,
+        status: activeMakerLeases.length > 0 && checkerLeases.length >= completedMakerLeases.length ? 'pass' : 'fail',
+        evidence: `${activeMakerLeases.length} active maker lease(s), ${completedMakerLeases.length} changed maker(s), ${noChangeMakerLeases.length} evidenced no-change maker(s), ${checkerLeases.length} active checker lease(s), ${supersededMakerIds.size} superseded maker lease(s).`,
       },
       {
         name: 'worktree_isolation',
@@ -114,7 +119,7 @@ export class LoopVerificationService {
 
     const status = gates.some((gate) => gate.status === 'fail')
       ? 'blocked'
-      : completedMakerLeases.length > 0
+      : completedMakerLeases.length > 0 || noChangeMakerLeases.length > 0
         ? 'ready_for_human_merge'
         : 'verifying';
 

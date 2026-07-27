@@ -286,7 +286,6 @@ export class RuntimeCommandService {
   // ─── Helpers ──────────────────────────────────────────────────────────
 
   extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
-    const text = `${stdout}\n${stderr}`;
     const warnings: Array<Record<string, unknown>> = [];
     const patterns: Array<{ pattern: RegExp; class_name: string; severity: 'advisory' | 'warning' | 'blocking' }> = [
       { pattern: /failed to parse plugin hooks config[^\n]*/i, class_name: 'plugin_hook_config_parse', severity: 'warning' },
@@ -296,11 +295,52 @@ export class RuntimeCommandService {
       { pattern: /unknown field|unexpected argument[^\n]*/i, class_name: 'runtime_contract_warning', severity: 'warning' },
       { pattern: /trust boundary[^\n]*/i, class_name: 'trust_boundary_warning', severity: 'blocking' },
     ];
-    for (const item of patterns) {
-      const match = text.match(item.pattern);
-      if (match?.[0]) warnings.push({ class_name: item.class_name, severity: item.severity, message: match[0].slice(0, 500) });
+
+    const inspect = (text: string, source: 'stderr' | 'runtime', eventType: string) => {
+      for (const item of patterns) {
+        const match = text.match(item.pattern);
+        if (match?.[0]) {
+          warnings.push({
+            class_name: item.class_name,
+            severity: item.severity,
+            source,
+            event_type: eventType,
+            message: match[0].slice(0, 500),
+          });
+        }
+      }
+    };
+
+    if (stderr.trim()) inspect(stderr, 'stderr', 'stderr');
+    for (const line of stdout.split(/\r?\n/).filter(Boolean)) {
+      try {
+        const event = JSON.parse(line) as Record<string, unknown>;
+        const eventType = String(event.type || event.event || event.event_type || '').toLowerCase();
+        if (!/(^|[._:-])(error|warning|failed|failure)([._:-]|$)/.test(eventType)) continue;
+        const message = [event.message, event.error, event.detail]
+          .filter((value): value is string => typeof value === 'string')
+          .join(' ');
+        if (message) inspect(message, 'runtime', eventType);
+      } catch {
+        // Unstructured stdout is agent/tool content, not runtime diagnostics.
+      }
     }
     return warnings;
+  }
+
+  extractWorkDisposition(stdout: string, diffLines: number): { disposition: 'changed' | 'no_change_required' | 'failed'; reason?: string } {
+    if (diffLines > 0) return { disposition: 'changed' };
+    for (const line of stdout.split(/\r?\n/).reverse()) {
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        const disposition = String(parsed.disposition || parsed.outcome || '');
+        const reason = typeof parsed.reason === 'string' ? parsed.reason.trim() : '';
+        if (disposition === 'no_change_required' && reason) return { disposition, reason };
+      } catch {
+        // Continue looking for a structured terminal disposition.
+      }
+    }
+    return { disposition: 'failed', reason: 'Runtime produced no diff and no evidenced no-change disposition.' };
   }
 
   runtimeWarningsBlockCompletion(warnings: Array<Record<string, unknown>>, run: any): boolean {

@@ -30,6 +30,10 @@ describe('G82: Self Code Analysis', () => {
   it('finds test coverage gaps', () => {
     const report = analyzer.analyze();
     expect(Array.isArray(report.testCoverageGaps)).toBe(true);
+    expect(report.analysisMethod).toBe('route-service-test-static-evidence');
+    expect(report.integrationReachability.length).toBeGreaterThan(50);
+    expect(report.findingCounts.testCoverageCandidates).toBeLessThan(report.totalFiles);
+    expect(report.integrationReachability.some((entry) => entry.serviceFiles.length > 0)).toBe(true);
   });
 
   it('generates recommendations', () => {
@@ -46,6 +50,8 @@ describe('G82: Self Code Analysis', () => {
   it('finds complexity hotspots', () => {
     const report = analyzer.analyze();
     expect(Array.isArray(report.complexityHotspots)).toBe(true);
+    expect(report.hotspotMethod).toBe('file-line-count-size-proxy');
+    expect(report.analysisLimitations.some((item) => item.includes('regex candidates'))).toBe(true);
   });
 
   it('scans source files', () => {

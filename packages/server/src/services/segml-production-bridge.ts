@@ -1,11 +1,9 @@
 /**
- * SEGML Production Bridge — Real fine-tuning + Real LLM evaluation + Real self-evolution.
+ * SEGML Production Bridge — governance training-data export and Ollama model packaging.
  *
- * This is the production-grade module that replaces ALL simulated components
- * with actual API calls to:
- * - Ollama (local): model training via Modelfile
- * - LiteLLM (cloud): response generation and evaluation
- * - SEGML DB: training data from actual governance failures
+ * Evaluation and promotion are intentionally owned by OpenMythosEvalService and
+ * GovernanceFeedbackLoopService. Ollama /api/create packages a Modelfile; it is
+ * not represented as LoRA fine-tuning.
  *
  * Based on:
  * - Self-Instruct (ACL 2023): self-generated instruction tuning
@@ -54,6 +52,7 @@ interface TrainingDataset {
 
 // OllamaModelConfig used by createOllamaAdapter
 
+/** @deprecated Evaluation is routed through OpenMythosEvalService. */
 interface EvaluationResult {
   model: string;
   category: string;
@@ -63,6 +62,7 @@ interface EvaluationResult {
   reasoning: string;
 }
 
+/** @deprecated Promotion is routed through GovernanceFeedbackLoopService. */
 interface ProductionCycleResult {
   cycleId: string;
   datasetId: string;
@@ -112,7 +112,7 @@ const CORRECT_RESPONSES: Record<string, string> = {
 
 export class SegmlProductionBridge {
   private readonly trainingDir: string;
-  private readonly deployThreshold = 0.10; // 10% improvement required
+  private readonly deployThreshold = 0.10;
 
   constructor(private db: Database) {
     this.ensureTables();
@@ -351,11 +351,11 @@ PARAMETER num_ctx 4096
     return catPrompts[variant % catPrompts.length];
   }
 
-  // ─── Ollama Training ─────────────────────────────────────────────────────
+  // ─── Ollama Model Packaging ──────────────────────────────────────────────
 
   /**
-   * Create a new Ollama model with the governance Modelfile.
-   * This is the actual fine-tuning step.
+   * Create a new Ollama model from the governance Modelfile.
+   * This packages configuration and examples; it does not train model weights.
    */
   async createOllamaAdapter(datasetId: string, adapterName: string): Promise<{ success: boolean; error?: string }> {
     const dataset = this.db.prepare('SELECT * FROM segml_prod_datasets WHERE id = ?').get(datasetId) as any;
@@ -397,10 +397,10 @@ PARAMETER num_ctx 4096
   // ─── LiteLLM Evaluation ──────────────────────────────────────────────────
 
   /**
-   * Evaluate a model on governance categories using LiteLLM.
-   * Generates actual responses and scores them.
+   * @deprecated Kept only to read historical cycle records. New evaluation
+   * uses OpenMythosEvalService and is not exposed by the production router.
    */
-  async evaluateModel(model: string, categories: string[], apiKey: string): Promise<EvaluationResult[]> {
+  private async evaluateModel(model: string, categories: string[], apiKey: string): Promise<EvaluationResult[]> {
     const results: EvaluationResult[] = [];
 
     for (const category of categories) {
@@ -507,6 +507,7 @@ PARAMETER num_ctx 4096
   // ─── Production Cycle ────────────────────────────────────────────────────
 
   /**
+   * @deprecated Historical implementation; no route or production caller.
    * Run a complete production cycle:
    * 1. Generate training data
    * 2. Create Ollama adapter

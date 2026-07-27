@@ -36,6 +36,18 @@
 - [x] Run targeted tool-scope capability checks.
 - [x] Record final evidence and residual risks.
 
+## 6. Runtime truth follow-up
+
+- [x] Remove constructor-only autonomous bootstrap registrations.
+- [x] Retire specialization state with no production writer.
+- [x] Persist the RSI kill-switch across route-scoped service instances.
+- [x] Prove recovery skips completed findings and does not apply content retry.
+- [x] Prove profile-independent meta routes report disabled/enabled truthfully.
+- [x] Re-run focused, workspace, benchmark, self-analysis, lint, type-check, and
+  build gates.
+
 ## Final gate
 
-- [ ] Human approval for capability retirement, commit, push, merge, or deploy.
+- [x] Human approval for the evidence-backed capability retirement in this
+  follow-up.
+- [ ] Human approval for commit, push, merge, or deploy.

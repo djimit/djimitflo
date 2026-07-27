@@ -2,18 +2,18 @@
  * OpenMythosEvalService — runs OpenMythos Governance Benchmark cases against agents.
  *
  * Loads cases from corpus.jsonl, runs them via workstation Ollama, and scores
- * responses using JudgeService (4-dim scoring) with LLM-as-judge fallback.
+ * responses using deterministic scoring or an explicitly enabled LLM judge.
  *
  * Judge model: qwen2.5:14b-instruct-q4_K_M (available on workstation Ollama)
  * Ollama endpoint: http://192.168.1.28:11434
  *
  * Wave 1 features:
- * - JudgeService integration (4-dim scoring with contradiction detection)
+ * - Deterministic oracle scoring with optional LLM-as-judge evaluation
  * - WorkerPool parallel execution (concurrency=10, timeout=120s)
  * - SwarmEventBus real-time events (eval:case:complete, eval:run:complete)
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { isDeepStrictEqual } from 'util';
 import type { Database } from 'better-sqlite3';
@@ -124,6 +124,8 @@ function getCorpusPath(): string {
 export class OpenMythosEvalService {
   private casesCache: OpenMythosCase[] | null = null;
   private anchorsCache: Map<string, OracleAnchor> | null = null;
+  private corpusHash: string | null = null;
+  private oracleAnchorsDigest: string | null = null;
   private workerPool: WorkerPool;
   private evidenceService: SwarmEvidenceService;
   private ollamaBreaker: OllamaCircuitBreaker;
@@ -158,6 +160,7 @@ export class OpenMythosEvalService {
   loadCases(categories?: string[]): OpenMythosCase[] {
     if (!this.casesCache) {
       const content = readFileSync(getCorpusPath(), 'utf8');
+      this.corpusHash = createHash('sha256').update(content).digest('hex');
       const lines = content.split('\n').filter((line) => line.trim());
       const { valid, invalid } = this.corpusValidator.validateAll(lines);
       if (invalid.length > 0) {
@@ -204,12 +207,15 @@ export class OpenMythosEvalService {
     const startedAt = new Date().toISOString();
     const baseMetadata = {
       subject_model: subjectModel,
+      corpus_path: getCorpusPath(),
       case_ids: caseIds || [],
       evaluation_mode: subject ? 'skill_conditioned_prompt' : 'model_only',
       skill_id: subject?.id,
       skill_version: subject?.version,
       skill_content_hash: subject?.contentHash,
       oracle_anchors_configured: Boolean(process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim()),
+      corpus_sha256: this.corpusHash,
+      oracle_anchors_sha256: this.oracleAnchorsHash(),
       oracle_anchor_cases: oracleAnchorCases,
       discrimination_gate_enabled: discriminationGateEnabled,
       discrimination_gate_has_prior_data: discriminationPriorCases > 0,
@@ -442,7 +448,9 @@ export class OpenMythosEvalService {
     this.anchorsCache = new Map();
     const path = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
     if (!path) return this.anchorsCache;
-    const payload = JSON.parse(readFileSync(path, 'utf8')) as { schema_version?: number; anchors?: OracleAnchor[] };
+    const content = readFileSync(path, 'utf8');
+    this.oracleAnchorsDigest = createHash('sha256').update(content).digest('hex');
+    const payload = JSON.parse(content) as { schema_version?: number; anchors?: OracleAnchor[] };
     if (payload.schema_version !== 1 || !Array.isArray(payload.anchors)) {
       throw new Error('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
     }
@@ -453,6 +461,11 @@ export class OpenMythosEvalService {
       this.anchorsCache.set(anchor.case_id, anchor);
     }
     return this.anchorsCache;
+  }
+
+  private oracleAnchorsHash(): string | null {
+    this.loadAnchors();
+    return this.oracleAnchorsDigest;
   }
 
   private scoreWithOracle(caseId: string, response: string) {

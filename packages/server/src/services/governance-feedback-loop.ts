@@ -50,7 +50,26 @@ export interface FeedbackLoopResult {
   proposals_executed: number;
   improvement_detected: boolean;
   score_delta: number;
+  verification?: ImprovementVerification;
   created_at?: string;
+}
+
+export interface ImprovementVerification {
+  promoted: boolean;
+  reason: 'verified_gain' | 'insufficient_evidence' | 'effect_below_threshold' | 'holdout_regression';
+  repeat_count: number;
+  target_case_ids: string[];
+  holdout_case_ids: string[];
+  baseline_run_ids: string[];
+  candidate_run_ids: string[];
+  paired_deltas: number[];
+  mean_delta: number;
+  confidence_lower_bound: number;
+  holdout_delta: number;
+  minimum_effect: number;
+  maximum_holdout_regression: number;
+  git_sha: string | null;
+  evaluation_runs: Array<{ id: string; metadata: Record<string, unknown> }>;
 }
 
 export interface FeedbackLoopConfig {
@@ -60,6 +79,10 @@ export interface FeedbackLoopConfig {
   require_verification: boolean;
   enable_dormant_capability_detection: boolean;
   dormant_capability_threshold_days: number;
+  verification_repeats: number;
+  minimum_effect: number;
+  maximum_holdout_regression: number;
+  maximum_holdout_cases: number;
 }
 
 export interface FeedbackLoopDependencies {
@@ -77,6 +100,10 @@ const DEFAULT_CONFIG: FeedbackLoopConfig = {
   require_verification: true,
   enable_dormant_capability_detection: true,
   dormant_capability_threshold_days: 30,
+  verification_repeats: 3,
+  minimum_effect: 0.1,
+  maximum_holdout_regression: 0.1,
+  maximum_holdout_cases: 10,
 };
 
 export interface DormantCapability {
@@ -257,6 +284,22 @@ export class GovernanceFeedbackLoopService {
         this.riskRank(proposal.risk_level) <= this.riskRank(this.config.auto_authorize_below_risk)
     );
 
+    const targetCaseIds = [...new Set(failures.flatMap((failure) => failure.case_ids))];
+    const holdoutCaseIds = baselineRunId ? this.holdoutCaseIds(baselineRunId, targetCaseIds) : [];
+    const baselineRunIds = baselineRunId ? [baselineRunId] : [];
+    if (
+      autoExecutable.length > 0 &&
+      this.config.require_verification &&
+      baselineRunId &&
+      this.dependencies.rerunEvaluation
+    ) {
+      const evaluationCaseIds = [...targetCaseIds, ...holdoutCaseIds];
+      for (let repeat = 1; repeat < this.config.verification_repeats; repeat++) {
+        const rerun = await this.dependencies.rerunEvaluation(agentId, evaluationCaseIds);
+        baselineRunIds.push(rerun.runId);
+      }
+    }
+
     let executed = 0;
     const executedProposals: ImprovementProposal[] = [];
     for (const { proposal } of autoExecutable) {
@@ -284,14 +327,25 @@ export class GovernanceFeedbackLoopService {
     }
 
     let improvement = { improved: false, delta: 0 };
+    let verification: ImprovementVerification | undefined;
     if (executed > 0 && this.config.require_verification && baselineRunId && this.dependencies.rerunEvaluation) {
-      const caseIds = [...new Set(failures.flatMap((failure) => failure.case_ids))];
-      const verification = await this.dependencies.rerunEvaluation(agentId, caseIds);
-      improvement = this.verifyImprovement(agentId, baselineRunId);
+      const candidateRunIds: string[] = [];
+      const evaluationCaseIds = [...targetCaseIds, ...holdoutCaseIds];
+      for (let repeat = 0; repeat < this.config.verification_repeats; repeat++) {
+        const rerun = await this.dependencies.rerunEvaluation(agentId, evaluationCaseIds);
+        candidateRunIds.push(rerun.runId);
+      }
+      verification = this.verifyRepeatedImprovement(
+        baselineRunIds,
+        candidateRunIds,
+        targetCaseIds,
+        holdoutCaseIds,
+      );
+      improvement = { improved: verification.promoted, delta: verification.mean_delta };
       for (const proposal of executedProposals) {
         proposal.status = improvement.improved ? 'completed' : 'failed';
         this.persistProposal(proposal);
-        this.persistProposalVerification(proposal.id, verification.runId);
+        this.persistProposalVerification(proposal.id, candidateRunIds[candidateRunIds.length - 1], verification);
       }
     } else if (!this.config.require_verification) {
       for (const proposal of executedProposals) {
@@ -309,6 +363,7 @@ export class GovernanceFeedbackLoopService {
       proposals_executed: executed,
       improvement_detected: improvement.improved,
       score_delta: improvement.delta,
+      verification,
     };
 
     this.persistFeedbackLoop(result);
@@ -373,6 +428,64 @@ export class GovernanceFeedbackLoopService {
 
     const delta = current.avg_score - baseline.avg_score;
     return { improved: delta > 0.1, delta };
+  }
+
+  verifyRepeatedImprovement(
+    baselineRunIds: string[],
+    candidateRunIds: string[],
+    targetCaseIds: string[],
+    holdoutCaseIds: string[] = [],
+  ): ImprovementVerification {
+    const repeatCount = Math.min(baselineRunIds.length, candidateRunIds.length);
+    const pairedDeltas: number[] = [];
+    for (let index = 0; index < repeatCount; index++) {
+      const baseline = this.runMean(baselineRunIds[index], targetCaseIds);
+      const candidate = this.runMean(candidateRunIds[index], targetCaseIds);
+      if (baseline === null || candidate === null) continue;
+      pairedDeltas.push(candidate - baseline);
+    }
+
+    const meanDelta = this.mean(pairedDeltas);
+    const confidenceLowerBound = this.lowerConfidenceBound(pairedDeltas);
+    const holdoutDeltas: number[] = [];
+    for (let index = 0; index < repeatCount && holdoutCaseIds.length > 0; index++) {
+      const baseline = this.runMean(baselineRunIds[index], holdoutCaseIds);
+      const candidate = this.runMean(candidateRunIds[index], holdoutCaseIds);
+      if (baseline !== null && candidate !== null) holdoutDeltas.push(candidate - baseline);
+    }
+    const holdoutDelta = this.mean(holdoutDeltas);
+    const sufficient = pairedDeltas.length === repeatCount && repeatCount > 0;
+    const holdoutRegressed = holdoutDeltas.length > 0 &&
+      holdoutDelta < -this.config.maximum_holdout_regression;
+    const promoted = sufficient &&
+      confidenceLowerBound > this.config.minimum_effect &&
+      !holdoutRegressed;
+    const reason: ImprovementVerification['reason'] = !sufficient
+      ? 'insufficient_evidence'
+      : holdoutRegressed
+        ? 'holdout_regression'
+        : confidenceLowerBound <= this.config.minimum_effect
+          ? 'effect_below_threshold'
+          : 'verified_gain';
+
+    const allRunIds = [...baselineRunIds.slice(0, repeatCount), ...candidateRunIds.slice(0, repeatCount)];
+    return {
+      promoted,
+      reason,
+      repeat_count: repeatCount,
+      target_case_ids: targetCaseIds,
+      holdout_case_ids: holdoutCaseIds,
+      baseline_run_ids: baselineRunIds.slice(0, repeatCount),
+      candidate_run_ids: candidateRunIds.slice(0, repeatCount),
+      paired_deltas: pairedDeltas,
+      mean_delta: meanDelta,
+      confidence_lower_bound: confidenceLowerBound,
+      holdout_delta: holdoutDelta,
+      minimum_effect: this.config.minimum_effect,
+      maximum_holdout_regression: this.config.maximum_holdout_regression,
+      git_sha: process.env.DJIMITFLO_GIT_SHA || null,
+      evaluation_runs: allRunIds.map((id) => ({ id, metadata: this.evalRunMetadata(id) })),
+    };
   }
 
   /**
@@ -499,6 +612,57 @@ export class GovernanceFeedbackLoopService {
     return row?.id || null;
   }
 
+  private holdoutCaseIds(runId: string, targetCaseIds: string[]): string[] {
+    const targets = new Set(targetCaseIds);
+    return (this.db.prepare(`
+      SELECT case_id FROM openmythos_case_results
+      WHERE run_id = ? AND status = 'completed' AND judge_score >= ?
+      ORDER BY category, case_id
+    `).all(runId, this.config.min_score_threshold) as Array<{ case_id: string }>)
+      .map((row) => row.case_id)
+      .filter((caseId) => !targets.has(caseId))
+      .slice(0, this.config.maximum_holdout_cases);
+  }
+
+  private runMean(runId: string, caseIds: string[]): number | null {
+    if (caseIds.length === 0) return null;
+    const placeholders = caseIds.map(() => '?').join(',');
+    const row = this.db.prepare(`
+      SELECT AVG(judge_score) AS average, COUNT(*) AS count
+      FROM openmythos_case_results
+      WHERE run_id = ? AND status = 'completed' AND case_id IN (${placeholders})
+    `).get(runId, ...caseIds) as { average: number | null; count: number };
+    return row.count === caseIds.length && row.average !== null ? row.average : null;
+  }
+
+  private mean(values: number[]): number {
+    return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  }
+
+  private lowerConfidenceBound(values: number[]): number {
+    if (values.length === 0) return Number.NEGATIVE_INFINITY;
+    const average = this.mean(values);
+    if (values.length === 1) return average;
+    const variance = values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1);
+    if (variance === 0) return average;
+    const standardError = Math.sqrt(variance / values.length);
+    const oneSided95TCritical = [0, 6.314, 2.92, 2.353, 2.132, 2.015, 1.943, 1.895, 1.86, 1.833];
+    const degreesOfFreedom = values.length - 1;
+    const critical = oneSided95TCritical[degreesOfFreedom] || 1.645;
+    return average - critical * standardError;
+  }
+
+  private evalRunMetadata(runId: string): Record<string, unknown> {
+    const row = this.db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(runId) as
+      { metadata: string } | undefined;
+    if (!row) return {};
+    try {
+      return JSON.parse(row.metadata || '{}') as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+
   private riskRank(risk: RiskLevel): number {
     return {
       [RiskLevel.LOW]: 0,
@@ -561,12 +725,16 @@ export class GovernanceFeedbackLoopService {
     `).run(taskId, executionStatus, proposalId);
   }
 
-  private persistProposalVerification(proposalId: string, runId: string): void {
+  private persistProposalVerification(
+    proposalId: string,
+    runId: string,
+    verification: ImprovementVerification,
+  ): void {
     this.db.prepare(`
       UPDATE governance_improvement_proposals
-      SET verification_run_id = ?
+      SET verification_run_id = ?, verification_manifest = ?
       WHERE id = ?
-    `).run(runId, proposalId);
+    `).run(runId, JSON.stringify(verification), proposalId);
   }
 
   private ensureTables(): void {
@@ -597,6 +765,7 @@ export class GovernanceFeedbackLoopService {
         task_id TEXT,
         execution_status TEXT,
         verification_run_id TEXT,
+        verification_manifest TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -608,6 +777,7 @@ export class GovernanceFeedbackLoopService {
     this.addColumnIfMissing('governance_improvement_proposals', 'task_id', 'TEXT');
     this.addColumnIfMissing('governance_improvement_proposals', 'execution_status', 'TEXT');
     this.addColumnIfMissing('governance_improvement_proposals', 'verification_run_id', 'TEXT');
+    this.addColumnIfMissing('governance_improvement_proposals', 'verification_manifest', "TEXT NOT NULL DEFAULT '{}'");
   }
 
   private addColumnIfMissing(table: string, column: string, definition: string): void {

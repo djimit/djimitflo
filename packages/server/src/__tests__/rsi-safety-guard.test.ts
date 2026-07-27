@@ -83,6 +83,14 @@ describe('G105: RSI Safety Guard', () => {
     expect(result.allowed).toBe(true);
   });
 
+  it('persists the kill switch across route-scoped service instances', () => {
+    guard.setEnabled(false);
+    const nextRequest = new RsiSafetyGuard(db);
+
+    expect(nextRequest.getStatus().enabled).toBe(false);
+    expect(nextRequest.canMutate('loop-service').allowed).toBe(false);
+  });
+
   it('audit log preserves all entries', () => {
     guard.logAction('action-1', 'comp-1', {}, 'actor-1');
     guard.logAction('action-2', 'comp-2', {}, 'actor-2');

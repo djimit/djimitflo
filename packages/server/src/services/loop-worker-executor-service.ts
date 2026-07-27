@@ -135,12 +135,20 @@ export class LoopWorkerExecutorService {
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
+    const workDisposition = makerLease.runtime === 'mock'
+      ? { disposition: 'changed' as const, reason: 'Deterministic mock runtime exercises control flow without repository mutation.' }
+      : this.loopService.extractWorkDisposition(result.stdout || '', diffLines);
     const tokenBudget = this.loopService.evaluateTokenBudget(run, runtimeUsage, makerLease.id, diffLines);
     const efficiency = this.loopService.calculateWorkerEfficiency(runtimeUsage, diffLines);
 
     const gates: LoopGate[] = [
       { name: 'maker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${makerLease.runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}, skip_permissions=${skipPermissions}` },
       { name: 'diff_under_threshold', status: diffLines <= diffMaxLines ? 'pass' : 'fail', evidence: `${diffLines} changed diff line(s), threshold ${diffMaxLines}.` },
+      {
+        name: 'maker_work_disposition',
+        status: workDisposition.disposition === 'failed' ? 'fail' : 'pass',
+        evidence: workDisposition.reason || `Maker produced ${workDisposition.disposition} work.`,
+      },
       tokenBudget.gate,
       { name: 'runtime_warning_gate', status: this.loopService.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass', evidence: this.loopService.runtimeWarningsEvidence(runtimeWarnings, run) },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
@@ -156,6 +164,8 @@ export class LoopWorkerExecutorService {
       runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_pid: result.runtimePid,
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
+      work_disposition: workDisposition.disposition,
+      work_disposition_reason: workDisposition.reason || null,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
     };
 
@@ -163,6 +173,19 @@ export class LoopWorkerExecutorService {
       this.loopService.patchWorkerLeaseMetadata(makerLease.id, { ...metadataPatch, runtime_was_cancelled: true });
     } else {
       this.loopService.updateWorkerLeaseStatus(makerLease.id, completionStatus, metadataPatch);
+    }
+
+    if (!failed && workDisposition.disposition === 'no_change_required') {
+      for (const checker of leases.filter((lease) =>
+        lease.role !== 'maker'
+        && lease.status === 'prepared'
+        && lease.metadata.maker_lease_id === makerLease.id
+      )) {
+        this.loopService.updateWorkerLeaseStatus(checker.id, 'cancelled', {
+          cancellation_reason: 'maker_no_change_required',
+          cancelled_at: new Date().toISOString(),
+        });
+      }
     }
 
     const budgetRisk = tokenBudget.efficiencyExceeded

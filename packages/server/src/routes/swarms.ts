@@ -26,7 +26,6 @@ import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
-import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { FixLoopService } from '../services/fix-loop-service';
@@ -189,7 +188,6 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     res.json({ proposals: proposals.length, items: proposals.slice(0, 10) });
   }));
   router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => { res.json(new ServiceRefactoringAnalyzer(db).getProposals(req.query.status as string | undefined)); }));
-  router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => { res.json(new EmergentSpecializationService(db).getSpecializations()); }));
   router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => { res.json(new RsiSafetyGuard(db).getStatus()); }));
   router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => { const guard = new RsiSafetyGuard(db); guard.setEnabled(req.body.enabled !== false); res.json(guard.getStatus()); }));
 

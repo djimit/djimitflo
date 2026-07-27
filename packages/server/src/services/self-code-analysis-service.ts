@@ -1,5 +1,16 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
+
+export interface IntegrationReachability {
+  routeFile: string;
+  serviceFiles: string[];
+  routeTestFiles: string[];
+  serviceTestFiles: string[];
+  coverage: 'http-and-service' | 'http-only' | 'service-only' | 'uncovered';
+  runtimeEvidence: 'not-attributed';
+}
 
 export interface CodeAnalysisReport {
   id: string;
@@ -15,7 +26,10 @@ export interface CodeAnalysisReport {
   complexityHotspots: Array<{ file: string; complexity: number }>;
   recommendations: string[];
   findingCounts: Record<string, number>;
-  analysisMethod: 'static-heuristic-candidates';
+  analysisMethod: 'route-service-test-static-evidence';
+  analysisLimitations: string[];
+  hotspotMethod: 'file-line-count-size-proxy';
+  integrationReachability: IntegrationReachability[];
 }
 
 export class SelfCodeAnalysisService {
@@ -36,7 +50,10 @@ export class SelfCodeAnalysisService {
     const unreachable = this.findUnreachableCode(files);
     const perfIssues = this.findPerformanceIssues(files);
     const secIssues = this.findSecurityIssues(files);
-    const coverageGaps = this.findTestCoverageGaps(files);
+    const integrationReachability = this.buildIntegrationReachability();
+    const coverageGaps = integrationReachability
+      .filter((entry) => entry.coverage !== 'http-and-service')
+      .map((entry) => `${entry.routeFile}: ${entry.coverage}; services=${entry.serviceFiles.join(',') || 'none'}`);
     const archIssues = this.findArchitecturalIssues(files);
     const hotspots = this.findComplexityHotspots(files);
 
@@ -61,8 +78,17 @@ export class SelfCodeAnalysisService {
         testCoverageCandidates: coverageGaps.length,
         architecturalCandidates: archIssues.length,
         complexityHotspots: hotspots.length,
+        routesAnalyzed: integrationReachability.length,
+        routesWithHttpAndServiceTests: integrationReachability.filter((entry) => entry.coverage === 'http-and-service').length,
       },
-      analysisMethod: 'static-heuristic-candidates',
+      analysisMethod: 'route-service-test-static-evidence',
+      analysisLimitations: [
+        'Dead-export and unreachable-branch findings are regex candidates, not compiler-proven facts.',
+        'Runtime evidence is not yet attributed to individual route entries.',
+        'Hotspot values are file line counts and must not be interpreted as cyclomatic complexity.',
+      ],
+      hotspotMethod: 'file-line-count-size-proxy',
+      integrationReachability,
     };
 
     this.db.prepare('INSERT INTO self_code_analysis (id, report_json) VALUES (?, ?)').run(report.id, JSON.stringify(report));
@@ -75,8 +101,6 @@ export class SelfCodeAnalysisService {
   }
 
   private scanSourceFiles(): string[] {
-    const fs = require('fs');
-    const path = require('path');
     const files: string[] = [];
 
     const scanDir = (dir: string) => {
@@ -202,27 +226,57 @@ export class SelfCodeAnalysisService {
     return issues;
   }
 
-  private findTestCoverageGaps(files: string[]): string[] {
-    const gaps: string[] = [];
-    const testFiles = new Set<string>();
+  private buildIntegrationReachability(): IntegrationReachability[] {
+    const serverRoot = path.join(this.repoRoot(), 'packages/server/src');
+    const routesDir = path.join(serverRoot, 'routes');
+    const testsDir = path.join(serverRoot, '__tests__');
+    const routeFiles = fs.readdirSync(routesDir)
+      .filter((file) => file.endsWith('.ts') && file !== 'index.ts')
+      .map((file) => path.join(routesDir, file));
+    const testFiles = fs.readdirSync(testsDir)
+      .filter((file) => file.endsWith('.test.ts'))
+      .map((file) => path.join(testsDir, file));
+    const testSources = new Map(testFiles.map((file) => [file, fs.readFileSync(file, 'utf8')]));
 
-    try {
-      const { execSync } = require('child_process');
-      const testOutput = execSync("find packages/server/src/__tests__ -name '*.test.ts' 2>/dev/null || true", { encoding: 'utf8', timeout: 10_000 });
-      for (const tf of testOutput.split('\n').filter(Boolean)) {
-        testFiles.add(tf.replace('__tests__/', '').replace('.test.ts', '.ts'));
-      }
-    } catch { /* skip */ }
+    return routeFiles.map((routeFile) => {
+      const routeSource = fs.readFileSync(routeFile, 'utf8');
+      const serviceNames = [...routeSource.matchAll(/(?:from\s+|import\()['"]\.\.\/services\/([^'"]+)['"]/g)]
+        .map((match) => match[1].replace(/\.js$/, ''));
+      const serviceFiles = [...new Set(serviceNames)]
+        .map((name) => path.join(serverRoot, 'services', `${name}.ts`))
+        .filter((file) => fs.existsSync(file));
+      const routeName = path.basename(routeFile, '.ts');
+      const routeTestFiles = [...testSources.entries()]
+        .filter(([, source]) => new RegExp(`(?:\\.\\./routes/${this.escapeRegex(routeName)}|create${this.pascalCase(routeName)}Routes\\b)`).test(source))
+        .map(([file]) => path.relative(this.repoRoot(), file));
+      const serviceTestFiles = [...testSources.entries()]
+        .filter(([, source]) => serviceNames.some((name) => source.includes(`../services/${name}`)))
+        .map(([file]) => path.relative(this.repoRoot(), file));
+      const hasHttp = routeTestFiles.length > 0;
+      const hasService = serviceFiles.length === 0 || serviceNames.every((name) =>
+        [...testSources.values()].some((source) => source.includes(`../services/${name}`)));
 
-    for (const f of files) {
-      const baseName = f.replace('packages/server/src/', '');
-      const hasTest = [...testFiles].some(tf => tf.includes(baseName.replace('.ts', '')));
-      if (!hasTest && !f.includes('index.') && !f.includes('schema.') && !f.includes('migrate')) {
-        gaps.push(f);
-      }
-    }
+      return {
+        routeFile: path.relative(this.repoRoot(), routeFile),
+        serviceFiles: serviceFiles.map((file) => path.relative(this.repoRoot(), file)),
+        routeTestFiles,
+        serviceTestFiles: [...new Set(serviceTestFiles)],
+        coverage: hasHttp && hasService ? 'http-and-service' : hasHttp ? 'http-only' : hasService ? 'service-only' : 'uncovered',
+        runtimeEvidence: 'not-attributed',
+      };
+    });
+  }
 
-    return gaps;
+  private repoRoot(): string {
+    return path.resolve(__dirname, '../../../..');
+  }
+
+  private pascalCase(value: string): string {
+    return value.split(/[-_]/).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+  }
+
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private findArchitecturalIssues(files: string[]): string[] {
@@ -254,7 +308,7 @@ export class SelfCodeAnalysisService {
     if (sec.length > 0) recs.push(`Validate ${sec.length} security candidates`);
     if (hotspots.length > 0) recs.push(`Review ${hotspots.length} large-file hotspots; split only at proven boundaries`);
     if (arch.length > 0) recs.push(...arch);
-    recs.push('Prioritize route-to-service integration gaps over filename-based coverage');
+    recs.push('Prioritize uncovered route-to-service behavior before adding more service-only tests');
     return recs;
   }
 }

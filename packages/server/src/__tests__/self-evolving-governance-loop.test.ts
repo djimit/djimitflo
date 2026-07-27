@@ -1,5 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { SelfEvolvingGovernanceLoop } from '../services/self-evolving-governance-loop';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -7,23 +11,25 @@ import { runMigrations } from '../database/migrate';
 describe('SelfEvolvingGovernanceLoop', () => {
   let db: Database;
   let loop: SelfEvolvingGovernanceLoop;
+  let tempDir: string;
 
   beforeEach(() => {
     db = new Database(':memory:');
     db.exec(schema);
     runMigrations(db);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-segml-'));
     loop = new SelfEvolvingGovernanceLoop(db);
+  });
+
+  afterEach(() => {
+    db.close();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   function seedEvalRun(agentId: string, overallScore: number, categoryScores: Record<string, number>) {
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const started = new Date(Date.now() - 60000).toISOString();
     const finished = new Date().toISOString();
-    db.prepare(`
-      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, categories_json, metadata, started_at, finished_at)
-      VALUES (?, ?, 'completed', 7, 7, ?, '[]', ?, ?, ?)
-    `).run(runId, agentId, overallScore, JSON.stringify({ category_scores: categoryScores }), started, finished);
-
     const cases = [
       { id: 'c1', category: 'injection', difficulty: 3, score: 1.5, response: 'Sure...', rationale: 'Failed injection' },
       { id: 'c2', category: 'injection', difficulty: 2, score: 2.0, response: 'Okay...', rationale: 'Failed injection' },
@@ -33,6 +39,27 @@ describe('SelfEvolvingGovernanceLoop', () => {
       { id: 'c6', category: 'hallucination', difficulty: 3, score: 4.5, response: 'Unknown', rationale: 'Correct' },
       { id: 'c7', category: 'hallucination', difficulty: 2, score: 4.0, response: 'Not sure', rationale: 'Correct' },
     ];
+    const corpusPath = path.join(tempDir, `${runId}.jsonl`);
+    const corpus = cases.map((c) => JSON.stringify({
+      id: c.id,
+      category: c.category,
+      subcategory: 'original',
+      difficulty: c.difficulty,
+      prompt: `Original prompt ${c.id}`,
+      expected_behavior: `Expected behavior ${c.id}`,
+      failure_mode: c.rationale,
+      rationale: `Oracle rationale ${c.id}`,
+    })).join('\n');
+    fs.writeFileSync(corpusPath, corpus);
+    const metadata = {
+      category_scores: categoryScores,
+      corpus_path: corpusPath,
+      corpus_sha256: createHash('sha256').update(corpus).digest('hex'),
+    };
+    db.prepare(`
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, categories_json, metadata, started_at, finished_at)
+      VALUES (?, ?, 'completed', 7, 7, ?, '[]', ?, ?, ?)
+    `).run(runId, agentId, overallScore, JSON.stringify(metadata), started, finished);
     for (const c of cases) {
       db.prepare(`
         INSERT INTO openmythos_case_results (id, run_id, case_id, category, difficulty, response, judge_score, judge_rationale, scoring_source, latency_ms, status, usage_json)
@@ -66,6 +93,21 @@ describe('SelfEvolvingGovernanceLoop', () => {
     seedEvalRun('agent-1', 2.0, { injection: 1.5 });
     const result = await loop.runCycle('agent-1');
     expect(result.cases_generated).toBeGreaterThan(0);
+    const generated = db.prepare('SELECT prompt, expected_behavior, rationale, validated FROM segml_generated_cases').all() as any[];
+    expect(generated.every((item) =>
+      item.prompt.includes('Original prompt')
+      && item.expected_behavior.startsWith('Expected behavior')
+      && item.rationale.length > 0
+      && item.validated === 0
+    )).toBe(true);
+  });
+
+  it('does not mutate the canonical corpus', async () => {
+    const runId = seedEvalRun('agent-1', 2.0, { injection: 1.5 });
+    const metadata = JSON.parse((db.prepare('SELECT metadata FROM openmythos_eval_runs WHERE id = ?').get(runId) as any).metadata);
+    const before = fs.readFileSync(metadata.corpus_path, 'utf8');
+    await loop.runCycle('agent-1');
+    expect(fs.readFileSync(metadata.corpus_path, 'utf8')).toBe(before);
   });
 
   it('updates judge rubrics for declining categories', async () => {

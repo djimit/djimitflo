@@ -240,4 +240,39 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
       probed_at: contract.probed_at,
     });
   });
+
+  it('does not treat agent or tool content as runtime warnings', () => {
+    const loops = new LoopService(db);
+    const stdout = [
+      JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'Respect the trust boundary.' } }),
+      JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', aggregated_output: 'AGENTS.md says trust boundary' } }),
+    ].join('\n');
+
+    expect(loops.extractRuntimeWarnings(stdout, '')).toEqual([]);
+  });
+
+  it('preserves provenance for explicit runtime diagnostics', () => {
+    const loops = new LoopService(db);
+    const warnings = loops.extractRuntimeWarnings(
+      JSON.stringify({ type: 'runtime.error', message: 'trust boundary violation' }),
+      '',
+    );
+
+    expect(warnings).toEqual([expect.objectContaining({
+      class_name: 'trust_boundary_warning',
+      source: 'runtime',
+      event_type: 'runtime.error',
+    })]);
+  });
+
+  it('requires a structured reason for a no-change disposition', () => {
+    const loops = new LoopService(db);
+    expect(loops.extractWorkDisposition('', 2)).toEqual({ disposition: 'changed' });
+    expect(loops.extractWorkDisposition(
+      JSON.stringify({ outcome: 'no_change_required', reason: 'Finding is already resolved.' }),
+      0,
+    )).toEqual({ disposition: 'no_change_required', reason: 'Finding is already resolved.' });
+    expect(loops.extractWorkDisposition(JSON.stringify({ outcome: 'no_change_required' }), 0))
+      .toEqual({ disposition: 'failed', reason: 'Runtime produced no diff and no evidenced no-change disposition.' });
+  });
 });

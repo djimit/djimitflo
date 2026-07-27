@@ -12,7 +12,6 @@ export interface SafetyStatus {
 export class RsiSafetyGuard {
   private frozenComponents = ['auth-service', 'authorization-service', 'audit-service', 'rate-limiter', 'security-scanning-agent'];
   private mutationsLimit = 5;
-  private enabled = true;
 
   constructor(private db: Database) {
     this.db.exec(`CREATE TABLE IF NOT EXISTS rsi_audit_log (
@@ -23,7 +22,7 @@ export class RsiSafetyGuard {
   }
 
   canMutate(component: string): { allowed: boolean; reason?: string } {
-    if (!this.enabled) return { allowed: false, reason: 'RSI is disabled via kill switch' };
+    if (!this.isEnabled()) return { allowed: false, reason: 'RSI is disabled via kill switch' };
     if (this.isFrozen(component)) return { allowed: false, reason: `Component "${component}" is frozen (security/audit boundary)` };
     const todayCount = this.getTodayMutationCount();
     if (todayCount >= this.mutationsLimit) return { allowed: false, reason: `Daily mutation budget exhausted (${todayCount}/${this.mutationsLimit})` };
@@ -32,7 +31,7 @@ export class RsiSafetyGuard {
 
   getStatus(): SafetyStatus {
     return {
-      enabled: this.enabled,
+      enabled: this.isEnabled(),
       mutationsToday: this.getTodayMutationCount(),
       mutationsLimit: this.mutationsLimit,
       lastMutation: this.getLastMutation(),
@@ -42,7 +41,6 @@ export class RsiSafetyGuard {
   }
 
   setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
     this.logAction('kill_switch', 'rsi-safety-guard', { enabled });
   }
 
@@ -73,5 +71,13 @@ export class RsiSafetyGuard {
   private getAuditLogCount(): number {
     const row = this.db.prepare('SELECT COUNT(*) as c FROM rsi_audit_log').get() as { c: number };
     return row.c;
+  }
+
+  private isEnabled(): boolean {
+    const row = this.db.prepare(
+      "SELECT details_json FROM rsi_audit_log WHERE action = 'kill_switch' ORDER BY rowid DESC LIMIT 1"
+    ).get() as { details_json: string } | undefined;
+    if (!row) return true;
+    return (JSON.parse(row.details_json) as { enabled?: unknown }).enabled !== false;
   }
 }

@@ -77,7 +77,6 @@ import { createSegmlLiteratureRoutes } from './segml-literature';
 import { createSegmlFinetuningRoutes } from './segml-finetuning';
 import { createSegmlL3Routes } from './segml-l3';
 import { createSegmlL4Routes } from './segml-l4';
-import { createSegmlL5Routes } from './segml-l5';
 import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
 import type { WebSocketService } from '../services/websocket-service';
@@ -208,7 +207,6 @@ export function createRoutes(
   router.use('/segml/finetuning', requireAuth, createSegmlFinetuningRoutes(db, auth));
   router.use('/segml/l3', requireAuth, createSegmlL3Routes(db, auth));
   router.use('/segml/l4', requireAuth, createSegmlL4Routes(db, auth));
-  router.use('/segml/l5', requireAuth, createSegmlL5Routes(db, auth));
   router.use('/segml/production', requireAuth, createSegmlProductionRoutes(db, auth));
 
   return router;

@@ -13,7 +13,8 @@
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import { readFileSync, appendFileSync } from 'fs';
+import { readFileSync } from 'fs';
+import { createHash } from 'crypto';
 import { swarmEventBus } from './swarm-event-bus';
 import { GovernanceFeedbackService } from './governance-feedback-service';
 import { SegmlCaseGenerator } from './segml-case-generator';
@@ -46,6 +47,10 @@ interface EvalRunSummary {
     judgeScore: number;
     judgeRationale: string;
     status: string;
+    prompt?: string;
+    expectedBehavior?: string;
+    rationale?: string;
+    failureMode?: string;
   }>;
 }
 
@@ -184,16 +189,22 @@ export class SelfEvolvingGovernanceLoop {
       stage = 'generating';
       this.updateStage(cycleId, stage);
       const failedCases = evalRun.results
-        .filter(r => r.judgeScore < this.config.failure_threshold && r.status === 'completed')
+        .filter(r =>
+          r.judgeScore < this.config.failure_threshold
+          && r.status === 'completed'
+          && r.prompt
+          && r.expectedBehavior
+          && r.rationale
+        )
         .map(r => ({
           id: r.caseId,
           category: r.category,
           subcategory: 'original',
           difficulty: r.difficulty,
-          prompt: r.response,
-          expected_behavior: '',
-          failure_mode: r.judgeRationale,
-          rationale: '',
+          prompt: r.prompt!,
+          expected_behavior: r.expectedBehavior!,
+          failure_mode: r.failureMode || r.judgeRationale,
+          rationale: r.rationale!,
         }));
 
       const caseScores = evalRun.results.map(r => ({
@@ -236,10 +247,8 @@ export class SelfEvolvingGovernanceLoop {
       const rulesUpdated = this.recordGovernanceFeedback(blindSpots, evalRun);
       result.rules_updated = rulesUpdated;
 
-      // Stage 8: Auto-approve generated cases into corpus
-      if (envConfig.SEGML_AUTO_APPROVE_CASES && generatedCases.length > 0) {
-        this.autoApproveCases(generatedCases);
-      }
+      // Stage 8: Generated cases remain drafts. Canonical promotion is owned by
+      // GovernanceFeedbackLoopService and the OpenMythos lifecycle gate.
 
       // Stage 9: Compute score delta (improvement measurement)
       const previousRun = this.getPreviousEvalRun(agentId, evalRun.id);
@@ -311,6 +320,7 @@ export class SelfEvolvingGovernanceLoop {
     `).get(agentId) as any;
 
     if (!run) return null;
+    const sourceCases = this.loadRunSourceCases(run.metadata);
 
     const results = this.db.prepare(`
       SELECT case_id, category, difficulty, response, judge_score, judge_rationale, status
@@ -334,8 +344,51 @@ export class SelfEvolvingGovernanceLoop {
         judgeScore: r.judge_score,
         judgeRationale: r.judge_rationale,
         status: r.status,
+        prompt: sourceCases.get(r.case_id)?.prompt,
+        expectedBehavior: sourceCases.get(r.case_id)?.expected_behavior,
+        rationale: sourceCases.get(r.case_id)?.rationale,
+        failureMode: sourceCases.get(r.case_id)?.failure_mode,
       })),
     };
+  }
+
+  private loadRunSourceCases(metadataJson: string): Map<string, {
+    prompt: string;
+    expected_behavior: string;
+    rationale: string;
+    failure_mode: string;
+  }> {
+    try {
+      const metadata = JSON.parse(metadataJson || '{}') as { corpus_path?: string; corpus_sha256?: string };
+      const corpusPath = metadata.corpus_path || process.env.OPENMYTHOS_CORPUS_PATH;
+      if (!corpusPath) return new Map();
+      const content = readFileSync(corpusPath, 'utf8');
+      if (metadata.corpus_sha256 && createHash('sha256').update(content).digest('hex') !== metadata.corpus_sha256) {
+        return new Map();
+      }
+      return new Map(content.split(/\r?\n/).filter(Boolean).flatMap((line) => {
+        try {
+          const item = JSON.parse(line) as Record<string, unknown>;
+          if (
+            typeof item.id !== 'string'
+            || typeof item.prompt !== 'string'
+            || typeof item.expected_behavior !== 'string'
+            || typeof item.rationale !== 'string'
+            || typeof item.failure_mode !== 'string'
+          ) return [];
+          return [[item.id, {
+            prompt: item.prompt,
+            expected_behavior: item.expected_behavior,
+            rationale: item.rationale,
+            failure_mode: item.failure_mode,
+          }] as const];
+        } catch {
+          return [];
+        }
+      }));
+    } catch {
+      return new Map();
+    }
   }
 
   private getPreviousEvalRun(agentId: string, currentId: string): EvalRunSummary | null {
@@ -458,51 +511,6 @@ export class SelfEvolvingGovernanceLoop {
       stmt.run(c.id, cycleId, c.parent_case_id, c.category, c.subcategory, c.difficulty, c.prompt, c.expected_behavior, c.failure_mode, c.rationale, c.generation_method);
     }
   }
-
-  private autoApproveCases(cases: GeneratedCase[]): void {
-     const corpusPath = process.env.OPENMYTHOS_CORPUS_PATH;
-     if (!corpusPath) return;
-
-     try {
-       const existing = readFileSync(corpusPath, 'utf8');
-       const existingLines = existing.split('\n').filter(l => l.trim());
-       const existingIds = new Set(
-         existingLines
-           .map(l => { try { return JSON.parse(l).id; } catch { return null; } })
-           .filter(Boolean)
-       );
-
-       // Enforce corpus size limit
-       const maxCorpus = this.config.max_corpus_size;
-       const availableSlots = Math.max(0, maxCorpus - existingLines.length);
-       const casesToAdd = cases.filter(c => !existingIds.has(c.id)).slice(0, availableSlots);
-
-       if (availableSlots < cases.length) {
-         console.warn(`[SEGML] Corpus size limit reached (${existingLines.length}/${maxCorpus}). Skipping ${cases.length - availableSlots} cases.`);
-       }
-
-       const newLines = casesToAdd
-         .map(c => JSON.stringify({
-           id: c.id,
-           category: c.category,
-           subcategory: c.subcategory,
-           difficulty: c.difficulty,
-           prompt: c.prompt,
-           expected_behavior: c.expected_behavior,
-           failure_mode: c.failure_mode,
-           rationale: c.rationale,
-           source: 'segml_auto_generated',
-           generation_method: c.generation_method,
-           parent_case_id: c.parent_case_id,
-         }));
-
-       if (newLines.length > 0) {
-         appendFileSync(corpusPath, '\n' + newLines.join('\n') + '\n');
-       }
-     } catch (err) {
-       console.warn(`[SEGML] Auto-approve failed: ${err instanceof Error ? err.message : String(err)}`);
-     }
-   }
 
   private updateStage(cycleId: string, stage: SegmlStage): void {
     this.db.prepare('UPDATE segml_cycles SET stage = ? WHERE id = ?').run(stage, cycleId);

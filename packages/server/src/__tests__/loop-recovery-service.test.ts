@@ -155,6 +155,27 @@ describe('LoopRecoveryService', () => {
     expect(result.resumed).toBe(true);
   });
 
+  it('requeues only unfinished findings without applying a content-quality retry', () => {
+    seedRun('run-1', 'interrupted');
+    db.prepare('UPDATE loop_runs SET findings_json = ? WHERE id = ?').run(
+      JSON.stringify([{ id: 'done' }, { id: 'unfinished' }]),
+      'run-1',
+    );
+    db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id)
+      VALUES ('lease-done', 'run-1', 'maker', 'codex', 'completed', 'done')
+    `).run();
+
+    const result = service.resumeInterruptedRun('run-1');
+
+    expect(result).toMatchObject({
+      resumed: true,
+      requeuedFindings: ['unfinished'],
+      skippedFindings: ['done'],
+    });
+    expect(db.prepare('SELECT gates_json FROM loop_runs WHERE id = ?').get('run-1')).toEqual({ gates_json: '[]' });
+  });
+
   it('fails after max resume attempts', () => {
     seedRun('run-1', 'interrupted');
     const result = service.resumeInterruptedRun('run-1', 0); // max 0 attempts

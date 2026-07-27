@@ -80,7 +80,10 @@ class SelfBuildService {
 
 ## G71: Self-Improvement Loop
 
-### File: `packages/server/src/services/self-improvement-service.ts`
+### Historical file: `packages/server/src/services/self-improvement-service.ts`
+
+Retired by `evidence-grounded-self-improvement`: it had no production caller
+and duplicated the routed self-improvement and governance-feedback services.
 
 ```typescript
 interface ImprovementProposal {

@@ -15,6 +15,11 @@ describe('SelfModificationPipeline', () => {
   it('analyzes codebase for improvement opportunities', () => {
     const opportunities = pipeline.analyze();
     expect(Array.isArray(opportunities)).toBe(true);
+    const routeGaps = opportunities.filter((item) => item.type === 'test_gap');
+    expect(routeGaps.length).toBeGreaterThan(0);
+    expect(routeGaps.length).toBeLessThan(70);
+    expect(routeGaps.every((item) => item.description.includes('integration evidence'))).toBe(true);
+    expect(opportunities.some((item) => item.file === 'total')).toBe(false);
   });
 
   it('creates a modification plan for an opportunity', () => {

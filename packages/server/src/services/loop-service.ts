@@ -1715,6 +1715,9 @@ export class LoopService {
   public extractRuntimeWarnings(stdout: string, stderr: string): Array<Record<string, unknown>> {
     return this.runtimeCommand.extractRuntimeWarnings(stdout, stderr);
   }
+  public extractWorkDisposition(stdout: string, diffLines: number): { disposition: 'changed' | 'no_change_required' | 'failed'; reason?: string } {
+    return this.runtimeCommand.extractWorkDisposition(stdout, diffLines);
+  }
   public runtimeWarningsBlockCompletion(warnings: Array<Record<string, unknown>>, run: LoopRunRecord): boolean {
     return this.runtimeCommand.runtimeWarningsBlockCompletion(warnings, run);
   }
@@ -1833,6 +1836,11 @@ export class LoopService {
         .map((lease) => lease.id)
     );
     return leases.filter((lease) => {
+      const linkedMakerId = lease.metadata.maker_lease_id;
+      const linkedMaker = typeof linkedMakerId === 'string'
+        ? leases.find((candidate) => candidate.id === linkedMakerId)
+        : undefined;
+      if (linkedMaker?.metadata.work_disposition === 'no_change_required') return false;
       if (lease.role === 'maker') {
         return !supersededMakerIds.has(lease.id);
       }
