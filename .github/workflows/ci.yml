@@ -76,7 +76,7 @@ jobs:
         run: |
           cd packages/server
           curl -sL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft packages/server -o spdx-json > sbom.json
+          syft . -o spdx-json > sbom.json
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
