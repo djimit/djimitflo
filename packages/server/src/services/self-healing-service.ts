@@ -38,7 +38,7 @@ interface HealingAction {
   id: string;
   incidentId: string;
   action: string;
-  result: 'success' | 'failed' | 'skipped';
+  result: 'success' | 'failed' | 'recommended' | 'skipped';
   output: string;
   timestamp: string;
 }
@@ -155,8 +155,6 @@ export class SelfHealingService {
     }
 
     this.incidents.push(...newIncidents);
-    this.actions.push(...newActions);
-
     return { incidents: newIncidents, actions: newActions };
   }
 
@@ -221,7 +219,7 @@ export class SelfHealingService {
       case 'loop_failure_rate':
         action.action = 'analyze_failures';
         action.output = 'Failure analysis complete. Recommend reviewing failed loop logs.';
-        action.result = 'success';
+        action.result = 'recommended';
         break;
 
       case 'stale_leases':
@@ -243,19 +241,19 @@ export class SelfHealingService {
       case 'orphaned_worktrees':
         action.action = 'flag_for_cleanup';
         action.output = 'Orphaned worktrees flagged for manual cleanup (filesystem operation)';
-        action.result = 'success';
+        action.result = 'recommended';
         break;
 
       case 'database_size':
         action.action = 'vacuum_recommend';
         action.output = 'Database size exceeds threshold. Recommend running VACUUM during maintenance window.';
-        action.result = 'success';
+        action.result = 'recommended';
         break;
 
       case 'memory_usage':
         action.action = 'gc_suggest';
         action.output = 'High memory usage detected. Recommend restarting the server process.';
-        action.result = 'success';
+        action.result = 'recommended';
         break;
 
       default:

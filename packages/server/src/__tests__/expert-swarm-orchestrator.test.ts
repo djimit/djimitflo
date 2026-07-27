@@ -23,6 +23,42 @@ afterEach(() => {
 // These tests make real HTTP calls to Wikipedia and other sources
 const describeOrSkip = describe.skip;
 
+describe('ExpertSwarmOrchestrator deterministic feedback loop', () => {
+  it('retries failed domains once with remaining sources and records a trace graph', async () => {
+    let calls = 0;
+    (orchestrator as any).registry = {
+      getAvailable: () => ['wikipedia', 'djimitkb'],
+      searchAll: async (_query: string, sources: string[]) => {
+        calls++;
+        if (sources.includes('wikipedia')) return [];
+        return [{
+          id: 'evidence-1',
+          content: 'Evidence-backed orchestration result.',
+          source: 'djimitkb',
+          confidence: 0.9,
+          url: 'https://example.test/evidence-1',
+          title: 'Evidence',
+        }];
+      },
+    };
+
+    const result = await orchestrator.dispatch({
+      topic: 'orchestration',
+      domains: ['software-engineering'],
+      sources: ['wikipedia'],
+    });
+
+    expect(calls).toBe(2);
+    expect(result.retry_count).toBe(1);
+    expect(result.expert_answers[0].source).toBe('djimitkb');
+    const spans = db.prepare('SELECT parent_span_id, name FROM agent_trace_spans WHERE trace_id = ?').all(result.trace_id) as any[];
+    expect(spans.some((span) => span.name.includes('attempt-1'))).toBe(true);
+    expect(spans.some((span) => span.name.includes('attempt-2'))).toBe(true);
+    expect(spans.some((span) => span.name === 'judge')).toBe(true);
+    expect(spans.filter((span) => span.parent_span_id).length).toBeGreaterThanOrEqual(3);
+  });
+});
+
 describeOrSkip('G93: Expert Swarm Orchestrator', () => {
   it('dispatches swarm with single domain', async () => {
     const result = await orchestrator.dispatch({

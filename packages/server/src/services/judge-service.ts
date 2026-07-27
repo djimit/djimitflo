@@ -69,6 +69,9 @@ export class JudgeService {
 
   evaluate(answers: ExpertAnswer[]): JudgeVerdict {
     if (answers.length === 0) return this.emptyVerdict();
+    if (answers.every((answer) => answer.source === 'none' || !answer.evidence_refs?.length)) {
+      return this.persistVerdict(this.noEvidenceVerdict(answers.length));
+    }
 
     const evidenceScore = this.scoreEvidence(answers);
     const sourceScore = this.scoreSources(answers);
@@ -109,10 +112,7 @@ export class JudgeService {
       },
     };
 
-    this.db.prepare('INSERT INTO judge_verdicts (id, verdict_json) VALUES (?, ?)').run(verdict.id, JSON.stringify(verdict));
-    this.db.prepare('INSERT OR IGNORE INTO judge_calibration (verdict_id, predicted_score) VALUES (?, ?)').run(verdict.id, score);
-
-    return verdict;
+    return this.persistVerdict(verdict);
   }
 
   recordCalibration(verdictId: string, actualOutcome: number): void {
@@ -308,6 +308,20 @@ export class JudgeService {
       cronbach_alpha: 0,
       sub_scores: { evidence: 0, source: 0, consistency: 0, uncertainty: 0 },
     };
+  }
+
+  private noEvidenceVerdict(answerCount: number): JudgeVerdict {
+    return {
+      ...this.emptyVerdict(),
+      reasoning: `Rejected ${answerCount} expert answer(s): no external evidence was available.`,
+      recommendations: ['Retry failed domains with a different configured source'],
+    };
+  }
+
+  private persistVerdict(verdict: JudgeVerdict): JudgeVerdict {
+    this.db.prepare('INSERT INTO judge_verdicts (id, verdict_json) VALUES (?, ?)').run(verdict.id, JSON.stringify(verdict));
+    this.db.prepare('INSERT OR IGNORE INTO judge_calibration (verdict_id, predicted_score) VALUES (?, ?)').run(verdict.id, verdict.score);
+    return verdict;
   }
 
   private extractClaims(content: string): string[] {

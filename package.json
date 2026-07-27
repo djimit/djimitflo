@@ -24,6 +24,7 @@
     "github:cocreate": "npm run github:cocreate --workspace=@djimitflo/server --",
     "swarm_proof": "npm run swarm_proof --workspace=@djimitflo/server",
     "demo_proof": "npm run demo_proof --workspace=@djimitflo/server",
+    "benchmark:self": "tsx benchmarks/djimflo-self-benchmark.ts",
     "clean": "rm -rf packages/*/dist packages/*/node_modules node_modules && find packages/*/src -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' -o -name '*.tsbuildinfo' | xargs rm -f"
   },
   "devDependencies": {

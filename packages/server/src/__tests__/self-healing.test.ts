@@ -94,6 +94,21 @@ describe('SelfHealingService', () => {
     const result = service.heal();
     expect(result.incidents).toBeDefined();
     expect(result.actions).toBeDefined();
+    expect(service.getStats().totalIncidents).toBe(result.incidents.length);
+  });
+
+  it('does not count recommendations as successful repairs or duplicate actions', () => {
+    for (let i = 0; i < 4; i++) {
+      db.prepare(`
+        INSERT INTO loop_runs (id, loop_name, status, created_at)
+        VALUES (?, 'test-loop', 'failed', datetime('now', '-1 hour'))
+      `).run(`failed-${i}`);
+    }
+
+    const result = service.heal();
+    const analysis = result.actions.find((action) => action.action === 'analyze_failures');
+    expect(analysis?.result).toBe('recommended');
+    expect(service.getStats().autoFixed).toBe(0);
   });
 
   it('provides stats', () => {

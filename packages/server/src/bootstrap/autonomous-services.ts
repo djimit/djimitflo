@@ -77,7 +77,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     void workerPool;
     void okfUpdater;
     new ExpertSwarmOrchestrator(db);
-    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
+    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater registered; invocation evidence required for validated status.');
   } catch (error) {
     console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }

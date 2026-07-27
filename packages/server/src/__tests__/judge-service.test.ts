@@ -37,6 +37,20 @@ describe('JudgeService', () => {
     expect(verdict.verification_status).toBe('unverifiable');
   });
 
+  it('rejects answers without evidence instead of assigning a middling score', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate([{
+      domain: 'research',
+      content: 'No knowledge found.',
+      source: 'none',
+      confidence: 0.1,
+      evidence_refs: [],
+    }]);
+    expect(verdict.score).toBe(0);
+    expect(verdict.verification_status).toBe('unverifiable');
+    expect(service.getVerdict(verdict.id)).toEqual(verdict);
+  });
+
   it('produces score between 0 and 100', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);

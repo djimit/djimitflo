@@ -217,8 +217,6 @@ export class MetaOrchestrationService {
     if (successRate > 0.85) diffMaxLines = 300; // Can afford larger diffs
     else if (successRate < 0.5) diffMaxLines = 100; // Be stricter
 
-    this.autoTuningsApplied++;
-
     return {
       goalType,
       recommendedConcurrency: concurrency,
@@ -226,6 +224,23 @@ export class MetaOrchestrationService {
       recommendedGateThresholds: { diffMaxLines, minSuccessRate: Math.max(0.5, successRate - 0.1) },
       confidence: Math.min(0.9, 0.3 + episodes.length * 0.03),
     };
+  }
+
+  applyLoopTuning(goalType: string): LoopTuning {
+    const tuning = this.getLoopTuning(goalType);
+    this.db.prepare(`
+      INSERT INTO meta_tuning_log
+        (id, goal_type, tuning_type, recommended_value, confidence, applied, created_at)
+      VALUES (?, ?, 'loop_parameters', ?, ?, 1, ?)
+    `).run(
+      `applied-${goalType}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      goalType,
+      JSON.stringify(tuning),
+      tuning.confidence,
+      new Date().toISOString(),
+    );
+    this.autoTuningsApplied++;
+    return tuning;
   }
 
   // ─── Routing Optimization ──────────────────────────────────────────

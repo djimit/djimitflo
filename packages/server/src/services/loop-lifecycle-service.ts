@@ -41,7 +41,10 @@ export class LoopLifecycleService {
     if (selectedFindingIds.size > 0 && run.findings.some((f) => selectedFindingIds.has(f.id) && this.loopService.isSplitFinding(f))) {
       throw new Error('LOOP_FINDING_ALREADY_SPLIT');
     }
-    const maxAssignments = Math.max(1, Math.min(input.max_assignments || 1, 5));
+    const effectiveConcurrency = input.max_assignments || (this.loopService.metaOrchestration
+      ? this.loopService.metaOrchestration.applyLoopTuning(run.loop_name || 'coding').recommendedConcurrency
+      : 1);
+    const maxAssignments = Math.max(1, Math.min(effectiveConcurrency, 5));
     const selectedFindings = run.findings
       .filter((f) => !this.loopService.isSplitFinding(f))
       .filter((f) => selectedFindingIds.size === 0 || selectedFindingIds.has(f.id))

@@ -255,6 +255,14 @@ describe('MetaOrchestrationService', () => {
     const tuning = meta.getLoopTuning('doc-drift');
     expect(tuning.recommendedConcurrency).toBe(2);
     expect(tuning.confidence).toBe(0.3);
+    expect(meta.getStats().autoTuningsApplied).toBe(0);
+  });
+
+  it('counts tuning only when a runtime consumer applies it', () => {
+    const tuning = meta.applyLoopTuning('doc-drift');
+    expect(tuning.recommendedConcurrency).toBe(2);
+    expect(meta.getStats().autoTuningsApplied).toBe(1);
+    expect(meta.getTuningHistory('doc-drift')[0].applied).toBe(true);
   });
 
   it('records outcome for learning', () => {
