@@ -25,6 +25,10 @@ describe('self-improvement scanners', () => {
     const stats = generator.getStats();
 
     expect(stats.testedServices + candidates.length).toBe(stats.totalServices);
+    expect(stats).toMatchObject({
+      coverageMetric: 'direct_test_file_match',
+      integrationCoverage: null,
+    });
     expect(candidates.flatMap((item) => item.methods)).not.toContain('VALUES');
     expect(candidates.flatMap((item) => item.methods)).not.toContain('mkdirSync');
     db.close();

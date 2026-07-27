@@ -272,6 +272,15 @@ describe('doc-drift-and-small-fix-loop', () => {
       status: 'implemented',
     });
 
+    process.env[JWT_SECRET_ENV] = 'runtime-contract-secret-sentinel';
+    const runtimeResponse = await fetch(`${baseUrl}/loops/runtime-contracts`);
+    expect(runtimeResponse.status).toBe(200);
+    const runtimeContracts = await runtimeResponse.json() as any;
+    expect(Object.keys(runtimeContracts.runtimes)).toEqual([
+      'manual', 'mock', 'codex', 'opencode', 'claude', 'gemini', 'editor', 'pi',
+    ]);
+    expect(JSON.stringify(runtimeContracts)).not.toContain('runtime-contract-secret-sentinel');
+
     const skillLoopResponse = await fetch(`${baseUrl}/loops/start`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

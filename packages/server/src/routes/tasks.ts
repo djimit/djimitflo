@@ -33,6 +33,10 @@ function parseTask(task: any): any {
   };
 }
 
+function isEnumValue<T extends Record<string, string>>(values: T, value: unknown): boolean {
+  return Object.values(values).includes(value as string);
+}
+
 export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -125,6 +129,12 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       if (!title || !description) {
         throw createError(400, 'Title and description are required', 'INVALID_INPUT');
+      }
+      if ((status !== undefined && !isEnumValue(TaskStatus, status))
+        || !isEnumValue(TaskPriority, priority)
+        || !isEnumValue(RiskLevel, risk_level || RiskLevel.LOW)
+        || !isEnumValue(ExecutionMode, execution_mode)) {
+        throw createError(400, 'Invalid task enum value', 'INVALID_INPUT');
       }
 
       const id = randomUUID();
@@ -332,6 +342,9 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       if (executionEngine.isTaskRunning(id)) {
         throw createError(409, 'Task is already running', 'TASK_RUNNING');
+      }
+      if (!executionEngine.getExecutor(executor as ExecutorKind)) {
+        throw createError(400, `Unknown executor: ${executor}`, 'INVALID_EXECUTOR');
       }
 
       const result = await executionEngine.executeTask(id, executor as ExecutorKind);

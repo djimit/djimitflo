@@ -32,7 +32,7 @@ describe('errorHandler', () => {
     const err = createError(404, 'Not found', 'RESOURCE_NOT_FOUND');
     const res = createMockResponse();
 
-    errorHandler(err, { method: 'GET', path: '/missing' } as Request, res, vi.fn());
+    errorHandler(err, { method: 'GET', path: '/missing', requestId: 'request-123' } as any, res, vi.fn());
 
     expect(res.status).toHaveBeenCalledWith(404);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -40,6 +40,7 @@ describe('errorHandler', () => {
         message: 'Not found',
         status: 404,
         code: 'RESOURCE_NOT_FOUND',
+        requestId: 'request-123',
       }),
     }));
   });

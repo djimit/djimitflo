@@ -12,11 +12,18 @@ export function requestLogger(req: Request, res: Response, next: NextFunction) {
     const { method, originalUrl, ip } = req;
     const { statusCode } = res;
     
-    const level = statusCode >= 500 ? 'ERROR' : statusCode >= 400 ? 'WARN' : 'INFO';
-    
-    console.log(
-      `[${level}] ${method} ${originalUrl} ${statusCode} ${duration}ms - ${ip}`
-    );
+    const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'info';
+
+    console.log(JSON.stringify({
+      level,
+      event: 'http_request',
+      requestId: (req as Request & { requestId?: string }).requestId,
+      method,
+      path: originalUrl,
+      statusCode,
+      durationMs: duration,
+      ip,
+    }));
   });
   
   next();

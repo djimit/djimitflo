@@ -11,6 +11,20 @@ import { createError } from '../middleware/error-handler';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
 
+function toEvalApiError(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  if (error.message === 'OPENMYTHOS_CASE_IDS_DUPLICATE') {
+    return createError(400, error.message, error.message);
+  }
+  if (error.message.startsWith('OPENMYTHOS_CASE_IDS_NOT_FOUND')) {
+    return createError(400, error.message, 'OPENMYTHOS_CASE_IDS_NOT_FOUND');
+  }
+  if (['OPENMYTHOS_CORPUS_PATH_REQUIRED', 'OPENMYTHOS_SUBJECT_MODEL_REQUIRED'].includes(error.message)) {
+    return createError(503, 'OpenMythos evaluation is not configured', 'OPENMYTHOS_NOT_CONFIGURED');
+  }
+  return error;
+}
+
 export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -27,7 +41,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
       const result = await evalService.runEval(req.params.agentId, categories, model, caseIds);
       res.status(201).json(result);
     } catch (error) {
-      next(error);
+      next(toEvalApiError(error));
     }
   });
 

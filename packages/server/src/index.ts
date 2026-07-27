@@ -15,6 +15,7 @@ import { join } from 'path';
 import { createRoutes } from './routes';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { requestContext } from './middleware/request-context';
 import { lifecycleManager } from './services/lifecycle-manager';
 import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
 import { PORT, HOST, logRansomwareStatus, ensureControlUrl } from './bootstrap/constants';
@@ -61,6 +62,7 @@ export async function main() {
     credentials: true,
   }));
   app.use(express.json());
+  app.use(requestContext);
   app.use(requestLogger);
 
   app.get('/health', (_req, res) => {

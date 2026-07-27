@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -161,6 +161,14 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
   });
 
   it('creates a complete persisted proof run, exposes it in mission control, and rolls it back', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const emptyLatestResponse = await fetch(`${baseUrl}/swarms/proof-runs/latest`);
+    expect(emptyLatestResponse.status).toBe(404);
+    expect(await emptyLatestResponse.json()).toMatchObject({ error: { code: 'PROOF_RUN_NOT_FOUND' } });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+
     const createResponse = await fetch(`${baseUrl}/swarms/proof-runs`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -202,6 +210,10 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
     expect(fetched.id).toBe(created.id);
     expect(fetched.passed).toBe(true);
     expect(fetched.production_passed).toBe(false);
+
+    const latestResponse = await fetch(`${baseUrl}/swarms/proof-runs/latest`);
+    expect(latestResponse.status).toBe(200);
+    expect(await latestResponse.json()).toMatchObject({ id: created.id, status: 'completed' });
 
     const missionResponse = await fetch(`${baseUrl}/swarms/intelligence/mission-control`);
     expect(missionResponse.status).toBe(200);

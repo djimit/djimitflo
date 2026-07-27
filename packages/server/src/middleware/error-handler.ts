@@ -18,14 +18,20 @@ export function errorHandler(
   const status = err.status || 500;
   const message = err.message || 'Internal Server Error';
   const code = err.code || 'INTERNAL_ERROR';
-  
-  console.error(`[ERROR] ${req.method} ${req.path}:`, err);
-  
+  const requestId = (req as Request & { requestId?: string }).requestId;
+
+  if (status >= 500) {
+    console.error(`[ERROR] ${req.method} ${req.path}:`, err);
+  } else {
+    console.warn(`[WARN] ${req.method} ${req.path}: ${code}`);
+  }
+
   res.status(status).json({
     error: {
       message,
       code,
       status,
+      ...(requestId && { requestId }),
       ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
     },
   });

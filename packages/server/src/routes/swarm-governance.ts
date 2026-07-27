@@ -18,14 +18,14 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { CsSkillSwarmHarnessService } from '../services/cs-skill-swarm-harness-service';
 import type { WebSocketService } from '../services/websocket-service';
 
-function mapProofRunError(error: unknown): never {
+function mapProofRunError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
-  if (message === 'PROOF_RUN_NOT_FOUND') throw createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
-  if (message === 'PROOF_RUN_RUNTIME_UNSUPPORTED') throw createError(400, 'Unsupported proof runtime', 'PROOF_RUN_RUNTIME_UNSUPPORTED');
-  if (message.startsWith('PROOF_RUN_RUNTIME_FAILED')) throw createError(503, message, 'PROOF_RUN_RUNTIME_FAILED');
-  if (message === 'PROOF_RUN_VERIFICATION_BLOCKED') throw createError(422, 'Proof run verification blocked', 'PROOF_RUN_VERIFICATION_BLOCKED');
-  if (message === 'PROOF_RUN_COMPLETE_FAILED') throw createError(500, 'Proof run completion failed', 'PROOF_RUN_COMPLETE_FAILED');
-  throw error;
+  if (message === 'PROOF_RUN_NOT_FOUND') return createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
+  if (message === 'PROOF_RUN_RUNTIME_UNSUPPORTED') return createError(400, 'Unsupported proof runtime', 'PROOF_RUN_RUNTIME_UNSUPPORTED');
+  if (message.startsWith('PROOF_RUN_RUNTIME_FAILED')) return createError(503, message, 'PROOF_RUN_RUNTIME_FAILED');
+  if (message === 'PROOF_RUN_VERIFICATION_BLOCKED') return createError(422, 'Proof run verification blocked', 'PROOF_RUN_VERIFICATION_BLOCKED');
+  if (message === 'PROOF_RUN_COMPLETE_FAILED') return createError(500, 'Proof run completion failed', 'PROOF_RUN_COMPLETE_FAILED');
+  return error;
 }
 
 function mapAssuranceError(error: unknown): never {
@@ -91,19 +91,19 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
 
   // Proof runs
   router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
-    try { const summary = await proofRuns.create(req.body || {}); emitProofRunUpdated(wsService, summary); res.status(201).json(summary); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const summary = await proofRuns.create(req.body || {}); emitProofRunUpdated(wsService, summary); res.status(201).json(summary); } catch (error) { next(mapProofRunError(error)); }
   });
 
   router.get('/proof-runs/latest', requirePermission('read:evidence'), (_req, res, next) => {
-    try { const latest = proofRuns.latest(); if (!latest) throw new Error('PROOF_RUN_NOT_FOUND'); res.json(latest); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const latest = proofRuns.latest(); if (!latest) throw new Error('PROOF_RUN_NOT_FOUND'); res.json(latest); } catch (error) { next(mapProofRunError(error)); }
   });
 
   router.get('/proof-runs/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(proofRuns.get(req.params.id)); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(proofRuns.get(req.params.id)); } catch (error) { next(mapProofRunError(error)); }
   });
 
   router.post('/proof-runs/:id/rollback', requirePermission('write:governance'), (req, res, next) => {
-    try { const summary = proofRuns.rollback(req.params.id); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const summary = proofRuns.rollback(req.params.id); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { next(mapProofRunError(error)); }
   });
 
   // Evolution

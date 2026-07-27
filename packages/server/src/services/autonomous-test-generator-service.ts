@@ -105,6 +105,8 @@ export class AutonomousTestGeneratorService {
     testedServices: number;
     untestedServices: number;
     coverage: number;
+    coverageMetric: 'direct_test_file_match';
+    integrationCoverage: null;
   } {
     const serviceFiles = this.getServiceFiles().filter((file) => {
       const content = readFileSync(file, 'utf8');
@@ -123,6 +125,8 @@ export class AutonomousTestGeneratorService {
       testedServices: tested,
       untestedServices: total - tested,
       coverage: total > 0 ? Math.round((tested / total) * 100) : 100,
+      coverageMetric: 'direct_test_file_match',
+      integrationCoverage: null,
     };
   }
 
