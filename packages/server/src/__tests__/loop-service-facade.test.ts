@@ -50,7 +50,7 @@ describe('LoopService delegation contract', () => {
     it('startDocDriftAndSmallFixLoop creates a run with findings', () => {
       const run = service.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
       expect(run.id).toBeDefined();
-      expect(['running', 'completed']).toContain(run.status);
+      expect(run.status).toBe('planning');
       expect(run.findings.length).toBeGreaterThan(0);
     });
 

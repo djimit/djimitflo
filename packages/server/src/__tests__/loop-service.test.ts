@@ -191,8 +191,14 @@ describe('doc-drift-and-small-fix-loop', () => {
     const run = await response.json() as any;
     expect(run.loop_name).toBe('doc-drift-and-small-fix-loop');
     expect(run.mode).toBe('closed');
-    expect(run.status).toBe('completed');
-    expect(run.metadata).toMatchObject({ dry_run: true, workers_leased: 0, mutating_actions: false });
+    expect(run.status).toBe('planning');
+    expect(run.completed_at).toBeNull();
+    expect(run.metadata).toMatchObject({
+      dry_run: true,
+      workers_leased: 0,
+      mutating_actions: false,
+      outcome: 'plan_ready',
+    });
     expect(run.findings.map((finding: any) => finding.type)).toEqual(expect.arrayContaining([
       'missing_script_reference',
       'broken_relative_link',
@@ -203,6 +209,25 @@ describe('doc-drift-and-small-fix-loop', () => {
     const state = fs.readFileSync(run.state_file, 'utf8');
     expect(state).toContain('read_only_discovery: pass');
     expect(state).toContain('Review proposed small-fix tasks');
+  });
+
+  it('records a terminal no-change outcome when discovery finds nothing', async () => {
+    const response = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir, max_findings: 10 }),
+    });
+
+    expect(response.status).toBe(201);
+    const run = await response.json() as any;
+    expect(run.status).toBe('completed');
+    expect(run.completed_at).not.toBeNull();
+    expect(run.metadata).toMatchObject({
+      dry_run: true,
+      workers_leased: 0,
+      mutating_actions: false,
+      outcome: 'no_change_required',
+    });
   });
 
   it('supports generic loop start, step, and stop aliases', async () => {
@@ -436,7 +461,7 @@ describe('doc-drift-and-small-fix-loop', () => {
 
     const runsResponse = await fetch(`${baseUrl}/loops/runs/${run.id}`);
     const unchangedRun = await runsResponse.json() as any;
-    expect(unchangedRun.status).toBe('completed');
+    expect(unchangedRun.status).toBe('planning');
   });
 
   it('blocks Codex worker leasing when runtime probe fails', async () => {
@@ -464,7 +489,7 @@ describe('doc-drift-and-small-fix-loop', () => {
 
     const runResponse = await fetch(`${baseUrl}/loops/runs/${run.id}`);
     const unchangedRun = await runResponse.json() as any;
-    expect(unchangedRun.status).toBe('completed');
+    expect(unchangedRun.status).toBe('planning');
   });
 
   it('executes a codex maker lease, captures output, and enforces diff threshold', async () => {

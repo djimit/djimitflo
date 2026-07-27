@@ -63,6 +63,7 @@ describe('G71: Self Improvement', () => {
     improvement.approveImprovement(proposals[0].id);
     const proposed = improvement.getProposedImprovements();
     expect(proposed.length).toBe(0);
+    expect(improvement.getImprovementHistory(1)[0].status).toBe('scheduled');
   });
 
   it('completes improvement', () => {
@@ -73,7 +74,7 @@ describe('G71: Self Improvement', () => {
     });
     improvement.completeImprovement(proposals[0].id);
     const history = improvement.getImprovementHistory(10);
-    expect(history[0].status).toBe('completed');
+    expect(history[0].status).toBe('applied');
   });
 
   it('classifies security improvements', () => {
