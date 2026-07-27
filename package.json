@@ -16,6 +16,7 @@
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
     "test": "npm run test --workspaces --if-present",
+    "audit:ci": "node scripts/ci-audit.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "type-check": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present",
     "proof:test": "npm run test --workspace=@djimitflo/server -- proof-run-service.test.ts",
@@ -49,6 +50,7 @@
     "ws": "^8.20.1"
   },
   "overrides": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "postcss": "^8.5.23"
   }
 }

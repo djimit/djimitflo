@@ -19,15 +19,10 @@ describe('main entry point', () => {
     process.env.JWT_SECRET = '';
 
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-
-    try {
-      await import('../index');
-    } catch {
-      // Expected to fail or exit
-    }
+    const { validateEnv } = await import('../config/env');
+    validateEnv();
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
   });
 
   it('starts server with valid config', async () => {
