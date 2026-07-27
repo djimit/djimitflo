@@ -454,6 +454,53 @@ export class ComplianceAuditService {
       );
     `);
   }
+
+  /**
+   * Export compliance report as CSV.
+   * FR-005: CSV export SHALL include columns: control, description, status, evidence, recommendation.
+   */
+  exportReportAsCsv(report: ComplianceReport): string {
+    const headers = ['control', 'description', 'status', 'evidence', 'recommendation'];
+    const escape = (val: string) => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return '"' + val.replace(/"/g, '""') + '"';
+      }
+      return val;
+    };
+    const rows = report.findings.map(f => [
+      escape(f.control),
+      escape(f.description),
+      escape(f.status),
+      escape(f.evidence.join('; ')),
+      escape(f.recommendation),
+    ]);
+    return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+  }
+
+  /**
+   * Export compliance report as formatted text (for PDF-like display).
+   */
+  exportReportAsText(report: ComplianceReport): string {
+    const lines: string[] = [];
+    lines.push('═══════════════════════════════════════════════════════════');
+    lines.push(`GOVERNANCE COMPLIANCE REPORT`);
+    lines.push(`Type: ${report.type.toUpperCase()}`);
+    lines.push(`Generated: ${report.generatedAt}`);
+    lines.push(`Period: ${report.period.start} → ${report.period.end}`);
+    lines.push(`Score: ${(report.score * 100).toFixed(0)}%`);
+    lines.push(`Status: ${report.status.toUpperCase()}`);
+    lines.push('═══════════════════════════════════════════════════════════');
+    lines.push('');
+    for (const finding of report.findings) {
+      const icon = finding.status === 'pass' ? '[PASS]' : finding.status === 'partial' ? '[WARN]' : '[FAIL]';
+      lines.push(`${icon} ${finding.control}`);
+      lines.push(`  ${finding.description}`);
+      if (finding.recommendation) {
+        lines.push(`  → ${finding.recommendation}`);
+      }
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+
 }
-
-
