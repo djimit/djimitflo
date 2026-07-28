@@ -5,7 +5,7 @@ import type { AddressInfo } from 'net';
 import { UserRole } from '@djimitflo/shared';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
-import type { TaskExecutor } from '../execution/types';
+import { ExecutionFailureError, type TaskExecutor } from '../execution/types';
 import { createTaskRoutes } from '../routes/tasks';
 import { errorHandler } from '../middleware/error-handler';
 
@@ -81,11 +81,20 @@ describe('task execution provider fallback HTTP chain', () => {
         };
       },
     });
-    engine.registerExecutor(executor('claude', {
-      status: 'failed',
-      message: 'provider unavailable',
-      error: '503 provider unavailable',
-    }));
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async () => {
+        attempts.push('claude');
+        throw new ExecutionFailureError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: '503 provider unavailable',
+          retryable: true,
+          sideEffectsPossible: false,
+          failureDomain: 'claude',
+        });
+      },
+    });
     engine.registerExecutor(executor('codex', { status: 'completed', message: 'done' }));
 
     const app = express();

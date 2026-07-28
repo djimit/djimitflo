@@ -21,6 +21,21 @@ export type ExecutionStatus =
   | 'failed' 
   | 'cancelled';
 
+export interface ExecutionFailure {
+  code: string;
+  message: string;
+  retryable: boolean;
+  sideEffectsPossible: boolean;
+  failureDomain?: string;
+}
+
+export class ExecutionFailureError extends Error {
+  constructor(public readonly failure: ExecutionFailure) {
+    super(failure.message);
+    this.name = 'ExecutionFailureError';
+  }
+}
+
 /**
  * Execution result returned when execution completes
  */
@@ -28,6 +43,7 @@ export interface ExecutionResult {
   status: 'completed' | 'failed' | 'cancelled';
   message: string;
   error?: string;
+  failure?: ExecutionFailure;
   artifacts?: ExecutionArtifact[];
   metrics?: ExecutionMetrics;
 }
