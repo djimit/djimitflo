@@ -61,6 +61,7 @@ function databaseProvenance(dbHandle: DbHandle) {
     mode: dbHandle.mode || 'snapshot',
     instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
     runtime_host: process.env.DJIMITFLO_RUNTIME_HOST || hostname(),
+    commit_sha: process.env.DJIMITFLO_COMMIT_SHA || null,
     schema_version: migration ?? sqliteSchema,
     last_updates: {
       goals: latestUpdate(dbHandle, 'goals'),

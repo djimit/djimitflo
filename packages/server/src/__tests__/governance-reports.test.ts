@@ -110,6 +110,10 @@ describe('Governance Reports Export', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
+      const specs = await fetch(`${baseUrl}/api/compliance/specs`);
+      expect(specs.status).toBe(200);
+      expect(await specs.json()).toMatchObject({ totalSpecs: 3 });
+
       const csv = await fetch(`${baseUrl}/api/compliance/reports/export?type=nora&format=csv`);
       expect(csv.status).toBe(200);
       expect(csv.headers.get('content-type')).toContain('text/csv');

@@ -49,6 +49,8 @@ FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
 
+ARG VCS_REF=unknown
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-minimal && \
     rm -rf /var/lib/apt/lists/*
@@ -79,6 +81,7 @@ COPY --from=builder /build/packages/telegram/dist packages/telegram/dist
 COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/dist
 COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
+COPY specs specs
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
@@ -95,6 +98,7 @@ ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
+ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 
 EXPOSE 3001
 

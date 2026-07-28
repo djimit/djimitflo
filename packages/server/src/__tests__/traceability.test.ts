@@ -108,7 +108,9 @@ describe('Spec Traceability Matrix', () => {
     });
 
     it('finds repository specs from the server workspace', () => {
-      expect(scanSpecsDirectory().length).toBeGreaterThan(0);
+      const matrix = buildTraceabilityMatrix(scanSpecsDirectory());
+      expect(matrix.totalFRs).toBe(29);
+      expect(matrix.coveredFRs).toBe(12);
     });
   });
 });

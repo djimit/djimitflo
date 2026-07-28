@@ -151,6 +151,7 @@ status changes to inactive.
 | FR-003, FR-004, FR-005 | `packages/dashboard/src/hooks/useCatalog.ts` | Create |
 | FR-001 | `packages/dashboard/src/App.tsx` | Extend (add route) |
 | FR-001 | `packages/dashboard/src/components/Layout.tsx` | Extend (add NavLink) |
+| FR-002, FR-003, FR-004, FR-005, FR-006, FR-007, FR-008, FR-009, FR-010, FR-012 | `packages/dashboard/src/pages/AgentCatalogPage.test.tsx` | Verify |
 
 ## Verified Library Specs
 

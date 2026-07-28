@@ -104,6 +104,7 @@ response is valid CSV with headers.
 | FR-001, FR-002, FR-003 | `packages/server/src/routes/compliance.ts` | Extend |
 | FR-004, FR-005 | `packages/server/src/services/spec-compliance-service.ts` | Extend |
 | FR-006 | `packages/server/src/routes/compliance.ts` | Extend |
+| FR-004, FR-005 | `packages/server/src/__tests__/spec-compliance-export.test.ts` | Verify |
 
 ## Verified Library Specs
 

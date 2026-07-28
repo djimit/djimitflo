@@ -234,6 +234,7 @@ describe('MCP Server Tools', () => {
     });
     expect(parsed.database.schema_version).toEqual(expect.any(Number));
     expect(parsed.database.runtime_host).toEqual(expect.any(String));
+    expect(parsed.database).toHaveProperty('commit_sha');
     expect(parsed.status).toBe('needs_attention');
     expect(parsed.summary.current_server_tools).toBe(Object.keys(registeredTools).length);
     expect(parsed.summary.db_mcp_tools).toBe(0);
