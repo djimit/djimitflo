@@ -13,12 +13,19 @@ WORKDIR /build
 # Copy all package manifests first (for layer caching)
 COPY package.json package-lock.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/shared/tsconfig.json packages/shared/
 COPY packages/server/package.json packages/server/
+COPY packages/server/tsconfig.json packages/server/
 COPY packages/dashboard/package.json packages/dashboard/
+COPY packages/dashboard/tsconfig.json packages/dashboard/
 COPY packages/telegram/package.json packages/telegram/
+COPY packages/telegram/tsconfig.json packages/telegram/
 COPY packages/agent-catalog/package.json packages/agent-catalog/
+COPY packages/agent-catalog/tsconfig.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
+COPY packages/mcp-server/tsconfig.json packages/mcp-server/
 COPY packages/ransomware-module/package.json packages/ransomware-module/
+COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
 # Install ALL dependencies (including dev) for building
 RUN npm install
@@ -29,7 +36,6 @@ COPY packages/server/src packages/server/src
 COPY packages/dashboard/src packages/dashboard/src
 COPY packages/dashboard/index.html packages/dashboard/index.html
 COPY packages/dashboard/vite.config.ts packages/dashboard/vite.config.ts
-COPY packages/dashboard/tsconfig.json packages/dashboard/tsconfig.json
 COPY packages/telegram/src packages/telegram/src
 COPY packages/agent-catalog/src packages/agent-catalog/src
 COPY packages/mcp-server/src packages/mcp-server/src
