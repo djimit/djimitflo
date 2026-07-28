@@ -4,6 +4,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { hostname } from 'os';
 import { requireLiveMode, type DbHandle } from '../db.js';
 
 type OpenApiToolRow = {
@@ -54,10 +55,13 @@ function databaseProvenance(dbHandle: DbHandle) {
   const migration = tableExists(dbHandle, 'schema_migrations')
     ? (one(dbHandle, 'SELECT MAX(version) AS value FROM schema_migrations') || {}).value
     : null;
+  const sqliteSchema = dbHandle.db.pragma('schema_version', { simple: true });
   return {
     path: dbHandle.path || dbHandle.db.name || ':memory:',
     mode: dbHandle.mode || 'snapshot',
-    schema_version: migration,
+    instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
+    runtime_host: process.env.DJIMITFLO_RUNTIME_HOST || hostname(),
+    schema_version: migration ?? sqliteSchema,
     last_updates: {
       goals: latestUpdate(dbHandle, 'goals'),
       loops: latestUpdate(dbHandle, 'loop_runs'),

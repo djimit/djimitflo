@@ -227,12 +227,13 @@ describe('MCP Server Tools', () => {
     const registeredTools = (server as any)._registeredTools;
     const result = await registeredTools['djimitflo_mcp_doctor'].handler({});
     const parsed = JSON.parse(result.content[0].text);
-    expect(parsed.database).toEqual({
+    expect(parsed.database).toMatchObject({
       path: ':memory:',
       mode: 'live',
-      schema_version: null,
       last_updates: { goals: null, loops: null, tasks: null },
     });
+    expect(parsed.database.schema_version).toEqual(expect.any(Number));
+    expect(parsed.database.runtime_host).toEqual(expect.any(String));
     expect(parsed.status).toBe('needs_attention');
     expect(parsed.summary.current_server_tools).toBe(Object.keys(registeredTools).length);
     expect(parsed.summary.db_mcp_tools).toBe(0);

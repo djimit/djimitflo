@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
+import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService } from './agent-assurance-service';
@@ -1119,7 +1120,7 @@ export class LoopService {
   }
   getCatalog() {
     return {
-      loops: LOOP_CONTRACTS.map((contract) => ({
+      loops: LOOP_CATALOG.map(({ name }) => this.getLoopContract(name)).map((contract) => ({
         ...contract,
         status: 'implemented',
         gates: [
