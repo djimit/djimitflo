@@ -143,13 +143,14 @@ export class GoalService {
 
   updateGoal(id: string, input: GoalUpdateInput): GoalRecord {
     const existing = this.getGoalById(id);
+    const metadata = { ...existing.metadata, ...(input.metadata || {}) };
     const next: GoalCreateInput = {
       objective: input.objective ?? existing.objective,
       constraints: input.constraints ?? existing.constraints,
       acceptance_criteria: input.acceptance_criteria ?? existing.acceptance_criteria,
       risk_class: input.risk_class ?? existing.risk_class,
       budget: input.budget ?? existing.budget,
-      metadata: input.metadata ?? existing.metadata,
+      metadata,
     };
     validateGoalInput(next);
 
@@ -157,6 +158,12 @@ export class GoalService {
     const status = input.status ?? existing.status;
     if (!validStatuses.includes(status)) {
       throw new Error('GOAL_STATUS_INVALID');
+    }
+    if (status === 'completed') {
+      const evidence = metadata.acceptance_evidence;
+      if (!Array.isArray(evidence) || evidence.length === 0) {
+        throw new Error('GOAL_COMPLETION_EVIDENCE_REQUIRED');
+      }
     }
 
     this.db.prepare(`

@@ -64,9 +64,11 @@ describe('FleetMeshService', () => {
   });
 
   it('creates handoff request', () => {
+    const from = service.registerNode({ name: 'node-a', endpoint: 'http://node-a:3001' });
+    const to = service.registerNode({ name: 'node-b', endpoint: 'http://node-b:3001' });
     const handoff = service.requestHandoff({
-      fromNode: 'node-a',
-      toNode: 'node-b',
+      fromNode: from.id,
+      toNode: to.id,
       agentId: 'agent-1',
       leaseId: 'lease-1',
     });
@@ -76,13 +78,16 @@ describe('FleetMeshService', () => {
   });
 
   it('accepts and completes handoff', () => {
+    const from = service.registerNode({ name: 'node-a', endpoint: 'http://node-a:3001' });
+    const to = service.registerNode({ name: 'node-b', endpoint: 'http://node-b:3001' });
     const handoff = service.requestHandoff({
-      fromNode: 'node-a', toNode: 'node-b', agentId: 'agent-1', leaseId: 'lease-1',
+      fromNode: from.id, toNode: to.id, agentId: 'agent-1', leaseId: 'lease-1',
     });
 
+    expect(() => service.completeHandoff(handoff.id)).toThrow('FLEET_HANDOFF_NOT_ACCEPTED');
     service.acceptHandoff(handoff.id);
     service.completeHandoff(handoff.id);
-    // No throw = success
+    expect(() => service.acceptHandoff(handoff.id)).toThrow('FLEET_HANDOFF_NOT_PENDING');
   });
 
   it('distributes work to best node', () => {
