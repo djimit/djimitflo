@@ -9,7 +9,15 @@ import { isAbsolute, join, resolve } from 'path';
 
 export interface DbHandle {
   db: Database.Database;
+  path?: string;
+  mode?: 'snapshot' | 'live';
   close: () => void;
+}
+
+export function requireLiveMode(handle: DbHandle): void {
+  if (handle.mode !== 'live') {
+    throw new Error('DJIMITFLO_LIVE_DATA_REQUIRED');
+  }
 }
 
 export function monorepoRoot(cwd = process.cwd()): string {
@@ -50,6 +58,8 @@ export function createDatabase(dbPath?: string): DbHandle {
 
   return {
     db,
+    path,
+    mode: process.env.DJIMITFLO_DATA_MODE === 'live' ? 'live' : 'snapshot',
     close: () => db.close(),
   };
 }

@@ -6,6 +6,7 @@
 import type { Database } from 'better-sqlite3';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
+import type { LoopName } from '@djimitflo/shared';
 
 export type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate };
 export type { LoopFinding };
@@ -15,14 +16,7 @@ export type LoopRunStatus = 'created' | 'planning' | 'running' | 'verifying' | '
 export type GateStatus = 'pass' | 'fail' | 'skipped';
 export type WorkerRole = 'planner' | 'maker' | 'checker' | 'security_checker' | 'memory_curator' | 'governance_guard';
 
-export type LoopName =
-  | 'doc-drift-and-small-fix-loop'
-  | 'repo-maintenance-loop'
-  | 'skill-quality-loop'
-  | 'mcp-connector-validation-loop'
-  | 'security-regression-loop'
-  | 'okf-synchronization-loop'
-  | 'overwatch-policy-drift-loop';
+export type { LoopName };
 
 export interface LoopContract {
   name: LoopName;

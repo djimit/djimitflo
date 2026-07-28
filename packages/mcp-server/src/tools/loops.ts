@@ -6,6 +6,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DbHandle } from '../db.js';
+import { LOOP_CATALOG, isCanonicalLoopName } from '@djimitflo/shared';
 
 export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
   const { db } = dbHandle;
@@ -30,7 +31,11 @@ export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
       params.push(limit);
 
       const rows = db.prepare(query).all(...params) as Array<Record<string, unknown>>;
-      return { content: [{ type: 'text' as const, text: JSON.stringify(rows, null, 2) }] };
+      const classified = rows.map((row) => ({
+        ...row,
+        source_kind: isCanonicalLoopName(String(row.loop_name)) ? 'runtime' : 'legacy_import',
+      }));
+      return { content: [{ type: 'text' as const, text: JSON.stringify(classified, null, 2) }] };
     }
   );
 
@@ -76,12 +81,7 @@ export function registerLoopTools(server: McpServer, dbHandle: DbHandle) {
         inputSchema: {},
       },
     async () => {
-      const catalog = [
-        { name: 'doc-drift-and-small-fix-loop', description: 'Detects documentation drift and small fix opportunities in repository files', mode: 'closed' },
-        { name: 'github-issue-loop', description: 'Processes GitHub issues through maker/checker workflow', mode: 'open' },
-        { name: 'self-improvement-loop', description: 'Autonomous self-improvement based on reflections and evidence', mode: 'closed' },
-      ];
-      return { content: [{ type: 'text' as const, text: JSON.stringify(catalog, null, 2) }] };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(LOOP_CATALOG, null, 2) }] };
     }
   );
 }

@@ -42,6 +42,8 @@ describe('MCP database path resolution', () => {
     process.env.INIT_CWD = tempDir;
     try {
       const db = createDatabase('./.data/djimitflo.sqlite');
+      expect(db.path).toBe(join(dbDir, 'djimitflo.sqlite'));
+      expect(db.mode).toBe('snapshot');
       db.close();
     } finally {
       if (previousInitCwd === undefined) delete process.env.INIT_CWD;
