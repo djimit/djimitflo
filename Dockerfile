@@ -77,6 +77,7 @@ COPY --from=builder /build/packages/server/dist packages/server/dist
 COPY --from=builder /build/packages/dashboard/dist packages/dashboard/dist
 COPY --from=builder /build/packages/telegram/dist packages/telegram/dist
 COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/dist
+COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 
 # Copy entrypoint
