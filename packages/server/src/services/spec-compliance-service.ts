@@ -120,8 +120,8 @@ export function exportReportAsCsv(report: ComplianceReport): string {
 export function scanSpecsDirectory(): Array<{ name: string; path: string; content: string }> {
   const fs = require('fs');
   const path = require('path');
-  const specsDir = path.resolve(process.cwd(), 'specs');
-  const archiveDir = path.resolve(process.cwd(), 'specs/archive');
+  const specsDir = path.resolve(__dirname, '../../../..', 'specs');
+  const archiveDir = path.join(specsDir, 'archive');
   const specs: Array<{ name: string; path: string; content: string }> = [];
 
   for (const dir of [specsDir, archiveDir]) {
