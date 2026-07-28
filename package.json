@@ -15,7 +15,7 @@
     "build": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run build --workspace=@djimitflo/server && npm run build --workspace=@djimitflo/dashboard",
     "build:server": "npm run build --workspace=@djimitflo/server",
     "build:dashboard": "npm run build --workspace=@djimitflo/dashboard",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present",
     "audit:ci": "node scripts/ci-audit.mjs",
     "audit:tables": "node scripts/table-reachability.mjs",
     "lint": "npm run lint --workspaces --if-present",
