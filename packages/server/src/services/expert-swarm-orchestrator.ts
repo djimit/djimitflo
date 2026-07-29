@@ -71,7 +71,8 @@ export class ExpertSwarmOrchestrator {
     }
 
     const verdict = this.judge.evaluate(answers);
-    const knowledgeUpdated = verdict.score >= 60;
+    const knowledgeUpdated = verdict.verification_status === 'verified'
+      && verdict.contradictions.length === 0;
 
     if (knowledgeUpdated) {
       this.storeKnowledge(input.topic, answers, verdict);

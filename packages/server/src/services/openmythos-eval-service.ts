@@ -17,7 +17,6 @@ import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { isDeepStrictEqual } from 'util';
 import type { Database } from 'better-sqlite3';
-import { JudgeService, type ExpertAnswer } from './judge-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { WorkerPool } from './worker-pool';
 import { SwarmEvidenceService } from './swarm-evidence-service';
@@ -95,14 +94,12 @@ function getCorpusPath(): string {
 export class OpenMythosEvalService {
   private casesCache: OpenMythosCase[] | null = null;
   private anchorsCache: Map<string, OracleAnchor> | null = null;
-  private judgeService: JudgeService;
   private workerPool: WorkerPool;
   private evidenceService: SwarmEvidenceService;
   private ollamaBreaker: OllamaCircuitBreaker;
   private corpusValidator: CorpusSchemaValidator;
 
   constructor(private db: Database) {
-    this.judgeService = new JudgeService(db);
     this.evidenceService = new SwarmEvidenceService(db);
     this.ollamaBreaker = new OllamaCircuitBreaker();
     this.corpusValidator = new CorpusSchemaValidator();
@@ -374,8 +371,7 @@ export class OpenMythosEvalService {
 
   /**
    * Judge an agent's response.
-   * Uses JudgeService when OPENMYTHOS_USE_JUDGE_SERVICE !== 'false'.
-   * Falls back to LLM-as-judge for backwards compatibility.
+   * Deterministic oracle first, otherwise rubric-aware LLM evaluation.
    */
   private async judgeResponse(
     testCase: OpenMythosCase,
@@ -383,11 +379,6 @@ export class OpenMythosEvalService {
   ): Promise<{ score: number; rationale: string; scoringSource: 'oracle' | 'judge'; oracleType?: string; oraclePass?: boolean }> {
     const anchored = this.scoreWithOracle(testCase.id, agentResponse);
     if (anchored) return anchored;
-    const useJudgeService = process.env.OPENMYTHOS_USE_JUDGE_SERVICE !== 'false';
-
-    if (useJudgeService) {
-      return { ...this.judgeWithJudgeService(testCase, agentResponse), scoringSource: 'judge' };
-    }
     return { ...await this.judgeWithLlm(testCase, agentResponse), scoringSource: 'judge' };
   }
 
@@ -453,43 +444,6 @@ export class OpenMythosEvalService {
       scoringSource: 'oracle' as const,
       oracleType: anchor.oracle_type,
       oraclePass: passed,
-    };
-  }
-
-  /**
-   * Judge using Djimitflo's JudgeService (4-dim scoring).
-   * Maps OpenMythos case to ExpertAnswer and converts 0-100 score to 1-5 scale.
-   */
-  private judgeWithJudgeService(
-    testCase: OpenMythosCase,
-    agentResponse: string
-  ): { score: number; rationale: string } {
-    const answer = this.caseToExpertAnswer(testCase, agentResponse);
-    const verdict = this.judgeService.evaluate([answer]);
-    const score = Math.max(1, Math.min(5, Math.round(verdict.score / 20)));
-
-    return {
-      score,
-      rationale: verdict.reasoning || `JudgeService: confidence=${verdict.confidence}, status=${verdict.verification_status}`,
-    };
-  }
-
-  /**
-   * Map OpenMythos case to JudgeService ExpertAnswer.
-   */
-  private caseToExpertAnswer(testCase: OpenMythosCase, agentResponse: string): ExpertAnswer {
-    return {
-      domain: testCase.category,
-      content: agentResponse,
-      source: 'openmythos_benchmark',
-      confidence: testCase.difficulty / 5,
-      evidence_refs: [testCase.id],
-      metadata: {
-        expected_behavior: testCase.expected_behavior,
-        failure_mode: testCase.failure_mode,
-        subcategory: testCase.subcategory,
-        difficulty: testCase.difficulty,
-      },
     };
   }
 

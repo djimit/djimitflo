@@ -79,7 +79,7 @@ describeOrSkip('G93: Expert Swarm Orchestrator', () => {
       sources: ['wikipedia'],
     });
 
-    expect(typeof result.knowledge_updated).toBe('boolean');
+    expect(result.knowledge_updated).toBe(false);
   });
 
   it('tracks history', async () => {

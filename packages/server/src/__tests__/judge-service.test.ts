@@ -44,20 +44,6 @@ describe('JudgeService', () => {
     expect(verdict.score).toBeLessThanOrEqual(100);
   });
 
-  it('includes confidence interval', () => {
-    const service = new JudgeService(db());
-    const verdict = service.evaluate(sampleAnswers);
-    expect(verdict.ci95).toBeDefined();
-    expect(verdict.ci95![0]).toBeLessThanOrEqual(verdict.score);
-    expect(verdict.ci95![1]).toBeGreaterThanOrEqual(verdict.score);
-  });
-
-  it('includes standard error', () => {
-    const service = new JudgeService(db());
-    const verdict = service.evaluate(sampleAnswers);
-    expect(verdict.standard_error).toBeGreaterThan(0);
-  });
-
   it('includes sub-scores', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);
@@ -89,10 +75,11 @@ describe('JudgeService', () => {
     expect(repetitive.score).toBeLessThan(varied.score);
   });
 
-  it('includes cronbach alpha', () => {
+  it('labels the score as heuristic', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);
-    expect(verdict.cronbach_alpha).toBeDefined();
+    expect(verdict.score_kind).toBe('heuristic');
+    expect(verdict.reasoning).toContain('external verification required');
   });
 
   it('detects contradictions between opposite claims', () => {
@@ -106,10 +93,10 @@ describe('JudgeService', () => {
     expect(verdict.verification_status).toBe('contradicted');
   });
 
-  it('returns verified status for consistent high-quality answers', () => {
+  it('keeps consistent high-quality answers pending external verification', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);
-    expect(verdict.verification_status).toBe('verified');
+    expect(verdict.verification_status).toBe('pending');
   });
 
   it('getApprovalAction returns auto_approve for high scores without contradictions', () => {
@@ -126,7 +113,7 @@ describe('JudgeService', () => {
     const retrieved = service.getVerdict(verdict.id);
     expect(retrieved).not.toBeNull();
     expect(retrieved!.score).toBe(verdict.score);
-    expect(retrieved!.ci95).toEqual(verdict.ci95);
+    expect(retrieved!.score_kind).toBe('heuristic');
   });
 
   it('getCalibrationError returns NaN with no reviews', () => {
@@ -137,10 +124,16 @@ describe('JudgeService', () => {
   it('recordCalibration enables ECE computation', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);
-    service.recordCalibration(verdict.id, 85);
+    service.recordCalibration(verdict.id, 0.85);
     const ece = service.getCalibrationError();
     expect(Number.isNaN(ece)).toBe(false);
     expect(ece).toBeGreaterThanOrEqual(0);
+  });
+
+  it('rejects calibration outcomes outside the probability range', () => {
+    const service = new JudgeService(db());
+    const verdict = service.evaluate(sampleAnswers);
+    expect(() => service.recordCalibration(verdict.id, 85)).toThrow('ACTUAL_OUTCOME_MUST_BE_BETWEEN_0_AND_1');
   });
 
   it('verdict history returns most recent first', () => {

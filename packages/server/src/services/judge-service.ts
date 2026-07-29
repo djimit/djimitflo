@@ -19,9 +19,7 @@ export interface JudgeVerdict {
   recommendations: string[];
   verification_status: 'verified' | 'pending' | 'contradicted' | 'unverifiable';
   created_at: string;
-  standard_error?: number;
-  ci95?: [number, number];
-  cronbach_alpha?: number;
+  score_kind: 'heuristic';
   sub_scores?: {
     evidence: number;
     source: number;
@@ -37,14 +35,10 @@ interface JudgeRow {
 }
 
 /**
- * JudgeService - psychometrically-informed expert answer evaluation.
+ * JudgeService - heuristic expert-answer triage.
  *
- * Improvements over v1:
- * - Rasch-model-inspired scoring (log-odds to probability scale)
- * - Cronbach's alpha for internal consistency reliability
- * - Confidence intervals via standard error of measurement
- * - Calibration tracking table for ECE computation
- * - Improved contradiction detection with trigram cosine similarity
+ * This score is not a correctness oracle or psychometric measurement.
+ * External outcomes are tracked separately for calibration.
  */
 export class JudgeService {
   constructor(private db: Database) {
@@ -75,7 +69,6 @@ export class JudgeService {
     const consistencyScore = this.scoreConsistency(answers);
     const uncertaintyPenalty = this.scoreUncertainty(answers);
 
-    // Rasch-inspired: convert log-odds to probability scale
     const logOdds = evidenceScore * 0.35 + sourceScore * 0.20 + consistencyScore * 0.30 - uncertaintyPenalty * 0.15;
     const probability = 1 / (1 + Math.exp(-logOdds));
     const score = Math.max(0, Math.min(100, probability * 100));
@@ -83,11 +76,6 @@ export class JudgeService {
     const contradictions = this.findContradictions(answers);
     const recommendations = this.generateRecommendations(answers, score, contradictions);
     const verificationStatus = this.determineVerification(score, contradictions, answers);
-
-    const cronbachAlpha = this.cronbachAlpha(answers);
-    const sem = this.standardErrorOfMeasurement(score, cronbachAlpha, answers.length);
-    const roundedScore = Math.round(score);
-    const ci95: [number, number] = [Math.max(0, roundedScore - 1.96 * sem), Math.min(100, roundedScore + 1.96 * sem)];
 
     const verdict: JudgeVerdict = {
       id: randomUUID(),
@@ -98,9 +86,7 @@ export class JudgeService {
       recommendations,
       verification_status: verificationStatus,
       created_at: new Date().toISOString(),
-      standard_error: Math.round(sem * 100) / 100,
-      ci95: [Math.round(ci95[0] * 100) / 100, Math.round(ci95[1] * 100) / 100],
-      cronbach_alpha: Math.round(cronbachAlpha * 1000) / 1000,
+      score_kind: 'heuristic',
       sub_scores: {
         evidence: Math.round(evidenceScore * 100),
         source: Math.round(sourceScore * 100),
@@ -116,6 +102,9 @@ export class JudgeService {
   }
 
   recordCalibration(verdictId: string, actualOutcome: number): void {
+    if (!Number.isFinite(actualOutcome) || actualOutcome < 0 || actualOutcome > 1) {
+      throw new Error('ACTUAL_OUTCOME_MUST_BE_BETWEEN_0_AND_1');
+    }
     this.db.prepare(
       'UPDATE judge_calibration SET actual_outcome = ?, reviewed_at = ? WHERE verdict_id = ?'
     ).run(actualOutcome, new Date().toISOString(), verdictId);
@@ -181,7 +170,7 @@ export class JudgeService {
   }
 
   private scoreSources(answers: ExpertAnswer[]): number {
-    const weights: Record<string, number> = { arxiv: 1.5, wikipedia: 1.2, okf: 1.0, djimitkb: 0.9 };
+    const weights: Record<string, number> = { arxiv: 1, wikipedia: 0.8, okf: 0.7, djimitkb: 0.6 };
     let total = 0;
     for (const answer of answers) {
       total += weights[answer.source] ?? 0.4;
@@ -211,27 +200,6 @@ export class JudgeService {
     return (1 - avgConfidence) * 0.75 + (lowConfidenceCount / answers.length) * 0.75;
   }
 
-  private cronbachAlpha(answers: ExpertAnswer[]): number {
-    if (answers.length < 2) return 0;
-    const scores = answers.map(a => {
-      const evidence = (a.evidence_refs?.length ?? 0) >= 3 ? 90 : (a.evidence_refs?.length ?? 0) >= 1 ? 70 : a.content.length > 200 ? 50 : 30;
-      const source = ({ arxiv: 90, wikipedia: 70, okf: 60, djimitkb: 50 }[a.source] ?? 20);
-      return (evidence + source + a.confidence * 100) / 3;
-    });
-    const n = scores.length;
-    const mean = scores.reduce((a, b) => a + b, 0) / n;
-    const variance = scores.reduce((sum, s) => sum + (s - mean) ** 2, 0) / n;
-    if (variance === 0) return 1;
-    const alpha = n >= 2 ? Math.min(1, Math.max(0, 1 - 1 / (n * (variance + 1)))) : 0;
-    return Math.max(0, Math.min(1, alpha));
-  }
-
-  private standardErrorOfMeasurement(_score: number, reliability: number, n: number): number {
-    if (n < 2 || reliability <= 0) return 15;
-    const sd = 25;
-    return sd * Math.sqrt(1 - Math.max(0, reliability));
-  }
-
   private findContradictions(answers: ExpertAnswer[]): string[] {
     const contradictions: string[] = [];
     for (let i = 0; i < answers.length; i++) {
@@ -250,11 +218,15 @@ export class JudgeService {
   }
 
   private areOpposite(a: string, b: string): boolean {
-    const negators = /\b(not|never|no|cannot|impossible|false|isn't|is not|does not|doesn't|fails? to|lacks?|without|unable|prohibited|forbidden)\b/gi;
+    const negators = /\b(not|never|no|cannot|impossible|false|isn't|is not|does not|doesn't|fails? to|lacks?|without|unable|prohibited|forbidden)\b/i;
     const aHasNeg = negators.test(a);
     const bHasNeg = negators.test(b);
     if (aHasNeg === bHasNeg) return false;
-    const strip = (s: string) => s.replace(negators, '').replace(/(does|do|did|is|are|was|were|has|have|had|will|would|shall|should|may|might|can|could)/g, '').replace(/\s+/g, ' ').trim();
+    const strip = (s: string) => s
+      .replace(new RegExp(negators.source, 'gi'), '')
+      .replace(/\b(does|do|did|is|are|was|were|has|have|had|will|would|shall|should|may|might|can|could)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const aCore = strip(a.toLowerCase());
     const bCore = strip(b.toLowerCase());
     if (aCore.length < 5 || bCore.length < 5) return false;
@@ -283,21 +255,19 @@ export class JudgeService {
   }
 
   private determineVerification(score: number, contradictions: string[], _answers: ExpertAnswer[]): JudgeVerdict['verification_status'] {
-    if (score >= 70 && contradictions.length === 0) return 'verified';
-    if (score >= 50 && contradictions.length === 0) return 'pending';
     if (contradictions.length >= 1) return 'contradicted';
+    if (score >= 50) return 'pending';
     return 'unverifiable';
   }
 
   private calculateConfidence(answers: ExpertAnswer[]): number {
     if (answers.length === 0) return 0;
     const avg = answers.reduce((sum, a) => sum + a.confidence, 0) / answers.length;
-    const agreementBonus = answers.length >= 3 ? 0.1 : 0;
-    return Math.min(1, avg + agreementBonus);
+    return Math.min(1, avg);
   }
 
   private generateReasoning(answers: ExpertAnswer[], score: number, evidence: number, source: number, consistency: number, uncertainty: number): string {
-    return `Evaluated ${answers.length} expert answer(s). Evidence: ${(evidence * 100).toFixed(0)}, Source: ${(source * 100).toFixed(0)}, Consistency: ${(consistency * 100).toFixed(0)}, Uncertainty: ${(uncertainty * 100).toFixed(0)}. Rasch probability: ${score.toFixed(1)}/100.`;
+    return `Heuristic triage of ${answers.length} expert answer(s). Evidence: ${(evidence * 100).toFixed(0)}, Source: ${(source * 100).toFixed(0)}, Consistency: ${(consistency * 100).toFixed(0)}, Uncertainty: ${(uncertainty * 100).toFixed(0)}. Heuristic score: ${score.toFixed(1)}/100; external verification required.`;
   }
 
   private emptyVerdict(): JudgeVerdict {
@@ -310,9 +280,7 @@ export class JudgeService {
       recommendations: ['Provide at least one expert answer'],
       verification_status: 'unverifiable',
       created_at: new Date().toISOString(),
-      standard_error: 25,
-      ci95: [0, 0],
-      cronbach_alpha: 0,
+      score_kind: 'heuristic',
       sub_scores: { evidence: 0, source: 0, consistency: 0, uncertainty: 0 },
     };
   }

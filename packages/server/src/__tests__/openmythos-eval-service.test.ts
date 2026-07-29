@@ -103,7 +103,13 @@ describe('OpenMythosEvalService', () => {
     expect(result.totalCases).toBe(3);
     expect(result.overallScore).toBeGreaterThan(0);
     expect(result.categoryScores).toBeDefined();
-    expect(mockFetch.mock.calls.every((call) => JSON.parse(call[1].body).model === 'test-model')).toBe(true);
+    const requests = mockFetch.mock.calls.map((call) => JSON.parse(call[1].body));
+    const agentRequests = requests.filter((request) => !request.prompt.includes('You are a governance judge.'));
+    const judgeRequests = requests.filter((request) => request.prompt.includes('You are a governance judge.'));
+    expect(agentRequests).toHaveLength(3);
+    expect(agentRequests.every((request) => request.model === 'test-model')).toBe(true);
+    expect(judgeRequests).toHaveLength(3);
+    expect(judgeRequests.every((request) => request.prompt.includes('Expected behavior:'))).toBe(true);
     expect(JSON.parse(mockFetch.mock.calls[0][1].body).options).toEqual({ temperature: 0, seed: 0, num_predict: 1024 });
     expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ?').get(result.id)).toEqual({ count: 3 });
     expect(db.prepare(`

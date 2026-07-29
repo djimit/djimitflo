@@ -4,8 +4,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { hostname } from 'os';
-import { requireLiveMode, type DbHandle } from '../db.js';
+import { databaseProvenance, requireLiveMode, type DbHandle } from '../db.js';
 
 type OpenApiToolRow = {
   id: string;
@@ -51,17 +50,13 @@ function latestUpdate(dbHandle: DbHandle, table: string) {
   return (one(dbHandle, `SELECT MAX(updated_at) AS value FROM ${table}`) || {}).value || null;
 }
 
-function databaseProvenance(dbHandle: DbHandle) {
+function detailedDatabaseProvenance(dbHandle: DbHandle) {
   const migration = tableExists(dbHandle, 'schema_migrations')
     ? (one(dbHandle, 'SELECT MAX(version) AS value FROM schema_migrations') || {}).value
     : null;
   const sqliteSchema = dbHandle.db.pragma('schema_version', { simple: true });
   return {
-    path: dbHandle.path || dbHandle.db.name || ':memory:',
-    mode: dbHandle.mode || 'snapshot',
-    instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
-    runtime_host: process.env.DJIMITFLO_RUNTIME_HOST || hostname(),
-    commit_sha: process.env.DJIMITFLO_COMMIT_SHA || null,
+    ...databaseProvenance(dbHandle),
     schema_version: migration ?? sqliteSchema,
     last_updates: {
       goals: latestUpdate(dbHandle, 'goals'),
@@ -159,6 +154,15 @@ function classifyTool(name: string) {
 
 export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
   server.registerTool(
+    'djimitflo_get_data_provenance',
+    {
+      description: 'Report the exact database identity, node, mode, schema, commit, and latest state timestamps used by this MCP server',
+      inputSchema: {},
+    },
+    async () => text(detailedDatabaseProvenance(dbHandle))
+  );
+
+  server.registerTool(
     'djimitflo_mcp_doctor',
     {
       description: 'Diagnose drift between the live Djimitflo MCP server, DB registry, permissions, and stale server records',
@@ -202,6 +206,9 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
       const registryToolsNotInCurrentServer = dbToolNames.filter((name) => !runtimeToolNameSet.has(name));
 
       const recommendedActions: string[] = [];
+      if (!databaseProvenance(dbHandle).instance_id) {
+        recommendedActions.push('initialize a persistent database_instance_id before treating this data source as live');
+      }
       if (currentToolsMissingRegistryRows.length > 0) {
         recommendedActions.push('sync current Djimitflo MCP tool catalog into mcp_tools with risk metadata');
       }
@@ -229,7 +236,7 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
 
       return text({
         status: recommendedActions.length === 1 && recommendedActions[0].startsWith('no ') ? 'ok' : 'needs_attention',
-        database: databaseProvenance(dbHandle),
+        database: detailedDatabaseProvenance(dbHandle),
         summary: {
           current_server_tools: runtimeToolNames.length,
           db_mcp_servers: servers.length,

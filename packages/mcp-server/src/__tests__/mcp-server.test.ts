@@ -116,6 +116,11 @@ function createTestDb(): DbHandle {
       id TEXT PRIMARY KEY, run_id TEXT, case_id TEXT, category TEXT, status TEXT DEFAULT 'pending',
       created_at TEXT NOT NULL
     );
+    CREATE TABLE system_state (
+      key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT INTO system_state (key, value, updated_at)
+    VALUES ('database_instance_id', 'mcp-test-instance', datetime('now'));
   `);
   return { db, mode: 'live', close: () => db.close() };
 }
@@ -159,6 +164,7 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_system_health');
     expect(toolNames).toContain('djimitflo_list_orchestration_agents');
     expect(toolNames).toContain('djimitflo_mcp_doctor');
+    expect(toolNames).toContain('djimitflo_get_data_provenance');
     expect(toolNames).toContain('djimitflo_sync_mcp_catalog');
     expect(toolNames).toContain('djimitflo_sync_http_sidecar_catalog');
     expect(toolNames).toContain('djimitflo_probe_mcp_sidecars');
@@ -223,6 +229,16 @@ describe('MCP Server Tools', () => {
     expect(parsed.by_model).toEqual([]);
   });
 
+  it('reports the exact database identity used by MCP', async () => {
+    const registeredTools = (server as any)._registeredTools;
+    const result = await registeredTools['djimitflo_get_data_provenance'].handler({});
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      instance_id: 'mcp-test-instance',
+      mode: 'live',
+      path: ':memory:',
+    });
+  });
+
   it('mcp_doctor reports registry drift without mutating state', async () => {
     const registeredTools = (server as any)._registeredTools;
     const result = await registeredTools['djimitflo_mcp_doctor'].handler({});
@@ -233,7 +249,8 @@ describe('MCP Server Tools', () => {
       last_updates: { goals: null, loops: null, tasks: null },
     });
     expect(parsed.database.schema_version).toEqual(expect.any(Number));
-    expect(parsed.database.runtime_host).toEqual(expect.any(String));
+    expect(parsed.database.node_id).toEqual(expect.any(String));
+    expect(parsed.database.instance_id).toBe('mcp-test-instance');
     expect(parsed.database).toHaveProperty('commit_sha');
     expect(parsed.status).toBe('needs_attention');
     expect(parsed.summary.current_server_tools).toBe(Object.keys(registeredTools).length);

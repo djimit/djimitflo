@@ -6,6 +6,7 @@
 import Database from 'better-sqlite3';
 import { existsSync } from 'fs';
 import { isAbsolute, join, resolve } from 'path';
+import { hostname } from 'os';
 
 export interface DbHandle {
   db: Database.Database;
@@ -18,6 +19,31 @@ export function requireLiveMode(handle: DbHandle): void {
   if (handle.mode !== 'live') {
     throw new Error('DJIMITFLO_LIVE_DATA_REQUIRED');
   }
+  const provenance = databaseProvenance(handle);
+  if (!provenance.instance_id) throw new Error('DJIMITFLO_DATABASE_ID_REQUIRED');
+  const expected = process.env.DJIMITFLO_EXPECTED_INSTANCE_ID;
+  if (expected && provenance.instance_id !== expected) {
+    throw new Error(`DJIMITFLO_DATABASE_ID_MISMATCH:${provenance.instance_id}`);
+  }
+}
+
+function stateValue(handle: DbHandle, key: string): string | null {
+  try {
+    const row = handle.db.prepare('SELECT value FROM system_state WHERE key = ?').get(key) as { value?: string } | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function databaseProvenance(handle: DbHandle) {
+  return {
+    instance_id: stateValue(handle, 'database_instance_id'),
+    node_id: process.env.DJIMITFLO_NODE_ID || hostname(),
+    path: handle.path || handle.db.name || ':memory:',
+    mode: handle.mode || 'snapshot',
+    commit_sha: process.env.DJIMITFLO_COMMIT_SHA || null,
+  };
 }
 
 export function monorepoRoot(cwd = process.cwd()): string {

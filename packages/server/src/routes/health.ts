@@ -8,6 +8,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { MetricsService } from '../services/metrics-service';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { getAppVersion } from '../utils/version';
+import { getDatabaseProvenance } from '../database/provenance';
 
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -15,7 +16,13 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
 
   // GET /api/health — basic health check (public)
   router.get('/', (_req, res) => {
-    res.json({ status: 'healthy', name: 'djimitflo', version: getAppVersion(), timestamp: new Date().toISOString() });
+    res.json({
+      status: 'healthy',
+      name: 'djimitflo',
+      version: getAppVersion(),
+      database: getDatabaseProvenance(db),
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // GET /api/health/deep — deep health check with dependency verification
@@ -77,6 +84,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
     const allOk = Object.values(checks).every((c) => c.status !== 'error');
     res.status(allOk ? 200 : 503).json({
       status: allOk ? 'healthy' : 'degraded',
+      database: getDatabaseProvenance(db),
       checks,
       timestamp: new Date().toISOString(),
     });

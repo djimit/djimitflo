@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve } from 'path';
 import Database from 'better-sqlite3';
-import { createDatabase, monorepoRoot, resolveDatabasePath } from '../db.js';
+import { createDatabase, databaseProvenance, monorepoRoot, requireLiveMode, resolveDatabasePath } from '../db.js';
 
 let tempDir: string | undefined;
 
@@ -49,5 +49,18 @@ describe('MCP database path resolution', () => {
       if (previousInitCwd === undefined) delete process.env.INIT_CWD;
       else process.env.INIT_CWD = previousInitCwd;
     }
+  });
+
+  it('requires a persistent database identity for live mutations', () => {
+    const db = new Database(':memory:');
+    db.exec('CREATE TABLE system_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)');
+    const handle = { db, path: ':memory:', mode: 'live' as const, close: () => db.close() };
+
+    expect(() => requireLiveMode(handle)).toThrow('DJIMITFLO_DATABASE_ID_REQUIRED');
+    db.prepare('INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))')
+      .run('database_instance_id', 'test-instance');
+    expect(() => requireLiveMode(handle)).not.toThrow();
+    expect(databaseProvenance(handle).instance_id).toBe('test-instance');
+    handle.close();
   });
 });
