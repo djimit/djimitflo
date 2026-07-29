@@ -8,10 +8,10 @@
  *   Analyze → Plan → Implement → Test → Evidence → PR (human approval) → Merge
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { execSync } from 'child_process';
-import { writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { readdirSync, readFileSync } from 'fs';
+import { basename, join } from 'path';
 import type { Database } from 'better-sqlite3';
 
 interface ImprovementOpportunity {
@@ -45,22 +45,11 @@ interface PlannedChange {
   after?: string;
 }
 
-interface ModificationResult {
-  id: string;
-  planId: string;
-  status: 'pending' | 'implemented' | 'tested' | 'pr_created' | 'merged' | 'rejected';
-  prUrl?: string;
-  evidence: Record<string, unknown>;
-  implementedAt?: string;
-  testedAt?: string;
-  createdAt: string;
-}
-
 export class SelfModificationPipeline {
   private readonly repoRoot: string;
 
-  constructor(private db: Database) {
-    this.repoRoot = process.cwd();
+  constructor(private db: Database, repoRoot = process.cwd()) {
+    this.repoRoot = repoRoot;
     this.ensureTables();
   }
 
@@ -79,16 +68,31 @@ export class SelfModificationPipeline {
     // 3. Detect TODO/FIXME comments
     opportunities.push(...this.detectTodoComments());
 
-    // Store opportunities
+    const activeIds = new Set(opportunities.map((opportunity) => opportunity.id));
     for (const opp of opportunities) {
       this.db.prepare(`
-        INSERT OR IGNORE INTO self_modification_opportunities
-        (id, type, severity, file_path, line_number, description, suggestion, estimated_effort, detected_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO self_modification_opportunities
+        (id, type, severity, file_path, line_number, description, suggestion, estimated_effort,
+         detected_at, first_seen_at, last_seen_at, seen_count, analyzer_version, resolved_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'v2', NULL)
+        ON CONFLICT(id) DO UPDATE SET
+          severity = excluded.severity,
+          suggestion = excluded.suggestion,
+          estimated_effort = excluded.estimated_effort,
+          last_seen_at = excluded.last_seen_at,
+          seen_count = self_modification_opportunities.seen_count + 1,
+          resolved_at = NULL
       `).run(
         opp.id, opp.type, opp.severity, opp.file, opp.line || null,
         opp.description, opp.suggestion, opp.estimatedEffort, opp.detectedAt,
+        opp.detectedAt, opp.detectedAt,
       );
+    }
+    const activeV2 = this.db.prepare("SELECT id FROM self_modification_opportunities WHERE analyzer_version = 'v2' AND resolved_at IS NULL").all() as Array<{ id: string }>;
+    const resolve = this.db.prepare('UPDATE self_modification_opportunities SET resolved_at = ? WHERE id = ?');
+    const now = new Date().toISOString();
+    for (const row of activeV2) {
+      if (!activeIds.has(row.id)) resolve.run(now, row.id);
     }
 
     return opportunities;
@@ -125,63 +129,6 @@ export class SelfModificationPipeline {
   }
 
   /**
-   * Execute a modification plan (implement + test).
-   */
-  async executePlan(planId: string): Promise<ModificationResult> {
-    const plan = this.db.prepare('SELECT * FROM self_modification_plans WHERE id = ?').get(planId) as any;
-    if (!plan) throw new Error('PLAN_NOT_FOUND');
-
-    const result: ModificationResult = {
-      id: randomUUID(),
-      planId,
-      status: 'pending',
-      evidence: {},
-      createdAt: new Date().toISOString(),
-    };
-
-    try {
-      // Apply changes
-      const changes = JSON.parse(plan.changes_json);
-      for (const change of changes) {
-        this.applyChange(change);
-      }
-      result.status = 'implemented';
-      result.implementedAt = new Date().toISOString();
-
-      // Run tests
-      const testResult = this.runTests();
-      result.evidence.tests = testResult;
-
-      if (testResult.success) {
-        result.status = 'tested';
-        result.testedAt = new Date().toISOString();
-      } else {
-        // Rollback on test failure
-        this.rollback(planId);
-        result.status = 'rejected';
-        result.evidence.rollbackReason = 'Tests failed';
-      }
-    } catch (error) {
-      result.status = 'rejected';
-      result.evidence.error = error instanceof Error ? error.message : String(error);
-      this.rollback(planId);
-    }
-
-    // Store result
-    this.db.prepare(`
-      INSERT INTO self_modification_results
-      (id, plan_id, status, evidence_json, implemented_at, tested_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      result.id, result.planId, result.status,
-      JSON.stringify(result.evidence), result.implementedAt || null,
-      result.testedAt || null, result.createdAt,
-    );
-
-    return result;
-  }
-
-  /**
    * Get the status of all self-modification activities.
    */
   getStatus(): {
@@ -191,7 +138,7 @@ export class SelfModificationPipeline {
     tested: number;
     rejected: number;
   } {
-    const opportunities = (this.db.prepare('SELECT COUNT(*) as c FROM self_modification_opportunities').get() as any)?.c || 0;
+    const opportunities = (this.db.prepare('SELECT COUNT(*) as c FROM self_modification_opportunities WHERE resolved_at IS NULL').get() as any)?.c || 0;
     const plans = (this.db.prepare('SELECT COUNT(*) as c FROM self_modification_plans').get() as any)?.c || 0;
     const implemented = (this.db.prepare("SELECT COUNT(*) as c FROM self_modification_results WHERE status IN ('implemented', 'tested', 'pr_created', 'merged')").get() as any)?.c || 0;
     const tested = (this.db.prepare("SELECT COUNT(*) as c FROM self_modification_results WHERE status IN ('tested', 'pr_created', 'merged')").get() as any)?.c || 0;
@@ -219,13 +166,14 @@ export class SelfModificationPipeline {
         const lines = parseInt(match[1]);
         const filePath = match[2];
 
-        if (lines > 800) {
+        if (filePath !== 'total' && lines > 800) {
+          const description = `File has ${lines} lines — consider decomposition`;
           opportunities.push({
-            id: randomUUID(),
+            id: this.findingId('complexity', filePath, undefined, description),
             type: 'complexity',
             severity: lines > 1500 ? 'high' : 'medium',
             file: filePath,
-            description: `File has ${lines} lines — consider decomposition`,
+            description,
             suggestion: 'Extract focused services following single-responsibility principle',
             estimatedEffort: lines > 1500 ? '4-8 hours' : '1-2 hours',
             detectedAt: new Date().toISOString(),
@@ -243,21 +191,22 @@ export class SelfModificationPipeline {
     const opportunities: ImprovementOpportunity[] = [];
 
     try {
-      // Find route files without corresponding test files
+      const testImports = this.testImports();
       const output = execSync(
         'find packages/server/src/routes -name "*.ts" ! -name "*.test.ts" 2>/dev/null',
         { encoding: 'utf8', cwd: this.repoRoot, stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 },
       );
 
       for (const filePath of output.split('\n').filter(Boolean)) {
-        const testPath = filePath.replace('.ts', '.test.ts');
-        if (!existsSync(join(this.repoRoot, testPath))) {
+        const routeName = basename(filePath, '.ts');
+        if (!testImports.has(routeName)) {
+          const description = `No test imports route ${filePath}`;
           opportunities.push({
-            id: randomUUID(),
+            id: this.findingId('test_gap', filePath, undefined, description),
             type: 'test_gap',
             severity: 'medium',
             file: filePath,
-            description: `No test file found for ${filePath}`,
+            description,
             suggestion: 'Create integration tests for route handlers',
             estimatedEffort: '30-60 minutes',
             detectedAt: new Date().toISOString(),
@@ -285,7 +234,7 @@ export class SelfModificationPipeline {
         if (!match) continue;
 
         opportunities.push({
-          id: randomUUID(),
+          id: this.findingId('dead_code', match[1], parseInt(match[2]), `${match[3]}: ${match[4].slice(0, 80)}`),
           type: 'dead_code',
           severity: 'low',
           file: match[1],
@@ -301,6 +250,27 @@ export class SelfModificationPipeline {
     }
 
     return opportunities;
+  }
+
+  private findingId(type: string, file: string, line: number | undefined, description: string): string {
+    const digest = createHash('sha256')
+      .update(['v2', type, file, line ?? '', description].join('\0'))
+      .digest('hex')
+      .slice(0, 24);
+    return `selfmod:v2:${digest}`;
+  }
+
+  private testImports(): Set<string> {
+    const imports = new Set<string>();
+    const testsDir = join(this.repoRoot, 'packages/server/src/__tests__');
+    for (const entry of readdirSync(testsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue;
+      const content = readFileSync(join(testsDir, entry.name), 'utf8');
+      for (const match of content.matchAll(/from\s+['"]\.\.\/routes\/([^'"]+)['"]/g)) {
+        imports.add(match[1]);
+      }
+    }
+    return imports;
   }
 
   private generateChanges(opp: Record<string, unknown>): PlannedChange[] {
@@ -332,39 +302,6 @@ export class SelfModificationPipeline {
     }
 
     return changes;
-  }
-
-  private applyChange(change: PlannedChange): void {
-    if (change.type === 'add' && change.after) {
-      const fullPath = join(this.repoRoot, change.file);
-      writeFileSync(fullPath, change.after);
-    }
-    // For modify/refactor, we'd need LLM-generated patches (v2)
-  }
-
-  private runTests(): { success: boolean; output: string } {
-    try {
-      const output = execSync('npx vitest run --reporter=verbose 2>&1 | tail -20', {
-        encoding: 'utf8',
-        cwd: this.repoRoot,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        timeout: 120000,
-      });
-      return { success: output.includes('passed') && !output.includes('failed'), output };
-    } catch {
-      return { success: false, output: 'Test execution failed' };
-    }
-  }
-
-  private rollback(planId: string): void {
-    // SECURITY: Never run `git checkout -- .` — it destroys all uncommitted
-    // changes in the working tree, not just our modifications.
-    // Instead, record the rollback failure for manual intervention.
-    this.db.prepare(`
-      UPDATE self_modification_results
-      SET evidence_json = json_set(evidence_json, '$.rollbackMethod', 'manual_required')
-      WHERE plan_id = ?
-    `).run(planId);
   }
 
   private ensureTables(): void {
@@ -405,5 +342,78 @@ export class SelfModificationPipeline {
         FOREIGN KEY (plan_id) REFERENCES self_modification_plans(id) ON DELETE CASCADE
       );
     `);
+    const columns = new Set((this.db.prepare('PRAGMA table_info(self_modification_opportunities)').all() as Array<{ name: string }>).map((column) => column.name));
+    const additions: Array<[string, string]> = [
+      ['first_seen_at', "TEXT NOT NULL DEFAULT ''"],
+      ['last_seen_at', "TEXT NOT NULL DEFAULT ''"],
+      ['seen_count', 'INTEGER NOT NULL DEFAULT 1'],
+      ['analyzer_version', "TEXT NOT NULL DEFAULT 'legacy'"],
+      ['resolved_at', 'TEXT'],
+    ];
+    for (const [name, definition] of additions) {
+      if (!columns.has(name)) this.db.exec(`ALTER TABLE self_modification_opportunities ADD COLUMN ${name} ${definition}`);
+    }
+    this.migrateLegacyFindings();
+  }
+
+  private migrateLegacyFindings(): void {
+    const rows = this.db.prepare(`
+      SELECT o.*
+      FROM self_modification_opportunities o
+      WHERE o.analyzer_version = 'legacy'
+        AND NOT EXISTS (
+          SELECT 1 FROM self_modification_plans p WHERE p.opportunity_id = o.id
+        )
+      ORDER BY o.detected_at
+    `).all() as Array<Record<string, unknown>>;
+    if (rows.length === 0) return;
+
+    const groups = new Map<string, Array<Record<string, unknown>>>();
+    for (const row of rows) {
+      const key = [row.type, row.file_path, row.line_number ?? '', row.description].join('\0');
+      const group = groups.get(key) || [];
+      group.push(row);
+      groups.set(key, group);
+    }
+
+    this.db.transaction(() => {
+      const insert = this.db.prepare(`
+        INSERT INTO self_modification_opportunities
+        (id, type, severity, file_path, line_number, description, suggestion, estimated_effort,
+         detected_at, first_seen_at, last_seen_at, seen_count, analyzer_version, resolved_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'v2', NULL)
+        ON CONFLICT(id) DO UPDATE SET
+          first_seen_at = MIN(self_modification_opportunities.first_seen_at, excluded.first_seen_at),
+          last_seen_at = MAX(self_modification_opportunities.last_seen_at, excluded.last_seen_at),
+          seen_count = self_modification_opportunities.seen_count + excluded.seen_count
+      `);
+      const remove = this.db.prepare('DELETE FROM self_modification_opportunities WHERE id = ?');
+
+      for (const group of groups.values()) {
+        const first = group[0];
+        const last = group[group.length - 1];
+        const id = this.findingId(
+          String(first.type),
+          String(first.file_path),
+          first.line_number == null ? undefined : Number(first.line_number),
+          String(first.description),
+        );
+        insert.run(
+          id,
+          first.type,
+          first.severity,
+          first.file_path,
+          first.line_number,
+          first.description,
+          first.suggestion,
+          first.estimated_effort,
+          first.detected_at,
+          first.detected_at,
+          last.detected_at,
+          group.length,
+        );
+        for (const row of group) remove.run(row.id);
+      }
+    })();
   }
 }

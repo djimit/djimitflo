@@ -5,7 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { DbHandle } from '../db.js';
+import { databaseProvenance, type DbHandle } from '../db.js';
 
 export function registerMissionControlTools(server: McpServer, dbHandle: DbHandle) {
   const { db } = dbHandle;
@@ -27,6 +27,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
+            database: databaseProvenance(dbHandle),
             summary: {
               activeLoans: activeLoans.c,
               pendingGoals: pendingGoals.c,
@@ -61,7 +62,7 @@ export function registerMissionControlTools(server: McpServer, dbHandle: DbHandl
       return {
         content: [{
           type: 'text' as const,
-          text: JSON.stringify({ tableCounts, recentErrors }, null, 2),
+          text: JSON.stringify({ database: databaseProvenance(dbHandle), tableCounts, recentErrors }, null, 2),
         }],
       };
     }

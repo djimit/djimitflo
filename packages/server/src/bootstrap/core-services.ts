@@ -14,7 +14,6 @@ import { RetentionService } from '../services/retention-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
-import { SelfModificationPipeline } from '../services/self-modification-pipeline';
 import { ProactiveMemoryService } from '../services/proactive-memory-service';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
 import { lifecycleManager } from '../services/lifecycle-manager';
@@ -88,8 +87,6 @@ export function initCoreServices(
     lifecycleManager.register({ serviceName: 'MetaOrchestration', stop: () => (metaOrchestration as any)?.stop?.() });
     executionEngine.setMetaOrchestration(metaOrchestration);
 
-    const selfModification = new SelfModificationPipeline(db);
-    selfModification.analyze();
   }
 
   // Startup side-effects

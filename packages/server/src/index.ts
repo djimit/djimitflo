@@ -22,6 +22,7 @@ import { initDatabase, recoverInterruptedRuns } from './bootstrap/recovery';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { initOperatorServices } from './bootstrap/operator-services';
 import { initCoreServices } from './bootstrap/core-services';
+import { getDatabaseProvenance } from './database/provenance';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -62,7 +63,12 @@ async function main() {
   app.use(requestLogger);
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime() });
+    res.json({
+      status: 'healthy',
+      database: getDatabaseProvenance(db),
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
   });
 
   const httpServer = createServer(app);

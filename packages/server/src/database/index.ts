@@ -9,6 +9,7 @@ import { schema } from './schema';
 import { runMigrations } from './migrate';
 import { runPreSchemaMigrations } from './migrate';
 import { monorepoRoot, resolveBackupDir, resolveDbPath } from './path';
+import { ensureDatabaseInstanceId } from './provenance';
 
 const MONOREPO_ROOT = monorepoRoot();
 const DATA_DIR = join(MONOREPO_ROOT, '.data');
@@ -107,6 +108,7 @@ export function initializeDatabase(): Database.Database {
   runPreSchemaMigrations(db);
   db.exec(schema);
   runMigrations(db);
+  ensureDatabaseInstanceId(db);
   
   console.log('✅ Database initialized');
 

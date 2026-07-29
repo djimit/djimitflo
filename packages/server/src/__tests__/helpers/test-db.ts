@@ -408,30 +408,6 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  CREATE TABLE IF NOT EXISTS improvement_opportunities (
-    id TEXT PRIMARY KEY,
-    type TEXT NOT NULL CHECK(type IN ('test_gap', 'todo', 'complexity', 'documentation', 'performance')),
-    severity TEXT NOT NULL DEFAULT 'medium' CHECK(severity IN ('low', 'medium', 'high')),
-    file_path TEXT NOT NULL,
-    line_number INTEGER,
-    description TEXT NOT NULL DEFAULT '',
-    suggestion TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'identified' CHECK(status IN ('identified', 'planned', 'implemented', 'validated')),
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS code_patches (
-    id TEXT PRIMARY KEY,
-    opportunity_id TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    original TEXT NOT NULL DEFAULT '',
-    replacement TEXT NOT NULL DEFAULT '',
-    description TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'applied', 'tested', 'rejected')),
-    test_result_json TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
   CREATE TABLE IF NOT EXISTS governance_feedback (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL DEFAULT 'human_correction' CHECK(source IN ('openmythos_case', 'runtime_violation', 'human_correction', 'self_modification')),
@@ -1105,7 +1081,6 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_swarm_sessions_status ON swarm_sessions(status);
   CREATE INDEX IF NOT EXISTS idx_agent_messages_to_agent ON agent_messages(to_agent);
   CREATE INDEX IF NOT EXISTS idx_agent_messages_status ON agent_messages(status);
-  CREATE INDEX IF NOT EXISTS idx_improvement_opportunities_status ON improvement_opportunities(status);
   CREATE INDEX IF NOT EXISTS idx_self_healing_log_check_type ON self_healing_log(check_type);
   CREATE INDEX IF NOT EXISTS idx_audit_log_actor_action ON audit_log(actor, action);
   CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
