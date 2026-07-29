@@ -8,6 +8,7 @@ import { registerAgentTools } from '../tools/agents.js';
 import { registerMissionControlTools } from '../tools/mission-control.js';
 import { registerOrchestrationTools } from '../tools/orchestration.js';
 import { registerGovernanceTools } from '../tools/governance.js';
+import { LOOP_CATALOG } from '@djimitflo/shared';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -47,8 +48,13 @@ function createTestDb(): DbHandle {
     );
     CREATE TABLE fleet_handoffs (
       id TEXT PRIMARY KEY, from_node TEXT, to_node TEXT, agent_id TEXT,
-      context_json TEXT DEFAULT '{}', status TEXT DEFAULT 'pending', priority TEXT DEFAULT 'medium',
+      lease_id TEXT, context_json TEXT DEFAULT '{}', status TEXT DEFAULT 'pending', priority TEXT DEFAULT 'medium',
       created_at TEXT NOT NULL
+    );
+    CREATE TABLE fleet_nodes (
+      id TEXT PRIMARY KEY, name TEXT, endpoint TEXT, status TEXT,
+      capabilities_json TEXT DEFAULT '[]', active_agents INTEGER DEFAULT 0,
+      max_agents INTEGER DEFAULT 10, last_heartbeat TEXT, metadata_json TEXT DEFAULT '{}'
     );
     CREATE TABLE approvals (
       id TEXT PRIMARY KEY, task_id TEXT, execution_event_id TEXT, status TEXT,
@@ -111,7 +117,7 @@ function createTestDb(): DbHandle {
       created_at TEXT NOT NULL
     );
   `);
-  return { db, close: () => db.close() };
+  return { db, mode: 'live', close: () => db.close() };
 }
 
 function createTestServer(dbHandle: DbHandle): McpServer {
@@ -177,6 +183,18 @@ describe('MCP Server Tools', () => {
     expect(parsed.length).toBe(0);
   });
 
+  it('uses the canonical loop catalog and labels historical roles', async () => {
+    dbHandle.db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, created_at, updated_at)
+      VALUES ('legacy-1', 'test_engineer', 'closed', 'completed', datetime('now'), datetime('now'))
+    `).run();
+    const registeredTools = (server as any)._registeredTools;
+    const catalog = await registeredTools['djimitflo_get_loop_catalog'].handler({});
+    expect(JSON.parse(catalog.content[0].text)).toEqual(LOOP_CATALOG);
+    const runs = await registeredTools['djimitflo_list_loop_runs'].handler({});
+    expect(JSON.parse(runs.content[0].text)[0].source_kind).toBe('legacy_import');
+  });
+
   it('get_loop_status returns error for nonexistent run', async () => {
     const registeredTools = (server as any)._registeredTools;
     const tool = registeredTools['djimitflo_get_loop_status'];
@@ -209,11 +227,60 @@ describe('MCP Server Tools', () => {
     const registeredTools = (server as any)._registeredTools;
     const result = await registeredTools['djimitflo_mcp_doctor'].handler({});
     const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.database).toMatchObject({
+      path: ':memory:',
+      mode: 'live',
+      last_updates: { goals: null, loops: null, tasks: null },
+    });
+    expect(parsed.database.schema_version).toEqual(expect.any(Number));
+    expect(parsed.database.runtime_host).toEqual(expect.any(String));
+    expect(parsed.database).toHaveProperty('commit_sha');
     expect(parsed.status).toBe('needs_attention');
     expect(parsed.summary.current_server_tools).toBe(Object.keys(registeredTools).length);
     expect(parsed.summary.db_mcp_tools).toBe(0);
     expect(parsed.drift.current_tools_missing_registry_rows).toContain('djimitflo_mcp_doctor');
     expect(parsed.live_sidecar_handshakes.checked).toBe(false);
+  });
+
+  it('blocks operational writes against snapshot data', async () => {
+    dbHandle.mode = 'snapshot';
+    const registeredTools = (server as any)._registeredTools;
+    await expect(registeredTools['djimitflo_spawn_agent'].handler({
+      task: 'test', runtime: 'mock', role: 'maker', context_budget: 500,
+    })).rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+    await expect(registeredTools['djimitflo_probe_mcp_sidecars'].handler({ apply: true }))
+      .rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+  });
+
+  it('lists orchestration agents using current heartbeat columns', async () => {
+    dbHandle.db.prepare(`
+      INSERT INTO agents (
+        id, name, status, capabilities, last_active_at, last_heartbeat_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('agent-1', 'Agent One', 'active', '[]', '2026-07-27T10:00:00Z',
+      '2026-07-28T10:00:00Z', '2026-07-27T09:00:00Z', '2026-07-28T09:00:00Z');
+
+    const registeredTools = (server as any)._registeredTools;
+    const result = await registeredTools['djimitflo_list_orchestration_agents'].handler({});
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.agents[0].last_seen).toBe('2026-07-28T10:00:00Z');
+  });
+
+  it('creates a validated pending fleet handoff', async () => {
+    dbHandle.db.prepare("INSERT INTO fleet_nodes (id, name, endpoint, status) VALUES ('node-a', 'A', 'a', 'online'), ('node-b', 'B', 'b', 'online')").run();
+    dbHandle.db.prepare("INSERT INTO agents (id, name, status, created_at, updated_at) VALUES ('agent-1', 'Agent', 'active', datetime('now'), datetime('now'))").run();
+    dbHandle.db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, status, created_at, updated_at) VALUES ('lease-1', 'run-1', 'maker', 'running', datetime('now'), datetime('now'))").run();
+    const registeredTools = (server as any)._registeredTools;
+    const result = await registeredTools['djimitflo_handoff_agent'].handler({
+      from_node_id: 'node-a',
+      to_node_id: 'node-b',
+      agent_id: 'agent-1',
+      lease_id: 'lease-1',
+      summary: 'Continue',
+      artifacts: [],
+    });
+    expect(JSON.parse(result.content[0].text).status).toBe('pending');
+    expect(dbHandle.db.prepare('SELECT status FROM fleet_handoffs').get()).toEqual({ status: 'pending' });
   });
 
   it('sync_mcp_catalog previews and applies runtime tool rows', async () => {

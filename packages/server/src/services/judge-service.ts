@@ -190,12 +190,19 @@ export class JudgeService {
   }
 
   private scoreConsistency(answers: ExpertAnswer[]): number {
-    if (answers.length < 2) return 1.0;
+    const internalDiversity = answers.reduce((sum, answer) => {
+      const sentences = answer.content
+        .split(/[.!?]\s+|\n+/)
+        .map(sentence => sentence.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter(sentence => sentence.length >= 20);
+      return sum + (sentences.length === 0 ? 1 : new Set(sentences).size / sentences.length);
+    }, 0) / answers.length;
+    if (answers.length < 2) return internalDiversity;
     const domains = new Set(answers.map(a => a.domain));
     const avgConfidence = answers.reduce((sum, a) => sum + a.confidence, 0) / answers.length;
     const uniqueContents = new Set(answers.map(a => a.content.slice(0, 100)));
     const diversityBonus = uniqueContents.size > 1 ? 0.15 : 0;
-    return Math.min(1.5, avgConfidence * 1.2 + diversityBonus + (domains.size > 1 ? 0.1 : 0));
+    return Math.min(1.5, avgConfidence * 1.2 + diversityBonus + (domains.size > 1 ? 0.1 : 0)) * internalDiversity;
   }
 
   private scoreUncertainty(answers: ExpertAnswer[]): number {

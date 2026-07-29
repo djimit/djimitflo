@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { GoalBatchService } from '../services/goal-batch-service';
+import { GoalService } from '../services/goal-service';
 
 function makeDb() {
   const database = new Database(':memory:');
@@ -22,6 +23,28 @@ function counts(db: Database.Database) {
 }
 
 describe('goal batch service', () => {
+  it('requires acceptance evidence before direct completion', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalService(db);
+      const goal = service.createGoal({
+        objective: 'Prove completion',
+        acceptance_criteria: ['Evidence exists'],
+      });
+      expect(() => service.updateGoal(goal.id, { status: 'completed' }))
+        .toThrow('GOAL_COMPLETION_EVIDENCE_REQUIRED');
+      expect(service.updateGoal(goal.id, {
+        status: 'completed',
+        metadata: {
+          completion_source: 'targeted_execution',
+          acceptance_evidence: [{ kind: 'test', ref: 'test-1' }],
+        },
+      }).status).toBe('completed');
+    } finally {
+      db.close();
+    }
+  });
+
   it('previews goals.batch.json shape with zero writes and applies planning records only', () => {
     const db = makeDb();
     try {
@@ -59,6 +82,29 @@ describe('goal batch service', () => {
         loop_runs: 0,
         worker_leases: 0,
       });
+      expect(applied.created_goals[0].metadata).toMatchObject({
+        execution_source: 'goal_batch_import',
+        attempt_count: 0,
+      });
+      expect(applied.created_goals[0].budget).toMatchObject({ max_failure_count: 2 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('limits autonomous batches to three verifiable goals', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalBatchService(db);
+      const goals = Array.from({ length: 4 }, (_, index) => ({
+        id: `goal-${index}`,
+        title: `Goal ${index}`,
+        acceptance: [`Outcome ${index} is verified`],
+      }));
+      const preview = service.preview({ batch: { goals } });
+      expect(preview.errors).toContainEqual({ id: 'batch', error: 'maximum_3_goals_per_batch' });
+      expect(() => service.apply({ batch: { goals } })).toThrow('GOAL_BATCH_INVALID');
+      expect(counts(db).goals).toBe(0);
     } finally {
       db.close();
     }

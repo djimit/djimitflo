@@ -6,7 +6,7 @@ import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
-import type { TaskExecutor } from '../execution/types';
+import { ExecutionFailureError, type TaskExecutor } from '../execution/types';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -225,7 +225,7 @@ describe('ExecutionEngine', () => {
 
   it('retries a retryable provider failure with the next admitted executor', async () => {
     const attempts: string[] = [];
-    const session = (taskId: string, executorKind: 'claude' | 'codex', result: any) => ({
+    const session = (taskId: string, executorKind: 'codex', result: any) => ({
       id: `session-${executorKind}`,
       taskId,
       executorKind,
@@ -238,12 +238,14 @@ describe('ExecutionEngine', () => {
     engine.registerExecutor({
       kind: 'claude',
       canExecute: () => true,
-      start: async (task) => {
+      start: async () => {
         attempts.push('claude');
-        return session(task.id, 'claude', {
-          status: 'failed',
-          message: 'Claude provider unavailable',
-          error: '503 provider unavailable',
+        throw new ExecutionFailureError({
+          code: 'PROVIDER_UNAVAILABLE',
+          message: '503 provider unavailable',
+          retryable: true,
+          sideEffectsPossible: false,
+          failureDomain: 'claude',
         });
       },
     });
@@ -276,6 +278,63 @@ describe('ExecutionEngine', () => {
     `).get(task.id) as { metadata: string };
     expect(JSON.parse(fallback.metadata)).toMatchObject({ attempt: 2, from: 'claude', to: 'codex', retryable: true });
     expect((db.prepare('SELECT COUNT(*) AS count FROM risk_assessments WHERE task_id = ?').get(task.id) as { count: number }).count).toBe(2);
+  });
+
+  it('does not fall back after a session failure with possible side effects', async () => {
+    const attempts: string[] = [];
+    engine.registerExecutor({
+      kind: 'claude',
+      canExecute: () => true,
+      start: async (task) => {
+        attempts.push('claude');
+        return {
+          id: 'session-claude',
+          taskId: task.id,
+          executorKind: 'claude',
+          status: 'running',
+          startedAt: new Date(),
+          events: (async function* () {})(),
+          result: Promise.resolve({
+            status: 'failed',
+            message: '503 after editing files',
+            error: '503 provider unavailable',
+          }),
+          cancel: async () => {},
+        };
+      },
+    });
+    engine.registerExecutor({
+      kind: 'codex',
+      canExecute: () => true,
+      start: async (task) => {
+        attempts.push('codex');
+        return {
+          id: 'session-codex',
+          taskId: task.id,
+          executorKind: 'codex',
+          status: 'running',
+          startedAt: new Date(),
+          events: (async function* () {})(),
+          result: Promise.resolve({ status: 'completed', message: 'done' }),
+          cancel: async () => {},
+        };
+      },
+    });
+    const task = createTask({ metadata: { executionMode: 'standard' } });
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', JSON.stringify(task.metadata));
+
+    await engine.executeTask(task.id, 'claude');
+    for (let i = 0; i < 20; i++) {
+      const row = db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as { status: string };
+      if (row.status === 'failed') break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(attempts).toEqual(['claude']);
+    expect(db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id)).toEqual({ status: 'failed' });
   });
 
   it('records an admitted skill outcome when a task completes', async () => {

@@ -4,7 +4,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { DbHandle } from '../db.js';
+import { hostname } from 'os';
+import { requireLiveMode, type DbHandle } from '../db.js';
 
 type OpenApiToolRow = {
   id: string;
@@ -39,6 +40,35 @@ function text(value: unknown) {
 
 function tableCount(dbHandle: DbHandle, table: string) {
   return Number((one(dbHandle, `SELECT COUNT(*) AS c FROM ${table}`) || {}).c || 0);
+}
+
+function tableExists(dbHandle: DbHandle, table: string) {
+  return Boolean(one(dbHandle, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", table));
+}
+
+function latestUpdate(dbHandle: DbHandle, table: string) {
+  if (!tableExists(dbHandle, table)) return null;
+  return (one(dbHandle, `SELECT MAX(updated_at) AS value FROM ${table}`) || {}).value || null;
+}
+
+function databaseProvenance(dbHandle: DbHandle) {
+  const migration = tableExists(dbHandle, 'schema_migrations')
+    ? (one(dbHandle, 'SELECT MAX(version) AS value FROM schema_migrations') || {}).value
+    : null;
+  const sqliteSchema = dbHandle.db.pragma('schema_version', { simple: true });
+  return {
+    path: dbHandle.path || dbHandle.db.name || ':memory:',
+    mode: dbHandle.mode || 'snapshot',
+    instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
+    runtime_host: process.env.DJIMITFLO_RUNTIME_HOST || hostname(),
+    commit_sha: process.env.DJIMITFLO_COMMIT_SHA || null,
+    schema_version: migration ?? sqliteSchema,
+    last_updates: {
+      goals: latestUpdate(dbHandle, 'goals'),
+      loops: latestUpdate(dbHandle, 'loop_runs'),
+      tasks: latestUpdate(dbHandle, 'tasks'),
+    },
+  };
 }
 
 function metadata(row: Record<string, unknown>) {
@@ -199,6 +229,7 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
 
       return text({
         status: recommendedActions.length === 1 && recommendedActions[0].startsWith('no ') ? 'ok' : 'needs_attention',
+        database: databaseProvenance(dbHandle),
         summary: {
           current_server_tools: runtimeToolNames.length,
           db_mcp_servers: servers.length,
@@ -258,6 +289,7 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
           next: 'rerun with apply=true to write mcp_servers, mcp_tools, and mcp_tool_permissions rows',
         });
       }
+      requireLiveMode(dbHandle);
 
       const write = dbHandle.db.transaction(() => {
         dbHandle.db.prepare(`
@@ -412,6 +444,7 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
           next: 'rerun with apply=true to write OpenAPI operations into mcp_tools and mcp_tool_permissions',
         });
       }
+      requireLiveMode(dbHandle);
 
       const write = dbHandle.db.transaction(() => {
         const upsertTool = dbHandle.db.prepare(`
@@ -506,6 +539,7 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
           next: 'rerun with apply=true to update status, last_ping_at, and error_message',
         });
       }
+      requireLiveMode(dbHandle);
 
       const results = [];
       for (const target of targets) {

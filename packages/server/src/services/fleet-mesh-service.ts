@@ -157,6 +157,9 @@ export class FleetMeshService {
     leaseId: string;
     context?: Record<string, unknown>;
   }): HandoffRequest {
+    if (!this.getNode(input.fromNode) || !this.getNode(input.toNode)) {
+      throw new Error('FLEET_HANDOFF_NODE_NOT_FOUND');
+    }
     const handoff: HandoffRequest = {
       id: randomUUID(),
       fromNode: input.fromNode,
@@ -183,14 +186,16 @@ export class FleetMeshService {
    * Accept a handoff request.
    */
   acceptHandoff(handoffId: string): void {
-    this.db.prepare("UPDATE fleet_handoffs SET status = 'accepted' WHERE id = ?").run(handoffId);
+    const result = this.db.prepare("UPDATE fleet_handoffs SET status = 'accepted' WHERE id = ? AND status = 'pending'").run(handoffId);
+    if (result.changes !== 1) throw new Error('FLEET_HANDOFF_NOT_PENDING');
   }
 
   /**
    * Complete a handoff.
    */
   completeHandoff(handoffId: string): void {
-    this.db.prepare("UPDATE fleet_handoffs SET status = 'completed' WHERE id = ?").run(handoffId);
+    const result = this.db.prepare("UPDATE fleet_handoffs SET status = 'completed' WHERE id = ? AND status = 'accepted'").run(handoffId);
+    if (result.changes !== 1) throw new Error('FLEET_HANDOFF_NOT_ACCEPTED');
   }
 
   /**

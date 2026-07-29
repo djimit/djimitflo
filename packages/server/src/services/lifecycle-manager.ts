@@ -18,6 +18,8 @@ export class LifecycleManager {
   private shuttingDown = false;
   private shutdownPromise: Promise<void> | null = null;
 
+  constructor(private readonly exit: (code: number) => never = process.exit) {}
+
   /**
    * Register a service for lifecycle management.
    */
@@ -39,10 +41,13 @@ export class LifecycleManager {
       console.log(`⚠️  ${signal} received, shutting down gracefully...`);
 
       this.shutdownPromise = this.shutdown(server);
-      this.shutdownPromise.catch((err) => {
-        console.error('❌ Shutdown error:', err);
-        process.exit(1);
-      });
+      this.shutdownPromise.then(
+        () => this.exit(0),
+        (err) => {
+          console.error('❌ Shutdown error:', err);
+          this.exit(1);
+        },
+      );
     };
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -62,15 +67,16 @@ export class LifecycleManager {
     // 1. Stop accepting new connections
     console.log('  1/3 Stopping HTTP server...');
     await new Promise<void>((resolve) => {
-      server.close(() => {
-        console.log('     ✓ HTTP server closed');
-        resolve();
-      });
-
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         console.log('     ⚠ HTTP server close timeout, forcing...');
         resolve();
       }, 10_000);
+
+      server.close(() => {
+        clearTimeout(timeout);
+        console.log('     ✓ HTTP server closed');
+        resolve();
+      });
     });
 
     // 2. Stop all background services (reverse order)

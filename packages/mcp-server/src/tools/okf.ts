@@ -10,13 +10,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-function resolveOkfBase(): string {
+export function resolveOkfBase(): string {
   const envBase = process.env.OKF_BASE?.trim();
   if (envBase) return path.resolve(envBase);
 
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.resolve(__dirname, '../../../../djimitflo-knowledge/okf'),
+    path.resolve(moduleDir, '../../../../djimitflo-knowledge/okf'),
     path.resolve(process.cwd(), 'djimitflo-knowledge/okf'),
     path.resolve(process.cwd(), '../djimitflo-knowledge/okf'),
   ];

@@ -13,7 +13,14 @@ import {
   TaskStatus,
   WebSocketEventType,
 } from '@djimitflo/shared';
-import { TaskExecutor, ExecutionSession, ExecutorKind, type ExecutionResult } from './types';
+import {
+  TaskExecutor,
+  ExecutionSession,
+  ExecutorKind,
+  ExecutionFailureError,
+  type ExecutionFailure,
+  type ExecutionResult,
+} from './types';
 import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
@@ -47,6 +54,8 @@ export interface ExecuteTaskResult {
   approvalId?: string;
   reason?: string;
 }
+
+const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
 
 export class ExecutionEngine {
   private db: Database;
@@ -367,16 +376,24 @@ export class ExecutionEngine {
       });
       session.result.then((result) => {
         void this.handleAttemptResult(task, session, result, mode, attempt, maxRetries, workingDirectory);
-      }).catch((error: Error) => {
-        void this.handleAttemptFailure(task, session, error, mode, attempt, maxRetries, workingDirectory);
+      }).catch((error: unknown) => {
+        void this.handleAttemptFailure(
+          task,
+          session,
+          this.normalizeFailure(error, true, session.executorKind),
+          mode,
+          attempt,
+          maxRetries,
+          workingDirectory,
+        );
       });
       return session;
     } catch (error) {
       this.circuitBreaker.recordFailure(executorKind);
-      const normalized = error instanceof Error ? error : new Error(String(error));
-      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, normalized.message);
-      if (!fallback) throw normalized;
-      this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, normalized.message);
+      const failure = this.normalizeFailure(error, false, executorKind);
+      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
+      if (!fallback) throw new ExecutionFailureError(failure);
+      this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, failure);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
     }
   }
@@ -405,9 +422,15 @@ export class ExecutionEngine {
       this.handleExecutionComplete(task.id, session, result);
       return;
     }
-    const error = new Error(result.error || result.message);
+    const failure = result.failure || {
+      code: 'EXECUTION_FAILED',
+      message: result.error || result.message,
+      retryable: false,
+      sideEffectsPossible: true,
+      failureDomain: session.executorKind,
+    };
     if (result.status === 'failed') {
-      await this.handleAttemptFailure(task, session, error, mode, attempt, maxRetries, workingDirectory, result);
+      await this.handleAttemptFailure(task, session, failure, mode, attempt, maxRetries, workingDirectory, result);
       return;
     }
     this.handleExecutionComplete(task.id, session, result);
@@ -416,7 +439,7 @@ export class ExecutionEngine {
   private async handleAttemptFailure(
     task: Task,
     session: ExecutionSession,
-    error: Error,
+    failure: ExecutionFailure,
     mode: ExecutionMode,
     attempt: number,
     maxRetries: number,
@@ -425,18 +448,18 @@ export class ExecutionEngine {
   ): Promise<void> {
     this.activeSessions.delete(task.id);
     this.circuitBreaker.recordFailure(session.executorKind);
-    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, error.message);
+    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
     if (fallback) {
-      this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, error.message);
+      this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, failure);
       try {
         await this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
         return;
       } catch (fallbackError) {
-        error = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+        failure = this.normalizeFailure(fallbackError, false, fallback);
       }
     }
     if (failedResult) this.handleExecutionComplete(task.id, session, failedResult);
-    else this.handleExecutionError(task.id, error);
+    else this.handleExecutionError(task.id, new ExecutionFailureError(failure));
   }
 
   private nextRetryExecutor(
@@ -444,12 +467,28 @@ export class ExecutionEngine {
     mode: ExecutionMode,
     attempt: number,
     maxRetries: number,
-    reason: string,
+    failure: ExecutionFailure,
   ): ExecutorKind | null {
-    if (attempt >= maxRetries || !/(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i.test(reason)) {
+    if (attempt >= maxRetries || !failure.retryable || failure.sideEffectsPossible) {
       return null;
     }
     return this.fallbackChain.getNextAvailable(current, mode, this.circuitBreaker);
+  }
+
+  private normalizeFailure(
+    error: unknown,
+    sideEffectsPossible: boolean,
+    failureDomain: string,
+  ): ExecutionFailure {
+    if (error instanceof ExecutionFailureError) return error.failure;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      code: 'EXECUTOR_ERROR',
+      message,
+      retryable: !sideEffectsPossible && RETRYABLE_PROVIDER_ERROR.test(message),
+      sideEffectsPossible,
+      failureDomain,
+    };
   }
 
   private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
@@ -460,13 +499,22 @@ export class ExecutionEngine {
     return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
   }
 
-  private persistFallbackEvent(taskId: string, from: ExecutorKind, to: ExecutorKind, attempt: number, reason: string): void {
+  private persistFallbackEvent(taskId: string, from: ExecutorKind, to: ExecutorKind, attempt: number, failure: ExecutionFailure): void {
     this.persistEvent({
       task_id: taskId,
       event_type: 'log' as any,
       message: `Retrying with fallback executor ${to}`,
       level: 'warning' as any,
-      metadata: { attempt, from, to, reason, retryable: true },
+      metadata: {
+        attempt,
+        from,
+        to,
+        reason: failure.message,
+        failureCode: failure.code,
+        failureDomain: failure.failureDomain,
+        retryable: failure.retryable,
+        sideEffectsPossible: failure.sideEffectsPossible,
+      },
     });
   }
 

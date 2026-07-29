@@ -29,7 +29,7 @@ export interface TraceabilityMatrix {
   entries: TraceabilityEntry[];
 }
 
-const FR_PATTERN = /(FR-\d{3})[：:]\s*(.+?)(?=\n|$)/g;
+const FR_PATTERN = /(FR-\d{3})(?:\*\*)?\s*[：:]\s*(.+?)(?=\n|$)/g;
 const FILE_PATTERN = /`([^`]+\.(?:ts|tsx|js|jsx|py|rs|go|sql))`/g;
 const TEST_PATTERN = /(?:^|\/)(?:__tests__\/.*|[^/]*\.(?:test|spec))\.(?:ts|tsx|js)$/i;
 

@@ -120,9 +120,10 @@ export function exportReportAsCsv(report: ComplianceReport): string {
 export function scanSpecsDirectory(): Array<{ name: string; path: string; content: string }> {
   const fs = require('fs');
   const path = require('path');
-  const specsDir = path.resolve(process.cwd(), 'specs');
-  const archiveDir = path.resolve(process.cwd(), 'specs/archive');
+  const specsDir = path.resolve(__dirname, '../../../..', 'specs');
+  const archiveDir = path.join(specsDir, 'archive');
   const specs: Array<{ name: string; path: string; content: string }> = [];
+  const seen = new Set<string>();
 
   for (const dir of [specsDir, archiveDir]) {
     if (!fs.existsSync(dir)) continue;
@@ -130,9 +131,10 @@ export function scanSpecsDirectory(): Array<{ name: string; path: string; conten
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const specFile = path.join(dir, entry.name, 'spec.md');
-        if (fs.existsSync(specFile)) {
+        if (!seen.has(entry.name) && fs.existsSync(specFile)) {
           const content = fs.readFileSync(specFile, 'utf-8');
           specs.push({ name: entry.name, path: specFile, content });
+          seen.add(entry.name);
         }
       }
     }

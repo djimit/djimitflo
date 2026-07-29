@@ -56,6 +56,9 @@ export class GoalBatchService {
     const errors = items
       .filter((item) => item.blocked_reasons.length > 0)
       .map((item) => ({ id: item.id, error: item.blocked_reasons.join(', ') }));
+    if (items.length > 3) {
+      errors.push({ id: 'batch', error: 'maximum_3_goals_per_batch' });
+    }
     return {
       change: typeof (batch as any).change === 'string' ? (batch as any).change : null,
       total: items.length,
@@ -86,6 +89,7 @@ export class GoalBatchService {
           acceptance_criteria: item.acceptance_criteria,
           constraints: [`target:${item.target_ref || 'repo'}`],
           risk_class: item.risk_class,
+          budget: { max_failure_count: 2 },
           metadata: {
             goal_batch: {
               id: item.id,
@@ -93,6 +97,9 @@ export class GoalBatchService {
               target_ref: item.target_ref,
             },
             imported_without_worker_start: true,
+            execution_source: 'goal_batch_import',
+            executor_runtime: null,
+            attempt_count: 0,
           },
         }, ownerUserId));
       }

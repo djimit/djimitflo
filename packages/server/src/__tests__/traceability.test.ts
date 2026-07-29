@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildTraceabilityMatrix } from '../services/traceability-service';
+import { scanSpecsDirectory } from '../services/spec-compliance-service';
 
 describe('Spec Traceability Matrix', () => {
   const sampleSpecs = [
@@ -96,6 +97,20 @@ describe('Spec Traceability Matrix', () => {
     it('handles empty specs', () => {
       const matrix = buildTraceabilityMatrix([]);
       expect(matrix.totalFRs).toBe(0);
+    });
+
+    it('recognizes the repository markdown requirement format', () => {
+      const matrix = buildTraceabilityMatrix([{
+        name: 'markdown-spec',
+        content: '- **FR-001**: The system SHALL work.',
+      }]);
+      expect(matrix.totalFRs).toBe(1);
+    });
+
+    it('finds repository specs from the server workspace', () => {
+      const matrix = buildTraceabilityMatrix(scanSpecsDirectory());
+      expect(matrix.totalFRs).toBe(29);
+      expect(matrix.coveredFRs).toBe(12);
     });
   });
 });

@@ -65,6 +65,30 @@ describe('JudgeService', () => {
     expect(verdict.sub_scores!.evidence).toBeGreaterThan(0);
   });
 
+  it('penalizes internally repetitive answers', () => {
+    const service = new JudgeService(db());
+    const sentence = 'This control must be reviewed before deployment';
+    const repetitive = service.evaluate([{
+      domain: 'governance',
+      content: Array(8).fill(sentence).join('. '),
+      source: 'okf',
+      confidence: 0.9,
+    }]);
+    const varied = service.evaluate([{
+      domain: 'governance',
+      content: [
+        sentence,
+        'The reviewer records evidence and a bounded decision',
+        'Failed controls return to the owner with corrective actions',
+        'Successful validation produces an auditable release record',
+      ].join('. '),
+      source: 'okf',
+      confidence: 0.9,
+    }]);
+    expect(repetitive.sub_scores!.consistency).toBeLessThan(varied.sub_scores!.consistency);
+    expect(repetitive.score).toBeLessThan(varied.score);
+  });
+
   it('includes cronbach alpha', () => {
     const service = new JudgeService(db());
     const verdict = service.evaluate(sampleAnswers);

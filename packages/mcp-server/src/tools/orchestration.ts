@@ -9,7 +9,8 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { DbHandle } from '../db.js';
+import { randomUUID } from 'crypto';
+import { requireLiveMode, type DbHandle } from '../db.js';
 
 export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle) {
   const { db } = dbHandle;
@@ -28,6 +29,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       },
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
+      requireLiveMode(dbHandle);
       const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       // Register the sub-agent
@@ -65,32 +67,43 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     {
       description: 'Hand off work from one agent to another with context transfer. The receiving agent gets a summary of the work done so far.',
       inputSchema: {
-        from_agent_id: z.string().describe('The agent ID that is handing off'),
-        to_agent_id: z.string().describe('The agent ID that receives the work'),
+        from_node_id: z.string().describe('Fleet node handing off the agent'),
+        to_node_id: z.string().describe('Fleet node receiving the agent'),
+        agent_id: z.string().describe('Agent being handed off'),
+        lease_id: z.string().describe('Worker lease transferred with the agent'),
         summary: z.string().describe('Summary of work completed and context for the receiving agent'),
         artifacts: z.array(z.string()).default([]).describe('List of artifact references (file paths, URLs, scratch keys)'),
       },
     },
-    async ({ from_agent_id, to_agent_id, summary, artifacts }) => {
-      // Update agent statuses
-      db.prepare("UPDATE agents SET status = 'handoff_complete', updated_at = datetime('now') WHERE id = ?").run(from_agent_id);
-      db.prepare("UPDATE agents SET status = 'active', updated_at = datetime('now') WHERE id = ?").run(to_agent_id);
+    async ({ from_node_id, to_node_id, agent_id, lease_id, summary, artifacts }) => {
+      requireLiveMode(dbHandle);
+      if (!db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(from_node_id)
+        || !db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(to_node_id)) {
+        return { content: [{ type: 'text' as const, text: 'Unknown fleet node' }], isError: true };
+      }
+      if (!db.prepare('SELECT 1 FROM agents WHERE id = ?').get(agent_id)) {
+        return { content: [{ type: 'text' as const, text: 'Unknown agent' }], isError: true };
+      }
+      if (!db.prepare('SELECT 1 FROM worker_leases WHERE id = ?').get(lease_id)) {
+        return { content: [{ type: 'text' as const, text: 'Unknown worker lease' }], isError: true };
+      }
 
-      // Store handoff record
-      const handoffId = `handoff-${Date.now()}`;
+      const handoffId = randomUUID();
       db.prepare(`
-        INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, context_json, status, priority, created_at)
-        VALUES (?, ?, ?, ?, ?, 'completed', 'medium', datetime('now'))
-      `).run(handoffId, from_agent_id, to_agent_id, to_agent_id, JSON.stringify({ summary, artifacts }));
+        INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, lease_id, context_json, status, priority, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', 'medium', datetime('now'))
+      `).run(handoffId, from_node_id, to_node_id, agent_id, lease_id, JSON.stringify({ summary, artifacts }));
 
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
             handoff_id: handoffId,
-            from: from_agent_id,
-            to: to_agent_id,
-            status: 'completed',
+            from: from_node_id,
+            to: to_node_id,
+            agent_id,
+            lease_id,
+            status: 'pending',
             artifacts_transferred: artifacts.length,
           }, null, 2),
         }],
@@ -111,6 +124,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       },
     },
     async ({ action, reason, risk_level, context }) => {
+      requireLiveMode(dbHandle);
       const approvalId = `approval-${Date.now()}`;
 
       // Store approval request using existing approvals table
@@ -144,7 +158,9 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       },
     },
     async ({ status }) => {
-      let query = 'SELECT id, name, description, status, capabilities, model, last_seen, created_at, updated_at FROM agents';
+      let query = `SELECT id, name, description, status, capabilities, model,
+        COALESCE(last_heartbeat_at, last_active_at, updated_at) AS last_seen,
+        created_at, updated_at FROM agents`;
       const params: unknown[] = [];
 
       if (status) {

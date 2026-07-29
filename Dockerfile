@@ -13,12 +13,19 @@ WORKDIR /build
 # Copy all package manifests first (for layer caching)
 COPY package.json package-lock.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/shared/tsconfig.json packages/shared/
 COPY packages/server/package.json packages/server/
+COPY packages/server/tsconfig.json packages/server/
 COPY packages/dashboard/package.json packages/dashboard/
+COPY packages/dashboard/tsconfig.json packages/dashboard/
 COPY packages/telegram/package.json packages/telegram/
+COPY packages/telegram/tsconfig.json packages/telegram/
 COPY packages/agent-catalog/package.json packages/agent-catalog/
+COPY packages/agent-catalog/tsconfig.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
+COPY packages/mcp-server/tsconfig.json packages/mcp-server/
 COPY packages/ransomware-module/package.json packages/ransomware-module/
+COPY packages/ransomware-module/tsconfig.json packages/ransomware-module/
 
 # Install ALL dependencies (including dev) for building
 RUN npm install
@@ -29,7 +36,6 @@ COPY packages/server/src packages/server/src
 COPY packages/dashboard/src packages/dashboard/src
 COPY packages/dashboard/index.html packages/dashboard/index.html
 COPY packages/dashboard/vite.config.ts packages/dashboard/vite.config.ts
-COPY packages/dashboard/tsconfig.json packages/dashboard/tsconfig.json
 COPY packages/telegram/src packages/telegram/src
 COPY packages/agent-catalog/src packages/agent-catalog/src
 COPY packages/mcp-server/src packages/mcp-server/src
@@ -42,6 +48,8 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
+
+ARG VCS_REF=unknown
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-minimal && \
@@ -71,7 +79,9 @@ COPY --from=builder /build/packages/server/dist packages/server/dist
 COPY --from=builder /build/packages/dashboard/dist packages/dashboard/dist
 COPY --from=builder /build/packages/telegram/dist packages/telegram/dist
 COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/dist
+COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
+COPY specs specs
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
@@ -88,6 +98,7 @@ ENV PORT=3001
 ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
+ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 
 EXPOSE 3001
 

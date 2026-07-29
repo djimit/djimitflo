@@ -221,6 +221,11 @@ npm run type-check
 | `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
 | `NODE_ENV` | `development` | Environment |
 | `DB_PATH` | `./data/djimitflo.sqlite` | SQLite database path |
+| `DJIMITFLO_DB` | auto-detected | MCP SQLite database path |
+| `DJIMITFLO_DATA_MODE` | `snapshot` | Set to `live` only when MCP points at the operational database; mutating MCP tools reject snapshots |
+| `DJIMITFLO_INSTANCE_ID` | (unset) | Stable runtime identifier reported by MCP doctor |
+| `DJIMITFLO_RUNTIME_HOST` | OS hostname | Explicit runtime host reported by MCP doctor |
+| `OKF_BASE` | auto-detected | Explicit OKF bundle directory for MCP tools |
 | `DOCKER_SANDBOX_IMAGE` | `djimitflo-runner:latest` | Sandbox image (must be digest-pinned) |
 | `DOCKER_SANDBOX_SKIP_DIGEST_CHECK` | `false` | Skip digest check (NOT recommended) |
 | `PLUGIN_TRUST_KEYS` | (empty) | Comma-separated trusted Ed25519 public keys |

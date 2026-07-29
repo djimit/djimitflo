@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
+import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService } from './agent-assurance-service';
@@ -805,7 +806,23 @@ export class LoopService {
       LIMIT 1
     `).get(goalId, terminalRunId);
     if (remaining) return false;
-    this.db.prepare("UPDATE goals SET status = 'completed', updated_at = ? WHERE id = ?").run(now, goalId);
+    const goal = this.getGoal(goalId);
+    const run = this.getLoopRun(terminalRunId);
+    const metadata = {
+      ...goal.metadata,
+      execution_source: 'loop_service',
+      executor_runtime: run.metadata?.runtime || 'mixed',
+      attempt_count: Number(goal.metadata?.attempt_count || 0) + 1,
+      completion_source: 'verified_loop_completion',
+      acceptance_evidence: [{
+        kind: 'loop_run',
+        ref: terminalRunId,
+        human_approval_ref: run.metadata?.human_approval_ref,
+        gates: run.gates.filter((gate) => gate.status === 'pass').map((gate) => gate.name),
+      }],
+    };
+    this.db.prepare("UPDATE goals SET status = 'completed', metadata = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(metadata), now, goalId);
     return true;
   }
 
@@ -1103,7 +1120,7 @@ export class LoopService {
   }
   getCatalog() {
     return {
-      loops: LOOP_CONTRACTS.map((contract) => ({
+      loops: LOOP_CATALOG.map(({ name }) => this.getLoopContract(name)).map((contract) => ({
         ...contract,
         status: 'implemented',
         gates: [
