@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { EventEmitter } from 'events';
 import { OpenCodeExecutor } from '../execution/executors/opencode-executor';
 import type { Task } from '@djimitflo/shared';
 import type { ExecutorOptions } from '../execution/types';
@@ -245,6 +246,126 @@ describe('OpenCodeExecutor', () => {
       expect(result).not.toBeNull();
       expect(result.event_type).toBe('tool.call');
       expect(result.tool_name).toBe('bash');
+    });
+
+    it('maps a rejected type-check command to an error event', () => {
+      const event = {
+        type: 'tool_use',
+        sessionID: 'ses_123',
+        part: {
+          type: 'tool',
+          tool: 'bash',
+          callID: 'call_1',
+          state: {
+            status: 'error',
+            input: { command: 'npm run type-check 2>&1 | tail -20' },
+            error: 'The user rejected permission to use this specific tool call.',
+          },
+          id: 'prt_2',
+          messageID: 'msg_1',
+          sessionID: 'ses_123',
+        },
+      };
+
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', event);
+
+      expect(result).toMatchObject({
+        event_type: 'error',
+        level: 'error',
+        tool_name: 'bash',
+        metadata: { verification_failed: true },
+      });
+      expect(result.tool_error).toContain('type-check verification');
+    });
+  });
+
+  describe('completion grounding', () => {
+    function toolEvent(tool: string, state: Record<string, unknown>) {
+      return JSON.stringify({
+        type: 'tool_use',
+        sessionID: 'ses_123',
+        part: {
+          type: 'tool',
+          tool,
+          callID: 'call_1',
+          state,
+          id: 'prt_2',
+          messageID: 'msg_1',
+          sessionID: 'ses_123',
+        },
+      });
+    }
+
+    async function resultAfter(
+      lines: string[],
+      metrics = { tokenUsage: 0, costDollars: 0 },
+    ) {
+      const outcome = { verificationFailures: [] };
+      (executor as any).collectMetricsFromText(`${lines.join('\n')}\n`, metrics, '', outcome);
+      const emitter = new EventEmitter();
+      const result = (executor as any).createResultPromise(makeTask(), emitter, metrics, outcome);
+      emitter.emit('exit', 0);
+      return result;
+    }
+
+    it('does not report success when a required type-check was rejected despite exit code 0', async () => {
+      const result = await resultAfter([
+        toolEvent('bash', {
+          status: 'error',
+          input: { command: 'npm run type-check 2>&1 | tail -20' },
+          error: 'The user rejected permission to use this specific tool call.',
+        }),
+      ]);
+
+      expect(result).toMatchObject({
+        status: 'failed',
+        failure: {
+          code: 'VERIFICATION_FAILED',
+          retryable: false,
+          sideEffectsPossible: true,
+          failureDomain: 'opencode',
+        },
+      });
+      expect(result.message).toContain('type-check');
+    });
+
+    it('does not report success when a structured lint result has a non-zero exit code', async () => {
+      const result = await resultAfter([
+        toolEvent('lint', {
+          status: 'completed',
+          input: { mode: 'check' },
+          output: JSON.stringify({ success: true, exitCode: 1 }),
+        }),
+      ]);
+
+      expect(result.status).toBe('failed');
+      expect(result.failure?.code).toBe('VERIFICATION_FAILED');
+      expect(result.message).toContain('exit 1');
+    });
+
+    it('keeps exit-code success when verification passes', async () => {
+      const result = await resultAfter([
+        toolEvent('bash', {
+          status: 'completed',
+          input: { command: 'npm run type-check' },
+          output: JSON.stringify({ success: true, exitCode: 0 }),
+        }),
+      ]);
+
+      expect(result.status).toBe('completed');
+      expect(result.failure).toBeUndefined();
+    });
+
+    it('does not fail the run for a recoverable non-verification tool error', async () => {
+      const result = await resultAfter([
+        toolEvent('read', {
+          status: 'error',
+          input: { path: '/missing' },
+          error: 'File not found',
+        }),
+      ]);
+
+      expect(result.status).toBe('completed');
     });
   });
 

@@ -45,6 +45,7 @@ interface OpenCodeToolUse {
     status: string;
     input?: Record<string, unknown>;
     output?: string;
+    error?: string;
     metadata?: Record<string, unknown>;
   };
   id: string;
@@ -101,6 +102,10 @@ interface OpenCodeRunMetrics {
   costDollars: number;
 }
 
+interface OpenCodeRunOutcome {
+  verificationFailures: Array<{ tool: string; reason: string }>;
+}
+
 // ── Executor ────────────────────────────────────────────────────────────────
 
 export class OpenCodeExecutor implements TaskExecutor {
@@ -129,6 +134,7 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     const emitter = new EventEmitter();
     const metrics: OpenCodeRunMetrics = { tokenUsage: 0, costDollars: 0 };
+    const outcome: OpenCodeRunOutcome = { verificationFailures: [] };
     let metricsBuffer = '';
     let childProcess: ChildProcess | null = null;
 
@@ -160,20 +166,20 @@ export class OpenCodeExecutor implements TaskExecutor {
 
       child.stdout?.on('data', (data) => {
         const text = data.toString();
-        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer);
+        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
         emitter.emit('output', text, 'stdout');
       });
 
       child.stderr?.on('data', (data) => {
         const text = data.toString();
-        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer);
+        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
         emitter.emit('output', text, 'stderr');
       });
 
       child.on('close', (code) => {
         clearTimeout(timeoutHandle);
         if (metricsBuffer.trim()) {
-          this.collectMetricsFromLine(metricsBuffer, metrics);
+          this.collectMetricsFromLine(metricsBuffer, metrics, outcome);
           metricsBuffer = '';
         }
         emitter.emit('exit', code);
@@ -185,7 +191,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     };
 
     const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
-    const result = this.createResultPromise(task, emitter, metrics);
+    const result = this.createResultPromise(task, emitter, metrics, outcome);
 
     const session: ExecutionSession = {
       id: sessionId,
@@ -260,18 +266,36 @@ export class OpenCodeExecutor implements TaskExecutor {
     }
   }
 
-  private collectMetricsFromText(text: string, metrics: OpenCodeRunMetrics, buffer = ''): string {
+  private collectMetricsFromText(
+    text: string,
+    metrics: OpenCodeRunMetrics,
+    buffer = '',
+    outcome?: OpenCodeRunOutcome,
+  ): string {
     const lines = `${buffer}${text}`.split('\n');
     const nextBuffer = lines.pop() || '';
     for (const line of lines) {
-      this.collectMetricsFromLine(line, metrics);
+      this.collectMetricsFromLine(line, metrics, outcome);
     }
     return nextBuffer;
   }
 
-  private collectMetricsFromLine(line: string, metrics: OpenCodeRunMetrics): void {
+  private collectMetricsFromLine(
+    line: string,
+    metrics: OpenCodeRunMetrics,
+    outcome?: OpenCodeRunOutcome,
+  ): void {
     const event = this.parseJsonEvent(line.trim());
-    if (event?.type !== 'step_finish') return;
+    if (!event) return;
+
+    const verificationFailure = this.getVerificationFailure(event);
+    if (outcome && verificationFailure
+      && !outcome.verificationFailures.some((failure) =>
+        failure.tool === verificationFailure.tool && failure.reason === verificationFailure.reason)) {
+      outcome.verificationFailures.push(verificationFailure);
+    }
+
+    if (event.type !== 'step_finish') return;
 
     const part = event.part as OpenCodeStepFinish;
     const total = part.tokens?.total;
@@ -281,6 +305,44 @@ export class OpenCodeExecutor implements TaskExecutor {
     if (typeof part.cost === 'number') {
       metrics.costDollars = Math.max(metrics.costDollars, part.cost);
     }
+  }
+
+  private getVerificationFailure(event: OpenCodeEvent): { tool: string; reason: string } | null {
+    if (event.type !== 'tool_use') return null;
+
+    const part = event.part as OpenCodeToolUse;
+    const command = typeof part.state?.input?.command === 'string' ? part.state.input.command : '';
+    const tool = part.tool.toLowerCase();
+    const commandMatch = command.match(/\b(type-?check|tsc|eslint|vitest|jest|pytest|cargo test|go test|npm (?:run )?test)\b/i);
+    const isVerification = /^(build_check|lint|test|typecheck|type-check)$/.test(tool)
+      || (tool === 'bash' && Boolean(commandMatch));
+    if (!isVerification) return null;
+    const verificationName = commandMatch?.[1].toLowerCase() || part.tool;
+
+    if (/^(error|failed|rejected|cancelled)$/.test(part.state.status)) {
+      const detail = part.state.error || `tool status: ${part.state.status}`;
+      return { tool: part.tool, reason: `${verificationName} verification: ${detail}` };
+    }
+
+    if (!part.state.output) return null;
+    try {
+      const output = JSON.parse(part.state.output) as {
+        success?: boolean;
+        exitCode?: number;
+        verdict?: string;
+        summary?: { failed_count?: number };
+      };
+      if (output.success === false
+        || (typeof output.exitCode === 'number' && output.exitCode !== 0)
+        || output.verdict === 'fail'
+        || (output.summary?.failed_count ?? 0) > 0) {
+        return { tool: part.tool, reason: `verification output reported failure${output.exitCode !== undefined ? ` (exit ${output.exitCode})` : ''}` };
+      }
+    } catch {
+      // Non-JSON tool output has no reliable machine-readable failure contract.
+    }
+
+    return null;
   }
 
   private mapJsonEventToExecutionEvent(taskId: string, event: OpenCodeEvent): ExecutionEventCreateInput | null {
@@ -298,18 +360,23 @@ export class OpenCodeExecutor implements TaskExecutor {
 
       case 'tool_use': {
         const toolPart = part as OpenCodeToolUse;
+        const verificationFailure = this.getVerificationFailure(event);
         return {
           task_id: taskId,
-          event_type: ExecutionEventType.TOOL_CALL,
-          message: toolPart.state?.input?.description as string || `Tool call: ${toolPart.tool}`,
-          level: LogLevel.INFO,
+          event_type: verificationFailure ? ExecutionEventType.ERROR : ExecutionEventType.TOOL_CALL,
+          message: verificationFailure?.reason
+            || toolPart.state?.input?.description as string
+            || `Tool call: ${toolPart.tool}`,
+          level: verificationFailure ? LogLevel.ERROR : LogLevel.INFO,
           tool_name: toolPart.tool,
+          tool_error: verificationFailure?.reason,
           metadata: {
             executor: 'opencode',
             callID: toolPart.callID,
             sessionID: event.sessionID,
             status: toolPart.state?.status,
             input: toolPart.state?.input,
+            verification_failed: Boolean(verificationFailure),
           },
         };
       }
@@ -545,10 +612,30 @@ export class OpenCodeExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
     metrics: OpenCodeRunMetrics,
+    outcome: OpenCodeRunOutcome,
   ): Promise<ExecutionResult> {
     return new Promise((resolve) => {
       emitter.on('exit', (code: number) => {
         if (code === 0) {
+          if (outcome.verificationFailures.length > 0) {
+            const message = `OpenCode execution finished, but verification failed: ${outcome.verificationFailures
+              .map((failure) => `${failure.tool}: ${failure.reason}`)
+              .join('; ')}`;
+            resolve({
+              status: 'failed',
+              message,
+              error: message,
+              failure: {
+                code: 'VERIFICATION_FAILED',
+                message,
+                retryable: false,
+                sideEffectsPossible: true,
+                failureDomain: 'opencode',
+              },
+              metrics: { executionTimeMs: 0, tokenUsage: metrics.tokenUsage, costDollars: metrics.costDollars },
+            });
+            return;
+          }
           resolve({
             status: 'completed',
             message: 'OpenCode execution completed successfully',
