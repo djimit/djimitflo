@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "status": "fail",
+  "generated_at": "2026-07-31T21:03:48.102Z",
+  "source": {
+    "commit": "cb9944fffe47e07e648a302d1d520406125fe880",
+    "dirty": true,
+    "dirty_state_sha256": "9a175de35a3470e80da2dd03e2905c838e848bc6ddf1aa008be7d55bbbc29d27",
+    "package_lock_sha256": "6a88d2a5670efee095d2bf65860a57c8d40d364c7980594098e43e408e61b064"
+  },
+  "environment": {
+    "node": "v20.20.2",
+    "npm": "10.8.2"
+  },
+  "gates": [
+    {
+      "id": "supported_node",
+      "mandatory": true,
+      "status": "pass",
+      "evidence": "node=v20.20.2; required=>=20 <25",
+      "started_at": "2026-07-31T21:03:48.102Z",
+      "finished_at": "2026-07-31T21:03:48.102Z"
+    },
+    {
+      "id": "tests",
+      "mandatory": true,
+      "status": "fail",
+      "exit_code": 1,
+      "started_at": "2026-07-31T21:03:48.103Z",
+      "finished_at": "2026-07-31T21:03:58.778Z",
+      "evidence": "/__tests__/task-execution-fallback-http.test.ts:18:10\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[309/1977]⎯\n\n FAIL  src/__tests__/task-execution-fallback-http.test.ts > task execution provider fallback HTTP chain > creates an execution attempt, falls back, and persists the successful result\nTypeError: Cannot read properties of undefined (reading 'close')\n ❯ src/__tests__/task-execution-fallback-http.test.ts:116:8\n    114|   afterEach(async () => {\n    115|     if (server) await new Promise<void>((resolve, reject) => server.cl…\n    116|     db.close();\n       |        ^\n    117|   });\n    118|\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[310/1977]⎯\n\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > isGitLockError classifies lock vs non-lock git errors\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > retries worktree add on a lock error then succeeds\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > sanitizes finding ids before using them as worktree path segments\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > keeps proof-run branch names unique beyond short common prefixes\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > snapshots untracked source files into worker worktrees\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > snapshots tracked source edits into worker worktrees\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED\nError: The module '/Users/dlandman/djimitflo/node_modules/better-sqlite3/build/Release/better_sqlite3.node'\nwas compiled against a different Node.js version using\nNODE_MODULE_VERSION 147. This version of Node.js requires\nNODE_MODULE_VERSION 115. Please try re-compiling or re-installing\nthe module (for instance, using `npm rebuild` or `npm install`).\n ❯ bindings ../../node_modules/bindings/bindings.js:112:48\n ❯ new Database ../../node_modules/better-sqlite3/lib/database.js:48:64\n ❯ createTestDb src/__tests__/helpers/test-db.ts:10:14\n      8|\n      9| export function createTestDb(): Database.Database {\n     10|   const db = new Database(':memory:');\n       |              ^\n     11|   db.pragma('foreign_keys = ON');\n     12|   db.exec(SCHEMA);\n ❯ src/__tests__/worktree-retry.test.ts:25:10\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[311/1977]⎯\n\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > isGitLockError classifies lock vs non-lock git errors\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > retries worktree add on a lock error then succeeds\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > sanitizes finding ids before using them as worktree path segments\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > keeps proof-run branch names unique beyond short common prefixes\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > snapshots untracked source files into worker worktrees\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > snapshots tracked source edits into worker worktrees\n FAIL  src/__tests__/worktree-retry.test.ts > createWorktree git-lock retry > does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED\nTypeError: Cannot read properties of undefined (reading 'close')\n ❯ src/__tests__/worktree-retry.test.ts:34:8\n     32|\n     33|   afterEach(() => {\n     34|     db.close();\n       |        ^\n     35|     fs.rmSync(worktreeRoot, { recursive: true, force: true });\n     36|     delete process.env.LOOP_WORKTREE_ROOT;\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[312/1977]⎯\n\nnpm error Lifecycle script `test` failed with error:\nnpm error code 1\nnpm error path /Users/dlandman/djimitflo/packages/server\nnpm error workspace @djimitflo/server@0.5.8\nnpm error location /Users/dlandman/djimitflo/packages/server\nnpm error command failed\nnpm error command sh -c vitest run\n\n"
+    },
+    {
+      "id": "type_check",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-07-31T21:03:58.779Z",
+      "finished_at": "2026-07-31T21:04:06.009Z",
+      "evidence": "\n> djimitflo@0.5.8 type-check\n> npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present\n\n\n> @djimitflo/shared@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/telegram@0.5.8 build\n> tsc -p tsconfig.json\n\n\n> @djimitflo/agent-catalog@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/mcp-server@0.5.8 build\n> tsc\n\n\n> @djimitflo/ransomware-module@1.0.0 build\n> tsc -b --force\n\n\n> @djimitflo/dashboard@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/mcp-server@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/ransomware-module@1.0.0 type-check\n> tsc --noEmit\n\n\n> @djimitflo/server@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/shared@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/telegram@0.5.8 type-check\n> tsc -p tsconfig.json --noEmit\n\n\n"
+    },
+    {
+      "id": "lint",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-07-31T21:04:06.009Z",
+      "finished_at": "2026-07-31T21:04:10.655Z",
+      "evidence": "\n> djimitflo@0.5.8 lint\n> npm run lint --workspaces --if-present\n\n\n> @djimitflo/dashboard@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/mcp-server@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/server@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/shared@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/telegram@0.5.8 lint\n> eslint .\n\n\n"
+    },
+    {
+      "id": "build",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-07-31T21:04:10.655Z",
+      "finished_at": "2026-07-31T21:04:16.935Z",
+      "evidence": "   37.36 kB │ gzip:  7.29 kB\ndist/assets/export-CASpLWa5.js                     0.09 kB │ gzip:  0.11 kB\ndist/assets/square-Dpa0xqox.js                     0.13 kB │ gzip:  0.14 kB\ndist/assets/arrow-left-DLSDyVGp.js                 0.15 kB │ gzip:  0.15 kB\ndist/assets/trending-up-B8wKuCys.js                0.16 kB │ gzip:  0.16 kB\ndist/assets/play-CShhDuem.js                       0.17 kB │ gzip:  0.16 kB\ndist/assets/circle-check-big-CxH6ZGdU.js           0.18 kB │ gzip:  0.17 kB\ndist/assets/rotate-ccw-DfpcDFSa.js                 0.18 kB │ gzip:  0.17 kB\ndist/assets/target-TvZcneVZ.js                     0.21 kB │ gzip:  0.15 kB\ndist/assets/git-branch-DCo4spKH.js                 0.21 kB │ gzip:  0.18 kB\ndist/assets/download-CXSCuey0.js                   0.22 kB │ gzip:  0.18 kB\ndist/assets/message-square-BDq2JA-e.js             0.22 kB │ gzip:  0.19 kB\ndist/assets/database-BTp0I5Gh.js                   0.23 kB │ gzip:  0.19 kB\ndist/assets/circle-alert-CyKn6Ud9.js               0.23 kB │ gzip:  0.17 kB\ndist/assets/route-DFOKwbTL.js                      0.24 kB │ gzip:  0.19 kB\ndist/assets/funnel-BoGAG9ID.js                     0.24 kB │ gzip:  0.20 kB\ndist/assets/zap-DD_ZpbCS.js                        0.25 kB │ gzip:  0.19 kB\ndist/assets/shield-check-C7du3xpp.js               0.30 kB │ gzip:  0.24 kB\ndist/assets/refresh-cw-c6ST4PpV.js                 0.31 kB │ gzip:  0.21 kB\ndist/assets/server-mXOH_7qH.js                     0.32 kB │ gzip:  0.20 kB\ndist/assets/file-text-C_8ZHrwQ.js                  0.37 kB │ gzip:  0.24 kB\ndist/assets/with-selector-6JOd2bPC.js              1.96 kB │ gzip:  0.89 kB\ndist/assets/PolicyCenterPage-BB0RnWza.js           2.07 kB │ gzip:  0.79 kB\ndist/assets/SelfHealingPage-Aon49AuK.js            2.42 kB │ gzip:  1.11 kB\ndist/assets/PredictiveAnalyticsPage-DfMlYQLs.js    2.76 kB │ gzip:  1.15 kB\ndist/assets/ApprovalQueuePage-CyDdrnem.js          3.22 kB │ gzip:  1.29 kB\ndist/assets/AuditPage-D7QRdTfh.js                  3.61 kB │ gzip:  1.26 kB\ndist/assets/SelfDrivingDashboard-_mwn_XRA.js       4.20 kB │ gzip:  1.41 kB\ndist/assets/AgiReasoningPage-CDjPz32Y.js           4.49 kB │ gzip:  1.58 kB\ndist/assets/ApprovalCard-sr1zvbYp.js               4.67 kB │ gzip:  1.52 kB\ndist/assets/FederationPage-DGemIbMZ.js             4.69 kB │ gzip:  1.57 kB\ndist/assets/WorkstationUrlsPage-BD9_aynq.js        4.69 kB │ gzip:  1.35 kB\ndist/assets/ConsensusDebatePage-De8156A3.js        4.78 kB │ gzip:  1.73 kB\ndist/assets/SegmlGovernancePage-D4jtELSI.js        4.96 kB │ gzip:  1.72 kB\ndist/assets/EconomyPage-BXp1S70L.js                4.97 kB │ gzip:  1.09 kB\ndist/assets/CognitiveRuntimePage-ClzksCPh.js       5.63 kB │ gzip:  1.78 kB\ndist/assets/RepositoriesPage-CM6tMHwH.js           6.55 kB │ gzip:  1.92 kB\ndist/assets/MCPPermissionsPage-BPh9Y3OT.js         7.11 kB │ gzip:  1.86 kB\ndist/assets/ProofRunDetailPage-CnyPrTmc.js         7.16 kB │ gzip:  2.12 kB\ndist/assets/ObservabilityPage-BBT8AHjd.js          7.47 kB │ gzip:  2.28 kB\ndist/assets/RepositoryDetailPage-DO9HASxM.js       8.22 kB │ gzip:  2.05 kB\ndist/assets/UsagePage-JHLt8CBL.js                  8.23 kB │ gzip:  2.25 kB\ndist/assets/AgentCatalogPage-g3j6mElQ.js           8.34 kB │ gzip:  2.42 kB\ndist/assets/jsx-runtime-bzQ4Vb5N.js                8.40 kB │ gzip:  3.20 kB\ndist/assets/ReviewPage-BhdenTWj.js                14.45 kB │ gzip:  3.38 kB\ndist/assets/SwarmOverviewPage-Sw5iEpnN.js         16.03 kB │ gzip:  3.62 kB\ndist/assets/TaskDetailPage-fxELi_F8.js            17.06 kB │ gzip:  4.32 kB\ndist/assets/GoalsLoopsPage-CaKMRjJr.js            23.05 kB │ gzip:  5.26 kB\ndist/assets/FleetCockpitPage-DjiSKHvo.js          23.68 kB │ gzip:  5.18 kB\ndist/assets/SwarmResourcesPage-OG3XAoMb.js        26.96 kB │ gzip:  5.89 kB\ndist/assets/SwarmMissionControlPage-CWbZ9vIh.js   41.88 kB │ gzip:  8.21 kB\ndist/assets/PipelineBuilderPage-C08vGC09.js      180.06 kB │ gzip: 58.21 kB\ndist/assets/index-Bif_tKm-.js                    294.98 kB │ gzip: 90.18 kB\n\n✓ built in 389ms\n\n"
+    },
+    {
+      "id": "dependency_audit",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-07-31T21:04:16.935Z",
+      "finished_at": "2026-07-31T21:04:17.512Z",
+      "evidence": "\n> djimitflo@0.5.8 audit:ci\n> node scripts/ci-audit.mjs\n\nNo unaccepted high/critical production advisories.\n\n"
+    },
+    {
+      "id": "contract_inventory",
+      "mandatory": true,
+      "status": "fail",
+      "exit_code": 1,
+      "started_at": "2026-07-31T21:04:17.512Z",
+      "finished_at": "2026-07-31T21:04:18.441Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:contracts\n> node scripts/contract-inventory.mjs\n\n{\n  \"output\": \"/Users/dlandman/djimitflo/openspec/changes/assurance-truth-closure/contract-inventory.json\",\n  \"routes\": {\n    \"total\": 517,\n    \"tested\": 136,\n    \"critical_unclassified\": 37\n  },\n  \"mcp_tools\": {\n    \"total\": 43,\n    \"tested\": 28,\n    \"critical_unclassified\": 1\n  }\n}\n\n"
+    },
+    {
+      "id": "diff_check",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-07-31T21:04:18.441Z",
+      "finished_at": "2026-07-31T21:04:18.509Z",
+      "evidence": "\n"
+    }
+  ],
+  "limitations": [
+    "At least one mandatory local gate did not pass."
+  ],
+  "next_safe_action": "Resolve the first failed mandatory gate."
+}

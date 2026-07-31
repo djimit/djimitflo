@@ -92,14 +92,16 @@ export class RuntimeCommandService {
     }
     if (runtime === 'codex') {
       const args = skipPermissions
-        ? ['exec', '--sandbox', 'workspace-write', '-c', worktreePath, 'approval_policy=never', '--json', '--cd', worktreePath, prompt]
+        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
         : ['exec', '--json', '--cd', worktreePath, prompt];
       return { command: process.env.CODEX_BIN_PATH || 'codex', args };
     }
     if (runtime === 'opencode') {
       const args = skipPermissions
-        ? ['run', '--dangerously-skip-permissions', '--format', 'json', '--dir', worktreePath, prompt]
+        ? ['run', '--auto', '--format', 'json', '--dir', worktreePath, prompt]
         : ['run', '--format', 'json', '--dir', worktreePath, prompt];
+      const model = process.env.DJIMITFLO_OPENCODE_MODEL;
+      if (model) args.splice(args.length - 1, 0, '--model', model);
       return { command: process.env.OPENCODE_BIN_PATH || 'opencode', args };
     }
     if (runtime === 'claude') {

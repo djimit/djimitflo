@@ -13,7 +13,7 @@
  * - SwarmEventBus real-time events (eval:case:complete, eval:run:complete)
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { isDeepStrictEqual } from 'util';
 import type { Database } from 'better-sqlite3';
@@ -89,6 +89,10 @@ function getJudgeModel(): string { return process.env.OPENMYTHOS_JUDGE_MODEL || 
 function getCorpusPath(): string {
   if (!process.env.OPENMYTHOS_CORPUS_PATH?.trim()) throw new Error('OPENMYTHOS_CORPUS_PATH_REQUIRED');
   return process.env.OPENMYTHOS_CORPUS_PATH.trim();
+}
+
+function sha256File(path: string): string {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
 export class OpenMythosEvalService {
@@ -172,8 +176,15 @@ export class OpenMythosEvalService {
     const oracleAnchorCases = cases.filter((testCase) => anchors.has(testCase.id)).length;
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
+    const corpusPath = getCorpusPath();
+    const anchorsPath = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim();
     const baseMetadata = {
       subject_model: subjectModel,
+      judge_backend: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service',
+      judge_model: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? getJudgeModel() : 'djimitflo-judge-service',
+      corpus_sha256: sha256File(corpusPath),
+      oracle_anchors_sha256: anchorsPath ? sha256File(anchorsPath) : undefined,
+      generation_options: { temperature: 0, seed: 0, num_predict: 1024 },
       case_ids: caseIds || [],
       evaluation_mode: subject ? 'skill_conditioned_prompt' : 'model_only',
       skill_id: subject?.id,
@@ -238,7 +249,8 @@ export class OpenMythosEvalService {
     const overallScore = cases.length > 0 ? totalScore / cases.length : 0;
     const categoryScores = this.computeCategoryScores(results);
     const finishedAt = new Date().toISOString();
-    const status: EvalRunResult['status'] = completed === 0 ? 'failed' : 'completed';
+    const scoreValid = completed === cases.length;
+    const status: EvalRunResult['status'] = scoreValid ? 'completed' : 'failed';
     const persist = this.db.transaction(() => {
       const insert = this.db.prepare(`
         INSERT INTO openmythos_case_results (
@@ -270,6 +282,8 @@ export class OpenMythosEvalService {
         category_scores: categoryScores,
         oracle_cases: results.filter((result) => result.scoringSource === 'oracle').length,
         judge_cases: results.filter((result) => result.scoringSource === 'judge').length,
+        failed_cases: results.filter((result) => result.status === 'failed').length,
+        score_valid: scoreValid,
       }), runId);
     });
     persist();
@@ -306,6 +320,9 @@ export class OpenMythosEvalService {
     const prompt = subject ? this.buildSkillPrompt(testCase.prompt, subject) : testCase.prompt;
     const agentResponse = await this.getAgentResponse(prompt, subjectModel);
     const judgment = await this.judgeResponse(testCase, agentResponse);
+    if (!Number.isFinite(judgment.score) || judgment.score < 1 || judgment.score > 5) {
+      throw new Error('OPENMYTHOS_JUDGE_SCORE_INVALID');
+    }
     return {
       caseId: testCase.id,
       category: testCase.category,
@@ -488,7 +505,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     });
 
     if (!response.ok) {
-      return { score: 0, rationale: 'Judge unavailable' };
+      throw new Error(`OPENMYTHOS_JUDGE_UNAVAILABLE:${response.status}`);
     }
 
     const data = await response.json() as { response: string };
@@ -496,14 +513,14 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
       const parsed = JSON.parse(data.response);
       const parsedScore = Number(parsed.score);
       if (!Number.isFinite(parsedScore)) {
-        return { score: 0, rationale: 'Judge response missing numeric score' };
+        throw new Error('OPENMYTHOS_JUDGE_SCORE_INVALID');
       }
       return {
         score: Math.max(1, Math.min(5, parsedScore)),
         rationale: String(parsed.rationale || ''),
       };
     } catch {
-      return { score: 0, rationale: 'Judge parse error' };
+      throw new Error('OPENMYTHOS_JUDGE_RESPONSE_INVALID');
     }
   }
 

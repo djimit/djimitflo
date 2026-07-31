@@ -1272,12 +1272,155 @@ const tokenUsageLogColumns: ColumnSpec[] = [
   { name: 'updated_at', definition: "TEXT NOT NULL DEFAULT (datetime('now'))" },
 ];
 
+const explainerTaskColumns: ColumnSpec[] = [
+  { name: 'repository_id', definition: 'TEXT' },
+  { name: 'error_message', definition: 'TEXT' },
+  { name: 'scan_id', definition: 'TEXT' },
+];
+
 // Migrations that MUST run before the schema string is exec'd, because the
 // schema contains CREATE INDEX statements referencing columns that may be
 // absent on pre-existing (stale) tables (CREATE TABLE IF NOT EXISTS does not
 // add columns to an existing table).
 export function runPreSchemaMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'token_usage_log', tokenUsageLogColumns);
+  addMissingColumns(db, 'explainer_tasks', explainerTaskColumns);
+}
+
+function createExplainRepoTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS discovered_repositories (
+      id TEXT PRIMARY KEY,
+      owner TEXT NOT NULL,
+      name TEXT NOT NULL,
+      full_name TEXT NOT NULL UNIQUE,
+      default_branch TEXT NOT NULL DEFAULT 'main',
+      last_commit_sha TEXT,
+      last_commit_at TEXT,
+      repo_category TEXT NOT NULL DEFAULT 'other' CHECK(repo_category IN ('platform', 'plugin', 'tool', 'experimental', 'other')),
+      language TEXT,
+      license TEXT,
+      stargazers_count INTEGER NOT NULL DEFAULT 0,
+      open_issues_count INTEGER NOT NULL DEFAULT 0,
+      priority_tier INTEGER NOT NULL DEFAULT 3 CHECK(priority_tier IN (1, 2, 3)),
+      html_url TEXT NOT NULL,
+      clone_url TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_discovered_repositories_full_name ON discovered_repositories(full_name);
+    CREATE INDEX IF NOT EXISTS idx_discovered_repositories_priority_tier ON discovered_repositories(priority_tier);
+    CREATE INDEX IF NOT EXISTS idx_discovered_repositories_is_active ON discovered_repositories(is_active);
+
+    CREATE TABLE IF NOT EXISTS explainer_jobs (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+      scheduled_at TEXT NOT NULL DEFAULT (datetime('now')),
+      started_at TEXT,
+      finished_at TEXT,
+      worker_id TEXT,
+      retry_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
+      priority_score INTEGER NOT NULL DEFAULT 0,
+      scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
+    CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
+    CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(scheduled_at);
+
+    CREATE TABLE IF NOT EXISTS repo_graph_snapshots (
+      id TEXT PRIMARY KEY,
+      repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+      scan_id TEXT REFERENCES repository_scans(id) ON DELETE SET NULL,
+      commit_sha TEXT,
+      communities_json TEXT NOT NULL DEFAULT '[]',
+      flows_json TEXT NOT NULL DEFAULT '[]',
+      hub_nodes_json TEXT NOT NULL DEFAULT '[]',
+      bridge_nodes_json TEXT NOT NULL DEFAULT '[]',
+      surprising_connections_json TEXT NOT NULL DEFAULT '[]',
+      metrics_json TEXT NOT NULL DEFAULT '{}',
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_repository_id ON repo_graph_snapshots(repository_id);
+    CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_scan_id ON repo_graph_snapshots(scan_id);
+
+    CREATE TABLE IF NOT EXISTS explainer_feedback (
+      id TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+      section_type TEXT,
+      fact_id TEXT,
+      correction TEXT NOT NULL,
+      submitted_by TEXT,
+      reviewed INTEGER NOT NULL DEFAULT 0,
+      review_decision TEXT CHECK(review_decision IN ('accepted', 'rejected', 'pending')),
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_explainer_feedback_bundle_id ON explainer_feedback(bundle_id);
+    CREATE INDEX IF NOT EXISTS idx_explainer_feedback_reviewed ON explainer_feedback(reviewed);
+
+    CREATE TABLE IF NOT EXISTS human_review_queue (
+      id TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+      reason TEXT NOT NULL,
+      openmythos_score REAL,
+      assigned_to TEXT,
+      resolved INTEGER NOT NULL DEFAULT 0,
+      resolution TEXT CHECK(resolution IN ('approved', 'rejected', 'pending')),
+      resolved_at TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_human_review_queue_bundle_id ON human_review_queue(bundle_id);
+    CREATE INDEX IF NOT EXISTS idx_human_review_queue_resolved ON human_review_queue(resolved);
+
+    CREATE TABLE IF NOT EXISTS explainer_audit_log (
+      id TEXT PRIMARY KEY,
+      actor TEXT NOT NULL DEFAULT 'system',
+      action TEXT NOT NULL,
+      resource_type TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK(outcome IN ('success', 'failure', 'blocked', 'pending')),
+      reason TEXT,
+      metadata TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_explainer_audit_log_resource ON explainer_audit_log(resource_type, resource_id);
+    CREATE INDEX IF NOT EXISTS idx_explainer_audit_log_created_at ON explainer_audit_log(created_at DESC);
+
+    -- Bundle columns added after initial explainerSchema
+    CREATE TABLE IF NOT EXISTS __explainer_bundles_columns_tmp (
+      col TEXT PRIMARY KEY
+    );
+  `);
+
+  const explainerBundleColumns: ColumnSpec[] = [
+    { name: 'manifest_path', definition: 'TEXT' },
+    { name: 'facts_path', definition: 'TEXT' },
+    { name: 'sections_path', definition: 'TEXT' },
+    { name: 'assets_path', definition: 'TEXT' },
+    { name: 'status', definition: "TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'published', 'human_review', 'unpublished'))" },
+    { name: 'content_hash', definition: 'TEXT' },
+  ];
+  addMissingColumns(db, 'explainer_bundles', explainerBundleColumns);
+
+  db.exec(`DROP TABLE IF EXISTS __explainer_bundles_columns_tmp;`);
 }
 
 export function runMigrations(db: BetterSqlite3Database) {
@@ -1307,6 +1450,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createAgentArchiveTables(db);
   createSubAgentContextTables(db);
   createLazyServiceTables(db);
+  createExplainRepoTables(db);
   createPerformanceIndexes(db);
 }
 

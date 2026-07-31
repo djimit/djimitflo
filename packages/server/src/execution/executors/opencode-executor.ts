@@ -6,7 +6,7 @@
  *   --format json|default                  output format (default: default)
  *   --model <provider/model>              model selection
  *   --agent <name>                        agent selection (build/plan/explore/scout/custom)
- *   --dangerously-skip-permissions       auto-approve permissions (default: false)
+ *   --auto                               auto-approve permissions (default: false)
  *   --continue / --session <id>           session continuity (future scope)
  *   --variant <level>                     model reasoning effort
  *   --file <path>                         attach files to message
@@ -244,7 +244,7 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
     if (skipPerms) {
-      args.push('--dangerously-skip-permissions');
+      args.push('--auto');
     }
 
     args.push(task.description);

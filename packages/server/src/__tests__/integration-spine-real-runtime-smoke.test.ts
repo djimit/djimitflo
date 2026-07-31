@@ -108,8 +108,8 @@ describe('production real runtime integration certification', () => {
         body: JSON.stringify({
           source: 'dashboard_action',
           source_ref: `dashboard:real-runtime:${realRuntime}`,
-          title: `Certify ${realRuntime} integration runtime`,
-          description: 'Run a bounded low-risk real runtime certification chain.',
+          title: `Add the ${realRuntime} certification sentence to README.md`,
+          description: 'Replace the TODO in README.md with one sentence stating that the real runtime certification smoke completed.',
           risk_class: 'low',
           recommended_loop: 'doc-drift-and-small-fix-loop',
           metadata: {
@@ -162,7 +162,12 @@ describe('production real runtime integration certification', () => {
       });
       expect(drainResponse.status).toBe(200);
       const drain = await drainResponse.json() as any;
-      expect(drain.started.map((item: any) => item.decision.next_action)).toEqual(['execute_maker', 'execute_checker']);
+      const drainEvidence = {
+        final_plan: drain.final_plan,
+        leases: db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(loopRunId),
+        events: db.prepare('SELECT event_type, level, message, metadata FROM loop_events WHERE loop_run_id = ? ORDER BY created_at').all(loopRunId),
+      };
+      expect(drain.started.map((item: any) => item.decision.next_action), JSON.stringify(drainEvidence)).toEqual(['execute_maker', 'execute_checker']);
 
       const closeResponse = await fetch(`${baseUrl}/swarms/evolution/close-loop`, {
         method: 'POST',
@@ -198,6 +203,7 @@ describe('production real runtime integration certification', () => {
         body: JSON.stringify({
           runtime: realRuntime,
           skip_permissions: process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true',
+          human_approval_ref: `operator-approved-real-runtime-smoke:${realRuntime}`,
         }),
       });
       if (proofResponse.status !== 201) {

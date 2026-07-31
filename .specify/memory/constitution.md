@@ -1,11 +1,11 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 -> 1.1.0
-- Modified principles: Scope Boundary expanded with OpenMythos reference
-- Added sections: Definition of Done, Specification Quality Gates, Cross-System Governance References
+- Version change: 1.1.0 -> 1.2.0
+- Modified principles: Added Article VI (DDD Semantic Layer)
+- Added sections: Article VI - Domain-Driven Design, L8 Spec Compliance Gate
 - Removed sections: none
-- Templates requiring updates: spec-template.md (7-layer requirement added), tasks-template.md (traceability fields added)
-- Follow-up TODOs: backfill specs/001 to new lifecycle + 7-layer format
+- Templates requiring updates: spec-template.md (DDD artifact selection), tasks-template.md (DDD traceability)
+- Follow-up TODOs: instantiate /specs folder structure in production project
 -->
 
 # Djimitflo Constitution
@@ -58,6 +58,83 @@ All packages use `"type": "module"` and TypeScript strict mode. No CommonJS.
 No `any` without explicit justification. Imports use explicit file extensions
 in server code where required by Node ESM.
 
+
+### VI. Domain-Driven Design (NON-NEGOTIABLE for Core subdomains)
+
+Domain-Driven Design provides the semantic layer that eliminates three classes
+of LLM hallucination in AI-generated code: Synonym Drift, Context Contamination,
+and Invariant Violation. DDD artifacts are inviolable contracts.
+
+#### VI.1 Ubiquitous Language Contract
+
+Every Bounded Context SHALL have exactly one `domain-terms.md` file. Every
+class, entity, value object, and command in generated code MUST have a 1:1
+mapping to a term in the BC's domain-terms.md. Terms listed under
+"Aliases to AVOID" are forbidden identifiers — use in code constitutes a
+code review block. Naming a class `Manager`, `Service`, `Helper`, or
+`Util` signals a missing glossary entry.
+
+#### VI.2 Bounded Context Isolation
+
+Aggregates from different Bounded Contexts SHALL NOT hold direct object
+references to each other. Cross-BC references MUST use identity values
+(e.g., `CustomerId`) resolved at the application layer. Cross-BC
+communication SHALL use domain events or ACL-translated calls — never shared
+database tables or direct imports between BC modules.
+
+#### VI.3 Invariant Enforcement
+
+Every aggregate classified as Core subdomain SHALL have an
+`aggregate-{name}.md` specification. Invariants SHALL be written in EARS
+notation (WHEN/IF/THEN/SHALL) — this extends L1 (Language Precision) to
+business rules. Every invariant SHALL have at least one corresponding
+validation in code and at least one test. Invariant specifications are input
+for TLA+ formal verification where safety or liveness properties apply.
+
+#### VI.4 Anti-Corruption Layer Mandate
+
+Every external system integration (payment provider, CRM, ERP, SaaS API) SHALL
+have an `acl-{system}.md` specification. The "Forbidden Concepts" section
+is exhaustive — AI MUST NOT use external domain terms in core domain code. ACLs
+SHALL translate external errors into domain exceptions.
+
+#### VI.5 Artifact Selection per Change Type
+
+| Change Type | Required DDD Artifacts |
+|-------------|----------------------|
+| Greenfield feature | domain-terms.md + bc-{name}.md + aggregate-{name}.md (if Core) + requirements.md |
+| Brownfield refactor | bc-{name}.md (re-discover boundaries) + aggregate roots + acl if cutting legacy |
+| External integration | context-map.md update + acl-{external}.md + events schema |
+| Bug fix | UL discipline only |
+
+#### VI.6 Human vs AI Artifact Ownership
+
+| Artifact | Drafted By | Verified By |
+|----------|-----------|-------------|
+| domain-terms.md (UL) | Sub-agent extraction from requirements | Human reviews "Aliases to AVOID" |
+| bc-{name}.md (BC Canvas) | Sub-agent | Human reviews "Business Decisions" + "Assumptions" |
+| context-map.md | Sub-agent | Human reviews relationship patterns |
+| aggregate-{name}.md | Human from scratch | Human - LLMs only consume |
+| acl-{system}.md | Human from scratch | Human - LLMs only consume |
+
+Rationale: FTAPI case study (arXiv 2603.26244, March 2026) shows LLMs are
+effective at UL extraction, event identification, and BC boundary proposal
+(strategic steps). They fail at aggregate design and technical architecture
+mapping (tactical steps) through accumulated small errors.
+
+#### VI.7 Spec-First Ordering
+
+A pull request changing a DDD specification artifact MUST precede a pull request
+changing the implementation that consumes it. Spec First L1 invariant: spec goes
+first, code consumes it.
+
+#### VI.8 Versioning and Migration
+
+domain-terms.md terms are versioned alongside the spec. Renaming a term
+requires: (1) update domain-terms.md, (2) add old term to "Aliases to AVOID",
+(3) migration task in tasks.md, (4) grep codebase for old term usage. Breaking
+changes to aggregate invariants require TLA+ re-verification.
+
 ## Runtime Awareness
 
 This project runs on a multi-device workspace. The device-role matrix applies:
@@ -108,7 +185,7 @@ A feature is "done" only when ALL of the following hold:
 3. **Lint clean**: `npm run lint` passes with zero warnings.
 4. **FR coverage**: Every FR-### in the spec has at least one implementing task and one test.
 5. **Spec lifecycle**: Spec status transitions to `implemented`; changelog entry added.
-6. **Constitution compliance**: No Article I–V violations introduced.
+6. **Constitution compliance**: No Article I–VI violations introduced.
 7. **Audit evidence**: All gate evidence files written to `.swarm/evidence/`.
 
 Reviewer MAY override items 4–5 with documented justification (see Specification Quality Gates).
@@ -128,6 +205,7 @@ proportion per spec.
 | L5 | Codebase Anchoring | SHOULD | Each FR references specific file paths. No vacuum generation. |
 | L6 | Edge Cases | CRITICAL | Named edge cases (EC-###) with IF-THEN scenarios. Happy path is not enough. |
 | L7 | Verified Library Specs | SHOULD | Library name + version + key API constraints. No statistical guessing. |
+| L8 | Spec Compliance | CRITICAL | DDD artifact compliance: UL names, invariant coverage, ACL boundary, cross-BC isolation. |
 
 **Enforcement levels:**
 - **CRITICAL**: Hard gate. Plan generation blocked until satisfied. Mechanically verifiable.
@@ -173,4 +251,4 @@ features. Amendments require:
 - Version increment per semantic versioning (MAJOR: principle
   removal/redefinition; MINOR: new principle/section; PATCH: clarification).
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-22 | **Last Amended**: 2026-07-23
+**Version**: 1.2.0 | **Ratified**: 2026-06-22 | **Last Amended**: 2026-07-24

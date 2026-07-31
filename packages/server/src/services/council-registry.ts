@@ -115,6 +115,7 @@ export class CouncilRegistry {
   }
 
   deprecateModel(id: string): void {
+    this.getModel(id);
     this.db.prepare(`
       UPDATE council_models SET status = 'deprecated', updated_at = ? WHERE id = ?
     `).run(new Date().toISOString(), id);
@@ -128,11 +129,26 @@ export class CouncilRegistry {
     privacy_required?: PrivacyClass;
     min_independence?: number;
     max_cost?: number;
+    custom_models?: string[];
   }): CouncilSelection {
-    const activeModels = this.listModels('active');
+    let activeModels = this.listModels('active');
 
     if (activeModels.length === 0) {
       throw new Error('COUNCIL_NO_ACTIVE_MODELS');
+    }
+
+    if (config.custom_models?.length) {
+      const requested = new Set(config.custom_models);
+      activeModels = activeModels.filter(model => requested.has(model.model_name));
+    }
+    if (config.privacy_required) {
+      activeModels = activeModels.filter(model => model.privacy_class === config.privacy_required);
+    }
+    if (config.max_cost !== undefined) {
+      activeModels = activeModels.filter(model => model.cost_per_1m_tokens <= config.max_cost!);
+    }
+    if (activeModels.length === 0) {
+      throw new Error('COUNCIL_NO_ELIGIBLE_MODELS');
     }
 
     let selected: CouncilModelRecord[] = [];
@@ -191,7 +207,7 @@ export class CouncilRegistry {
       candidates = candidates.filter(m => m.independence_score >= config.min_independence!);
     }
 
-    if (config.max_cost) {
+    if (config.max_cost !== undefined) {
       candidates = candidates.filter(m => m.cost_per_1m_tokens <= config.max_cost!);
     }
 

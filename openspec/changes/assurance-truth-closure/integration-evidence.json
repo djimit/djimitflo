@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T21:35:44.233Z",
+  "status": "blocked",
+  "probes": [
+    {
+      "id": "ollama",
+      "kind": "http",
+      "required": true,
+      "target": "http://192.168.1.28:11434/api/tags",
+      "status": "blocked",
+      "latency_ms": 290,
+      "reason": "fetch failed"
+    },
+    {
+      "id": "litellm",
+      "kind": "http",
+      "required": true,
+      "target": "http://192.168.1.28:4000/health",
+      "status": "blocked",
+      "latency_ms": 266,
+      "reason": "fetch failed"
+    },
+    {
+      "id": "qdrant",
+      "kind": "http",
+      "required": true,
+      "target": "http://192.168.1.28:6333/healthz",
+      "status": "blocked",
+      "latency_ms": 265,
+      "reason": "fetch failed"
+    },
+    {
+      "id": "context7",
+      "kind": "http",
+      "required": false,
+      "target": "https://mcp.context7.com/mcp",
+      "status": "fail",
+      "http_status": 405,
+      "latency_ms": 671
+    },
+    {
+      "id": "codex",
+      "kind": "binary",
+      "required": true,
+      "target": "codex",
+      "status": "pass",
+      "version": "codex-cli 0.146.0"
+    },
+    {
+      "id": "opencode",
+      "kind": "binary",
+      "required": false,
+      "target": "opencode",
+      "status": "pass",
+      "version": "1.17.18"
+    }
+  ],
+  "next_safe_action": "Restore required workstation services, then rerun read-only probes."
+}

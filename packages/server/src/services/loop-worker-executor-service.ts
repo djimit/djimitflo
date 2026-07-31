@@ -57,7 +57,7 @@ export class LoopWorkerExecutorService {
       : leases.find((lease) => lease.role === 'maker' && lease.status === 'prepared');
 
     if (!makerLease) throw new Error('MAKER_LEASE_NOT_FOUND');
-    if (makerLease.role !== 'maker') throw new Error('LEASE_NOT_MAKER');
+    if (makerLease.role !== 'maker' && makerLease.metadata.nested_spawn !== true) throw new Error('LEASE_NOT_MAKER');
     if (makerLease.status !== 'prepared') throw new Error('MAKER_LEASE_NOT_PREPARED');
     if (!makerLease.worktree_path || !fs.existsSync(makerLease.worktree_path)) {
       this.loopService.recordMakerFailure(run.id, makerLease.id, 'MAKER_WORKTREE_NOT_FOUND', 'Worktree path does not exist');

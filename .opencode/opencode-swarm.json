@@ -1,1 +1,13 @@
-{}
+{
+  "council": {
+    "general": {
+      "enabled": true,
+      "deliberate": true
+    }
+  },
+  "agents": {
+    "council_generalist": { "model": "ollama-cloud/gpt-oss:120b" },
+    "council_skeptic": { "model": "ollama-cloud/deepseek-v4-flash" },
+    "council_domain_expert": { "model": "ollama-cloud/glm-5.2" }
+  }
+}

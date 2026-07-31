@@ -58,7 +58,7 @@ export function createTestDb(): Database.Database {
 /**
  * Mock the better-sqlite3 module for unit tests that don't need a real DB.
  */
-export function mockDatabase() {
+export function mockDatabase(): any {
   const mockDb = {
     prepare: vi.fn().mockReturnThis(),
     run: vi.fn().mockReturnValue({ changes: 1, lastInsertRowid: 1 }),
@@ -75,7 +75,7 @@ export function mockDatabase() {
 /**
  * Mock the swarm event bus for tests that trigger events.
  */
-export function mockSwarmEventBus() {
+export function mockSwarmEventBus(): any {
   return {
     emit: vi.fn(),
     on: vi.fn(),
@@ -87,7 +87,7 @@ export function mockSwarmEventBus() {
 /**
  * Mock the lifecycle manager for graceful shutdown testing.
  */
-export function mockLifecycleManager() {
+export function mockLifecycleManager(): any {
   return {
     register: vi.fn(),
     shutdown: vi.fn().mockResolvedValue(undefined),
@@ -98,7 +98,7 @@ export function mockLifecycleManager() {
 /**
  * Mock the logger to suppress output during tests.
  */
-export function mockLogger() {
+export function mockLogger(): any {
   return {
     info: vi.fn(),
     warn: vi.fn(),
@@ -111,7 +111,7 @@ export function mockLogger() {
 /**
  * Mock the Ollama/LLM client for tests that call external models.
  */
-export function mockLlmClient() {
+export function mockLlmClient(): any {
   return {
     generate: vi.fn().mockResolvedValue({ response: 'mock response', tokens: 10 }),
     embed: vi.fn().mockResolvedValue(new Array(384).fill(0.1)),
@@ -122,7 +122,7 @@ export function mockLlmClient() {
 /**
  * Mock the git service for worktree operations.
  */
-export function mockGitService() {
+export function mockGitService(): any {
   return {
     init: vi.fn().mockResolvedValue(undefined),
     clone: vi.fn().mockResolvedValue(undefined),
@@ -137,7 +137,7 @@ export function mockGitService() {
  * Setup function that mocks all common DjimFlo dependencies.
  * Use in beforeEach for service tests.
  */
-export function setupServiceMocks() {
+export function setupServiceMocks(): any {
   const mocks = {
     db: mockDatabase(),
     eventBus: mockSwarmEventBus(),
@@ -195,7 +195,7 @@ export function mockResponse() {
 /**
  * Create a mock Express next function for middleware testing.
  */
-export function mockNext() {
+export function mockNext(): any {
   return vi.fn();
 }
 

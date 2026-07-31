@@ -1,0 +1,19 @@
+# Domain Events — Spec Coverage Export Bounded Context
+# Version: v1.0.0
+
+ExportRequested:
+  type: object
+  required: [eventId, format, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    format: { type: string, enum: [json, csv] }
+    timestamp: { type: string, format: date-time }
+
+ExportCompleted:
+  type: object
+  required: [eventId, format, specCount, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    format: { type: string, enum: [json, csv] }
+    specCount: { type: integer, minimum: 0 }
+    timestamp: { type: string, format: date-time }

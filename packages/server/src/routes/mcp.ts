@@ -40,6 +40,18 @@ function queryString(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+function withEffectiveStatus(server: any, now = Date.now()): any {
+  const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
+  const verifiedAt = server.last_ping_at ? Date.parse(server.last_ping_at) : Number.NaN;
+  const stale = server.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
+  return {
+    ...server,
+    effective_status: stale ? 'stale' : server.status,
+    status_stale: stale,
+    last_verified_at: server.last_ping_at || null,
+  };
+}
+
 export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
@@ -80,7 +92,7 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
           env: JSON.parse(server.env || '{}'),
           metadata: JSON.parse(server.metadata || '{}'),
         };
-        return sanitizeMCPServer(result, isAdmin);
+        return sanitizeMCPServer(withEffectiveStatus(result), isAdmin);
       });
 
       res.json({ servers: parsed });

@@ -1,0 +1,40 @@
+schema_version: "1.0"
+
+extension:
+  id: "ddd-semantic-layer"
+  name: "DDD Semantic Layer Gate"
+  version: "1.0.0"
+  description: "Verifies DDD artifact completeness per Constitution v1.2.0 Article VI. Blocks plan generation if required artifacts are missing."
+  author: "dlandman"
+  license: "MIT"
+
+requires:
+  speckit_version: ">=0.11.0"
+  commands:
+    - "speckit.plan"
+  external:
+    - "~/openspec/specs/ddd-semantic-layer/"
+
+provides:
+  commands:
+    - name: "speckit.ddd-semantic-layer.check"
+      file: "commands/speckit.ddd-semantic-layer.check.md"
+      trigger: "after_plan"
+      description: "DDD artifact completeness check before plan approval"
+
+gates:
+  ddd_compliance:
+    source: "Constitution v1.2.0 Article VI"
+    blocking: true
+    required_artifacts:
+      greenfield: ["domain-terms.md", "bc-{name}.md", "requirements.md"]
+      brownfield: ["bc-{name}.md"]
+      external: ["acl-{external}.md", "events.yaml"]
+      bugfix: []
+    human_written:
+      - aggregate-{name}.md
+      - acl-{system}.md
+    ai_drafted:
+      - domain-terms.md
+      - bc-{name}.md
+      - context-map.md

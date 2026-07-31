@@ -5,7 +5,7 @@
 import Database from 'better-sqlite3';
 import { join } from 'path';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'fs';
-import { schema } from './schema';
+import { schema, explainerSchema } from './schema';
 import { runMigrations } from './migrate';
 import { runPreSchemaMigrations } from './migrate';
 import { monorepoRoot, resolveBackupDir, resolveDbPath } from './path';
@@ -107,6 +107,7 @@ export function initializeDatabase(): Database.Database {
   // before applying the schema (CREATE TABLE IF NOT EXISTS won't alter them).
   runPreSchemaMigrations(db);
   db.exec(schema);
+  db.exec(explainerSchema);
   runMigrations(db);
   ensureDatabaseInstanceId(db);
   

@@ -163,6 +163,7 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_mission_control');
     expect(toolNames).toContain('djimitflo_get_system_health');
     expect(toolNames).toContain('djimitflo_list_orchestration_agents');
+    expect(toolNames).toContain('djimitflo_approve_action');
     expect(toolNames).toContain('djimitflo_mcp_doctor');
     expect(toolNames).toContain('djimitflo_get_data_provenance');
     expect(toolNames).toContain('djimitflo_sync_mcp_catalog');
@@ -239,6 +240,18 @@ describe('MCP Server Tools', () => {
     });
   });
 
+  it('reports stale MCP liveness separately from persisted status', async () => {
+    dbHandle.db.prepare(`
+      INSERT INTO mcp_servers (id, name, description, status, command, args, env, last_ping_at, created_at, updated_at)
+      VALUES ('stale-1', 'stale sidecar', '', 'running', '', '[]', '{}', '2000-01-01T00:00:00.000Z', datetime('now'), datetime('now'))
+    `).run();
+    const registeredTools = (server as any)._registeredTools;
+    const result = await registeredTools['djimitflo_list_mcp_servers'].handler({ status: 'stale' });
+    expect(JSON.parse(result.content[0].text)).toEqual([
+      expect.objectContaining({ id: 'stale-1', status: 'running', effective_status: 'stale', status_stale: true }),
+    ]);
+  });
+
   it('mcp_doctor reports registry drift without mutating state', async () => {
     const registeredTools = (server as any)._registeredTools;
     const result = await registeredTools['djimitflo_mcp_doctor'].handler({});
@@ -267,6 +280,17 @@ describe('MCP Server Tools', () => {
     })).rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
     await expect(registeredTools['djimitflo_probe_mcp_sidecars'].handler({ apply: true }))
       .rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+  });
+
+  it('creates a pending approval without executing the requested action', async () => {
+    const tool = (server as any)._registeredTools['djimitflo_approve_action'];
+    const result = await tool.handler({
+      action: 'deploy release', reason: 'production mutation', risk_level: 'high', context: { release: 'r1' },
+    });
+    const response = JSON.parse(result.content[0].text);
+    expect(response).toMatchObject({ status: 'pending', action: 'deploy release', risk_level: 'high' });
+    expect(dbHandle.db.prepare('SELECT status, request_message FROM approvals WHERE id = ?').get(response.approval_id))
+      .toEqual({ status: 'pending', request_message: 'deploy release' });
   });
 
   it('lists orchestration agents using current heartbeat columns', async () => {

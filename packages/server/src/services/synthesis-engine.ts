@@ -57,7 +57,7 @@ export class SynthesisEngine {
       created_at: now,
     };
 
-    this.storeAggregation(input.session_id, result);
+    this.storeAggregation(input, result);
 
     return result;
   }
@@ -68,9 +68,10 @@ export class SynthesisEngine {
     minorityViews: string[],
     uncertaintyStatements: string[],
   ): Record<string, unknown> {
+    const selected = input.outputs.find(output => output.anonymous_id === topCandidate?.candidate_id);
     return {
       conclusion: topCandidate
-        ? `Top-ranked candidate: ${topCandidate.candidate_id} (score: ${topCandidate.weighted_score})`
+        ? selected?.content ?? `Top-ranked candidate ${topCandidate.candidate_id} has no stored output`
         : 'No consensus reached',
       confidence: this.calculateOverallConfidence(input, topCandidate),
       reasoning: {
@@ -160,18 +161,18 @@ export class SynthesisEngine {
     return Math.round(Math.max(0, Math.min(1, baseConfidence * agreementFactor - disagreementPenalty)) * 100) / 100;
   }
 
-  private storeAggregation(sessionId: string, result: SynthesisResult): void {
+  private storeAggregation(input: SynthesisInput, result: SynthesisResult): void {
     const id = randomUUID();
     this.db.prepare(`
       INSERT INTO council_aggregations (id, session_id, method, rankings, final_scores, disagreement_score, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
-      sessionId,
+      input.session_id,
       result.method,
-      JSON.stringify(result.top_candidate),
-      JSON.stringify({ confidence: result.confidence, minority_views: result.minority_views }),
-      0,
+      JSON.stringify(input.aggregated_scores.map(score => score.candidate_id)),
+      JSON.stringify(input.aggregated_scores),
+      input.disagreement_score,
       result.created_at,
     );
   }

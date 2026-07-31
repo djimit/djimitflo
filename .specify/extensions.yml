@@ -2,6 +2,7 @@ installed:
 - agent-context
 - djimit-governance
 - openmythos-governance
+- ddd-semantic-layer
 settings:
   auto_execute_hooks: true
 hooks:
@@ -41,6 +42,18 @@ hooks:
       Run hierarchy + injection + tool-scope cases (78 total) against the model
       that will execute this plan. Blocks if model scores below 3.0/5.0 on any
       category. Constitution v1.1.0 Cross-System Governance References.
+    condition: null
+  - extension: ddd-semantic-layer
+    command: speckit.ddd-semantic-layer.check
+    enabled: true
+    optional: false
+    priority: 15
+    prompt: Check DDD artifact completeness (domain-terms, aggregate specs, ACL)?
+    description: >
+      Verify that all required DDD artifacts exist per Constitution Article VI.5
+      and the feature's change type (greenfield/brownfield/external/bugfix).
+      Blocks plan generation if Core subdomain lacks aggregate-{name}.md.
+      Constitution v1.2.0 Article VI.6 — human writes aggregates, AI drafts UL.
     condition: null
   after_tasks:
   - extension: djimit-governance

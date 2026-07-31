@@ -1,9 +1,14 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
+import { delimiter, isAbsolute, join, relative, resolve, sep } from 'path';
+import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { Repository, GitStatusResult, StackDetection, RepositoryHealth, HealthScoreDriver, RepositoryHealthFinding, RepositoryScanResult, AgentsMdFile } from '@djimitflo/shared';
+import type {
+  Repository, GitStatusResult, StackDetection, RepositoryHealth, HealthScoreDriver, RepositoryHealthFinding,
+  RepositoryScanResult, AgentsMdFile, ScanSummary, SecretScanSummary, SecretScanFinding, DependencyManifest,
+  DependencyPackage, DependencyAuditFinding, LicenseInfo, ContributorInfo, TagInfo,
+} from '@djimitflo/shared';
 
 const SECRET_FILE_PATTERNS = [
   /\.env($|\.)/i,
@@ -25,17 +30,25 @@ export class RepositoryScanner {
 
   scan(repoPath: string): RepositoryScanResult {
     const startTime = Date.now();
-    const resolvedPath = repoPath;
-
-    if (!existsSync(resolvedPath)) {
-      throw new Error(`Repository path does not exist: ${resolvedPath}`);
-    }
+    const resolvedPath = this.resolveRepositoryPath(repoPath);
 
     const gitStatus = this.detectGitStatus(resolvedPath);
     const stack = this.detectStack(resolvedPath);
     const agentsMdFiles = this.discoverAgentsMd(resolvedPath);
-    const healthFindings = this.analyzeHealth(resolvedPath, gitStatus, stack, agentsMdFiles);
+    const secretScan = this.scanSecrets(resolvedPath);
+    const dependencyManifest = this.detectDependencyManifest(resolvedPath, stack);
+    const license = this.detectLicense(resolvedPath);
+    const contributors = gitStatus?.isGitRepository ? this.listContributors(resolvedPath) : [];
+    const tags = gitStatus?.isGitRepository ? this.listTags(resolvedPath) : [];
+    const healthFindings = this.analyzeHealth(resolvedPath, gitStatus, stack, agentsMdFiles, secretScan);
     const health = this.calculateHealthScore(gitStatus, stack, agentsMdFiles, healthFindings);
+    const scanSummary: ScanSummary = {
+      secretScan,
+      dependencyManifest,
+      license,
+      contributors,
+      tags,
+    };
 
     let repository = this.db.prepare('SELECT * FROM repositories WHERE path = ?').get(resolvedPath) as any;
 
@@ -153,7 +166,28 @@ export class RepositoryScanner {
       has_agents_md: Boolean(repository.has_agents_md),
     };
 
-    return { repository: parsedRepo, gitStatus, stack, health, agentsMdFiles: agentsMdRepoFiles, healthFindings };
+    return { scanId, repository: parsedRepo, gitStatus, stack, health, agentsMdFiles: agentsMdRepoFiles, healthFindings, scanSummary };
+  }
+
+  private resolveRepositoryPath(candidate: string): string {
+    if (typeof candidate !== 'string' || !candidate.trim()) throw new Error('REPOSITORY_PATH_REQUIRED');
+    let canonical: string;
+    try {
+      canonical = realpathSync(candidate);
+    } catch {
+      throw new Error(`Repository path does not exist: ${candidate}`);
+    }
+    if (!statSync(canonical).isDirectory()) throw new Error('REPOSITORY_PATH_NOT_DIRECTORY');
+
+    const configured = process.env.DJIMITFLO_REPOSITORY_ROOTS?.split(delimiter).filter(Boolean);
+    const roots = (configured?.length ? configured : [process.cwd(), tmpdir()])
+      .map((root) => existsSync(root) ? realpathSync(root) : resolve(root));
+    const allowed = roots.some((root) => {
+      const child = relative(root, canonical);
+      return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child));
+    });
+    if (!allowed) throw new Error('REPOSITORY_PATH_NOT_ALLOWED');
+    return canonical;
   }
 
   private detectGitStatus(repoPath: string): GitStatusResult | null {
@@ -345,7 +379,7 @@ export class RepositoryScanner {
     return Math.abs(hash).toString(36);
   }
 
-  private analyzeHealth(repoPath: string, gitStatus: GitStatusResult | null, stack: StackDetection, agentsMdFiles: AgentsMdFile[]): RepositoryHealthFinding[] {
+  private analyzeHealth(repoPath: string, gitStatus: GitStatusResult | null, stack: StackDetection, agentsMdFiles: AgentsMdFile[], secretScan?: SecretScanSummary): RepositoryHealthFinding[] {
     const findings: RepositoryHealthFinding[] = [];
     const now = new Date().toISOString();
     const repoName = repoPath.split('/').pop() || 'repository';
@@ -372,24 +406,25 @@ export class RepositoryScanner {
       findings.push({ id: randomUUID(), repositoryId: '', severity: 'info', category: 'type_safety', title: 'No TypeScript detected', description: 'Node.js project without TypeScript configuration.', recommendation: 'Consider adopting TypeScript for type safety.', discoveredAt: now });
     }
 
-    try {
-      const walk = (dir: string, depth: number) => {
-        if (depth > 3) return;
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          if (entry.name.startsWith('.') && entry.name !== '.env.example') continue;
-          if (entry.isDirectory()) { walk(join(dir, entry.name), depth + 1); continue; }
-          if (SECRET_FILE_PATTERNS.some(p => p.test(entry.name))) {
-            findings.push({ id: randomUUID(), repositoryId: '', severity: 'critical', category: 'security', title: 'Potential secret file detected', description: `Found file matching sensitive pattern: ${entry.name}`, recommendation: 'Ensure this file is in .gitignore and never committed. Use environment variables instead.', discoveredAt: now });
-          }
-        }
-      };
-      walk(repoPath, 0);
-    } catch {}
+    if (secretScan && !secretScan.clean) {
+      for (const finding of secretScan.findings) {
+        findings.push({
+          id: randomUUID(),
+          repositoryId: '',
+          severity: finding.severity,
+          category: 'security',
+          title: 'Potential secret file detected',
+          description: `Found file matching sensitive pattern: ${finding.file} (${finding.pattern})`,
+          recommendation: 'Ensure this file is in .gitignore and never committed. Use environment variables instead.',
+          discoveredAt: now,
+        });
+      }
+    }
 
     return findings;
   }
 
-  private calculateHealthScore(gitStatus: GitStatusResult | null, stack: StackDetection, agentsMdFiles: AgentsMdFile[], findings: RepositoryHealthFinding[]): RepositoryHealth {
+  private calculateHealthScore(gitStatus: GitStatusResult | null, stack: StackDetection, agentsMdFiles: AgentsMdFile[], findings: RepositoryHealthFinding[], secretScan?: SecretScanSummary): RepositoryHealth {
     let score = 60;
     const drivers: HealthScoreDriver[] = [];
 
@@ -414,8 +449,129 @@ export class RepositoryScanner {
     const criticalFindings = findings.filter(f => f.severity === 'critical').length;
     if (criticalFindings > 0) { score -= criticalFindings * 10; drivers.push({ factor: 'Critical findings', impact: -criticalFindings * 10, description: `${criticalFindings} critical health finding(s).` }); }
 
+    if (secretScan?.clean) { score += 5; drivers.push({ factor: 'Secret scan', impact: 5, description: 'No potential secret files detected.' }); }
+    else if (secretScan) { drivers.push({ factor: 'Secret scan', impact: -10, description: `${secretScan.findings.length} potential secret finding(s).` }); }
+
     score = Math.max(0, Math.min(100, score));
     return { score, drivers };
+  }
+
+  private scanSecrets(repoPath: string): SecretScanSummary {
+    const findings: SecretScanFinding[] = [];
+    const skip = new Set(['node_modules', '.git', 'dist', 'build', '.data']);
+
+    const walk = (dir: string, depth: number) => {
+      if (depth > 3) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (skip.has(entry.name)) continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.')) continue;
+          walk(full, depth + 1);
+          continue;
+        }
+        const matched = SECRET_FILE_PATTERNS.find(p => p.test(entry.name));
+        if (matched) {
+          findings.push({ file: relative(repoPath, full), pattern: matched.source, severity: 'critical' });
+        }
+      }
+    };
+
+    try { walk(repoPath, 0); } catch {}
+    return { clean: findings.length === 0, findings };
+  }
+
+  private detectDependencyManifest(repoPath: string, stack: StackDetection): DependencyManifest {
+    const manifestFiles: string[] = [];
+    const packages: DependencyPackage[] = [];
+    const auditFindings: DependencyAuditFinding[] = [];
+
+    const pkgJson = join(repoPath, 'package.json');
+    if (existsSync(pkgJson)) {
+      manifestFiles.push('package.json');
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'));
+        const addDeps = (deps: Record<string, string> | undefined, type: DependencyPackage['type']) => {
+          if (!deps) return;
+          for (const [name, version] of Object.entries(deps)) {
+            packages.push({ name, version: version || null, type });
+          }
+        };
+        addDeps(pkg.dependencies, 'runtime');
+        addDeps(pkg.devDependencies, 'dev');
+        addDeps(pkg.peerDependencies, 'peer');
+      } catch {}
+    }
+
+    const pyproject = join(repoPath, 'pyproject.toml');
+    if (existsSync(pyproject)) manifestFiles.push('pyproject.toml');
+    const requirements = join(repoPath, 'requirements.txt');
+    if (existsSync(requirements)) {
+      manifestFiles.push('requirements.txt');
+      try {
+        const lines = readFileSync(requirements, 'utf-8').split('\n');
+        for (const line of lines) {
+          const match = line.match(/^([a-zA-Z0-9_\-.]+)([=<>!~].*)?$/);
+          if (match) packages.push({ name: match[1], version: match[2] || null, type: 'runtime' });
+        }
+      } catch {}
+    }
+
+    return {
+      packageManager: stack.packageManager,
+      manifestFiles,
+      packages,
+      auditFindings,
+    };
+  }
+
+  private detectLicense(repoPath: string): LicenseInfo | null {
+    const licenseFiles = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'LICENCE', 'LICENCE.md'];
+    for (const file of licenseFiles) {
+      const full = join(repoPath, file);
+      if (existsSync(full)) {
+        try {
+          const content = readFileSync(full, 'utf-8').toLowerCase();
+          if (content.includes('mit')) return { license: 'MIT', source: file, confidence: 'high' };
+          if (content.includes('apache')) return { license: 'Apache-2.0', source: file, confidence: 'high' };
+          if (content.includes('gpl')) return { license: 'GPL', source: file, confidence: 'high' };
+          if (content.includes('bsd')) return { license: 'BSD', source: file, confidence: 'medium' };
+          return { license: 'Unknown', source: file, confidence: 'low' };
+        } catch {}
+      }
+    }
+    const pkgJson = join(repoPath, 'package.json');
+    if (existsSync(pkgJson)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'));
+        if (pkg.license) return { license: pkg.license, source: 'package.json', confidence: 'medium' };
+      } catch {}
+    }
+    return null;
+  }
+
+  private listContributors(repoPath: string): ContributorInfo[] {
+    try {
+      const output = execSync('git shortlog -sne HEAD', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+      return output.split('\n').filter(Boolean).flatMap(line => {
+        const match = line.match(/^\s*(\d+)\s+(.+)\s+<(.+)>$/);
+        return match ? [{ name: match[2].trim(), email: match[3].trim(), commitCount: Number(match[1]) }] : [];
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private listTags(repoPath: string): TagInfo[] {
+    try {
+      const output = execSync('git tag -l --format="%(refname:short)|%(objectname)"', { cwd: repoPath, encoding: 'utf-8', timeout: 10_000 }).trim();
+      return output.split('\n').filter(Boolean).map(line => {
+        const [name, commit] = line.split('|');
+        return { name, commit: commit || null };
+      });
+    } catch {
+      return [];
+    }
   }
 
   private persistAgentsMdFiles(repositoryId: string, files: AgentsMdFile[]): AgentsMdFile[] {
