@@ -112,6 +112,7 @@ export function createRoutes(
 
   // Security headers
   router.use(securityHeaders);
+  router.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
 
   // API version (public)
   router.get('/version', (_req, res) => {

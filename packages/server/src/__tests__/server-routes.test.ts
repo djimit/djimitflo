@@ -47,6 +47,7 @@ describe('Server route wiring', () => {
     // Express Router internals: stack contains Layer objects for each middleware/route
     const layers = router.stack || [];
     expect(layers.length).toBeGreaterThan(10); // Many route factories mounted
+    expect(layers.some((layer: any) => typeof layer.handle?.resetKey === 'function')).toBe(true);
   });
 
   it('router contains expected route path patterns', () => {
