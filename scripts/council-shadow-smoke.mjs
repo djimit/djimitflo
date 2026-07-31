@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 const base = process.env.DJIMITFLO_API_URL || 'http://127.0.0.1:3001/api';
 const modelNames = (process.env.COUNCIL_SHADOW_MODELS || 'qwen2.5:0.5b,llama3.2:1b,smollm2:360m').split(',');
+const mode = process.env.COUNCIL_SHADOW_MODE || 'council';
 
 async function request(path, options = {}) {
   const response = await fetch(`${base}${path}`, options);
@@ -35,7 +36,7 @@ const session = await request('/council/sessions', {
   headers,
   body: JSON.stringify({
     task_description: 'Shadow readiness check: identify the operational risks of claiming autonomous readiness without provider and benchmark evidence.',
-    mode: 'council', risk_class: 'low', privacy_sensitive: true, custom_models: modelNames,
+    mode, risk_class: 'low', privacy_sensitive: true, custom_models: modelNames,
   }),
 });
 const result = await request(`/council/sessions/${session.id}/execute`, { method: 'POST', headers });
