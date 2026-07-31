@@ -19,6 +19,8 @@ let db: Database.Database;
 let server: Server;
 let baseUrl: string;
 let previousCodexPath: string | undefined;
+let previousOpenAiKey: string | undefined;
+let previousCodexKey: string | undefined;
 let runtimeBinDir = '';
 
 async function startApp() {
@@ -40,6 +42,10 @@ describe('production runtime readiness', () => {
     db.exec(schema);
     runMigrations(db);
     previousCodexPath = process.env.CODEX_BIN_PATH;
+    previousOpenAiKey = process.env.OPENAI_API_KEY;
+    previousCodexKey = process.env.CODEX_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.CODEX_API_KEY;
     await startApp();
   });
 
@@ -51,6 +57,10 @@ describe('production runtime readiness', () => {
     } else {
       delete process.env.CODEX_BIN_PATH;
     }
+    if (previousOpenAiKey) process.env.OPENAI_API_KEY = previousOpenAiKey;
+    else delete process.env.OPENAI_API_KEY;
+    if (previousCodexKey) process.env.CODEX_API_KEY = previousCodexKey;
+    else delete process.env.CODEX_API_KEY;
     if (runtimeBinDir) {
       fs.rmSync(runtimeBinDir, { recursive: true, force: true });
       runtimeBinDir = '';
@@ -107,23 +117,33 @@ exit 0
     expect((db.prepare('SELECT COUNT(*) as count FROM worker_leases').get() as any).count).toBe(0);
   });
 
-  it('reports an available real runtime without starting workers', async () => {
+  it('blocks an available runtime when its provider is not configured', async () => {
     process.env.CODEX_BIN_PATH = fakeCodexBin();
     const response = await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=codex`);
     expect(response.status).toBe(200);
     const body = await response.json() as any;
     expect(body.starts_workers).toBe(false);
-    expect(body.ready).toBe(true);
+    expect(body.ready).toBe(false);
     expect(body.runtimes[0]).toMatchObject({
       runtime: 'codex',
       production_runtime: true,
-      ready: true,
-      start_allowed: true,
+      provider_configured: false,
+      ready: false,
+      start_allowed: false,
       available: true,
       status: 'ok',
     });
-    expect(body.runtimes[0].blocked_reasons).toEqual([]);
+    expect(body.runtimes[0].blocked_reasons).toEqual(['runtime_provider_not_configured']);
     expect(body.runtimes[0].version).toContain('fake-runtime');
     expect((db.prepare('SELECT COUNT(*) as count FROM worker_leases').get() as any).count).toBe(0);
+  });
+
+  it('allows a verified runtime contract only when its provider is configured', async () => {
+    process.env.CODEX_BIN_PATH = fakeCodexBin();
+    process.env.OPENAI_API_KEY = 'test-only';
+    const response = await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=codex`);
+    const body = await response.json() as any;
+    expect(body.runtimes[0]).toMatchObject({ provider_configured: true, ready: true, start_allowed: true });
+    expect(body.runtimes[0].blocked_reasons).toEqual([]);
   });
 });
