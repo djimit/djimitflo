@@ -39,10 +39,11 @@ function parseFrontmatter(text: string): { frontmatter: Record<string, any>; bod
   let key: string | null = null; let arr: string[] = [];
   const flush = () => { if (key && arr.length && !(key in fm)) fm[key] = arr; arr = []; };
   for (const line of block.split(/\r?\n/)) {
-    const kv = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/);
-    if (kv) {
-      flush(); key = kv[1];
-      const val = kv[2].trim();
+    const colon = line.indexOf(':');
+    const candidateKey = colon < 0 ? '' : line.slice(0, colon).trim();
+    if (colon >= 0 && /^[A-Za-z0-9_-]+$/.test(candidateKey)) {
+      flush(); key = candidateKey;
+      const val = line.slice(colon + 1).trim();
       if (val === '') arr = []; else fm[key] = stripVal(val);
     } else if (/^\s*-\s+/.test(line) && key) arr.push(stripVal(line.replace(/^\s*-\s+/, '')));
   }
@@ -62,8 +63,8 @@ function splitSections(body: string): { sections: Record<string, string>; preamb
   for (const line of body.split(/\r?\n/)) {
     if (/^(`{3,}|~{3,})/.test(line)) { inCode = !inCode; buf.push(line); continue; }
     if (!inCode) {
-      const h2 = line.match(/^##\s+(.*)$/);
-      if (h2) { push(); current = classifySection(h2[1]) || normalizeTitle(h2[1]); continue; }
+      const h2 = line.startsWith('## ') ? line.slice(3).trimStart() : '';
+      if (h2) { push(); current = classifySection(h2) || normalizeTitle(h2); continue; }
     }
     buf.push(line);
   }
@@ -79,8 +80,10 @@ export function toList(text?: string): string[] {
   for (const line of String(text).split(/\r?\n/)) {
     if (/^(`{3,}|~{3,})/.test(line)) { inCode = !inCode; continue; }
     if (inCode) continue;
-    const b = line.match(/^\s*[-*]\s+(.*)$/);
-    if (b) out.push(cleanInline(b[1]));
+    const trimmed = line.trimStart();
+    if ((trimmed.startsWith('- ') || trimmed.startsWith('* ')) && trimmed.length > 2) {
+      out.push(cleanInline(trimmed.slice(2)));
+    }
   }
   return out.filter(Boolean);
 }
