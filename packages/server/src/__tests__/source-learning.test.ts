@@ -33,6 +33,11 @@ describe('ContextCompressionService', () => {
     expect(result.method).toBe('code');
   });
 
+  it('handles a large unclosed block comment in linear time', () => {
+    const result = service.compress(`const x = 1; /*${'x'.repeat(100_000)}`, 'code');
+    expect(result.compressed).toBe('const x = 1;');
+  });
+
   it('returns identity for short content', () => {
     const result = service.compress('short', 'text');
     expect(result.method).toBe('identity');

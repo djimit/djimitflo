@@ -197,8 +197,17 @@ export class ContextCompressionService {
 
   private compressCode(content: string): string {
     // Remove comments, collapse whitespace, keep structure
-    return content
-      .replace(/\/\*[\s\S]*?\*\//g, '') // Block comments
+    let withoutBlocks = '';
+    let cursor = 0;
+    while (cursor < content.length) {
+      const start = content.indexOf('/*', cursor);
+      if (start < 0) { withoutBlocks += content.slice(cursor); break; }
+      withoutBlocks += content.slice(cursor, start);
+      const end = content.indexOf('*/', start + 2);
+      if (end < 0) break;
+      cursor = end + 2;
+    }
+    return withoutBlocks
       .replace(/\/\/.*$/gm, '') // Line comments
       .replace(/#.*$/gm, '') // Python/shell comments
       .replace(/\n{3,}/g, '\n\n') // Collapse blank lines
