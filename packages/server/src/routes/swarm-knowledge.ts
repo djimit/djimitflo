@@ -38,7 +38,7 @@ function runtimeReadiness(db: Database, runtimeInput?: unknown) {
     const credentialConfigured = runtime === 'codex'
       ? Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY)
       : runtime === 'opencode'
-        ? Boolean(process.env.DJIMITFLO_OPENCODE_MODEL && (process.env.OLLAMA_URL || process.env.LITELLM_BASE_URL || process.env.LITELLM_URL))
+        ? Boolean(process.env.DJIMITFLO_OPENCODE_MODEL && (process.env.OPENCODE_CONFIG_CONTENT || process.env.OPENCODE_CONFIG))
         : false;
     if (allowedProduction.has(runtime) && !credentialConfigured) blocked.push('runtime_provider_not_configured');
     return { runtime, production_runtime: allowedProduction.has(runtime), provider_configured: credentialConfigured, ready: blocked.length === 0, start_allowed: blocked.length === 0, command: contract.command || null, status: contract.status || 'unavailable', available: Boolean(contract.available), version: contract.version || null, evidence: Array.isArray(contract.evidence) ? contract.evidence : [], blocked_reasons: [...new Set(blocked)], contract };
