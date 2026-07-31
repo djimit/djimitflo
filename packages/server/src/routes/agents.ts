@@ -202,7 +202,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
           }))
         );
       } catch (okfErr: any) {
-        console.warn(`OKF agent concept write failed for ${id}:`, okfErr?.message || okfErr);
+        console.warn('OKF agent concept write failed:', id, okfErr?.message || okfErr);
       }
 
       res.json({ ok: true, agent_id: id, status: status ?? agent.status, last_heartbeat_at: now });

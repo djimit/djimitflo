@@ -19,7 +19,7 @@ export function errorHandler(
   const message = err.message || 'Internal Server Error';
   const code = err.code || 'INTERNAL_ERROR';
   
-  console.error(`[ERROR] ${req.method} ${req.path}:`, err);
+  console.error('[ERROR]', req.method, req.path, err);
   
   res.status(status).json({
     error: {

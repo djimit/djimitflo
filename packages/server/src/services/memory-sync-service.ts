@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { yamlScalar } from '../utils/yaml-scalar';
 
 const UAMS_URL = process.env.UAMS_URL || 'http://192.168.1.28:8000';
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
@@ -107,8 +108,8 @@ export class MemorySyncService {
     const frontmatter = [
       '---',
       `type: CompletedTask`,
-      `title: "${(task.title || '').replace(/"/g, '\\"')}"`,
-      `description: "${description.replace(/"/g, '\\"')}"`,
+      `title: ${yamlScalar(task.title || '')}`,
+      `description: ${yamlScalar(description)}`,
       `resource: http://192.168.1.28:3001/api/tasks/${task.id}`,
       `tags: [${machineId}, ${agentType}, ${task.status}]`,
       `timestamp: ${new Date().toISOString()}`,

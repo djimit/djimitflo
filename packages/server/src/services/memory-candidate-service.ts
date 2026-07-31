@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { yamlScalar } from '../utils/yaml-scalar';
 
 type MemoryType = 'operational_memory' | 'engineering_rule' | 'policy_rule';
 
@@ -317,11 +318,11 @@ export class MemoryCandidateService {
       const frontmatter = [
         '---',
         'type: MemoryCandidate',
-        `title: "${candidate.title.replace(/"/g, '\\"')}"`,
+        `title: ${yamlScalar(candidate.title)}`,
         `memory_type: ${candidate.memory_type}`,
         'trust_level: validated',
-        `source_ref: "${(candidate.source_ref || '').replace(/"/g, '\\"')}"`,
-        `approved_by: "${(input.approved_by || 'system').replace(/"/g, '\\"')}"`,
+        `source_ref: ${yamlScalar(candidate.source_ref)}`,
+        `approved_by: ${yamlScalar(input.approved_by || 'system')}`,
         `timestamp: ${new Date().toISOString()}`,
         '---',
         '',

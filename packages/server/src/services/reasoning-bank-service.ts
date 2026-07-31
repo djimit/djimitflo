@@ -4,6 +4,7 @@ import fs from 'fs';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { VectorMemoryService } from './vector-memory-service';
 import { TrajectoryStore } from './trajectory-store';
+import { yamlScalar } from '../utils/yaml-scalar';
 
 const QDRANT_URL = process.env.QDRANT_URL || 'http://192.168.1.28:6333';
 const OLLAMA_URL = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://localhost:11434').replace(/\/$/, '');
@@ -53,13 +54,13 @@ export class ReasoningBankService {
     fs.mkdirSync(okfDir, { recursive: true });
 
     const reasoningPath = path.join(okfDir, `${taskId}.md`);
-    const description = (task.description || task.title || '').slice(0, 200).replace(/"/g, '\\"');
+    const description = (task.description || task.title || '').slice(0, 200);
 
     const frontmatter = [
       '---',
       `type: Reasoning`,
-      `title: "Reasoning: ${(task.title || taskId).replace(/"/g, '\\"')}"`,
-      `description: "${description}"`,
+      `title: ${yamlScalar(`Reasoning: ${task.title || taskId}`)}`,
+      `description: ${yamlScalar(description)}`,
       `tags: [reasoning, ${outcome}, ${task.created_by || 'unknown'}]`,
       `task_id: ${taskId}`,
       `outcome: ${outcome}`,

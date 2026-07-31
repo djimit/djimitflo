@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { yamlScalar } from '../utils/yaml-scalar';
 
 const DEERFLOW_URL = process.env.DEERFLOW_URL || 'http://192.168.1.28:2026';
 
@@ -65,8 +66,8 @@ export class SkillService {
     const frontmatter = [
       '---',
       `type: Skill`,
-      `title: "${topic}"`,
-      `description: "${body.slice(0, 200).replace(/"/g, '\\"').replace(/\n/g, ' ')}"`,
+      `title: ${yamlScalar(topic)}`,
+      `description: ${yamlScalar(body.slice(0, 200))}`,
       `tags: [skill, ${slug}]`,
       `status: ${status}`,
       `trust_level: agent_generated`,

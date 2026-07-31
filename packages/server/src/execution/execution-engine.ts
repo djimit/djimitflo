@@ -1088,7 +1088,7 @@ export class ExecutionEngine {
         metadata: { preSnapshotId: preSnapshot?.id ?? null, isClean: preSnapshot?.isClean },
       });
     } catch (error) {
-      console.error(`Failed to capture pre-execution snapshot for task ${taskId}:`, error);
+      console.error('Failed to capture pre-execution snapshot for task:', taskId, error);
     }
   }
 
