@@ -207,9 +207,13 @@ export class ContextCompressionService {
       if (end < 0) break;
       cursor = end + 2;
     }
-    return withoutBlocks
-      .replace(/\/\/.*$/gm, '') // Line comments
-      .replace(/#.*$/gm, '') // Python/shell comments
+    const withoutLineComments = withoutBlocks.split('\n').map((line) => {
+      const slash = line.indexOf('//');
+      const hash = line.indexOf('#');
+      const comment = slash < 0 ? hash : hash < 0 ? slash : Math.min(slash, hash);
+      return comment < 0 ? line : line.slice(0, comment);
+    }).join('\n');
+    return withoutLineComments
       .replace(/\n{3,}/g, '\n\n') // Collapse blank lines
       .replace(/[ \t]+/g, ' ') // Collapse horizontal whitespace
       .trim();
