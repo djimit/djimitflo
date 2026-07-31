@@ -17,14 +17,31 @@ const tests = testFiles.map(path => ({ path, content: readFileSync(path, 'utf8')
 const routeFiles = files(join(root, 'packages/server/src/routes'), '.ts').filter(path => basename(path) !== 'index.ts');
 const critical = /^(auth|approvals|backup|exports|council|openmythos|mcp|runtime-governance|swarms|spawns)$/;
 const routes = [];
+const routeIndex = readFileSync(join(root, 'packages/server/src/routes/index.ts'), 'utf8');
+const factoryModules = new Map([...routeIndex.matchAll(/import\s+\{[^}]*?(create\w+Routes)[^}]*?\}\s+from\s+['"]\.\/([^'"]+)['"]/g)].map(match => [match[1], match[2]]));
+const mountPrefixes = new Map([...routeIndex.matchAll(/router\.use\(\s*['"]([^'"]*)['"][\s\S]{0,160}?(create\w+Routes)\(/g)].flatMap(match => {
+  const module = factoryModules.get(match[2]);
+  return module ? [[module, match[1]]] : [];
+}));
+mountPrefixes.set('swarms', '/swarms');
+
+function endpointPattern(module, routePath) {
+  const prefix = mountPrefixes.get(module) ?? '';
+  const endpoint = `${prefix}${routePath === '/' ? '' : routePath}` || '/';
+  const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)'));
+}
+
+if (!endpointPattern('spawns', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
 
 for (const path of routeFiles) {
   const source = readFileSync(path, 'utf8');
   const module = basename(path, '.ts');
   const matcher = /router\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g;
   for (const match of source.matchAll(matcher)) {
+    const endpoint = endpointPattern(module, match[3]);
     const evidence = tests
-      .filter(test => test.content.includes(`../routes/${module}`) && /\b(request|fetch|supertest)\s*\(/.test(test.content))
+      .filter(test => /\b(request|fetch|supertest)\s*\(/.test(test.content) && (endpoint.test(test.content) || test.content.includes(`../routes/${module}`)))
       .map(test => relative(root, test.path));
     routes.push({
       id: `${module}:${match[1].toUpperCase()}:${match[3]}`,
