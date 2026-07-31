@@ -36,6 +36,8 @@ COPY packages/server/src packages/server/src
 COPY packages/dashboard/src packages/dashboard/src
 COPY packages/dashboard/index.html packages/dashboard/index.html
 COPY packages/dashboard/vite.config.ts packages/dashboard/vite.config.ts
+COPY packages/dashboard/postcss.config.js packages/dashboard/postcss.config.js
+COPY packages/dashboard/tailwind.config.js packages/dashboard/tailwind.config.js
 COPY packages/telegram/src packages/telegram/src
 COPY packages/agent-catalog/src packages/agent-catalog/src
 COPY packages/mcp-server/src packages/mcp-server/src
