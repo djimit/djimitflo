@@ -1,0 +1,71 @@
+# Domain Events — Fleet Management Bounded Context
+# Version: v1.0.0
+# Schema: OpenSpec Published Language
+
+FleetCreated:
+  type: object
+  required: [eventId, fleetId, name, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    fleetId: { type: string, format: uuid }
+    name: { type: string }
+    timestamp: { type: string, format: date-time }
+
+AgentJoined:
+  type: object
+  required: [eventId, fleetId, agentId, agentName, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    fleetId: { type: string, format: uuid }
+    agentId: { type: string, format: uuid }
+    agentName: { type: string }
+    timestamp: { type: string, format: date-time }
+
+AgentLeft:
+  type: object
+  required: [eventId, fleetId, agentId, reason, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    fleetId: { type: string, format: uuid }
+    agentId: { type: string, format: uuid }
+    reason: { type: string, enum: [Disconnected, Removed, Decommissioned] }
+    timestamp: { type: string, format: date-time }
+
+HeartbeatReceived:
+  type: object
+  required: [eventId, fleetId, agentId, timestamp, status]
+  properties:
+    eventId: { type: string, format: uuid }
+    fleetId: { type: string, format: uuid }
+    agentId: { type: string, format: uuid }
+    timestamp: { type: string, format: date-time }
+    status: { type: string, enum: [Active, Idle, Busy] }
+    activeTaskCount: { type: integer, minimum: 0 }
+
+FleetDecommissioned:
+  type: object
+  required: [eventId, fleetId, decommissionedAt]
+  properties:
+    eventId: { type: string, format: uuid }
+    fleetId: { type: string, format: uuid }
+    decommissionedAt: { type: string, format: date-time }
+
+LeaseGranted:
+  type: object
+  required: [eventId, leaseId, taskId, agentId, ttl, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    leaseId: { type: string, format: uuid }
+    taskId: { type: string }
+    agentId: { type: string, format: uuid }
+    ttl: { type: integer, description: "Time-to-live in seconds" }
+    timestamp: { type: string, format: date-time }
+
+LeaseExpired:
+  type: object
+  required: [eventId, leaseId, taskId, timestamp]
+  properties:
+    eventId: { type: string, format: uuid }
+    leaseId: { type: string, format: uuid }
+    taskId: { type: string }
+    timestamp: { type: string, format: date-time }

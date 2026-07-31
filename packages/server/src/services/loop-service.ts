@@ -1036,7 +1036,7 @@ export class LoopService {
     if (!lease) {
       throw new Error('MAKER_LEASE_NOT_FOUND');
     }
-    if (lease.role !== 'maker') {
+    if (lease.role !== 'maker' && lease.metadata.nested_spawn !== true) {
       throw new Error('LEASE_NOT_MAKER');
     }
 
@@ -1626,13 +1626,15 @@ export class LoopService {
     'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
     'TMPDIR', 'TMP', 'TEMP',
     'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH', 'CLAUDE_BIN_PATH', 'GEMINI_BIN_PATH', 'CLINE_BIN_PATH',
-    'DJIMITFLO_CLAUDE_MODEL', 'DJIMITFLO_GEMINI_MODEL', 'DJIMITFLO_CLINE_MODEL', 'DJIMITFLO_CLINE_THINKING',
+    'DJIMITFLO_OPENCODE_MODEL', 'DJIMITFLO_CLAUDE_MODEL', 'DJIMITFLO_GEMINI_MODEL', 'DJIMITFLO_CLINE_MODEL', 'DJIMITFLO_CLINE_THINKING',
     // Nested-spawn control channel (P1): the child runtime uses these to call back
     // into the server to spawn its own sub-agents. The token is scoped + expiring.
     'DJIMITFLO_CONTROL_URL', 'DJIMITFLO_SPAWN_TOKEN',
     'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT',
     'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'MISTRAL_API_KEY', 'DEEPSEEK_API_KEY',
-    'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
+    'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
+    'OPENCODE_OLLAMA_API_KEY', 'OPENCODE_OPENAI_API_KEY', 'OPENCODE_ANTHROPIC_API_KEY', 'OPENCODE_DEEPSEEK_API_KEY',
+    'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
   ];
 
   public buildRuntimeEnv(): NodeJS.ProcessEnv {

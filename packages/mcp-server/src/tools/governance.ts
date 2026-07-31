@@ -74,6 +74,18 @@ function metadata(row: Record<string, unknown>) {
   }
 }
 
+function withEffectiveMcpStatus(row: Record<string, unknown>, now = Date.now()) {
+  const ttlMs = Math.max(1_000, Number(process.env.MCP_STATUS_TTL_MS || 300_000));
+  const verifiedAt = row.last_ping_at ? Date.parse(String(row.last_ping_at)) : Number.NaN;
+  const stale = row.status === 'running' && (!Number.isFinite(verifiedAt) || now - verifiedAt > ttlMs);
+  return {
+    ...row,
+    effective_status: stale ? 'stale' : row.status,
+    status_stale: stale,
+    last_verified_at: row.last_ping_at || null,
+  };
+}
+
 function probeSpec(row: Record<string, unknown>) {
   const meta = metadata(row);
   const url = String(meta.probe_url || new URL(String(meta.probe_path || ''), String(row.url)).toString());
@@ -588,14 +600,13 @@ export function registerGovernanceTools(server: McpServer, dbHandle: DbHandle) {
       },
     },
     async ({ limit = 20, status }) => {
-      const where = status ? ' WHERE status = ?' : '';
-      const params = status ? [status, limit] : [limit];
-      return text(rows(dbHandle, `
+      const servers = rows(dbHandle, `
         SELECT id, name, description, status, command, args, version, last_ping_at, error_message
-        FROM mcp_servers${where}
+        FROM mcp_servers
         ORDER BY updated_at DESC
         LIMIT ?
-      `, ...params));
+      `, status ? 100 : limit).map((row) => withEffectiveMcpStatus(row));
+      return text((status ? servers.filter((row) => row.effective_status === status) : servers).slice(0, limit));
     }
   );
 

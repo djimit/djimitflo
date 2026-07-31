@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T21:35:43.384Z",
+  "status": "blocked",
+  "corpus": {
+    "path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/corpus.jsonl",
+    "sha256": "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
+    "cases": 351,
+    "maturity": {
+      "draft": 26,
+      "reviewed": 318,
+      "validated": 7,
+      "community": 0
+    }
+  },
+  "oracle_anchors": {
+    "path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/drafts/skill-lifecycle-oracle-anchors.json",
+    "sha256": "fc63d1fdf9bee3a06dc2d198b420d0fb2062372cca6afe2b078c8fc082b7ffeb"
+  },
+  "gates": {
+    "corpus_validation": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": "Validating 351 cases...\nOK — all 351 cases valid.\n  calibration: 37\n  canary: 39\n  contradiction: 26\n  cross-lingual: 25\n  hallucination: 42\n  hierarchy: 41\n  injection: 25\n  overthinking: 25\n  temporal-reasoning: 28\n  tool-scope: 28\n  value-alignment: 35\n  TOTAL: 351"
+    },
+    "lifecycle_oracle": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": "OK - 18 draft cases, 6 stages, exact oracle coverage, no promotion\n  authoring: 3\n  evolution: 3\n  execution: 3\n  retrieval: 3\n  selection: 3\n  storage: 3"
+    },
+    "repeatability": "not_run",
+    "held_out_discrimination": "not_run"
+  },
+  "admissibility": {
+    "structural_validation": true,
+    "broad_governance_certification": false,
+    "reason": "Only validated cases may support broad certification; repeatability and held-out discrimination are not established."
+  }
+}

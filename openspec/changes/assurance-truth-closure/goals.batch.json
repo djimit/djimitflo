@@ -1,0 +1,63 @@
+{
+  "change": "assurance-truth-closure",
+  "policy": {
+    "auto_create_goals": false,
+    "auto_start_loops": false,
+    "safe_local_and_read_only_execution": "autonomous",
+    "external_mutation": "explicit_approval",
+    "auto_deploy": false,
+    "auto_push": false,
+    "auto_promote_corpus": false,
+    "auto_promote_memory": false
+  },
+  "goals": [
+    {
+      "id": "ATC-1-evidence-contract",
+      "objective": "Implement the fail-closed machine-readable assurance report contract.",
+      "depends_on": [],
+      "acceptance_criteria": ["Mandatory gates cannot be averaged away.", "Reports contain source and configuration provenance.", "Secrets are redacted."]
+    },
+    {
+      "id": "ATC-2-supported-runtime-matrix",
+      "objective": "Prove the repository on every supported Node runtime and adjudicate production dependency findings.",
+      "depends_on": ["ATC-1-evidence-contract"],
+      "acceptance_criteria": ["Node 20, 22 and 24 gates pass.", "Unsupported Node cannot certify.", "Every production advisory has a disposition."]
+    },
+    {
+      "id": "ATC-3-contract-map",
+      "objective": "Classify every registered HTTP route and MCP tool by executable coverage.",
+      "depends_on": ["ATC-1-evidence-contract"],
+      "acceptance_criteria": ["No registered contract is unclassified.", "No critical contract is uncovered.", "Exemptions have narrow reasons."]
+    },
+    {
+      "id": "ATC-4-internal-invariants",
+      "objective": "Prove MCP, proof, Council and OpenMythos truth invariants without external services.",
+      "depends_on": ["ATC-2-supported-runtime-matrix", "ATC-3-contract-map"],
+      "acceptance_criteria": ["Stale health is not running.", "Council never fabricates scores.", "Incomplete OpenMythos runs never certify."]
+    },
+    {
+      "id": "ATC-5-openmythos-validity",
+      "objective": "Establish corpus maturity, provenance, repeatability and held-out discrimination.",
+      "depends_on": ["ATC-4-internal-invariants"],
+      "acceptance_criteria": ["Corpus and oracle hashes are recorded.", "Judge experiments are preregistered and repeatable.", "Invalid evidence produces no aggregate claim."]
+    },
+    {
+      "id": "ATC-6-live-integrations",
+      "objective": "Probe all required integrations read-only and verify effective identities.",
+      "depends_on": ["ATC-4-internal-invariants"],
+      "acceptance_criteria": ["Every required integration has fresh evidence or a blocked reason.", "Requested and effective models are compared.", "Configuration alone never proves health."]
+    },
+    {
+      "id": "ATC-7-live-identity-run",
+      "objective": "Prove deployed source and database identity plus one bounded non-mock run.",
+      "depends_on": ["ATC-5-openmythos-validity", "ATC-6-live-integrations"],
+      "acceptance_criteria": ["Live identity matches intended release.", "Database integrity passes.", "One bounded maker/checker proof has complete evidence."]
+    },
+    {
+      "id": "ATC-8-closure",
+      "objective": "Publish a reproducible assurance result without exceeding the evidence.",
+      "depends_on": ["ATC-7-live-identity-run"],
+      "acceptance_criteria": ["All mandatory gates pass or the result remains blocked.", "Evidence index is reproducible.", "No external mutation occurred without approval."]
+    }
+  ]
+}

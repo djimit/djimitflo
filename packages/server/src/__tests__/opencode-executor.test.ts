@@ -108,25 +108,25 @@ describe('OpenCodeExecutor', () => {
   });
 
   describe('buildOpenCodeArgs — skip permissions', () => {
-    it('does NOT include --dangerously-skip-permissions when skipPermissions is false', () => {
+    it('does NOT include --auto when skipPermissions is false', () => {
       const task = makeTask({ description: 'test' });
       const options: ExecutorOptions = { skipPermissions: false };
       const args = (executor as any).buildOpenCodeArgs(task, options);
-      expect(args).not.toContain('--dangerously-skip-permissions');
+      expect(args).not.toContain('--auto');
     });
 
-    it('does NOT include --dangerously-skip-permissions when skipPermissions is undefined', () => {
+    it('does NOT include --auto when skipPermissions is undefined', () => {
       const task = makeTask({ description: 'test' });
       const options: ExecutorOptions = {};
       const args = (executor as any).buildOpenCodeArgs(task, options);
-      expect(args).not.toContain('--dangerously-skip-permissions');
+      expect(args).not.toContain('--auto');
     });
 
-    it('includes --dangerously-skip-permissions when skipPermissions is true', () => {
+    it('includes --auto when skipPermissions is true', () => {
       const task = makeTask({ description: 'test' });
       const options: ExecutorOptions = { skipPermissions: true };
       const args = (executor as any).buildOpenCodeArgs(task, options);
-      expect(args).toContain('--dangerously-skip-permissions');
+      expect(args).toContain('--auto');
     });
 
     it('respects OPENCODE_SKIP_PERMISSIONS env var when options not provided', () => {
@@ -135,7 +135,7 @@ describe('OpenCodeExecutor', () => {
       const envExecutor = new OpenCodeExecutor('/usr/bin/opencode');
       const task = makeTask({ description: 'test' });
       const args = (envExecutor as any).buildOpenCodeArgs(task, {});
-      expect(args).toContain('--dangerously-skip-permissions');
+      expect(args).toContain('--auto');
       process.env.OPENCODE_SKIP_PERMISSIONS = originalEnv;
     });
 
@@ -145,7 +145,7 @@ describe('OpenCodeExecutor', () => {
       const envExecutor = new OpenCodeExecutor('/usr/bin/opencode');
       const task = makeTask({ description: 'test' });
       const args = (envExecutor as any).buildOpenCodeArgs(task, {});
-      expect(args).not.toContain('--dangerously-skip-permissions');
+      expect(args).not.toContain('--auto');
       if (originalEnv !== undefined) process.env.OPENCODE_SKIP_PERMISSIONS = originalEnv;
     });
   });

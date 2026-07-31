@@ -123,6 +123,45 @@ describe('createWorktree git-lock retry', () => {
     expect(status.trim()).toBe('');
   });
 
+  it('snapshots tracked source edits into worker worktrees', () => {
+    const mgr = new WorktreeManager(db);
+    const repoPath = path.join(worktreeRoot, 'tracked-repo');
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.writeFileSync(path.join(repoPath, 'README.md'), 'before\n');
+    execFileSync('git', ['init'], { cwd: repoPath, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'worktree-test@example.invalid'], { cwd: repoPath });
+    execFileSync('git', ['config', 'user.name', 'Worktree Test'], { cwd: repoPath });
+    execFileSync('git', ['add', 'README.md'], { cwd: repoPath });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repoPath, stdio: 'ignore' });
+    fs.writeFileSync(path.join(repoPath, 'README.md'), 'after\n');
+
+    const result = mgr.createWorktree(repoPath, 'run-tracked', 'find-tracked', 'branch-tracked');
+
+    expect(fs.readFileSync(path.join(result, 'README.md'), 'utf8')).toBe('after\n');
+    expect(execFileSync('git', ['-C', result, 'status', '--porcelain=v1'], { encoding: 'utf8' }).trim()).toBe('');
+  });
+
+  it('links workspace-local dependencies into worker worktrees', () => {
+    const manager = new WorktreeManager(db);
+    const repoDir = path.join(worktreeRoot, 'workspace-repo');
+    fs.mkdirSync(repoDir, { recursive: true });
+    fs.writeFileSync(path.join(repoDir, 'package.json'), '{}\n');
+    fs.writeFileSync(path.join(repoDir, '.gitignore'), 'node_modules/\n');
+    const workspaceModules = path.join(repoDir, 'packages', 'dashboard', 'node_modules');
+    fs.mkdirSync(workspaceModules, { recursive: true });
+    fs.writeFileSync(path.join(workspaceModules, 'marker'), 'workspace dependency');
+    execFileSync('git', ['init'], { cwd: repoDir, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'worktree-test@example.invalid'], { cwd: repoDir });
+    execFileSync('git', ['config', 'user.name', 'Worktree Test'], { cwd: repoDir });
+    execFileSync('git', ['add', 'package.json', '.gitignore'], { cwd: repoDir });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repoDir, stdio: 'ignore' });
+
+    const worktree = manager.createWorktree(repoDir, 'run-workspace-modules', 'finding-1', 'agent/test-workspace-modules');
+    const linked = path.join(worktree, 'packages', 'dashboard', 'node_modules');
+    expect(fs.lstatSync(linked).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(path.join(linked, 'marker'), 'utf8')).toBe('workspace dependency');
+  });
+
   it('does not retry on a non-lock error and throws WORKTREE_CREATE_FAILED', () => {
     const loops = new LoopService(db);
     const repoPath = path.join(worktreeRoot, 'fake-repo');

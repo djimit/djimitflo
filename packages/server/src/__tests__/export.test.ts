@@ -86,7 +86,7 @@ function seedRepository(db: Database.Database, overrides: Record<string, unknown
     overrides.is_active as number ?? 1,
     overrides.has_git as number ?? 1,
     overrides.provider as string || 'local',
-    overrides.status as string || 'ready',
+    overrides.status as string || 'clean',
     '[]',
     'npm',
     '[]',

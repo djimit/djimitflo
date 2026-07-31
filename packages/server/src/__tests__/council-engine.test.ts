@@ -66,6 +66,31 @@ describe('CouncilRegistry', () => {
     expect(selection.diversity_score).toBeGreaterThan(0);
   });
 
+  it('fails closed when privacy constraints have no eligible model', () => {
+    registry.registerModel({ provider: 'openai', model_name: 'gpt-4o', privacy_class: 'public_api' });
+
+    expect(() => registry.selectModelsForCouncil({
+      mode: 'fast',
+      risk_class: 'low',
+      privacy_required: 'local',
+    })).toThrow('COUNCIL_NO_ELIGIBLE_MODELS');
+  });
+
+  it('honors custom model and cost constraints', () => {
+    registry.registerModel({ provider: 'ollama', model_name: 'cheap', privacy_class: 'local', cost_per_1m_tokens: 0 });
+    registry.registerModel({ provider: 'ollama', model_name: 'expensive', privacy_class: 'local', cost_per_1m_tokens: 10 });
+
+    const selection = registry.selectModelsForCouncil({
+      mode: 'fast',
+      risk_class: 'low',
+      privacy_required: 'local',
+      max_cost: 0,
+      custom_models: ['cheap', 'expensive'],
+    });
+
+    expect(selection.models.map(model => model.model_name)).toEqual(['cheap']);
+  });
+
   it('deprecates a model', () => {
     const model = registry.registerModel({ provider: 'ollama', model_name: 'llama3.1:8b' });
     registry.deprecateModel(model.id);
@@ -367,6 +392,7 @@ describe('SynthesisEngine', () => {
     expect(result.top_candidate).toBe('A');
     expect(result.confidence).toBeGreaterThan(0);
     expect(result.output).toBeTruthy();
+    expect(JSON.parse(result.output).conclusion).toBe('Answer A');
   });
 
   it('flags critical risk for human review', () => {

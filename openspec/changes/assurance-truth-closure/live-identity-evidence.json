@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T21:35:44.598Z",
+  "status": "blocked",
+  "intended": {
+    "commit": "cb9944fffe47e07e648a302d1d520406125fe880",
+    "dirty": true,
+    "dirty_state_sha256": "a4731492f941fdf072c8817ccc3cb4b0b5a2ea66d972f4842beb153b8e867c5e",
+    "database": "/Users/dlandman/djimitflo/.data/djimitflo.sqlite"
+  },
+  "observed": {
+    "base_url": "http://127.0.0.1:3001",
+    "health": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "status": "healthy",
+        "timestamp": "2026-07-31T21:35:44.421Z",
+        "uptime": 8.135362667
+      }
+    },
+    "version": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "version": "0.5.8",
+        "name": "Djimitflo API"
+      }
+    },
+    "authenticated_provenance": {
+      "status": 401,
+      "ok": false,
+      "body": {
+        "error": {
+          "message": "Authentication required",
+          "code": "AUTH_REQUIRED"
+        }
+      }
+    },
+    "database_integrity": {
+      "ok": true,
+      "exit_code": 0,
+      "output": "ok"
+    }
+  },
+  "identity_verified": false,
+  "reason": "Health is not deployment identity: authenticated provenance and a clean intended revision are required.",
+  "next_safe_action": "Provide operator-authorized read:evidence authentication or run MCP doctor locally."
+}

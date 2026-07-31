@@ -9,12 +9,70 @@ export type RepositoryProvider = 'local' | 'github' | 'gitlab' | 'unknown';
 export type RepositoryStatus = 'active' | 'missing' | 'inaccessible' | 'dirty' | 'clean' | 'unknown';
 
 export interface RepositoryScanResult {
+  scanId: ID;
   repository: Repository;
   gitStatus: GitStatusResult | null;
   stack: StackDetection;
   health: RepositoryHealth;
   agentsMdFiles: AgentsMdFile[];
   healthFindings: RepositoryHealthFinding[];
+  scanSummary: ScanSummary;
+}
+
+export interface ScanSummary {
+  secretScan: SecretScanSummary;
+  dependencyManifest: DependencyManifest;
+  license: LicenseInfo | null;
+  contributors: ContributorInfo[];
+  tags: TagInfo[];
+}
+
+export interface SecretScanSummary {
+  clean: boolean;
+  findings: SecretScanFinding[];
+}
+
+export interface SecretScanFinding {
+  file: string;
+  pattern: string;
+  severity: 'warning' | 'critical';
+}
+
+export interface DependencyManifest {
+  packageManager: string;
+  manifestFiles: string[];
+  packages: DependencyPackage[];
+  auditFindings: DependencyAuditFinding[];
+}
+
+export interface DependencyPackage {
+  name: string;
+  version: string | null;
+  type: 'runtime' | 'dev' | 'peer' | 'unknown';
+}
+
+export interface DependencyAuditFinding {
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  title: string;
+  packageName: string;
+  message: string;
+}
+
+export interface LicenseInfo {
+  license: string;
+  source: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface ContributorInfo {
+  name: string;
+  email: string | null;
+  commitCount: number;
+}
+
+export interface TagInfo {
+  name: string;
+  commit: string | null;
 }
 
 export interface GitStatusResult {

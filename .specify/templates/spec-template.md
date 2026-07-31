@@ -1,5 +1,5 @@
 ---
-description: "Feature specification template with 7 information layers (SDD Constitution v1.1.0)"
+description: "Feature specification template with 8 information layers (SDD Constitution v1.2.0)"
 ---
 
 # Feature Specification: [FEATURE NAME]
@@ -14,9 +14,9 @@ description: "Feature specification template with 7 information layers (SDD Cons
 
 <!-- 
   ============================================================================
-  SPECIFICATION QUALITY GATES (Constitution v1.1.0, Article: Specification Quality Gates)
-  
-  Every feature spec MUST contain 7 information layers:
+  SPECIFICATION QUALITY GATES (Constitution v1.2.0, Article: Specification Quality Gates)
+
+  Every feature spec MUST contain 8 information layers:
   L1 (CRITICAL): Language Precision — FR-### in EARS SHALL-format
   L2 (SHOULD):  Negative Requirements — Non-Goals + Forbidden Libraries
   L3 (CRITICAL): Measurable Criteria — SC-### with number + unit
@@ -24,9 +24,16 @@ description: "Feature specification template with 7 information layers (SDD Cons
   L5 (SHOULD):  Codebase Anchoring — FR→file path mapping
   L6 (CRITICAL): Edge Cases — EC-### in IF-THEN format
   L7 (SHOULD):  Verified Library Specs — Library + version + API constraints
-  
+  L8 (CRITICAL): Spec Compliance — DDD artifact compliance (Article VI)
+
   CRITICAL layers are hard gates. SHOULD layers allow reviewer override with justification.
-  See Constitution v1.1.0 Specification Quality Gates for ratchet policy.
+  See Constitution v1.2.0 Specification Quality Gates for ratchet policy.
+
+  DDD ARTIFACT SELECTION (Constitution v1.2.0, Article VI.5):
+  - Greenfield: domain-terms.md + bc-{name}.md + aggregate-{name}.md (if Core) + requirements.md
+  - Brownfield: bc-{name}.md + aggregate roots + acl if cutting legacy
+  - External: context-map.md update + acl-{external}.md + events schema
+  - Bug fix: UL discipline only
   ============================================================================
 -->
 
@@ -203,6 +210,27 @@ description: "Feature specification template with 7 information layers (SDD Cons
 - [Assumption about scope boundaries]
 - [Assumption about data/environment]
 - [Dependency on existing system/service]
+
+
+## DDD Artifact Selection *(mandatory for greenfield, brownfield, external)*
+
+<!--
+  L8 (CRITICAL): DDD Spec Compliance.
+  Constitution v1.2.0 Article VI.5 — select artifacts based on change type.
+  Templates: ~/openspec/specs/ddd-semantic-layer/
+
+  Check the artifacts that apply to this feature:
+-->
+
+- [ ] **domain-terms.md** — Ubiquitous Language glossary (required for greenfield)
+- [ ] **bc-{name}.md** — Bounded Context Canvas (required for greenfield + brownfield)
+- [ ] **context-map.md** — Update if BC relationships change (required for external)
+- [ ] **aggregate-{name}.md** — Aggregate spec with EARS invariants (required if Core subdomain)
+- [ ] **acl-{system}.md** — Anti-Corruption Layer (required for external integrations)
+- [ ] **events.yaml** — Domain event schemas (required if events produced/consumed)
+- [ ] **subdomain-classification.md** — Core/Supporting/Generic (required for greenfield)
+
+**Artifact location:** /specs/bounded-contexts/[bc-name]/
 
 ## Changelog
 

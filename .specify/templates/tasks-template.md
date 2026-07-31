@@ -1,6 +1,6 @@
 ---
 
-description: "Task list template with [P] parallel markers, file paths, verification, and FR traceability (SDD Constitution v1.1.0)"
+description: "Task list template with [P] parallel markers, file paths, verification, FR traceability, and DDD artifact traceability (SDD Constitution v1.2.0)"
 
 ---
 
@@ -8,7 +8,7 @@ description: "Task list template with [P] parallel markers, file paths, verifica
 
 **Input**: Design documents from `/specs/[###-feature-name]/`
 
-**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
+**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/, domain-terms.md (if DDD), aggregate-{name}.md (if Core subdomain)
 
 **Tests**: The examples below include test tasks. Tests are OPTIONAL - only include them if explicitly requested in the feature specification.
 
@@ -30,7 +30,7 @@ description: "Task list template with [P] parallel markers, file paths, verifica
 
 <!--
   ============================================================================
-  TASK QUALITY GATES (Constitution v1.1.0)
+  TASK QUALITY GATES (Constitution v1.2.0)
   
   Every task MUST have:
   1. Exact file path(s) — no ambiguity about what to touch
@@ -42,6 +42,7 @@ description: "Task list template with [P] parallel markers, file paths, verifica
   7. Dependencies — sequential ordering for dependent tasks
   
   The req_coverage gate verifies: every FR has >= 1 task AND >= 1 test.
+  L8 spec compliance gate verifies: every UL term has code mapping, every INV has test.
   ============================================================================
 -->
 
@@ -89,6 +90,32 @@ description: "Task list template with [P] parallel markers, file paths, verifica
   - **Verification**: `npm run type-check` passes
   - **Done**: Client compiles
   - **FR**: FR-002
+
+
+## Phase 2.5: DDD Semantic Layer (Required if feature involves domain model)
+
+**Purpose**: Create DDD specification artifacts before implementation per Constitution Article VI
+
+- [ ] T003a [DDD] Create domain-terms.md for [BC Name]
+  - **Files**: `specs/bounded-contexts/<bc-name>/domain-terms.md`
+  - **Action**: Extract Ubiquitous Language from requirements.md. Define all terms with "Aliases to AVOID".
+  - **Verification**: Every class name in implementation plan maps to a UL term
+  - **Done**: domain-terms.md complete, human-reviewed
+  - **DDD**: domain-terms.md
+
+- [ ] T003b [DDD] Create bc-{name}.md for [BC Name]
+  - **Files**: `specs/bounded-contexts/<bc-name>/bc-<name>.md`
+  - **Action**: Define BC boundary, subdomain classification, inbound/outbound communication
+  - **Verification**: BC boundary is clear, data classification aligns with ADR-003
+  - **Done**: bc-{name}.md complete, human-reviewed
+  - **DDD**: bc-{name}.md
+
+- [ ] T003c [DDD] Create aggregate-{name}.md for [Core Aggregate]
+  - **Files**: `specs/bounded-contexts/<bc-name>/aggregates/aggregate-<name>.md`
+  - **Action**: Define aggregate root, invariants in EARS notation, commands, domain events
+  - **Verification**: Every INV-### has corresponding test defined
+  - **Done**: aggregate-{name}.md complete, human-written
+  - **DDD**: aggregate-{name}.md
 
 ---
 
@@ -207,3 +234,13 @@ description: "Task list template with [P] parallel markers, file paths, verifica
 | FR-003 | T010, T011 | T010 | COMPLETE |
 
 **Rule**: Every FR MUST have >= 1 task AND >= 1 test. req_coverage gate enforces this.
+
+## DDD Traceability Summary
+
+| DDD Artifact | Terms/Invariants | Code Mappings | Tests | Status |
+|--------------|-----------------|---------------|-------|--------|
+| domain-terms.md | [count] terms | [count] classes | - | [draft/done] |
+| aggregate-[name].md | [count] INV | [count] validations | [count] tests | [draft/done] |
+| acl-[system].md | [count] forbidden | [count] translations | [count] tests | [draft/done] |
+
+**Rule**: Every UL term MUST have >=1 code mapping. Every INV MUST have >=1 validation + >=1 test. L8 gate enforces this.

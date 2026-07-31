@@ -574,7 +574,18 @@ const SCHEMA = `
     is_active INTEGER NOT NULL DEFAULT 1,
     last_synced_at TEXT,
     metadata TEXT,
+    provider TEXT,
+    status TEXT NOT NULL DEFAULT 'unknown',
     added_by TEXT,
+    detected_stacks TEXT NOT NULL DEFAULT '[]',
+    package_manager TEXT NOT NULL DEFAULT 'unknown',
+    test_commands TEXT NOT NULL DEFAULT '[]',
+    build_commands TEXT NOT NULL DEFAULT '[]',
+    lint_commands TEXT NOT NULL DEFAULT '[]',
+    typecheck_commands TEXT NOT NULL DEFAULT '[]',
+    has_git INTEGER NOT NULL DEFAULT 0,
+    has_agents_md INTEGER NOT NULL DEFAULT 0,
+    health_score INTEGER,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -959,6 +970,19 @@ const SCHEMA = `
     FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS repository_health_findings (
+    id TEXT PRIMARY KEY,
+    repository_id TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    category TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    recommendation TEXT,
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS swarm_missions (
     id TEXT PRIMARY KEY,
     goal_id TEXT,
@@ -1067,7 +1091,132 @@ const SCHEMA = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Performance indexes
+  CREATE TABLE IF NOT EXISTS explainer_tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'local' CHECK(provider IN ('local', 'github', 'gitlab')),
+  remote_url TEXT,
+  local_path TEXT,
+  branch TEXT,
+  repository_id TEXT,
+  error_message TEXT,
+  scan_id TEXT,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'completed', 'failed', 'cancelled')) DEFAULT 'pending',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_tasks_status ON explainer_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_explainer_tasks_repository_id ON explainer_tasks(repository_id);
+
+CREATE TABLE IF NOT EXISTS explainer_bundles (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+  bundle_path TEXT NOT NULL,
+  manifest_path TEXT,
+  markdown_path TEXT,
+  llms_txt_path TEXT,
+  facts_path TEXT,
+  sections_path TEXT,
+  assets_path TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'published', 'human_review', 'unpublished')),
+  content_hash TEXT,
+  openmythos_score REAL,
+  openmythos_rationale TEXT,
+  token_count INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_bundles_task_id ON explainer_bundles(task_id);
+
+CREATE TABLE IF NOT EXISTS explainer_sections (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  section_type TEXT NOT NULL CHECK(section_type IN ('overview', 'architecture', 'components', 'dependencies', 'api', 'flows', 'deployment', 'security', 'testing', 'governance', 'health')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_sections_bundle_id ON explainer_sections(bundle_id);
+
+-- Repo graph snapshots table (code-review-graph results)
+CREATE TABLE IF NOT EXISTS repo_graph_snapshots (
+  id TEXT PRIMARY KEY,
+  repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  scan_id TEXT REFERENCES repository_scans(id) ON DELETE SET NULL,
+  commit_sha TEXT,
+  communities_json TEXT NOT NULL DEFAULT '[]',
+  flows_json TEXT NOT NULL DEFAULT '[]',
+  hub_nodes_json TEXT NOT NULL DEFAULT '[]',
+  bridge_nodes_json TEXT NOT NULL DEFAULT '[]',
+  surprising_connections_json TEXT NOT NULL DEFAULT '[]',
+  metrics_json TEXT NOT NULL DEFAULT '{}',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_repository_id ON repo_graph_snapshots(repository_id);
+CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_scan_id ON repo_graph_snapshots(scan_id);
+
+-- Discovered repositories table (fleet-wide GitHub enumeration)
+CREATE TABLE IF NOT EXISTS discovered_repositories (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  name TEXT NOT NULL,
+  full_name TEXT NOT NULL UNIQUE,
+  default_branch TEXT NOT NULL DEFAULT 'main',
+  last_commit_sha TEXT,
+  last_commit_at TEXT,
+  repo_category TEXT NOT NULL DEFAULT 'other' CHECK(repo_category IN ('platform', 'plugin', 'tool', 'experimental', 'other')),
+  language TEXT,
+  license TEXT,
+  stargazers_count INTEGER NOT NULL DEFAULT 0,
+  open_issues_count INTEGER NOT NULL DEFAULT 0,
+  priority_tier INTEGER NOT NULL DEFAULT 3 CHECK(priority_tier IN (1, 2, 3)),
+  html_url TEXT NOT NULL,
+  clone_url TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  last_discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_full_name ON discovered_repositories(full_name);
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_priority_tier ON discovered_repositories(priority_tier);
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_is_active ON discovered_repositories(is_active);
+
+-- Explainer jobs table (scheduler queue)
+CREATE TABLE IF NOT EXISTS explainer_jobs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT,
+  finished_at TEXT,
+  worker_id TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
+  priority_score INTEGER NOT NULL DEFAULT 0,
+  scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(scheduled_at);
+
+-- Performance indexes
   CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);
   CREATE INDEX IF NOT EXISTS idx_loop_runs_goal_id ON loop_runs(goal_id);
   CREATE INDEX IF NOT EXISTS idx_worker_leases_loop_run_id ON worker_leases(loop_run_id);

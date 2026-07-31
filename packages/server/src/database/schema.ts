@@ -278,12 +278,23 @@ CREATE TABLE IF NOT EXISTS repositories (
   name TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL,
   path TEXT NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'local' CHECK(provider IN ('local', 'github', 'gitlab')),
+  status TEXT NOT NULL DEFAULT 'unknown' CHECK(status IN ('unknown', 'clean', 'dirty', 'syncing', 'error')),
   git_remote TEXT,
   git_branch TEXT,
   git_commit TEXT,
+  detected_stacks TEXT NOT NULL DEFAULT '[]',
+  package_manager TEXT NOT NULL DEFAULT 'unknown',
+  test_commands TEXT NOT NULL DEFAULT '[]',
+  build_commands TEXT NOT NULL DEFAULT '[]',
+  lint_commands TEXT NOT NULL DEFAULT '[]',
+  typecheck_commands TEXT NOT NULL DEFAULT '[]',
+  has_git INTEGER NOT NULL DEFAULT 0,
+  has_agents_md INTEGER NOT NULL DEFAULT 0,
+  health_score INTEGER,
   is_active INTEGER NOT NULL DEFAULT 1,
   last_synced_at TEXT,
-  metadata TEXT, -- JSON object
+  metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -596,4 +607,272 @@ CREATE TABLE IF NOT EXISTS council_aggregations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_council_aggregations_session_id ON council_aggregations(session_id);
+
+-- Repository scans table
+CREATE TABLE IF NOT EXISTS repository_scans (
+  id TEXT PRIMARY KEY,
+  repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  is_git_repository INTEGER NOT NULL DEFAULT 0,
+  current_branch TEXT,
+  default_branch TEXT,
+  is_clean INTEGER NOT NULL DEFAULT 0,
+  staged_files INTEGER NOT NULL DEFAULT 0,
+  modified_files INTEGER NOT NULL DEFAULT 0,
+  untracked_files INTEGER NOT NULL DEFAULT 0,
+  head_commit TEXT,
+  head_commit_message TEXT,
+  detected_stacks TEXT NOT NULL DEFAULT '[]',
+  package_manager TEXT NOT NULL DEFAULT 'unknown',
+  test_commands TEXT NOT NULL DEFAULT '[]',
+  build_commands TEXT NOT NULL DEFAULT '[]',
+  lint_commands TEXT NOT NULL DEFAULT '[]',
+  typecheck_commands TEXT NOT NULL DEFAULT '[]',
+  has_type_script INTEGER NOT NULL DEFAULT 0,
+  has_tests INTEGER NOT NULL DEFAULT 0,
+  has_lint INTEGER NOT NULL DEFAULT 0,
+  has_ci INTEGER NOT NULL DEFAULT 0,
+  has_docker INTEGER NOT NULL DEFAULT 0,
+  health_score INTEGER,
+  scan_duration_ms INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repository_scans_repository_id ON repository_scans(repository_id);
+
+-- Repository health findings table
+CREATE TABLE IF NOT EXISTS repository_health_findings (
+  id TEXT PRIMARY KEY,
+  repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  scan_id TEXT,
+  severity TEXT NOT NULL CHECK(severity IN ('info', 'warning', 'low', 'medium', 'high', 'critical')),
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  file_path TEXT,
+  line_number INTEGER,
+  recommendation TEXT,
+  discovered_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repository_health_findings_repository_id ON repository_health_findings(repository_id);
+
+-- agents_md_files table
+CREATE TABLE IF NOT EXISTS agents_md_files (
+  id TEXT PRIMARY KEY,
+  repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  applies_to_path TEXT,
+  content_hash TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  content TEXT,
+  discovered_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_agents_md_files_repository_id ON agents_md_files(repository_id);
+
 `;
+
+export const explainerSchema = `-- Explainer tasks table
+CREATE TABLE IF NOT EXISTS explainer_tasks (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+  provider TEXT NOT NULL CHECK(provider IN ('local', 'github', 'gitlab')),
+  local_path TEXT,
+  remote_url TEXT,
+  branch TEXT,
+  repository_id TEXT REFERENCES repositories(id) ON DELETE SET NULL,
+  error_message TEXT,
+  scan_id TEXT REFERENCES repository_scans(id) ON DELETE SET NULL,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_tasks_status ON explainer_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_explainer_tasks_repository_id ON explainer_tasks(repository_id);
+
+-- Explainer bundles table
+CREATE TABLE IF NOT EXISTS explainer_bundles (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+  bundle_path TEXT NOT NULL,
+  manifest_path TEXT,
+  markdown_path TEXT,
+  llms_txt_path TEXT,
+  facts_path TEXT,
+  sections_path TEXT,
+  assets_path TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'published', 'human_review', 'unpublished')),
+  content_hash TEXT,
+  openmythos_score REAL,
+  openmythos_rationale TEXT,
+  token_count INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_bundles_task_id ON explainer_bundles(task_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_bundles_status ON explainer_bundles(status);
+
+-- Explainer sections table
+CREATE TABLE IF NOT EXISTS explainer_sections (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  section_type TEXT NOT NULL CHECK(section_type IN ('overview', 'architecture', 'components', 'dependencies', 'api', 'flows', 'deployment', 'security', 'testing', 'governance', 'health')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_sections_bundle_id ON explainer_sections(bundle_id);
+
+-- Repository scan artifacts table
+CREATE TABLE IF NOT EXISTS repository_scan_artifacts (
+  id TEXT PRIMARY KEY,
+  scan_id TEXT NOT NULL REFERENCES repository_scans(id) ON DELETE CASCADE,
+  artifact_type TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  content_hash TEXT,
+  size_bytes INTEGER,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repository_scan_artifacts_scan_id ON repository_scan_artifacts(scan_id);
+
+-- Discovered repositories table (fleet-wide GitHub enumeration)
+CREATE TABLE IF NOT EXISTS discovered_repositories (
+  id TEXT PRIMARY KEY,
+  owner TEXT NOT NULL,
+  name TEXT NOT NULL,
+  full_name TEXT NOT NULL UNIQUE,
+  default_branch TEXT NOT NULL DEFAULT 'main',
+  last_commit_sha TEXT,
+  last_commit_at TEXT,
+  repo_category TEXT NOT NULL DEFAULT 'other' CHECK(repo_category IN ('platform', 'plugin', 'tool', 'experimental', 'other')),
+  language TEXT,
+  license TEXT,
+  stargazers_count INTEGER NOT NULL DEFAULT 0,
+  open_issues_count INTEGER NOT NULL DEFAULT 0,
+  priority_tier INTEGER NOT NULL DEFAULT 3 CHECK(priority_tier IN (1, 2, 3)),
+  html_url TEXT NOT NULL,
+  clone_url TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  last_discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_full_name ON discovered_repositories(full_name);
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_priority_tier ON discovered_repositories(priority_tier);
+CREATE INDEX IF NOT EXISTS idx_discovered_repositories_is_active ON discovered_repositories(is_active);
+
+-- Explainer jobs table (scheduler queue)
+CREATE TABLE IF NOT EXISTS explainer_jobs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT,
+  finished_at TEXT,
+  worker_id TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
+  priority_score INTEGER NOT NULL DEFAULT 0,
+  scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(scheduled_at);
+
+-- Repo graph snapshots table (code-review-graph results)
+CREATE TABLE IF NOT EXISTS repo_graph_snapshots (
+  id TEXT PRIMARY KEY,
+  repository_id TEXT NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+  scan_id TEXT REFERENCES repository_scans(id) ON DELETE SET NULL,
+  commit_sha TEXT,
+  communities_json TEXT NOT NULL DEFAULT '[]',
+  flows_json TEXT NOT NULL DEFAULT '[]',
+  hub_nodes_json TEXT NOT NULL DEFAULT '[]',
+  bridge_nodes_json TEXT NOT NULL DEFAULT '[]',
+  surprising_connections_json TEXT NOT NULL DEFAULT '[]',
+  metrics_json TEXT NOT NULL DEFAULT '{}',
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_repository_id ON repo_graph_snapshots(repository_id);
+CREATE INDEX IF NOT EXISTS idx_repo_graph_snapshots_scan_id ON repo_graph_snapshots(scan_id);
+
+-- Explainer feedback table (human corrections)
+CREATE TABLE IF NOT EXISTS explainer_feedback (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  section_type TEXT,
+  fact_id TEXT,
+  correction TEXT NOT NULL,
+  submitted_by TEXT,
+  reviewed INTEGER NOT NULL DEFAULT 0,
+  review_decision TEXT CHECK(review_decision IN ('accepted', 'rejected', 'pending')),
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_feedback_bundle_id ON explainer_feedback(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_feedback_reviewed ON explainer_feedback(reviewed);
+
+-- Human review queue table (low-confidence bundles)
+CREATE TABLE IF NOT EXISTS human_review_queue (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  openmythos_score REAL,
+  assigned_to TEXT,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  resolution TEXT CHECK(resolution IN ('approved', 'rejected', 'pending')),
+  resolved_at TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_human_review_queue_bundle_id ON human_review_queue(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_human_review_queue_resolved ON human_review_queue(resolved);
+
+-- Explainer audit log table (pipeline governance)
+CREATE TABLE IF NOT EXISTS explainer_audit_log (
+  id TEXT PRIMARY KEY,
+  actor TEXT NOT NULL DEFAULT 'system',
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK(outcome IN ('success', 'failure', 'blocked', 'pending')),
+  reason TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_audit_log_resource ON explainer_audit_log(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_audit_log_created_at ON explainer_audit_log(created_at DESC);
+
+`;
+
+export const fullSchema = schema + explainerSchema;

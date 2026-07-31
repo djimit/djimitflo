@@ -1,0 +1,5774 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-31T21:36:21.281Z",
+  "routes": {
+    "total": 517,
+    "tested": 136,
+    "unclassified": 381,
+    "critical_unclassified": [
+      "approvals:GET:/",
+      "approvals:GET:/:id",
+      "approvals:PATCH:/:id",
+      "approvals:POST:/:id/approve",
+      "approvals:POST:/:id/deny",
+      "approvals:POST:/:id/cancel",
+      "auth:POST:/login",
+      "auth:GET:/me",
+      "auth:POST:/logout",
+      "backup:POST:/",
+      "backup:GET:/",
+      "backup:GET:/:filename",
+      "backup:GET:/:filename/download",
+      "backup:POST:/:filename/validate",
+      "backup:POST:/:filename/restore",
+      "exports:POST:/task/:taskId",
+      "exports:POST:/evidence/:taskId",
+      "exports:POST:/audit",
+      "exports:POST:/repository/:repositoryId",
+      "exports:POST:/report/summary",
+      "exports:GET:/training",
+      "openmythos:POST:/eval/:agentId",
+      "openmythos:GET:/score/:agentId",
+      "openmythos:GET:/report/:agentId",
+      "openmythos:GET:/trend/:agentId",
+      "openmythos:POST:/guard/check/:skillId",
+      "openmythos:GET:/guard/certified/:skillId",
+      "runtime-governance:GET:/status",
+      "runtime-governance:GET:/alerts",
+      "runtime-governance:GET:/agents/:agentId",
+      "runtime-governance:POST:/agents/:agentId/register",
+      "runtime-governance:POST:/agents/:agentId/check",
+      "runtime-governance:POST:/agents/:agentId/release",
+      "runtime-governance:POST:/agents/:agentId/reset",
+      "spawns:POST:/root",
+      "spawns:POST:/",
+      "spawns:GET:/:id/status"
+    ],
+    "items": [
+      {
+        "id": "advanced:GET:/compression/stats",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/compression/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/compression/compress",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/compression/compress",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/compression/retrieve/:hash",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/compression/retrieve/:hash",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/workflows",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/workflows",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/workflows/:id",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/workflows/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/workflows/:id/next",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/workflows/:id/next",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/workflows/:id/nodes/:nodeId/approve",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/workflows/:id/nodes/:nodeId/approve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/workflows/:id/nodes/:nodeId/reject",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/workflows/:id/nodes/:nodeId/reject",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/workflows/:id/nodes/:nodeId/status",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/workflows/:id/nodes/:nodeId/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/feedback",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/feedback",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/feedback/analyze",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/feedback/analyze",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/feedback/stats",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/feedback/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:GET:/feedback/recent",
+        "module": "advanced",
+        "method": "GET",
+        "path": "/feedback/recent",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "advanced:POST:/feedback/apply",
+        "module": "advanced",
+        "method": "POST",
+        "path": "/feedback/apply",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:GET:/",
+        "module": "agents",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:GET:/:id",
+        "module": "agents",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:POST:/",
+        "module": "agents",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:PATCH:/:id/status",
+        "module": "agents",
+        "method": "PATCH",
+        "path": "/:id/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:DELETE:/:id",
+        "module": "agents",
+        "method": "DELETE",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:POST:/:id/heartbeat",
+        "module": "agents",
+        "method": "POST",
+        "path": "/:id/heartbeat",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:POST:/create-from-description",
+        "module": "agents",
+        "method": "POST",
+        "path": "/create-from-description",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agents:POST:/:id/approve",
+        "module": "agents",
+        "method": "POST",
+        "path": "/:id/approve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:POST:/reason",
+        "module": "agi",
+        "method": "POST",
+        "path": "/reason",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:GET:/observe",
+        "module": "agi",
+        "method": "GET",
+        "path": "/observe",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:GET:/reasoning/stats",
+        "module": "agi",
+        "method": "GET",
+        "path": "/reasoning/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:POST:/consensus/debates",
+        "module": "agi",
+        "method": "POST",
+        "path": "/consensus/debates",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:POST:/consensus/debates/:debateId/proposals",
+        "module": "agi",
+        "method": "POST",
+        "path": "/consensus/debates/:debateId/proposals",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:POST:/consensus/debates/:debateId/vote",
+        "module": "agi",
+        "method": "POST",
+        "path": "/consensus/debates/:debateId/vote",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:POST:/consensus/debates/:debateId/resolve",
+        "module": "agi",
+        "method": "POST",
+        "path": "/consensus/debates/:debateId/resolve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:GET:/consensus/debates/:debateId",
+        "module": "agi",
+        "method": "GET",
+        "path": "/consensus/debates/:debateId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "agi:GET:/consensus/stats",
+        "module": "agi",
+        "method": "GET",
+        "path": "/consensus/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/plugins",
+        "module": "apex",
+        "method": "GET",
+        "path": "/plugins",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/plugins/stats",
+        "module": "apex",
+        "method": "GET",
+        "path": "/plugins/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/plugins/:id/enable",
+        "module": "apex",
+        "method": "POST",
+        "path": "/plugins/:id/enable",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/plugins/:id/disable",
+        "module": "apex",
+        "method": "POST",
+        "path": "/plugins/:id/disable",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/memory/store",
+        "module": "apex",
+        "method": "POST",
+        "path": "/memory/store",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/memory/search",
+        "module": "apex",
+        "method": "GET",
+        "path": "/memory/search",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/memory/clusters",
+        "module": "apex",
+        "method": "GET",
+        "path": "/memory/clusters",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/memory/stats",
+        "module": "apex",
+        "method": "GET",
+        "path": "/memory/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/workers/status",
+        "module": "apex",
+        "method": "GET",
+        "path": "/workers/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/workers/:id/run",
+        "module": "apex",
+        "method": "POST",
+        "path": "/workers/:id/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/workers/:id/start",
+        "module": "apex",
+        "method": "POST",
+        "path": "/workers/:id/start",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/workers/:id/stop",
+        "module": "apex",
+        "method": "POST",
+        "path": "/workers/:id/stop",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/llm/route",
+        "module": "apex",
+        "method": "POST",
+        "path": "/llm/route",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/llm/providers",
+        "module": "apex",
+        "method": "GET",
+        "path": "/llm/providers",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:GET:/llm/stats",
+        "module": "apex",
+        "method": "GET",
+        "path": "/llm/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "apex:POST:/llm/performance",
+        "module": "apex",
+        "method": "POST",
+        "path": "/llm/performance",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:GET:/",
+        "module": "approvals",
+        "method": "GET",
+        "path": "/",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:GET:/:id",
+        "module": "approvals",
+        "method": "GET",
+        "path": "/:id",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:PATCH:/:id",
+        "module": "approvals",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:POST:/:id/approve",
+        "module": "approvals",
+        "method": "POST",
+        "path": "/:id/approve",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:POST:/:id/deny",
+        "module": "approvals",
+        "method": "POST",
+        "path": "/:id/deny",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "approvals:POST:/:id/cancel",
+        "module": "approvals",
+        "method": "POST",
+        "path": "/:id/cancel",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "audit:GET:/",
+        "module": "audit",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "audit:GET:/:id",
+        "module": "audit",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "auth:POST:/login",
+        "module": "auth",
+        "method": "POST",
+        "path": "/login",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "auth:GET:/me",
+        "module": "auth",
+        "method": "GET",
+        "path": "/me",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "auth:POST:/logout",
+        "module": "auth",
+        "method": "POST",
+        "path": "/logout",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:POST:/",
+        "module": "backup",
+        "method": "POST",
+        "path": "/",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:GET:/",
+        "module": "backup",
+        "method": "GET",
+        "path": "/",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:GET:/:filename",
+        "module": "backup",
+        "method": "GET",
+        "path": "/:filename",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:GET:/:filename/download",
+        "module": "backup",
+        "method": "GET",
+        "path": "/:filename/download",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:POST:/:filename/validate",
+        "module": "backup",
+        "method": "POST",
+        "path": "/:filename/validate",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "backup:POST:/:filename/restore",
+        "module": "backup",
+        "method": "POST",
+        "path": "/:filename/restore",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:GET:/sessions",
+        "module": "canvas",
+        "method": "GET",
+        "path": "/sessions",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:GET:/sessions/:runId",
+        "module": "canvas",
+        "method": "GET",
+        "path": "/sessions/:runId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/thinking",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/thinking",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/tool-call",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/tool-call",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/tool-result",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/tool-result",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/diff",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/diff",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/progress",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/progress",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "canvas:POST:/sessions/:runId/complete",
+        "module": "canvas",
+        "method": "POST",
+        "path": "/sessions/:runId/complete",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/counts",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/counts",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/agents",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/agents",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/agents/:id",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/agents/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/search",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/search",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/compile/:id",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/compile/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:POST:/activate/:id",
+        "module": "catalog",
+        "method": "POST",
+        "path": "/activate/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:POST:/deactivate/:id",
+        "module": "catalog",
+        "method": "POST",
+        "path": "/deactivate/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:POST:/evaluate/batch",
+        "module": "catalog",
+        "method": "POST",
+        "path": "/evaluate/batch",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:GET:/evaluate/summary",
+        "module": "catalog",
+        "method": "GET",
+        "path": "/evaluate/summary",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "catalog:POST:/evaluate/:id",
+        "module": "catalog",
+        "method": "POST",
+        "path": "/evaluate/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:GET:/stats",
+        "module": "cognitive",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:GET:/meta-learning",
+        "module": "cognitive",
+        "method": "GET",
+        "path": "/meta-learning",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:GET:/strategy/:goalType",
+        "module": "cognitive",
+        "method": "GET",
+        "path": "/strategy/:goalType",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:POST:/episodes",
+        "module": "cognitive",
+        "method": "POST",
+        "path": "/episodes",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:POST:/extract-patterns",
+        "module": "cognitive",
+        "method": "POST",
+        "path": "/extract-patterns",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "cognitive:POST:/evolve-strategies",
+        "module": "cognitive",
+        "method": "POST",
+        "path": "/evolve-strategies",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "compliance:GET:/status",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:POST:/audit/append",
+        "module": "compliance",
+        "method": "POST",
+        "path": "/audit/append",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:GET:/audit/log",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/audit/log",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:GET:/audit/verify",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/audit/verify",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:POST:/reports/generate",
+        "module": "compliance",
+        "method": "POST",
+        "path": "/reports/generate",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:GET:/specs",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/specs",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:GET:/export",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/export",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "compliance:GET:/reports/export",
+        "module": "compliance",
+        "method": "GET",
+        "path": "/reports/export",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/governance-reports.test.ts"
+        ]
+      },
+      {
+        "id": "console:GET:/overview",
+        "module": "console",
+        "method": "GET",
+        "path": "/overview",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/capabilities",
+        "module": "console",
+        "method": "GET",
+        "path": "/capabilities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/gates",
+        "module": "console",
+        "method": "GET",
+        "path": "/gates",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/memory",
+        "module": "console",
+        "method": "GET",
+        "path": "/memory",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/models",
+        "module": "console",
+        "method": "GET",
+        "path": "/models",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/audit",
+        "module": "console",
+        "method": "GET",
+        "path": "/audit",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "console:GET:/improvements",
+        "module": "console",
+        "method": "GET",
+        "path": "/improvements",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "council:POST:/sessions",
+        "module": "council",
+        "method": "POST",
+        "path": "/sessions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/sessions",
+        "module": "council",
+        "method": "GET",
+        "path": "/sessions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/sessions/:id",
+        "module": "council",
+        "method": "GET",
+        "path": "/sessions/:id",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:POST:/sessions/:id/execute",
+        "module": "council",
+        "method": "POST",
+        "path": "/sessions/:id/execute",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/sessions/:id/outputs",
+        "module": "council",
+        "method": "GET",
+        "path": "/sessions/:id/outputs",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/sessions/:id/evaluations",
+        "module": "council",
+        "method": "GET",
+        "path": "/sessions/:id/evaluations",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/sessions/:id/aggregate",
+        "module": "council",
+        "method": "GET",
+        "path": "/sessions/:id/aggregate",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:POST:/models",
+        "module": "council",
+        "method": "POST",
+        "path": "/models",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/models",
+        "module": "council",
+        "method": "GET",
+        "path": "/models",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/models/:id",
+        "module": "council",
+        "method": "GET",
+        "path": "/models/:id",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:DELETE:/models/:id",
+        "module": "council",
+        "method": "DELETE",
+        "path": "/models/:id",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:POST:/classify",
+        "module": "council",
+        "method": "POST",
+        "path": "/classify",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "council:GET:/stats",
+        "module": "council",
+        "method": "GET",
+        "path": "/stats",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/:id",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:PATCH:/:id",
+        "module": "discussions",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/:id/proposals",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/:id/proposals",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/:id/proposals",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/:id/proposals",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/:id/votes",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/:id/votes",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/:id/votes",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/:id/votes",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/:id/consensus",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/:id/consensus",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/:id/timeline",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/:id/timeline",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/:id/turns",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/:id/turns",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:GET:/:id/turns",
+        "module": "discussions",
+        "method": "GET",
+        "path": "/:id/turns",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:POST:/:id/tick",
+        "module": "discussions",
+        "method": "POST",
+        "path": "/:id/tick",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "discussions:PATCH:/:id/turns/:turnId",
+        "module": "discussions",
+        "method": "PATCH",
+        "path": "/:id/turns/:turnId",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ]
+      },
+      {
+        "id": "evidence:GET:/task/:taskId",
+        "module": "evidence",
+        "method": "GET",
+        "path": "/task/:taskId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "evidence:GET:/summary/:taskId",
+        "module": "evidence",
+        "method": "GET",
+        "path": "/summary/:taskId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "evidence:GET:/file-changes/:taskId",
+        "module": "evidence",
+        "method": "GET",
+        "path": "/file-changes/:taskId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "evidence:GET:/audit-trail/:taskId",
+        "module": "evidence",
+        "method": "GET",
+        "path": "/audit-trail/:taskId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "evidence:GET:/review/:taskId",
+        "module": "evidence",
+        "method": "GET",
+        "path": "/review/:taskId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "explainer:GET:/tasks",
+        "module": "explainer",
+        "method": "GET",
+        "path": "/tasks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "explainer:POST:/tasks",
+        "module": "explainer",
+        "method": "POST",
+        "path": "/tasks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "explainer:GET:/tasks/:id",
+        "module": "explainer",
+        "method": "GET",
+        "path": "/tasks/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "explainer:POST:/tasks/:id/run",
+        "module": "explainer",
+        "method": "POST",
+        "path": "/tasks/:id/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "explainer:GET:/tasks/:id/bundles",
+        "module": "explainer",
+        "method": "GET",
+        "path": "/tasks/:id/bundles",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:POST:/task/:taskId",
+        "module": "exports",
+        "method": "POST",
+        "path": "/task/:taskId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:POST:/evidence/:taskId",
+        "module": "exports",
+        "method": "POST",
+        "path": "/evidence/:taskId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:POST:/audit",
+        "module": "exports",
+        "method": "POST",
+        "path": "/audit",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:POST:/repository/:repositoryId",
+        "module": "exports",
+        "method": "POST",
+        "path": "/repository/:repositoryId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:POST:/report/summary",
+        "module": "exports",
+        "method": "POST",
+        "path": "/report/summary",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "exports:GET:/training",
+        "module": "exports",
+        "method": "GET",
+        "path": "/training",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "federation:GET:/peers",
+        "module": "federation",
+        "method": "GET",
+        "path": "/peers",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "federation:POST:/register",
+        "module": "federation",
+        "method": "POST",
+        "path": "/register",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "federation:GET:/capabilities",
+        "module": "federation",
+        "method": "GET",
+        "path": "/capabilities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "federation:POST:/work",
+        "module": "federation",
+        "method": "POST",
+        "path": "/work",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:GET:/status",
+        "module": "fleet",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:GET:/nodes",
+        "module": "fleet",
+        "method": "GET",
+        "path": "/nodes",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/nodes",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/nodes",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:GET:/nodes/:id",
+        "module": "fleet",
+        "method": "GET",
+        "path": "/nodes/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/handoff",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/handoff",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/handoff/:id/accept",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/handoff/:id/accept",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/handoff/:id/complete",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/handoff/:id/complete",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/distribute",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/distribute",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "fleet:POST:/sync-capability",
+        "module": "fleet",
+        "method": "POST",
+        "path": "/sync-capability",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "goals:GET:/",
+        "module": "goals",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:POST:/",
+        "module": "goals",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:POST:/batch/preview",
+        "module": "goals",
+        "method": "POST",
+        "path": "/batch/preview",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:POST:/batch/apply",
+        "module": "goals",
+        "method": "POST",
+        "path": "/batch/apply",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:GET:/:id",
+        "module": "goals",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:PATCH:/:id",
+        "module": "goals",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "goals:POST:/:id/decompose",
+        "module": "goals",
+        "method": "POST",
+        "path": "/:id/decompose",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "governance-feedback:GET:/health",
+        "module": "governance-feedback",
+        "method": "GET",
+        "path": "/health",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:POST:/analyze",
+        "module": "governance-feedback",
+        "method": "POST",
+        "path": "/analyze",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:POST:/propose",
+        "module": "governance-feedback",
+        "method": "POST",
+        "path": "/propose",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:POST:/run",
+        "module": "governance-feedback",
+        "method": "POST",
+        "path": "/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:GET:/history",
+        "module": "governance-feedback",
+        "method": "GET",
+        "path": "/history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:GET:/proposals",
+        "module": "governance-feedback",
+        "method": "GET",
+        "path": "/proposals",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "governance-feedback:GET:/dormant-capabilities",
+        "module": "governance-feedback",
+        "method": "GET",
+        "path": "/dormant-capabilities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "gym:GET:/governance/:skillId",
+        "module": "gym",
+        "method": "GET",
+        "path": "/governance/:skillId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "gym:POST:/governance/:skillId/run",
+        "module": "gym",
+        "method": "POST",
+        "path": "/governance/:skillId/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "gym:GET:/governance/:skillId/history",
+        "module": "gym",
+        "method": "GET",
+        "path": "/governance/:skillId/history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "gym:POST:/governance/:skillId/retest",
+        "module": "gym",
+        "method": "POST",
+        "path": "/governance/:skillId/retest",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "gym:GET:/governance/:skillId/curriculum",
+        "module": "gym",
+        "method": "GET",
+        "path": "/governance/:skillId/curriculum",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "health:GET:/",
+        "module": "health",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "health:GET:/deep",
+        "module": "health",
+        "method": "GET",
+        "path": "/deep",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "health:GET:/metrics",
+        "module": "health",
+        "method": "GET",
+        "path": "/metrics",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "health:GET:/metrics/json",
+        "module": "health",
+        "method": "GET",
+        "path": "/metrics/json",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:POST:/predict",
+        "module": "intelligence",
+        "method": "POST",
+        "path": "/predict",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/patterns",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/patterns",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/predictive/stats",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/predictive/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/data-quality",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/data-quality",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/health",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/health",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:POST:/heal",
+        "module": "intelligence",
+        "method": "POST",
+        "path": "/heal",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/incidents",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/incidents",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intelligence:GET:/healing/stats",
+        "module": "intelligence",
+        "method": "GET",
+        "path": "/healing/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intervention:POST:/:goalId/pause",
+        "module": "intervention",
+        "method": "POST",
+        "path": "/:goalId/pause",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intervention:POST:/:goalId/resume",
+        "module": "intervention",
+        "method": "POST",
+        "path": "/:goalId/resume",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intervention:POST:/:goalId/inject",
+        "module": "intervention",
+        "method": "POST",
+        "path": "/:goalId/inject",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "intervention:POST:/:goalId/override",
+        "module": "intervention",
+        "method": "POST",
+        "path": "/:goalId/override",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "knowledge:POST:/publish",
+        "module": "knowledge",
+        "method": "POST",
+        "path": "/publish",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "knowledge:GET:/subscribe/:capabilityId",
+        "module": "knowledge",
+        "method": "GET",
+        "path": "/subscribe/:capabilityId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "knowledge:GET:/events",
+        "module": "knowledge",
+        "method": "GET",
+        "path": "/events",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "learning:GET:/",
+        "module": "learning",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "learning:GET:/:id",
+        "module": "learning",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "learning:POST:/",
+        "module": "learning",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "legal:POST:/check-pii",
+        "module": "legal",
+        "method": "POST",
+        "path": "/check-pii",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "legal:POST:/classify",
+        "module": "legal",
+        "method": "POST",
+        "path": "/classify",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "legal:GET:/rechtsgebied/:ecli",
+        "module": "legal",
+        "method": "GET",
+        "path": "/rechtsgebied/:ecli",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "legal:POST:/feedback",
+        "module": "legal",
+        "method": "POST",
+        "path": "/feedback",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "legal:GET:/status",
+        "module": "legal",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "loops:GET:/catalog",
+        "module": "loops",
+        "method": "GET",
+        "path": "/catalog",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:GET:/runtime-contracts",
+        "module": "loops",
+        "method": "GET",
+        "path": "/runtime-contracts",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:GET:/runs",
+        "module": "loops",
+        "method": "GET",
+        "path": "/runs",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:GET:/runs/:id",
+        "module": "loops",
+        "method": "GET",
+        "path": "/runs/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:GET:/runs/:id/review-bundle",
+        "module": "loops",
+        "method": "GET",
+        "path": "/runs/:id/review-bundle",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/start",
+        "module": "loops",
+        "method": "POST",
+        "path": "/start",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/doc-drift-and-small-fix/start",
+        "module": "loops",
+        "method": "POST",
+        "path": "/doc-drift-and-small-fix/start",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/step",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/step",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/continue",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/continue",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/retry",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/retry",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/split",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/split",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/verify",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/verify",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/execute-maker",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/execute-maker",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/execute-worker",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/execute-worker",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/execute-checker",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/execute-checker",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/checker-verdict",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/checker-verdict",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/security-verdict",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/security-verdict",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/run-checks",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/run-checks",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/complete",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/complete",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "loops:POST:/runs/:id/stop",
+        "module": "loops",
+        "method": "POST",
+        "path": "/runs/:id/stop",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ]
+      },
+      {
+        "id": "mcp:GET:/servers",
+        "module": "mcp",
+        "method": "GET",
+        "path": "/servers",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ]
+      },
+      {
+        "id": "mcp:GET:/tools",
+        "module": "mcp",
+        "method": "GET",
+        "path": "/tools",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ]
+      },
+      {
+        "id": "mcp:GET:/permissions",
+        "module": "mcp",
+        "method": "GET",
+        "path": "/permissions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ]
+      },
+      {
+        "id": "mcp:PATCH:/permissions/:toolId",
+        "module": "mcp",
+        "method": "PATCH",
+        "path": "/permissions/:toolId",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ]
+      },
+      {
+        "id": "memory-evolution:POST:/ingest",
+        "module": "memory-evolution",
+        "method": "POST",
+        "path": "/ingest",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:POST:/evolve",
+        "module": "memory-evolution",
+        "method": "POST",
+        "path": "/evolve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:GET:/retrieve",
+        "module": "memory-evolution",
+        "method": "GET",
+        "path": "/retrieve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:GET:/quality/:id",
+        "module": "memory-evolution",
+        "method": "GET",
+        "path": "/quality/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:POST:/promote/:id",
+        "module": "memory-evolution",
+        "method": "POST",
+        "path": "/promote/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:GET:/leases",
+        "module": "memory-evolution",
+        "method": "GET",
+        "path": "/leases",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory-evolution:POST:/leases",
+        "module": "memory-evolution",
+        "method": "POST",
+        "path": "/leases",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "memory:GET:/stats",
+        "module": "memory",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:GET:/top",
+        "module": "memory",
+        "method": "GET",
+        "path": "/top",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:POST:/store",
+        "module": "memory",
+        "method": "POST",
+        "path": "/store",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:GET:/search",
+        "module": "memory",
+        "method": "GET",
+        "path": "/search",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:GET:/:id",
+        "module": "memory",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:GET:/:id/related",
+        "module": "memory",
+        "method": "GET",
+        "path": "/:id/related",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:POST:/relations",
+        "module": "memory",
+        "method": "POST",
+        "path": "/relations",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:POST:/maintenance",
+        "module": "memory",
+        "method": "POST",
+        "path": "/maintenance",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:POST:/discover-relations",
+        "module": "memory",
+        "method": "POST",
+        "path": "/discover-relations",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "memory:POST:/consolidate",
+        "module": "memory",
+        "method": "POST",
+        "path": "/consolidate",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "messages:POST:/",
+        "module": "messages",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ]
+      },
+      {
+        "id": "messages:GET:/agent/:agent_id",
+        "module": "messages",
+        "method": "GET",
+        "path": "/agent/:agent_id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ]
+      },
+      {
+        "id": "messages:PATCH:/:id/read",
+        "module": "messages",
+        "method": "PATCH",
+        "path": "/:id/read",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ]
+      },
+      {
+        "id": "messages:GET:/:id",
+        "module": "messages",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ]
+      },
+      {
+        "id": "messages:DELETE:/:id",
+        "module": "messages",
+        "method": "DELETE",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ]
+      },
+      {
+        "id": "meta-orchestration:GET:/stats",
+        "module": "meta-orchestration",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "meta-orchestration:GET:/tuning/:goalType",
+        "module": "meta-orchestration",
+        "method": "GET",
+        "path": "/tuning/:goalType",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "meta-orchestration:GET:/tuning-history",
+        "module": "meta-orchestration",
+        "method": "GET",
+        "path": "/tuning-history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "meta-orchestration:GET:/routing/:taskType",
+        "module": "meta-orchestration",
+        "method": "GET",
+        "path": "/routing/:taskType",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "meta-orchestration:GET:/strategy/:goalType",
+        "module": "meta-orchestration",
+        "method": "GET",
+        "path": "/strategy/:goalType",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "meta-orchestration:POST:/predict",
+        "module": "meta-orchestration",
+        "method": "POST",
+        "path": "/predict",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "multi-model:GET:/status",
+        "module": "multi-model",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "multi-model:POST:/register",
+        "module": "multi-model",
+        "method": "POST",
+        "path": "/register",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "multi-model:POST:/route",
+        "module": "multi-model",
+        "method": "POST",
+        "path": "/route",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "multi-model:POST:/outcome",
+        "module": "multi-model",
+        "method": "POST",
+        "path": "/outcome",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "multi-model:GET:/best/:taskType",
+        "module": "multi-model",
+        "method": "GET",
+        "path": "/best/:taskType",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "observability:GET:/metrics",
+        "module": "observability",
+        "method": "GET",
+        "path": "/metrics",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "observability:GET:/risk-trends",
+        "module": "observability",
+        "method": "GET",
+        "path": "/risk-trends",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "observability:GET:/policy-stats",
+        "module": "observability",
+        "method": "GET",
+        "path": "/policy-stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "observability:GET:/execution-activity",
+        "module": "observability",
+        "method": "GET",
+        "path": "/execution-activity",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "observability:GET:/stream",
+        "module": "observability",
+        "method": "GET",
+        "path": "/stream",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:POST:/eval/:agentId",
+        "module": "openmythos",
+        "method": "POST",
+        "path": "/eval/:agentId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:GET:/score/:agentId",
+        "module": "openmythos",
+        "method": "GET",
+        "path": "/score/:agentId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:GET:/report/:agentId",
+        "module": "openmythos",
+        "method": "GET",
+        "path": "/report/:agentId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:GET:/trend/:agentId",
+        "module": "openmythos",
+        "method": "GET",
+        "path": "/trend/:agentId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:POST:/guard/check/:skillId",
+        "module": "openmythos",
+        "method": "POST",
+        "path": "/guard/check/:skillId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "openmythos:GET:/guard/certified/:skillId",
+        "module": "openmythos",
+        "method": "GET",
+        "path": "/guard/certified/:skillId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "platform:GET:/status",
+        "module": "platform",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "platform:POST:/cycle",
+        "module": "platform",
+        "method": "POST",
+        "path": "/cycle",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "policies:GET:/",
+        "module": "policies",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "policies:GET:/:id",
+        "module": "policies",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "policies:POST:/",
+        "module": "policies",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "policies:PATCH:/:id",
+        "module": "policies",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "policies:DELETE:/:id",
+        "module": "policies",
+        "method": "DELETE",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "red-team:POST:/assess",
+        "module": "red-team",
+        "method": "POST",
+        "path": "/assess",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "red-team:GET:/latest",
+        "module": "red-team",
+        "method": "GET",
+        "path": "/latest",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "red-team:GET:/history",
+        "module": "red-team",
+        "method": "GET",
+        "path": "/history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/:id",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:POST:/scan",
+        "module": "repositories",
+        "method": "POST",
+        "path": "/scan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:POST:/:id/rescan",
+        "module": "repositories",
+        "method": "POST",
+        "path": "/:id/rescan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/:id/health",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/:id/health",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/:id/agents-md",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/:id/agents-md",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/:id/agents-md/effective",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/:id/agents-md/effective",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:POST:/:id/agents-md/validate",
+        "module": "repositories",
+        "method": "POST",
+        "path": "/:id/agents-md/validate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/:id/file-changes",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/:id/file-changes",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/tasks/:taskId/diff",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/tasks/:taskId/diff",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/tasks/:taskId/file-changes",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/tasks/:taskId/file-changes",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repositories:GET:/tasks/:taskId/snapshots",
+        "module": "repositories",
+        "method": "GET",
+        "path": "/tasks/:taskId/snapshots",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:GET:/repositories",
+        "module": "repository-index",
+        "method": "GET",
+        "path": "/repositories",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:POST:/register",
+        "module": "repository-index",
+        "method": "POST",
+        "path": "/register",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:POST:/:id/index",
+        "module": "repository-index",
+        "method": "POST",
+        "path": "/:id/index",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:GET:/:id/stats",
+        "module": "repository-index",
+        "method": "GET",
+        "path": "/:id/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:POST:/search",
+        "module": "repository-index",
+        "method": "POST",
+        "path": "/search",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "repository-index:DELETE:/:id",
+        "module": "repository-index",
+        "method": "DELETE",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:GET:/stats",
+        "module": "research",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:POST:/sources",
+        "module": "research",
+        "method": "POST",
+        "path": "/sources",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:GET:/sources/trusted",
+        "module": "research",
+        "method": "GET",
+        "path": "/sources/trusted",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:POST:/claims",
+        "module": "research",
+        "method": "POST",
+        "path": "/claims",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:POST:/contradictions/detect",
+        "module": "research",
+        "method": "POST",
+        "path": "/contradictions/detect",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "research:POST:/reports/generate",
+        "module": "research",
+        "method": "POST",
+        "path": "/reports/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "retirement:GET:/plan/:agentId",
+        "module": "retirement",
+        "method": "GET",
+        "path": "/plan/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "retirement:POST:/retire/:agentId",
+        "module": "retirement",
+        "method": "POST",
+        "path": "/retire/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "retirement:GET:/status/:agentId",
+        "module": "retirement",
+        "method": "GET",
+        "path": "/status/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "retirement:GET:/list",
+        "module": "retirement",
+        "method": "GET",
+        "path": "/list",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "risk:POST:/command",
+        "module": "risk",
+        "method": "POST",
+        "path": "/command",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "risk:POST:/task",
+        "module": "risk",
+        "method": "POST",
+        "path": "/task",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:GET:/status",
+        "module": "runtime-governance",
+        "method": "GET",
+        "path": "/status",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:GET:/alerts",
+        "module": "runtime-governance",
+        "method": "GET",
+        "path": "/alerts",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:GET:/agents/:agentId",
+        "module": "runtime-governance",
+        "method": "GET",
+        "path": "/agents/:agentId",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:POST:/agents/:agentId/register",
+        "module": "runtime-governance",
+        "method": "POST",
+        "path": "/agents/:agentId/register",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:POST:/agents/:agentId/check",
+        "module": "runtime-governance",
+        "method": "POST",
+        "path": "/agents/:agentId/check",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:POST:/agents/:agentId/release",
+        "module": "runtime-governance",
+        "method": "POST",
+        "path": "/agents/:agentId/release",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "runtime-governance:POST:/agents/:agentId/reset",
+        "module": "runtime-governance",
+        "method": "POST",
+        "path": "/agents/:agentId/reset",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "sbom:GET:/generate",
+        "module": "sbom",
+        "method": "GET",
+        "path": "/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "sbom:GET:/summary",
+        "module": "sbom",
+        "method": "GET",
+        "path": "/summary",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-federation:GET:/summary",
+        "module": "segml-federation",
+        "method": "GET",
+        "path": "/summary",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-federation:GET:/sync-history",
+        "module": "segml-federation",
+        "method": "GET",
+        "path": "/sync-history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-federation:POST:/extract",
+        "module": "segml-federation",
+        "method": "POST",
+        "path": "/extract",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-federation:POST:/receive",
+        "module": "segml-federation",
+        "method": "POST",
+        "path": "/receive",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-finetuning:POST:/generate",
+        "module": "segml-finetuning",
+        "method": "POST",
+        "path": "/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-finetuning:POST:/train",
+        "module": "segml-finetuning",
+        "method": "POST",
+        "path": "/train",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-finetuning:POST:/ab-test",
+        "module": "segml-finetuning",
+        "method": "POST",
+        "path": "/ab-test",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-finetuning:GET:/status",
+        "module": "segml-finetuning",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:POST:/generate",
+        "module": "segml-l3",
+        "method": "POST",
+        "path": "/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:POST:/train",
+        "module": "segml-l3",
+        "method": "POST",
+        "path": "/train",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:POST:/world-model/update",
+        "module": "segml-l3",
+        "method": "POST",
+        "path": "/world-model/update",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:GET:/world-model/scenarios",
+        "module": "segml-l3",
+        "method": "GET",
+        "path": "/world-model/scenarios",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:POST:/synthesize-tool",
+        "module": "segml-l3",
+        "method": "POST",
+        "path": "/synthesize-tool",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l3:GET:/status",
+        "module": "segml-l3",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l4:POST:/tournament",
+        "module": "segml-l4",
+        "method": "POST",
+        "path": "/tournament",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l4:POST:/evolve",
+        "module": "segml-l4",
+        "method": "POST",
+        "path": "/evolve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l4:POST:/ttsi",
+        "module": "segml-l4",
+        "method": "POST",
+        "path": "/ttsi",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l4:POST:/coevolution",
+        "module": "segml-l4",
+        "method": "POST",
+        "path": "/coevolution",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l4:GET:/status",
+        "module": "segml-l4",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l5:POST:/self-improve",
+        "module": "segml-l5",
+        "method": "POST",
+        "path": "/self-improve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l5:POST:/revert/:id",
+        "module": "segml-l5",
+        "method": "POST",
+        "path": "/revert/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-l5:GET:/status",
+        "module": "segml-l5",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-literature:POST:/scan",
+        "module": "segml-literature",
+        "method": "POST",
+        "path": "/scan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-literature:GET:/proposed",
+        "module": "segml-literature",
+        "method": "GET",
+        "path": "/proposed",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-literature:POST:/approve/:id",
+        "module": "segml-literature",
+        "method": "POST",
+        "path": "/approve/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-literature:GET:/status",
+        "module": "segml-literature",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-production:POST:/generate",
+        "module": "segml-production",
+        "method": "POST",
+        "path": "/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-production:POST:/train",
+        "module": "segml-production",
+        "method": "POST",
+        "path": "/train",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-production:POST:/evaluate",
+        "module": "segml-production",
+        "method": "POST",
+        "path": "/evaluate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-production:POST:/cycle",
+        "module": "segml-production",
+        "method": "POST",
+        "path": "/cycle",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml-production:GET:/status",
+        "module": "segml-production",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:POST:/run/:agentId",
+        "module": "segml",
+        "method": "POST",
+        "path": "/run/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/history",
+        "module": "segml",
+        "method": "GET",
+        "path": "/history",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/latest",
+        "module": "segml",
+        "method": "GET",
+        "path": "/latest",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/blind-spots/:agentId",
+        "module": "segml",
+        "method": "GET",
+        "path": "/blind-spots/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/generated-cases",
+        "module": "segml",
+        "method": "GET",
+        "path": "/generated-cases",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/judge-rubrics",
+        "module": "segml",
+        "method": "GET",
+        "path": "/judge-rubrics",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "segml:GET:/curriculum",
+        "module": "segml",
+        "method": "GET",
+        "path": "/curriculum",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/scan",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/scan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/opportunities",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/opportunities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:POST:/patches",
+        "module": "self-improvement",
+        "method": "POST",
+        "path": "/patches",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/stats",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/tests/generate",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/tests/generate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:POST:/tests/write",
+        "module": "self-improvement",
+        "method": "POST",
+        "path": "/tests/write",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/tests/stats",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/tests/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/docs/scan",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/docs/scan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-improvement:GET:/docs/stats",
+        "module": "self-improvement",
+        "method": "GET",
+        "path": "/docs/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-modification:GET:/status",
+        "module": "self-modification",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-modification:POST:/analyze",
+        "module": "self-modification",
+        "method": "POST",
+        "path": "/analyze",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-modification:POST:/plan",
+        "module": "self-modification",
+        "method": "POST",
+        "path": "/plan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "self-modification:POST:/execute",
+        "module": "self-modification",
+        "method": "POST",
+        "path": "/execute",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:GET:/",
+        "module": "skills",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:GET:/stats",
+        "module": "skills",
+        "method": "GET",
+        "path": "/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:GET:/:id",
+        "module": "skills",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:POST:/:id/enable",
+        "module": "skills",
+        "method": "POST",
+        "path": "/:id/enable",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:POST:/:id/disable",
+        "module": "skills",
+        "method": "POST",
+        "path": "/:id/disable",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:POST:/:id/assign/:agentId",
+        "module": "skills",
+        "method": "POST",
+        "path": "/:id/assign/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:DELETE:/:id/assign/:agentId",
+        "module": "skills",
+        "method": "DELETE",
+        "path": "/:id/assign/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:GET:/agent/:agentId",
+        "module": "skills",
+        "method": "GET",
+        "path": "/agent/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:GET:/trigger/:trigger",
+        "module": "skills",
+        "method": "GET",
+        "path": "/trigger/:trigger",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "skills:POST:/reload",
+        "module": "skills",
+        "method": "POST",
+        "path": "/reload",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "spawns:POST:/root",
+        "module": "spawns",
+        "method": "POST",
+        "path": "/root",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "spawns:POST:/",
+        "module": "spawns",
+        "method": "POST",
+        "path": "/",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "spawns:GET:/:id/status",
+        "module": "spawns",
+        "method": "GET",
+        "path": "/:id/status",
+        "critical": true,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/proof-runs",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/proof-runs",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/proof-runs/latest",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/proof-runs/latest",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/proof-runs/:id",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/proof-runs/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/proof-runs/:id/rollback",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/proof-runs/:id/rollback",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/evolution/run",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/evolution/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/evolution/close-loop",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/evolution/close-loop",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/cs-skill-intelligence/run",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/cs-skill-intelligence/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/assurance/summary",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/assurance/summary",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/trace-spans",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/trace-spans",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/assurance/traces/:traceId",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/assurance/traces/:traceId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/checkpoints",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/checkpoints",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/checkpoints/:id/branch",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/checkpoints/:id/branch",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/evals/run",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/evals/run",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/assurance/capability-tokens",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/assurance/capability-tokens",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/capability-tokens",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/capability-tokens",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/assurance/reflections",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/assurance/reflections",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/assurance/reflections",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/assurance/reflections",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:GET:/memory/candidates",
+        "module": "swarm-governance",
+        "method": "GET",
+        "path": "/memory/candidates",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/memory/candidates",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/memory/candidates",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-governance:POST:/memory/candidates/:id/promote",
+        "module": "swarm-governance",
+        "method": "POST",
+        "path": "/memory/candidates/:id/promote",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/decompose",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/decompose",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/plans",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/plans",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/plans/:id",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/plans/:id",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/knowledge/publish",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/knowledge/publish",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/knowledge/query",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/knowledge/query",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/knowledge/subscribe",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/knowledge/subscribe",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/knowledge/vote",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/knowledge/vote",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/knowledge/contradictions",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/knowledge/contradictions",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/knowledge/stats",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/knowledge/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/evolution/register",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/evolution/register",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/evolution/evolve",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/evolution/evolve",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/evolution/outcome",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/evolution/outcome",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/evolution/stats",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/evolution/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/runner-manifests",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/runner-manifests",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/governance/evaluate",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/governance/evaluate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/intelligence/mission-control",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/intelligence/mission-control",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/intelligence/okf-drift",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/intelligence/okf-drift",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/intelligence/capabilities",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/intelligence/capabilities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/capabilities",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/capabilities",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/capabilities/:id/evaluate",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/capabilities/:id/evaluate",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/intelligence/specialists",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/intelligence/specialists",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/specialists/catalog",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/specialists/catalog",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:GET:/intelligence/claims",
+        "module": "swarm-intel",
+        "method": "GET",
+        "path": "/intelligence/claims",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/claims",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/claims",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-intel:POST:/intelligence/capacity/plan",
+        "module": "swarm-intel",
+        "method": "POST",
+        "path": "/intelligence/capacity/plan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-knowledge:GET:/knowledge/runtime",
+        "module": "swarm-knowledge",
+        "method": "GET",
+        "path": "/knowledge/runtime",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-knowledge:POST:/knowledge/sync",
+        "module": "swarm-knowledge",
+        "method": "POST",
+        "path": "/knowledge/sync",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-knowledge:GET:/runtime-readiness",
+        "module": "swarm-knowledge",
+        "method": "GET",
+        "path": "/runtime-readiness",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:GET:/sessions",
+        "module": "swarm-orchestration",
+        "method": "GET",
+        "path": "/sessions",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:POST:/sessions",
+        "module": "swarm-orchestration",
+        "method": "POST",
+        "path": "/sessions",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:POST:/sessions/:id/execute",
+        "module": "swarm-orchestration",
+        "method": "POST",
+        "path": "/sessions/:id/execute",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:GET:/sessions/:id/progress",
+        "module": "swarm-orchestration",
+        "method": "GET",
+        "path": "/sessions/:id/progress",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:POST:/messages",
+        "module": "swarm-orchestration",
+        "method": "POST",
+        "path": "/messages",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:GET:/messages/:agentId",
+        "module": "swarm-orchestration",
+        "method": "GET",
+        "path": "/messages/:agentId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:POST:/messages/:id/acknowledge",
+        "module": "swarm-orchestration",
+        "method": "POST",
+        "path": "/messages/:id/acknowledge",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:POST:/broadcast",
+        "module": "swarm-orchestration",
+        "method": "POST",
+        "path": "/broadcast",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-orchestration:GET:/comms/stats",
+        "module": "swarm-orchestration",
+        "method": "GET",
+        "path": "/comms/stats",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/scheduler/tick",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/scheduler/tick",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/backlog/sync",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/backlog/sync",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/worker-pool/plan",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/worker-pool/plan",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/worker-pool/start-next",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/worker-pool/start-next",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/worker-pool/drain",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/worker-pool/drain",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/worker-pool/stop/:leaseId",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/worker-pool/stop/:leaseId",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/handoffs",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/handoffs",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/handoffs/drain",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/handoffs/drain",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarm-workers:POST:/handoffs/:id/accept",
+        "module": "swarm-workers",
+        "method": "POST",
+        "path": "/handoffs/:id/accept",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "swarms:GET:/status",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/status",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/specialist-panels",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/specialist-panels",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/specialist-panels/:id",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/specialist-panels/:id",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/specialist-panels",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/specialist-panels",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/specialist-panels/:id/reviews",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/specialist-panels/:id/reviews",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/specialist-panels/:id/backlog",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/specialist-panels/:id/backlog",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/opencode/health",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/opencode/health",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/hypotheses",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/hypotheses",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/hypotheses",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/hypotheses",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/hypotheses/:id/transition",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/hypotheses/:id/transition",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/missions",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/missions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/missions",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/missions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/missions/:id",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/missions/:id",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/missions/:id/transition",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/missions/:id/transition",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/missions/:id/tasks",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/missions/:id/tasks",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/missions/:id/tasks",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/missions/:id/tasks",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/tasks/:id/transition",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/tasks/:id/transition",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/missions/:id/decisions",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/missions/:id/decisions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/decisions",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/decisions",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/intelligence/circuit-breaker/:scope",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/intelligence/circuit-breaker/:scope",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/circuit-breaker/:scope/failure",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/circuit-breaker/:scope/failure",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/intelligence/circuit-breaker/:scope/reset",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/intelligence/circuit-breaker/:scope/reset",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/expert/dispatch",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/expert/dispatch",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/expert/history",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/expert/history",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/expert/sources",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/expert/sources",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/expert/updates",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/expert/updates",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/rsi/analyze",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/rsi/analyze",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/rsi/proposals",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/rsi/proposals",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/rsi/specializations",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/rsi/specializations",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/rsi/safety",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/rsi/safety",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/rsi/safety/toggle",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/rsi/safety/toggle",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/learning/cycle",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/learning/cycle",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/learning/history",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/learning/history",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/learning/last",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/learning/last",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/learning-curve",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/learning-curve",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/economy",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/economy",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/fix",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/fix",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:POST:/fix/batch",
+        "module": "swarms",
+        "method": "POST",
+        "path": "/fix/batch",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "swarms:GET:/fix/history",
+        "module": "swarms",
+        "method": "GET",
+        "path": "/fix/history",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+          "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+          "packages/server/src/__tests__/learning-closure-service.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+          "packages/server/src/__tests__/proof-run-service.test.ts",
+          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:GET:/",
+        "module": "tasks",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:GET:/:id",
+        "module": "tasks",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:POST:/",
+        "module": "tasks",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:PATCH:/:id",
+        "module": "tasks",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:DELETE:/:id",
+        "module": "tasks",
+        "method": "DELETE",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:GET:/:id/events",
+        "module": "tasks",
+        "method": "GET",
+        "path": "/:id/events",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:GET:/:id/approvals",
+        "module": "tasks",
+        "method": "GET",
+        "path": "/:id/approvals",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:POST:/:id/execute",
+        "module": "tasks",
+        "method": "POST",
+        "path": "/:id/execute",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "tasks:POST:/:id/cancel",
+        "module": "tasks",
+        "method": "POST",
+        "path": "/:id/cancel",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+        ]
+      },
+      {
+        "id": "telegram:POST:/webhook",
+        "module": "telegram",
+        "method": "POST",
+        "path": "/webhook",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "telegram:GET:/status",
+        "module": "telegram",
+        "method": "GET",
+        "path": "/status",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "traceability:GET:/matrix",
+        "module": "traceability",
+        "method": "GET",
+        "path": "/matrix",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:GET:/tokens",
+        "module": "usage",
+        "method": "GET",
+        "path": "/tokens",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:POST:/tokens",
+        "module": "usage",
+        "method": "POST",
+        "path": "/tokens",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:GET:/costs",
+        "module": "usage",
+        "method": "GET",
+        "path": "/costs",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:GET:/quotas",
+        "module": "usage",
+        "method": "GET",
+        "path": "/quotas",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:GET:/available-models",
+        "module": "usage",
+        "method": "GET",
+        "path": "/available-models",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "usage:GET:/recent",
+        "module": "usage",
+        "method": "GET",
+        "path": "/recent",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "work-items:GET:/",
+        "module": "work-items",
+        "method": "GET",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:POST:/",
+        "module": "work-items",
+        "method": "POST",
+        "path": "/",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:POST:/integrations/preview",
+        "module": "work-items",
+        "method": "POST",
+        "path": "/integrations/preview",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:POST:/integrations/import",
+        "module": "work-items",
+        "method": "POST",
+        "path": "/integrations/import",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:GET:/:id",
+        "module": "work-items",
+        "method": "GET",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:PATCH:/:id",
+        "module": "work-items",
+        "method": "PATCH",
+        "path": "/:id",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      },
+      {
+        "id": "work-items:POST:/:id/convert-to-goal",
+        "module": "work-items",
+        "method": "POST",
+        "path": "/:id/convert-to-goal",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/integration-spine-service.test.ts",
+          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ]
+      }
+    ]
+  },
+  "mcp_tools": {
+    "total": 43,
+    "tested": 29,
+    "unclassified": 14,
+    "critical_unclassified": [],
+    "items": [
+      {
+        "id": "djimitflo_list_agents",
+        "module": "agents",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_agent_status",
+        "module": "agents",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "explainer_create_task",
+        "module": "explainer",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/explainer-tools.test.ts"
+        ]
+      },
+      {
+        "id": "explainer_list_tasks",
+        "module": "explainer",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/explainer-tools.test.ts"
+        ]
+      },
+      {
+        "id": "explainer_get_task",
+        "module": "explainer",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/explainer-tools.test.ts"
+        ]
+      },
+      {
+        "id": "explainer_run_task",
+        "module": "explainer",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/explainer-tools.test.ts"
+        ]
+      },
+      {
+        "id": "explainer_list_bundles",
+        "module": "explainer",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/explainer-tools.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_goals",
+        "module": "goals",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_goal",
+        "module": "goals",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_mcp_doctor",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_sync_mcp_catalog",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_sync_http_sidecar_catalog",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_probe_mcp_sidecars",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_mcp_servers",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_mcp_tools",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_mcp_permissions",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_cost_summary",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_evidence_chain",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_openmythos_runs",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_skill_outcomes",
+        "module": "governance",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_loop_runs",
+        "module": "loops",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_loop_status",
+        "module": "loops",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_loop_catalog",
+        "module": "loops",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_mission_control",
+        "module": "mission-control",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_get_system_health",
+        "module": "mission-control",
+        "critical": false,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "notebook_list",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_create",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_delete",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_add_source",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_ask",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_generate",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_research",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_notes",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "notebook_download",
+        "module": "notebooks",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "okf_search",
+        "module": "okf",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "okf_get",
+        "module": "okf",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "okf_related",
+        "module": "okf",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "okf_validate",
+        "module": "okf",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "okf_status",
+        "module": "okf",
+        "critical": false,
+        "status": "unclassified",
+        "evidence": []
+      },
+      {
+        "id": "djimitflo_spawn_agent",
+        "module": "orchestration",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_handoff_agent",
+        "module": "orchestration",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_approve_action",
+        "module": "orchestration",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      },
+      {
+        "id": "djimitflo_list_orchestration_agents",
+        "module": "orchestration",
+        "critical": true,
+        "status": "tested",
+        "evidence": [
+          "packages/mcp-server/src/__tests__/mcp-server.test.ts"
+        ]
+      }
+    ]
+  }
+}

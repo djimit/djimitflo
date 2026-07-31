@@ -4,5 +4,6 @@
     "AGENTS.md",
     "CLAUDE.md",
     ".github/copilot-instructions.md"
-  ]
+  ],
+  "model": "ollama-cloud/gpt-oss:120b"
 }

@@ -76,6 +76,13 @@ describe('buildRuntimeCommand: claude / gemini / editor', () => {
     Object.assign(process.env, previousEnv);
   });
 
+  it('opencode: uses current auto-approval flag and an explicit runtime model', () => {
+    process.env.DJIMITFLO_OPENCODE_MODEL = 'ollama-cloud/gpt-oss:120b';
+    const loops = new LoopService(db);
+    const cmd = (loops as any).buildRuntimeCommand('opencode', '/wt', 'do work', true) as { args: string[] };
+    expect(cmd.args).toEqual(['run', '--auto', '--format', 'json', '--dir', '/wt', '--model', 'ollama-cloud/gpt-oss:120b', 'do work']);
+  });
+
   it('claude: -p <prompt> --output-format json, skip-permissions + model toggles', () => {
     const bin = writeFakeBin(binDir, 'claude', 'Usage: claude -p <prompt> --output-format json');
     process.env.CLAUDE_BIN_PATH = bin;

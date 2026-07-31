@@ -4,6 +4,7 @@ import { swarmEventBus } from './swarm-event-bus';
 import { CouncilRegistry, type CouncilSelection, type CouncilModelRecord } from './council-registry';
 import { TaskRouter, type TaskClassification } from './task-router';
 import { StructuredEvaluator, type EvaluationScores, type AggregatedScore } from './structured-evaluator';
+import { SynthesisEngine } from './synthesis-engine';
 // reasoning-loop available for future per-phase reasoning depth
 
 export type CouncilMode = 'fast' | 'review' | 'council';
@@ -72,10 +73,12 @@ export class CouncilOrchestrator {
   private registry: CouncilRegistry;
   private router: TaskRouter;
   private evaluator: StructuredEvaluator;
+  private synthesizer: SynthesisEngine;
   constructor(private db: Database) {
     this.registry = new CouncilRegistry(db);
     this.router = new TaskRouter();
     this.evaluator = new StructuredEvaluator(db);
+    this.synthesizer = new SynthesisEngine(db);
   }
 
   async createSession(input: CouncilCreateInput): Promise<CouncilSession> {
@@ -119,7 +122,12 @@ export class CouncilOrchestrator {
       0.75,
       0,
       0,
-      JSON.stringify({ classification, reasoning_classification: classification.reasoning }),
+      JSON.stringify({
+        classification,
+        reasoning_classification: classification.reasoning,
+        max_cost: input.max_cost,
+        custom_models: input.custom_models,
+      }),
       now,
       now,
     );
@@ -150,6 +158,7 @@ export class CouncilOrchestrator {
   }
 
   getSessionOutputs(sessionId: string): CouncilOutputRecord[] {
+    this.getSession(sessionId);
     const rows = this.db.prepare(
       'SELECT * FROM council_outputs WHERE session_id = ? ORDER BY created_at ASC'
     ).all(sessionId) as any[];
@@ -186,12 +195,17 @@ export class CouncilOrchestrator {
   async executeCouncil(sessionId: string): Promise<CouncilResult> {
     const startTime = Date.now();
     const session = this.getSession(sessionId);
+    if (session.status !== 'diverging') {
+      throw new Error('COUNCIL_SESSION_NOT_EXECUTABLE');
+    }
 
     try {
       const selection = this.registry.selectModelsForCouncil({
         mode: session.mode as CouncilMode,
         risk_class: session.risk_class as any,
-        max_cost: 1.0,
+        privacy_required: (session.metadata.classification as TaskClassification | undefined)?.privacy_required,
+        max_cost: session.metadata.max_cost as number | undefined,
+        custom_models: session.metadata.custom_models as string[] | undefined,
       });
 
       swarmEventBus.emit('council:diverge:started', {
@@ -209,7 +223,7 @@ export class CouncilOrchestrator {
 
       swarmEventBus.emit('council:synthesize:started', { session_id: sessionId });
 
-      const synthesis = this.executeSynthesizePhase(sessionId, selection);
+      const synthesis = this.executeSynthesizePhase(sessionId);
 
       const duration = Date.now() - startTime;
       this.finalizeSession(sessionId, synthesis.output, synthesis.confidence, duration);
@@ -364,18 +378,18 @@ export class CouncilOrchestrator {
       ].join('\n\n');
 
       const result = await this.callModel(evaluatorModel, prompt);
-      const parsed = this.parseReviewJson(result.content);
-      const ranking = parsed?.ranking?.length ? parsed.ranking : candidates.map(c => c.anonymous_id);
+      const parsed = this.parseReviewJson(result.content, candidates.map(c => c.anonymous_id));
+      if (!parsed) throw new Error(`COUNCIL_REVIEW_INVALID:${evaluatorModel.model_name}`);
+      const ranking = parsed.ranking!;
 
       for (const candidate of candidates) {
         const evaluation = parsed?.evaluations?.find(e => e.candidate === candidate.anonymous_id);
-        // ponytail: unparseable reviewer output falls back to neutral 3s, upgrade to a re-prompt if it happens often
         const scores: EvaluationScores = {
-          correctness: evaluation?.correctness ?? 3,
-          evidence_quality: evaluation?.evidence_quality ?? 3,
-          completeness: evaluation?.completeness ?? 3,
-          risk_score: evaluation?.risk_score ?? 3,
-          policy_compliance: evaluation?.policy_compliance ?? 3,
+          correctness: evaluation!.correctness!,
+          evidence_quality: evaluation!.evidence_quality!,
+          completeness: evaluation!.completeness!,
+          risk_score: evaluation!.risk_score!,
+          policy_compliance: evaluation!.policy_compliance!,
         };
 
         this.evaluator.storeEvaluation({
@@ -384,8 +398,8 @@ export class CouncilOrchestrator {
           candidate_id: candidate.anonymous_id,
           scores,
           ranking,
-          confidence: parsed?.confidence ?? 0.5,
-          reasoning: evaluation?.reasoning ?? `Unparseable review output from ${evaluatorModel.model_name}`,
+          confidence: parsed.confidence!,
+          reasoning: evaluation!.reasoning!,
         });
       }
     }));
@@ -396,7 +410,7 @@ export class CouncilOrchestrator {
     });
   }
 
-  private parseReviewJson(content: string): {
+  private parseReviewJson(content: string, candidateIds: string[]): {
     evaluations?: Array<{
       candidate: string;
       correctness?: number;
@@ -412,39 +426,53 @@ export class CouncilOrchestrator {
     const match = content.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {
-      return JSON.parse(match[0]);
+      const parsed = JSON.parse(match[0]) as ReturnType<CouncilOrchestrator['parseReviewJson']>;
+      if (!parsed?.evaluations || !parsed.ranking || !Number.isFinite(parsed.confidence)
+        || parsed.confidence! < 0 || parsed.confidence! > 1
+        || parsed.ranking.length !== candidateIds.length
+        || new Set(parsed.ranking).size !== candidateIds.length
+        || candidateIds.some(id => !parsed.ranking!.includes(id))) return null;
+      const dimensions = ['correctness', 'evidence_quality', 'completeness', 'risk_score', 'policy_compliance'] as const;
+      if (candidateIds.some(id => {
+        const evaluation = parsed.evaluations!.find(item => item.candidate === id);
+        return !evaluation || typeof evaluation.reasoning !== 'string' || !evaluation.reasoning.trim()
+          || dimensions.some(key => !Number.isFinite(evaluation[key]) || evaluation[key]! < 1 || evaluation[key]! > 5);
+      })) return null;
+      return parsed;
     } catch {
       return null;
     }
   }
 
-  private executeSynthesizePhase(
-    sessionId: string,
-    selection: CouncilSelection,
-  ): { output: string; confidence: number } {
+  private executeSynthesizePhase(sessionId: string): { output: string; confidence: number } {
     const aggregated = this.evaluator.aggregateScores(sessionId, 'weighted_borda');
     const disagreement = this.evaluator.calculateDisagreement(sessionId);
 
-    const topCandidates = aggregated.slice(0, 3);
-    const avgScore = topCandidates.length > 0
-      ? topCandidates.reduce((s, c) => s + c.weighted_score, 0) / topCandidates.length
-      : 0;
-
-    const confidence = Math.round((avgScore / 5 * (1 - disagreement / 5)) * 100) / 100;
-
-    const output = {
-      top_ranked: topCandidates.map(c => ({
-        candidate: c.candidate_id,
-        score: c.weighted_score,
-        agreement: c.agreement,
-      })),
+    const session = this.getSession(sessionId);
+    const divergeOutputs = this.getSessionOutputs(sessionId).filter(output => output.phase === 'diverge');
+    if (!aggregated.length) {
+      if (session.mode !== 'fast' || divergeOutputs.length !== 1) throw new Error('COUNCIL_NO_VALID_EVALUATIONS');
+      return {
+        output: JSON.stringify({
+          conclusion: divergeOutputs[0].content,
+          confidence: 0,
+          reasoning: { method: 'single_model_no_peer_review', model: divergeOutputs[0].model },
+          requires_human_review: session.risk_class === 'critical',
+        }, null, 2),
+        confidence: 0,
+      };
+    }
+    const result = this.synthesizer.synthesize({
+      session_id: sessionId,
+      task_description: session.task_description,
+      aggregated_scores: aggregated,
+      outputs: divergeOutputs
+        .map(({ anonymous_id, content, model }) => ({ anonymous_id, content, model })),
+      evaluations: this.evaluator.getEvaluationsForSession(sessionId),
+      risk_class: session.risk_class,
       disagreement_score: disagreement,
-      synthesis_method: 'weighted_borda',
-      model_count: selection.models.length,
-      privacy_class: selection.models[0]?.privacy_class ?? 'public_api',
-    };
-
-    return { output: JSON.stringify(output, null, 2), confidence };
+    });
+    return { output: result.output, confidence: result.confidence };
   }
 
   private updateSessionPhase(sessionId: string, phase: CouncilPhase): void {

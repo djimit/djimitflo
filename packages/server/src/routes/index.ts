@@ -62,6 +62,7 @@ import { createTelegramRoutes } from './telegram';
 import { createSBOMRoutes } from './sbom';
 import { createGovernanceFeedbackRoutes } from './governance-feedback';
 import { createRepositoryIndexRoutes } from './repository-index';
+import { createExplainerRoutes } from './explainer';
 import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
 import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
@@ -184,6 +185,7 @@ export function createRoutes(
   router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
   router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth));
   router.use('/repo-index', requireAuth, createRepositoryIndexRoutes(db, auth));
+  router.use('/explainer', requireAuth, createExplainerRoutes(db, auth));
   router.use('/console', requireAuth, createConsoleRoutes(db, auth));
   router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
   router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));

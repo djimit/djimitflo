@@ -118,7 +118,7 @@ export class ProofRunService {
     this.spawns = new NestedSpawnService(db, this.loops, { intelligence: this.intelligence });
   }
 
-  async create(input: { runtime?: string; skip_permissions?: boolean } = {}): Promise<ProofRunSummary> {
+  async create(input: { runtime?: string; skip_permissions?: boolean; human_approval_ref?: string } = {}): Promise<ProofRunSummary> {
     const runtime = this.resolveRuntime(input.runtime);
     const skipPermissions = input.skip_permissions === true;
 
@@ -138,7 +138,7 @@ export class ProofRunService {
       return this.get(proofRunId);
     }
 
-    await this.createRuntimeProofRun(proofRunId, now, traceId, base, runtime, skipPermissions);
+    await this.createRuntimeProofRun(proofRunId, now, traceId, base, runtime, skipPermissions, input.human_approval_ref?.trim());
     return this.get(proofRunId);
   }
 
@@ -175,7 +175,7 @@ export class ProofRunService {
     return rows.filter((row) => this.parseJson(row.metadata || '{}').proof_run_id === proofRunId);
   }
 
-  private ensureProofRunMetadata(loopRunId: string, proofRunId: string) {
+  private ensureProofRunMetadata(loopRunId: string, proofRunId: string, metadataPatch: Record<string, unknown> = {}) {
     const now = new Date().toISOString();
     const targetTables = new Set(['loop_runs', ...LOOP_RELATION_TABLES]);
 
@@ -198,14 +198,14 @@ export class ProofRunService {
         const hasUpdatedAt = this.tableHasColumn(table, 'updated_at');
         if (hasUpdatedAt) {
           this.db.prepare(`UPDATE ${table} SET metadata = ?, updated_at = ? WHERE id = ?`).run(
-            JSON.stringify({ ...metadata, proof_run_id: proofRunId }),
+            JSON.stringify({ ...metadata, ...metadataPatch, proof_run_id: proofRunId }),
             now,
             row.id
           );
           continue;
         }
         this.db.prepare(`UPDATE ${table} SET metadata = ? WHERE id = ?`).run(
-          JSON.stringify({ ...metadata, proof_run_id: proofRunId }),
+          JSON.stringify({ ...metadata, ...metadataPatch, proof_run_id: proofRunId }),
           row.id
         );
       }
@@ -494,7 +494,8 @@ export class ProofRunService {
     traceId: string,
     base: Record<string, unknown>,
     runtime: 'codex' | 'opencode',
-    skipPermissions: boolean
+    skipPermissions: boolean,
+    humanApprovalRef?: string
   ) {
     const goalId = `goal:${proofRunId}`;
     const loopRunId = `loop-${randomUUID()}`;
@@ -636,7 +637,7 @@ export class ProofRunService {
         throw new Error('PROOF_RUN_WORKERS_NOT_PREPARED');
       }
 
-      this.ensureProofRunMetadata(loopRunId, proofRunId);
+      this.ensureProofRunMetadata(loopRunId, proofRunId, { runtime });
 
       // Knowledge/memory injection: retrieve swarm memory + OKF knowledge relevant to the
       // maker's task and append it to the work assignment, so specialists operate WITH
@@ -732,10 +733,11 @@ export class ProofRunService {
         throw new Error('PROOF_RUN_VERIFICATION_BLOCKED');
       }
 
-      const completedResult = this.loops.completeLoopRun(loopRunId);
+      const completedResult = this.loops.completeLoopRun(loopRunId, { human_approval_ref: humanApprovalRef });
       if (completedResult.run.status !== 'completed') {
         throw new Error('PROOF_RUN_COMPLETE_FAILED');
       }
+      this.ensureProofRunMetadata(loopRunId, proofRunId, { runtime });
 
       const makerLease = makerLeaseAfterRun || this.findLeaseByRole(loopRunId, 'maker');
       const checkerLease = this.findLeaseByRole(loopRunId, 'checker');
@@ -917,17 +919,16 @@ export class ProofRunService {
   }
 
   latest(): ProofRunSummary | null {
-    const rows = this.db.prepare(`
+    const row = this.db.prepare(`
       SELECT metadata, created_at FROM loop_runs
+      WHERE json_extract(metadata, '$.proof_run_id') IS NOT NULL
       ORDER BY created_at DESC
-      LIMIT 100
-    `).all() as Array<{ metadata: string; created_at: string }>;
-    for (const row of rows) {
-      const metadata = this.parseJson(row.metadata);
-      const id = typeof metadata.proof_run_id === 'string' ? metadata.proof_run_id : null;
-      if (id) return this.get(id);
-    }
-    return null;
+      LIMIT 1
+    `).get() as { metadata: string; created_at: string } | undefined;
+    if (!row) return null;
+    const metadata = this.parseJson(row.metadata);
+    const id = typeof metadata.proof_run_id === 'string' ? metadata.proof_run_id : null;
+    return id ? this.get(id) : null;
   }
 
   rollback(id: string): ProofRunSummary {

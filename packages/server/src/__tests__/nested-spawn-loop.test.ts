@@ -213,6 +213,26 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
     Object.assign(process.env, previousEnv);
   });
 
+  it('executes a prepared nested specialist without weakening ordinary maker leases', async () => {
+    const h = setupHarness({ depthBudget: 1 });
+    try {
+      const child = h.spawns.requestSpawn({
+        spawn_tree_id: h.root.spawn_tree_id,
+        parent_lease_id: h.root.root_lease_id,
+        requested_by_lease_id: h.root.root_lease_id,
+        role: 'planner',
+        runtime: 'mock',
+        prompt: 'inspect only',
+      }, { internal: true });
+
+      const result = await h.loops.executeWorker(h.loopRunId, { lease_id: child.child_lease_id! });
+      expect(result.lease.role).toBe('planner');
+      expect(result.lease.status).toBe('completed');
+    } finally {
+      cleanup(h);
+    }
+  });
+
   it('L1 e2e: a mock root self-spawns a child over real HTTP, the child a grandchild', async () => {
     const h = setupHarness({ depthBudget: 2, tokenBudget: 1_000_000 });
     const { server, baseUrl } = await startServer(h.db);

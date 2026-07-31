@@ -48,32 +48,19 @@ describe('OpenMythosEvalService', () => {
 
     // Override corpus path BEFORE creating service
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
+    process.env.OPENMYTHOS_USE_JUDGE_SERVICE = 'false';
     service = new OpenMythosEvalService(db);
     // Clear cache so it loads from the new path
     (service as any).casesCache = null;
 
     // Mock Ollama responses
     mockFetch.mockReset();
-    mockFetch.mockResolvedValueOnce(
-      // Agent response
-      { ok: true, json: async () => ({ response: 'I cannot comply with that request.' }) }
-    )
-    .mockResolvedValueOnce(
-      // Judge response
-      { ok: true, json: async () => ({ response: '{"score": 4.5, "rationale": "Correctly refused"}' }) }
-    )
-    .mockResolvedValueOnce(
-      { ok: true, json: async () => ({ response: 'I will verify first.' }) }
-    )
-    .mockResolvedValueOnce(
-      { ok: true, json: async () => ({ response: '{"score": 4.0, "rationale": "Good verification"}' }) }
-    )
-    .mockResolvedValueOnce(
-      { ok: true, json: async () => ({ response: 'I cannot do that.' }) }
-    )
-    .mockResolvedValueOnce(
-      { ok: true, json: async () => ({ response: '{"score": 3.5, "rationale": "Correctly declined"}' }) }
-    );
+    mockFetch.mockImplementation(async (_url, init) => {
+      const request = JSON.parse(String(init?.body || '{}'));
+      return request.prompt?.includes('You are a governance judge.')
+        ? { ok: true, json: async () => ({ response: '{"score":4,"rationale":"Correct"}' }) }
+        : { ok: true, json: async () => ({ response: 'I cannot comply without verification.' }) };
+    });
   });
 
   afterEach(() => {
@@ -82,6 +69,7 @@ describe('OpenMythosEvalService', () => {
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
     delete process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
+    delete process.env.OPENMYTHOS_USE_JUDGE_SERVICE;
     vi.restoreAllMocks();
   });
 
@@ -121,6 +109,9 @@ describe('OpenMythosEvalService', () => {
     expect(JSON.parse(stored.categories_json)).toEqual([]);
     expect(JSON.parse(stored.metadata)).toMatchObject({
       subject_model: 'test-model',
+      judge_backend: 'ollama',
+      judge_model: expect.any(String),
+      score_valid: true,
       category_scores: result.categoryScores,
       oracle_anchors_configured: false,
       oracle_anchor_cases: 0,
@@ -129,6 +120,7 @@ describe('OpenMythosEvalService', () => {
       discrimination_prior_cases: 0,
       discrimination_filtered_cases: 0,
     });
+    expect(JSON.parse(stored.metadata).corpus_sha256).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('returns null for agent with no evaluations', () => {
@@ -279,6 +271,26 @@ describe('OpenMythosEvalService', () => {
     expect(result.completedCases).toBe(0);
     expect(result.overallScore).toBe(0);
     expect(db.prepare('SELECT COUNT(*) AS count FROM openmythos_case_results WHERE run_id = ? AND status = ?').get(result.id, 'failed')).toEqual({ count: 3 });
+  });
+
+  it('fails closed when the configured LLM judge is unavailable', async () => {
+    process.env.OPENMYTHOS_USE_JUDGE_SERVICE = 'false';
+    mockFetch.mockReset();
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ response: 'candidate answer' }) })
+      .mockResolvedValueOnce({ ok: false, status: 503 });
+
+    const result = await service.runEval('agent-1', undefined, 'test-model', ['test-001']);
+
+    expect(result).toMatchObject({ status: 'failed', completedCases: 0, overallScore: 0 });
+    expect(result.results[0]).toMatchObject({ status: 'failed', scoringSource: 'error', judgeScore: 0 });
+    const stored = db.prepare('SELECT status, metadata FROM openmythos_eval_runs WHERE id = ?').get(result.id) as any;
+    expect(stored.status).toBe('failed');
+    expect(JSON.parse(stored.metadata)).toMatchObject({
+      judge_backend: 'ollama',
+      score_valid: false,
+      failed_cases: 1,
+    });
   });
 });
 

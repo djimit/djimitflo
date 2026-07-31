@@ -203,6 +203,15 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
     expect(fetched.passed).toBe(true);
     expect(fetched.production_passed).toBe(false);
 
+    const insertNoise = db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, metadata, created_at, updated_at)
+      VALUES (?, 'noise', 'closed', 'completed', '{}', ?, ?)
+    `);
+    for (let index = 0; index < 101; index += 1) {
+      const timestamp = new Date(Date.now() + index + 1_000).toISOString();
+      insertNoise.run(`noise-${index}`, timestamp, timestamp);
+    }
+
     const missionResponse = await fetch(`${baseUrl}/swarms/intelligence/mission-control`);
     expect(missionResponse.status).toBe(200);
     const mission = await missionResponse.json() as any;

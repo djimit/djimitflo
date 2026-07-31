@@ -25,12 +25,19 @@ function route(handler: RouteHandler): RouteHandler {
 function mapCouncilError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'COUNCIL_SESSION_NOT_FOUND') throw createError(404, 'Council session not found', 'COUNCIL_SESSION_NOT_FOUND');
+  if (message === 'COUNCIL_SESSION_NOT_EXECUTABLE') throw createError(409, 'Council session is not executable', 'COUNCIL_SESSION_NOT_EXECUTABLE');
   if (message === 'COUNCIL_MODEL_NOT_FOUND') throw createError(404, 'Council model not found', 'COUNCIL_MODEL_NOT_FOUND');
   if (message === 'COUNCIL_NO_ACTIVE_MODELS') throw createError(503, 'No active models available for council', 'COUNCIL_NO_ACTIVE_MODELS');
+  if (message === 'COUNCIL_NO_ELIGIBLE_MODELS') throw createError(503, 'No council models satisfy the requested constraints', 'COUNCIL_NO_ELIGIBLE_MODELS');
   if (message === 'COUNCIL_MODEL_PROVIDER_REQUIRED') throw createError(400, 'Model provider is required', 'COUNCIL_MODEL_PROVIDER_REQUIRED');
   if (message === 'COUNCIL_MODEL_NAME_REQUIRED') throw createError(400, 'Model name is required', 'COUNCIL_MODEL_NAME_REQUIRED');
   throw error;
 }
+
+const MODES = new Set(['fast', 'review', 'council']);
+const RISKS = new Set(['low', 'medium', 'high', 'critical']);
+const MODEL_STATUSES = new Set(['active', 'inactive', 'deprecated']);
+const AGGREGATION_METHODS = new Set(['borda', 'weighted_borda', 'reciprocal_rank_fusion']);
 
 export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -62,6 +69,18 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
       if (!input.task_description?.trim()) {
         throw createError(400, 'task_description is required', 'COUNCIL_TASK_DESCRIPTION_REQUIRED');
       }
+      if (input.mode && !MODES.has(input.mode)) {
+        throw createError(400, 'Invalid council mode', 'COUNCIL_MODE_INVALID');
+      }
+      if (input.risk_class && !RISKS.has(input.risk_class)) {
+        throw createError(400, 'Invalid risk class', 'COUNCIL_RISK_CLASS_INVALID');
+      }
+      if (input.max_cost !== undefined && (typeof input.max_cost !== 'number' || !Number.isFinite(input.max_cost) || input.max_cost < 0)) {
+        throw createError(400, 'max_cost must be a non-negative number', 'COUNCIL_MAX_COST_INVALID');
+      }
+      if (input.custom_models !== undefined && (!Array.isArray(input.custom_models) || input.custom_models.some(model => typeof model !== 'string' || !model.trim()))) {
+        throw createError(400, 'custom_models must contain model names', 'COUNCIL_CUSTOM_MODELS_INVALID');
+      }
 
       const session = await orchestrator.createSession(input);
       res.status(201).json(session);
@@ -72,7 +91,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
 
   // GET /api/council/sessions — List council sessions
   router.get('/sessions', requirePermission('read:evidence'), route((_req, res) => {
-    const limit = Math.min(Number(_req.query.limit) || 50, 100);
+    const limit = Math.max(1, Math.min(Number(_req.query.limit) || 50, 100));
     const sessions = orchestrator.listSessions(limit);
     res.json(sessions);
   }));
@@ -110,6 +129,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/sessions/:id/evaluations — Get session evaluations
   router.get('/sessions/:id/evaluations', requirePermission('read:evidence'), route(async (req, res) => {
     try {
+      orchestrator.getSession(req.params.id);
       const evaluations = evaluator.getEvaluationsForSession(req.params.id);
       res.json(evaluations);
     } catch (error) {
@@ -120,7 +140,11 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/sessions/:id/aggregate — Get aggregated scores
   router.get('/sessions/:id/aggregate', requirePermission('read:evidence'), route(async (req, res) => {
     try {
-      const method = (req.query.method as 'borda' | 'weighted_borda' | 'reciprocal_rank_fusion') || 'weighted_borda';
+      const method = String(req.query.method || 'weighted_borda') as 'borda' | 'weighted_borda' | 'reciprocal_rank_fusion';
+      if (!AGGREGATION_METHODS.has(method)) {
+        throw createError(400, 'Invalid aggregation method', 'COUNCIL_AGGREGATION_METHOD_INVALID');
+      }
+      orchestrator.getSession(req.params.id);
       const aggregated = evaluator.aggregateScores(req.params.id, method);
       const disagreement = evaluator.calculateDisagreement(req.params.id);
       res.json({ aggregated, disagreement, method });
@@ -148,6 +172,10 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
         metadata: req.body.metadata,
       };
 
+      if (input.privacy_class && !new Set(['local', 'private_cloud', 'public_api']).has(input.privacy_class)) {
+        throw createError(400, 'Invalid privacy class', 'COUNCIL_PRIVACY_CLASS_INVALID');
+      }
+
       const model = registry.registerModel(input);
       res.status(201).json(model);
     } catch (error) {
@@ -158,6 +186,9 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
   // GET /api/council/models — List models
   router.get('/models', requirePermission('read:evidence'), route((_req, res) => {
     const status = _req.query.status as 'active' | 'inactive' | 'deprecated' | undefined;
+    if (status && !MODEL_STATUSES.has(status)) {
+      throw createError(400, 'Invalid model status', 'COUNCIL_MODEL_STATUS_INVALID');
+    }
     const models = registry.listModels(status);
     res.json(models);
   }));
@@ -188,6 +219,12 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
 
   // POST /api/council/classify — Classify a task
   router.post('/classify', requirePermission('read:evidence'), route((_req, res) => {
+    if (typeof _req.body.description !== 'string' || !_req.body.description.trim()) {
+      throw createError(400, 'description is required', 'COUNCIL_DESCRIPTION_REQUIRED');
+    }
+    if (_req.body.risk_class && !RISKS.has(_req.body.risk_class)) {
+      throw createError(400, 'Invalid risk class', 'COUNCIL_RISK_CLASS_INVALID');
+    }
     const classification = router_.classify({
       description: _req.body.description,
       risk_class: _req.body.risk_class,
