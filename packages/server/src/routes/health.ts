@@ -62,7 +62,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
         };
 
     const dependencies = {
-      litellm: process.env.LITELLM_URL,
+      litellm: process.env.LITELLM_URL || process.env.LITELLM_BASE_URL,
       ollama: process.env.OLLAMA_URL,
       qdrant: process.env.QDRANT_URL,
     };

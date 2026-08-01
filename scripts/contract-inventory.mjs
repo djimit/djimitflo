@@ -41,7 +41,10 @@ for (const path of routeFiles) {
   for (const match of source.matchAll(matcher)) {
     const endpoint = endpointPattern(module, match[3]);
     const evidence = tests
-      .filter(test => /\b(request|fetch|supertest)\s*\(/.test(test.content) && (endpoint.test(test.content) || test.content.includes(`../routes/${module}`)))
+      .filter(test => /\b(request|fetch|supertest)\s*\(/.test(test.content) && endpoint.test(test.content))
+      .map(test => relative(root, test.path));
+    const moduleEvidence = tests
+      .filter(test => test.content.includes(`../routes/${module}`))
       .map(test => relative(root, test.path));
     routes.push({
       id: `${module}:${match[1].toUpperCase()}:${match[3]}`,
@@ -49,8 +52,9 @@ for (const path of routeFiles) {
       method: match[1].toUpperCase(),
       path: match[3],
       critical: critical.test(module),
-      status: evidence.length ? 'tested' : 'unclassified',
+      status: evidence.length ? 'exercised' : moduleEvidence.length ? 'module_covered' : 'unclassified',
       evidence,
+      module_evidence: moduleEvidence,
     });
   }
 }
@@ -79,7 +83,8 @@ const report = {
   generated_at: new Date().toISOString(),
   routes: {
     total: routes.length,
-    tested: routes.filter(item => item.status === 'tested').length,
+    tested: routes.filter(item => item.status === 'exercised').length,
+    module_covered: routes.filter(item => item.status === 'module_covered').length,
     unclassified: routes.filter(item => item.status === 'unclassified').length,
     critical_unclassified: routes.filter(item => item.critical && item.status === 'unclassified').map(item => item.id),
     items: routes,
