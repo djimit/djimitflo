@@ -6,6 +6,7 @@ import path from 'path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { recoverInterruptedOpenMythosRuns } from '../bootstrap/recovery';
 
 let db: Database.Database;
 let tempDir: string;
@@ -56,6 +57,16 @@ function insertLease(id: string, runId: string, status: string, worktreePath: st
 }
 
 describe('loop recovery on restart', () => {
+  it('terminalizes orphaned OpenMythos evaluations after restart', () => {
+    db.prepare(`INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, metadata) VALUES ('eval-orphan', 'agent', 'running', 3, '{}')`).run();
+
+    expect(recoverInterruptedOpenMythosRuns(db)).toBe(1);
+    const run = db.prepare('SELECT status, finished_at, metadata FROM openmythos_eval_runs WHERE id = ?').get('eval-orphan') as { status: string; finished_at: string; metadata: string };
+    expect(run.status).toBe('failed');
+    expect(run.finished_at).toBeTruthy();
+    expect(JSON.parse(run.metadata).interrupted_reason).toBe('server_restart');
+  });
+
   it('accepts the interrupted status after migration', () => {
     insertRun('run-z', 'interrupted');
     const row = db.prepare('SELECT status FROM loop_runs WHERE id = ?').get('run-z') as { status: string };
