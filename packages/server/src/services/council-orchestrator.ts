@@ -280,6 +280,7 @@ export class CouncilOrchestrator {
           model: model.model_name,
           prompt,
           stream: false,
+          think: false,
           options: { num_predict: Math.max(32, Math.min(Number(process.env.COUNCIL_OLLAMA_MAX_TOKENS || 128), 2048)) },
         }),
         signal: AbortSignal.timeout(120_000),
