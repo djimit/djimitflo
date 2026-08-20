@@ -25,6 +25,7 @@ import { initOperatorServices } from './bootstrap/operator-services';
 import { initCoreServices } from './bootstrap/core-services';
 import { getDatabaseProvenance } from './database/provenance';
 import { ExplainerFleetWorker } from './services/explainer-fleet-worker';
+import { ReconciliationService } from './services/reconciliation-service';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -80,6 +81,11 @@ async function main() {
   explainerWorker.start();
   lifecycleManager.register(explainerWorker);
   console.log('📚 Explainer fleet worker started.');
+
+  // Nightly tracker reconciliation — re-verifies generated claims (default-off, see service header)
+  if (new ReconciliationService(db).start()) {
+    console.log('🔎 Reconciliation nightly scheduler armed');
+  }
 
   // API routes
   app.use('/api', createRoutes(db, core.executionEngine, core.authService, core.auth, core.wsService, core.metaOrchestration, operatorRuntime));
