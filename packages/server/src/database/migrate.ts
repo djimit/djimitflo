@@ -53,6 +53,13 @@ const openMythosCaseResultColumns: ColumnSpec[] = [
   { name: 'oracle_pass', definition: 'INTEGER' },
 ];
 
+const externalEventColumns: ColumnSpec[] = [
+  { name: 'causation_id', definition: 'TEXT' },
+  { name: 'aggregate_id', definition: 'TEXT' },
+  { name: 'aggregate_version', definition: 'INTEGER' },
+  { name: 'dedupe_key', definition: 'TEXT' },
+];
+
 function getColumns(db: BetterSqlite3Database, tableName: string): Set<string> {
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
   return new Set(rows.map((row) => row.name));
@@ -1294,6 +1301,7 @@ export function runPreSchemaMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'token_usage_log', tokenUsageLogColumns);
   addMissingColumns(db, 'explainer_tasks', explainerTaskColumns);
   addMissingColumns(db, 'explainer_jobs', explainerJobColumns);
+  addMissingColumns(db, 'external_events', externalEventColumns);
 }
 
 function createExplainRepoTables(db: BetterSqlite3Database) {

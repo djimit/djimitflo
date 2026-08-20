@@ -682,6 +682,10 @@ CREATE TABLE IF NOT EXISTS external_events (
   event_type TEXT NOT NULL,
   source TEXT NOT NULL DEFAULT 'paperclip',
   correlation_id TEXT,
+  causation_id TEXT,
+  aggregate_id TEXT,
+  aggregate_version INTEGER,
+  dedupe_key TEXT UNIQUE,
   occurred_at TEXT NOT NULL,
   payload TEXT NOT NULL,
   ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -689,6 +693,10 @@ CREATE TABLE IF NOT EXISTS external_events (
 
 CREATE INDEX IF NOT EXISTS idx_external_events_event_type ON external_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_external_events_occurred_at ON external_events(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_external_events_correlation_id ON external_events(correlation_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
+  ON external_events(source, aggregate_id, aggregate_version)
+  WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
 
 `;
 
