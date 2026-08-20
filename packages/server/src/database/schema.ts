@@ -108,6 +108,20 @@ CREATE INDEX IF NOT EXISTS idx_execution_events_task_id ON execution_events(task
 CREATE INDEX IF NOT EXISTS idx_execution_events_timestamp ON execution_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_execution_events_event_type ON execution_events(event_type);
 
+-- Idempotent evidence imported from the shared Djimit event stream.
+CREATE TABLE IF NOT EXISTS external_events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  correlation_id TEXT,
+  occurred_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_external_events_type ON external_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_external_events_correlation ON external_events(correlation_id);
+
 -- Task artifacts table
 CREATE TABLE IF NOT EXISTS task_artifacts (
   id TEXT PRIMARY KEY,

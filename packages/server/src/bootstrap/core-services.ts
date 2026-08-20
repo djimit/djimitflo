@@ -17,6 +17,7 @@ import { MetaOrchestrationService } from '../services/meta-orchestration-service
 import { ProactiveMemoryService } from '../services/proactive-memory-service';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
 import { lifecycleManager } from '../services/lifecycle-manager';
+import { ExternalEventIngestService } from '../services/external-event-ingest-service';
 import type { WebSocketServer } from 'ws';
 
 export interface CoreServices {
@@ -92,6 +93,10 @@ export function initCoreServices(
   // Startup side-effects
   new ProactiveMemoryService(db);
   new ComplianceAuditService(db);
+
+  const externalEvents = new ExternalEventIngestService(db);
+  externalEvents.start();
+  lifecycleManager.register(externalEvents);
 
   return { authService, auth, wsService, executionEngine, metaOrchestration };
 }
