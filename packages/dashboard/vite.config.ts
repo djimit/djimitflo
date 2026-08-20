@@ -10,8 +10,8 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: {
-      '@': resolve(__dirname, './src'),
-      '@djimitflo/shared': resolve(__dirname, '../shared/src'),
+      '@': resolve(import.meta.dirname, './src'),
+      '@djimitflo/shared': resolve(import.meta.dirname, '../shared/src'),
     },
   },
   server: {

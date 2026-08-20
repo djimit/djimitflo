@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { createRoutes } from './routes';
+import { createExplorePublicRoutes } from './routes/explore-public';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
 import { lifecycleManager } from './services/lifecycle-manager';
@@ -23,6 +24,7 @@ import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { initOperatorServices } from './bootstrap/operator-services';
 import { initCoreServices } from './bootstrap/core-services';
 import { getDatabaseProvenance } from './database/provenance';
+import { ExplainerFleetWorker } from './services/explainer-fleet-worker';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -74,9 +76,16 @@ async function main() {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
   const core = initCoreServices(db, app, wss, autonomousRuntime, operatorRuntime);
+  const explainerWorker = ExplainerFleetWorker.create(db);
+  explainerWorker.start();
+  lifecycleManager.register(explainerWorker);
+  console.log('📚 Explainer fleet worker started.');
 
   // API routes
   app.use('/api', createRoutes(db, core.executionEngine, core.authService, core.auth, core.wsService, core.metaOrchestration, operatorRuntime));
+
+  // Public explore pages (no auth)
+  app.use('/explore', createExplorePublicRoutes(db));
 
   // Telegram gateway
   await initTelegram(db, operatorRuntime);

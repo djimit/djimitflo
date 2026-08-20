@@ -1562,6 +1562,17 @@ class ApiClient {
     return this.request("/meta/stats");
   }
 
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request(endpoint);
+  }
+
+  async post<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    });
+  }
+
 }
 
 export const api = new ApiClient();

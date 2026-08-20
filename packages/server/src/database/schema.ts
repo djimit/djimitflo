@@ -689,6 +689,7 @@ CREATE TABLE IF NOT EXISTS explainer_tasks (
   remote_url TEXT,
   branch TEXT,
   repository_id TEXT REFERENCES repositories(id) ON DELETE SET NULL,
+  discovered_repository_id TEXT REFERENCES discovered_repositories(id) ON DELETE SET NULL,
   error_message TEXT,
   scan_id TEXT REFERENCES repository_scans(id) ON DELETE SET NULL,
   metadata TEXT NOT NULL DEFAULT '{}',
@@ -698,6 +699,7 @@ CREATE TABLE IF NOT EXISTS explainer_tasks (
 
 CREATE INDEX IF NOT EXISTS idx_explainer_tasks_status ON explainer_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_explainer_tasks_repository_id ON explainer_tasks(repository_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_tasks_discovered_repository_id ON explainer_tasks(discovered_repository_id);
 
 -- Explainer bundles table
 CREATE TABLE IF NOT EXISTS explainer_bundles (
@@ -792,6 +794,10 @@ CREATE TABLE IF NOT EXISTS explainer_jobs (
   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
   priority_score INTEGER NOT NULL DEFAULT 0,
   scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+  dedupe_key TEXT,
+  estimated_llm_calls INTEGER NOT NULL DEFAULT 0,
+  estimated_github_api_calls INTEGER NOT NULL DEFAULT 0,
+  estimated_git_ops INTEGER NOT NULL DEFAULT 0,
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -800,6 +806,9 @@ CREATE TABLE IF NOT EXISTS explainer_jobs (
 CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
 CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(scheduled_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_explainer_jobs_active_dedupe
+  ON explainer_jobs(dedupe_key)
+  WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'queued', 'running');
 
 -- Repo graph snapshots table (code-review-graph results)
 CREATE TABLE IF NOT EXISTS repo_graph_snapshots (

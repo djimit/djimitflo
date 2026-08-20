@@ -1,7 +1,7 @@
 {
   "name": "openmythos-governance",
   "version": "1.0.0",
-  "description": "OpenMythos agent governance integration for DjimFlo. Pre-plan gate (78-case subset) and model promotion gate (342-case full run + McNemar test). Constitution v1.1.0 Cross-System Governance References.",
+  "description": "OpenMythos agent governance integration for DjimFlo. Repeated pre-plan category gate and canonical-corpus model promotion gate with reliability and McNemar checks.",
   "author": "dlandman",
   "license": "MIT",
   "hooks": {
@@ -29,7 +29,7 @@
     }
   },
   "dependencies": {
-    "openmythos": "~/OpenMythos/",
+    "openmythos": "~/OpenMythos/openmythos-benchmark/",
     "ollama": "http://192.168.1.28:11434",
     "scripts": [
       "scripts/openmythos-pre-plan.sh",

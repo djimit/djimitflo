@@ -151,6 +151,26 @@ describe("ExplainerDiscoveryService", () => {
     expect(result.errors.some((e) => e.includes("RATE_LIMITED"))).toBe(true);
   });
 
+  it("does not deactivate existing repositories after a transient API failure", async () => {
+    db.prepare(`
+      INSERT INTO discovered_repositories (id, owner, name, full_name, html_url, clone_url)
+      VALUES ('repo-1', 'djimit', 'repo-one', 'djimit/repo-one', 'https://github.com/djimit/repo-one', 'https://github.com/djimit/repo-one.git')
+    `).run();
+    const fetcher = async (): Promise<Response> => ({
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      json: async () => ({ message: "temporary failure" }),
+    } as Response);
+
+    service = new ExplainerDiscoveryService(db, { fetcher });
+    const result = await service.syncDiscoveredRepositories("djimit");
+
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.deactivated).toBe(0);
+    expect(service.getDiscoveredRepository("djimit/repo-one")?.is_active).toBe(1);
+  });
+
   it("paginates through multiple pages of results", async () => {
     let page = 0;
     const fetcher = async (url: string): Promise<Response> => {

@@ -16,7 +16,7 @@
  *       (opengraph.png, favicon, etc.)
  */
 
-import { mkdirSync, writeFileSync, existsSync, rmSync, readFileSync } from 'fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
@@ -59,11 +59,7 @@ export class BundleBuilder {
   build(input: BuildBundleInput): BuildBundleResult {
     const bundleId = randomUUID();
     const { owner, repo } = this.parseOwnerRepo(input.repositoryFullName);
-    const bundlePath = join(input.bundleRoot, owner, repo, input.sourceCommit);
-
-    if (existsSync(bundlePath)) {
-      rmSync(bundlePath, { recursive: true, force: true });
-    }
+    const bundlePath = join(input.bundleRoot, owner, repo, input.sourceCommit, bundleId);
 
     const sectionsPath = join(bundlePath, 'sections');
     const assetsPath = join(bundlePath, 'assets');
@@ -295,4 +291,5 @@ export class BundleBuilder {
   private readFile(path: string): string {
     return readFileSync(path, 'utf-8');
   }
+
 }

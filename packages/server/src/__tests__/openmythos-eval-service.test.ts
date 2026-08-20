@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { writeFileSync, readFileSync, mkdirSync, rmSync } from 'fs';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
@@ -45,6 +46,11 @@ describe('OpenMythosEvalService', () => {
       { id: 'test-003', category: 'tool-scope', subcategory: 'boundaries', difficulty: 3, prompt: 'Test prompt 3', expected_behavior: 'Decline', failure_mode: 'overreach', rationale: 'Test' },
     ];
     writeFileSync(corpusPath, cases.map((c) => JSON.stringify(c)).join('\n'));
+    const corpusHash = createHash('sha256').update(readFileSync(corpusPath)).digest('hex');
+    writeFileSync(join(tempDir, 'manifest.json'), JSON.stringify({
+      schema_version: 1, corpus_version: 'test', case_count: cases.length,
+      corpus_path: 'cases/corpus.jsonl', sha256: corpusHash, certification_ready: false,
+    }));
 
     // Override corpus path BEFORE creating service
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
@@ -77,6 +83,21 @@ describe('OpenMythosEvalService', () => {
     const cases = service.loadCases();
     expect(cases).toHaveLength(3);
     expect(cases[0].category).toBe('injection');
+  });
+
+  it('rejects a corpus whose manifest does not match', () => {
+    writeFileSync(join(tempDir, 'manifest.json'), JSON.stringify({
+      schema_version: 1, corpus_version: 'test', case_count: 3,
+      corpus_path: 'cases/corpus.jsonl', sha256: 'bad', certification_ready: false,
+    }));
+    (service as any).casesCache = null;
+    expect(() => service.loadCases()).toThrow('OPENMYTHOS_CORPUS_MANIFEST_MISMATCH');
+  });
+
+  it('reports missing operational evidence without a score', () => {
+    expect(service.getOperationalStatus('agent-1')).toEqual({
+      state: 'no_evidence', admissible: false, agentId: 'agent-1',
+    });
   });
 
   it('filters cases by category', () => {
@@ -119,8 +140,18 @@ describe('OpenMythosEvalService', () => {
       discrimination_gate_has_prior_data: false,
       discrimination_prior_cases: 0,
       discrimination_filtered_cases: 0,
+      corpus_version: 'test',
+      corpus_certification_ready: false,
     });
     expect(JSON.parse(stored.metadata).corpus_sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('does not mark a completed run admissible while the corpus manifest blocks certification', async () => {
+    const result = await service.runEval('agent-1', undefined, 'test-model');
+    expect(service.getOperationalStatus('agent-1')).toMatchObject({
+      state: 'completed', runId: result.id, admissible: false,
+      reason: 'corpus_not_certification_ready',
+    });
   });
 
   it('returns null for agent with no evaluations', () => {
@@ -196,14 +227,22 @@ describe('OpenMythosEvalService', () => {
   });
 
   it('records discrimination gate readiness when prior case data exists', async () => {
+    const corpusHash = createHash('sha256').update(readFileSync(corpusPath)).digest('hex');
     db.prepare(`
-      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score)
-      VALUES ('prior-1', 'agent-x', 'completed', 1, 1, 1), ('prior-2', 'agent-y', 'completed', 1, 1, 5)
-    `).run();
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, metadata)
+      VALUES ('prior-1', 'agent-x', 'completed', 1, 1, 1, ?),
+             ('prior-2', 'agent-y', 'completed', 1, 1, 5, ?),
+             ('prior-3', 'agent-y', 'completed', 1, 1, 5, ?)
+    `).run(
+      JSON.stringify({ corpus_sha256: corpusHash, subject_model: 'weak-model' }),
+      JSON.stringify({ corpus_sha256: corpusHash, subject_model: 'strong-model' }),
+      JSON.stringify({ corpus_sha256: corpusHash, subject_model: 'strong-model' }),
+    );
     db.prepare(`
       INSERT INTO openmythos_case_results (id, run_id, case_id, category, difficulty, judge_score, status)
       VALUES ('prior-result-1', 'prior-1', 'test-001', 'injection', 1, 1, 'completed'),
-             ('prior-result-2', 'prior-2', 'test-001', 'injection', 1, 5, 'completed')
+             ('prior-result-2', 'prior-2', 'test-001', 'injection', 1, 5, 'completed'),
+             ('prior-result-3', 'prior-3', 'test-001', 'injection', 1, 5, 'completed')
     `).run();
     mockFetch.mockReset();
     mockFetch

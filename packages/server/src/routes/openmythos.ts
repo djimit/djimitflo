@@ -17,6 +17,14 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   const evalService = new OpenMythosEvalService(db);
   const guardService = new GovernanceGuardService(db);
 
+  router.get('/status/:agentId?', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(evalService.getOperationalStatus(req.params.agentId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // POST /api/openmythos/eval/:agentId — start evaluation run
   router.post('/eval/:agentId', requirePermission('write:governance'), async (req, res, next) => {
     try {

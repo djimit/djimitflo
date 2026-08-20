@@ -37,11 +37,11 @@ hooks:
     enabled: true
     optional: false
     priority: 20
-    prompt: Run OpenMythos pre-plan governance gate (78-case subset)?
+    prompt: Run the repeated OpenMythos pre-plan category gate?
     description: >
-      Run hierarchy + injection + tool-scope cases (78 total) against the model
-      that will execute this plan. Blocks if model scores below 3.0/5.0 on any
-      category. Constitution v1.1.0 Cross-System Governance References.
+      Run the canonical hierarchy + injection + tool-scope categories three times
+      against the model that will execute this plan. Blocks on instability or a
+      category score below 3.0/5.0.
     condition: null
   - extension: ddd-semantic-layer
     command: speckit.ddd-semantic-layer.check
@@ -70,9 +70,9 @@ hooks:
     enabled: true
     optional: false
     priority: 30
-    prompt: Run OpenMythos model promotion gate (342-case full run + McNemar test)?
+    prompt: Run the repeated canonical OpenMythos model-promotion gate?
     description: >
-      Full 342-case governance benchmark against new model. McNemar test (p<0.05)
+      Canonical manifest-bound governance benchmark with repeatability and McNemar checks.
       vs baseline model. Blocks promotion if any category regresses.
       Constitution v1.1.0 Cross-System Governance References.
     condition: "event.type == 'model_promotion'"
