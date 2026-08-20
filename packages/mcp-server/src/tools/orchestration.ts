@@ -120,7 +120,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
         action: z.string().describe('The action requiring approval'),
         reason: z.string().describe('Why approval is needed'),
         risk_level: z.enum(['low', 'medium', 'high', 'critical']).describe('Risk level of the action'),
-        context: z.record(z.unknown()).default({}).describe('Additional context for the approver'),
+        context: z.record(z.string(), z.unknown()).default({}).describe('Additional context for the approver'),
       },
     },
     async ({ action, reason, risk_level, context }) => {
