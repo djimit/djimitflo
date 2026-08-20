@@ -12,15 +12,18 @@ describe('Council routes', () => {
   let server: Server;
   let modelServer: Server;
   let baseUrl: string;
+  let modelRequests: any[];
 
   beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
+    modelRequests = [];
 
     const models = express();
     models.use(express.json());
     models.post('/api/generate', (req, res) => {
+      modelRequests.push(req.body);
       const candidates = [...String(req.body.prompt).matchAll(/Candidate ([A-Z]):/g)].map(match => match[1]);
       res.json({
         response: candidates.length ? JSON.stringify({
@@ -100,6 +103,9 @@ describe('Council routes', () => {
 
     const executed = await request(`/sessions/${sessionId}/execute`, { method: 'POST' });
     expect(executed.status).toBe(200);
+    expect(modelRequests.length).toBeGreaterThan(0);
+    expect(modelRequests.every(request => request.think === false)).toBe(true);
+    expect(modelRequests.every(request => request.options?.num_predict === 128)).toBe(true);
     expect(executed.body.session.status).toBe('completed');
     expect(executed.body.requires_human_approval).toBe(true);
     expect((await request(`/sessions/${sessionId}/execute`, { method: 'POST' })).status).toBe(409);

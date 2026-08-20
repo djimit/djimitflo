@@ -79,6 +79,10 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
       const result = await guardService.runBenchmarkCheck(req.params.skillId, req.body?.metadata);
       res.json(result);
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith('SKILL_NOT_ADMITTED:')) {
+        next(createError(404, 'Skill is not admitted', 'SKILL_NOT_ADMITTED'));
+        return;
+      }
       next(error);
     }
   });

@@ -29,8 +29,9 @@ export class OpenCodeHealthService {
   inspectConfig(configPath?: string): OpenCodeConfigHealth {
     const resolvedPath = configPath || this.findConfigPath();
     const exists = fs.existsSync(resolvedPath);
+    const envContent = configPath ? undefined : process.env.OPENCODE_CONFIG_CONTENT?.trim();
 
-    if (!exists) {
+    if (!exists && !envContent) {
       return {
         config_path: resolvedPath,
         config_exists: false,
@@ -42,7 +43,7 @@ export class OpenCodeHealthService {
       };
     }
 
-    const content = fs.readFileSync(resolvedPath, 'utf8');
+    const content = exists ? fs.readFileSync(resolvedPath, 'utf8') : envContent!;
     const config = this.parseJsonc(content);
 
     const requiredSections = ['mcp', 'tools', 'agent', 'permission'];
@@ -53,7 +54,7 @@ export class OpenCodeHealthService {
     const perAgentRecs = this.perAgentRecommendations(config, mcpEntries);
 
     return {
-      config_path: resolvedPath,
+      config_path: exists ? resolvedPath : 'env:OPENCODE_CONFIG_CONTENT',
       config_exists: true,
       missing_sections: missingSections,
       mcp_entries: mcpEntries,

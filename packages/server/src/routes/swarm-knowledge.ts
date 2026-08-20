@@ -35,9 +35,15 @@ function runtimeReadiness(db: Database, runtimeInput?: unknown) {
     if (!contract.available) blocked.push('runtime_unavailable');
     if (contract.status !== 'ok') blocked.push(`runtime_contract_${contract.status || 'unknown'}`);
     if (contract.reason) blocked.push(String(contract.reason));
-    return { runtime, production_runtime: allowedProduction.has(runtime), ready: blocked.length === 0, start_allowed: blocked.length === 0, command: contract.command || null, status: contract.status || 'unavailable', available: Boolean(contract.available), version: contract.version || null, evidence: Array.isArray(contract.evidence) ? contract.evidence : [], blocked_reasons: [...new Set(blocked)], contract };
+    const credentialConfigured = runtime === 'codex'
+      ? Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY)
+      : runtime === 'opencode'
+        ? Boolean(process.env.DJIMITFLO_OPENCODE_MODEL && (process.env.OPENCODE_CONFIG_CONTENT || process.env.OPENCODE_CONFIG))
+        : false;
+    if (allowedProduction.has(runtime) && !credentialConfigured) blocked.push('runtime_provider_not_configured');
+    return { runtime, production_runtime: allowedProduction.has(runtime), provider_configured: credentialConfigured, ready: blocked.length === 0, start_allowed: blocked.length === 0, command: contract.command || null, status: contract.status || 'unavailable', available: Boolean(contract.available), version: contract.version || null, evidence: Array.isArray(contract.evidence) ? contract.evidence : [], blocked_reasons: [...new Set(blocked)], contract };
   });
-  return { runtimes, ready: runtimes.some((r) => r.ready), next_safe_action: runtimes.some((r) => r.ready) ? 'Run opt-in real runtime certification' : 'Install or repair codex/opencode runtime before production certification', starts_workers: false };
+  return { runtimes, ready: runtimes.some((r) => r.ready), next_safe_action: runtimes.some((r) => r.ready) ? 'Run opt-in real runtime certification' : 'Install the runtime and configure its provider before production certification', starts_workers: false };
 }
 
 export function createKnowledgeRoutes(db: Database, auth?: AuthMiddleware): Router {

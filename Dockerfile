@@ -54,8 +54,13 @@ WORKDIR /app
 ARG VCS_REF=unknown
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3-minimal && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal && \
     rm -rf /var/lib/apt/lists/*
+
+# Keep the production worker surface equal to the runtimes accepted by
+# /swarms/runtime-readiness. Versions are pinned for reproducible probes.
+RUN npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 && \
+    git --version && codex --version && opencode --version
 
 # Create non-root user
 RUN groupadd -g 1001 djimitflo && \

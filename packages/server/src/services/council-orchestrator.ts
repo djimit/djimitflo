@@ -276,7 +276,13 @@ export class CouncilOrchestrator {
       const response = await fetch(`${base}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: model.model_name, prompt, stream: false }),
+        body: JSON.stringify({
+          model: model.model_name,
+          prompt,
+          stream: false,
+          think: false,
+          options: { num_predict: Math.max(32, Math.min(Number(process.env.COUNCIL_OLLAMA_MAX_TOKENS || 128), 2048)) },
+        }),
         signal: AbortSignal.timeout(120_000),
       });
       if (!response.ok) throw new Error(`Ollama ${model.model_name}: HTTP ${response.status}`);

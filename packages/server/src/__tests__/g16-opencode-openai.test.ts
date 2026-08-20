@@ -11,6 +11,7 @@ import { SwarmIntelligenceService } from '../services/swarm-intelligence-service
 let db: Database.Database;
 let intel: SwarmIntelligenceService;
 let tempDir: string;
+const originalConfigContent = process.env.OPENCODE_CONFIG_CONTENT;
 
 beforeEach(() => {
   db = createTestDb();
@@ -22,6 +23,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (originalConfigContent === undefined) delete process.env.OPENCODE_CONFIG_CONTENT;
+  else process.env.OPENCODE_CONFIG_CONTENT = originalConfigContent;
   db?.close();
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
@@ -36,6 +39,21 @@ describe('G16.3 OpenCode health inspector', () => {
     expect(result.missing_sections).toContain('tools');
     expect(result.missing_sections).toContain('agent');
     expect(result.per_agent_recommendations.length).toBeGreaterThan(0);
+  });
+
+  it('inspects the canonical environment config when no file is mounted', () => {
+    process.env.OPENCODE_CONFIG_CONTENT = JSON.stringify({
+      mcp: { djimitflo: { type: 'local', command: ['node', 'mcp.js'] } },
+      tools: { write: false },
+      agent: { build: {} },
+      permission: { skill: 'ask' },
+    });
+
+    const result = new OpenCodeHealthService().inspectConfig();
+
+    expect(result.config_path).toBe('env:OPENCODE_CONFIG_CONTENT');
+    expect(result.config_exists).toBe(true);
+    expect(result.missing_sections).toEqual([]);
   });
 
   it('detects missing sections in an existing config', () => {
