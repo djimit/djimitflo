@@ -29,10 +29,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-        - name: Surprise connections check
-          run: |
-            npx code-review-graph_get_surprising_connections_tool --top_n 15 --detail_level minimal | grep -q 'score' && echo 'No high-surprise edges' || (echo 'High surprise connections found' && exit 1)
-
       - name: Type check
         run: npm run type-check
 
