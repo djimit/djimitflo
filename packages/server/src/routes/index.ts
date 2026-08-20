@@ -81,7 +81,6 @@ import { createSegmlL4Routes } from './segml-l4';
 import { createSegmlL5Routes } from './segml-l5';
 import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
-import rateLimit from 'express-rate-limit';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 
@@ -146,10 +145,6 @@ export function createRoutes(
     // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
     { prefix: '/federation', middleware: [requireAuth], router: createFederationRoutes(db, auth!) },
   ];
-
-  for (const mount of mounts) {
-    router.use(mount.prefix, ...mount.middleware, mount.router);
-  }
 
   // Routes not yet in the mount table (added after the openapi PR)
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
@@ -261,6 +256,10 @@ export function createRoutes(
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
   );
+
+  for (const mount of mounts) {
+    router.use(mount.prefix, ...mount.middleware, mount.router);
+  }
 
   return router;
 }
