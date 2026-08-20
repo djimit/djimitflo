@@ -1,0 +1,288 @@
+{
+  "timestamp": "2026-07-24T21:30:50Z",
+  "summary": {
+    "banned_terms_checked": 61,
+    "violations_found": 11,
+    "unique_terms_violated": 3,
+    "unique_files_affected": 3,
+    "high_severity": 2
+  },
+  "violations": [
+    {
+      "file": "packages/server/src/database/migrate.ts",
+      "line": 1008,
+      "term": "Swarm",
+      "bc": "fleet-management",
+      "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 27,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "interface Claim {",
+      "severity": "HIGH"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 49,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "claims: Claim[];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 99,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "}): Claim {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 113,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "const claim: Claim = {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 218,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "let claims: Claim[];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/citation-research-service.ts",
+      "line": 384,
+      "term": "Claim",
+      "bc": "fleet-management",
+      "context": "function parseClaim(row: any): Claim {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/self-healing-service.ts",
+      "line": 19,
+      "term": "HealthCheck",
+      "bc": "fleet-management",
+      "context": "interface HealthCheck {",
+      "severity": "HIGH"
+    },
+    {
+      "file": "packages/server/src/services/self-healing-service.ts",
+      "line": 55,
+      "term": "HealthCheck",
+      "bc": "fleet-management",
+      "context": "checkHealth(): HealthCheck[] {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/self-healing-service.ts",
+      "line": 56,
+      "term": "HealthCheck",
+      "bc": "fleet-management",
+      "context": "const checks: HealthCheck[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/self-healing-service.ts",
+      "line": 196,
+      "term": "HealthCheck",
+      "bc": "fleet-management",
+      "context": "private createIncident(check: HealthCheck): Incident {",
+      "severity": "MEDIUM"
+    }
+  ],
+  "by_bc": {
+    "fleet-management": [
+      {
+        "file": "packages/server/src/database/migrate.ts",
+        "line": 1008,
+        "term": "Swarm",
+        "bc": "fleet-management",
+        "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 27,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "interface Claim {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 49,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "claims: Claim[];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 99,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "}): Claim {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 113,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "const claim: Claim = {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 218,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "let claims: Claim[];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 384,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "function parseClaim(row: any): Claim {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 19,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "interface HealthCheck {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 55,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "checkHealth(): HealthCheck[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 56,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "const checks: HealthCheck[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 196,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "private createIncident(check: HealthCheck): Incident {",
+        "severity": "MEDIUM"
+      }
+    ]
+  },
+  "by_term": {
+    "Swarm": [
+      {
+        "file": "packages/server/src/database/migrate.ts",
+        "line": 1008,
+        "term": "Swarm",
+        "bc": "fleet-management",
+        "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+        "severity": "MEDIUM"
+      }
+    ],
+    "Claim": [
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 27,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "interface Claim {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 49,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "claims: Claim[];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 99,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "}): Claim {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 113,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "const claim: Claim = {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 218,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "let claims: Claim[];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/citation-research-service.ts",
+        "line": 384,
+        "term": "Claim",
+        "bc": "fleet-management",
+        "context": "function parseClaim(row: any): Claim {",
+        "severity": "MEDIUM"
+      }
+    ],
+    "HealthCheck": [
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 19,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "interface HealthCheck {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 55,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "checkHealth(): HealthCheck[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 56,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "const checks: HealthCheck[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/self-healing-service.ts",
+        "line": 196,
+        "term": "HealthCheck",
+        "bc": "fleet-management",
+        "context": "private createIncident(check: HealthCheck): Incident {",
+        "severity": "MEDIUM"
+      }
+    ]
+  }
+}

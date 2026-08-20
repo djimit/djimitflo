@@ -182,10 +182,6 @@ export class ExplainerDiscoveryService {
   async syncDiscoveredRepositories(owner: string): Promise<DiscoverySyncResult> {
     const { repos, rateLimited, errors } = await this.listRemoteRepositories(owner);
 
-    if (rateLimited && repos.length === 0) {
-      return { owner, discovered: 0, active: 0, deactivated: 0, errors };
-    }
-
     const filtered = repos.filter((repo) => !repo.fork && !repo.archived);
     const seenFullNames = new Set(filtered.map((r) => r.full_name.toLowerCase()));
 
@@ -239,7 +235,9 @@ export class ExplainerDiscoveryService {
       }
     })();
 
-    const deactivated = this.deactivateMissing(owner, seenFullNames);
+    // Partial enumeration is not authoritative: update rows we received, but
+    // never deactivate others after a rate limit, page cap, or fetch error.
+    const deactivated = rateLimited || errors.length > 0 ? 0 : this.deactivateMissing(owner, seenFullNames);
 
     return {
       owner,

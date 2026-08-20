@@ -15,6 +15,7 @@
 
 import { createHash, randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { isDeepStrictEqual } from 'util';
 import type { Database } from 'better-sqlite3';
 import { swarmEventBus } from './swarm-event-bus';
@@ -52,6 +53,15 @@ interface OracleAnchor {
   case_id: string;
   oracle_type: string;
   rule: Record<string, unknown>;
+}
+
+interface CorpusManifest {
+  schema_version: number;
+  corpus_version: string;
+  case_count: number;
+  corpus_path: string;
+  sha256: string;
+  certification_ready: boolean;
 }
 
 export interface EvalSkillSubject {
@@ -95,6 +105,17 @@ function sha256File(path: string): string {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
 
+async function getOllamaModelDigest(model: string, override?: string): Promise<string> {
+  if (override?.trim()) return override.trim();
+  const response = await fetch(`${getOllamaUrl()}/api/tags`);
+  if (!response.ok) throw new Error(`OPENMYTHOS_MODEL_INVENTORY_UNAVAILABLE:${response.status}`);
+  const payload = await response.json() as { models?: Array<{ name?: string; model?: string; digest?: string }> };
+  const wanted = new Set([model, `${model}:latest`]);
+  const match = payload.models?.find((item) => wanted.has(item.name || '') || wanted.has(item.model || ''));
+  if (!match?.digest) throw new Error(`OPENMYTHOS_MODEL_DIGEST_NOT_FOUND:${model}`);
+  return match.digest;
+}
+
 export class OpenMythosEvalService {
   private casesCache: OpenMythosCase[] | null = null;
   private anchorsCache: Map<string, OracleAnchor> | null = null;
@@ -102,6 +123,7 @@ export class OpenMythosEvalService {
   private evidenceService: SwarmEvidenceService;
   private ollamaBreaker: OllamaCircuitBreaker;
   private corpusValidator: CorpusSchemaValidator;
+  private corpusManifest: CorpusManifest | null = null;
 
   constructor(private db: Database) {
     this.evidenceService = new SwarmEvidenceService(db);
@@ -131,7 +153,8 @@ export class OpenMythosEvalService {
    */
   loadCases(categories?: string[]): OpenMythosCase[] {
     if (!this.casesCache) {
-      const content = readFileSync(getCorpusPath(), 'utf8');
+      const corpusPath = getCorpusPath();
+      const content = readFileSync(corpusPath, 'utf8');
       const lines = content.split('\n').filter((line) => line.trim());
       const { valid, invalid } = this.corpusValidator.validateAll(lines);
       if (invalid.length > 0) {
@@ -141,6 +164,13 @@ export class OpenMythosEvalService {
         }
       }
       this.casesCache = valid as unknown as OpenMythosCase[];
+      const manifestPath = process.env.OPENMYTHOS_CORPUS_MANIFEST_PATH?.trim() || join(dirname(corpusPath), 'manifest.json');
+      this.corpusManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as CorpusManifest;
+      if (this.corpusManifest.schema_version !== 1
+        || this.corpusManifest.case_count !== this.casesCache.length
+        || this.corpusManifest.sha256 !== sha256File(corpusPath)) {
+        throw new Error('OPENMYTHOS_CORPUS_MANIFEST_MISMATCH');
+      }
     }
 
     if (categories && categories.length > 0) {
@@ -155,6 +185,11 @@ export class OpenMythosEvalService {
    */
   async runEval(agentId: string, categories?: string[], requestedModel?: string, caseIds?: string[], subject?: EvalSkillSubject): Promise<EvalRunResult> {
     const subjectModel = this.resolveSubjectModel(agentId, requestedModel);
+    const subjectModelDigest = await getOllamaModelDigest(subjectModel, process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST);
+    const directOllamaJudge = process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false';
+    const judgeModelDigest = directOllamaJudge
+      ? await getOllamaModelDigest(getJudgeModel(), process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST)
+      : process.env.DJIMITFLO_BUILD_SHA?.trim() || null;
     let cases = this.loadCases(categories);
     if (cases.length === 0) throw new Error('OPENMYTHOS_NO_CASES');
     const discriminationGateEnabled = !caseIds?.length && process.env.OPENMYTHOS_DISCRIMINATION_GATE_ENABLED !== 'false';
@@ -180,9 +215,13 @@ export class OpenMythosEvalService {
     const anchorsPath = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim();
     const baseMetadata = {
       subject_model: subjectModel,
+      subject_model_digest: subjectModelDigest,
       judge_backend: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service',
       judge_model: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? getJudgeModel() : 'djimitflo-judge-service',
+      judge_model_digest: judgeModelDigest,
       corpus_sha256: sha256File(corpusPath),
+      corpus_version: this.corpusManifest?.corpus_version,
+      corpus_certification_ready: this.corpusManifest?.certification_ready === true,
       oracle_anchors_sha256: anchorsPath ? sha256File(anchorsPath) : undefined,
       generation_options: { temperature: 0, seed: 0, num_predict: 1024 },
       case_ids: caseIds || [],
@@ -500,7 +539,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
           },
           required: ['score', 'rationale'],
         },
-        options: { temperature: 0.3, num_predict: 512 },
+        options: { temperature: 0, seed: 0, num_predict: 512 },
       }),
     });
 
@@ -634,12 +673,18 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
 
     const placeholders = cases.map(() => '?').join(',');
     const rows = this.db.prepare(`
-      SELECT case_id, COUNT(DISTINCT judge_score) as score_variants
-      FROM openmythos_case_results
-      WHERE case_id IN (${placeholders})
-      GROUP BY case_id
-      HAVING score_variants > 1
-    `).all(...cases.map(c => c.id)) as Array<{ case_id: string; score_variants: number }>;
+      SELECT cr.case_id,
+             COUNT(DISTINCT cr.run_id) AS run_count,
+             COUNT(DISTINCT json_extract(r.metadata, '$.subject_model')) AS model_count,
+             COUNT(DISTINCT cr.judge_score) AS score_variants
+      FROM openmythos_case_results cr
+      JOIN openmythos_eval_runs r ON r.id = cr.run_id
+      WHERE cr.case_id IN (${placeholders})
+        AND r.status = 'completed'
+        AND json_extract(r.metadata, '$.corpus_sha256') = ?
+      GROUP BY cr.case_id
+      HAVING run_count >= ? AND model_count >= 2 AND score_variants > 1
+    `).all(...cases.map(c => c.id), sha256File(getCorpusPath()), _minRuns) as Array<{ case_id: string }>;
 
     const discriminatingIds = new Set(rows.map(r => r.case_id));
     const filtered = cases.filter(c => discriminatingIds.has(c.id));
@@ -650,6 +695,50 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     }
 
     return filtered.length > 0 ? filtered : cases; // Never return empty
+  }
+
+  getOperationalStatus(agentId?: string): Record<string, unknown> {
+    const where = agentId ? 'WHERE agent_id = ?' : '';
+    const run = this.db.prepare(`
+      SELECT id, agent_id, status, total_cases, completed_cases, overall_score,
+             started_at, finished_at, metadata
+      FROM openmythos_eval_runs ${where}
+      ORDER BY started_at DESC LIMIT 1
+    `).get(...(agentId ? [agentId] : [])) as any;
+    if (!run) return { state: 'no_evidence', admissible: false, agentId: agentId || null };
+    const metadata = JSON.parse(run.metadata || '{}');
+    const lastFailure = this.db.prepare(`
+      SELECT id, started_at, finished_at FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'failed' ORDER BY started_at DESC LIMIT 1
+    `).get(run.agent_id) as any;
+    const corpusReady = metadata.corpus_certification_ready === true;
+    const certificationEligible = metadata.certification_eligible === true;
+    return {
+      state: run.status,
+      admissible: run.status === 'completed'
+        && run.completed_cases === run.total_cases
+        && metadata.score_valid === true && corpusReady && certificationEligible,
+      runId: run.id,
+      agentId: run.agent_id,
+      totalCases: run.total_cases,
+      completedCases: run.completed_cases,
+      overallScore: run.status === 'completed' ? run.overall_score : null,
+      startedAt: run.started_at,
+      finishedAt: run.finished_at,
+      corpusSha256: metadata.corpus_sha256 || null,
+      corpusVersion: metadata.corpus_version || null,
+      subjectModel: metadata.subject_model || null,
+      subjectModelDigest: metadata.subject_model_digest || null,
+      judgeModel: metadata.judge_model || null,
+      judgeModelDigest: metadata.judge_model_digest || null,
+      oracleCases: metadata.oracle_cases || 0,
+      judgeCases: metadata.judge_cases || 0,
+      failedCases: metadata.failed_cases || 0,
+      lastFailure: lastFailure || null,
+      nextScheduledRun: null,
+      reason: !corpusReady ? 'corpus_not_certification_ready'
+        : !certificationEligible ? 'evidence_not_certification_eligible' : null,
+    };
   }
 
   private countCasesWithPriorResults(cases: OpenMythosCase[]): number {

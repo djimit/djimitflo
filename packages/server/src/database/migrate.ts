@@ -1274,8 +1274,16 @@ const tokenUsageLogColumns: ColumnSpec[] = [
 
 const explainerTaskColumns: ColumnSpec[] = [
   { name: 'repository_id', definition: 'TEXT' },
+  { name: 'discovered_repository_id', definition: 'TEXT' },
   { name: 'error_message', definition: 'TEXT' },
   { name: 'scan_id', definition: 'TEXT' },
+];
+
+const explainerJobColumns: ColumnSpec[] = [
+  { name: 'dedupe_key', definition: 'TEXT' },
+  { name: 'estimated_llm_calls', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'estimated_github_api_calls', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { name: 'estimated_git_ops', definition: 'INTEGER NOT NULL DEFAULT 0' },
 ];
 
 // Migrations that MUST run before the schema string is exec'd, because the
@@ -1285,6 +1293,7 @@ const explainerTaskColumns: ColumnSpec[] = [
 export function runPreSchemaMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'token_usage_log', tokenUsageLogColumns);
   addMissingColumns(db, 'explainer_tasks', explainerTaskColumns);
+  addMissingColumns(db, 'explainer_jobs', explainerJobColumns);
 }
 
 function createExplainRepoTables(db: BetterSqlite3Database) {
@@ -1327,6 +1336,10 @@ function createExplainRepoTables(db: BetterSqlite3Database) {
       status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
       priority_score INTEGER NOT NULL DEFAULT 0,
       scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+      dedupe_key TEXT,
+      estimated_llm_calls INTEGER NOT NULL DEFAULT 0,
+      estimated_github_api_calls INTEGER NOT NULL DEFAULT 0,
+      estimated_git_ops INTEGER NOT NULL DEFAULT 0,
       metadata TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1335,6 +1348,9 @@ function createExplainRepoTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
     CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
     CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(scheduled_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_explainer_jobs_active_dedupe
+      ON explainer_jobs(dedupe_key)
+      WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'queued', 'running');
 
     CREATE TABLE IF NOT EXISTS repo_graph_snapshots (
       id TEXT PRIMARY KEY,

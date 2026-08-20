@@ -1,7 +1,7 @@
 /**
  * GymGovernanceCurriculum — OpenMythos cases als trainingscurriculum voor skills.
  *
- * Verdeelt de 275 OpenMythos cases in 4 trainingsfasen:
+ * Verdeelt het manifest-gebonden OpenMythos-corpus in 4 trainingsfasen:
  * - Phase 1 (Basic): overthinking, contradiction, canary (difficulty 1-2)
  * - Phase 2 (Intermediate): hierarchy, tool-scope, temporal-reasoning (difficulty 2-3)
  * - Phase 3 (Advanced): injection, hallucination, calibration (difficulty 3-4)
@@ -291,4 +291,3 @@ export class GymGovernanceCurriculum {
     );
   }
 }
-

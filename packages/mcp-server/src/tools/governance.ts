@@ -26,14 +26,17 @@ type OpenApiDiscovery = {
 };
 
 function rows(dbHandle: DbHandle, sql: string, ...params: unknown[]) {
+  // Utility helper – returns all rows for a query
   return dbHandle.db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
 }
 
 function one(dbHandle: DbHandle, sql: string, ...params: unknown[]) {
+  // Utility helper – returns a single row (or undefined) for a query
   return dbHandle.db.prepare(sql).get(...params) as Record<string, unknown> | undefined;
 }
 
 function text(value: unknown) {
+  // Helper to return a simple text‑only response for MCP tools
   return { content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] };
 }
 

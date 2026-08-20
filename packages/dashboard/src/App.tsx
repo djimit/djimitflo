@@ -19,6 +19,7 @@ const PredictiveAnalyticsPage = lazy(() => import('./pages/PredictiveAnalyticsPa
 const SelfHealingPage = lazy(() => import('./pages/SelfHealingPage').then((module) => ({ default: module.SelfHealingPage })));
 const CognitiveRuntimePage = lazy(() => import('./pages/CognitiveRuntimePage').then((module) => ({ default: module.CognitiveRuntimePage })));
 const SelfDrivingDashboard = lazy(() => import('./pages/SelfDrivingDashboard').then((module) => ({ default: module.SelfDrivingDashboard })));
+const ExplainerFleetPage = lazy(() => import('./pages/explore/ExplainerFleetPage').then((module) => ({ default: module.ExplainerFleetPage })));
 const TaskDetailPage = lazy(() => import('./pages/TaskDetailPage').then((module) => ({ default: module.TaskDetailPage })));
 const SwarmOverviewPage = lazy(() => import('./pages/SwarmOverviewPage').then((module) => ({ default: module.SwarmOverviewPage })));
 const ApprovalQueuePage = lazy(() => import('./pages/ApprovalQueuePage').then((module) => ({ default: module.ApprovalQueuePage })));
@@ -116,6 +117,7 @@ export function App() {
           <Route path="self-healing" element={<SelfHealingPage />} />
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
+          <Route path="explainer-fleet" element={<ExplainerFleetPage />} />
         </Route>
       </Routes>
       </Suspense>

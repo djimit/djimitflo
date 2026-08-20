@@ -3,14 +3,22 @@
  */
 
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 import type { Database } from "better-sqlite3";
 import type { AuthMiddleware } from "../middleware/auth";
 import { ExplainerGenerationService } from "../services/explainer-generation-service";
+import { ExplainerDiscoveryService, type DiscoverySyncResult } from "../services/explainer-discovery-service";
+import { RepoExplainerScheduler, type SchedulerStatus } from "../services/repo-explainer-scheduler";
 
 export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const service = new ExplainerGenerationService(db);
+  const discovery = new ExplainerDiscoveryService(db);
+  const scheduler = new RepoExplainerScheduler(db);
+
+  // Public read rate limit for fleet status and published bundle listings.
+  const publicReadLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
 
   // GET /api/explainer/tasks — list tasks
   router.get("/tasks", requirePermission("read:repository"), (req, res) => {
@@ -52,6 +60,71 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   router.get("/tasks/:id/bundles", requirePermission("read:repository"), (req, res) => {
     const bundles = service.listBundles(req.params.id);
     res.json({ bundles, count: bundles.length });
+  });
+
+  // ─── Fleet endpoints (FR-020) ─────────────────────────────────────────────
+
+  // GET /api/explainer/fleet/status — public read, rate-limited
+  router.get("/fleet/status", publicReadLimiter, requirePermission("read:repository"), (_req, res) => {
+    const status: SchedulerStatus = scheduler.getStatus();
+    const repos = discovery.listDiscoveredRepositories(undefined, 1000);
+    res.json({
+      ...status,
+      total_repositories: repos.length,
+      active_repositories: repos.filter((r) => r.is_active).length,
+    });
+  });
+
+  // POST /api/explainer/fleet/sync — auth mutation
+  router.post("/fleet/sync", requirePermission("write:governance"), async (req, res) => {
+    try {
+      const owner = typeof req.body.owner === "string" ? req.body.owner : "djimit";
+      const result: DiscoverySyncResult = await discovery.syncDiscoveredRepositories(owner);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error), code: "DISCOVERY_ERROR" } });
+    }
+  });
+
+  // GET /api/explainer/fleet/repos — list discovered repositories
+  router.get("/fleet/repos", publicReadLimiter, requirePermission("read:repository"), (req, res) => {
+    const owner = typeof req.query.owner === "string" ? req.query.owner : undefined;
+    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 1000;
+    const repos = discovery.listDiscoveredRepositories(owner, Number.isFinite(limit) ? limit : 1000);
+    res.json({ repositories: repos });
+  });
+
+  // POST /api/explainer/fleet/refresh-stale — auth mutation
+  router.post("/fleet/refresh-stale", requirePermission("write:governance"), async (req, res) => {
+    try {
+      const owner = typeof req.body.owner === "string" ? req.body.owner : "djimit";
+      const result = await scheduler.refreshStale(owner);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error), code: "SCHEDULER_ERROR" } });
+    }
+  });
+
+  // POST /api/explainer/fleet/run — run scheduler iteration
+  router.post("/fleet/run", requirePermission("write:governance"), async (_req, res) => {
+    try {
+      const result = await scheduler.run();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error), code: "SCHEDULER_ERROR" } });
+    }
+  });
+
+  // POST /api/explainer/fleet/pause — auth mutation
+  router.post("/fleet/pause", requirePermission("write:governance"), (_req, res) => {
+    scheduler.setPaused(true);
+    res.json({ paused: scheduler.isPaused() });
+  });
+
+  // POST /api/explainer/fleet/resume — auth mutation
+  router.post("/fleet/resume", requirePermission("write:governance"), (_req, res) => {
+    scheduler.setPaused(false);
+    res.json({ paused: scheduler.isPaused() });
   });
 
   return router;

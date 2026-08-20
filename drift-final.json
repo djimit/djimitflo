@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-07-24T21:33:15Z",
+  "summary": {
+    "banned_terms_checked": 61,
+    "violations_found": 1,
+    "unique_terms_violated": 1,
+    "unique_files_affected": 1,
+    "high_severity": 0
+  },
+  "violations": [
+    {
+      "file": "packages/server/src/database/migrate.ts",
+      "line": 1008,
+      "term": "Swarm",
+      "bc": "fleet-management",
+      "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+      "severity": "MEDIUM"
+    }
+  ],
+  "by_bc": {
+    "fleet-management": [
+      {
+        "file": "packages/server/src/database/migrate.ts",
+        "line": 1008,
+        "term": "Swarm",
+        "bc": "fleet-management",
+        "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+        "severity": "MEDIUM"
+      }
+    ]
+  },
+  "by_term": {
+    "Swarm": [
+      {
+        "file": "packages/server/src/database/migrate.ts",
+        "line": 1008,
+        "term": "Swarm",
+        "bc": "fleet-management",
+        "context": "-- G14.1: Swarm Intelligence Kernel \u2014 mission/task/decision state machine",
+        "severity": "MEDIUM"
+      }
+    ]
+  }
+}

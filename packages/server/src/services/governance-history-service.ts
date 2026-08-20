@@ -194,8 +194,12 @@ export class GovernanceHistoryService {
 
   private analyzeEvaluationPatterns(category?: string): GovernancePattern[] {
     const query = category
-      ? "SELECT category, COUNT(*) as count, AVG(score) as avg_score FROM openmythos_evaluations WHERE category = ? GROUP BY category"
-      : "SELECT category, COUNT(*) as count, AVG(score) as avg_score FROM openmythos_evaluations GROUP BY category";
+      ? `SELECT cr.category, COUNT(*) as count, AVG(cr.judge_score) as avg_score
+         FROM openmythos_case_results cr JOIN openmythos_eval_runs r ON r.id = cr.run_id
+         WHERE cr.category = ? AND cr.status = 'completed' AND r.status = 'completed' GROUP BY cr.category`
+      : `SELECT cr.category, COUNT(*) as count, AVG(cr.judge_score) as avg_score
+         FROM openmythos_case_results cr JOIN openmythos_eval_runs r ON r.id = cr.run_id
+         WHERE cr.status = 'completed' AND r.status = 'completed' GROUP BY cr.category`;
 
     const rows = category
       ? this.db.prepare(query).all(category) as any[]
@@ -219,26 +223,16 @@ export class GovernanceHistoryService {
 
     try {
       const rows = this.db.prepare(`
-        SELECT date(timestamp) as date, AVG(score) as avg_score
-        FROM openmythos_evaluations
-        WHERE category = ? AND timestamp > datetime('now', ?)
-        GROUP BY date(timestamp)
-        ORDER BY date
+        SELECT date(cr.created_at) as date, AVG(cr.judge_score) as avg_score
+        FROM openmythos_case_results cr JOIN openmythos_eval_runs r ON r.id = cr.run_id
+        WHERE cr.category = ? AND cr.status = 'completed' AND r.status = 'completed'
+          AND cr.created_at > datetime('now', ?)
+        GROUP BY date(cr.created_at) ORDER BY date
       `).all(category, `-${days} days`) as any[];
 
       return rows.map(r => ({ timestamp: r.date, value: r.avg_score }));
     } catch {
-      // Generate synthetic data points if table doesn't exist
-      const points: Array<{ timestamp: string; value: number }> = [];
-      for (let i = days; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        points.push({
-          timestamp: date.toISOString().split('T')[0],
-          value: 3 + Math.random() * 1.5,
-        });
-      }
-      return points;
+      return [];
     }
   }
 

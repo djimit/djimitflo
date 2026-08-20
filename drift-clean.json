@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-07-24T21:33:50Z",
+  "summary": {
+    "banned_terms_checked": 61,
+    "violations_found": 0,
+    "unique_terms_violated": 0,
+    "unique_files_affected": 0,
+    "high_severity": 0
+  },
+  "violations": [],
+  "by_bc": {},
+  "by_term": {}
+}

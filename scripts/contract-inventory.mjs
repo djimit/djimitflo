@@ -23,14 +23,21 @@ for (const path of routeFiles) {
   const module = basename(path, '.ts');
   const matcher = /router\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g;
   for (const match of source.matchAll(matcher)) {
+    const method = match[1].toUpperCase();
+    const routePath = match[3];
+    const marker = `contract:${module}:${method}:${routePath}`;
     const evidence = tests
-      .filter(test => test.content.includes(`../routes/${module}`) && /\b(request|fetch|supertest)\s*\(/.test(test.content))
+      .filter(test => test.content.includes(marker) || (
+        test.content.includes(`../routes/${module}`)
+        && test.content.includes(routePath)
+        && new RegExp(`['"\\x60]${method}['"\\x60]`).test(test.content)
+      ))
       .map(test => relative(root, test.path));
     routes.push({
-      id: `${module}:${match[1].toUpperCase()}:${match[3]}`,
+      id: `${module}:${method}:${routePath}`,
       module,
-      method: match[1].toUpperCase(),
-      path: match[3],
+      method,
+      path: routePath,
       critical: critical.test(module),
       status: evidence.length ? 'tested' : 'unclassified',
       evidence,

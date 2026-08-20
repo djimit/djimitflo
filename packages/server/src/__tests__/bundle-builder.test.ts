@@ -72,6 +72,7 @@ describe("BundleBuilder", () => {
     const manifest = JSON.parse(readFileSync(result.manifestPath, "utf-8"));
     expect(manifest.repository_full_name).toBe("djimit/test-repo");
     expect(manifest.openmythos_score).toBe(88);
+    expect(manifest.assets).toEqual([]);
 
     const row = db.prepare("SELECT * FROM explainer_bundles WHERE id = ?").get(result.bundleId) as Record<string, unknown>;
     expect(row).toBeDefined();
@@ -92,5 +93,14 @@ describe("BundleBuilder", () => {
     const input = makeInput(bundleRoot);
     input.repositoryFullName = "invalid";
     expect(() => builder.build(input)).toThrow("Invalid repository_full_name");
+  });
+
+  it("keeps same-commit bundles immutable", () => {
+    const first = builder.build(makeInput(bundleRoot));
+    const firstManifest = readFileSync(first.manifestPath, "utf-8");
+    const second = builder.build(makeInput(bundleRoot));
+
+    expect(second.bundlePath).not.toBe(first.bundlePath);
+    expect(readFileSync(first.manifestPath, "utf-8")).toBe(firstManifest);
   });
 });

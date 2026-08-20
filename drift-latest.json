@@ -1,0 +1,838 @@
+{
+  "timestamp": "2026-07-24T22:09:35Z",
+  "summary": {
+    "banned_terms_checked": 111,
+    "violations_found": 34,
+    "unique_terms_violated": 2,
+    "unique_files_affected": 12,
+    "high_severity": 1
+  },
+  "violations": [
+    {
+      "file": "packages/server/src/execution/execution-engine.ts",
+      "line": 663,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "private handleExecutionError(taskId: string, error: Error): void {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/worktree-manager.ts",
+      "line": 40,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "let lastError: Error | undefined;",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/worktree-manager.ts",
+      "line": 169,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "static isGitLockError(error: Error): boolean {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/runtime-command-service.ts",
+      "line": 19,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; res",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 14,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "export interface Alert {",
+      "severity": "HIGH"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 33,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "severity: Alert['severity'];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 48,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "createAlert(severity: Alert['severity'], category: string, title: string, message: string, riskScore",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 49,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "const alert: Alert = {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 68,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "evaluateRules(metrics: Record<string, number>): Alert[] {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 69,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "const alerts: Alert[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 124,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "getActiveAlerts(): Alert[] {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 132,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "getAlertsBySeverity(severity: Alert['severity']): Alert[] {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 156,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "private rowToAlert(row: any): Alert {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/early-warning-service.ts",
+      "line": 170,
+      "term": "Alert",
+      "bc": "self-healing",
+      "context": "private persistAlert(alert: Alert): void {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/proof-run-service.ts",
+      "line": 599,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "let proofRunError: Error | null = null;",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/services/worker-pool.ts",
+      "line": 12,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "error?: Error;",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/claude-executor.ts",
+      "line": 233,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/claude-executor.ts",
+      "line": 245,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/claude-executor.ts",
+      "line": 341,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/gemini-executor.ts",
+      "line": 228,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/gemini-executor.ts",
+      "line": 240,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/gemini-executor.ts",
+      "line": 336,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/pi-executor.ts",
+      "line": 459,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/pi-executor.ts",
+      "line": 467,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/pi-executor.ts",
+      "line": 591,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/editor-executor.ts",
+      "line": 237,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/editor-executor.ts",
+      "line": 249,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/editor-executor.ts",
+      "line": 345,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/opencode-executor.ts",
+      "line": 433,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/opencode-executor.ts",
+      "line": 442,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/opencode-executor.ts",
+      "line": 567,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/codex-executor.ts",
+      "line": 397,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "const errorQueue: Error[] = [];",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/codex-executor.ts",
+      "line": 409,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    },
+    {
+      "file": "packages/server/src/execution/executors/codex-executor.ts",
+      "line": 542,
+      "term": "Error",
+      "bc": "self-healing",
+      "context": "emitter.on('error', (error: Error) => {",
+      "severity": "MEDIUM"
+    }
+  ],
+  "by_bc": {
+    "self-healing": [
+      {
+        "file": "packages/server/src/execution/execution-engine.ts",
+        "line": 663,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "private handleExecutionError(taskId: string, error: Error): void {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worktree-manager.ts",
+        "line": 40,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "let lastError: Error | undefined;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worktree-manager.ts",
+        "line": 169,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "static isGitLockError(error: Error): boolean {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/runtime-command-service.ts",
+        "line": 19,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; res",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 14,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "export interface Alert {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 33,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "severity: Alert['severity'];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 48,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "createAlert(severity: Alert['severity'], category: string, title: string, message: string, riskScore",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 49,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "const alert: Alert = {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 68,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "evaluateRules(metrics: Record<string, number>): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 69,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "const alerts: Alert[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 124,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "getActiveAlerts(): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 132,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "getAlertsBySeverity(severity: Alert['severity']): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 156,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "private rowToAlert(row: any): Alert {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 170,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "private persistAlert(alert: Alert): void {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/proof-run-service.ts",
+        "line": 599,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "let proofRunError: Error | null = null;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worker-pool.ts",
+        "line": 12,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "error?: Error;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 233,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 245,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 341,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 228,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 240,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 336,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 459,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 467,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 591,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 237,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 249,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 345,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 433,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 442,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 567,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 397,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 409,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 542,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      }
+    ]
+  },
+  "by_term": {
+    "Error": [
+      {
+        "file": "packages/server/src/execution/execution-engine.ts",
+        "line": 663,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "private handleExecutionError(taskId: string, error: Error): void {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worktree-manager.ts",
+        "line": 40,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "let lastError: Error | undefined;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worktree-manager.ts",
+        "line": 169,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "static isGitLockError(error: Error): boolean {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/runtime-command-service.ts",
+        "line": 19,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; res",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/proof-run-service.ts",
+        "line": 599,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "let proofRunError: Error | null = null;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/worker-pool.ts",
+        "line": 12,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "error?: Error;",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 233,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 245,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/claude-executor.ts",
+        "line": 341,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 228,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 240,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/gemini-executor.ts",
+        "line": 336,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 459,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 467,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/pi-executor.ts",
+        "line": 591,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 237,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 249,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/editor-executor.ts",
+        "line": 345,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 433,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 442,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/opencode-executor.ts",
+        "line": 567,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 397,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "const errorQueue: Error[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 409,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/execution/executors/codex-executor.ts",
+        "line": 542,
+        "term": "Error",
+        "bc": "self-healing",
+        "context": "emitter.on('error', (error: Error) => {",
+        "severity": "MEDIUM"
+      }
+    ],
+    "Alert": [
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 14,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "export interface Alert {",
+        "severity": "HIGH"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 33,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "severity: Alert['severity'];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 48,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "createAlert(severity: Alert['severity'], category: string, title: string, message: string, riskScore",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 49,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "const alert: Alert = {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 68,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "evaluateRules(metrics: Record<string, number>): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 69,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "const alerts: Alert[] = [];",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 124,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "getActiveAlerts(): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 132,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "getAlertsBySeverity(severity: Alert['severity']): Alert[] {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 156,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "private rowToAlert(row: any): Alert {",
+        "severity": "MEDIUM"
+      },
+      {
+        "file": "packages/server/src/services/early-warning-service.ts",
+        "line": 170,
+        "term": "Alert",
+        "bc": "self-healing",
+        "context": "private persistAlert(alert: Alert): void {",
+        "severity": "MEDIUM"
+      }
+    ]
+  }
+}

@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-31T21:35:43.384Z",
+  "generated_at": "2026-08-20T20:08:02.320Z",
   "status": "blocked",
   "corpus": {
     "path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/corpus.jsonl",
+    "manifest_path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/manifest.json",
     "sha256": "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
     "cases": 351,
     "maturity": {
