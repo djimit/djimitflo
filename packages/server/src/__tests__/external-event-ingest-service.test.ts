@@ -33,11 +33,15 @@ describe('ExternalEventIngestService', () => {
     )`);
 
     runPreSchemaMigrations(db);
+    db.exec(schema);
 
     const columns = db.prepare('PRAGMA table_info(external_events)').all() as Array<{ name: string }>;
     expect(columns.map(({ name }) => name)).toEqual(expect.arrayContaining([
       'causation_id', 'aggregate_id', 'aggregate_version', 'dedupe_key',
     ]));
+    const insert = db.prepare("INSERT OR IGNORE INTO external_events (id, event_type, source, dedupe_key, occurred_at, payload) VALUES (?, 'paperclip.issue.created', 'paperclip', 'same', '2026-08-20T00:00:00Z', '{}')");
+    expect(insert.run('first').changes).toBe(1);
+    expect(insert.run('redelivery').changes).toBe(0);
     db.close();
   });
 });

@@ -694,6 +694,8 @@ CREATE TABLE IF NOT EXISTS external_events (
 CREATE INDEX IF NOT EXISTS idx_external_events_event_type ON external_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_external_events_occurred_at ON external_events(occurred_at DESC);
 CREATE INDEX IF NOT EXISTS idx_external_events_correlation_id ON external_events(correlation_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_dedupe_key
+  ON external_events(dedupe_key) WHERE dedupe_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
   ON external_events(source, aggregate_id, aggregate_version)
   WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
