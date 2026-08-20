@@ -9,7 +9,6 @@
 FROM node:22-bookworm-slim AS builder
 
 WORKDIR /build
-ENV NODE_OPTIONS=--max-old-space-size=6144
 
 # Copy all package manifests first (for layer caching)
 COPY package.json package-lock.json tsconfig.json ./
