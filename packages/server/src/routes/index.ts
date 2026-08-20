@@ -81,7 +81,6 @@ import { createSegmlL4Routes } from './segml-l4';
 import { createSegmlL5Routes } from './segml-l5';
 import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
-import rateLimit from 'express-rate-limit';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 
