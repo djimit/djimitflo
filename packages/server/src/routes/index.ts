@@ -146,52 +146,6 @@ export function createRoutes(
     { prefix: '/federation', middleware: [requireAuth], router: createFederationRoutes(db, auth!) },
   ];
 
-  // Routes not yet in the mount table (added after the openapi PR)
-  router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
-  router.use('/exports', requireAuth, createExportRoutes(db, auth!));
-  router.use('/messages', requireAuth, createMessageRoutes(db, wsService, auth));
-  router.use('/memory', requireAuth, createMemoryRoutes(db, auth));
-  router.use('/skills', requireAuth, createSkillRoutes(db, auth));
-  router.use('/openmythos', requireAuth, createOpenMythosRoutes(db, auth));
-  router.use('/gym', requireAuth, createGymRoutes(db, auth));
-  router.use('/runtime-governance', requireAuth, createRuntimeGovernanceRoutes(db, auth));
-  router.use('/cognitive', requireAuth, createCognitiveRoutes(db, auth));
-  router.use('/self-modification', requireAuth, createSelfModificationRoutes(db, auth));
-  router.use('/fleet', requireAuth, createFleetRoutes(db, auth));
-  router.use('/models', requireAuth, createMultiModelRoutes(db, auth));
-  router.use('/compliance', requireAuth, createComplianceRoutes(db, auth));
-  router.use('/traceability', rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth, createTraceabilityRoutes());
-  router.use('/sbom', requireAuth, createSBOMRoutes(db, auth));
-  router.use('/governance-feedback', requireAuth, createGovernanceFeedbackRoutes(db, auth));
-  router.use('/repo-index', requireAuth, createRepositoryIndexRoutes(db, auth));
-  router.use('/explainer', requireAuth, createExplainerRoutes(db, auth));
-  router.use('/console', requireAuth, createConsoleRoutes(db, auth));
-  router.use('/retirement', requireAuth, createRetirementRoutes(db, auth));
-  router.use('/red-team', requireAuth, createRedTeamRoutes(db, auth));
-  router.use('/platform', requireAuth, createPlatformRoutes(db, auth));
-  router.use('/advanced', requireAuth, createAdvancedRoutes(db, auth));
-  router.use('/health', createHealthRoutes(db, auth));
-  router.use('/legal', requireAuth, createLegalRoutes(db, auth));
-  router.use('/research', requireAuth, createResearchRoutes(db, auth));
-  router.use('/canvas', requireAuth, createCanvasRoutes(db, auth));
-  router.use('/telegram', createTelegramRoutes(db, auth));
-  router.use('/apex', requireAuth, createApexRoutes(db, auth, operatorRuntime));
-  router.use('/swarm-v2', requireAuth, createSwarmOrchestrationRoutes(db, auth));
-  router.use('/self-improve', requireAuth, createSelfImprovementRoutes(db, auth));
-  router.use('/swarm-intel', requireAuth, createSwarmIntelRoutes(db, auth));
-  router.use('/agi', requireAuth, createAgiRoutes(db, auth));
-  router.use('/intelligence', requireAuth, createIntelligenceRoutes(db, auth));
-  router.use('/meta', requireAuth, createMetaOrchestrationRoutes(db, auth, metaOrchestration));
-  router.use('/council', requireAuth, createCouncilRoutes(db, auth));
-  router.use('/segml', requireAuth, createSegmlRoutes(db, auth));
-  router.use('/segml/federation', requireAuth, createSegmlFederationRoutes(db, auth));
-  router.use('/segml/literature', requireAuth, createSegmlLiteratureRoutes(db, auth));
-  router.use('/segml/finetuning', requireAuth, createSegmlFinetuningRoutes(db, auth));
-  router.use('/segml/l3', requireAuth, createSegmlL3Routes(db, auth));
-  router.use('/segml/l4', requireAuth, createSegmlL4Routes(db, auth));
-  router.use('/segml/l5', requireAuth, createSegmlL5Routes(db, auth));
-  router.use('/segml/production', requireAuth, createSegmlProductionRoutes(db, auth));
-
   // Machine-readable API surface, derived from the mount table above.
   // express-rate-limit so CodeQL recognizes the limiter (same policy as /metrics).
   const openApiRateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false });
@@ -248,13 +202,28 @@ export function createRoutes(
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
-    { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth) },
+    { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
     { prefix: '/swarm-intel', middleware: [requireAuth], router: createSwarmIntelRoutes(db, auth) },
     { prefix: '/agi', middleware: [requireAuth], router: createAgiRoutes(db, auth) },
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
+    { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
+    { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
+    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth) },
+    { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
+    { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
+    { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },
+    { prefix: '/council', middleware: [requireAuth], router: createCouncilRoutes(db, auth) },
+    { prefix: '/segml', middleware: [requireAuth], router: createSegmlRoutes(db, auth) },
+    { prefix: '/segml/federation', middleware: [requireAuth], router: createSegmlFederationRoutes(db, auth) },
+    { prefix: '/segml/literature', middleware: [requireAuth], router: createSegmlLiteratureRoutes(db, auth) },
+    { prefix: '/segml/finetuning', middleware: [requireAuth], router: createSegmlFinetuningRoutes(db, auth) },
+    { prefix: '/segml/l3', middleware: [requireAuth], router: createSegmlL3Routes(db, auth) },
+    { prefix: '/segml/l4', middleware: [requireAuth], router: createSegmlL4Routes(db, auth) },
+    { prefix: '/segml/l5', middleware: [requireAuth], router: createSegmlL5Routes(db, auth) },
+    { prefix: '/segml/production', middleware: [requireAuth], router: createSegmlProductionRoutes(db, auth) },
   );
 
   for (const mount of mounts) {
