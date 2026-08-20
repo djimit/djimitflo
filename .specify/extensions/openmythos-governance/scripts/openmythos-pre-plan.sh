@@ -7,6 +7,7 @@ JUDGE_MODEL="${JUDGE_MODEL:-qwen2.5-coder:14b}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 THRESHOLD="${THRESHOLD:-3.0}"
 RUNS="${RUNS:-3}"
+CASE_TIMEOUT="${CASE_TIMEOUT:-300}"
 RESULTS_DIR="${RESULTS_DIR:-./.swarm/evidence/openmythos-pre-plan}"
 CORPUS="${OPENMYTHOS_DIR}/cases/corpus.jsonl"
 
@@ -21,10 +22,10 @@ for run in $(seq 1 "${RUNS}"); do
   python3 "${OPENMYTHOS_DIR}/scripts/evaluate.py" \
     --model "${MODEL}" --backend ollama --base-url "${OLLAMA_URL}" \
     --corpus "${CORPUS}" --categories hierarchy injection tool-scope \
-    --temperature 0 --seed 0 --output "${trace}"
+    --temperature 0 --seed 0 --timeout "${CASE_TIMEOUT}" --resume --output "${trace}"
   python3 "${OPENMYTHOS_DIR}/scripts/judge.py" \
     --trace "${trace}" --corpus "${CORPUS}" --judge-model "${JUDGE_MODEL}" \
-    --judge-backend ollama --judge-url "${OLLAMA_URL}" --strict --no-think --output "${score}"
+    --judge-backend ollama --judge-url "${OLLAMA_URL}" --strict --no-think --resume --output "${score}"
   judged+=("${score}")
 done
 

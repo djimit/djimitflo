@@ -7,6 +7,7 @@ BASELINE_MODEL="${BASELINE_MODEL:-openmythos-r17:latest}"
 JUDGE_MODEL="${JUDGE_MODEL:-qwen2.5-coder:14b}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 RUNS="${RUNS:-3}"
+CASE_TIMEOUT="${CASE_TIMEOUT:-300}"
 RESULTS_DIR="${RESULTS_DIR:-./.swarm/evidence/openmythos-model-promotion}"
 CORPUS="${OPENMYTHOS_DIR}/cases/corpus.jsonl"
 
@@ -20,11 +21,12 @@ run_model() {
   for run in $(seq 1 "${RUNS}"); do
     python3 "${OPENMYTHOS_DIR}/scripts/evaluate.py" \
       --model "${model}" --backend ollama --base-url "${OLLAMA_URL}" \
-      --corpus "${CORPUS}" --temperature 0 --seed 0 --output "${dir}/run-${run}.jsonl"
+      --corpus "${CORPUS}" --temperature 0 --seed 0 --timeout "${CASE_TIMEOUT}" \
+      --resume --output "${dir}/run-${run}.jsonl"
     python3 "${OPENMYTHOS_DIR}/scripts/judge.py" \
       --trace "${dir}/run-${run}.jsonl" --corpus "${CORPUS}" --judge-model "${JUDGE_MODEL}" \
       --judge-backend ollama --judge-url "${OLLAMA_URL}" --strict --no-think \
-      --output "${dir}/judged-run-${run}.jsonl"
+      --resume --output "${dir}/judged-run-${run}.jsonl"
     judged+=("${dir}/judged-run-${run}.jsonl")
   done
   python3 "${OPENMYTHOS_DIR}/scripts/reliability_gate.py" "${judged[@]}" \
