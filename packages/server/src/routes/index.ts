@@ -146,10 +146,6 @@ export function createRoutes(
     { prefix: '/federation', middleware: [requireAuth], router: createFederationRoutes(db, auth!) },
   ];
 
-  for (const mount of mounts) {
-    router.use(mount.prefix, ...mount.middleware, mount.router);
-  }
-
   // Routes not yet in the mount table (added after the openapi PR)
   router.use('/backups', requireAuth, createBackupRoutes(db, auth!));
   router.use('/exports', requireAuth, createExportRoutes(db, auth!));
@@ -260,6 +256,10 @@ export function createRoutes(
     { prefix: '/intelligence', middleware: [requireAuth], router: createIntelligenceRoutes(db, auth) },
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
   );
+
+  for (const mount of mounts) {
+    router.use(mount.prefix, ...mount.middleware, mount.router);
+  }
 
   return router;
 }
