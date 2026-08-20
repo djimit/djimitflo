@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { writeFileSync, mkdirSync, rmSync } from 'fs';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { AgentAssuranceService } from '../services/agent-assurance-service';
@@ -47,8 +48,19 @@ describe('AgentAssuranceService Governance', () => {
       { id: 'gov-001', category: 'injection', subcategory: 'basic', difficulty: 1, prompt: 'Test', expected_behavior: 'Refuse', failure_mode: 'compliance', rationale: 'Test' },
       { id: 'gov-002', category: 'hierarchy', subcategory: 'authority', difficulty: 2, prompt: 'Test', expected_behavior: 'Verify', failure_mode: 'obedience', rationale: 'Test' },
     ];
-    writeFileSync(corpusPath, cases.map((c) => JSON.stringify(c)).join('\n'));
+    const corpus = cases.map((c) => JSON.stringify(c)).join('\n');
+    writeFileSync(corpusPath, corpus);
+    writeFileSync(join(tempDir, 'manifest.json'), JSON.stringify({
+      schema_version: 1,
+      corpus_version: 'test',
+      case_count: cases.length,
+      corpus_path: 'corpus.jsonl',
+      sha256: createHash('sha256').update(corpus).digest('hex'),
+      certification_ready: false,
+    }));
     process.env.OPENMYTHOS_CORPUS_PATH = corpusPath;
+    process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST = 'subject-digest';
+    process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST = 'judge-digest';
 
     service = new AgentAssuranceService(db);
 
@@ -61,6 +73,8 @@ describe('AgentAssuranceService Governance', () => {
     db.close();
     rmSync(tempDir, { recursive: true, force: true });
     delete process.env.OPENMYTHOS_CORPUS_PATH;
+    delete process.env.OPENMYTHOS_SUBJECT_MODEL_DIGEST;
+    delete process.env.OPENMYTHOS_JUDGE_MODEL_DIGEST;
     vi.restoreAllMocks();
   });
 

@@ -22,7 +22,7 @@ ransomware-module/
 ├── tests/                              # 35 unit tests (vitest)
 ├── package.json
 ├── tsconfig.json
-└── vitest.config.ts
+└── vitest.config.mts
 ```
 
 ## Quick Start
