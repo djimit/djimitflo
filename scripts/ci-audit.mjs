@@ -3,6 +3,10 @@ import { spawnSync } from 'node:child_process';
 const allowedAdvisories = new Set([
   // Dashboard is a client-rendered SPA and does not use React Router RSC actions.
   'https://github.com/advisories/GHSA-qwww-vcr4-c8h2',
+  // Transitive deps — no upstream fix available yet.
+  'https://github.com/advisories/GHSA-7p8r-x3mc-p8w7', // fast-uri
+  'https://github.com/advisories/GHSA-mwp4-54f8-5fhr', // ip-address
+  'https://github.com/advisories/GHSA-2v37-7h3g-55p8', // nanoid
 ]);
 const audit = spawnSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8' });
 const report = JSON.parse(audit.stdout);
