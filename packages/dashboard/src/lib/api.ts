@@ -647,6 +647,20 @@ export type SwarmMissionControl = {
     routable: number;
     blocked: number;
   };
+  skill_evolution?: Array<{
+    capability_id: string;
+    skill_id: string;
+    skill_version: string;
+    candidate_hash: string;
+    status: SwarmCapabilityRecord['status'];
+    assigned_agents: number;
+    candidate_runs: number;
+    baseline_hashes: string[];
+    openmythos_run_id: string | null;
+    evidence_ready: boolean;
+    blocked_reasons: string[];
+    promotion_input: Record<string, unknown> | null;
+  }>;
   claim_health: {
     total: number;
     proposed: number;

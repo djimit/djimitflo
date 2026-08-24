@@ -125,6 +125,28 @@ describe('G15.2 capability promotion', () => {
     });
   });
 
+  it('reports exact promotion readiness without running the final training gate', () => {
+    svc.createCandidate({
+      id: 'ready-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'ready-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+    seedSkillEvidence('ready-skill');
+
+    expect(svc.skillEvolutionReadiness()).toContainEqual(expect.objectContaining({
+      capability_id: 'ready-skill',
+      candidate_runs: 30,
+      evidence_ready: true,
+      openmythos_run_id: 'eval-ready-skill',
+      promotion_input: expect.objectContaining({
+        eval_score: 0.9,
+        baseline_skill_content_hash: 'baseline-hash',
+      }),
+    }));
+  });
+
   it('blocks skill promotion when the training gate fails', () => {
     process.env.DJIMIT_SKILL_TRAINING_EVAL_RUNNER = writeRunner('fail.mjs', 'console.log(JSON.stringify({ passed: false, threshold_failures: ["regression"] })); process.exit(1);\n');
     svc.createCandidate({
@@ -164,6 +186,10 @@ describe('G15.2 capability promotion', () => {
 
     expect(() => svc.promoteCapability('regressed-skill', { eval_score: 0.9, ...evidence }))
       .toThrow('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
+    expect(svc.skillEvolutionReadiness().find((item) => item.capability_id === 'regressed-skill')).toMatchObject({
+      evidence_ready: false,
+      blocked_reasons: ['CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT'],
+    });
   });
 
   it('blocks skill promotion without exact skill attribution', () => {
