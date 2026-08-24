@@ -241,7 +241,10 @@ export class SkillLoaderService {
       author: String(manifest.owner || metadata.author || 'unknown'),
       enabled: true,
       metadata: { ...metadata, manifest },
-      contentHash: createHash('sha256').update(content).digest('hex'),
+      contentHash: createHash('sha256')
+        .update(content)
+        .update(manifestContent ? `\0${manifestContent}` : '')
+        .digest('hex'),
       manifestHash: manifestContent ? createHash('sha256').update(manifestContent).digest('hex') : null,
       workflowHash: createHash('sha256').update(body.trim().replace(/\s+/g, ' ')).digest('hex'),
     };

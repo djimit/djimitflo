@@ -181,6 +181,21 @@ describe('G15.2 capability promotion', () => {
     })).toThrow('CAPABILITY_PROMOTION_SKILL_ATTRIBUTION_REQUIRED');
   });
 
+  it('keeps automatic skill promotion behind the explicit comparison gate', () => {
+    svc.createCandidate({
+      id: 'explicit-only-skill', kind: 'skill', owner: 'test', version: '0.1.0', risk_ceiling: 'low',
+      input_schema_ref: 'none', output_schema_ref: 'none', allowed_actions: ['maker:mock'],
+      forbidden_actions: ['deploy'], required_evidence: ['worker_lease'], eval_threshold: 0.75,
+      removal_strategy: 'disable',
+      metadata: { agent_skill_id: 'explicit-only-skill', agent_skill_version: '0.1.0', agent_skill_content_hash: 'candidate-hash' },
+    });
+
+    expect(svc.autoPromoteFromEvidence('explicit-only-skill')).toMatchObject({
+      promoted: false,
+      reason: 'skill promotion requires an explicit baseline and exact OpenMythos evidence',
+    });
+  });
+
   it('blocks promotion when eval score is below threshold', () => {
     svc.createCandidate({
       id: 'low-score-skill',

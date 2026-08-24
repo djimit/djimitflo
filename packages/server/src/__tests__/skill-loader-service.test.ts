@@ -116,6 +116,7 @@ describe('SkillLoaderService admission boundary', () => {
     }
 
     const service = new SkillLoaderService(database, skillsDir, new Set(['.opencode.skills.running-tests']));
+    const originalHash = service.getSkill('.opencode.skills.running-tests')?.contentHash;
 
     expect(service.listSkills()).toHaveLength(1);
     expect(service.getSkill('.opencode.skills.running-tests')).toMatchObject({
@@ -126,5 +127,15 @@ describe('SkillLoaderService admission boundary', () => {
       manifestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       metadata: { manifest: { skill_id: '.opencode.skills.running-tests' } },
     });
+
+    writeManifest('running-tests', [
+      'skill_id: .opencode.skills.running-tests',
+      'version: 1.2.3',
+      'owner: djimit',
+      'allowed_tools: [Read]',
+      'disallowed_tools: [ProductionWrite, DependencyInstall]',
+    ]);
+    const changed = new SkillLoaderService(database, skillsDir, new Set(['.opencode.skills.running-tests']));
+    expect(changed.getSkill('.opencode.skills.running-tests')?.contentHash).not.toBe(originalHash);
   });
 });

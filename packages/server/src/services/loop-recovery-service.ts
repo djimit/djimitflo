@@ -14,6 +14,7 @@ import { swarmEventBus } from './swarm-event-bus';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { LoopRunMutationService } from './loop-run-mutation-service';
+import { ExperienceRetrievalService } from './experience-retrieval-service';
 import type { WorkerLeaseRecord } from './loop-types';
 
 export interface RecoveryResult {
@@ -65,11 +66,13 @@ export class LoopRecoveryService {
   private leases: WorkerLeaseRepo;
   private queries: LoopRunQueryService;
   private mutations: LoopRunMutationService;
+  private experience: ExperienceRetrievalService;
 
   constructor(db: Database) {
     this.leases = new WorkerLeaseRepo(db);
     this.queries = new LoopRunQueryService(db);
     this.mutations = new LoopRunMutationService(db);
+    this.experience = new ExperienceRetrievalService(db);
   }
 
   /**
@@ -103,6 +106,7 @@ export class LoopRecoveryService {
         interrupted_reason: 'server_restart',
         interrupted_at: now,
       });
+      void this.experience.indexRun(run.id);
       interruptedRuns++;
     }
 

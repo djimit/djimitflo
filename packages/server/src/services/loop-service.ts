@@ -683,6 +683,8 @@ export class LoopService {
       });
     }
 
+    void this.experience.indexRun(id);
+
     return {
       run: this.getLoopRun(id),
       events: this.listLoopEvents(id),
@@ -1372,7 +1374,9 @@ export class LoopService {
   }
 
   public escalateIfFailureThresholdExceeded(runId: string, reason: string): LoopRunRecord {
-    return this.budget.escalateIfFailureThresholdExceeded(runId, reason);
+    const run = this.budget.escalateIfFailureThresholdExceeded(runId, reason);
+    if (run.status === 'escalated') void this.experience.indexRun(runId);
+    return run;
   }
 
 

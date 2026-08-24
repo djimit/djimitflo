@@ -260,6 +260,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const stopped = await stopResponse.json() as any;
     expect(stopped.run.status).toBe('cancelled');
     expect(stopped.events.map((event: any) => event.event_type)).toContain('loop_stopped');
+    expect((db.prepare('SELECT outcome FROM experience_embeddings WHERE run_id = ?').get(run.id) as any).outcome).toBe('failure');
   });
 
   it('exposes and starts the closed-loop catalog beyond doc drift', { timeout: 20_000 }, async () => {
@@ -1075,6 +1076,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(verdict.run.next_actions).toEqual(expect.arrayContaining([
       'Human review required before leasing more workers',
     ]));
+    expect((db.prepare('SELECT outcome FROM experience_embeddings WHERE run_id = ?').get(run.id) as any).outcome).toBe('failure');
 
     const retryResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/retry`, {
       method: 'POST',

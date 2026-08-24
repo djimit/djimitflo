@@ -588,7 +588,7 @@ export class SwarmIntelligenceService {
     return result;
   }
 
-  // G1: Evidence-based auto-promotion — a candidate skill is promoted to validated only
+  // G1: Evidence-based auto-promotion — a candidate capability is promoted to validated only
   // after >=minSuccesses completed leases with evidence AND success_rate >= minSuccessRate
   // AND eval_score >= threshold. This is "skills promoted from evidence, not hand-authored."
   autoPromoteFromEvidence(capabilityId: string, opts: { minSuccesses?: number; minSuccessRate?: number } = {}): {
@@ -601,6 +601,9 @@ export class SwarmIntelligenceService {
     const cap = this.getCapability(capabilityId);
     const c = this.measureCompetence(capabilityId);
     const competence = { n_runs: c.n_runs, n_completed: c.n_completed, success_rate: c.success_rate, p50_cost: c.p50_cost, p95_cost: c.p95_cost };
+    if (cap.kind === 'skill' || cap.kind === 'openai_skill') {
+      return { promoted: false, competence, reason: 'skill promotion requires an explicit baseline and exact OpenMythos evidence' };
+    }
     if (cap.status !== 'candidate') {
       return { promoted: false, competence, reason: `capability not candidate (status=${cap.status})` };
     }

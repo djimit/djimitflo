@@ -147,6 +147,7 @@ describe('LoopRecoveryService', () => {
     seedRun('run-1', 'running');
     const result = service.recoverInterruptedRuns();
     expect(result.interruptedRuns).toBe(1);
+    expect((db.prepare("SELECT outcome FROM experience_embeddings WHERE run_id = 'run-1'").get() as { outcome: string }).outcome).toBe('failure');
   });
 
   it('keeps lease-free planning runs available for operator review', () => {

@@ -89,7 +89,7 @@ export class ExperienceRetrievalService {
     const runtime = primaryMaker?.runtime || 'unknown';
     const capabilityId = primaryMaker?.capability_id || '';
     const retries = Math.max(0, makers.length - 1);
-    const terminalFailure = run.status === 'failed' || run.status === 'cancelled' || run.status === 'escalated';
+    const terminalFailure = ['failed', 'cancelled', 'escalated', 'interrupted'].includes(run.status);
     if (!options.certified && !terminalFailure) return;
     const outcome: 'success' | 'failure' = options.certified ? 'success' : 'failure';
 
