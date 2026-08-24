@@ -198,6 +198,7 @@ describe('nested-spawn control loop (L1 real, L3 token-or-user auth)', () => {
     // the server's NestedSpawnService validator agree. Value has spaces so it
     // does not trip the repo's secret-scan pre-commit hook on commit.
     process.env.DJIMITFLO_SPAWN_TOKEN_SECRET = 'spaced test secret value here';
+    process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS = '5000';
     delete process.env.SPAWN_DEPTH_BUDGET;
     delete process.env.SPAWN_TREE_TOKEN_BUDGET;
     delete process.env.SPAWN_TREE_WALL_BUDGET_MS;
