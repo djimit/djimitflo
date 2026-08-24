@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
@@ -163,6 +166,59 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
+    const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
+    try {
+      const skillDir = path.join(skillsDir, 'running-tests');
+      fs.mkdirSync(skillDir);
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+        '---', 'name: running-tests', 'description: Run bounded tests.', '---',
+        'Plan the scoped test, execute it, verify output, and stop.', '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(skillDir, 'skill.manifest.yaml'), [
+        'skill_id: .opencode.skills.running-tests',
+        'version: 0.1.0',
+        'owner: djimit',
+        'allowed_tools: [Read, Grep, Glob, Bash]',
+        'disallowed_tools: [ProductionWrite]',
+        '',
+      ].join('\n'));
+
+      const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
+      attributedEngine.registerExecutor({
+        kind: 'mock',
+        canExecute: () => true,
+        start: async (task: Task) => ({
+          id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+          events: (async function* () {})(),
+          result: Promise.resolve({ status: 'completed', message: 'ok', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+          cancel: async () => {},
+        }),
+      } as any);
+      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
+      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
+      db.prepare(`
+        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
+        VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
+      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+
+      await attributedEngine.executeTask('task-skill', 'mock');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const row = db.prepare(`
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used
+        FROM skill_outcomes WHERE task_id = 'task-skill'
+      `).get() as any;
+      expect(row).toMatchObject({
+        skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
+        agent_id: 'agent-skill', success: 1, tokens_used: 100,
+      });
+      expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      fs.rmSync(skillsDir, { recursive: true, force: true });
+    }
   });
 
   it('throws when task not found', async () => {

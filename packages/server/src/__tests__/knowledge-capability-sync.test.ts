@@ -40,6 +40,10 @@ function writeOkf() {
     'risk_ceiling: medium',
     'eval_threshold: 0.7',
     'removal_strategy: disable if eval falls below threshold',
+    'agent_skill_id: .opencode.skills.running-tests',
+    'agent_skill_version: 0.1.0',
+    'agent_skill_content_hash: abc123',
+    'agent_skill_manifest_hash: def456',
     '---',
     '# Complete Skill',
   ].join('\n'), 'utf8');
@@ -102,6 +106,12 @@ describe('OKF capability sync', () => {
       const rows = database.prepare('SELECT id, status, metadata FROM swarm_capabilities ORDER BY id').all() as any[];
       expect(rows).toHaveLength(3);
       expect(rows.find((row) => row.id === 'skill:complete')).toMatchObject({ status: 'validated' });
+      expect(JSON.parse(rows.find((row) => row.id === 'skill:complete').metadata)).toMatchObject({
+        agent_skill_id: '.opencode.skills.running-tests',
+        agent_skill_version: '0.1.0',
+        agent_skill_content_hash: 'abc123',
+        agent_skill_manifest_hash: 'def456',
+      });
       const incomplete = rows.find((row) => row.id === 'skill:incomplete');
       expect(incomplete).toMatchObject({ status: 'candidate' });
       expect(JSON.parse(incomplete.metadata).blocked_reasons).toContain('missing_allowed_actions');
