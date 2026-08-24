@@ -127,6 +127,7 @@ export class LoopRecoveryService {
 
     if (resumeAttempts > maxResumeAttempts) {
       this.mutations.updateStatus(runId, 'failed', { resume_attempts: resumeAttempts });
+      void this.experience.indexRun(runId);
       return { resumed: false, boundedFail: true, resumeAttempt: resumeAttempts, requeuedFindings: [], skippedFindings: [] };
     }
 

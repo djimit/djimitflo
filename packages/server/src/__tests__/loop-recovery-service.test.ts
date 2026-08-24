@@ -168,6 +168,7 @@ describe('LoopRecoveryService', () => {
     const result = service.resumeInterruptedRun('run-1', 0); // max 0 attempts
     expect(result.boundedFail).toBe(true);
     expect(result.resumed).toBe(false);
+    expect((db.prepare("SELECT outcome FROM experience_embeddings WHERE run_id = 'run-1'").get() as { outcome: string }).outcome).toBe('failure');
   });
 
   it('throws on non-interrupted run', () => {
