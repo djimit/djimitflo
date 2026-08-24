@@ -24,6 +24,7 @@ import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRecoveryService } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
+import { ExperienceRetrievalService } from './experience-retrieval-service';
 import type {
   LoopName,
   WorkerRole,
@@ -293,6 +294,7 @@ export class LoopService {
   private workerLeases: WorkerLeaseRepo;
   private recovery: LoopRecoveryService;
   private persistence: LoopPersistenceService;
+  private experience: ExperienceRetrievalService;
   public workerExecutor: LoopWorkerExecutorService;
   public runtimeCommand: RuntimeCommandService;
   public lifecycle: LoopLifecycleService;
@@ -328,6 +330,7 @@ export class LoopService {
     this.workerLeases = new WorkerLeaseRepo(db);
     this.recovery = new LoopRecoveryService(db);
     this.persistence = new LoopPersistenceService(evidenceRoot);
+    this.experience = new ExperienceRetrievalService(db);
     this.workerExecutor = new LoopWorkerExecutorService(db, this);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
@@ -787,6 +790,16 @@ export class LoopService {
           metadata: { completed_leases: completedCount, failed_leases: failedCount },
         });
       }
+
+      void this.experience.indexRun(id, {
+        certified: true,
+        lessons: completedLeases
+          .filter((lease) => lease.role === 'checker' || lease.role === 'security_checker')
+          .flatMap((lease) => {
+            const notes = lease.metadata?.notes;
+            return typeof notes === 'string' && notes.trim() ? [notes.trim()] : [];
+          }),
+      });
 
       return { run: completedRun, gates: verified.gates };
     }
