@@ -99,6 +99,20 @@ describe('ProactiveMemoryService', () => {
     expect(results.length).toBeGreaterThan(0);
   });
 
+  it('falls back to content search when the embedding provider is unavailable', async () => {
+    const entry = await service.storeMemory({ content: 'Clean stale loop worktrees before retry', type: 'observation' });
+    for (let i = 0; i < 25; i++) service.accessMemory(entry.id);
+    await service.runMaintenanceCycle();
+
+    const unavailable = new ProactiveMemoryService(db, {
+      id: 'unavailable',
+      embed: async () => { throw new Error('provider unavailable'); },
+    });
+    expect(await unavailable.searchMemories('stale')).toEqual([
+      expect.objectContaining({ id: entry.id }),
+    ]);
+  });
+
   it('provides memory statistics', async () => {
     await service.storeMemory({ content: 'Test', type: 'observation' });
     const stats = service.getStats();

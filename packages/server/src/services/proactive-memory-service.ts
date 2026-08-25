@@ -229,17 +229,27 @@ export class ProactiveMemoryService {
    * Search active memories by semantic similarity.
    */
   async searchMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
-    const queryEmbedding = await this.embeddings.embed(query);
     const rows = this.db.prepare("SELECT * FROM proactive_memories WHERE status = 'active'").all() as any[];
-    const scored = await Promise.all(rows.map(async (row) => ({
-      row,
-      score: cosineSimilarity(queryEmbedding, await this.embeddingForRow(row)),
-    })));
-    return scored
-      .filter(({ score }) => score > 0)
-      .sort((a, b) => (b.score + b.row.relevance_score * 0.1) - (a.score + a.row.relevance_score * 0.1))
-      .slice(0, limit)
-      .map(({ row }) => this.parseMemory(row));
+    if (rows.length === 0) return [];
+    try {
+      const queryEmbedding = await this.embeddings.embed(query);
+      const scored = await Promise.all(rows.map(async (row) => ({
+        row,
+        score: cosineSimilarity(queryEmbedding, await this.embeddingForRow(row)),
+      })));
+      return scored
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => (b.score + b.row.relevance_score * 0.1) - (a.score + a.row.relevance_score * 0.1))
+        .slice(0, limit)
+        .map(({ row }) => this.parseMemory(row));
+    } catch {
+      const terms = query.toLowerCase().split(/\s+/).filter((term) => term.length > 2);
+      return rows
+        .filter((row) => terms.some((term) => row.content.toLowerCase().includes(term)))
+        .sort((a, b) => b.relevance_score - a.relevance_score)
+        .slice(0, limit)
+        .map((row) => this.parseMemory(row));
+    }
   }
 
   /**
