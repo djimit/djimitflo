@@ -5,6 +5,7 @@ import { CouncilRegistry, type CouncilSelection, type CouncilModelRecord } from 
 import { TaskRouter, type TaskClassification } from './task-router';
 import { StructuredEvaluator, type EvaluationScores, type AggregatedScore } from './structured-evaluator';
 import { SynthesisEngine } from './synthesis-engine';
+import { MultiModelIntelligence } from './multi-model-intelligence';
 // reasoning-loop available for future per-phase reasoning depth
 
 export type CouncilMode = 'fast' | 'review' | 'council';
@@ -54,6 +55,8 @@ export interface CouncilCreateInput {
   realtime?: boolean;
   max_cost?: number;
   custom_models?: string[];
+  independent_judge?: boolean;
+  judge_model?: string;
 }
 
 export interface CouncilResult {
@@ -74,11 +77,13 @@ export class CouncilOrchestrator {
   private router: TaskRouter;
   private evaluator: StructuredEvaluator;
   private synthesizer: SynthesisEngine;
+  private modelRouter: MultiModelIntelligence;
   constructor(private db: Database) {
     this.registry = new CouncilRegistry(db);
     this.router = new TaskRouter();
     this.evaluator = new StructuredEvaluator(db);
     this.synthesizer = new SynthesisEngine(db);
+    this.modelRouter = new MultiModelIntelligence(db);
   }
 
   async createSession(input: CouncilCreateInput): Promise<CouncilSession> {
@@ -127,6 +132,8 @@ export class CouncilOrchestrator {
         reasoning_classification: classification.reasoning,
         max_cost: input.max_cost,
         custom_models: input.custom_models,
+        independent_judge: input.independent_judge === true,
+        judge_model: input.judge_model,
       }),
       now,
       now,
@@ -200,13 +207,15 @@ export class CouncilOrchestrator {
     }
 
     try {
-      const selection = this.registry.selectModelsForCouncil({
+      let selection = this.registry.selectModelsForCouncil({
         mode: session.mode as CouncilMode,
         risk_class: session.risk_class as any,
         privacy_required: (session.metadata.classification as TaskClassification | undefined)?.privacy_required,
         max_cost: session.metadata.max_cost as number | undefined,
         custom_models: session.metadata.custom_models as string[] | undefined,
       });
+      selection = this.routeCouncilSelection(selection);
+      const judge = this.selectIndependentJudge(session, selection);
 
       swarmEventBus.emit('council:diverge:started', {
         session_id: sessionId,
@@ -218,7 +227,7 @@ export class CouncilOrchestrator {
 
       swarmEventBus.emit('council:review:started', { session_id: sessionId });
 
-      await this.executeReviewPhase(sessionId, session.task_description, selection, divergeOutputs);
+      await this.executeReviewPhase(sessionId, session.task_description, selection, divergeOutputs, judge);
       this.updateSessionPhase(sessionId, 'synthesizing');
 
       swarmEventBus.emit('council:synthesize:started', { session_id: sessionId });
@@ -333,7 +342,20 @@ export class CouncilOrchestrator {
       const id = randomUUID();
       const now = new Date().toISOString();
 
-      const result = await this.callModel(model, prompt);
+      let result: { content: string; tokens: number; latencyMs: number };
+      try {
+        result = await this.callModel(model, prompt);
+        this.modelRouter.recordOutcome({
+          modelId: `council:${model.id}`,
+          taskType: 'council-diverge',
+          success: true,
+          score: model.avg_governance_score,
+          latencyMs: result.latencyMs,
+        });
+      } catch (error) {
+        this.modelRouter.recordOutcome({ modelId: `council:${model.id}`, taskType: 'council-diverge', success: false });
+        throw error;
+      }
 
       this.db.prepare(`
         INSERT INTO council_outputs (id, session_id, model, phase, anonymous_id, content, token_count, latency_ms, created_at)
@@ -370,9 +392,11 @@ export class CouncilOrchestrator {
     taskDescription: string,
     selection: CouncilSelection,
     divergeOutputs: CouncilOutputRecord[],
+    judge?: CouncilModelRecord,
   ): Promise<void> {
-    await Promise.all(selection.models.map(async (evaluatorModel) => {
-      const candidates = divergeOutputs.filter(o => o.model !== evaluatorModel.model_name);
+    const evaluators = judge ? [judge] : selection.models;
+    await Promise.all(evaluators.map(async (evaluatorModel) => {
+      const candidates = judge ? divergeOutputs : divergeOutputs.filter(o => o.model !== evaluatorModel.model_name);
       if (candidates.length === 0) return;
 
       const prompt = [
@@ -412,8 +436,38 @@ export class CouncilOrchestrator {
 
     swarmEventBus.emit('council:review:completed', {
       session_id: sessionId,
-      evaluator_count: selection.models.length,
+      evaluator_count: evaluators.length,
     });
+  }
+
+  private routeCouncilSelection(selection: CouncilSelection): CouncilSelection {
+    for (const model of selection.models) {
+      const modelId = `council:${model.id}`;
+      if (!this.modelRouter.hasModel(modelId)) {
+        this.modelRouter.registerModel({
+          modelId,
+          modelName: model.model_name,
+          provider: model.provider,
+          costPerMtok: model.cost_per_1m_tokens,
+          capabilities: [{ taskType: 'council-diverge', successRate: 0.5 }],
+        });
+      }
+    }
+    const routed = this.modelRouter.routeWithCascade({ taskType: 'council-diverge' });
+    const preferred = selection.models.find(model => `council:${model.id}` === routed.selectedModel);
+    return preferred
+      ? { ...selection, models: [preferred, ...selection.models.filter(model => model.id !== preferred.id)] }
+      : selection;
+  }
+
+  private selectIndependentJudge(session: CouncilSession, selection: CouncilSelection): CouncilModelRecord | undefined {
+    if (session.metadata.independent_judge !== true) return undefined;
+    const candidates = this.registry.listModels('active')
+      .filter(model => !selection.models.some(selected => selected.id === model.id))
+      .filter(model => !session.metadata.judge_model || model.model_name === session.metadata.judge_model)
+      .sort((a, b) => b.independence_score - a.independence_score || b.avg_governance_score - a.avg_governance_score);
+    if (!candidates[0]) throw new Error('COUNCIL_NO_INDEPENDENT_JUDGE');
+    return candidates[0];
   }
 
   private parseReviewJson(content: string, candidateIds: string[]): {

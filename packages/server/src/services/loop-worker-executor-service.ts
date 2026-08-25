@@ -16,6 +16,7 @@ import type {
   RuntimeContract,
   RuntimeUsage,
 } from './loop-types';
+import { OpenMythosEvalService } from './openmythos-eval-service';
 
 export interface ExecuteMakerInput {
   lease_id?: string;
@@ -130,7 +131,8 @@ export class LoopWorkerExecutorService {
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
-    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
+    const activeTuning = this.loopService.metaOrchestration?.getActiveLoopTuning(run.loop_name);
+    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || activeTuning?.recommendedGateThresholds.diffMaxLines || 200, 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
@@ -145,6 +147,28 @@ export class LoopWorkerExecutorService {
       { name: 'runtime_warning_gate', status: this.loopService.runtimeWarningsBlockCompletion(runtimeWarnings, run) ? 'fail' : 'pass', evidence: this.loopService.runtimeWarningsEvidence(runtimeWarnings, run) },
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
+
+    if (makerLease.runtime !== 'mock' && process.env.OPENMYTHOS_LOOP_GATE_ENABLED !== 'false' && process.env.NODE_ENV !== 'test'
+      && gates.every(gate => gate.status === 'pass')) {
+      const threshold = Math.max(1, Math.min(Number(process.env.OPENMYTHOS_LOOP_MIN_SCORE || 3.5), 5));
+      try {
+        const evaluation = await new OpenMythosEvalService(this.db).evaluateArtifact({
+          task: `${run.loop_name}: ${prompt}`,
+          artifact: `${result.stdout || ''}\n\n${diff}`,
+        });
+        gates.push({
+          name: 'openmythos_quality',
+          status: evaluation.score >= threshold ? 'pass' : 'fail',
+          evidence: `score=${evaluation.score.toFixed(2)}, threshold=${threshold.toFixed(2)}: ${evaluation.rationale}`,
+        });
+      } catch (error) {
+        gates.push({
+          name: 'openmythos_quality',
+          status: 'fail',
+          evidence: `evaluation unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
 
     const failed = gates.some((gate) => gate.status === 'fail');
     const completionStatus = failed ? 'failed' : 'completed';
@@ -181,6 +205,17 @@ export class LoopWorkerExecutorService {
       JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
       new Date().toISOString(), run.id,
     );
+
+    if (!wasCancelled && gates.some(gate => gate.name === 'openmythos_quality' && gate.status === 'fail')) {
+      try {
+        this.loopService.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
+      } catch (error) {
+        this.loopService.recordLoopEvent(run.id, 'openmythos_retry_unavailable', 'warning', 'OpenMythos rejected maker output but no automatic retry could be prepared.', {
+          maker_lease_id: makerLease.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
   }

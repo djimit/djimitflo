@@ -3,6 +3,7 @@ import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
+import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -163,6 +164,21 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('uses adaptive model routing when no executor is explicitly selected', async () => {
+    const task = createTask({ execution_mode: 'local' });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+    );
+    const router = new MultiModelIntelligence(db);
+    router.registerModel({ modelId: 'mock-cheap', modelName: 'Mock', provider: 'mock', costPerMtok: 0, capabilities: [{ taskType: 'local' }] });
+    router.recordOutcome({ modelId: 'mock-cheap', taskType: 'local', success: true });
+    router.recordOutcome({ modelId: 'mock-cheap', taskType: 'local', success: true });
+
+    expect((await engine.executeTask(task.id)).status).toBe('started');
+    const event = db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND message LIKE 'Execution attempt%'").get(task.id) as any;
+    expect(JSON.parse(event.metadata).executorKind).toBe('mock');
   });
 
   it('throws when task not found', async () => {

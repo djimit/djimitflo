@@ -29,6 +29,7 @@ function mapCouncilError(error: unknown): never {
   if (message === 'COUNCIL_MODEL_NOT_FOUND') throw createError(404, 'Council model not found', 'COUNCIL_MODEL_NOT_FOUND');
   if (message === 'COUNCIL_NO_ACTIVE_MODELS') throw createError(503, 'No active models available for council', 'COUNCIL_NO_ACTIVE_MODELS');
   if (message === 'COUNCIL_NO_ELIGIBLE_MODELS') throw createError(503, 'No council models satisfy the requested constraints', 'COUNCIL_NO_ELIGIBLE_MODELS');
+  if (message === 'COUNCIL_NO_INDEPENDENT_JUDGE') throw createError(409, 'No independent judge model is available', 'COUNCIL_NO_INDEPENDENT_JUDGE');
   if (message === 'COUNCIL_MODEL_PROVIDER_REQUIRED') throw createError(400, 'Model provider is required', 'COUNCIL_MODEL_PROVIDER_REQUIRED');
   if (message === 'COUNCIL_MODEL_NAME_REQUIRED') throw createError(400, 'Model name is required', 'COUNCIL_MODEL_NAME_REQUIRED');
   throw error;
@@ -64,6 +65,8 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
         realtime: req.body.realtime,
         max_cost: req.body.max_cost,
         custom_models: req.body.custom_models,
+        independent_judge: req.body.independent_judge,
+        judge_model: req.body.judge_model,
       };
 
       if (!input.task_description?.trim()) {
@@ -80,6 +83,12 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
       }
       if (input.custom_models !== undefined && (!Array.isArray(input.custom_models) || input.custom_models.some(model => typeof model !== 'string' || !model.trim()))) {
         throw createError(400, 'custom_models must contain model names', 'COUNCIL_CUSTOM_MODELS_INVALID');
+      }
+      if (input.independent_judge !== undefined && typeof input.independent_judge !== 'boolean') {
+        throw createError(400, 'independent_judge must be a boolean', 'COUNCIL_INDEPENDENT_JUDGE_INVALID');
+      }
+      if (input.judge_model !== undefined && (typeof input.judge_model !== 'string' || !input.judge_model.trim())) {
+        throw createError(400, 'judge_model must be a model name', 'COUNCIL_JUDGE_MODEL_INVALID');
       }
 
       const session = await orchestrator.createSession(input);

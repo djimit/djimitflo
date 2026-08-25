@@ -13,6 +13,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { ComplianceAuditService } from './compliance-audit-service';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ interface FailurePrediction {
   suggestedMitigations: string[];
 }
 
-interface LoopTuning {
+export interface LoopTuning {
   goalType: string;
   recommendedConcurrency: number;
   recommendedBudget: { maxTokens: number; maxRuntimeMs: number };
@@ -68,9 +69,11 @@ export class MetaOrchestrationService {
   private failuresPredicted = 0;
   private failuresPrevented = 0;
   private costSavingsDollars = 0;
+  private readonly audit: ComplianceAuditService;
 
   constructor(private db: Database) {
     this.ensureTables();
+    this.audit = new ComplianceAuditService(db);
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────
@@ -217,8 +220,6 @@ export class MetaOrchestrationService {
     if (successRate > 0.85) diffMaxLines = 300; // Can afford larger diffs
     else if (successRate < 0.5) diffMaxLines = 100; // Be stricter
 
-    this.autoTuningsApplied++;
-
     return {
       goalType,
       recommendedConcurrency: concurrency,
@@ -356,7 +357,7 @@ export class MetaOrchestrationService {
 
   // ─── Auto-Tuning Loop ─────────────────────────────────────────────
 
-  private async runAutoTuning(): Promise<void> {
+  async runAutoTuning(): Promise<{ evaluated: number; applied: number }> {
 
     // Get all goal types with enough data
     const goalTypes = this.db.prepare(`
@@ -366,23 +367,67 @@ export class MetaOrchestrationService {
       HAVING cnt >= 5
     `).all() as any[];
 
+    let applied = 0;
     for (const { goal_type } of goalTypes) {
-      const tuning = this.getLoopTuning(goal_type);
+      const tuning = this.boundTuning(this.getLoopTuning(goal_type));
+      const shouldApply = tuning.confidence >= this.minimumTuningConfidence();
+      const previous = this.getActiveLoopTuning(goal_type);
+      const now = new Date().toISOString();
 
-      // Store tuning recommendation
-      this.db.prepare(`
-        INSERT INTO meta_tuning_log
-          (id, goal_type, tuning_type, recommended_value, confidence, applied, created_at)
-        VALUES (?, ?, ?, ?, ?, 0, ?)
-      `).run(
-        `tune-${goal_type}-${Date.now()}`,
-        goal_type,
-        'loop_parameters',
-        JSON.stringify(tuning),
-        tuning.confidence,
-        new Date().toISOString(),
-      );
+      this.db.transaction(() => {
+        this.db.prepare(`
+          INSERT INTO meta_tuning_log
+            (id, goal_type, tuning_type, recommended_value, previous_value, confidence, applied, applied_at, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          `tune-${goal_type}-${Date.now()}`, goal_type, 'loop_parameters', JSON.stringify(tuning),
+          previous ? JSON.stringify(previous) : null, tuning.confidence, shouldApply ? 1 : 0,
+          shouldApply ? now : null, now,
+        );
+        if (shouldApply) {
+          this.db.prepare(`
+            INSERT INTO meta_active_loop_parameters (goal_type, tuning_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(goal_type) DO UPDATE SET tuning_json = excluded.tuning_json, updated_at = excluded.updated_at
+          `).run(goal_type, JSON.stringify(tuning), now);
+          this.audit.appendEntry({
+            actor: 'meta_orchestration', action: 'loop_tuning_applied', resource: goal_type, outcome: 'success',
+            evidence: { previous, next: tuning, confidence: tuning.confidence, sample_threshold: 5 },
+          });
+        }
+      })();
+
+      if (shouldApply) {
+        applied++;
+        this.autoTuningsApplied++;
+      }
     }
+    return { evaluated: goalTypes.length, applied };
+  }
+
+  getActiveLoopTuning(goalType: string): LoopTuning | null {
+    const row = this.db.prepare('SELECT tuning_json FROM meta_active_loop_parameters WHERE goal_type = ?').get(goalType) as { tuning_json?: string } | undefined;
+    return row?.tuning_json ? JSON.parse(row.tuning_json) as LoopTuning : null;
+  }
+
+  private minimumTuningConfidence(): number {
+    const value = Number(process.env.META_TUNING_MIN_CONFIDENCE ?? 0.75);
+    return Number.isFinite(value) && value >= 0.5 && value <= 1 ? value : 0.75;
+  }
+
+  private boundTuning(tuning: LoopTuning): LoopTuning {
+    return {
+      ...tuning,
+      recommendedConcurrency: Math.max(1, Math.min(20, Math.floor(tuning.recommendedConcurrency))),
+      recommendedBudget: {
+        maxTokens: Math.max(1_000, Math.min(2_000_000, Math.floor(tuning.recommendedBudget.maxTokens))),
+        maxRuntimeMs: Math.max(60_000, Math.min(86_400_000, Math.floor(tuning.recommendedBudget.maxRuntimeMs))),
+      },
+      recommendedGateThresholds: {
+        diffMaxLines: Math.max(25, Math.min(2_000, Math.floor(tuning.recommendedGateThresholds.diffMaxLines))),
+        minSuccessRate: Math.max(0.5, Math.min(0.99, tuning.recommendedGateThresholds.minSuccessRate)),
+      },
+    };
   }
 
   // ─── Statistics ────────────────────────────────────────────────────
@@ -452,13 +497,24 @@ export class MetaOrchestrationService {
         goal_type TEXT NOT NULL,
         tuning_type TEXT NOT NULL,
         recommended_value TEXT NOT NULL DEFAULT '{}',
+        previous_value TEXT,
         confidence REAL NOT NULL DEFAULT 0,
         applied INTEGER NOT NULL DEFAULT 0,
+        applied_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS meta_active_loop_parameters (
+        goal_type TEXT PRIMARY KEY,
+        tuning_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
       CREATE INDEX IF NOT EXISTS idx_meta_tuning_goal_type ON meta_tuning_log(goal_type);
       CREATE INDEX IF NOT EXISTS idx_meta_tuning_created ON meta_tuning_log(created_at);
     `);
+    const columns = this.db.prepare('PRAGMA table_info(meta_tuning_log)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'previous_value')) this.db.exec('ALTER TABLE meta_tuning_log ADD COLUMN previous_value TEXT');
+    if (!columns.some((column) => column.name === 'applied_at')) this.db.exec('ALTER TABLE meta_tuning_log ADD COLUMN applied_at TEXT');
   }
 }

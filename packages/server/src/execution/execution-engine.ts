@@ -47,6 +47,7 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
+import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -79,6 +80,7 @@ export class ExecutionEngine {
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
   private toolBroker: ToolBroker;
+  private modelRouter: MultiModelIntelligence;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -109,6 +111,7 @@ export class ExecutionEngine {
     this.executionModePolicy = new ExecutionModePolicyService();
     this.skillEvolution = new SkillEvolutionEngine(db);
     this.skillLoader = new SkillLoaderService(db, skillsDir);
+    this.modelRouter = new MultiModelIntelligence(db);
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
@@ -147,7 +150,7 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
+  async executeTask(taskId: string, requestedExecutorKind?: ExecutorKind): Promise<ExecuteTaskResult> {
     // Check if task is already running
     if (this.activeSessions.has(taskId)) {
       throw new Error('Task is already running');
@@ -165,6 +168,18 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+    const route = requestedExecutorKind ? null : this.modelRouter.routeWithCascade({ taskType: parsedTask.execution_mode || 'coding' });
+    const executorKind = requestedExecutorKind || this.modelRouter.resolveExecutorForModel(route!.selectedModel);
+    if (route) {
+      parsedTask.metadata = {
+        ...parsedTask.metadata,
+        routed_model: route.selectedModel,
+        routing_decision_id: route.id,
+        routing_max_escalations: route.maxEscalations,
+      };
+      this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = datetime(\'now\') WHERE id = ?')
+        .run(JSON.stringify(parsedTask.metadata), taskId);
+    }
 
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
@@ -334,7 +349,10 @@ export class ExecutionEngine {
     try {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
-      const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
+      const maxRetries = Math.max(
+        this.executionModePolicy.getConfig(mode).maxRetries,
+        Number(parsedTask.metadata?.routing_max_escalations || 0),
+      );
       await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
       return { status: 'started' };
     } catch (error) {
@@ -379,7 +397,11 @@ export class ExecutionEngine {
       : executor;
 
     try {
-      const session = await activeExecutor.start(task, workingDirectory ? { workingDirectory } : undefined);
+      const options = {
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(typeof task.metadata?.routed_model === 'string' ? { model: task.metadata.routed_model } : {}),
+      };
+      const session = await activeExecutor.start(task, options);
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
@@ -411,7 +433,7 @@ export class ExecutionEngine {
     } catch (error) {
       this.circuitBreaker.recordFailure(executorKind);
       const failure = this.normalizeFailure(error, false, executorKind);
-      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
+      const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
       if (!fallback) throw new ExecutionFailureError(failure);
       this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, failure);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
@@ -428,6 +450,7 @@ export class ExecutionEngine {
     workingDirectory?: string,
   ): Promise<void> {
     if (result.status === 'completed') {
+      this.recordRoutedModelOutcome(task, true, result);
       this.circuitBreaker.recordSuccess(session.executorKind);
       if (this.trajectoryStore) {
         this.trajectoryStore.recordStep({
@@ -468,7 +491,7 @@ export class ExecutionEngine {
   ): Promise<void> {
     this.activeSessions.delete(task.id);
     this.circuitBreaker.recordFailure(session.executorKind);
-    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
+    const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
     if (fallback) {
       this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, failure);
       try {
@@ -493,6 +516,37 @@ export class ExecutionEngine {
       return null;
     }
     return this.fallbackChain.getNextAvailable(current, mode, this.circuitBreaker);
+  }
+
+  private nextRoutedModel(task: Task, failure: ExecutionFailure): ExecutorKind | null {
+    const decisionId = task.metadata?.routing_decision_id;
+    const modelId = task.metadata?.routed_model;
+    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return null;
+    if (!failure.retryable || failure.sideEffectsPossible) {
+      this.modelRouter.recordOutcome({
+        modelId,
+        taskType: task.execution_mode || 'coding',
+        success: false,
+      });
+      return null;
+    }
+    const next = this.modelRouter.recordCascadeOutcome({ decisionId, modelId, success: false });
+    if (!next) return null;
+    task.metadata = { ...task.metadata, routed_model: next.selectedModel, routing_decision_id: next.id };
+    return this.modelRouter.resolveExecutorForModel(next.selectedModel);
+  }
+
+  private recordRoutedModelOutcome(task: Task, success: boolean, result: ExecutionResult): void {
+    const decisionId = task.metadata?.routing_decision_id;
+    const modelId = task.metadata?.routed_model;
+    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return;
+    this.modelRouter.recordCascadeOutcome({
+      decisionId,
+      modelId,
+      success,
+      latencyMs: result.metrics?.executionTimeMs,
+      costDollars: result.metrics?.costDollars,
+    });
   }
 
   private normalizeFailure(

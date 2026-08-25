@@ -15,6 +15,8 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { CommandRiskClassifier } from './command-risk-classifier';
+import { ContextSanitizer } from './context-sanitizer';
 
 interface AttackVector {
   id: string;
@@ -149,6 +151,9 @@ const ATTACK_VECTORS: AttackVector[] = [
 ];
 
 export class AdversarialRedTeamService {
+  private commandClassifier = new CommandRiskClassifier();
+  private contextSanitizer = new ContextSanitizer();
+
   constructor(private db: Database) {
     this.ensureTables();
   }
@@ -204,7 +209,6 @@ export class AdversarialRedTeamService {
    * Execute a single attack vector and check if it was blocked.
    */
   private async executeAttack(vector: AttackVector): Promise<AttackResult> {
-    // Check if the attack would be blocked by existing defenses
     const blocked = this.checkDefense(vector);
 
     return {
@@ -230,79 +234,26 @@ export class AdversarialRedTeamService {
     severity: 'critical' | 'high';
     recommendation: string;
   } {
-    switch (vector.category) {
-      case 'injection':
-        return {
-          blocked: true,
-          method: 'input_sanitization',
-          response: 'Input flagged as potential injection attempt',
-          severity: 'high',
-          recommendation: 'Strengthen prompt injection detection with LLM-based classifier',
-        };
-
-      case 'scope_escape':
-        return {
-          blocked: true,
-          method: 'runtime_governance',
-          response: 'Tool usage blocked by runtime governance service',
-          severity: 'critical',
-          recommendation: 'Add tool-scope enforcement at executor level',
-        };
-
-      case 'privilege':
-        return {
-          blocked: true,
-          method: 'permission_boundary',
-          response: 'Permission escalation blocked by role-based access control',
-          severity: 'critical',
-          recommendation: 'Implement multi-factor authorization for privilege changes',
-        };
-
-      case 'exfiltration':
-        return {
-          blocked: true,
-          method: 'secret_detection',
-          response: 'Secret access detected and blocked by error-handler middleware',
-          severity: 'critical',
-          recommendation: 'Add DLP (Data Loss Prevention) layer for outbound content',
-        };
-
-      case 'ransomware':
-        return {
-          blocked: true,
-          method: 'ransomware_pattern_detection',
-          response: 'Ransomware pattern detected and blocked by command risk classifier',
-          severity: 'critical',
-          recommendation: 'Enable ransomware module in enforce mode',
-        };
-
-      case 'resource':
-        return {
-          blocked: true,
-          method: 'wall_clock_budget',
-          response: 'Execution terminated by wall-clock budget enforcement',
-          severity: 'high',
-          recommendation: 'Add CPU/memory quotas per agent',
-        };
-
-      case 'bypass':
-        return {
-          blocked: true,
-          method: 'mandatory_governance_gate',
-          response: 'Deployment blocked — governance certification required',
-          severity: 'critical',
-          recommendation: 'Make governance gate cryptographically verifiable',
-        };
-
-      default:
-        return {
-          blocked: false,
-          method: 'none',
-          response: 'No defense detected for this attack vector',
-          severity: 'high',
-          recommendation: 'Implement defense for this attack category',
-        };
+    if (vector.category === 'injection') {
+      const result = this.contextSanitizer.sanitize(vector.payload);
+      return {
+        blocked: result.was_sanitized,
+        method: result.detected_patterns.join(',') || 'context_sanitizer:none',
+        response: result.sanitized,
+        severity: 'high',
+        recommendation: result.was_sanitized ? 'Regression defense passed' : 'Add this payload to ContextSanitizer coverage',
+      };
     }
+
+    const assessment = this.commandClassifier.classify(vector.payload, { workspacePath: process.cwd() });
+    const blocked = assessment.recommended_decision !== 'allow';
+    return {
+      blocked,
+      method: assessment.matched_rules.join(',') || 'command_classifier:none',
+      response: assessment.explanation,
+      severity: assessment.risk_level === 'critical' ? 'critical' : 'high',
+      recommendation: blocked ? 'Regression defense passed' : `Add classifier coverage for ${vector.id}`,
+    };
   }
 
   /**

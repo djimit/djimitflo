@@ -257,6 +257,26 @@ describe('MetaOrchestrationService', () => {
     expect(tuning.confidence).toBe(0.3);
   });
 
+  it('applies confident tuning to the active loop parameters with audit evidence', async () => {
+    const insert = db.prepare(`
+      INSERT INTO cognitive_episodes
+        (id, loop_run_id, goal_type, strategy, status, cost_dollars, duration_ms, recorded_at)
+      VALUES (?, ?, 'doc-drift', 'maker-checker-v1', 'success', 2, 300000, ?)
+    `);
+    for (let i = 0; i < 20; i++) insert.run(`episode-${i}`, `loop-${i}`, new Date(Date.now() + i).toISOString());
+
+    expect(await meta.runAutoTuning()).toEqual({ evaluated: 1, applied: 1 });
+    expect(meta.getActiveLoopTuning('doc-drift')?.recommendedConcurrency).toBe(3);
+
+    const loops = new LoopService(db);
+    loops.setMetaOrchestration(meta);
+    expect(loops.getMakerLeaseBudget({ goal_id: null, loop_name: 'doc-drift' } as any, {})).toEqual({
+      maxMakerWorkers: 3,
+      source: 'meta',
+    });
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action = 'loop_tuning_applied'").get() as any).count).toBe(1);
+  });
+
   it('records outcome for learning', () => {
     expect(() => {
       meta.recordOutcome({
@@ -408,6 +428,22 @@ describe('CognitiveLoopClosureService', () => {
   it('returns null for best strategy with insufficient data', () => {
     const best = cognitive.getBestStrategy('doc-drift');
     expect(best).toBeNull();
+  });
+
+  it('turns an applied lesson into a selectable strategy', () => {
+    cognitive.ingestLearning({
+      id: 'lesson-1',
+      category: 'workflow',
+      lesson: 'Run the focused test before the full suite',
+      effectiveness: 90,
+      timesApplied: 3,
+      goalType: 'coding',
+      strategy: 'focused-test-first',
+    });
+    expect(cognitive.getBestStrategy('coding')).toMatchObject({
+      name: 'focused-test-first',
+      actions: ['Run the focused test before the full suite'],
+    });
   });
 
   it('returns meta learning status', () => {

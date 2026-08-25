@@ -23,16 +23,17 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
     const { agent_id, content, memory_type, metadata } = req.body;
     if (!agent_id || !content) { res.status(400).json({ error: 'agent_id and content required' }); return; }
     try {
-      const candidate = { id: 'mc-'+Date.now(), title: metadata?.title || 'Trace from '+agent_id, content, memory_type: memory_type || 'operational_memory', status: 'candidate', promotion_status: 'proposed', created_at: new Date().toISOString() };
+      const candidate = service.ingest({ agentId: agent_id, title: metadata?.title, content, memoryType: memory_type, metadata });
       res.status(201).json({ status: 'ingested', candidate });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // POST /evolve — trigger evolution pipeline
-  router.post('/evolve', (req, res) => {
+  router.post('/evolve', async (req, res) => {
     const { action, candidate_ids, agent_id } = req.body;
     if (!action) { res.status(400).json({ error: 'action required: consolidate|prune|evaluate' }); return; }
-    try { res.json({ action, status: 'triggered', candidate_ids: candidate_ids || [], agent_id: agent_id || 'system', timestamp: new Date().toISOString() }); }
+    if (!['consolidate', 'prune', 'evaluate'].includes(action)) { res.status(400).json({ error: 'invalid action' }); return; }
+    try { res.json({ action, status: 'completed', result: await service.evolve(action), candidate_ids: candidate_ids || [], agent_id: agent_id || 'system' }); }
     catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -43,7 +44,7 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
     const limit = req.query.limit ? Number(req.query.limit) : 20;
     if (!agentId) { res.status(400).json({ error: 'agent_id query param required' }); return; }
     try {
-      const candidateIds = service.getCandidatesByScope(agentId);
+      const candidateIds = service.getCandidatesByScope(agentId, scope);
       res.json({ agent_id: agentId, scope: scope || 'all', candidates: candidateIds.slice(0, limit), total: candidateIds.length });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
