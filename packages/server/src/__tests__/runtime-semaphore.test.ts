@@ -106,4 +106,9 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     expect(() => (loops.runtimeCommand as any).releaseRuntimePermit('never-acquired')).not.toThrow();
     expect(loops.runtimeConcurrencyInUse()).toBe(0);
   });
+
+  it('returns typed runtime events to loop workers', async () => {
+    const result = await loops.runtimeCommand.executeRuntimeCommand('lease-events', process.execPath, ['-e', "console.log(JSON.stringify({part:{type:'tool',tool:'read',input:{path:'a.ts'}}}))"], { runtime: 'opencode' });
+    expect(result.events).toEqual([expect.objectContaining({ event_type: 'tool.call', tool_name: 'read' })]);
+  });
 });

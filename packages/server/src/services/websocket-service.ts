@@ -106,9 +106,7 @@ export class WebSocketService {
   }
 
   send(client: WebSocket, message: WebSocketMessage) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-    }
+    this.safeSend(client, JSON.stringify(message));
   }
 
   broadcastToAuthenticated(message: WebSocketMessage) {
@@ -121,7 +119,7 @@ export class WebSocketService {
           this.clients.delete(ws);
           return;
         }
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -137,7 +135,7 @@ export class WebSocketService {
         return;
       }
       if (filterFn(clientInfo)) {
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -227,7 +225,7 @@ export class WebSocketService {
 
       const subscriptions = (clientInfo as any).debateSubscriptions as Set<string>;
       if (subscriptions && subscriptions.has(debateId)) {
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -244,5 +242,12 @@ export class WebSocketService {
       }
     });
     return count;
+  }
+
+  private safeSend(ws: WebSocket, data: string): boolean {
+    const maxBuffered = Math.max(64 * 1024, Number(process.env.WS_MAX_BUFFERED_BYTES || 1024 * 1024));
+    if (ws.readyState !== WebSocket.OPEN || (ws.bufferedAmount || 0) > maxBuffered) return false;
+    ws.send(data);
+    return true;
   }
 }

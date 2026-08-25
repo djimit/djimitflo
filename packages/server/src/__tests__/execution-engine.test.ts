@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
@@ -33,8 +33,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
 
 function createMockWsService() {
   return {
-    broadcastTaskEvent: () => {},
-    broadcastTaskEventById: () => {},
+    broadcastTaskEvent: vi.fn(),
+    broadcastTaskEventById: vi.fn(),
     broadcast: () => {},
     close: () => {},
   } as any;
@@ -147,6 +147,28 @@ describe('ExecutionEngine', () => {
     expect(engine.getExecutor('gemini')).toBeDefined();
     expect(engine.getExecutor('editor')).toBeDefined();
     expect(engine.getExecutor('pi')).toBeDefined();
+  });
+
+  it('queues regular executions at the configured concurrency limit', async () => {
+    process.env.EXECUTION_MAX_CONCURRENCY = '1';
+    await (engine as any).acquireExecutionPermit('first');
+    let admitted = false;
+    const waiting = (engine as any).acquireExecutionPermit('second').then(() => { admitted = true; });
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+    (engine as any).releaseExecutionPermit('first');
+    await waiting;
+    expect(admitted).toBe(true);
+    (engine as any).releaseExecutionPermit('second');
+    delete process.env.EXECUTION_MAX_CONCURRENCY;
+  });
+
+  it('emits an explicit event when an execution stream times out', async () => {
+    process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = '1';
+    async function* events() { await new Promise(resolve => setTimeout(resolve, 5)); }
+    await (engine as any).processEventStream({ taskId: 'slow-task', events: events() });
+    expect((engine as any).wsService.broadcastTaskEventById).toHaveBeenCalledWith('slow-task', expect.objectContaining({ type: 'execution.stream_truncated' }));
+    delete process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
   });
 
   it('allows registering a custom executor', () => {

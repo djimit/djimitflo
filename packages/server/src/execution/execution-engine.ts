@@ -12,6 +12,7 @@ import {
   Task,
   TaskStatus,
   WebSocketEventType,
+  type WebSocketMessage,
 } from '@djimitflo/shared';
 import {
   TaskExecutor,
@@ -63,6 +64,8 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private executionPermits = new Set<string>();
+  private executionQueue: Array<{ taskId: string; resolve: () => void }> = [];
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
@@ -152,7 +155,7 @@ export class ExecutionEngine {
    */
   async executeTask(taskId: string, requestedExecutorKind?: ExecutorKind): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId)) {
+    if (this.activeSessions.has(taskId) || this.executionPermits.has(taskId) || this.executionQueue.some(item => item.taskId === taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -307,6 +310,7 @@ export class ExecutionEngine {
     
     // Update task status to queued
     this.updateTaskStatus(taskId, TaskStatus.QUEUED);
+    await this.acquireExecutionPermit(taskId);
 
     this.evidenceService.captureEvidence({
       task_id: taskId,
@@ -356,6 +360,7 @@ export class ExecutionEngine {
       await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
       return { status: 'started' };
     } catch (error) {
+      this.releaseExecutionPermit(taskId);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -660,6 +665,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
     this.diffContexts.delete(taskId);
     
     // Update task status
@@ -692,17 +698,60 @@ export class ExecutionEngine {
    */
   private async processEventStream(session: ExecutionSession): Promise<void> {
     const streamTimeoutMs = Number(process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS || "300000");
+    const pending: WebSocketMessage[] = [];
+    let flushTimer: NodeJS.Timeout | undefined;
+    let tokenUsage = 0;
+    let costDollars = 0;
+    const flush = () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = undefined;
+      if (!pending.length) return;
+      this.wsService.broadcastTaskEventById(session.taskId, {
+        type: WebSocketEventType.EXECUTION_BATCH,
+        payload: { events: pending.splice(0), metrics: { tokenUsage, costDollars } },
+        timestamp: new Date().toISOString(),
+      });
+    };
     try {
       const streamDeadline = Date.now() + streamTimeoutMs;
-      for await (const event of session.events) {
-        if (Date.now() > streamDeadline) { break; }
+      const iterator = session.events[Symbol.asyncIterator]();
+      while (true) {
+        const remaining = streamDeadline - Date.now();
+        const timedOut = Symbol('timed-out');
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const next = await Promise.race([
+          iterator.next(),
+          new Promise<typeof timedOut>(resolve => { timeoutHandle = setTimeout(() => resolve(timedOut), Math.max(0, remaining)); }),
+        ]);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (next === timedOut) {
+          await iterator.return?.();
+          flush();
+          this.wsService.broadcastTaskEventById(session.taskId, {
+            type: WebSocketEventType.STREAM_TRUNCATED,
+            payload: { task_id: session.taskId, reason: 'event_stream_timeout', timeout_ms: streamTimeoutMs },
+            timestamp: new Date().toISOString(),
+          });
+          break;
+        }
+        if (next.done) break;
+        const event = next.value;
         // Persist event to database
         const eventId = this.persistEvent(event);
-        
-        // Broadcast via WebSocket
-        this.broadcastExecutionEvent(session.taskId, eventId, event);
+        const usage = (event.metadata as any)?.usage;
+        tokenUsage = Math.max(tokenUsage, Number(usage?.total_tokens || usage?.totalTokens || 0));
+        costDollars = Math.max(costDollars, Number(usage?.cost_usd || usage?.cost || 0));
+        pending.push({
+          type: WebSocketEventType.EXECUTION_EVENT,
+          payload: { event: { id: eventId, ...event, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } },
+          timestamp: new Date().toISOString(),
+        });
+        if (pending.length >= 25) flush();
+        else if (!flushTimer) flushTimer = setTimeout(flush, 25);
       }
+      flush();
     } catch (error) {
+      flush();
       console.error(`Error in event stream for task ${session.taskId}:`, error);
       throw error;
     }
@@ -743,28 +792,6 @@ export class ExecutionEngine {
   }
   
   /**
-   * Broadcast execution event via WebSocket
-   */
-  private broadcastExecutionEvent(
-    taskId: string,
-    eventId: string,
-    event: ExecutionEventCreateInput
-  ): void {
-    this.wsService.broadcastTaskEventById(taskId, {
-      type: WebSocketEventType.EXECUTION_EVENT,
-      payload: {
-        event: {
-          id: eventId,
-          ...event,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      },
-      timestamp: new Date().toISOString(),
-    });
-  }
-  
-  /**
    * Handle execution completion
    */
   private handleExecutionComplete(
@@ -773,6 +800,7 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);
@@ -865,6 +893,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);
@@ -891,6 +920,25 @@ export class ExecutionEngine {
     const task = this.getTask(taskId);
     const startedAt = task.started_at ? new Date(task.started_at).getTime() : Date.now();
     this.recordSkillOutcome(taskId, undefined, false, Math.max(0, Date.now() - startedAt), task.token_usage || 0);
+  }
+
+  private acquireExecutionPermit(taskId: string): Promise<void> {
+    const configured = Number(process.env.EXECUTION_MAX_CONCURRENCY || 4);
+    const limit = Number.isFinite(configured) && configured >= 1 ? Math.trunc(configured) : 4;
+    if (this.executionPermits.size < limit) {
+      this.executionPermits.add(taskId);
+      return Promise.resolve();
+    }
+    return new Promise(resolve => this.executionQueue.push({ taskId, resolve }));
+  }
+
+  private releaseExecutionPermit(taskId: string): void {
+    if (!this.executionPermits.delete(taskId)) return;
+    const next = this.executionQueue.shift();
+    if (next) {
+      this.executionPermits.add(next.taskId);
+      next.resolve();
+    }
   }
   
   /**

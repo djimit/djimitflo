@@ -120,13 +120,14 @@ export class LoopWorkerExecutorService {
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const { command, args } = this.loopService.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
+    const result = await this.executeRuntimeSafely(makerLease.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
       cwd: makerLease.worktree_path!,
       timeoutMs,
       enforceCwdBoundary: makerLease.runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(makerLease) ?? undefined,
-    });
+      runtime: makerLease.runtime,
+    }));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
@@ -181,6 +182,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_events: result.events || [],
     };
 
     if (wasCancelled) {
@@ -273,10 +275,11 @@ export class LoopWorkerExecutorService {
     const { command, args } = runtime === 'mock'
       ? this.loopService.buildMockCheckerCommand(maker.worktree_path!, prompt)
       : this.loopService.buildRuntimeCommand(runtime, maker.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
+    const result = await this.executeRuntimeSafely(checker.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
       cwd: maker.worktree_path!, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
-    });
+      runtime,
+    }));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     const exitStatus = result.exitCode;
@@ -291,6 +294,7 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
+      runtime_events: result.events || [],
     });
 
     const gates: LoopGate[] = [
@@ -332,6 +336,17 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private async executeRuntimeSafely<T>(leaseId: string, execute: () => Promise<T>): Promise<T> {
+    let completed = false;
+    try {
+      const result = await execute();
+      completed = true;
+      return result;
+    } finally {
+      if (!completed) this.loopService.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
+    }
+  }
 
   private updateRunAndRecord(
     run: LoopRunRecord, makerLease: WorkerLeaseRecord, failed: boolean, wasCancelled: boolean,

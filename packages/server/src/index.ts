@@ -88,6 +88,11 @@ async function main() {
   } catch (error) {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
+  const pruneInterval = setInterval(() => {
+    try { recoverySvc.pruneOrphanedWorktrees(); }
+    catch (error) { console.warn('⚠️  Periodic worktree prune failed:', error instanceof Error ? error.message : String(error)); }
+  }, Math.max(60_000, Number(process.env.LOOP_WORKTREE_PRUNE_INTERVAL_MS || 3_600_000)));
+  pruneInterval.unref();
 
   // G20+G23: start the negotiation coordinator + capability acquisition service.
   const intelligence = new SwarmIntelligenceService(db);
