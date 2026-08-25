@@ -130,7 +130,7 @@ export class CognitivePlatformOrchestrator {
      const strategies = this.cognitive.evolveStrategies();
 
      // 4. Memory maintenance — promote/archive/decay
-     const memoryResult = this.memory.runMaintenanceCycle();
+     const memoryResult = await this.memory.runMaintenanceCycle();
 
      // 5. Compliance check — verify audit chain integrity
      const chainIntegrity = this.compliance.verifyChain();
