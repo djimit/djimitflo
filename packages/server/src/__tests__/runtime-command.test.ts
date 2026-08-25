@@ -60,6 +60,7 @@ describe('buildRuntimeCommand: claude / gemini / editor', () => {
   let binDir: string;
 
   beforeEach(() => {
+    process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS = '5000';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -142,6 +143,7 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
   let binDir: string;
 
   beforeEach(() => {
+    process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS = '5000';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -245,6 +247,43 @@ describe('getRuntimeContract: claude / gemini / editor probes', () => {
       runtime: 'claude',
       status: 'ok',
       probed_at: contract.probed_at,
+      conformance: {
+        status: 'pass',
+        proof_class: 'runtime_probe',
+      },
     });
+    expect(contract.conformance?.contract_hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it.each([
+    ['codex', 'CODEX_BIN_PATH', 'Usage: codex exec --json --cd <dir>'],
+    ['opencode', 'OPENCODE_BIN_PATH', 'Usage: opencode run --format json --dir <dir>'],
+    ['claude', 'CLAUDE_BIN_PATH', 'Usage: claude -p <prompt> --output-format json'],
+    ['gemini', 'GEMINI_BIN_PATH', 'Usage: gemini -p <prompt> -o json'],
+    ['editor', 'CLINE_BIN_PATH', 'Usage: cline --json -c <dir>'],
+    ['pi', 'PI_BIN_PATH', 'Usage: pi -p <prompt> --mode json'],
+  ])('produces deterministic conformance evidence for %s', (runtime, envName, helpText) => {
+    const bin = writeFakeBin(binDir, runtime, helpText);
+    process.env[envName] = bin;
+    const loops = new LoopService(db);
+
+    const first = (loops as any).getRuntimeContract(runtime);
+    const second = (loops as any).getRuntimeContract(runtime);
+
+    expect(first.conformance.status).toBe('pass');
+    expect(first.conformance.contract_hash).toBe(second.conformance.contract_hash);
+    expect(first.conformance.checks.every((check: any) => check.passed)).toBe(true);
+  });
+
+  it('marks unavailable runtimes as failed conformance instead of certified', () => {
+    process.env.CLAUDE_BIN_PATH = path.join(binDir, 'missing-claude');
+    const loops = new LoopService(db);
+
+    const contract = (loops as any).getRuntimeContract('claude');
+
+    expect(contract.conformance.status).toBe('fail');
+    expect(contract.conformance.checks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'runtime_available', passed: false }),
+    ]));
   });
 });

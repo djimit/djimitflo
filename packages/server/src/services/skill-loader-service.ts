@@ -26,6 +26,7 @@ export interface SkillDefinition {
   enabled: boolean;
   metadata: Record<string, unknown>;
   contentHash: string;
+  manifestHash: string | null;
   workflowHash: string;
 }
 
@@ -43,11 +44,16 @@ interface AgentSkillAssignment {
 
 const SKILLS_DIR = process.env.DJIMITFLO_SKILLS_DIR || join(process.cwd(), '.opencode/skills/generated');
 
+function configuredAllowlist(): Set<string> | null {
+  const value = process.env.DJIMITFLO_SKILL_ALLOWLIST?.trim();
+  return value ? new Set(value.split(',').map((id) => id.trim()).filter(Boolean)) : null;
+}
+
 export class SkillLoaderService {
   private skills: Map<string, SkillDefinition> = new Map();
   private rejectedSkills: RejectedSkill[] = [];
 
-  constructor(private db: Database, private skillsDir = SKILLS_DIR) {
+  constructor(private db: Database, private skillsDir = SKILLS_DIR, private allowedSkillIds = configuredAllowlist()) {
     this.ensureTables();
     this.loadSkills();
   }
@@ -77,7 +83,11 @@ export class SkillLoaderService {
 
       try {
         const content = readFileSync(skillMdPath, 'utf8');
-        const skill = this.parseSkillMd(content, entry.name);
+        const manifestPath = join(skillPath, 'skill.manifest.yaml');
+        const manifestContent = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf8') : null;
+        const manifest = manifestContent ? this.parseFlatYaml(manifestContent) : {};
+        const skill = this.parseSkillMd(content, entry.name, manifest, manifestContent);
+        if (this.allowedSkillIds && !this.allowedSkillIds.has(entry.name) && !this.allowedSkillIds.has(skill.id)) continue;
         const errors = this.validateSkill(skill);
         const owner = workflowOwners.get(skill.workflowHash);
         if (owner) errors.push(`duplicate workflow: ${owner}`);
@@ -196,7 +206,12 @@ export class SkillLoaderService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private parseSkillMd(content: string, dirName: string): SkillDefinition {
+  private parseSkillMd(
+    content: string,
+    dirName: string,
+    manifest: Record<string, unknown> = {},
+    manifestContent: string | null = null,
+  ): SkillDefinition {
     // Parse YAML frontmatter + markdown body
     const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 
@@ -216,23 +231,43 @@ export class SkillLoaderService {
     }
 
     return {
-      id: dirName,
+      id: String(manifest.skill_id || dirName),
       name: (metadata.name as string) || dirName,
       description: (metadata.description as string) || '',
-      version: (metadata.version as string) || '0.1.0',
+      version: String(manifest.version || metadata.version || '0.1.0'),
       instructions: body.trim(),
-      tools: this.parseList(metadata['allowed-tools'] || metadata.tools),
+      tools: this.parseList(manifest.allowed_tools || metadata['allowed-tools'] || metadata.tools),
       triggers: metadata.triggers ? String(metadata.triggers).split(',').map((t) => t.trim()) : [],
-      author: (metadata.author as string) || 'unknown',
+      author: String(manifest.owner || metadata.author || 'unknown'),
       enabled: true,
-      metadata,
-      contentHash: createHash('sha256').update(content).digest('hex'),
+      metadata: { ...metadata, manifest },
+      contentHash: createHash('sha256')
+        .update(content)
+        .update(manifestContent ? `\0${manifestContent}` : '')
+        .digest('hex'),
+      manifestHash: manifestContent ? createHash('sha256').update(manifestContent).digest('hex') : null,
       workflowHash: createHash('sha256').update(body.trim().replace(/\s+/g, ' ')).digest('hex'),
     };
   }
 
   private parseList(value: unknown): string[] {
-    return value ? String(value).split(',').map((t) => t.trim()).filter(Boolean) : [];
+    if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+    if (!value) return [];
+    const text = String(value).trim().replace(/^['"]|['"]$/g, '');
+    return (text.includes(',') ? text.split(',') : text.split(/\s+/)).map((item) => item.trim()).filter(Boolean);
+  }
+
+  private parseFlatYaml(content: string): Record<string, unknown> {
+    const manifest: Record<string, unknown> = {};
+    for (const line of content.split(/\r?\n/)) {
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (!match) continue;
+      const value = match[2].trim();
+      manifest[match[1]] = value.startsWith('[') && value.endsWith(']')
+        ? value.slice(1, -1).split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+        : value.replace(/^['"]|['"]$/g, '');
+    }
+    return manifest;
   }
 
   private validateSkill(skill: SkillDefinition): string[] {

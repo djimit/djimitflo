@@ -12,6 +12,7 @@ import { runMigrations } from '../database/migrate';
 import { createGoalRoutes } from '../routes/goals';
 import { createLoopRoutes } from '../routes/loops';
 import { errorHandler } from '../middleware/error-handler';
+import { LoopService } from '../services/loop-service';
 
 let db: Database.Database;
 let server: Server;
@@ -72,6 +73,7 @@ function installFakeOpencode(lines: string[]) {
 
 describe('doc-drift-and-small-fix-loop', () => {
   beforeEach(async () => {
+    process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS = '5000';
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -277,6 +279,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const stopped = await stopResponse.json() as any;
     expect(stopped.run.status).toBe('cancelled');
     expect(stopped.events.map((event: any) => event.event_type)).toContain('loop_stopped');
+    expect((db.prepare('SELECT outcome FROM experience_embeddings WHERE run_id = ?').get(run.id) as any).outcome).toBe('failure');
   });
 
   it('exposes and starts the closed-loop catalog beyond doc drift', { timeout: 20_000 }, async () => {
@@ -619,6 +622,11 @@ describe('doc-drift-and-small-fix-loop', () => {
       expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),
       expect.objectContaining({ name: 'tests_lint_typecheck', status: 'pass' }),
     ]));
+    const certification = new LoopService(db, path.join(tempDir, 'agent-evidence')).certifyLoopRun(run.id);
+    expect(certification.certified).toBe(true);
+    expect(certification.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'security_checker_verdict', status: 'skipped' }),
+    ]));
 
     const unapprovedCompleteResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/complete`, { method: 'POST' });
     expect(unapprovedCompleteResponse.status).toBe(409);
@@ -635,6 +643,9 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(completed.run.status).toBe('completed');
     expect(completed.run.completed_at).toEqual(expect.any(String));
     expect(completed.run.metadata.human_approval_ref).toBe('approval:small-docs-fix');
+    const learned = db.prepare('SELECT outcome, lessons FROM experience_embeddings WHERE run_id = ?').get(run.id) as { outcome: string; lessons: string };
+    expect(learned.outcome).toBe('success');
+    expect(JSON.parse(learned.lessons)).toContain('Small docs fix accepted.');
 
     const bundleResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/review-bundle`);
     expect(bundleResponse.status).toBe(200);
@@ -1084,6 +1095,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(verdict.run.next_actions).toEqual(expect.arrayContaining([
       'Human review required before leasing more workers',
     ]));
+    expect((db.prepare('SELECT outcome FROM experience_embeddings WHERE run_id = ?').get(run.id) as any).outcome).toBe('failure');
 
     const retryResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/retry`, {
       method: 'POST',

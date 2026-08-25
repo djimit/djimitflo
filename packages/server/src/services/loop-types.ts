@@ -133,6 +133,12 @@ export interface RuntimeContract {
   supports_timeout_kill: boolean;
   evidence: string[];
   reason?: string;
+  conformance?: {
+    status: 'pass' | 'fail' | 'manual';
+    proof_class: 'static' | 'runtime_probe';
+    contract_hash: string;
+    checks: Array<{ name: string; passed: boolean; evidence: string }>;
+  };
 }
 
 export interface RuntimeUsage {
