@@ -55,6 +55,19 @@ export class ComplianceAuditService {
     resource: string;
     outcome: 'success' | 'failure' | 'denied';
     evidence?: Record<string, unknown>;
+    event?: {
+      eventType: string;
+      userId?: string | null;
+      agentId?: string | null;
+      taskId?: string | null;
+      executionEventId?: string | null;
+      resourceType: string;
+      riskLevel: string;
+      before?: Record<string, unknown> | null;
+      after?: Record<string, unknown> | null;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    };
   }): AuditEntry {
     const previousHash = this.getLatestHash();
     const timestamp = new Date().toISOString();
@@ -88,14 +101,23 @@ export class ComplianceAuditService {
 
     const evidenceJson = JSON.stringify(this.sortKeysDeep(evidence));
 
+    const event = input.event;
+    const sequence = ((this.db.prepare('SELECT MAX(chain_sequence) AS value FROM audit_events').get() as any)?.value || 0) + 1;
     this.db.prepare(`
-      INSERT INTO compliance_audit_log
-      (id, timestamp, actor, action, resource, outcome, evidence_json, previous_hash, hash)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO audit_events (
+        id, event_type, timestamp, user_id, agent_id, task_id, execution_event_id,
+        action, resource_type, resource_id, risk_level, before, after, ip_address,
+        user_agent, metadata, outcome, previous_hash, hash, chain_sequence, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      entry.id, entry.timestamp, entry.actor, entry.action,
-      entry.resource, entry.outcome, evidenceJson,
-      entry.previousHash, entry.hash,
+      entry.id, event?.eventType || `compliance.${entry.action}`, entry.timestamp,
+      event?.userId || entry.actor, event?.agentId || null, event?.taskId || null,
+      event?.executionEventId || null, entry.action, event?.resourceType || 'compliance',
+      entry.resource || null, event?.riskLevel || 'medium',
+      event?.before ? JSON.stringify(event.before) : null,
+      event?.after ? JSON.stringify(event.after) : null,
+      event?.ipAddress || null, event?.userAgent || null, evidenceJson, entry.outcome,
+      entry.previousHash, entry.hash, sequence, entry.timestamp, entry.timestamp,
     );
 
     return entry;
@@ -105,7 +127,7 @@ export class ComplianceAuditService {
    * Verify the integrity of the audit chain.
    */
   verifyChain(): { valid: boolean; entriesChecked: number; firstInvalidId?: string } {
-    const entries = this.db.prepare('SELECT rowid, * FROM compliance_audit_log ORDER BY rowid ASC').all() as any[];
+    const entries = this.db.prepare('SELECT * FROM compliance_audit_log ORDER BY chain_sequence ASC').all() as any[];
 
     let previousHash = 'genesis';
     for (const entry of entries) {
@@ -262,7 +284,7 @@ export class ComplianceAuditService {
   // ─── Private ──────────────────────────────────────────────────────────
 
   private getLatestHash(): string {
-    const latest = this.db.prepare('SELECT hash FROM compliance_audit_log ORDER BY rowid DESC LIMIT 1').get() as any;
+    const latest = this.db.prepare('SELECT hash FROM compliance_audit_log ORDER BY chain_sequence DESC LIMIT 1').get() as any;
     return latest?.hash || 'genesis';
   }
 
@@ -410,37 +432,30 @@ export class ComplianceAuditService {
 
   private ensureTables(): void {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS compliance_audit_log (
+      CREATE TABLE IF NOT EXISTS audit_events (
         id TEXT PRIMARY KEY,
+        event_type TEXT NOT NULL,
         timestamp TEXT NOT NULL DEFAULT (datetime('now')),
-        actor TEXT NOT NULL DEFAULT 'system',
+        user_id TEXT,
+        agent_id TEXT,
+        task_id TEXT,
+        execution_event_id TEXT,
         action TEXT NOT NULL DEFAULT '',
-        resource TEXT NOT NULL DEFAULT '',
+        resource_type TEXT NOT NULL DEFAULT 'compliance',
+        resource_id TEXT,
+        risk_level TEXT NOT NULL DEFAULT 'medium',
+        before TEXT,
+        after TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
         outcome TEXT NOT NULL DEFAULT 'success' CHECK(outcome IN ('success', 'failure', 'denied')),
-        evidence_json TEXT NOT NULL DEFAULT '{}',
         previous_hash TEXT NOT NULL DEFAULT 'genesis',
-        hash TEXT NOT NULL DEFAULT ''
+        hash TEXT NOT NULL DEFAULT '',
+        chain_sequence INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
-      CREATE INDEX IF NOT EXISTS idx_compliance_audit_timestamp ON compliance_audit_log(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_compliance_audit_actor ON compliance_audit_log(actor);
-      CREATE INDEX IF NOT EXISTS idx_compliance_audit_action ON compliance_audit_log(action);
-
-      -- SECURITY: Block updates and deletes on the audit log at DB level.
-      -- This makes the chain tamper-evident even against database admins.
-      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_update
-        BEFORE UPDATE ON compliance_audit_log
-        FOR EACH ROW
-        BEGIN
-          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: updates are forbidden');
-        END;
-
-      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_delete
-        BEFORE DELETE ON compliance_audit_log
-        FOR EACH ROW
-        BEGIN
-          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: deletes are forbidden');
-        END;
 
       CREATE TABLE IF NOT EXISTS compliance_reports (
         id TEXT PRIMARY KEY,
@@ -452,6 +467,104 @@ export class ComplianceAuditService {
         score REAL NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'non_compliant' CHECK(status IN ('compliant', 'partial', 'non_compliant'))
       );
+    `);
+
+    const columns = this.db.prepare('PRAGMA table_info(audit_events)').all() as Array<{ name: string }>;
+    const additions: Record<string, string> = {
+      timestamp: 'TEXT',
+      user_id: 'TEXT',
+      agent_id: 'TEXT',
+      task_id: 'TEXT',
+      execution_event_id: 'TEXT',
+      resource_id: 'TEXT',
+      before: 'TEXT',
+      after: 'TEXT',
+      ip_address: 'TEXT',
+      user_agent: 'TEXT',
+      outcome: "TEXT NOT NULL DEFAULT 'success'",
+      previous_hash: "TEXT NOT NULL DEFAULT 'genesis'",
+      hash: "TEXT NOT NULL DEFAULT ''",
+      chain_sequence: 'INTEGER',
+      updated_at: 'TEXT',
+    };
+    for (const [name, definition] of Object.entries(additions)) {
+      if (!columns.some((column) => column.name === name)) {
+        this.db.exec(`ALTER TABLE audit_events ADD COLUMN ${name} ${definition}`);
+      }
+    }
+
+    const legacy = this.db.prepare("SELECT type FROM sqlite_master WHERE name = 'compliance_audit_log'").get() as { type?: string } | undefined;
+    if (legacy?.type === 'table') {
+      const rows = this.db.prepare('SELECT rowid, * FROM compliance_audit_log ORDER BY rowid').all() as any[];
+      const insert = this.db.prepare(`
+        INSERT OR IGNORE INTO audit_events (
+          id, event_type, timestamp, user_id, action, resource_type, resource_id,
+          risk_level, metadata, outcome, previous_hash, hash, chain_sequence, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'compliance', ?, 'medium', ?, ?, ?, ?, ?, ?, ?)
+      `);
+      const migrate = this.db.transaction(() => {
+        rows.forEach((row, index) => insert.run(
+          row.id, `compliance.${row.action}`, row.timestamp, row.actor, row.action,
+          row.resource, row.evidence_json || '{}', row.outcome, row.previous_hash,
+          row.hash, index + 1, row.timestamp, row.timestamp,
+        ));
+      });
+      migrate();
+      this.db.exec(`
+        DROP TRIGGER IF EXISTS compliance_audit_no_update;
+        DROP TRIGGER IF EXISTS compliance_audit_no_delete;
+        DROP TABLE compliance_audit_log;
+      `);
+    }
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_audit_events_chain_sequence ON audit_events(chain_sequence);
+      CREATE INDEX IF NOT EXISTS idx_audit_events_hash ON audit_events(hash);
+
+      CREATE VIEW IF NOT EXISTS compliance_audit_log AS
+        SELECT id, timestamp, COALESCE(user_id, 'system') AS actor, action,
+          COALESCE(resource_id, resource_type, '') AS resource, outcome,
+          COALESCE(metadata, '{}') AS evidence_json, previous_hash, hash, chain_sequence
+        FROM audit_events WHERE hash <> '';
+
+      CREATE TRIGGER IF NOT EXISTS compliance_audit_insert
+        INSTEAD OF INSERT ON compliance_audit_log
+        BEGIN
+          INSERT INTO audit_events (
+            id, event_type, timestamp, user_id, action, resource_type, resource_id,
+            risk_level, metadata, outcome, previous_hash, hash, chain_sequence, created_at, updated_at
+          ) VALUES (
+            NEW.id, 'compliance.' || NEW.action, NEW.timestamp, NEW.actor, NEW.action,
+            'compliance', NEW.resource, 'medium', NEW.evidence_json, NEW.outcome,
+            NEW.previous_hash, NEW.hash,
+            COALESCE(NEW.chain_sequence, (SELECT COALESCE(MAX(chain_sequence), 0) + 1 FROM audit_events)),
+            NEW.timestamp, NEW.timestamp
+          );
+        END;
+
+      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_update
+        INSTEAD OF UPDATE ON compliance_audit_log
+        BEGIN
+          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: updates are forbidden');
+        END;
+
+      CREATE TRIGGER IF NOT EXISTS compliance_audit_no_delete
+        INSTEAD OF DELETE ON compliance_audit_log
+        BEGIN
+          SELECT RAISE(FAIL, 'compliance_audit_log is append-only: deletes are forbidden');
+        END;
+
+      CREATE TRIGGER IF NOT EXISTS audit_events_no_update
+        BEFORE UPDATE ON audit_events
+        BEGIN
+          SELECT RAISE(FAIL, 'audit_events is append-only: updates are forbidden');
+        END;
+
+      CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
+        BEFORE DELETE ON audit_events
+        BEGIN
+          SELECT RAISE(FAIL, 'audit_events is append-only: deletes are forbidden');
+        END;
     `);
   }
 

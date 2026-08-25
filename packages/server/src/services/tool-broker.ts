@@ -18,6 +18,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { PolicyDecision, RiskLevel, type AuthTokenPayload } from '@djimitflo/shared';
+import { PolicyDecisionService } from './policy-decision-service';
 
 export type ToolCategory = 'filesystem' | 'shell' | 'network' | 'git' | 'mcp' | 'model' | 'database' | 'spawn';
 
@@ -105,12 +106,14 @@ export class ToolBroker {
   private config: ToolBrokerConfig;
   private capability_tokens: Map<string, CapabilityToken> = new Map();
   private rate_limits: Map<string, RateLimitState> = new Map();
+  private policy: PolicyDecisionService;
 
   constructor(
     private db: Database,
     config: Partial<ToolBrokerConfig> = {},
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.policy = new PolicyDecisionService(db);
     this.ensureTables();
   }
 
@@ -185,20 +188,17 @@ export class ToolBroker {
     // Security: rate limit check before policy evaluation
     this.checkRateLimit(request.principal.sub);
 
-    const matched_policies = this.getMatchingPolicies(request);
-
-    let decision: PolicyDecision;
-    let reason: string;
     const risk_level = this.assessRisk(request);
-
-    if (matched_policies.length === 0) {
-      decision = this.config.default_decision;
-      reason = `No matching policy for tool "${request.tool}" (category: ${request.category}). Default deny applied.`;
-    } else {
-      const selected = matched_policies[0];
-      decision = (selected.decision === 'allow' ? 'allow' : selected.decision) as PolicyDecision;
-      reason = `Matched policy: ${selected.name} (priority: ${selected.priority})`;
-    }
+    const evaluation = this.policy.evaluate({
+      action_type: 'mcp_tool_call',
+      risk_level,
+      matched_rules: [],
+      explanation: `Tool call: ${request.category}:${request.tool}`,
+      recommended_decision: this.config.default_decision,
+      metadata: { tool: request.tool, args: request.args },
+    });
+    let decision: PolicyDecision = evaluation.decision;
+    let reason = evaluation.explanation;
 
     if (RISK_ORDER[risk_level] >= RISK_ORDER[this.config.require_approval_above_risk] && decision === 'allow') {
       decision = 'require_approval';
@@ -225,7 +225,7 @@ export class ToolBroker {
       task_id: request.task_id,
       capability_token,
       reason,
-      matched_policies: matched_policies.map(p => p.id),
+      matched_policies: evaluation.matchingPolicies.map(p => p.id),
       risk_level,
       expires_at: capability_token?.expires_at,
     };
@@ -263,61 +263,17 @@ export class ToolBroker {
     return this.evaluateToolCall(request);
   }
 
-  private getMatchingPolicies(request: ToolCallRequest): ExecutionPolicyRow[] {
-    const policies = this.db.prepare(`
-      SELECT * FROM approval_policies
-      WHERE enabled = 1
-      ORDER BY priority DESC, created_at ASC
-    `).all() as ExecutionPolicyRow[];
-
-    return policies.filter(policy => this.policyMatches(policy, request));
-  }
-
-  private policyMatches(policy: ExecutionPolicyRow, request: ToolCallRequest): boolean {
-    if (policy.action_type && policy.action_type !== 'tool_call') return false;
-
-    const riskLevels: RiskLevel[] = JSON.parse(policy.risk_levels || '[]');
-    if (riskLevels.length > 0) {
-      const classificationToRisk: Record<string, RiskLevel> = {
-        'public': RiskLevel.LOW,
-        'internal': RiskLevel.MEDIUM,
-        'confidential': RiskLevel.HIGH,
-        'restricted': RiskLevel.CRITICAL,
-      };
-      const requestRisk = classificationToRisk[request.data_classification] || RiskLevel.MEDIUM;
-      if (!riskLevels.includes(requestRisk)) return false;
-    }
-
-    const blockedTools: string[] = JSON.parse(policy.blocked_tools || '[]');
-    if (blockedTools.includes(request.tool)) return true;
-
-    const allowedTools: string[] = JSON.parse(policy.allowed_tools || '[]');
-    if (allowedTools.length > 0 && !allowedTools.includes(request.tool)) return false;
-
-    if (policy.match_pattern) {
-      try {
-        const regex = new RegExp(policy.match_pattern, 'i');
-        const subject = `${request.tool} ${JSON.stringify(request.args)}`;
-        if (!regex.test(subject)) return false;
-      } catch {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
   private assessRisk(request: ToolCallRequest): RiskLevel {
     if (request.data_classification === 'restricted') return RiskLevel.CRITICAL;
     if (request.data_classification === 'confidential') return RiskLevel.HIGH;
 
     const tool = request.tool.toLowerCase();
     if (/rm|delete|drop|truncate|purge|destroy/.test(tool)) return RiskLevel.HIGH;
-    if (/write|create|update|modify|deploy|push/.test(tool)) return RiskLevel.MEDIUM;
     if (/exec|spawn|shell|bash|sh\b/.test(tool)) return RiskLevel.HIGH;
+    if (/write|create|update|modify|deploy|push/.test(tool)) return RiskLevel.MEDIUM;
     if (/curl|wget|fetch|http|request/.test(tool)) return RiskLevel.MEDIUM;
 
-    return RiskLevel.LOW;
+    return request.data_classification === 'internal' ? RiskLevel.MEDIUM : RiskLevel.LOW;
   }
 
   private violatesSeparationOfDuties(request: ToolCallRequest): boolean {
@@ -404,18 +360,4 @@ export class ToolBroker {
       CREATE INDEX IF NOT EXISTS idx_tool_broker_created ON tool_broker_decisions(created_at);
     `);
   }
-}
-
-interface ExecutionPolicyRow {
-  id: string;
-  name: string;
-  action_type: string;
-  risk_levels: string;
-  decision: string;
-  priority: number;
-  match_pattern: string | null;
-  blocked_tools: string;
-  allowed_tools: string;
-  enabled: number;
-  created_at: string;
 }

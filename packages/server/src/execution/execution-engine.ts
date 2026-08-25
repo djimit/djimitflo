@@ -38,7 +38,6 @@ import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ToolBroker } from '../services/tool-broker';
 import { ApprovalService } from '../services/approval-service';
-import { GovernanceGateService } from '../services/governance-gate-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
@@ -69,7 +68,6 @@ export class ExecutionEngine {
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
-  private governanceGate: GovernanceGateService;
   private diffCaptureService: DiffCaptureService;
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
@@ -119,7 +117,6 @@ export class ExecutionEngine {
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
-    this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
     
     // Register default executors
@@ -190,13 +187,11 @@ export class ExecutionEngine {
     }
 
     const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
-    let evaluation = this.policyDecisionService.evaluate(assessment);
+    const evaluation = this.policyDecisionService.evaluate(assessment, { task: parsedTask, executorKind });
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
-    // Governance gate: benchmark evidence can only TIGHTEN the policy decision.
-    const gateVerdict = this.governanceGate.assess(parsedTask, executorKind);
-    if (gateVerdict.action === 'require_approval' && evaluation.decision === 'allow') {
-      evaluation = { ...evaluation, decision: 'require_approval', explanation: gateVerdict.reason };
+    if (evaluation.governance?.action === 'require_approval') {
+      const gateVerdict = evaluation.governance;
       this.evidenceService.captureEvidence({
         task_id: taskId,
         evidence_type: EvidenceType.POLICY_DECISION,
@@ -518,7 +513,7 @@ export class ExecutionEngine {
 
   private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
     const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
-    const evaluation = this.policyDecisionService.evaluate(assessment);
+    const evaluation = this.policyDecisionService.evaluate(assessment, { task, executorKind });
     this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
     if (evaluation.decision === 'deny') return false;
     return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
