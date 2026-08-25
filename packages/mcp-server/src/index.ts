@@ -15,13 +15,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createDatabase } from './db.js';
-import { registerLoopTools } from './tools/loops.js';
-import { registerGoalTools } from './tools/goals.js';
-import { registerAgentTools } from './tools/agents.js';
-import { registerMissionControlTools } from './tools/mission-control.js';
-import { registerOrchestrationTools } from './tools/orchestration.js';
-import { registerOkfTools } from './tools/okf.js';
-import { registerOpenMythosTools } from './tools/openmythos.js';
+import { registerTools } from './register-tools.js';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -47,13 +41,7 @@ async function main() {
     version: '0.1.0',
   });
 
-  registerLoopTools(server, db);
-  registerGoalTools(server, db);
-  registerAgentTools(server, db);
-  registerMissionControlTools(server, db);
-  registerOrchestrationTools(server, db);
-  registerOkfTools(server);
-  registerOpenMythosTools(server, db);
+  registerTools(server, db);
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();

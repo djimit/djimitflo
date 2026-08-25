@@ -138,12 +138,12 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(body.error.code).toBe('GOAL_ACCEPTANCE_CRITERIA_REQUIRED');
   });
 
-  it('creates a goal and decomposes it to the doc drift loop', async () => {
+  it('falls back to the canonical loop when no decomposition keywords match', async () => {
     const createResponse = await fetch(`${baseUrl}/goals`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        objective: 'Find low-risk docs drift',
+        objective: 'Random unrelated text',
         acceptance_criteria: ['Loop emits bounded findings without editing files'],
       }),
     });
@@ -162,11 +162,30 @@ describe('doc-drift-and-small-fix-loop', () => {
     const decomposeResponse = await fetch(`${baseUrl}/goals/${goal.id}/decompose`, { method: 'POST' });
     expect(decomposeResponse.status).toBe(200);
     const decomposed = await decomposeResponse.json() as any;
+    expect(decomposed).toMatchObject({ goal_id: goal.id, fallback: true });
     expect(decomposed.candidates[0]).toMatchObject({
       loop_name: 'doc-drift-and-small-fix-loop',
       mode: 'closed',
       recommended_first: true,
     });
+  });
+
+  it('decomposes a goal objective into a capability DAG', async () => {
+    const createResponse = await fetch(`${baseUrl}/goals`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        objective: 'Implement, test, and document a low-risk improvement',
+        acceptance_criteria: ['The DAG reflects the requested work'],
+      }),
+    });
+    const goal = await createResponse.json() as any;
+
+    const decomposeResponse = await fetch(`${baseUrl}/goals/${goal.id}/decompose`, { method: 'POST' });
+    expect(decomposeResponse.status).toBe(200);
+    const decomposed = await decomposeResponse.json() as any;
+    expect(decomposed).toMatchObject({ goal_id: goal.id, fallback: false });
+    expect(decomposed.nodes.map((node: any) => node.step)).toEqual(['implement', 'test', 'document']);
   });
 
   it('runs read-only discovery, writes state, and proposes bounded small-fix tasks', async () => {

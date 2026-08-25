@@ -37,6 +37,29 @@ describe('DockerSandboxExecutor', () => {
     expect(sandbox.canExecute(task)).toBe(false);
     expect(inner.canExecute).toHaveBeenCalledWith(task);
   });
+
+  it('runs the inner task command instead of a version probe', () => {
+    const inner = {
+      kind: 'opencode',
+      canExecute: () => true,
+      start: vi.fn(),
+      buildCommand: vi.fn().mockReturnValue({
+        command: 'opencode',
+        args: ['run', '--format', 'json', '--dir', '/workspace', 'implement the task'],
+      }),
+    } as unknown as TaskExecutor;
+    const sandbox = new DockerSandboxExecutor(inner);
+    const task = { id: 'task-1', description: 'implement the task' } as Task;
+
+    const command = (sandbox as any).getInnerCommand(task, { workingDirectory: '/host/work' });
+
+    expect(inner.buildCommand).toHaveBeenCalledWith(task, { workingDirectory: '/workspace' });
+    expect(command).toEqual({
+      command: 'opencode',
+      args: ['run', '--format', 'json', '--dir', '/workspace', 'implement the task'],
+    });
+    expect(command.args).not.toContain('--version');
+  });
 });
 
 describe('DockerSandboxExecutor.buildDockerArgs', () => {

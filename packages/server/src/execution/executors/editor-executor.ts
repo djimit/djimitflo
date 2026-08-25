@@ -44,6 +44,10 @@ export class EditorExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.clinePath, args: this.buildEditorArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();

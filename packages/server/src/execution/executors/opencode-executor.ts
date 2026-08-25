@@ -126,6 +126,10 @@ export class OpenCodeExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.opencodePath, args: this.buildOpenCodeArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();

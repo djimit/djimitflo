@@ -117,6 +117,10 @@ export class PiExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.piPath, args: this.buildPiArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();

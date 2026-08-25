@@ -71,8 +71,7 @@ export class DockerSandboxExecutor implements TaskExecutor {
     const workingDir = options?.workingDirectory || process.cwd();
     const env = options?.environment;
 
-    const innerCommand = this.getInnerCommand();
-    const innerArgs = this.getInnerArgs(task, options);
+    const { command: innerCommand, args: innerArgs } = this.getInnerCommand(task, options);
 
     const dockerArgs = DockerSandboxExecutor.buildDockerArgs(
       containerName,
@@ -106,21 +105,14 @@ export class DockerSandboxExecutor implements TaskExecutor {
     return session;
   }
 
-  private getInnerCommand(): string {
-    const kind = this.inner.kind;
-    switch (kind) {
-      case 'opencode': return process.env.OPENCODE_BIN_PATH || 'opencode';
-      case 'codex': return process.env.CODEX_BIN_PATH || 'codex';
-      case 'claude': return process.env.CLAUDE_BIN_PATH || 'claude';
-      case 'gemini': return process.env.GEMINI_BIN_PATH || 'gemini';
-      case 'pi': return process.env.PI_BIN_PATH || 'pi';
-      case 'editor': return process.env.EDITOR_BIN_PATH || 'editor';
-      default: return 'sh';
+  private getInnerCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    if (!this.inner.buildCommand) {
+      throw new Error('DOCKER_SANDBOX_INNER_COMMAND_UNAVAILABLE');
     }
-  }
-
-  private getInnerArgs(_task: Task, _options?: ExecutorOptions): string[] {
-    return ['--version'];
+    return this.inner.buildCommand(task, {
+      ...options,
+      workingDirectory: '/workspace',
+    });
   }
 
   private spawnDockerProcess(containerName: string, dockerArgs: string[]): Promise<number> {
