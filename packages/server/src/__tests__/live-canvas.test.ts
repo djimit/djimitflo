@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { LiveCanvasService } from '../services/live-canvas-service';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { DENNIS_AGENT_ID } from '../services/dennis-agent-service';
-import { parseTelegramAllowedUsers, telegramConfigStatus } from '../routes/telegram';
+import { parseTelegramAllowedUsers, parseTelegramUserMap, telegramConfigStatus } from '../routes/telegram';
 
 describe('LiveCanvasService', () => {
   let db: Database.Database;
@@ -88,32 +88,36 @@ describe('TelegramBotService', () => {
     db.pragma('foreign_keys = ON');
     db.exec(schema);
     runMigrations(db);
+    db.prepare("INSERT INTO users (id,email,password_hash,role) VALUES ('user-1','operator@example.test','x','admin')").run();
     service = new TelegramBotService(db);
   });
+
+  afterEach(() => service.stop());
 
   it('is not configured by default', () => {
     expect(service.isConfigured()).toBe(false);
   });
 
   it('is configured after setup', () => {
-    service.configure({ botToken: 'test-token', allowedUsers: [123] });
+    service.configure({ botToken: 'test-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
     expect(service.isConfigured()).toBe(true);
   });
 
   it('reports Telegram readiness without exposing secrets', () => {
     expect(parseTelegramAllowedUsers(' 123, ,456,abc ')).toEqual([123, 456]);
+    expect(parseTelegramUserMap('{"123":"operator@example.test"}')).toEqual({ '123': 'operator@example.test' });
     expect(telegramConfigStatus({}, false)).toMatchObject({
       configured: false,
       ready: false,
       allowed_user_count: 0,
       webhook_configured: false,
-      missing_env: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_USERS', 'TELEGRAM_WEBHOOK_URL'],
+      missing_env: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_USERS', 'TELEGRAM_WEBHOOK_URL', 'TELEGRAM_USER_MAP'],
     });
     expect(JSON.stringify(telegramConfigStatus({
       TELEGRAM_BOT_TOKEN: 'secret-token',
       TELEGRAM_ALLOWED_USERS: '123,456',
       TELEGRAM_WEBHOOK_URL: 'https://example.test/api/telegram/webhook',
-      TELEGRAM_BOTS_CONFIG: '[{}]',
+      TELEGRAM_USER_MAP: '{"123":"user-1"}',
     }, true))).not.toContain('secret-token');
   });
 
@@ -122,14 +126,14 @@ describe('TelegramBotService', () => {
   });
 
   it('broadcasts alerts to configured users', async () => {
-    service.configure({ botToken: 'mock-token', allowedUsers: [123, 456] });
+    service.configure({ botToken: 'mock-token', allowedUsers: [123, 456], userMap: { '123': 'user-1' } });
     // Will fail to actually send but should not throw
     await expect(service.broadcastAlert('Test alert')).resolves.not.toThrow();
   });
 
   it('creates Dennis dry-run tasks from Telegram', async () => {
     const replies: string[] = [];
-    service.configure({ botToken: 'mock-token', allowedUsers: [123] });
+    service.configure({ botToken: 'mock-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
     service.sendMessage = async (_chatId: number, text: string) => { replies.push(text); };
 
     await service.handleWebhook({ message: { chat: { id: 123 }, from: { id: 123 }, text: '/dennis_task Controleer alles veilig', message_id: 1 } });
@@ -137,13 +141,14 @@ describe('TelegramBotService', () => {
     const task = db.prepare('SELECT * FROM tasks WHERE agent_id = ?').get(DENNIS_AGENT_ID) as any;
     expect(task.execution_mode).toBe('dry_run');
     expect(task.status).toBe('pending');
+    expect(task.owner_user_id).toBe('user-1');
     expect(JSON.parse(task.metadata).autonomy_mode).toBe('dry_run_only');
     expect(replies[0]).toContain('Dennis dry\\-run task aangemaakt');
   });
 
   it('reports Dennis Telegram status without granting live mutation rights', async () => {
     const replies: string[] = [];
-    service.configure({ botToken: 'mock-token', allowedUsers: [123] });
+    service.configure({ botToken: 'mock-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
     service.sendMessage = async (_chatId: number, text: string) => { replies.push(text); };
 
     await service.handleWebhook({ message: { chat: { id: 123 }, from: { id: 123 }, text: '/dennis', message_id: 1 } });
@@ -159,7 +164,7 @@ describe('TelegramBotService', () => {
     const now = new Date().toISOString();
     const taskId = 'dennis-task-approval-test';
     const approvalId = 'dennis-approval-test';
-    service.configure({ botToken: 'mock-token', allowedUsers: [123] });
+    service.configure({ botToken: 'mock-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
     service.sendMessage = async (_chatId: number, text: string) => { replies.push(text); };
     db.prepare(`
       INSERT INTO agents (id, name, description, status, capabilities, created_at, updated_at)
@@ -191,10 +196,10 @@ describe('TelegramBotService', () => {
       now,
     );
 
-    await service.handleWebhook({ message: { chat: { id: 123 }, from: { id: 123 }, text: `/approve ${approvalId}`, message_id: 1 } });
+    await service.handleWebhook({ callback_query: { from: { id: 123 }, data: `approve:${approvalId}`, message: { chat: { id: 123 }, message_id: 1 } } });
 
     expect(replies[0]).toContain('Approved and materialized Dennis dry\\-run');
-    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('approved');
+    expect((db.prepare('SELECT status, decided_by FROM approvals WHERE id = ?').get(approvalId) as any)).toMatchObject({ status: 'approved', decided_by: 'user-1' });
     const event = db.prepare("SELECT * FROM execution_events WHERE task_id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(taskId) as any;
     expect(JSON.parse(event.tool_output).executed_mutations).toEqual([]);
   });

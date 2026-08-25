@@ -85,6 +85,7 @@ import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 import { createExplorePublicRoutes } from './explore-public';
+import { createGitHubWebhookRoutes } from './github-webhooks';
 
 export function createRoutes(
   db: Database,
@@ -133,6 +134,7 @@ export function createRoutes(
     // Auth routes (public + protected)
     { prefix: '/auth', middleware: [], router: createAuthRoutes(authService!, auth!, auditService) },
     { prefix: '/explore', middleware: [], router: createExplorePublicRoutes(db) },
+    { prefix: '/github/webhook', middleware: [], router: createGitHubWebhookRoutes(db) },
     // Protected routes
     { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth) },
     { prefix: '/agents', middleware: [requireAuth], router: createAgentRoutes(db, auth) },

@@ -19,6 +19,8 @@ export function GovernanceScorecardPage() {
   const [runs, setRuns] = useState<OpenMythosRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState('');
+  const [model, setModel] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +65,16 @@ export function GovernanceScorecardPage() {
       {error && (
         <div className="bg-status-error/10 border border-status-error/30 rounded-lg p-4 text-sm text-status-error">{error}</div>
       )}
+
+      <div className="flex flex-wrap gap-2 rounded-lg border border-border bg-background-secondary p-4">
+        <input className="rounded border border-border bg-background px-3 py-2 text-sm" value={agentId} onChange={event => setAgentId(event.target.value)} placeholder="Agent ID" />
+        <input className="rounded border border-border bg-background px-3 py-2 text-sm" value={model} onChange={event => setModel(event.target.value)} placeholder="Subject model" />
+        <button className="rounded bg-accent px-3 py-2 text-sm text-white disabled:opacity-50" disabled={!agentId.trim() || loading} onClick={async () => {
+          setLoading(true);
+          try { await api.post(`/openmythos/eval/${encodeURIComponent(agentId.trim())}`, model.trim() ? { model: model.trim() } : {}); await load(); }
+          catch (err) { setError(err instanceof Error ? err.message : 'Evaluation failed'); setLoading(false); }
+        }}>Run OpenMythos eval</button>
+      </div>
 
       {loading ? (
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading governance data...</div>

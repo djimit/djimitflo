@@ -11,20 +11,32 @@ export function parseTelegramAllowedUsers(value = ''): number[] {
   return value.split(',').map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
 }
 
+export function parseTelegramUserMap(value = ''): Record<string, string> {
+  if (!value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? Object.fromEntries(Object.entries(parsed).filter(([key, user]) => /^\d+$/.test(key) && typeof user === 'string' && user.trim())) as Record<string, string>
+      : {};
+  } catch { return {}; }
+}
+
 export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, configured = Boolean(env.TELEGRAM_BOT_TOKEN)) {
   const allowedUsers = parseTelegramAllowedUsers(env.TELEGRAM_ALLOWED_USERS);
+  const userMap = parseTelegramUserMap(env.TELEGRAM_USER_MAP);
   const missing_env = [
     ['TELEGRAM_BOT_TOKEN', env.TELEGRAM_BOT_TOKEN],
     ['TELEGRAM_ALLOWED_USERS', env.TELEGRAM_ALLOWED_USERS],
     ['TELEGRAM_WEBHOOK_URL', env.TELEGRAM_WEBHOOK_URL],
+    ['TELEGRAM_USER_MAP', env.TELEGRAM_USER_MAP],
   ].filter(([, value]) => !value).map(([key]) => key);
 
   return {
     configured,
-    ready: Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL),
+    ready: Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL && Object.keys(userMap).length > 0),
     allowed_user_count: allowedUsers.length,
     webhook_configured: Boolean(env.TELEGRAM_WEBHOOK_URL),
-    gateway_configured: Boolean(env.TELEGRAM_BOTS_CONFIG),
+    linked_identity_count: Object.keys(userMap).length,
     missing_env,
   };
 }
@@ -39,6 +51,7 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware): Route
       botToken,
       allowedUsers: parseTelegramAllowedUsers(process.env.TELEGRAM_ALLOWED_USERS),
       webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
+      userMap: parseTelegramUserMap(process.env.TELEGRAM_USER_MAP),
     });
   }
 

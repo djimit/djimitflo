@@ -10,6 +10,7 @@ import { registerNotebookTools } from './tools/notebooks.js';
 import { registerOkfTools } from './tools/okf.js';
 import { registerOpenMythosTools } from './tools/openmythos.js';
 import { registerOrchestrationTools } from './tools/orchestration.js';
+import { registerPlatformTools } from './tools/platform.js';
 
 export function registerTools(server: McpServer, db: DbHandle): void {
   registerLoopTools(server, db);
@@ -22,4 +23,5 @@ export function registerTools(server: McpServer, db: DbHandle): void {
   registerNotebookTools(server);
   registerExplainerTools(server, db.db);
   registerGovernanceTools(server, db);
+  registerPlatformTools(server, db);
 }

@@ -20,6 +20,8 @@ export function ConsensusDebatePage() {
   const [sessions, setSessions] = useState<CouncilSession[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [topic, setTopic] = useState('');
+  const [independentJudge, setIndependentJudge] = useState(false);
+  const [judgeModel, setJudgeModel] = useState('');
 
   const refresh = useCallback(async () => {
     setSessions(await api.get<CouncilSession[]>('/council/sessions'));
@@ -29,11 +31,14 @@ export function ConsensusDebatePage() {
 
   const createDebate = useCallback(async () => {
     if (!topic.trim()) return;
-    const session = await api.post<CouncilSession>('/council/sessions', { task_description: topic, mode: 'council' });
+    const session = await api.post<CouncilSession>('/council/sessions', {
+      task_description: topic, mode: 'council', independent_judge: independentJudge,
+      ...(judgeModel.trim() ? { judge_model: judgeModel.trim() } : {}),
+    });
     setSessions((current) => [session, ...current]);
     setSelected(session.id);
     setTopic('');
-  }, [topic]);
+  }, [topic, independentJudge, judgeModel]);
 
   const execute = useCallback(async (id: string) => {
     await api.post(`/council/sessions/${id}/execute`);
@@ -60,6 +65,10 @@ export function ConsensusDebatePage() {
         <button onClick={createDebate} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
           <Plus size={14} /> Create
         </button>
+      </div>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', margin: '-12px 0 24px' }}>
+        <label><input type="checkbox" checked={independentJudge} onChange={event => setIndependentJudge(event.target.checked)} /> Independent judge</label>
+        {independentJudge && <input value={judgeModel} onChange={event => setJudgeModel(event.target.value)} placeholder="Optional judge model" style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px' }} />}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>

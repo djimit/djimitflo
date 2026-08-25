@@ -7,7 +7,6 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { initializeDatabase } from './database';
@@ -46,8 +45,6 @@ import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from './services/emergent-specialization-service';
 import { RsiSafetyGuard } from './services/rsi-safety-guard';
-
-type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -179,7 +176,7 @@ async function main() {
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
   }));
-  app.use(express.json());
+  app.use(express.json({ verify: (req, _res, buffer) => { (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
   app.use(requestLogger);
   
   // Health check (public)
@@ -260,33 +257,6 @@ async function main() {
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
-
-  try {
-    const raw = process.env.TELEGRAM_BOTS_CONFIG;
-    if (raw) {
-      const configs = JSON.parse(raw) as TelegramBotConfig[];
-      const { TelegramGatewayService } = await import('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
-      const tg = new TelegramGatewayService(configs, {
-        createTask: async (prompt: string, machineId: string) => {
-          const id = randomUUID();
-          db.prepare(
-            `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
-          ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
-          return id;
-        },
-        getStatus: async (machineId: string) => {
-          const count = (db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status IN ('pending','queued','running') AND created_by = ?").get(machineId) as any).c;
-          const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(machineId) as any;
-          return `Machine ${machineId}: ${count} actieve/pending tasks. Status: ${agent?.status || 'unknown'}`;
-        },
-      });
-      tg.startAll().catch((e: any) => console.warn('⚠️ Telegram startAll fout:', e?.message || e));
-    } else {
-      console.log('ℹ️ TELEGRAM_BOTS_CONFIG niet gezet — Telegram gateway is uitgeschakeld');
-    }
-  } catch (e) {
-    console.warn('⚠️ Telegram gateway init fout:', e);
-  }
 
   try {
     const jitterMinutes = Math.floor(Math.random() * 180);
