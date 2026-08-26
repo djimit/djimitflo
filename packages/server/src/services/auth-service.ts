@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { UserRole, ROLE_PERMISSIONS, type User, type AuthTokenPayload } from '@djimitflo/shared';
+import { verifyHs256Jwt } from '@djimitflo/shared/jwt';
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
@@ -69,11 +70,7 @@ export class AuthService {
   }
 
   verifyToken(token: string): AuthTokenPayload | null {
-    try {
-      return jwt.verify(token, this.jwtSecret) as AuthTokenPayload;
-    } catch {
-      return null;
-    }
+    return verifyHs256Jwt(token, this.jwtSecret);
   }
 
   sanitizeUser(row: Record<string, unknown>): User {
