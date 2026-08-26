@@ -125,6 +125,9 @@ export interface TaskExecutor {
    * Check if this executor can handle the given task
    */
   canExecute(task: Task): boolean;
+
+  /** Build the exact CLI invocation used by this executor. */
+  buildCommand?(task: Task, options?: ExecutorOptions): { command: string; args: string[] };
 }
 
 /**

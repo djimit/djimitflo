@@ -42,6 +42,10 @@ export class GeminiExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.geminiPath, args: this.buildGeminiArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();
