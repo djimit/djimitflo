@@ -48,6 +48,7 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
+import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -64,6 +65,7 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private pendingExecutions = new Set<string>();
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
@@ -156,7 +158,7 @@ export class ExecutionEngine {
    */
   async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId)) {
+    if (this.activeSessions.has(taskId) || this.pendingExecutions.has(taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -340,6 +342,12 @@ export class ExecutionEngine {
       }
     }
 
+    this.pendingExecutions.add(taskId);
+    try {
+      await runtimeConcurrencySemaphore.acquire(`execution:${taskId}`);
+    } finally {
+      this.pendingExecutions.delete(taskId);
+    }
     try {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
@@ -347,6 +355,7 @@ export class ExecutionEngine {
       const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
       return { status: 'started', completion: session.result };
     } catch (error) {
+      runtimeConcurrencySemaphore.release(`execution:${taskId}`);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -621,6 +630,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.diffContexts.delete(taskId);
     
     // Update task status
@@ -734,6 +744,7 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
       .run(JSON.stringify(result), taskId);
     
@@ -828,6 +839,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);

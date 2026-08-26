@@ -168,6 +168,56 @@ describe('ExecutionEngine', () => {
     expect(result.status).toBe('started');
   });
 
+  it('queues execution when the shared runtime concurrency cap is full', async () => {
+    const previousLimit = process.env.RUNTIME_MAX_CONCURRENCY;
+    process.env.RUNTIME_MAX_CONCURRENCY = '1';
+    const starts: string[] = [];
+    const finish = new Map<string, (result: any) => void>();
+    engine.registerExecutor({
+      kind: 'mock',
+      canExecute: () => true,
+      start: async (task: Task) => ({
+        id: `session-${task.id}`,
+        taskId: task.id,
+        executorKind: 'mock',
+        status: 'running',
+        startedAt: new Date(),
+        events: (async function* () {})(),
+        result: new Promise((resolve) => {
+          starts.push(task.id);
+          finish.set(task.id, resolve);
+        }),
+        cancel: async () => {},
+      }),
+    } as any);
+    const first = createTask({ id: 'concurrency-first' });
+    const second = createTask({ id: 'concurrency-second' });
+    for (const task of [first, second]) {
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+    }
+
+    try {
+      const firstExecution = await engine.executeTask(first.id, 'mock');
+      const secondExecutionPromise = engine.executeTask(second.id, 'mock');
+      await Promise.resolve();
+      expect(starts).toEqual([first.id]);
+      await expect(engine.executeTask(second.id, 'mock')).rejects.toThrow('Task is already running');
+
+      finish.get(first.id)!({ status: 'completed', message: 'done', metrics: { executionTimeMs: 1 } });
+      await firstExecution.completion;
+      const secondExecution = await secondExecutionPromise;
+      expect(starts).toEqual([first.id, second.id]);
+
+      finish.get(second.id)!({ status: 'completed', message: 'done', metrics: { executionTimeMs: 1 } });
+      await secondExecution.completion;
+    } finally {
+      if (previousLimit === undefined) delete process.env.RUNTIME_MAX_CONCURRENCY;
+      else process.env.RUNTIME_MAX_CONCURRENCY = previousLimit;
+    }
+  });
+
   it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
     const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
     try {
