@@ -96,6 +96,13 @@ export function createRoutes(
   metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService,
   operatorRuntime?: boolean,
   runtimeGovernance = new RuntimeGovernanceService(db),
+  // Injected so /learning and /cognitive observe the same in-memory episode
+  // buffer the live CognitiveLoopClosureService accumulates into (it calls
+  // .start() once at bootstrap in index.ts). A locally-constructed instance
+  // here would never receive episodes and extractPatterns() would always
+  // return []. RuntimeGovernanceService doesn't need this treatment because
+  // its state is DB-persisted, not in-memory.
+  cognitiveLoop = new CognitiveLoopClosureService(db),
 ): Router {
   const router = Router();
 
@@ -115,7 +122,6 @@ export function createRoutes(
   // the router, so a token-only child cannot create roots.
   const requireAuthOrSpawnToken = auth.requireAuthOrSpawnToken;
   const auditService = new AuditService(db);
-  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // Security headers
   router.use(securityHeaders);

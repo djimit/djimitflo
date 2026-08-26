@@ -275,7 +275,7 @@ async function main() {
   }
 
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, undefined, runtimeGovernance));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, undefined, runtimeGovernance, cognitiveLoopClosure));
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
