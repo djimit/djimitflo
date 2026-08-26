@@ -3,6 +3,7 @@
 
 module.exports = {
   mutate: [
+    'packages/server/src/services/approval-service.ts:116:4-118:5',
     'packages/server/src/execution/executors/docker-sandbox-executor.ts:108:2-113:3',
   ],
   testRunner: 'vitest',

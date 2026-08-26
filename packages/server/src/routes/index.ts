@@ -201,7 +201,7 @@ export function createRoutes(
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
-    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
