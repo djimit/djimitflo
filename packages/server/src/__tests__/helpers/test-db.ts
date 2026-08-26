@@ -563,6 +563,14 @@ const SCHEMA = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS memory_access_log (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    accessed_at TEXT NOT NULL,
+    FOREIGN KEY (candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS repositories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,

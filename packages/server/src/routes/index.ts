@@ -45,6 +45,7 @@ import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
+import { createMemoryEvolutionRoutes } from './memory-evolution';
 import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
@@ -184,6 +185,7 @@ export function createRoutes(
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
+    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
