@@ -6,6 +6,7 @@ import { spawnSync } from 'child_process';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
+import type { ExecutionEngine } from '../execution/execution-engine';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -310,7 +311,7 @@ export class LoopService {
    */
   private spawnTokenSecret: string | undefined;
 
-  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, executionEngine?: ExecutionEngine) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
@@ -331,7 +332,7 @@ export class LoopService {
     this.recovery = new LoopRecoveryService(db);
     this.persistence = new LoopPersistenceService(evidenceRoot);
     this.experience = new ExperienceRetrievalService(db);
-    this.workerExecutor = new LoopWorkerExecutorService(db, this);
+    this.workerExecutor = new LoopWorkerExecutorService(db, this, executionEngine);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
     this.discovery = new LoopDiscoveryService();

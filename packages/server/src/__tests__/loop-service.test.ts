@@ -78,6 +78,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     db.pragma('foreign_keys = ON');
     db.exec(schema);
     runMigrations(db);
+    db.prepare("UPDATE approval_policies SET decision = 'allow' WHERE id = 'policy-medium-task-approval'").run();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-loop-'));
     worktreeRoot = path.join(os.tmpdir(), `.djimitflo-loop-worktrees-${path.basename(tempDir)}`);
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
@@ -543,6 +544,8 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(fs.readFileSync(path.join(maker.worktree_path, 'README.md'), 'utf8')).toContain('Setup is documented.');
     expect(fs.existsSync(executed.stdout_path)).toBe(true);
     expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('patched README');
+    expect(db.prepare("SELECT status FROM tasks WHERE json_extract(metadata, '$.lease_id') = ?").get(maker.id))
+      .toEqual({ status: 'completed' });
 
     process.env[JWT_SECRET_ENV] = 'server side check script secret';
     delete process.env.RUNTIME_ENV_PASSTHROUGH;

@@ -148,6 +148,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
+      const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
       const child = spawn(this.opencodePath, args, {
         cwd,
@@ -166,8 +167,8 @@ export class OpenCodeExecutor implements TaskExecutor {
             }
           }, 5000);
         }
-        emitter.emit('error', new Error(`OpenCode execution timed out after ${this.executionTimeoutMs}ms`));
-      }, this.executionTimeoutMs);
+        emitter.emit('error', new Error(`OpenCode execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       child.stdout?.on('data', (data) => {
         const text = data.toString();
@@ -302,7 +303,7 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     if (event.type !== 'step_finish') return;
 
-    const part = event.part as OpenCodeStepFinish;
+    const part = (event.part || event) as OpenCodeStepFinish;
     const total = part.tokens?.total;
     if (typeof total === 'number') {
       metrics.tokenUsage = Math.max(metrics.tokenUsage, total);

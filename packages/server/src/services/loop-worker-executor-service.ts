@@ -8,12 +8,16 @@
 
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
+import { ExecutionEngine } from '../execution/execution-engine';
+import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
   RuntimeContract,
+  RuntimeExecutionResult,
   RuntimeUsage,
 } from './loop-types';
 
@@ -46,6 +50,7 @@ export class LoopWorkerExecutorService {
   constructor(
     private db: any,
     private loopService: LoopService,
+    private executionEngine?: ExecutionEngine,
   ) {}
 
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
@@ -118,14 +123,9 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = this.loopService.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
-      cwd: makerLease.worktree_path!,
-      timeoutMs,
-      enforceCwdBoundary: makerLease.runtime !== 'mock',
-      maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(makerLease) ?? undefined,
-    });
+    const result = makerLease.runtime === 'mock'
+      ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
+      : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
@@ -297,6 +297,85 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private async executeMockWorker(
+    lease: WorkerLeaseRecord,
+    prompt: string,
+    timeoutMs: number,
+    skipPermissions: boolean,
+  ): Promise<RuntimeExecutionResult> {
+    const { command, args } = this.loopService.buildRuntimeCommand('mock', lease.worktree_path!, prompt, skipPermissions);
+    return this.loopService.runtimeCommand.executeRuntimeCommand(lease.id, command, args, {
+      cwd: lease.worktree_path!, timeoutMs, maxBuffer: 5 * 1024 * 1024,
+      env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
+    });
+  }
+
+  private async executeViaEngine(
+    run: LoopRunRecord,
+    lease: WorkerLeaseRecord,
+    runtime: string,
+    prompt: string,
+    cwd: string,
+    timeoutMs: number,
+    skipPermissions: boolean,
+  ): Promise<RuntimeExecutionResult> {
+    const previousTaskId = lease.metadata.execution_task_id as string | undefined;
+    if (previousTaskId) {
+      const previousTask = this.db.prepare('SELECT status, metadata FROM tasks WHERE id = ?').get(previousTaskId) as { status: string; metadata: string } | undefined;
+      const previousResult = previousTask ? JSON.parse(previousTask.metadata || '{}').executionResult as ExecutionResult | undefined : undefined;
+      if (previousResult && ['completed', 'failed', 'cancelled'].includes(previousTask!.status)) {
+        return this.toRuntimeResult(previousResult);
+      }
+      if (previousTask?.status === 'awaiting_approval') throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      if (previousTask?.status === 'running' || previousTask?.status === 'queued') throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
+    }
+
+    const taskId = `loop-worker-${lease.id}-${randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    this.db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?)
+    `).run(
+      taskId,
+      `${lease.role} worker for ${run.loop_name}`,
+      prompt,
+      this.loopService.isHighRiskRun(run) ? 'high' : 'medium',
+      this.loopService.isHighRiskRun(run) ? 'high' : 'low',
+      JSON.stringify(['loop-worker', lease.role, runtime]),
+      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment }),
+      now,
+      now,
+    );
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId });
+
+    const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(taskId, runtime as ExecutorKind);
+    if (execution.status === 'awaiting_approval') {
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', { execution_task_id: taskId, approval_id: execution.approvalId });
+      throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+    }
+    if (execution.status === 'denied' || !execution.completion) {
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: execution.reason });
+      throw new Error('LOOP_WORKER_EXECUTION_DENIED');
+    }
+
+    const completed = await execution.completion;
+    return this.toRuntimeResult(completed);
+  }
+
+  private toRuntimeResult(completed: ExecutionResult): RuntimeExecutionResult {
+    const timedOut = /timed out/i.test(`${completed.message}\n${completed.error || ''}`);
+    return {
+      exitCode: completed.status === 'completed' ? 0 : 1,
+      signal: null,
+      timedOut,
+      ...(timedOut ? { timedOutAt: new Date().toISOString() } : {}),
+      stdout: completed.stdout || '',
+      stderr: completed.stderr || completed.error || '',
+    };
+  }
 
   private updateRunAndRecord(
     run: LoopRunRecord, makerLease: WorkerLeaseRecord, failed: boolean, wasCancelled: boolean,

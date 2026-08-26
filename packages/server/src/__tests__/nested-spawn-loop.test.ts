@@ -70,6 +70,7 @@ function setupHarness(overrides: { depthBudget?: number; tokenBudget?: number; c
   db.pragma('foreign_keys = ON');
   db.exec(schema);
   runMigrations(db);
+  db.prepare("UPDATE approval_policies SET decision = 'allow' WHERE id = 'policy-medium-task-approval'").run();
 
   const tempDir = makeTempRepo();
   const worktreeRoot = path.join(os.tmpdir(), `.djimitflo-loop-worktrees-${path.basename(tempDir)}`);

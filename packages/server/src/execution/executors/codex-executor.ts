@@ -120,6 +120,7 @@ export class CodexExecutor implements TaskExecutor {
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
+      const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
       const child = spawn(this.codexPath, args, {
         cwd,
@@ -138,8 +139,8 @@ export class CodexExecutor implements TaskExecutor {
             }
           }, 5000);
         }
-        emitter.emit('error', new Error(`Codex execution timed out after ${this.executionTimeoutMs}ms`));
-      }, this.executionTimeoutMs);
+        emitter.emit('error', new Error(`Codex execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       child.stdout?.on('data', (data) => {
         emitter.emit('output', data.toString(), 'stdout');

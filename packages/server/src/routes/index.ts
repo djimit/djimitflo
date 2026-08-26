@@ -168,7 +168,7 @@ export function createRoutes(
   mounts.push(
     { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
     { prefix: '/goals', middleware: [requireAuth], router: createGoalRoutes(db, auth) },
-    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth) },
+    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth, undefined, executionEngine) },
     { prefix: '/work-items', middleware: [requireAuth], router: createWorkItemRoutes(db, auth) },
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.

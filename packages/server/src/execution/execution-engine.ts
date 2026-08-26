@@ -103,9 +103,12 @@ export class ExecutionEngine {
     return this.toolBroker;
   }
 
-  constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
+  constructor(db: Database, wsService?: WebSocketService, skillsDir?: string) {
     this.db = db;
-    this.wsService = wsService;
+    this.wsService = wsService || ({
+      broadcastTaskEvent: () => {},
+      broadcastTaskEventById: () => {},
+    } as unknown as WebSocketService);
     this.executors = new Map();
     this.circuitBreaker = new CircuitBreakerService();
     this.fallbackChain = new FallbackChainService();
@@ -118,7 +121,7 @@ export class ExecutionEngine {
     this.policyDecisionService = new PolicyDecisionService(db);
     this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
-    this.approvalService = new ApprovalService(db, wsService, this.auditService);
+    this.approvalService = new ApprovalService(db, this.wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
     this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
@@ -385,7 +388,13 @@ export class ExecutionEngine {
       : executor;
 
     try {
-      const session = await activeExecutor.start(task, workingDirectory ? { workingDirectory } : undefined);
+      const executionMetadata = task.metadata as Record<string, unknown>;
+      const session = await activeExecutor.start(task, {
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(executionMetadata.environment ? { environment: executionMetadata.environment as Record<string, string> } : {}),
+        ...(executionMetadata.timeoutMs ? { timeout: Number(executionMetadata.timeoutMs) } : {}),
+        ...(executionMetadata.skipPermissions === true ? { skipPermissions: true } : {}),
+      });
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
@@ -725,6 +734,8 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
+      .run(JSON.stringify(result), taskId);
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);
