@@ -19,6 +19,10 @@ describe('SkillLoaderService admission boundary', () => {
     );
   }
 
+  function writeManifest(id: string, lines: string[]): void {
+    fs.writeFileSync(path.join(skillsDir, id, 'skill.manifest.yaml'), [...lines, ''].join('\n'), 'utf8');
+  }
+
   beforeEach(() => {
     skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-skills-'));
     database = new Database(':memory:');
@@ -94,5 +98,44 @@ describe('SkillLoaderService admission boundary', () => {
     expect(() => service.assignSkillToAgent('missing-agent', 'safe-skill')).toThrow('AGENT_NOT_FOUND');
     expect(service.assignSkillToAgent('agent-1', 'safe-skill')).toMatchObject({ agentId: 'agent-1', skillId: 'safe-skill' });
     expect(service.getAgentSkills('agent-1')).toHaveLength(1);
+  });
+
+  it('admits only allowlisted manifest-backed skills with canonical identity and tool arrays', () => {
+    for (const id of ['running-tests', 'unselected-skill']) {
+      writeSkill(id, [
+        `name: ${id}`,
+        'description: Execute a bounded validation workflow.',
+      ], 'Plan the check, execute it, verify the evidence, and stop.');
+      writeManifest(id, [
+        `skill_id: .opencode.skills.${id}`,
+        'version: 1.2.3',
+        'owner: djimit',
+        'allowed_tools: [Read, Grep, Glob, Bash]',
+        'disallowed_tools: [ProductionWrite, DependencyInstall]',
+      ]);
+    }
+
+    const service = new SkillLoaderService(database, skillsDir, new Set(['.opencode.skills.running-tests']));
+    const originalHash = service.getSkill('.opencode.skills.running-tests')?.contentHash;
+
+    expect(service.listSkills()).toHaveLength(1);
+    expect(service.getSkill('.opencode.skills.running-tests')).toMatchObject({
+      id: '.opencode.skills.running-tests',
+      version: '1.2.3',
+      author: 'djimit',
+      tools: ['Read', 'Grep', 'Glob', 'Bash'],
+      manifestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      metadata: { manifest: { skill_id: '.opencode.skills.running-tests' } },
+    });
+
+    writeManifest('running-tests', [
+      'skill_id: .opencode.skills.running-tests',
+      'version: 1.2.3',
+      'owner: djimit',
+      'allowed_tools: [Read]',
+      'disallowed_tools: [ProductionWrite, DependencyInstall]',
+    ]);
+    const changed = new SkillLoaderService(database, skillsDir, new Set(['.opencode.skills.running-tests']));
+    expect(changed.getSkill('.opencode.skills.running-tests')?.contentHash).not.toBe(originalHash);
   });
 });
