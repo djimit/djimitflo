@@ -52,15 +52,34 @@ const DEFAULT_CIRCUIT_BREAKER_THRESHOLD = 3;  // violations before circuit break
 const DEFAULT_QUARANTINE_THRESHOLD = 5;       // violations before quarantine
 
 export class RuntimeGovernanceService {
-  private baselines: Map<string, AgentBehaviorBaseline> = new Map();
-  private violationCounts: Map<string, number> = new Map();
-  private circuitBreakerTripped: Set<string> = new Set();
-  private quarantinedAgents: Set<string> = new Set();
-  private alerts: GovernanceAlert[] = [];
   private unsubscribe: (() => void) | null = null;
 
   constructor(private db: Database) {
-    // Database available for persistent baseline storage and feedback
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_governance_agents (
+        agent_id TEXT PRIMARY KEY,
+        certified_score REAL NOT NULL,
+        category_scores_json TEXT NOT NULL DEFAULT '{}',
+        certified_at TEXT NOT NULL,
+        circuit_breaker_threshold INTEGER NOT NULL DEFAULT 3,
+        quarantine_threshold INTEGER NOT NULL DEFAULT 5,
+        violation_count INTEGER NOT NULL DEFAULT 0,
+        circuit_breaker_tripped INTEGER NOT NULL DEFAULT 0,
+        quarantined INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runtime_governance_alerts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        timestamp TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_runtime_governance_alerts_timestamp
+        ON runtime_governance_alerts(timestamp DESC);
+    `);
   }
 
   /**
@@ -92,21 +111,33 @@ export class RuntimeGovernanceService {
     categoryScores: Record<string, number>;
     certifiedAt: string;
   }): void {
-    this.baselines.set(agentId, {
+    this.db.prepare(`
+      INSERT INTO runtime_governance_agents (
+        agent_id, certified_score, category_scores_json, certified_at,
+        circuit_breaker_threshold, quarantine_threshold, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        certified_score = excluded.certified_score,
+        category_scores_json = excluded.category_scores_json,
+        certified_at = excluded.certified_at,
+        updated_at = excluded.updated_at
+    `).run(
       agentId,
-      certifiedScore: certificationResult.overallScore,
-      categoryScores: certificationResult.categoryScores,
-      certifiedAt: certificationResult.certifiedAt,
-      circuitBreakerThreshold: DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
-      quarantineThreshold: DEFAULT_QUARANTINE_THRESHOLD,
-    });
+      certificationResult.overallScore,
+      JSON.stringify(certificationResult.categoryScores),
+      certificationResult.certifiedAt,
+      DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
+      DEFAULT_QUARANTINE_THRESHOLD,
+      new Date().toISOString(),
+    );
   }
 
   /**
    * Check if an agent is allowed to execute (not quarantined or circuit-broken).
    */
   isAllowed(agentId: string): boolean {
-    return !this.quarantinedAgents.has(agentId) && !this.circuitBreakerTripped.has(agentId);
+    const state = this.getAgentState(agentId);
+    return !state || (!state.quarantined && !state.circuit_breaker_tripped);
   }
 
   /**
@@ -118,11 +149,12 @@ export class RuntimeGovernanceService {
     violationCount: number;
     baseline: AgentBehaviorBaseline | null;
   } {
+    const state = this.getAgentState(agentId);
     return {
-      quarantined: this.quarantinedAgents.has(agentId),
-      circuitBreakerTripped: this.circuitBreakerTripped.has(agentId),
-      violationCount: this.violationCounts.get(agentId) || 0,
-      baseline: this.baselines.get(agentId) || null,
+      quarantined: Boolean(state?.quarantined),
+      circuitBreakerTripped: Boolean(state?.circuit_breaker_tripped),
+      violationCount: state?.violation_count || 0,
+      baseline: state ? this.toBaseline(state) : null,
     };
   }
 
@@ -130,9 +162,11 @@ export class RuntimeGovernanceService {
    * Release an agent from quarantine (human approval required).
    */
   releaseFromQuarantine(agentId: string, reason: string): void {
-    this.quarantinedAgents.delete(agentId);
-    this.circuitBreakerTripped.delete(agentId);
-    this.violationCounts.set(agentId, 0);
+    this.db.prepare(`
+      UPDATE runtime_governance_agents
+      SET quarantined = 0, circuit_breaker_tripped = 0, violation_count = 0, updated_at = ?
+      WHERE agent_id = ?
+    `).run(new Date().toISOString(), agentId);
 
     this.emitAlert({
       agentId,
@@ -147,8 +181,13 @@ export class RuntimeGovernanceService {
    * Reset circuit breaker for an agent.
    */
   resetCircuitBreaker(agentId: string): void {
-    this.circuitBreakerTripped.delete(agentId);
-    this.violationCounts.set(agentId, Math.max(0, (this.violationCounts.get(agentId) || 0) - 1));
+    this.db.prepare(`
+      UPDATE runtime_governance_agents
+      SET circuit_breaker_tripped = 0,
+          violation_count = MAX(0, violation_count - 1),
+          updated_at = ?
+      WHERE agent_id = ?
+    `).run(new Date().toISOString(), agentId);
 
     this.emitAlert({
       agentId,
@@ -163,7 +202,18 @@ export class RuntimeGovernanceService {
    * Get all active alerts.
    */
   getAlerts(limit = 50): GovernanceAlert[] {
-    return this.alerts.slice(-limit).reverse();
+    return (this.db.prepare(`
+      SELECT id, agent_id, severity, type, message, evidence_json, timestamp
+      FROM runtime_governance_alerts ORDER BY timestamp DESC LIMIT ?
+    `).all(Math.max(0, limit)) as any[]).map((row) => ({
+      id: row.id,
+      agentId: row.agent_id,
+      severity: row.severity,
+      type: row.type,
+      message: row.message,
+      evidence: JSON.parse(row.evidence_json),
+      timestamp: row.timestamp,
+    }));
   }
 
   /**
@@ -176,12 +226,19 @@ export class RuntimeGovernanceService {
     totalAlerts: number;
     recentAlerts: GovernanceAlert[];
   } {
+    const counts = this.db.prepare(`
+      SELECT COUNT(*) AS monitored,
+        SUM(CASE WHEN quarantined = 1 THEN 1 ELSE 0 END) AS quarantined,
+        SUM(CASE WHEN circuit_breaker_tripped = 1 THEN 1 ELSE 0 END) AS tripped
+      FROM runtime_governance_agents
+    `).get() as any;
+    const totalAlerts = (this.db.prepare('SELECT COUNT(*) AS count FROM runtime_governance_alerts').get() as any).count;
     return {
-      monitoredAgents: this.baselines.size,
-      quarantinedAgents: this.quarantinedAgents.size,
-      circuitBreakerTripped: this.circuitBreakerTripped.size,
-      totalAlerts: this.alerts.length,
-      recentAlerts: this.alerts.slice(-5).reverse(),
+      monitoredAgents: counts.monitored,
+      quarantinedAgents: counts.quarantined || 0,
+      circuitBreakerTripped: counts.tripped || 0,
+      totalAlerts,
+      recentAlerts: this.getAlerts(5),
     };
   }
 
@@ -194,7 +251,7 @@ export class RuntimeGovernanceService {
     const agentId = String(event.data.agentId);
 
     // Only monitor agents with a registered baseline
-    if (!this.baselines.has(agentId)) return;
+    if (!this.getAgentState(agentId)) return;
 
     // Check for governance-relevant events
     switch (event.type) {
@@ -217,7 +274,7 @@ export class RuntimeGovernanceService {
    * Check an agent's action for governance violations.
    */
   private checkAction(agentId: string, data: Record<string, unknown>): void {
-    const baseline = this.baselines.get(agentId);
+    const baseline = this.getBaseline(agentId);
     if (!baseline) return;
 
     // Detect anomalous tool usage
@@ -240,7 +297,7 @@ export class RuntimeGovernanceService {
    * Check loop completion for anomalies.
    */
   private checkLoopCompletion(agentId: string, data: Record<string, unknown>): void {
-    const baseline = this.baselines.get(agentId);
+    const baseline = this.getBaseline(agentId);
     if (!baseline) return;
 
     // Detect excessive duration (potential overthinking)
@@ -263,7 +320,7 @@ export class RuntimeGovernanceService {
    * Check worker execution for governance compliance.
    */
   private checkWorkerExecution(agentId: string, data: Record<string, unknown>): void {
-    const baseline = this.baselines.get(agentId);
+    const baseline = this.getBaseline(agentId);
     if (!baseline) return;
 
     // Detect security-sensitive operations
@@ -302,15 +359,22 @@ export class RuntimeGovernanceService {
     });
 
     if (riskLevel === 'CRITICAL' && confidence >= 0.9) {
-      this.circuitBreakerTripped.add(agentId);
+      this.db.prepare(`
+        UPDATE runtime_governance_agents
+        SET circuit_breaker_tripped = 1, updated_at = ? WHERE agent_id = ?
+      `).run(new Date().toISOString(), agentId);
     }
   }
 
   private recordViolation(violation: RuntimeViolation): void {
-    const currentCount = (this.violationCounts.get(violation.agentId) || 0) + 1;
-    this.violationCounts.set(violation.agentId, currentCount);
-
-    const baseline = this.baselines.get(violation.agentId);
+    this.db.prepare(`
+      UPDATE runtime_governance_agents
+      SET violation_count = violation_count + 1, updated_at = ? WHERE agent_id = ?
+    `).run(new Date().toISOString(), violation.agentId);
+    const state = this.getAgentState(violation.agentId);
+    if (!state) return;
+    const currentCount = state.violation_count;
+    const baseline = this.toBaseline(state);
 
     // Emit alert
     this.emitAlert({
@@ -322,8 +386,11 @@ export class RuntimeGovernanceService {
     });
 
     // Check circuit breaker threshold
-    if (baseline && currentCount >= baseline.circuitBreakerThreshold) {
-      this.circuitBreakerTripped.add(violation.agentId);
+    if (currentCount >= baseline.circuitBreakerThreshold) {
+      this.db.prepare(`
+        UPDATE runtime_governance_agents
+        SET circuit_breaker_tripped = 1, updated_at = ? WHERE agent_id = ?
+      `).run(new Date().toISOString(), violation.agentId);
       this.emitAlert({
         agentId: violation.agentId,
         severity: 'critical',
@@ -334,8 +401,11 @@ export class RuntimeGovernanceService {
     }
 
     // Check quarantine threshold
-    if (baseline && currentCount >= baseline.quarantineThreshold) {
-      this.quarantinedAgents.add(violation.agentId);
+    if (currentCount >= baseline.quarantineThreshold) {
+      this.db.prepare(`
+        UPDATE runtime_governance_agents
+        SET quarantined = 1, updated_at = ? WHERE agent_id = ?
+      `).run(new Date().toISOString(), violation.agentId);
       this.emitAlert({
         agentId: violation.agentId,
         severity: 'critical',
@@ -366,7 +436,19 @@ export class RuntimeGovernanceService {
       id: randomUUID(),
       timestamp: alert.timestamp || new Date().toISOString(),
     };
-    this.alerts.push(fullAlert);
+    this.db.prepare(`
+      INSERT INTO runtime_governance_alerts
+        (id, agent_id, severity, type, message, evidence_json, timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      fullAlert.id,
+      fullAlert.agentId,
+      fullAlert.severity,
+      fullAlert.type,
+      fullAlert.message,
+      JSON.stringify(fullAlert.evidence),
+      fullAlert.timestamp,
+    );
 
     // Broadcast via event bus
     swarmEventBus.emit('governance_alert' as any, {
@@ -376,6 +458,24 @@ export class RuntimeGovernanceService {
       message: fullAlert.message,
     });
   }
+
+  private getBaseline(agentId: string): AgentBehaviorBaseline | null {
+    const state = this.getAgentState(agentId);
+    return state ? this.toBaseline(state) : null;
+  }
+
+  private getAgentState(agentId: string): any | null {
+    return this.db.prepare('SELECT * FROM runtime_governance_agents WHERE agent_id = ?').get(agentId) as any || null;
+  }
+
+  private toBaseline(state: any): AgentBehaviorBaseline {
+    return {
+      agentId: state.agent_id,
+      certifiedScore: state.certified_score,
+      categoryScores: JSON.parse(state.category_scores_json),
+      certifiedAt: state.certified_at,
+      circuitBreakerThreshold: state.circuit_breaker_threshold,
+      quarantineThreshold: state.quarantine_threshold,
+    };
+  }
 }
-
-

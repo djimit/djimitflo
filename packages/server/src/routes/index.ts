@@ -85,6 +85,7 @@ import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
 export function createRoutes(
   db: Database,
@@ -94,6 +95,7 @@ export function createRoutes(
   wsService?: WebSocketService,
   metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService,
   operatorRuntime?: boolean,
+  runtimeGovernance = new RuntimeGovernanceService(db),
 ): Router {
   const router = Router();
 
@@ -191,7 +193,7 @@ export function createRoutes(
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
-    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth) },
+    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
     { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
     { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
@@ -199,7 +201,7 @@ export function createRoutes(
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
     { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth) },
-    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth) },
+    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
     { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },

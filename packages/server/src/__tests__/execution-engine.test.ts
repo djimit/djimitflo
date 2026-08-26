@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
 
@@ -166,6 +167,30 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('denies dispatch for an agent blocked by runtime governance', async () => {
+    const governance = new RuntimeGovernanceService(db);
+    governance.registerBaseline('blocked-agent', {
+      overallScore: 4.5,
+      categoryScores: {},
+      certifiedAt: new Date().toISOString(),
+    });
+    db.prepare(`
+      UPDATE runtime_governance_agents SET circuit_breaker_tripped = 1 WHERE agent_id = 'blocked-agent'
+    `).run();
+    const governedEngine = new ExecutionEngine(db, createMockWsService(), undefined, governance);
+    const task = createTask({ id: 'governance-blocked', agent_id: 'blocked-agent' });
+    db.prepare("INSERT INTO agents (id, name) VALUES ('blocked-agent', 'Blocked Agent')").run();
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', task.agent_id);
+
+    const result = await governedEngine.executeTask(task.id, 'mock');
+
+    expect(result).toMatchObject({ status: 'denied', reason: expect.stringContaining('blocked-agent') });
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
   });
 
   it('queues execution when the shared runtime concurrency cap is full', async () => {

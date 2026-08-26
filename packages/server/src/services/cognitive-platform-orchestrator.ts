@@ -57,10 +57,10 @@ export class CognitivePlatformOrchestrator {
 
    private started = false;
 
-  constructor(db: Database) {
+  constructor(db: Database, governance = new RuntimeGovernanceService(db)) {
     this.cognitive = new CognitiveLoopClosureService(db);
     this.memory = new ProactiveMemoryService(db);
-    this.governance = new RuntimeGovernanceService(db);
+    this.governance = governance;
     this.fleet = new FleetMeshService(db);
     this.compliance = new ComplianceAuditService(db);
     this.retirement = new AgentRetirementService(db);

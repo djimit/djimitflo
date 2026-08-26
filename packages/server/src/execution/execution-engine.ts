@@ -49,6 +49,7 @@ import { MetaOrchestrationService } from '../services/meta-orchestration-service
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -84,6 +85,7 @@ export class ExecutionEngine {
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
   private toolBroker: ToolBroker;
+  private runtimeGovernance: RuntimeGovernanceService;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -105,7 +107,12 @@ export class ExecutionEngine {
     return this.toolBroker;
   }
 
-  constructor(db: Database, wsService?: WebSocketService, skillsDir?: string) {
+  constructor(
+    db: Database,
+    wsService?: WebSocketService,
+    skillsDir?: string,
+    runtimeGovernance = new RuntimeGovernanceService(db),
+  ) {
     this.db = db;
     this.wsService = wsService || ({
       broadcastTaskEvent: () => {},
@@ -127,6 +134,7 @@ export class ExecutionEngine {
     this.evidenceService = new EvidenceService(db);
     this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
+    this.runtimeGovernance = runtimeGovernance;
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -178,6 +186,19 @@ export class ExecutionEngine {
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
+    }
+
+    if (parsedTask.agent_id && !this.runtimeGovernance.isAllowed(parsedTask.agent_id)) {
+      const reason = `Agent ${parsedTask.agent_id} is blocked by runtime governance`;
+      this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.ERROR,
+        message: reason,
+        level: LogLevel.ERROR,
+        metadata: { agentId: parsedTask.agent_id, source: 'runtime-governance' },
+      });
+      return { status: 'denied', reason };
     }
 
     const attributionBlockReason = this.blockInvalidSkillAttribution(parsedTask);
