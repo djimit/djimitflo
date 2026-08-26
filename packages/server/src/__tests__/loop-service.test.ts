@@ -596,6 +596,9 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(verdict.lease.status).toBe('completed');
     expect(verdict.lease.metadata.verdict).toBe('accepted');
     expect(verdict.run.status).toBe('verifying');
+    expect(verdict.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(fs.readFileSync(path.join(verdict.lease.worktree_path, 'README.md'), 'utf8')).toContain('Setup is documented.');
+    expect(fs.existsSync(path.join(verdict.lease.worktree_path, 'node_modules'))).toBe(false);
     expect(db.prepare("SELECT status FROM tasks WHERE json_extract(metadata, '$.lease_id') = ?").get(checker.id))
       .toEqual({ status: 'completed' });
 
@@ -645,6 +648,55 @@ describe('doc-drift-and-small-fix-loop', () => {
       'loop_completed',
     ]));
     expect(bundle.state_content).toContain('doc-drift-and-small-fix-loop');
+  });
+
+  it('fails the checker read-only gate when a checker mutates its isolated worktree', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
+      'const readme = path.join(dir, "README.md");',
+      'const raw = fs.readFileSync(readme, "utf8");',
+      'if (raw.includes("TODO: document setup")) fs.writeFileSync(readme, "Setup is documented.\\n");',
+      'else fs.writeFileSync(path.join(dir, "CHECKER_MUTATION.md"), "checker wrote here\\n");',
+      'console.log(JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify({ verdict: "accepted", notes: "reviewed" }) } }));',
+    ]);
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+    const checker = continued.leases.find((lease: any) => lease.role === 'checker');
+    const makerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
+    });
+    expect(makerResponse.status).toBe(200);
+
+    const checkerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-checker`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: checker.id, runtime: 'codex', timeout_ms: 10_000 }),
+    });
+    expect(checkerResponse.status).toBe(200);
+    const executed = await checkerResponse.json() as any;
+    expect(executed.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'checker_read_only_contract', status: 'fail' }),
+    ]));
+    expect(executed.run.status).toBe('blocked');
+    expect(fs.existsSync(path.join(maker.worktree_path, 'CHECKER_MUTATION.md'))).toBe(false);
+    expect(fs.existsSync(path.join(executed.lease.worktree_path, 'CHECKER_MUTATION.md'))).toBe(true);
   });
 
   it('executes a prepared worker through the spawn bridge with mock runtime, traces, checkpoints, and artifacts', async () => {
@@ -738,6 +790,8 @@ describe('doc-drift-and-small-fix-loop', () => {
         },
       },
     });
+    expect(checkerExecuted.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(fs.existsSync(path.join(checkerExecuted.lease.worktree_path, 'node_modules'))).toBe(false);
     expect(checkerExecuted.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'checker_runtime_exit_zero', status: 'pass' }),
       expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),

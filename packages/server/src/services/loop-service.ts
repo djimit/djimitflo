@@ -1470,8 +1470,8 @@ export class LoopService {
     return this.worktree.branchNameFor(runId, findingId, retryAttempt);
   }
 
-  public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
-    return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName);
+  public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
+    return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName, linkDependencies);
   }
 
 
@@ -2190,6 +2190,10 @@ export class LoopService {
 
   public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
     this.workerLeases.updateStatus(id, status, metadataPatch);
+  }
+
+  public updateWorkerLeaseWorktree(id: string, worktreePath: string, branchName: string): void {
+    this.workerLeases.updateWorktree(id, worktreePath, branchName);
   }
 
   public updateWorkerLeaseRuntime(id: string, runtime: string): void {
