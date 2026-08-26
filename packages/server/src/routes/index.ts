@@ -84,6 +84,7 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 
 export function createRoutes(
   db: Database,
@@ -112,6 +113,7 @@ export function createRoutes(
   // the router, so a token-only child cannot create roots.
   const requireAuthOrSpawnToken = auth.requireAuthOrSpawnToken;
   const auditService = new AuditService(db);
+  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // Security headers
   router.use(securityHeaders);
@@ -180,7 +182,7 @@ export function createRoutes(
     { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
     { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
     { prefix: '/usage', middleware: [requireAuth], router: createUsageRoutes(db, auth) },
-    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth) },
+    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
     { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
@@ -190,7 +192,7 @@ export function createRoutes(
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
     { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth) },
-    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth) },
+    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
     { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
