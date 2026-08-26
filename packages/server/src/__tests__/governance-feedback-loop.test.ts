@@ -1,8 +1,12 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import type { Database } from 'better-sqlite3';
 import { GovernanceFeedbackLoopService, type FeedbackLoopConfig } from '../services/governance-feedback-loop';
 import { RiskLevel } from '@djimitflo/shared';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
+import type { WebSocketService } from '../services/websocket-service';
+import { createGovernanceFeedbackRoutes } from '../routes/governance-feedback';
 
 describe('GovernanceFeedbackLoopService', () => {
   let db: Database;
@@ -11,6 +15,24 @@ describe('GovernanceFeedbackLoopService', () => {
   beforeEach(() => {
     db = createTestDb();
     db.exec(`
+      CREATE TABLE approval_policies (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        action_type TEXT, risk_levels TEXT NOT NULL DEFAULT '[]', risk_level TEXT,
+        decision TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, match_pattern TEXT,
+        protected_paths TEXT NOT NULL DEFAULT '[]', allowed_tools TEXT NOT NULL DEFAULT '[]',
+        blocked_tools TEXT NOT NULL DEFAULT '[]', require_reason INTEGER NOT NULL DEFAULT 0,
+        tool_patterns TEXT NOT NULL DEFAULT '[]', file_patterns TEXT NOT NULL DEFAULT '[]',
+        requires_approval INTEGER NOT NULL DEFAULT 0, auto_approve INTEGER NOT NULL DEFAULT 0,
+        metadata TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      INSERT INTO approval_policies (id, name, action_type, risk_levels, decision, priority)
+      VALUES
+        ('feedback-low-allow', 'Allow low feedback', 'task_execution', '["low"]', 'allow', 100),
+        ('feedback-elevated-approval', 'Review elevated feedback', 'task_execution', '["medium","high"]', 'require_approval', 100),
+        ('feedback-critical-deny', 'Deny critical feedback', 'task_execution', '["critical"]', 'deny', 110);
+
       CREATE TABLE IF NOT EXISTS openmythos_eval_runs (
         id TEXT PRIMARY KEY,
         agent_id TEXT NOT NULL,
@@ -47,7 +69,10 @@ describe('GovernanceFeedbackLoopService', () => {
       require_verification: true,
     };
 
-    service = new GovernanceFeedbackLoopService(db, config);
+    const wsService = { broadcastTaskEventById: vi.fn() } as unknown as WebSocketService;
+    const auditService = { record: vi.fn() } as unknown as AuditService;
+    const approvalService = new ApprovalService(db, wsService, auditService);
+    service = new GovernanceFeedbackLoopService(db, config, approvalService);
   });
 
   afterEach(() => {
@@ -224,10 +249,10 @@ describe('GovernanceFeedbackLoopService', () => {
       const results = service.authorizeProposals(proposals, principal);
       expect(results[0].proposal.status).toBe('authorized');
       expect(results[0].decision?.decision).toBe('allow');
-      expect(results[0].decision?.capability_token).toBeDefined();
+      expect(results[0].proposal.decision_id).toBe('feedback-low-allow');
     });
 
-    it('requires approval for restricted data', () => {
+    it('creates a pending approval when policy requires approval', () => {
       const proposals = [{
         id: 'p1',
         title: 'Fix critical',
@@ -235,7 +260,7 @@ describe('GovernanceFeedbackLoopService', () => {
         category: 'injection',
         target_finding_ids: ['c1'],
         proposed_action: 'code_fix' as const,
-        risk_level: RiskLevel.CRITICAL,
+        risk_level: RiskLevel.HIGH,
         status: 'proposed' as const,
         decision_id: null,
         created_at: new Date().toISOString(),
@@ -252,9 +277,15 @@ describe('GovernanceFeedbackLoopService', () => {
       const results = service.authorizeProposals(proposals, principal);
       expect(results[0].proposal.status).toBe('proposed');
       expect(results[0].decision?.decision).toBe('require_approval');
+      expect(results[0].proposal.decision_id).toBeTruthy();
+      expect(db.prepare('SELECT status, requested_by FROM approvals').get()).toEqual({
+        status: 'pending',
+        requested_by: 'admin-1',
+      });
     });
 
-    it('rejects proposals from viewers', () => {
+    it('rejects proposals when the canonical policy denies them', () => {
+      db.prepare("UPDATE approval_policies SET decision = 'deny' WHERE id = 'feedback-low-allow'").run();
       const proposals = [{
         id: 'p1',
         title: 'Fix',
@@ -269,9 +300,9 @@ describe('GovernanceFeedbackLoopService', () => {
       }];
 
       const principal = {
-        sub: 'viewer-1',
-        email: 'viewer@test.com',
-        role: 'viewer',
+        sub: 'maker-1',
+        email: 'maker@test.com',
+        role: 'maker',
         iat: 0,
         exp: 0,
       };
@@ -326,6 +357,40 @@ describe('GovernanceFeedbackLoopService', () => {
       expect(result.failures_detected).toBeGreaterThan(0);
       expect(result.proposals_created).toBeGreaterThan(0);
       expect(result.loop_id).toMatch(/^gfl-/);
+    });
+
+    it('does not report execution while dispatch is a no-op', async () => {
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, metadata, started_at, finished_at)
+        VALUES ('run-low', 'agent-low', 'completed', 1, '{}', datetime('now'), datetime('now'))
+      `).run();
+      db.prepare(`
+        INSERT INTO openmythos_case_results (id, run_id, case_id, category, judge_score, judge_rationale, oracle_type, oracle_pass, status)
+        VALUES ('case-low-id', 'run-low', 'case-low', 'quality', 2.8, 'needs work', 'test', 0, 'completed')
+      `).run();
+
+      const result = await service.runFeedbackLoop('agent-low', {
+        sub: 'admin-1', email: 'admin@test.com', role: 'admin', iat: 0, exp: 0,
+      });
+
+      expect(result.proposals_authorized).toBe(1);
+      expect(result.proposals_executed).toBe(0);
+      expect(service.getProposalsByStatus('authorized')).toHaveLength(1);
+      expect(service.getProposalsByStatus('executing')).toHaveLength(0);
+    });
+  });
+
+  it('returns 401 from the run route without an authenticated principal', async () => {
+    const router = createGovernanceFeedbackRoutes(db);
+    const layer = (router as any).stack.find((candidate: any) => candidate.route?.path === '/run');
+    const handler = layer.route.stack.at(-1).handle;
+    const response = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+
+    await handler({ body: { agent_id: 'agent-1' } }, response);
+
+    expect(response.status).toHaveBeenCalledWith(401);
+    expect(response.json).toHaveBeenCalledWith({
+      error: { message: 'Authentication required', code: 'AUTH_REQUIRED' },
     });
   });
 
@@ -468,7 +533,7 @@ describe('getProposalsByStatus', () => {
 
       await service.runFeedbackLoop('agent-1', principal);
 
-      const authorized = service.getProposalsByStatus('proposed');
+      const authorized = service.getProposalsByStatus('rejected');
       expect(authorized.length).toBeGreaterThan(0);
     });
   });
