@@ -64,7 +64,7 @@ export class CognitivePlatformOrchestrator {
     this.fleet = new FleetMeshService(db);
     this.compliance = new ComplianceAuditService(db);
     this.retirement = new AgentRetirementService(db);
-     this.redTeam = new AdversarialRedTeamService(db);
+     this.redTeam = new AdversarialRedTeamService(db, governance);
      this.models = new MultiModelIntelligence(db);
      this.segml = new SegmlCpoBridge(db);
      this.segmlRuntime = new SegmlRuntimeGovernanceBridge(db);

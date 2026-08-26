@@ -200,7 +200,7 @@ export function createRoutes(
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
-    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth) },
+    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
     { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
     { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
