@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { swarmEventBus } from '../services/swarm-event-bus';
+import { runtimeConcurrencyLimit, runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 
 /**
  * G26: Federation protocol — peer discovery, registration, claim sharing,
@@ -83,15 +84,16 @@ export function createFederationRoutes(db: Database, auth: AuthMiddleware): Rout
       if (!goal_objective) {
         res.status(400).json({ error: 'goal_objective is required' });
         return;
-        return;
       }
-      const accepted = true;
+      const active = runtimeConcurrencySemaphore.activeCount;
+      const limit = runtimeConcurrencyLimit();
+      const accepted = active < limit;
       swarmEventBus.emit('convergence', {
         federation: 'work_offered',
         goal_objective,
         accepted,
       });
-      res.json({ accepted, reason: accepted ? 'capacity available' : 'capacity exhausted' });
+      res.json({ accepted, reason: accepted ? 'capacity available' : 'capacity exhausted', capacity: { active, limit } });
     } catch (error) {
       next(error);
     }
