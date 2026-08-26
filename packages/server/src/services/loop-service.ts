@@ -2133,17 +2133,11 @@ export class LoopService {
   }
 
   public extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
-    for (const line of stdout.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('{')) continue;
-      try {
-        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const verdict = String(parsed.verdict || parsed.checker_verdict || '').trim();
-        if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
-          return verdict as CheckerVerdictInput['verdict'];
-        }
-      } catch {
-        continue;
+    const payload = this.extractCheckerPayload(stdout);
+    if (payload) {
+      const verdict = String(payload.verdict || payload.checker_verdict || '').trim();
+      if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
+        return verdict as CheckerVerdictInput['verdict'];
       }
     }
     if (/\baccepted\b/i.test(stdout)) return 'accepted';
@@ -2153,19 +2147,33 @@ export class LoopService {
   }
 
   public extractCheckerNotes(stdout: string): string {
+    const notes = this.extractCheckerPayload(stdout)?.notes;
+    return typeof notes === 'string' ? notes : stdout.trim().slice(0, 1_000);
+  }
+
+  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        if (typeof parsed.notes === 'string') {
-          return parsed.notes;
+        const part = parsed.part;
+        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined];
+        const text = candidates.map((candidate) => candidate?.text).find((value) => typeof value === 'string');
+        if (typeof text === 'string' && text.trim().startsWith('{')) {
+          candidates.push(JSON.parse(text) as Record<string, unknown>);
         }
+        const payload = candidates.find((candidate) => candidate && (
+          typeof candidate.verdict === 'string'
+          || typeof candidate.checker_verdict === 'string'
+          || typeof candidate.notes === 'string'
+        ));
+        if (payload) return payload;
       } catch {
         continue;
       }
     }
-    return stdout.trim().slice(0, 1_000);
+    return undefined;
   }
 
   public mergeGates(existing: LoopGate[], patch: LoopGate[]): LoopGate[] {

@@ -2,8 +2,8 @@
  * LoopWorkerExecutorService — handles maker and checker worker execution.
  *
  * Extracted from LoopService to reduce its 4535 LOC. This service owns the
- * runtime command building, process spawning, gate evaluation, and result
- * persistence for both maker and checker roles.
+ * worker orchestration, gate evaluation, and result persistence for maker and
+ * checker roles. Real runtimes dispatch through ExecutionEngine.
  */
 
 import fs from 'fs';
@@ -235,13 +235,9 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = runtime === 'mock'
-      ? this.loopService.buildMockCheckerCommand(maker.worktree_path!, prompt)
-      : this.loopService.buildRuntimeCommand(runtime, maker.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
-      cwd: maker.worktree_path!, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
-    });
+    const result = runtime === 'mock'
+      ? await this.executeMockChecker(checker, maker.worktree_path!, prompt, timeoutMs)
+      : await this.executeViaEngine(run, checker, runtime, prompt, maker.worktree_path!, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     const exitStatus = result.exitCode;
@@ -307,6 +303,19 @@ export class LoopWorkerExecutorService {
     const { command, args } = this.loopService.buildRuntimeCommand('mock', lease.worktree_path!, prompt, skipPermissions);
     return this.loopService.runtimeCommand.executeRuntimeCommand(lease.id, command, args, {
       cwd: lease.worktree_path!, timeoutMs, maxBuffer: 5 * 1024 * 1024,
+      env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
+    });
+  }
+
+  private async executeMockChecker(
+    lease: WorkerLeaseRecord,
+    cwd: string,
+    prompt: string,
+    timeoutMs: number,
+  ): Promise<RuntimeExecutionResult> {
+    const { command, args } = this.loopService.buildMockCheckerCommand(cwd, prompt);
+    return this.loopService.runtimeCommand.executeRuntimeCommand(lease.id, command, args, {
+      cwd, timeoutMs, maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
     });
   }

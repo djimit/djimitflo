@@ -507,6 +507,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
       'console.log(JSON.stringify({ type: "text", part: { type: "text", text: "patched README" } }));',
+      'console.log(JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify({ verdict: "accepted", notes: "Small docs fix accepted." }) } }));',
     ]);
 
     fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
@@ -585,16 +586,18 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(fs.readFileSync(path.join(maker.worktree_path, 'env-leak.txt'), 'utf8')).toBe('missing');
 
     const checker = continued.leases.find((lease: any) => lease.role === 'checker');
-    const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
+    const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-checker`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: checker.id, verdict: 'accepted', notes: 'Small docs fix accepted.' }),
+      body: JSON.stringify({ lease_id: checker.id, runtime: 'codex', timeout_ms: 10_000 }),
     });
     expect(verdictResponse.status).toBe(200);
     const verdict = await verdictResponse.json() as any;
-    expect(verdict.checker.status).toBe('completed');
-    expect(verdict.checker.metadata.verdict).toBe('accepted');
-    expect(verdict.run.status).toBe('ready_for_human_merge');
+    expect(verdict.lease.status).toBe('completed');
+    expect(verdict.lease.metadata.verdict).toBe('accepted');
+    expect(verdict.run.status).toBe('verifying');
+    expect(db.prepare("SELECT status FROM tasks WHERE json_extract(metadata, '$.lease_id') = ?").get(checker.id))
+      .toEqual({ status: 'completed' });
 
     const postCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(postCheckerVerifyResponse.status).toBe(200);
@@ -638,7 +641,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(bundle.events.map((event: any) => event.event_type)).toEqual(expect.arrayContaining([
       'maker_executed',
       'deterministic_checks_completed',
-      'checker_verdict_submitted',
+      'checker_executed',
       'loop_completed',
     ]));
     expect(bundle.state_content).toContain('doc-drift-and-small-fix-loop');
