@@ -140,7 +140,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(body.error.code).toBe('GOAL_ACCEPTANCE_CRITERIA_REQUIRED');
   });
 
-  it('creates a goal and decomposes it to the doc drift loop', async () => {
+  it('creates a goal and decomposes it through the content-aware DAG route', async () => {
     const createResponse = await fetch(`${baseUrl}/goals`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -164,11 +164,10 @@ describe('doc-drift-and-small-fix-loop', () => {
     const decomposeResponse = await fetch(`${baseUrl}/goals/${goal.id}/decompose`, { method: 'POST' });
     expect(decomposeResponse.status).toBe(200);
     const decomposed = await decomposeResponse.json() as any;
-    expect(decomposed.candidates[0]).toMatchObject({
-      loop_name: 'doc-drift-and-small-fix-loop',
-      mode: 'closed',
-      recommended_first: true,
-    });
+    expect(decomposed).toMatchObject({ fallback: false });
+    expect(decomposed.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ step: 'document', role: 'maker' }),
+    ]));
   });
 
   it('runs read-only discovery, writes state, and proposes bounded small-fix tasks', async () => {
