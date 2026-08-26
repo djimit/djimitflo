@@ -125,6 +125,12 @@ export interface TaskExecutor {
    * Check if this executor can handle the given task
    */
   canExecute(task: Task): boolean;
+
+  /**
+   * Build the exact CLI invocation used by this executor.
+   * DockerSandboxExecutor reuses this instead of maintaining a second copy.
+   */
+  buildCommand?(task: Task, options?: ExecutorOptions): { command: string; args: string[] };
 }
 
 /**

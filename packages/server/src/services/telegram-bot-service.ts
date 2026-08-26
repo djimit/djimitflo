@@ -14,11 +14,15 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
+import { CouncilOrchestrator } from './council-orchestrator';
+import { swarmEventBus } from './swarm-event-bus';
+import type { ApprovalService } from './approval-service';
 
 interface TelegramConfig {
   botToken: string;
   allowedUsers: number[];
   webhookUrl?: string;
+  userMap?: Record<string, string>;
 }
 
 interface TelegramMessage {
@@ -26,20 +30,39 @@ interface TelegramMessage {
   text: string;
   userId: number;
   messageId: number;
+  actorUserId: string;
 }
 
 export class TelegramBotService {
   private config: TelegramConfig | null = null;
   private baseUrl = 'https://api.telegram.org/bot';
+  private unsubscribe: (() => void) | null = null;
 
-  constructor(private db: Database) {}
+  constructor(
+    private db: Database,
+    private approvalService?: ApprovalService,
+    private dennisAgentService = new DennisAgentService(db),
+  ) {
+    this.db.exec("CREATE TABLE IF NOT EXISTS telegram_user_links (telegram_user_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
+  }
 
   /**
    * Configure the Telegram bot.
    */
   configure(config: TelegramConfig): void {
     this.config = config;
+    for (const [telegramId, userRef] of Object.entries(config.userMap || {})) {
+      const user = this.db.prepare('SELECT id FROM users WHERE id = ? OR email = ?').get(userRef, userRef) as { id: string } | undefined;
+      if (user) this.db.prepare('INSERT OR REPLACE INTO telegram_user_links (telegram_user_id,user_id) VALUES (?,?)').run(telegramId, user.id);
+    }
+    if (!this.unsubscribe) {
+      this.unsubscribe = swarmEventBus.subscribe(event => {
+        if (event.type === 'loop_completed') void this.broadcastAlert(`Loop completed: ${String(event.data.loopRunId || event.data.run_id || 'unknown')}`);
+      });
+    }
   }
+
+  stop(): void { this.unsubscribe?.(); this.unsubscribe = null; }
 
   /**
    * Check if the service is configured.
@@ -58,8 +81,30 @@ export class TelegramBotService {
       text: string;
       message_id: number;
     };
+    callback_query?: {
+      from: { id: number };
+      data?: string;
+      message?: { chat: { id: number }; message_id: number };
+    };
   }): Promise<void> {
-    if (!this.config || !payload.message) return;
+    if (!this.config) return;
+    if (payload.callback_query?.data && payload.callback_query.message) {
+      const [action, approvalId] = payload.callback_query.data.split(':');
+      const actorUserId = this.linkedUser(payload.callback_query.from.id);
+      if (!actorUserId) {
+        await this.sendMessage(payload.callback_query.message.chat.id, '⛔ Telegram identity is not linked to a DjimFlo user.');
+        return;
+      }
+      await this.processCommand({
+        chatId: payload.callback_query.message.chat.id,
+        text: `/${action} ${approvalId}`,
+        userId: payload.callback_query.from.id,
+        messageId: payload.callback_query.message.message_id,
+        actorUserId,
+      });
+      return;
+    }
+    if (!payload.message) return;
 
     const { chat, from, text, message_id } = payload.message;
 
@@ -68,12 +113,18 @@ export class TelegramBotService {
       await this.sendMessage(chat.id, '⛔ You are not authorized to use this bot.');
       return;
     }
+    const actorUserId = this.linkedUser(from.id);
+    if (!actorUserId) {
+      await this.sendMessage(chat.id, '⛔ Telegram identity is not linked to a DjimFlo user.');
+      return;
+    }
 
     const message: TelegramMessage = {
       chatId: chat.id,
       text: text.trim(),
       userId: from.id,
       messageId: message_id,
+      actorUserId,
     };
 
     await this.processCommand(message);
@@ -112,19 +163,27 @@ export class TelegramBotService {
         break;
 
       case '/dennis_task':
-        await this.createDennisDryRunTask(chatId, args.join(' '));
+        await this.createDennisDryRunTask(chatId, args.join(' '), message.actorUserId);
         break;
 
       case '/approve':
-        await this.handleApprove(chatId, args);
+        await this.handleApprove(chatId, args, message.actorUserId);
         break;
 
       case '/reject':
-        await this.handleReject(chatId, args);
+        await this.handleReject(chatId, args, message.actorUserId);
         break;
 
       case '/mission':
         await this.sendMissionControl(chatId);
+        break;
+
+      case '/council':
+        await this.askCouncil(chatId, args.join(' '));
+        break;
+
+      case '/costs':
+        await this.sendDailyCosts(chatId);
         break;
 
       case '/help':
@@ -139,7 +198,7 @@ export class TelegramBotService {
   /**
    * Send a message to a Telegram chat.
    */
-  async sendMessage(chatId: number, text: string): Promise<void> {
+  async sendMessage(chatId: number, text: string, replyMarkup?: Record<string, unknown>): Promise<void> {
     if (!this.config?.botToken) return;
 
     try {
@@ -150,6 +209,7 @@ export class TelegramBotService {
           chat_id: chatId,
           text: this.escapeMarkdown(text),
           parse_mode: 'MarkdownV2',
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
         }),
       });
     } catch (error) {
@@ -177,7 +237,10 @@ export class TelegramBotService {
     const text = `⚠️ *Approval Required*\n\nAction: ${action}\nReason: ${reason}\n\nReply: \`/approve ${approvalId}\` or \`/reject ${approvalId}\``;
 
     for (const userId of this.config.allowedUsers) {
-      await this.sendMessage(userId, text);
+      await this.sendMessage(userId, text, { inline_keyboard: [[
+        { text: '✅ Approve', callback_data: `approve:${approvalId}` },
+        { text: '❌ Reject', callback_data: `reject:${approvalId}` },
+      ]] });
     }
   }
 
@@ -193,6 +256,8 @@ export class TelegramBotService {
       '/dennis \\- Dennis Agent status en scopes\n' +
       '/dennis\\_task \\<beschrijving\\> \\- Maak Dennis dry\\-run taak\n' +
       '/mission \\- Mission control\n' +
+      '/council \\<vraag\\> \\- Vraag de model council\n' +
+      '/costs \\- Tokens en kosten vandaag\n' +
       '/approve \\<id\\> \\- Approve action\n' +
       '/reject \\<id\\> \\- Reject action\n' +
       '/help \\- This message'
@@ -262,6 +327,22 @@ export class TelegramBotService {
     );
   }
 
+  private async askCouncil(chatId: number, question: string): Promise<void> {
+    if (!question.trim()) return void await this.sendMessage(chatId, 'Usage: /council <vraag>');
+    const council = new CouncilOrchestrator(this.db);
+    const session = await council.createSession({ task_description: question, mode: 'council' });
+    const result = await council.executeCouncil(session.id);
+    await this.sendMessage(chatId, `🧠 *Council*\n\n${result.synthesis || 'No synthesis'}\n\nCost: $${result.cost_dollars.toFixed(4)}`);
+  }
+
+  private async sendDailyCosts(chatId: number): Promise<void> {
+    const usage = this.db.prepare(`
+      SELECT COALESCE(SUM(total_tokens),0) AS tokens, COALESCE(SUM(cost_estimate),0) AS cost
+      FROM token_usage_log WHERE created_at >= datetime('now','start of day')
+    `).get() as { tokens: number; cost: number };
+    await this.sendMessage(chatId, `💰 *Vandaag*\n\nTokens: ${usage.tokens}\nKosten: $${Number(usage.cost).toFixed(4)}`);
+  }
+
   private async sendDennisStatus(chatId: number): Promise<void> {
     const snapshot = new DennisAgentService(this.db).readinessSnapshot();
     const signals = snapshot.self_context.ecosystem_contract.runtime_signals;
@@ -280,7 +361,7 @@ export class TelegramBotService {
     );
   }
 
-  private async createDennisDryRunTask(chatId: number, prompt: string): Promise<void> {
+  private async createDennisDryRunTask(chatId: number, prompt: string, actorUserId: string): Promise<void> {
     const description = prompt.trim();
     if (!description) {
       await this.sendMessage(chatId, 'Usage: /dennis_task <beschrijving>');
@@ -292,16 +373,20 @@ export class TelegramBotService {
     this.db.prepare(`
       INSERT INTO tasks (
         id, title, description, status, priority, risk_level, execution_mode,
-        agent_id, tags, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, 'pending', 'medium', 'medium', 'dry_run', ?, ?, ?, ?, ?)
+        agent_id, owner_user_id, created_by, tags, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, 'pending', 'medium', 'medium', 'dry_run', ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       description.slice(0, 120) || 'Dennis Telegram task',
       description,
       DENNIS_AGENT_ID,
+      actorUserId,
+      actorUserId,
       JSON.stringify(['telegram', 'dennis-agent', 'dry-run']),
       JSON.stringify({
         source: 'telegram',
+        telegram_user_id: chatId,
+        djimitflo_user_id: actorUserId,
         autonomy_mode: 'dry_run_only',
         blocked_without_approval: ['external_write', 'destructive_action', 'production_mutation', 'external_message'],
       }),
@@ -319,44 +404,44 @@ export class TelegramBotService {
     `).run(DENNIS_AGENT_ID, JSON.stringify(['telegram-bridge', 'paperclip-dry-run']), now, now, now);
   }
 
-  private async handleApprove(chatId: number, args: string[]): Promise<void> {
+  private async handleApprove(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
       await this.sendMessage(chatId, 'Usage: /approve <approval_id>');
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'approved', approved_at = ?, approved_by = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, String(chatId), now, String(chatId), now, approvalId);
-    const approval = this.db.prepare('SELECT id FROM approvals WHERE id = ?').get(approvalId);
-    if (!approval) {
-      await this.sendMessage(chatId, `Approval not found: ${approvalId}`);
-      return;
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, true, actorUserId);
+      const materialized = this.dennisAgentService.materializeApprovedDryRun(approvalId, actorUserId);
+      await this.sendMessage(chatId, materialized.status === 'materialized'
+        ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
+        : `✅ Approved: ${approvalId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith('SELF_APPROVAL_FORBIDDEN')) {
+        await this.sendMessage(chatId, '⛔ Je kunt je eigen aanvraag niet goedkeuren.');
+        return;
+      }
+      await this.sendMessage(chatId, `Fout: ${message}`);
     }
-    const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, String(chatId));
-    await this.sendMessage(chatId, materialized.status === 'materialized'
-      ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
-      : `✅ Approved: ${approvalId}${result.changes === 0 ? ' \\(already processed\\)' : ''}`);
   }
 
-  private async handleReject(chatId: number, args: string[]): Promise<void> {
+  private async handleReject(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
       await this.sendMessage(chatId, 'Usage: /reject <approval_id>');
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'denied', denied_at = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, now, String(chatId), now, approvalId);
-    await this.sendMessage(chatId, result.changes > 0 ? `❌ Rejected: ${approvalId}` : `Approval not pending: ${approvalId}`);
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, false, actorUserId);
+      await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
+    } catch (error) {
+      await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async sendHelp(chatId: number): Promise<void> {
@@ -364,6 +449,10 @@ export class TelegramBotService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private linkedUser(telegramUserId: number): string | null {
+    return (this.db.prepare('SELECT user_id FROM telegram_user_links WHERE telegram_user_id = ?').get(String(telegramUserId)) as { user_id?: string } | undefined)?.user_id || null;
+  }
 
   private escapeMarkdown(text: string): string {
     // Escape MarkdownV2 special characters

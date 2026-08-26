@@ -22,6 +22,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { swarmEventBus } from './swarm-event-bus';
 
 interface GovernancePatternShare {
@@ -84,6 +85,11 @@ export class SegmlFederatedGovernanceBridge {
 
   private ensureTables(): void {
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS federation_peers (
+        id TEXT PRIMARY KEY, url TEXT NOT NULL, trust_level TEXT NOT NULL DEFAULT 'medium',
+        registered_at TEXT NOT NULL DEFAULT (datetime('now')), last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+        shared_secret_hash TEXT, metadata TEXT NOT NULL DEFAULT '{}'
+      );
       CREATE TABLE IF NOT EXISTS segml_federated_patterns (
         id TEXT PRIMARY KEY,
         source_peer TEXT NOT NULL,
@@ -152,7 +158,18 @@ export class SegmlFederatedGovernanceBridge {
     agentCount: number;
     trendDirection: 'improving' | 'stable' | 'declining';
     confidence: number;
-  }>): PeerSyncResult {
+  }>, signature?: string, signedBody?: string): PeerSyncResult {
+    const peer = this.db.prepare('SELECT id, shared_secret_hash FROM federation_peers WHERE id = ?').get(peerId) as { id: string; shared_secret_hash?: string } | undefined;
+    if (!peer) throw new Error(`FEDERATION_UNKNOWN_PEER: ${peerId} is not a registered peer`);
+    if (!peer.shared_secret_hash) throw new Error(`FEDERATION_PEER_SECRET_REQUIRED: ${peerId}`);
+    const expected = createHmac('sha256', Buffer.from(peer.shared_secret_hash, 'hex'))
+      .update(signedBody || JSON.stringify({ peerId, patterns }))
+      .digest('hex');
+    const supplied = signature?.replace(/^sha256=/, '') || '';
+    if (supplied.length !== expected.length || !timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))) {
+      throw new Error(`FEDERATION_SIGNATURE_INVALID: ${peerId}`);
+    }
+
     let validated = 0;
     let rejected = 0;
 

@@ -231,6 +231,7 @@ export function SwarmMissionControlPage() {
   const fairShareOrder = asArray<string>(capacity?.fair_share_order);
   const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
   const nextSafeActions = asArray<string>(mission?.next_safe_actions);
+  const skillEvolution = asArray<NonNullable<SwarmMissionControl['skill_evolution']>[number]>(mission?.skill_evolution);
 
   return (
     <div className="p-8 space-y-6">
@@ -341,6 +342,46 @@ export function SwarmMissionControlPage() {
             `ready ${mission?.specialist_panels.consensus_ready ?? 0}`,
             `blocked/evidence ${mission?.specialist_panels.blocked_or_needs_evidence ?? 0}`,
           ]} />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background-secondary p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Skill Evolution Readiness</h2>
+          <p className="mt-1 text-sm text-foreground-secondary">Exact outcomes, baseline and OpenMythos evidence required by the existing promotion gate. The final training gate still runs during promotion.</p>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-foreground-tertiary">
+              <tr>
+                <th className="py-2 pr-4">Skill</th>
+                <th className="py-2 pr-4">Assigned</th>
+                <th className="py-2 pr-4">Candidate runs</th>
+                <th className="py-2 pr-4">Baselines</th>
+                <th className="py-2 pr-4">OpenMythos</th>
+                <th className="py-2 pr-4">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {skillEvolution.map((skill) => (
+                <tr key={skill.capability_id} className="border-t border-border">
+                  <td className="py-2 pr-4">
+                    <div className="font-medium text-foreground">{skill.skill_id || skill.capability_id}</div>
+                    <div className="font-mono text-xs text-foreground-tertiary">v{skill.skill_version || '?'} · {skill.candidate_hash.slice(0, 12) || 'unattributed'}</div>
+                  </td>
+                  <td className="py-2 pr-4 text-foreground-secondary">{skill.assigned_agents}</td>
+                  <td className="py-2 pr-4 text-foreground-secondary">{skill.candidate_runs}</td>
+                  <td className="py-2 pr-4 text-foreground-secondary">{skill.baseline_hashes.length}</td>
+                  <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{skill.openmythos_run_id || 'missing'}</td>
+                  <td className="py-2 pr-4">
+                    <StatusBadge status={skill.evidence_ready ? 'ready' : 'blocked'} />
+                    {!skill.evidence_ready && <div className="mt-1 max-w-xl text-xs text-status-warning">{skill.blocked_reasons.join(', ')}</div>}
+                  </td>
+                </tr>
+              ))}
+              {!skillEvolution.length && <tr><td className="py-3 text-foreground-tertiary" colSpan={6}>No governed skill capabilities registered.</td></tr>}
+            </tbody>
+          </table>
         </div>
       </section>
 

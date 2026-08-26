@@ -36,6 +36,11 @@ export function createMetaOrchestrationRoutes(
     res.json(metaOrchestration.getTuningHistory(goalType, limit));
   });
 
+  router.post('/tuning/run', async (req, res) => {
+    if (!metaOrchestration) return notEnabled(req, res);
+    res.json(await metaOrchestration.runAutoTuning());
+  });
+
   // GET /api/meta/routing/:taskType
   router.get('/routing/:taskType', (req, res) => {
     if (!metaOrchestration) return notEnabled(req, res);

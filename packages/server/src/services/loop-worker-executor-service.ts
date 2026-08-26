@@ -16,6 +16,7 @@ import type {
   RuntimeContract,
   RuntimeUsage,
 } from './loop-types';
+import { OpenMythosEvalService } from './openmythos-eval-service';
 
 export interface ExecuteMakerInput {
   lease_id?: string;
@@ -119,18 +120,20 @@ export class LoopWorkerExecutorService {
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const { command, args } = this.loopService.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
+    const result = await this.executeRuntimeSafely(makerLease.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
       cwd: makerLease.worktree_path!,
       timeoutMs,
       enforceCwdBoundary: makerLease.runtime !== 'mock',
       maxBuffer: 5 * 1024 * 1024,
       env: this.loopService.buildNestedSpawnEnv(makerLease) ?? undefined,
-    });
+      runtime: makerLease.runtime,
+    }));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
-    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
+    const activeTuning = this.loopService.metaOrchestration?.getActiveLoopTuning(run.loop_name);
+    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || activeTuning?.recommendedGateThresholds.diffMaxLines || 200, 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
@@ -146,6 +149,28 @@ export class LoopWorkerExecutorService {
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
 
+    if (makerLease.runtime !== 'mock' && process.env.OPENMYTHOS_LOOP_GATE_ENABLED !== 'false' && process.env.NODE_ENV !== 'test'
+      && gates.every(gate => gate.status === 'pass')) {
+      const threshold = Math.max(1, Math.min(Number(process.env.OPENMYTHOS_LOOP_MIN_SCORE || 3.5), 5));
+      try {
+        const evaluation = await new OpenMythosEvalService(this.db).evaluateArtifact({
+          task: `${run.loop_name}: ${prompt}`,
+          artifact: `${result.stdout || ''}\n\n${diff}`,
+        });
+        gates.push({
+          name: 'openmythos_quality',
+          status: evaluation.score >= threshold ? 'pass' : 'fail',
+          evidence: `score=${evaluation.score.toFixed(2)}, threshold=${threshold.toFixed(2)}: ${evaluation.rationale}`,
+        });
+      } catch (error) {
+        gates.push({
+          name: 'openmythos_quality',
+          status: 'fail',
+          evidence: `evaluation unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+
     const failed = gates.some((gate) => gate.status === 'fail');
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
@@ -157,6 +182,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      runtime_events: result.events || [],
     };
 
     if (wasCancelled) {
@@ -181,6 +207,17 @@ export class LoopWorkerExecutorService {
       JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
       new Date().toISOString(), run.id,
     );
+
+    if (!wasCancelled && gates.some(gate => gate.name === 'openmythos_quality' && gate.status === 'fail')) {
+      try {
+        this.loopService.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
+      } catch (error) {
+        this.loopService.recordLoopEvent(run.id, 'openmythos_retry_unavailable', 'warning', 'OpenMythos rejected maker output but no automatic retry could be prepared.', {
+          maker_lease_id: makerLease.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
 
     return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
   }
@@ -235,13 +272,23 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = runtime === 'mock'
-      ? this.loopService.buildMockCheckerCommand(maker.worktree_path!, prompt)
-      : this.loopService.buildRuntimeCommand(runtime, maker.worktree_path!, prompt, skipPermissions);
-    const result = await this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
-      cwd: maker.worktree_path!, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
-    });
+    if (!run.repository_path || !maker.branch_name) throw new Error('CHECKER_WORKTREE_SOURCE_REQUIRED');
+    const checkerWorktree = this.loopService.createReviewWorktree(run.repository_path, run.id, checker.id, maker.branch_name);
+    const { result, checkerDiff } = await (async () => {
+      try {
+        const { command, args } = runtime === 'mock'
+          ? this.loopService.buildMockCheckerCommand(checkerWorktree, prompt)
+          : this.loopService.buildRuntimeCommand(runtime, checkerWorktree, prompt, skipPermissions);
+        const result = await this.executeRuntimeSafely(checker.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
+          cwd: checkerWorktree, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
+          env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
+          runtime,
+        }));
+        return { result, checkerDiff: this.loopService.git(checkerWorktree, ['status', '--porcelain']) };
+      } finally {
+        this.loopService.cleanupWorktree(run.repository_path!, checkerWorktree);
+      }
+    })();
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     const exitStatus = result.exitCode;
@@ -256,12 +303,13 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
+      runtime_events: result.events || [],
     });
 
     const gates: LoopGate[] = [
       { name: 'checker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
       { name: 'checker_verdict', status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `checker verdict=${verdict}` },
-      { name: 'checker_read_only_contract', status: 'pass', evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.' },
+      { name: 'checker_read_only_contract', status: checkerDiff ? 'fail' : 'pass', evidence: checkerDiff || 'Checker worktree remained unchanged.' },
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');
@@ -297,6 +345,17 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private async executeRuntimeSafely<T>(leaseId: string, execute: () => Promise<T>): Promise<T> {
+    let completed = false;
+    try {
+      const result = await execute();
+      completed = true;
+      return result;
+    } finally {
+      if (!completed) this.loopService.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
+    }
+  }
 
   private updateRunAndRecord(
     run: LoopRunRecord, makerLease: WorkerLeaseRecord, failed: boolean, wasCancelled: boolean,

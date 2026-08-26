@@ -12,6 +12,7 @@ import {
   Task,
   TaskStatus,
   WebSocketEventType,
+  type WebSocketMessage,
 } from '@djimitflo/shared';
 import {
   TaskExecutor,
@@ -36,9 +37,7 @@ import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
-import { ToolBroker } from '../services/tool-broker';
 import { ApprovalService } from '../services/approval-service';
-import { GovernanceGateService } from '../services/governance-gate-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
@@ -48,6 +47,8 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
+import { MultiModelIntelligence } from '../services/multi-model-intelligence';
+import { ConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -63,13 +64,13 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private readonly executionSemaphore = new ConcurrencySemaphore();
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
-  private governanceGate: GovernanceGateService;
   private diffCaptureService: DiffCaptureService;
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
@@ -80,7 +81,7 @@ export class ExecutionEngine {
   private executionModePolicy: ExecutionModePolicyService;
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
-  private toolBroker: ToolBroker;
+  private modelRouter: MultiModelIntelligence;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -98,10 +99,6 @@ export class ExecutionEngine {
     this.metaOrchestration = service;
   }
 
-  getToolBroker(): ToolBroker {
-    return this.toolBroker;
-  }
-
   constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
     this.db = db;
     this.wsService = wsService;
@@ -111,15 +108,14 @@ export class ExecutionEngine {
     this.executionModePolicy = new ExecutionModePolicyService();
     this.skillEvolution = new SkillEvolutionEngine(db);
     this.skillLoader = new SkillLoaderService(db, skillsDir);
+    this.modelRouter = new MultiModelIntelligence(db);
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
     this.policyDecisionService = new PolicyDecisionService(db);
-    this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
-    this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
     
     // Register default executors
@@ -150,9 +146,9 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
+  async executeTask(taskId: string, requestedExecutorKind?: ExecutorKind): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId)) {
+    if (this.activeSessions.has(taskId) || this.executionSemaphore.has(taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -168,6 +164,18 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
+    const route = requestedExecutorKind ? null : this.modelRouter.routeWithCascade({ taskType: parsedTask.execution_mode || 'coding' });
+    const executorKind = requestedExecutorKind || this.modelRouter.resolveExecutorForModel(route!.selectedModel);
+    if (route) {
+      parsedTask.metadata = {
+        ...parsedTask.metadata,
+        routed_model: route.selectedModel,
+        routing_decision_id: route.id,
+        routing_max_escalations: route.maxEscalations,
+      };
+      this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = datetime(\'now\') WHERE id = ?')
+        .run(JSON.stringify(parsedTask.metadata), taskId);
+    }
 
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
@@ -190,13 +198,11 @@ export class ExecutionEngine {
     }
 
     const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
-    let evaluation = this.policyDecisionService.evaluate(assessment);
+    const evaluation = this.policyDecisionService.evaluate(assessment, { task: parsedTask, executorKind });
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
-    // Governance gate: benchmark evidence can only TIGHTEN the policy decision.
-    const gateVerdict = this.governanceGate.assess(parsedTask, executorKind);
-    if (gateVerdict.action === 'require_approval' && evaluation.decision === 'allow') {
-      evaluation = { ...evaluation, decision: 'require_approval', explanation: gateVerdict.reason };
+    if (evaluation.governance?.action === 'require_approval') {
+      const gateVerdict = evaluation.governance;
       this.evidenceService.captureEvidence({
         task_id: taskId,
         evidence_type: EvidenceType.POLICY_DECISION,
@@ -297,6 +303,7 @@ export class ExecutionEngine {
     
     // Update task status to queued
     this.updateTaskStatus(taskId, TaskStatus.QUEUED);
+    await this.acquireExecutionPermit(taskId);
 
     this.evidenceService.captureEvidence({
       task_id: taskId,
@@ -339,10 +346,14 @@ export class ExecutionEngine {
     try {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
-      const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
+      const maxRetries = Math.max(
+        this.executionModePolicy.getConfig(mode).maxRetries,
+        Number(parsedTask.metadata?.routing_max_escalations || 0),
+      );
       await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
       return { status: 'started' };
     } catch (error) {
+      this.releaseExecutionPermit(taskId);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -384,7 +395,11 @@ export class ExecutionEngine {
       : executor;
 
     try {
-      const session = await activeExecutor.start(task, workingDirectory ? { workingDirectory } : undefined);
+      const options = {
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(typeof task.metadata?.routed_model === 'string' ? { model: task.metadata.routed_model } : {}),
+      };
+      const session = await activeExecutor.start(task, options);
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
@@ -416,7 +431,7 @@ export class ExecutionEngine {
     } catch (error) {
       this.circuitBreaker.recordFailure(executorKind);
       const failure = this.normalizeFailure(error, false, executorKind);
-      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
+      const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
       if (!fallback) throw new ExecutionFailureError(failure);
       this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, failure);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
@@ -433,6 +448,7 @@ export class ExecutionEngine {
     workingDirectory?: string,
   ): Promise<void> {
     if (result.status === 'completed') {
+      this.recordRoutedModelOutcome(task, true, result);
       this.circuitBreaker.recordSuccess(session.executorKind);
       if (this.trajectoryStore) {
         this.trajectoryStore.recordStep({
@@ -473,7 +489,7 @@ export class ExecutionEngine {
   ): Promise<void> {
     this.activeSessions.delete(task.id);
     this.circuitBreaker.recordFailure(session.executorKind);
-    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
+    const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
     if (fallback) {
       this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, failure);
       try {
@@ -500,6 +516,37 @@ export class ExecutionEngine {
     return this.fallbackChain.getNextAvailable(current, mode, this.circuitBreaker);
   }
 
+  private nextRoutedModel(task: Task, failure: ExecutionFailure): ExecutorKind | null {
+    const decisionId = task.metadata?.routing_decision_id;
+    const modelId = task.metadata?.routed_model;
+    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return null;
+    if (!failure.retryable || failure.sideEffectsPossible) {
+      this.modelRouter.recordOutcome({
+        modelId,
+        taskType: task.execution_mode || 'coding',
+        success: false,
+      });
+      return null;
+    }
+    const next = this.modelRouter.recordCascadeOutcome({ decisionId, modelId, success: false });
+    if (!next) return null;
+    task.metadata = { ...task.metadata, routed_model: next.selectedModel, routing_decision_id: next.id };
+    return this.modelRouter.resolveExecutorForModel(next.selectedModel);
+  }
+
+  private recordRoutedModelOutcome(task: Task, success: boolean, result: ExecutionResult): void {
+    const decisionId = task.metadata?.routing_decision_id;
+    const modelId = task.metadata?.routed_model;
+    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return;
+    this.modelRouter.recordCascadeOutcome({
+      decisionId,
+      modelId,
+      success,
+      latencyMs: result.metrics?.executionTimeMs,
+      costDollars: result.metrics?.costDollars,
+    });
+  }
+
   private normalizeFailure(
     error: unknown,
     sideEffectsPossible: boolean,
@@ -518,7 +565,7 @@ export class ExecutionEngine {
 
   private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
     const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
-    const evaluation = this.policyDecisionService.evaluate(assessment);
+    const evaluation = this.policyDecisionService.evaluate(assessment, { task, executorKind });
     this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
     if (evaluation.decision === 'deny') return false;
     return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
@@ -611,6 +658,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
     this.diffContexts.delete(taskId);
     
     // Update task status
@@ -643,17 +691,60 @@ export class ExecutionEngine {
    */
   private async processEventStream(session: ExecutionSession): Promise<void> {
     const streamTimeoutMs = Number(process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS || "300000");
+    const pending: WebSocketMessage[] = [];
+    let flushTimer: NodeJS.Timeout | undefined;
+    let tokenUsage = 0;
+    let costDollars = 0;
+    const flush = () => {
+      if (flushTimer) clearTimeout(flushTimer);
+      flushTimer = undefined;
+      if (!pending.length) return;
+      this.wsService.broadcastTaskEventById(session.taskId, {
+        type: WebSocketEventType.EXECUTION_BATCH,
+        payload: { events: pending.splice(0), metrics: { tokenUsage, costDollars } },
+        timestamp: new Date().toISOString(),
+      });
+    };
     try {
       const streamDeadline = Date.now() + streamTimeoutMs;
-      for await (const event of session.events) {
-        if (Date.now() > streamDeadline) { break; }
+      const iterator = session.events[Symbol.asyncIterator]();
+      while (true) {
+        const remaining = streamDeadline - Date.now();
+        const timedOut = Symbol('timed-out');
+        let timeoutHandle: NodeJS.Timeout | undefined;
+        const next = await Promise.race([
+          iterator.next(),
+          new Promise<typeof timedOut>(resolve => { timeoutHandle = setTimeout(() => resolve(timedOut), Math.max(0, remaining)); }),
+        ]);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (next === timedOut) {
+          await iterator.return?.();
+          flush();
+          this.wsService.broadcastTaskEventById(session.taskId, {
+            type: WebSocketEventType.STREAM_TRUNCATED,
+            payload: { task_id: session.taskId, reason: 'event_stream_timeout', timeout_ms: streamTimeoutMs },
+            timestamp: new Date().toISOString(),
+          });
+          break;
+        }
+        if (next.done) break;
+        const event = next.value;
         // Persist event to database
         const eventId = this.persistEvent(event);
-        
-        // Broadcast via WebSocket
-        this.broadcastExecutionEvent(session.taskId, eventId, event);
+        const usage = (event.metadata as any)?.usage;
+        tokenUsage = Math.max(tokenUsage, Number(usage?.total_tokens || usage?.totalTokens || 0));
+        costDollars = Math.max(costDollars, Number(usage?.cost_usd || usage?.cost || 0));
+        pending.push({
+          type: WebSocketEventType.EXECUTION_EVENT,
+          payload: { event: { id: eventId, ...event, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } },
+          timestamp: new Date().toISOString(),
+        });
+        if (pending.length >= 25) flush();
+        else if (!flushTimer) flushTimer = setTimeout(flush, 25);
       }
+      flush();
     } catch (error) {
+      flush();
       console.error(`Error in event stream for task ${session.taskId}:`, error);
       throw error;
     }
@@ -694,28 +785,6 @@ export class ExecutionEngine {
   }
   
   /**
-   * Broadcast execution event via WebSocket
-   */
-  private broadcastExecutionEvent(
-    taskId: string,
-    eventId: string,
-    event: ExecutionEventCreateInput
-  ): void {
-    this.wsService.broadcastTaskEventById(taskId, {
-      type: WebSocketEventType.EXECUTION_EVENT,
-      payload: {
-        event: {
-          id: eventId,
-          ...event,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-      },
-      timestamp: new Date().toISOString(),
-    });
-  }
-  
-  /**
    * Handle execution completion
    */
   private handleExecutionComplete(
@@ -724,6 +793,7 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);
@@ -816,6 +886,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
+    this.releaseExecutionPermit(taskId);
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);
@@ -842,6 +913,16 @@ export class ExecutionEngine {
     const task = this.getTask(taskId);
     const startedAt = task.started_at ? new Date(task.started_at).getTime() : Date.now();
     this.recordSkillOutcome(taskId, undefined, false, Math.max(0, Date.now() - startedAt), task.token_usage || 0);
+  }
+
+  private acquireExecutionPermit(taskId: string): Promise<void> {
+    const configured = Number(process.env.EXECUTION_MAX_CONCURRENCY || 4);
+    const limit = Number.isFinite(configured) && configured >= 1 ? Math.trunc(configured) : 4;
+    return this.executionSemaphore.acquire(taskId, limit);
+  }
+
+  private releaseExecutionPermit(taskId: string): void {
+    this.executionSemaphore.release(taskId);
   }
   
   /**

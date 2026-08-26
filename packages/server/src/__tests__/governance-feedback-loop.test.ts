@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import type { Database } from 'better-sqlite3';
 import { GovernanceFeedbackLoopService, type FeedbackLoopConfig } from '../services/governance-feedback-loop';
@@ -199,6 +199,17 @@ describe('GovernanceFeedbackLoopService', () => {
   });
 
   describe('authorizeProposals', () => {
+    it('calls PolicyDecisionService.evaluate', () => {
+      const evaluate = vi.fn(() => ({ decision: 'allow' as const, matchingPolicies: [], explanation: 'test' }));
+      const governed = new GovernanceFeedbackLoopService(db, {}, { evaluate } as any);
+      governed.authorizeProposals([{
+        id: 'policy-spy', title: 'Policy spy', description: 'Verify canonical call', category: 'policy',
+        target_finding_ids: [], proposed_action: 'policy_update', risk_level: RiskLevel.LOW,
+        status: 'proposed', decision_id: null, created_at: new Date().toISOString(),
+      }], { sub: 'admin-1', email: 'admin@test.com', role: 'admin', iat: 0, exp: 1 });
+      expect(evaluate).toHaveBeenCalledOnce();
+    });
+
     it('auto-authorizes low-risk proposals', () => {
       const proposals = [{
         id: 'p1',
@@ -224,7 +235,7 @@ describe('GovernanceFeedbackLoopService', () => {
       const results = service.authorizeProposals(proposals, principal);
       expect(results[0].proposal.status).toBe('authorized');
       expect(results[0].decision?.decision).toBe('allow');
-      expect(results[0].decision?.capability_token).toBeDefined();
+      expect(results[0].decision?.decision_id).toBeTruthy();
     });
 
     it('requires approval for restricted data', () => {

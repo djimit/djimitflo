@@ -24,8 +24,8 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { startRuntimeProcess, type RuntimeProcess } from './runtime-process';
 
 // ── Structured OpenCode JSON event types ────────────────────────────────────
 
@@ -126,6 +126,10 @@ export class OpenCodeExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.opencodePath, args: this.buildOpenCodeArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();
@@ -136,7 +140,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     const metrics: OpenCodeRunMetrics = { tokenUsage: 0, costDollars: 0 };
     const outcome: OpenCodeRunOutcome = { verificationFailures: [] };
     let metricsBuffer = '';
-    let childProcess: ChildProcess | null = null;
+    let runtime: RuntimeProcess | null = null;
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
@@ -144,49 +148,21 @@ export class OpenCodeExecutor implements TaskExecutor {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
 
-      const child = spawn(this.opencodePath, args, {
-        cwd,
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-
-      childProcess = child;
-
-      const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
-        emitter.emit('error', new Error(`OpenCode execution timed out after ${this.executionTimeoutMs}ms`));
-      }, this.executionTimeoutMs);
-
-      child.stdout?.on('data', (data) => {
-        const text = data.toString();
+      runtime = startRuntimeProcess({
+        command: this.opencodePath, args, cwd, env, timeoutMs: options?.timeout ?? this.executionTimeoutMs,
+        onOutput: (text, stream) => {
         metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
-        emitter.emit('output', text, 'stdout');
-      });
-
-      child.stderr?.on('data', (data) => {
-        const text = data.toString();
-        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
-        emitter.emit('output', text, 'stderr');
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timeoutHandle);
+          emitter.emit('output', text, stream);
+        },
+        onExit: code => {
         if (metricsBuffer.trim()) {
           this.collectMetricsFromLine(metricsBuffer, metrics, outcome);
           metricsBuffer = '';
         }
         emitter.emit('exit', code);
-      });
-
-      child.on('error', (error) => {
-        emitter.emit('error', error);
+        },
+        onError: error => emitter.emit('error', error),
+        onTimeout: () => emitter.emit('error', new Error(`OpenCode execution timed out after ${options?.timeout ?? this.executionTimeoutMs}ms`)),
       });
     };
 
@@ -202,14 +178,7 @@ export class OpenCodeExecutor implements TaskExecutor {
       events,
       result,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) {
-              childProcess.kill('SIGKILL');
-            }
-          }, 5000);
-        }
+        runtime?.stop();
         session.status = 'cancelled';
         session.completedAt = new Date();
       },

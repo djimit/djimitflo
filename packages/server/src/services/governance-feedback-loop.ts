@@ -3,21 +3,31 @@
  * and autonomous improvement.
  *
  * Architecture:
- *   OpenMythos (detect failure) → ToolBroker (authorize fix) → LoopService (execute fix) → Metrics (verify improvement)
+ *   OpenMythos (detect failure) → PolicyDecisionService (authorize fix) → pending dispatch
  *
  * The service:
  * 1. Analyzes OpenMythos eval results to identify failing categories
  * 2. Creates improvement proposals for governance failures
- * 3. Uses ToolBroker to authorize the improvement actions
- * 4. Dispatches LoopService to execute fixes in isolated worktrees
+ * 3. Uses the canonical PolicyDecisionService and ApprovalService
+ * 4. Leaves authorized work pending until dispatch is implemented through
+ *    ExecutionEngine.executeTask. Direct spawn/worktree dispatch is forbidden.
  * 5. Re-runs OpenMythos to verify improvement
  * 6. Records the full feedback loop in governance_feedback_loops table
  */
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { ToolCallDecision, ToolCallRequest } from './tool-broker';
-import { RiskLevel, type AuthTokenPayload } from '@djimitflo/shared';
+import { ApprovalRequestType, PolicyDecision, RiskLevel, type AuthTokenPayload, type RiskAssessment, type Task } from '@djimitflo/shared';
+import { PolicyDecisionService } from './policy-decision-service';
+import type { ApprovalService } from './approval-service';
+
+export interface ProposalAuthorizationDecision {
+  decision_id: string;
+  decision: PolicyDecision;
+  reason: string;
+  matched_policies: string[];
+  approval_id?: string;
+}
 
 export interface GovernanceFailure {
   category: string;
@@ -36,7 +46,7 @@ export interface ImprovementProposal {
   target_finding_ids: string[];
   proposed_action: 'code_fix' | 'policy_update' | 'skill_update' | 'config_change';
   risk_level: RiskLevel;
-  status: 'proposed' | 'authorized' | 'rejected' | 'executing' | 'completed' | 'failed';
+  status: 'proposed' | 'authorized' | 'authorized_pending_dispatch' | 'rejected' | 'executing' | 'completed' | 'failed';
   decision_id: string | null;
   created_at: string;
 }
@@ -85,6 +95,8 @@ export class GovernanceFeedbackLoopService {
   constructor(
     private db: Database,
     config: Partial<FeedbackLoopConfig> = {},
+    private policyDecisionService = new PolicyDecisionService(db),
+    private approvalService?: ApprovalService,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.ensureTables();
@@ -176,39 +188,56 @@ export class GovernanceFeedbackLoopService {
   }
 
   /**
-   * Authorize proposals via ToolBroker.
+   * Authorize proposals via the canonical policy and approval services.
    */
   authorizeProposals(
     proposals: ImprovementProposal[],
     principal: AuthTokenPayload,
-  ): Array<{ proposal: ImprovementProposal; decision: ToolCallDecision | null }> {
-    const results: Array<{ proposal: ImprovementProposal; decision: ToolCallDecision | null }> = [];
+  ): Array<{ proposal: ImprovementProposal; decision: ProposalAuthorizationDecision }> {
+    const results: Array<{ proposal: ImprovementProposal; decision: ProposalAuthorizationDecision }> = [];
 
     for (const proposal of proposals) {
-      const request: ToolCallRequest = {
-        principal,
-        task_id: proposal.id,
-        tool: `governance_${proposal.proposed_action}`,
-        category: this.mapActionToCategory(proposal.proposed_action),
-        args: {
+      const assessment: RiskAssessment = {
+        action_type: 'task_execution',
+        risk_level: proposal.risk_level,
+        matched_rules: ['governance-feedback-proposal'],
+        explanation: `Governance ${proposal.proposed_action} proposed by ${principal.sub}`,
+        recommended_decision: principal.role === 'viewer' ? 'deny' : proposal.risk_level === RiskLevel.LOW ? 'allow' : 'require_approval',
+        metadata: {
           proposal_id: proposal.id,
           category: proposal.category,
           target_findings: proposal.target_finding_ids,
+          principal_id: principal.sub,
         },
-        target_resource: `governance:${proposal.category}`,
-        data_classification: this.mapRiskToClassification(proposal.risk_level),
-        session_id: `feedback-loop-${proposal.id}`,
       };
-
-      const decision = this.evaluateViaPolicy(request);
+      const evaluation = this.policyDecisionService.evaluate(assessment);
+      const decision: ProposalAuthorizationDecision = {
+        decision_id: `dec-${randomUUID()}`,
+        decision: evaluation.decision,
+        reason: evaluation.explanation,
+        matched_policies: evaluation.matchingPolicies.map(policy => policy.id),
+      };
 
       if (decision.decision === 'allow') {
         proposal.status = 'authorized';
         proposal.decision_id = decision.decision_id;
       } else if (decision.decision === 'deny') {
         proposal.status = 'rejected';
+      } else {
+        if (this.approvalService) {
+          const task = this.ensureProposalTask(proposal, principal.sub);
+          decision.approval_id = this.approvalService.createApproval({
+            task,
+            assessment,
+            requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+            title: proposal.title,
+            description: proposal.description,
+            policyId: evaluation.matchingPolicies[0]?.id,
+            requestedBy: principal.sub,
+            metadata: { proposal_id: proposal.id, decision_id: decision.decision_id },
+          }).id;
+        }
       }
-      // require_approval stays as 'proposed'
 
       this.persistProposal(proposal);
       results.push({ proposal, decision });
@@ -246,15 +275,9 @@ export class GovernanceFeedbackLoopService {
         proposal.risk_level <= this.config.auto_authorize_below_risk
     );
 
-    let executed = 0;
     for (const { proposal } of autoExecutable) {
-      try {
-        this.dispatchImprovement(proposal);
-        proposal.status = 'executing';
-        executed++;
-      } catch {
-        proposal.status = 'failed';
-      }
+      proposal.status = 'authorized_pending_dispatch';
+      this.persistProposal(proposal);
     }
 
     const result: FeedbackLoopResult = {
@@ -263,7 +286,7 @@ export class GovernanceFeedbackLoopService {
       failures_detected: failures.length,
       proposals_created: proposals.length,
       proposals_authorized: authorized.filter(a => a.proposal.status === 'authorized').length,
-      proposals_executed: executed,
+      proposals_executed: 0,
       improvement_detected: false,
       score_delta: 0,
     };
@@ -354,45 +377,6 @@ export class GovernanceFeedbackLoopService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  private evaluateViaPolicy(request: ToolCallRequest): ToolCallDecision {
-    const decision_id = `dec-${randomUUID()}`;
-    let decision: 'allow' | 'deny' | 'require_approval' = 'allow';
-    let reason = 'Within authorized risk threshold';
-
-    if (request.data_classification === 'restricted') {
-      decision = 'require_approval';
-      reason = 'Restricted data classification requires approval';
-    } else if (request.principal.role === 'viewer') {
-      decision = 'deny';
-      reason = 'Viewers cannot authorize improvements';
-    } else if (request.data_classification === 'confidential' && request.principal.role !== 'admin') {
-      decision = 'require_approval';
-      reason = 'Confidential data requires admin approval';
-    }
-
-    return {
-      decision_id,
-      decision,
-      tool: request.tool,
-      principal_id: request.principal.sub,
-      task_id: request.task_id,
-      capability_token: decision === 'allow' ? {
-        token_id: `cap-${randomUUID()}`,
-        scope: `${request.category}:${request.tool}`,
-        tool: request.tool,
-        task_id: request.task_id,
-        principal_id: request.principal.sub,
-        issued_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 900_000).toISOString(),
-        constraints: request.args || {},
-      } : undefined,
-      reason,
-      matched_policies: ['governance_feedback_loop'],
-      risk_level: this.classificationToRisk(request.data_classification),
-      expires_at: new Date(Date.now() + 900_000).toISOString(),
-    };
-  }
-
   private mapFailureToAction(failure: GovernanceFailure): ImprovementProposal['proposed_action'] {
     if (failure.category.includes('policy') || failure.category.includes('governance')) {
       return 'policy_update';
@@ -406,31 +390,32 @@ export class GovernanceFeedbackLoopService {
     return 'code_fix';
   }
 
-  private mapActionToCategory(action: ImprovementProposal['proposed_action']): ToolCallRequest['category'] {
-    switch (action) {
-      case 'code_fix': return 'filesystem';
-      case 'policy_update': return 'database';
-      case 'skill_update': return 'filesystem';
-      case 'config_change': return 'database';
-    }
-  }
-
-  private mapRiskToClassification(risk: RiskLevel): ToolCallRequest['data_classification'] {
-    switch (risk) {
-      case RiskLevel.CRITICAL: return 'restricted';
-      case RiskLevel.HIGH: return 'confidential';
-      case RiskLevel.MEDIUM: return 'internal';
-      case RiskLevel.LOW: return 'public';
-    }
-  }
-
-  private classificationToRisk(classification: string): RiskLevel {
-    switch (classification) {
-      case 'restricted': return RiskLevel.CRITICAL;
-      case 'confidential': return RiskLevel.HIGH;
-      case 'internal': return RiskLevel.MEDIUM;
-      default: return RiskLevel.LOW;
-    }
+  private ensureProposalTask(proposal: ImprovementProposal, principalId: string): Task {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT OR IGNORE INTO tasks
+        (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, 'awaiting_approval', ?, ?, 'review_only', ?, ?, ?, ?)
+    `).run(
+      proposal.id,
+      proposal.title,
+      proposal.description,
+      proposal.risk_level,
+      proposal.risk_level,
+      JSON.stringify(['governance-feedback']),
+      JSON.stringify({ proposal_id: proposal.id, requested_by: principalId }),
+      now,
+      now,
+    );
+    const row = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(proposal.id) as any;
+    return {
+      ...row,
+      tags: JSON.parse(row.tags || '[]'),
+      metadata: JSON.parse(row.metadata || '{}'),
+      created_by: row.created_by || principalId,
+      owner_user_id: row.owner_user_id || principalId,
+      updated_by: row.updated_by || null,
+    } as Task;
   }
 
   private inferFailureMode(cases: Array<{ judge_rationale: string | null }>): string {
@@ -445,10 +430,6 @@ export class GovernanceFeedbackLoopService {
   private generateRecommendation(category: string, cases: Array<{ case_id: string }>): string {
     return `Improve ${category} governance across ${cases.length} failing case(s). ` +
       `Consider updating policies, skills, or agent instructions to prevent recurrence.`;
-  }
-
-  private dispatchImprovement(proposal: ImprovementProposal): void {
-    void proposal;
   }
 
   private persistProposal(proposal: ImprovementProposal): void {
@@ -488,6 +469,22 @@ export class GovernanceFeedbackLoopService {
   }
 
   private ensureTables(): void {
+    const table = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'governance_improvement_proposals'").get() as { sql?: string } | undefined;
+    if (table?.sql && !table.sql.includes('authorized_pending_dispatch')) {
+      this.db.exec(`
+        ALTER TABLE governance_improvement_proposals RENAME TO governance_improvement_proposals_legacy;
+        CREATE TABLE governance_improvement_proposals (
+          id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', category TEXT NOT NULL,
+          target_finding_ids TEXT NOT NULL DEFAULT '[]', proposed_action TEXT NOT NULL,
+          risk_level TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'proposed'
+            CHECK(status IN ('proposed', 'authorized', 'authorized_pending_dispatch', 'rejected', 'executing', 'completed', 'failed')),
+          decision_id TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO governance_improvement_proposals
+          SELECT * FROM governance_improvement_proposals_legacy;
+        DROP TABLE governance_improvement_proposals_legacy;
+      `);
+    }
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS governance_feedback_loops (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -510,7 +507,7 @@ export class GovernanceFeedbackLoopService {
         target_finding_ids TEXT NOT NULL DEFAULT '[]',
         proposed_action TEXT NOT NULL CHECK(proposed_action IN ('code_fix', 'policy_update', 'skill_update', 'config_change')),
         risk_level TEXT NOT NULL CHECK(risk_level IN ('low', 'medium', 'high', 'critical')),
-        status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed', 'authorized', 'rejected', 'executing', 'completed', 'failed')),
+        status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed', 'authorized', 'authorized_pending_dispatch', 'rejected', 'executing', 'completed', 'failed')),
         decision_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );

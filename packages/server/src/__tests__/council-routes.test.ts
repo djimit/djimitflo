@@ -116,6 +116,27 @@ describe('Council routes', () => {
     expect((await request(`/sessions/${sessionId}/aggregate?method=invalid`)).status).toBe(400);
     expect((await request('/stats')).body.sessions.completed).toBe(1);
 
+    const judge = await request('/models', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'ollama', model_name: 'judge', independence_score: 1, avg_governance_score: 5 }),
+    });
+    expect(judge.status).toBe(201);
+    const independent = await request('/sessions', {
+      method: 'POST',
+      body: JSON.stringify({
+        task_description: 'Review independently',
+        mode: 'council',
+        custom_models: ['generalist', 'skeptic', 'expert'],
+        independent_judge: true,
+        judge_model: 'judge',
+      }),
+    });
+    const requestOffset = modelRequests.length;
+    expect((await request(`/sessions/${independent.body.id}/execute`, { method: 'POST' })).status).toBe(200);
+    const reviewRequests = modelRequests.slice(requestOffset).filter(item => String(item.prompt).includes('Candidate '));
+    expect(reviewRequests).toHaveLength(1);
+    expect(reviewRequests[0].model).toBe('judge');
+
     expect((await request('/sessions/missing/outputs')).status).toBe(404);
     expect((await request('/sessions/missing/evaluations')).status).toBe(404);
     expect((await request('/sessions/missing/aggregate')).status).toBe(404);

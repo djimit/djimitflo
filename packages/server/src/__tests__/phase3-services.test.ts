@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 import { ComplianceAuditService } from '../services/compliance-audit-service';
+import { AuditService } from '../services/audit-service';
+import { AuditEventType, RiskLevel } from '@djimitflo/shared';
 
 describe('MultiModelIntelligence', () => {
   let db: Database.Database;
@@ -81,6 +83,21 @@ describe('ComplianceAuditService', () => {
     expect(entry.id).toBeDefined();
     expect(entry.hash).toBeDefined();
     expect(entry.previousHash).toBe('genesis');
+  });
+
+  it('uses audit_events as the single source for application and compliance audit', () => {
+    const applicationAudit = new AuditService(db);
+    const id = applicationAudit.record({
+      event_type: AuditEventType.TASK_CREATED,
+      action: 'task_created',
+      resource_type: 'task',
+      resource_id: 'task-1',
+      risk_level: RiskLevel.LOW,
+    });
+
+    expect(service.getAuditLog({ action: 'task_created' })[0].id).toBe(id);
+    expect(applicationAudit.query({}).total).toBe(1);
+    expect((db.prepare("SELECT type FROM sqlite_master WHERE name = 'compliance_audit_log'").get() as any).type).toBe('view');
   });
 
   it('verifies chain integrity', () => {

@@ -16,9 +16,9 @@ export function createAgiRoutes(db: Database, auth?: AuthMiddleware): Router {
   const consensus = new MultiAgentConsensusService(db);
 
   // ─── Goal Reasoning ─────────────────────────────────────────────────
-  router.post('/reason', requirePermission('write:governance'), (_req, res) => {
-    const result = reasoning.reason();
-    res.json(result);
+  router.post('/reason', requirePermission('write:governance'), async (_req, res, next) => {
+    try { res.json(await reasoning.reason()); }
+    catch (error) { next(error); }
   });
 
   router.get('/observe', requirePermission('read:evidence'), (_req, res) => {

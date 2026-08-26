@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
+import { MultiModelIntelligence } from '../services/multi-model-intelligence';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -32,8 +36,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
 
 function createMockWsService() {
   return {
-    broadcastTaskEvent: () => {},
-    broadcastTaskEventById: () => {},
+    broadcastTaskEvent: vi.fn(),
+    broadcastTaskEventById: vi.fn(),
     broadcast: () => {},
     close: () => {},
   } as any;
@@ -148,6 +152,28 @@ describe('ExecutionEngine', () => {
     expect(engine.getExecutor('pi')).toBeDefined();
   });
 
+  it('queues regular executions at the configured concurrency limit', async () => {
+    process.env.EXECUTION_MAX_CONCURRENCY = '1';
+    await (engine as any).acquireExecutionPermit('first');
+    let admitted = false;
+    const waiting = (engine as any).acquireExecutionPermit('second').then(() => { admitted = true; });
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+    (engine as any).releaseExecutionPermit('first');
+    await waiting;
+    expect(admitted).toBe(true);
+    (engine as any).releaseExecutionPermit('second');
+    delete process.env.EXECUTION_MAX_CONCURRENCY;
+  });
+
+  it('emits an explicit event when an execution stream times out', async () => {
+    process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = '1';
+    async function* events() { await new Promise(resolve => setTimeout(resolve, 5)); }
+    await (engine as any).processEventStream({ taskId: 'slow-task', events: events() });
+    expect((engine as any).wsService.broadcastTaskEventById).toHaveBeenCalledWith('slow-task', expect.objectContaining({ type: 'execution.stream_truncated' }));
+    delete process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
+  });
+
   it('allows registering a custom executor', () => {
     const custom = new MockExecutor();
     (custom as any).kind = 'custom';
@@ -163,6 +189,74 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('uses adaptive model routing when no executor is explicitly selected', async () => {
+    const task = createTask({ execution_mode: 'local' });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+    );
+    const router = new MultiModelIntelligence(db);
+    router.registerModel({ modelId: 'mock-cheap', modelName: 'Mock', provider: 'mock', costPerMtok: 0, capabilities: [{ taskType: 'local' }] });
+    router.recordOutcome({ modelId: 'mock-cheap', taskType: 'local', success: true });
+    router.recordOutcome({ modelId: 'mock-cheap', taskType: 'local', success: true });
+
+    expect((await engine.executeTask(task.id)).status).toBe('started');
+    const event = db.prepare("SELECT metadata FROM execution_events WHERE task_id = ? AND message LIKE 'Execution attempt%'").get(task.id) as any;
+    expect(JSON.parse(event.metadata).executorKind).toBe('mock');
+  });
+
+  it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
+    const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
+    try {
+      const skillDir = path.join(skillsDir, 'running-tests');
+      fs.mkdirSync(skillDir);
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+        '---', 'name: running-tests', 'description: Run bounded tests.', '---',
+        'Plan the scoped test, execute it, verify output, and stop.', '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(skillDir, 'skill.manifest.yaml'), [
+        'skill_id: .opencode.skills.running-tests',
+        'version: 0.1.0',
+        'owner: djimit',
+        'allowed_tools: [Read, Grep, Glob, Bash]',
+        'disallowed_tools: [ProductionWrite]',
+        '',
+      ].join('\n'));
+
+      const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
+      attributedEngine.registerExecutor({
+        kind: 'mock',
+        canExecute: () => true,
+        start: async (task: Task) => ({
+          id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+          events: (async function* () {})(),
+          result: Promise.resolve({ status: 'completed', message: 'ok', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+          cancel: async () => {},
+        }),
+      } as any);
+      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
+      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
+      db.prepare(`
+        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
+        VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
+      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+
+      await attributedEngine.executeTask('task-skill', 'mock');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const row = db.prepare(`
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used
+        FROM skill_outcomes WHERE task_id = 'task-skill'
+      `).get() as any;
+      expect(row).toMatchObject({
+        skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
+        agent_id: 'agent-skill', success: 1, tokens_used: 100,
+      });
+      expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      fs.rmSync(skillsDir, { recursive: true, force: true });
+    }
   });
 
   it('throws when task not found', async () => {

@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { randomUUID } from 'crypto';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 
 const VALID_CATEGORIES = ['pattern', 'anti_pattern', 'optimization', 'security', 'workflow', 'tool_usage', 'communication'];
 
@@ -31,6 +32,7 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   ensureTable(db);
+  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // GET / — List learnings (auth-only, no extra permission)
   router.get('/', (_req, res, next) => {
@@ -81,6 +83,7 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
       const learningDesc = description || lesson_learned || title;
       const learningLesson = lesson_learned || description || title;
 
+      const parsedMetadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
       db.prepare(`
         INSERT INTO swarm_learning (id, category, title, description, lesson_learned,
           source_task_id, source_discussion_id, effectiveness, times_applied,
@@ -96,13 +99,22 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
         source_discussion_id,
         effectiveness,
         times_applied,
-        typeof metadata === 'string' ? metadata : JSON.stringify(metadata),
+        JSON.stringify({ ...parsedMetadata, cognitive_pattern_id: learningId }),
         created_at || now,
         now,
       );
 
+      const cognitive = cognitiveLoop.ingestLearning({
+        id: learningId,
+        category: mappedCategory,
+        lesson: learningLesson,
+        effectiveness,
+        timesApplied: times_applied,
+        goalType: parsedMetadata?.goal_type,
+        strategy: parsedMetadata?.strategy,
+      });
       const row = db.prepare('SELECT * FROM swarm_learning WHERE id = ?').get(learningId);
-      res.status(201).json({ learning: row });
+      res.status(201).json({ learning: row, cognitive });
     } catch (err) {
       next(err);
     }

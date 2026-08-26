@@ -15,6 +15,14 @@ const WS_BASE_URL = getDefaultWsUrl();
 
 type MessageHandler = (message: WebSocketMessage) => void;
 
+export function openAuthenticatedWebSocket(
+  url: string,
+  token: string,
+  WebSocketConstructor: typeof WebSocket = WebSocket,
+): WebSocket {
+  return new WebSocketConstructor(url, `bearer.${token}`);
+}
+
 const AUTH_CLOSE_CODES: Set<number> = new Set([
   WS_CLOSE_CODES.AUTH_REQUIRED as number,
   WS_CLOSE_CODES.AUTH_INVALID as number,
@@ -47,10 +55,8 @@ export function useWebSocket(isAuthenticated: boolean) {
     // SECURITY: Token sent as subprotocol (not query string) to avoid
     // token leakage via access logs, browser history, or referrer headers.
     // Server must validate the "bearer" subprotocol and extract the token.
-    const socketProtocol = `bearer.${token}`;
-
     try {
-      const socket = new WebSocket(WS_BASE_URL, socketProtocol);
+      const socket = openAuthenticatedWebSocket(WS_BASE_URL, token);
 
       socket.onopen = () => {
         isConnecting.current = false;
@@ -61,16 +67,13 @@ export function useWebSocket(isAuthenticated: boolean) {
       socket.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-
-          const typeHandlers = handlers.current.get(message.type);
-          if (typeHandlers) {
-            typeHandlers.forEach(handler => handler(message));
-          }
-
-          const allHandlers = handlers.current.get('all');
-          if (allHandlers) {
-            allHandlers.forEach(handler => handler(message));
-          }
+          const dispatch = (item: WebSocketMessage) => {
+            handlers.current.get(item.type)?.forEach(handler => handler(item));
+            handlers.current.get('all')?.forEach(handler => handler(item));
+          };
+          if (message.type === 'execution.batch' && Array.isArray((message.payload as any)?.events)) {
+            (message.payload as any).events.forEach(dispatch);
+          } else dispatch(message);
         } catch (_error) {
           // ignore parse errors
         }

@@ -153,7 +153,7 @@ export class ReasoningBankService {
     if (this.vectorMemory) {
       const reward = outcome === 'approved' ? 1.0 : outcome === 'denied' ? 0.2 : 0.5;
       try {
-        const related = this.vectorMemory.search(`${task.title} ${task.description}`, 3);
+        const related = await this.vectorMemory.search(`${task.title} ${task.description}`, 3);
         for (const r of related) {
           this.vectorMemory.recordFeedback(r.id, reward);
         }

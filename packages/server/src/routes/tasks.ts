@@ -324,7 +324,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         return;
       }
 
-      const { executor = 'opencode' } = req.body;
+      const { executor } = req.body;
 
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');
@@ -334,7 +334,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         throw createError(409, 'Task is already running', 'TASK_RUNNING');
       }
 
-      const result = await executionEngine.executeTask(id, executor as ExecutorKind);
+      const result = await executionEngine.executeTask(id, executor as ExecutorKind | undefined);
 
       res.json({
         message: result.status === 'awaiting_approval'

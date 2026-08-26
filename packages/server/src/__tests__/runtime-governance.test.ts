@@ -163,4 +163,20 @@ describe('RuntimeGovernanceService', () => {
     const status = service.getStatus();
     expect(status.monitoredAgents).toBe(1);
   });
+
+  it('restores quarantine state after service restart', () => {
+    const db = new (require('better-sqlite3'))(':memory:');
+    const first = new RuntimeGovernanceService(db);
+    first.registerBaseline('durable-agent', { overallScore: 4.5, categoryScores: {}, certifiedAt: new Date().toISOString() });
+    first.start();
+    for (let i = 0; i < 5; i++) {
+      swarmEventBus.emit('agent_action', { agentId: 'durable-agent', tool: 'dangerous_tool', allowedActions: ['safe_tool'] });
+    }
+    first.stop();
+
+    const restarted = new RuntimeGovernanceService(db);
+    expect(restarted.getQuarantineStatus('durable-agent')).toMatchObject({ quarantined: true, violationCount: 5 });
+    expect(restarted.isAllowed('durable-agent')).toBe(false);
+    db.close();
+  });
 });

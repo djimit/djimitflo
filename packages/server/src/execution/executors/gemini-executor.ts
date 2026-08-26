@@ -15,8 +15,9 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
-import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { structuredRuntimeEvent } from './structured-runtime-event';
+import { startRuntimeProcess, type RuntimeProcess } from './runtime-process';
 
 interface ParsedOutput {
   type: 'log' | 'error' | 'thinking' | 'unknown';
@@ -42,6 +43,10 @@ export class GeminiExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.geminiPath, args: this.buildGeminiArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();
@@ -49,7 +54,7 @@ export class GeminiExecutor implements TaskExecutor {
     const args = this.buildGeminiArgs(task, options);
 
     const emitter = new EventEmitter();
-    let childProcess: ChildProcess | null = null;
+    let runtime: RuntimeProcess | null = null;
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
@@ -57,41 +62,12 @@ export class GeminiExecutor implements TaskExecutor {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
 
-      const child = spawn(this.geminiPath, args, {
-        cwd,
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-
-      childProcess = child;
-
-      const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
-        emitter.emit('error', new Error(`Gemini execution timed out after ${this.executionTimeoutMs}ms`));
-      }, this.executionTimeoutMs);
-
-      child.stdout?.on('data', (data) => {
-        emitter.emit('output', data.toString(), 'stdout');
-      });
-
-      child.stderr?.on('data', (data) => {
-        emitter.emit('output', data.toString(), 'stderr');
-      });
-
-      child.on('close', (code) => {
-        clearTimeout(timeoutHandle);
-        emitter.emit('exit', code);
-      });
-
-      child.on('error', (error) => {
-        emitter.emit('error', error);
+      runtime = startRuntimeProcess({
+        command: this.geminiPath, args, cwd, env, timeoutMs: options?.timeout ?? this.executionTimeoutMs,
+        onOutput: (text, stream) => emitter.emit('output', text, stream),
+        onExit: code => emitter.emit('exit', code),
+        onError: error => emitter.emit('error', error),
+        onTimeout: () => emitter.emit('error', new Error(`Gemini execution timed out after ${options?.timeout ?? this.executionTimeoutMs}ms`)),
       });
     };
 
@@ -107,14 +83,7 @@ export class GeminiExecutor implements TaskExecutor {
       events,
       result,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) {
-              childProcess.kill('SIGKILL');
-            }
-          }, 5000);
-        }
+        runtime?.stop();
         session.status = 'cancelled';
         session.completedAt = new Date();
       },
@@ -167,16 +136,7 @@ export class GeminiExecutor implements TaskExecutor {
     if (stream === 'stdout') {
       try {
         const parsed = JSON.parse(trimmed);
-        const summary = typeof parsed === 'string'
-          ? parsed
-          : (parsed?.result ?? parsed?.text ?? parsed?.message ?? `JSON event: ${parsed?.type ?? 'object'}`);
-        return {
-          task_id: taskId,
-          event_type: ExecutionEventType.LOG,
-          message: typeof summary === 'string' ? summary : JSON.stringify(summary),
-          level: LogLevel.INFO,
-          metadata: { executor: 'gemini', parsing_mode: 'json', raw: parsed },
-        };
+        return structuredRuntimeEvent('gemini', taskId, parsed);
       } catch {
         // not JSON — fall through to heuristic
       }

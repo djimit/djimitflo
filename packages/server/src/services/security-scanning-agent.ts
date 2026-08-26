@@ -65,6 +65,26 @@ export class SecurityScanningAgent {
     };
   }
 
+  scanTextForSecrets(content: string, location = 'inline-content'): SecurityFinding[] {
+    const secretPatterns = [
+      { pattern: /(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{8,}['"]/gi, category: 'hardcoded-password' },
+      { pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*['"][^'"]{16,}['"]/gi, category: 'hardcoded-api-key' },
+      { pattern: /AKIA[0-9A-Z]{16}/g, category: 'aws-access-key' },
+      { pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g, category: 'private-key' },
+    ];
+    return secretPatterns.flatMap(({ pattern, category }) => {
+      const matches = content.match(pattern);
+      return matches ? [{
+        id: randomUUID(),
+        severity: category === 'private-key' ? 'critical' as const : 'high' as const,
+        category,
+        message: `Potential ${category.replace(/-/g, ' ')} found (${matches.length} occurrences)`,
+        location,
+        remediation: `Remove hardcoded secrets from ${location} and use environment variables or a secrets manager`,
+      }] : [];
+    });
+  }
+
   async scanCodebase(targetPath: string): Promise<SecurityScanResult> {
     const start = Date.now();
     const findings: SecurityFinding[] = [];
@@ -146,13 +166,6 @@ export class SecurityScanningAgent {
     const fs = require('fs');
     const path = require('path');
 
-    const secretPatterns = [
-      { pattern: /(?:password|passwd|pwd)\s*[:=]\s*['"][^'"]{8,}['"]/gi, category: 'hardcoded-password' },
-      { pattern: /(?:api[_-]?key|apikey)\s*[:=]\s*['"][^'"]{16,}['"]/gi, category: 'hardcoded-api-key' },
-      { pattern: /AKIA[0-9A-Z]{16}/g, category: 'aws-access-key' },
-      { pattern: /-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g, category: 'private-key' },
-    ];
-
     const scanDir = (dir: string) => {
       try {
         const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -165,19 +178,7 @@ export class SecurityScanningAgent {
           } else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js') || entry.name.endsWith('.json')) {
             try {
               const content = fs.readFileSync(fullPath, 'utf8');
-              for (const { pattern, category } of secretPatterns) {
-                const matches = content.match(pattern);
-                if (matches) {
-                  findings.push({
-                    id: randomUUID(),
-                    severity: category === 'private-key' ? 'critical' : 'high',
-                    category,
-                    message: `Potential ${category.replace(/-/g, ' ')} found (${matches.length} occurrences)`,
-                    location: fullPath,
-                    remediation: `Remove hardcoded secrets from ${fullPath} and use environment variables or a secrets manager`,
-                  });
-                }
-              }
+              findings.push(...this.scanTextForSecrets(content, fullPath));
             } catch { /* skip unreadable */ }
           }
         }

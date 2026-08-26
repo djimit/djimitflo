@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
+import { MemoryEvolutionScheduler, type LoopResult } from './memory-evolution-scheduler';
 
 export type EvolutionLeaseRole = 'memory_evaluator' | 'memory_consolidator' | 'memory_pruner';
 export type EvolutionLeaseStatus = 'prepared' | 'running' | 'completed' | 'failed';
@@ -42,7 +44,24 @@ export class MemoryEvolutionService {
   constructor(private db: Database) { this.ensureTables(); }
 
   private ensureTables(): void {
-    this.db.exec("CREATE TABLE IF NOT EXISTS memory_evolution_leases (id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('memory_evaluator','memory_consolidator','memory_pruner')), runtime TEXT NOT NULL DEFAULT 'local', status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared','running','completed','failed')), memory_candidate_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_mel_loop_run ON memory_evolution_leases(loop_run_id);CREATE INDEX IF NOT EXISTS idx_mel_role ON memory_evolution_leases(role);CREATE INDEX IF NOT EXISTS idx_mel_candidate ON memory_evolution_leases(memory_candidate_id);");
+    this.db.exec("CREATE TABLE IF NOT EXISTS memory_evolution_leases (id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('memory_evaluator','memory_consolidator','memory_pruner')), runtime TEXT NOT NULL DEFAULT 'local', status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared','running','completed','failed')), memory_candidate_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_mel_loop_run ON memory_evolution_leases(loop_run_id);CREATE INDEX IF NOT EXISTS idx_mel_role ON memory_evolution_leases(role);CREATE INDEX IF NOT EXISTS idx_mel_candidate ON memory_evolution_leases(memory_candidate_id);CREATE TABLE IF NOT EXISTS memory_access_log (id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, accessing_agent_id TEXT NOT NULL, owner_agent_id TEXT, created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_memory_access_candidate ON memory_access_log(candidate_id);CREATE INDEX IF NOT EXISTS idx_memory_access_agent ON memory_access_log(accessing_agent_id);");
+  }
+
+  ingest(input: { agentId: string; title?: string; content: string; memoryType?: 'operational_memory' | 'engineering_rule' | 'policy_rule'; metadata?: Record<string, unknown> }): MemoryCandidateRecord {
+    return new MemoryCandidateService(this.db).create({
+      title: input.title || `Trace from ${input.agentId}`,
+      content: input.content,
+      memory_type: input.memoryType,
+      source_ref: `agent:${input.agentId}`,
+      metadata: { ...(input.metadata || {}), agent_id: input.agentId, source_agent: input.agentId },
+    });
+  }
+
+  async evolve(action: 'consolidate' | 'prune' | 'evaluate'): Promise<LoopResult> {
+    const scheduler = new MemoryEvolutionScheduler(this.db);
+    if (action === 'consolidate') return scheduler.runConsolidationLoop();
+    if (action === 'prune') return scheduler.runDecayLoop();
+    return scheduler.runEvalGateLoop();
   }
 
   createLease(i: { loopRunId: string; role: EvolutionLeaseRole; memory_candidate_id?: string | null; metadata?: Record<string, unknown> }): MemoryEvolutionLease {
@@ -126,7 +145,7 @@ export class MemoryEvolutionService {
       const stab=meta.promoted_at?0.8:0.4; const nov=Math.max(0,1-daysOld/30);
       const cons=meta.consolidated_into?0.1:meta.distilled?0.7:0.5;
       const decay=c.memory_type==='policy_rule'?0.9:c.memory_type==='engineering_rule'?0.7:0.5;
-      const cross=0.5; const{w1,w2,w3,w4,w5,w6}=this.WEIGHTS;
+      const cross=this.crossAgentUsage(c.id); const{w1,w2,w3,w4,w5,w6}=this.WEIGHTS;
       const comp=w1*disc+w2*stab+w3*nov+w4*cons+w5*decay+w6*cross;
       const action: PruningResult['action'] = comp>=0.7?'keep':comp>=0.3?'archive':'delete';
       this.updateLeaseStatus(lid,'completed',{compositeScore:comp,action});
@@ -148,7 +167,7 @@ export class MemoryEvolutionService {
     const novelty = Math.max(0,1-daysOld/30);
     const consolidation = meta.consolidated_into?0.1:meta.distilled?0.7:0.5;
     const decayResistance = c.memory_type==='policy_rule'?0.9:c.memory_type==='engineering_rule'?0.7:0.5;
-    const crossAgentUsage = 0.5;
+    const crossAgentUsage = this.crossAgentUsage(c.id);
     const {w1,w2,w3,w4,w5,w6} = this.WEIGHTS;
     const composite = w1*discrimination+w2*stability+w3*novelty+w4*consolidation+w5*decayResistance+w6*crossAgentUsage;
     return {candidateId:c.id,discrimination,stability,novelty,consolidation,decayResistance,crossAgentUsage,composite,promotionEligible:composite>=0.7&&discrimination>=0.6};
@@ -203,13 +222,22 @@ export class MemoryEvolutionService {
     return {id,objective:'Evaluate candidate',goalType:'evaluation',status:'created',metadata:{candidate_id:candidateId},created_at:now};
   }
 
-  getCandidatesByScope(agentId: string): string[] {
-    const rows = this.db.prepare("SELECT id FROM memory_candidates WHERE json_extract(metadata,'$.agent_id')=? OR json_extract(metadata,'$.source_agent')=? OR source_ref LIKE ?").all(agentId, agentId, agentId+'%') as any[];
+  getCandidatesByScope(agentId: string, scope = 'all'): string[] {
+    const shared = scope === 'all' || scope === 'shared';
+    const rows = this.db.prepare("SELECT id, json_extract(metadata,'$.agent_id') AS owner FROM memory_candidates WHERE json_extract(metadata,'$.agent_id')=? OR json_extract(metadata,'$.source_agent')=? OR source_ref LIKE ? OR (? = 1 AND json_extract(metadata,'$.shared')=1)").all(agentId, agentId, `agent:${agentId}%`, shared ? 1 : 0) as Array<{ id: string; owner?: string }>;
+    const insert = this.db.prepare('INSERT INTO memory_access_log (id,candidate_id,accessing_agent_id,owner_agent_id,created_at) VALUES (?,?,?,?,?)');
+    const now = new Date().toISOString();
+    for (const row of rows) insert.run(randomUUID(), row.id, agentId, row.owner || null, now);
     return rows.map(r => r.id);
   }
 
   setCandidateScope(candidateId: string, agentId: string, shared: boolean): void {
-    this.db.prepare("UPDATE memory_candidates SET metadata=json_set(COALESCE(metadata,'{}'),'$.agent_id',?,'.shared',?) WHERE id=?").run(agentId, shared?1:0, candidateId);
+    this.db.prepare("UPDATE memory_candidates SET metadata=json_set(COALESCE(metadata,'{}'),'$.agent_id',?,'$.shared',?) WHERE id=?").run(agentId, shared?1:0, candidateId);
+  }
+
+  private crossAgentUsage(candidateId: string): number {
+    const row = this.db.prepare('SELECT COUNT(DISTINCT accessing_agent_id) AS count FROM memory_access_log WHERE candidate_id=? AND (owner_agent_id IS NULL OR accessing_agent_id != owner_agent_id)').get(candidateId) as { count: number };
+    return Math.min(1, row.count / 5);
   }
 
 }

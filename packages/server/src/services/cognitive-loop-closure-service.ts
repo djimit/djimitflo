@@ -106,6 +106,38 @@ export class CognitiveLoopClosureService {
     this.ensureTables();
   }
 
+  ingestLearning(input: {
+    id: string;
+    category: string;
+    lesson: string;
+    effectiveness: number;
+    timesApplied: number;
+    goalType?: string;
+    strategy?: string;
+  }): { patternId: string; strategies: Strategy[] } {
+    const confidence = Math.max(0, Math.min(input.effectiveness / 100, 1));
+    const episodeCount = Math.max(1, input.timesApplied);
+    this.db.prepare(`
+      INSERT OR REPLACE INTO cognitive_patterns (
+        id, name, description, conditions_json, outcomes_json, confidence, episode_count, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.id,
+      `learning_${input.id}`,
+      input.lesson,
+      JSON.stringify({
+        goalType: input.goalType || input.category,
+        strategy: input.strategy || `lesson_${input.category}`,
+        lesson: input.lesson,
+      }),
+      JSON.stringify({ success: confidence }),
+      confidence,
+      episodeCount,
+      new Date().toISOString(),
+    );
+    return { patternId: input.id, strategies: this.evolveStrategies() };
+  }
+
   /**
    * Start listening to loop events and recording episodes.
    */
@@ -301,7 +333,7 @@ export class CognitiveLoopClosureService {
           `Auto-evolved from pattern: ${pattern.name}`,
           goalType,
           JSON.stringify(conditions),
-          JSON.stringify([]),
+          JSON.stringify(typeof conditions.lesson === 'string' ? [conditions.lesson] : []),
           successRate,
           episodeCount,
           (outcomes.avgDurationMs as number) || 0,
@@ -316,7 +348,7 @@ export class CognitiveLoopClosureService {
           description: `Auto-evolved from pattern: ${pattern.name}`,
           goalType,
           conditions,
-          actions: [],
+          actions: typeof conditions.lesson === 'string' ? [conditions.lesson] : [],
           successRate,
           episodeCount,
           avgDurationMs: (outcomes.avgDurationMs as number) || 0,

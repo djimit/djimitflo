@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import type { ExecutorKind } from '../execution/types';
 
 interface ModelCapability {
   modelId: string;
@@ -105,6 +106,7 @@ export class MultiModelIntelligence {
     maxCost?: number;
     preferLowLatency?: boolean;
   }): RoutingDecision {
+    this.loadModels();
     const models = this.getEligibleModels(input.taskType, input.minSuccessRate, input.maxCost);
 
     if (models.length === 0) {
@@ -279,6 +281,7 @@ export class MultiModelIntelligence {
     minSampleCount?: number;
     maxEscalations?: number;
   }): CascadeDecision {
+    this.loadModels();
     const profile = this.getCascadeProfile();
     const minRate = input.minSuccessRate ?? profile.minSuccessRate;
     const minSamples = input.minSampleCount ?? profile.minSampleCount;
@@ -450,6 +453,7 @@ export class MultiModelIntelligence {
   }
 
   private loadModels(): void {
+    this.modelCache.clear();
     const rows = this.db.prepare('SELECT * FROM model_capabilities').all() as any[];
     for (const row of rows) {
       const model: ModelCapability = {
@@ -463,6 +467,23 @@ export class MultiModelIntelligence {
       };
       this.modelCache.set(model.modelId, model);
     }
+  }
+
+  hasModel(modelId: string): boolean {
+    this.loadModels();
+    return this.modelCache.has(modelId);
+  }
+
+  resolveExecutorForModel(modelId: string): ExecutorKind {
+    this.loadModels();
+    const provider = (this.modelCache.get(modelId)?.provider || modelId).toLowerCase();
+    if (provider.includes('mock')) return 'mock';
+    if (provider.includes('anthropic') || provider.includes('claude')) return 'claude';
+    if (provider.includes('google') || provider.includes('gemini')) return 'gemini';
+    if (provider.includes('openai') || provider.includes('codex')) return 'codex';
+    if (provider.includes('ollama') || provider.includes('pi')) return 'pi';
+    if (provider.includes('editor')) return 'editor';
+    return 'opencode';
   }
 
   /**

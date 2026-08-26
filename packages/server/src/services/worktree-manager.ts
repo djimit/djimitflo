@@ -71,6 +71,25 @@ export class WorktreeManager {
     throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
   }
 
+  createReviewWorktree(repositoryPath: string, runId: string, checkerId: string, makerBranch: string): string {
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
+    const worktreePath = path.join(worktreeRoot, runId, `checker-${checkerId.replace(/[^a-zA-Z0-9_.-]/g, '-')}`);
+    mkdirSync(path.dirname(worktreePath), { recursive: true });
+    this.git(repositoryRoot, ['worktree', 'add', '--detach', worktreePath, makerBranch]);
+    this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
+    return worktreePath;
+  }
+
+  cleanupWorktree(repositoryPath: string, worktreePath: string): void {
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const worktreeRoot = path.resolve(process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees'));
+    const resolved = path.resolve(worktreePath);
+    if (!resolved.startsWith(`${worktreeRoot}${path.sep}`)) throw new Error('WORKTREE_PATH_OUTSIDE_ALLOWED_ROOT');
+    try { this.git(repositoryPath, ['worktree', 'remove', '--force', worktreePath]); }
+    finally { if (existsSync(worktreePath)) rmSync(worktreePath, { recursive: true, force: true }); }
+  }
+
   /**
    * Snapshot untracked source files into a worker worktree.
    * Includes path traversal guards to prevent writes outside the worktree.
@@ -79,11 +98,13 @@ export class WorktreeManager {
     const trackedDiff = execFileSync('git', ['-C', repositoryPath, 'diff', '--binary', 'HEAD'], {
       encoding: null,
       stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024,
     });
     if (trackedDiff.length > 0) {
       execFileSync('git', ['-C', worktreePath, 'apply', '--binary', '-'], {
         input: trackedDiff,
         stdio: ['pipe', 'ignore', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
       });
     }
     const status = this.git(repositoryPath, ['status', '--porcelain=v1', '--untracked-files=all']);
@@ -130,10 +151,9 @@ export class WorktreeManager {
     if (!worktreeRoot || !existsSync(worktreeRoot)) return 0;
 
     const rows = this.db
-      .prepare('SELECT worktree_path, status FROM worker_leases WHERE worktree_path IS NOT NULL')
-      .all() as Array<{ worktree_path: string; status: string }>;
-    const statusByPath = new Map<string, string>();
-    for (const row of rows) statusByPath.set(row.worktree_path, row.status);
+      .prepare('SELECT wl.worktree_path, wl.status, lr.repository_path FROM worker_leases wl LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id WHERE wl.worktree_path IS NOT NULL')
+      .all() as Array<{ worktree_path: string; status: string; repository_path: string | null }>;
+    const leaseByPath = new Map(rows.map(row => [row.worktree_path, row]));
     const ACTIVE_LEASE = new Set(['prepared', 'running']);
 
     const maxAgeMs = Math.max(0, maxAgeHours) * 3_600_000;
@@ -167,16 +187,23 @@ export class WorktreeManager {
         } catch { continue; }
         if (!stat.isDirectory()) continue;
 
-        const leaseStatus = statusByPath.get(wtPath);
-        if (leaseStatus && ACTIVE_LEASE.has(leaseStatus)) continue;
+        const lease = leaseByPath.get(wtPath);
+        if (lease && ACTIVE_LEASE.has(lease.status)) continue;
 
         const ageMs = nowMs - stat.mtimeMs;
         if (ageMs < maxAgeMs) continue;
 
         if (!dryRun) {
           try {
-            rmSync(wtPath, { recursive: true, force: true });
+            if (lease?.repository_path) this.git(lease.repository_path, ['worktree', 'remove', '--force', wtPath]);
+            else rmSync(wtPath, { recursive: true, force: true });
           } catch { /* best-effort */ }
+          finally {
+            if (existsSync(wtPath)) rmSync(wtPath, { recursive: true, force: true });
+            if (lease?.repository_path) {
+              try { this.git(lease.repository_path, ['worktree', 'prune']); } catch { /* best-effort */ }
+            }
+          }
         }
         pruned++;
       }
@@ -195,6 +222,7 @@ export class WorktreeManager {
       return execFileSync('git', ['-C', repositoryPath, ...args], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
+        maxBuffer: 10 * 1024 * 1024,
       }).trim();
     } catch (error) {
       const stderr = (error as { stderr?: Buffer | string }).stderr?.toString() || '';

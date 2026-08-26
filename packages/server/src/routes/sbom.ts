@@ -111,7 +111,7 @@ function generateCycloneDX(): CycloneDXSBOM {
     }
   }
 
-  const workspaces = ['packages/server', 'packages/dashboard', 'packages/shared', 'packages/mcp-server', 'packages/telegram'];
+  const workspaces = ['packages/server', 'packages/dashboard', 'packages/shared', 'packages/mcp-server'];
   for (const ws of workspaces) {
     const pkgPath = join(rootDir, ws, 'package.json');
     if (!existsSync(pkgPath)) continue;

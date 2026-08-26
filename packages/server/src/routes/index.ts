@@ -45,6 +45,7 @@ import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
+import { createMemoryEvolutionRoutes } from './memory-evolution';
 import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
@@ -83,6 +84,8 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
+import { createExplorePublicRoutes } from './explore-public';
+import { createGitHubWebhookRoutes } from './github-webhooks';
 
 export function createRoutes(
   db: Database,
@@ -130,6 +133,8 @@ export function createRoutes(
   const mounts: RouteMount[] = [
     // Auth routes (public + protected)
     { prefix: '/auth', middleware: [], router: createAuthRoutes(authService!, auth!, auditService) },
+    { prefix: '/explore', middleware: [], router: createExplorePublicRoutes(db) },
+    { prefix: '/github/webhook', middleware: [], router: createGitHubWebhookRoutes(db) },
     // Protected routes
     { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth) },
     { prefix: '/agents', middleware: [requireAuth], router: createAgentRoutes(db, auth) },
@@ -184,6 +189,7 @@ export function createRoutes(
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
+    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
@@ -201,7 +207,7 @@ export function createRoutes(
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
-    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
@@ -211,7 +217,7 @@ export function createRoutes(
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth) },
+    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth, wsService) },
     { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
     { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },

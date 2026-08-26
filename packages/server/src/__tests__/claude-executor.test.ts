@@ -96,6 +96,11 @@ describe('ClaudeExecutor', () => {
     expect(args).not.toContain('--output-format');
   });
 
+  it('maps Claude tool blocks and usage to typed events', () => {
+    const event = (executor as any).lineToExecutionEvent('task', JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Read', input: { file: 'a.ts' } }] }, usage: { input_tokens: 4, output_tokens: 2 } }), 'stdout');
+    expect(event).toMatchObject({ event_type: ExecutionEventType.TOOL_CALL, tool_name: 'Read', metadata: { usage: { total_tokens: 6 } } });
+  });
+
   it('runs a fake claude bin to completion (exit 0) via start()', async () => {
     const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-claude-bin-'));
     const bin = path.join(binDir, 'claude');

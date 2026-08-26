@@ -6,18 +6,38 @@
  * 170 LOC + executeRuntimeCommand 120 LOC + semaphore management).
  */
 
-import { spawn, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
+import { startRuntimeProcess, type RuntimeProcess } from '../execution/executors/runtime-process';
+import { structuredRuntimeEvent } from '../execution/executors/structured-runtime-event';
+import type { ExecutionEventCreateInput, Task } from '@djimitflo/shared';
+import { ConcurrencySemaphore } from './concurrency-semaphore';
+import type { TaskExecutor } from '../execution/types';
+import { CodexExecutor } from '../execution/executors/codex-executor';
+import { OpenCodeExecutor } from '../execution/executors/opencode-executor';
+import { ClaudeExecutor } from '../execution/executors/claude-executor';
+import { GeminiExecutor } from '../execution/executors/gemini-executor';
+import { EditorExecutor } from '../execution/executors/editor-executor';
+import { PiExecutor } from '../execution/executors/pi-executor';
 
 const DEFAULT_MAX_CONCURRENCY = 4;
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
-  private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }> } = { active: new Set(), queue: [] };
+  private static readonly runtimeSemaphore = new ConcurrencySemaphore();
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
+  private readonly executorFactories = new Map<string, () => TaskExecutor>([
+    ['codex', () => new CodexExecutor()],
+    ['opencode', () => new OpenCodeExecutor()],
+    ['claude', () => new ClaudeExecutor()],
+    ['gemini', () => new GeminiExecutor()],
+    ['editor', () => new EditorExecutor()],
+    ['pi', () => new PiExecutor()],
+  ]);
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
   constructor(private db: Database, private loopService: LoopService) {
@@ -90,54 +110,15 @@ export class RuntimeCommandService {
       ].join('\n');
       return { command: process.execPath, args: ['-e', script, worktreePath] };
     }
-    if (runtime === 'codex') {
-      const args = skipPermissions
-        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
-        : ['exec', '--json', '--cd', worktreePath, prompt];
-      return { command: process.env.CODEX_BIN_PATH || 'codex', args };
-    }
-    if (runtime === 'opencode') {
-      const args = skipPermissions
-        ? ['run', '--auto', '--format', 'json', '--dir', worktreePath, prompt]
-        : ['run', '--format', 'json', '--dir', worktreePath, prompt];
-      const model = process.env.DJIMITFLO_OPENCODE_MODEL;
-      if (model) args.splice(args.length - 1, 0, '--model', model);
-      return { command: process.env.OPENCODE_BIN_PATH || 'opencode', args };
-    }
-    if (runtime === 'claude') {
-      const args = ['-p', prompt, '--output-format', 'json'];
-      if (skipPermissions) args.push('--dangerously-skip-permissions');
-      const model = process.env.DJIMITFLO_CLAUDE_MODEL;
-      if (model) args.push('--model', model);
-      return { command: process.env.CLAUDE_BIN_PATH || 'claude', args };
-    }
-    if (runtime === 'gemini') {
-      const args = ['-p', prompt, '-o', 'json'];
-      if (skipPermissions) args.push('-y');
-      const model = process.env.DJIMITFLO_GEMINI_MODEL;
-      if (model) args.push('-m', model);
-      return { command: process.env.GEMINI_BIN_PATH || 'gemini', args };
-    }
-    if (runtime === 'editor') {
-      const args = ['--json', '--auto-approve', skipPermissions ? 'true' : 'false', '-c', worktreePath];
-      args.push('--thinking', process.env.DJIMITFLO_CLINE_THINKING || 'medium');
-      const model = process.env.DJIMITFLO_CLINE_MODEL;
-      if (model) args.push('-m', model);
-      args.push(prompt);
-      return { command: process.env.CLINE_BIN_PATH || 'cline', args };
-    }
-    if (runtime === 'pi') {
-      const args = ['--mode', 'json', '-p', '--no-session'];
-      if ((process.env.PI_NO_APPROVE ?? '1') === '1') args.push('--no-approve');
-      if (process.env.PI_NO_CONTEXT_FILES === '1') args.push('--no-context-files');
-      if ((process.env.PI_NO_EXTENSIONS ?? '1') === '1') args.push('--no-extensions');
-      if ((process.env.PI_NO_SKILLS ?? '1') === '1') args.push('--no-skills');
-      if (process.env.PI_OFFLINE === '1') args.push('--offline');
-      if (process.env.PI_TOOLS) args.push('--tools', process.env.PI_TOOLS);
-      if (process.env.PI_PROVIDER) args.push('--provider', process.env.PI_PROVIDER);
-      if (process.env.PI_MODEL) args.push('--model', process.env.PI_MODEL);
-      args.push(prompt);
-      return { command: process.env.PI_BIN_PATH || 'pi', args };
+    const executor = this.executorFactories.get(runtime)?.();
+    if (executor?.buildCommand) {
+      return executor.buildCommand({ id: `loop-${runtime}`, title: prompt, description: prompt } as Task, {
+        workingDirectory: worktreePath,
+        skipPermissions,
+        ...(runtime === 'opencode' && process.env.DJIMITFLO_OPENCODE_MODEL
+          ? { model: process.env.DJIMITFLO_OPENCODE_MODEL }
+          : {}),
+      });
     }
     throw new Error('MAKER_RUNTIME_UNSUPPORTED');
   }
@@ -146,10 +127,10 @@ export class RuntimeCommandService {
 
   getRuntimeContract(runtime: string): RuntimeContract {
     if (runtime === 'manual') {
-      return { runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] };
+      return this.withConformance({ runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] });
     }
     if (runtime === 'mock') {
-      return { runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] };
+      return this.withConformance({ runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] });
     }
     const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string }> = {
       codex: { binEnv: 'CODEX_BIN_PATH', defaultBin: 'codex', helpArgs: ['exec', '--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '--cd', headlessFlag: '--json' },
@@ -161,7 +142,7 @@ export class RuntimeCommandService {
     };
     const probe = PROBES[runtime];
     if (!probe) {
-      return { runtime: 'manual', available: false, command: null, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: [], reason: 'unsupported runtime' };
+      return this.withConformance({ runtime: 'manual', available: false, command: null, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: [], reason: 'unsupported runtime' });
     }
     const typedRuntime = runtime as RuntimeContract['runtime'];
     const command = process.env[probe.binEnv] || probe.defaultBin;
@@ -175,13 +156,13 @@ export class RuntimeCommandService {
         if (entry.expiresAt <= now) this.runtimeContractCache.delete(key);
       }
     }
-    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS ?? 1_000), 5_000));
+    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS ?? 2_000), 5_000));
     const result = spawnSync(command, ['--version'], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 512 * 1024 });
     if (result.error) {
-      return { runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.error.message };
+      return this.withConformance({ runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.error.message });
     }
     if (result.status !== 0) {
-      return { runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.stderr || `exit ${result.status}` };
+      return this.withConformance({ runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.stderr || `exit ${result.status}` });
     }
     const helpResult = spawnSync(command, probe.helpArgs, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 512 * 1024 });
     const help = `${helpResult.stdout || ''}\n${helpResult.stderr || ''}`;
@@ -191,7 +172,7 @@ export class RuntimeCommandService {
     const hasCwdFlag = probe.cwdFlag ? lowerHelp.includes(probe.cwdFlag) : true;
     const hasHeadlessFlag = lowerHelp.includes(probe.headlessFlag.toLowerCase());
     const drifted = !hasJsonFlag || !hasCwdFlag || !hasHeadlessFlag;
-    const contract: RuntimeContract = {
+    const contract = this.withConformance({
       runtime: typedRuntime, available: !drifted, command,
       version: (result.stdout || result.stderr || '').trim() || 'unknown',
       status: drifted ? 'drifted' : 'ok',
@@ -199,7 +180,7 @@ export class RuntimeCommandService {
       json_flag: probe.jsonFlag === '--format' ? ['--format', 'json'] : probe.jsonFlag,
       supports_json_events: !drifted, supports_usage_parsing: !drifted, supports_timeout_kill: true, evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
-    };
+    });
     const probedAt = new Date().toISOString();
     contract.probed_at = probedAt;
     this.db.prepare(`INSERT INTO runtime_contract_probes (runtime, command, status, available, contract_json, probed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(runtime) DO UPDATE SET command = excluded.command, status = excluded.status, available = excluded.available, contract_json = excluded.contract_json, probed_at = excluded.probed_at, updated_at = excluded.updated_at`).run(contract.runtime, contract.command, contract.status, contract.available ? 1 : 0, JSON.stringify(contract), probedAt, probedAt);
@@ -207,11 +188,38 @@ export class RuntimeCommandService {
     return contract;
   }
 
+  private withConformance(contract: RuntimeContract): RuntimeContract {
+    const checks = [
+      { name: 'runtime_available', passed: contract.available, evidence: contract.available ? 'Runtime binary is available.' : contract.reason || 'Runtime binary is unavailable.' },
+      { name: 'contract_not_drifted', passed: contract.status === 'ok', evidence: `Runtime contract status is ${contract.status}.` },
+      { name: 'structured_events', passed: contract.supports_json_events, evidence: contract.json_flag ? `Structured output flag: ${JSON.stringify(contract.json_flag)}.` : 'No structured output flag.' },
+      { name: 'usage_accounting', passed: contract.supports_usage_parsing, evidence: contract.supports_usage_parsing ? 'Runtime output supports usage parsing.' : 'Usage parsing is not supported.' },
+      { name: 'bounded_lifecycle', passed: contract.supports_timeout_kill, evidence: contract.supports_timeout_kill ? 'Timeout and kill are supported.' : 'Runtime requires manual lifecycle control.' },
+    ];
+    const canonical = JSON.stringify({
+      runtime: contract.runtime,
+      command: contract.command,
+      version: contract.version || null,
+      cwd_flag: contract.cwd_flag || null,
+      json_flag: contract.json_flag || null,
+      checks: checks.map(({ name, passed }) => ({ name, passed })),
+    });
+    return {
+      ...contract,
+      conformance: {
+        status: contract.runtime === 'manual' ? 'manual' : checks.every((check) => check.passed) ? 'pass' : 'fail',
+        proof_class: contract.runtime === 'manual' || contract.runtime === 'mock' ? 'static' : 'runtime_probe',
+        contract_hash: createHash('sha256').update(canonical).digest('hex'),
+        checks,
+      },
+    };
+  }
+
   // ─── Process Execution ────────────────────────────────────────────────
 
   async executeRuntimeCommand(
     leaseId: string, command: string, args: string[],
-    options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; maxBuffer?: number; enforceCwdBoundary?: boolean } = {}
+    options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; maxBuffer?: number; enforceCwdBoundary?: boolean; runtime?: string } = {}
   ): Promise<RuntimeExecutionResult> {
     const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
     const timeoutMs = options.timeoutMs || 120_000;
@@ -227,40 +235,54 @@ export class RuntimeCommandService {
       let timedOutHandled = false;
       let exitCode: number | null = null;
       let signal: string | null = null;
+      const events: ExecutionEventCreateInput[] = [];
+      let eventBuffer = '';
       let settled = false;
       const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
-      let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
+      let runtime: RuntimeProcess;
+      const finalize = () => {
+        if (settled) return;
+        settled = true;
+        this.clearRuntimeLease(leaseId);
+        this.releaseRuntimePermit(leaseId);
+        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined, events });
+      };
       try {
-        child = spawn(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+        runtime = startRuntimeProcess({
+          command, args, cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), timeoutMs,
+          onOutput: (text, stream) => {
+            if (stream === 'stdout') {
+              stdout = safeTrim(stdout + text);
+              if (options.runtime && ['claude', 'gemini', 'editor', 'codex', 'opencode', 'pi'].includes(options.runtime)) {
+                eventBuffer += text;
+                const lines = eventBuffer.split(/\r?\n/);
+                eventBuffer = lines.pop() || '';
+                for (const line of lines) {
+                  try { if (events.length < 500) events.push(structuredRuntimeEvent(options.runtime as any, leaseId, JSON.parse(line))); }
+                  catch { /* raw non-JSON output remains in stdout */ }
+                }
+              }
+            } else stderr = safeTrim(stderr + text);
+          },
+          onExit: (code, childSignal) => {
+            if (eventBuffer.trim() && options.runtime) {
+              try { if (events.length < 500) events.push(structuredRuntimeEvent(options.runtime as any, leaseId, JSON.parse(eventBuffer))); }
+              catch { /* raw non-JSON output remains in stdout */ }
+            }
+            exitCode = code; signal = childSignal; finalize();
+          },
+          onError: error => { this.clearRuntimeLease(leaseId); this.releaseRuntimePermit(leaseId); if (!settled) { settled = true; reject(error); } },
+          onTimeout: () => { if (!timedOutHandled) { timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true; } },
+        });
+        child = runtime.child;
       } catch (error) {
         this.releaseRuntimePermit(leaseId);
         reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
       if (!child.pid) { this.releaseRuntimePermit(leaseId); reject(new Error('RUNTIME_PROCESS_START_FAILED')); return; }
-      if (timeoutMs > 0) {
-        timeoutHandle = setTimeout(() => {
-          if (!timedOutHandled) {
-            timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true;
-            try { child.kill('SIGKILL'); } catch { /* best effort */ }
-          }
-        }, timeoutMs);
-      }
-      this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
-      const finalize = () => {
-        if (settled) return;
-        settled = true;
-        this.clearRuntimeLease(leaseId);
-        this.releaseRuntimePermit(leaseId);
-        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined });
-      };
-      child.stdout?.setEncoding('utf8');
-      child.stderr?.setEncoding('utf8');
-      child.stdout?.on('data', (chunk: string) => { stdout += chunk; if (stdout.length > maxBuffer) stdout = stdout.slice(-maxBuffer); });
-      child.stderr?.on('data', (chunk: string) => { stderr += chunk; if (stderr.length > maxBuffer) stderr = stderr.slice(-maxBuffer); });
-      child.on('error', (error) => { this.clearRuntimeLease(leaseId); this.releaseRuntimePermit(leaseId); if (!settled) { settled = true; reject(error); } });
-      child.on('close', (code, childSignal) => { exitCode = code === null ? exitCode : code; signal = childSignal || null; if (timedOut && typeof code === 'number' && code === 0) timedOut = true; finalize(); });
+      this.registerRuntimeLease(leaseId, runtime, command, args);
     });
   }
 
@@ -270,16 +292,14 @@ export class RuntimeCommandService {
       this.cancelRuntimePermit(leaseId);
       return { stopMode: 'best_effort_no_process_handle', killAttempted: false };
     }
-    const child = runtimeLease.child;
     let killAttempted = false;
     try {
-      if (!child.killed) child.kill('SIGTERM');
+      runtimeLease.stop?.();
       killAttempted = true;
       this.loopService.patchWorkerLeaseMetadata(leaseId, { runtime_stop_requested_at: new Date().toISOString(), runtime_stop_attempted: true, runtime_stop_mode: 'stop' });
     } catch { killAttempted = false; }
-    if (child.killed) { this.clearRuntimeLease(leaseId); return { stopMode: 'stop', killAttempted }; }
-    try { child.kill('SIGKILL'); killAttempted = killAttempted || true; this.clearRuntimeLease(leaseId); return { stopMode: 'kill', killAttempted }; }
-    catch { return { stopMode: 'best_effort_no_process_handle', killAttempted }; }
+    this.clearRuntimeLease(leaseId);
+    return { stopMode: 'stop', killAttempted };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
@@ -327,7 +347,7 @@ export class RuntimeCommandService {
     return { total_tokens: runtimeUsage.total_tokens, diff_lines: diffLines, tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null, tokens_per_successful_worker: runtimeUsage.total_tokens };
   }
 
-  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.active.size; }
+  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.activeCount(); }
 
   // ─── Semaphore ────────────────────────────────────────────────────────
 
@@ -339,32 +359,19 @@ export class RuntimeCommandService {
   }
 
   private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) { sem.active.add(leaseId); return Promise.resolve(); }
-    return new Promise<void>((resolve, reject) => { sem.queue.push({ leaseId, resolve, reject }); });
+    return RuntimeCommandService.runtimeSemaphore.acquire(leaseId, this.runtimeSemaphoreLimit());
   }
 
   private releaseRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) { sem.active.add(next.leaseId); next.resolve(); }
-    } else {
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
+    RuntimeCommandService.runtimeSemaphore.release(leaseId);
   }
 
   private cancelRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) { const [waiter] = sem.queue.splice(idx, 1); waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED')); }
+    RuntimeCommandService.runtimeSemaphore.cancel(leaseId, 'RUNTIME_PERMIT_CANCELLED');
   }
 
-  private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): void {
-    RuntimeCommandService.runtimeLeases.set(leaseId, { child, leaseId, command, args, startedAt: new Date().toISOString(), timeoutHandle });
+  private registerRuntimeLease(leaseId: string, runtime: RuntimeProcess, command: string, args: string[]): void {
+    RuntimeCommandService.runtimeLeases.set(leaseId, { child: runtime.child, stop: runtime.stop, leaseId, command, args, startedAt: new Date().toISOString() });
   }
 
   private clearRuntimeLease(leaseId: string): void {

@@ -45,6 +45,8 @@ export enum WebSocketEventType {
   // Execution events
   EXECUTION_EVENT = 'execution.event',
   EXECUTION_LOG = 'execution.log',
+  EXECUTION_BATCH = 'execution.batch',
+  STREAM_TRUNCATED = 'execution.stream_truncated',
   
   // Approval events
   APPROVAL_REQUESTED = 'approval.requested',

@@ -51,24 +51,32 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
   });
 
   // ─── Vector Memory ───────────────────────────────────────────────────
-  router.post('/memory/store', requirePermission('write:claim'), (req, res) => {
+  router.post('/memory/store', requirePermission('write:claim'), async (req, res, next) => {
     const { content, metadata, ttl } = req.body;
     if (!content) {
       res.status(400).json({ error: { message: 'content is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const vector = memory.storeMemory({ content, metadata, ttl });
-    res.status(201).json(vector);
+    try {
+      const vector = await memory.storeMemory({ content, metadata, ttl });
+      res.status(201).json(vector);
+    } catch (error) {
+      next(error);
+    }
   });
 
-  router.get('/memory/search', requirePermission('read:evidence'), (req, res) => {
+  router.get('/memory/search', requirePermission('read:evidence'), async (req, res, next) => {
     const q = req.query.q as string;
     const limit = req.query.limit ? Number(req.query.limit) : 10;
     if (!q) {
       res.status(400).json({ error: { message: 'q parameter is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    res.json({ results: memory.search(q, limit) });
+    try {
+      res.json({ results: await memory.search(q, limit) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get('/memory/clusters', requirePermission('read:evidence'), (_req, res) => {

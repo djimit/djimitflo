@@ -3,7 +3,9 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { GoalBatchService } from '../services/goal-batch-service';
+import { GoalDecomposer } from '../services/goal-decomposer';
 import { LoopService } from '../services/loop-service';
+import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 
 function mapLoopServiceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -25,6 +27,7 @@ export function createGoalRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const loopService = new LoopService(db);
+  const goalDecomposer = new GoalDecomposer(db, loopService, new SwarmIntelligenceService(db));
   const goalBatchService = new GoalBatchService(db);
 
   router.get('/', requirePermission('read:evidence'), (_req, res, next) => {
@@ -100,7 +103,7 @@ export function createGoalRoutes(db: Database, auth?: AuthMiddleware): Router {
 
   router.post('/:id/decompose', requirePermission('create:task'), (req, res, next) => {
     try {
-      res.json(loopService.decomposeGoal(req.params.id));
+      res.json(goalDecomposer.decomposeGoalToDAG(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);

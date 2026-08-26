@@ -1,7 +1,7 @@
 /**
- * AgiGoalReasoningEngine — autonomous goal deduction and planning.
+ * AgiGoalReasoningEngine — system-state goal suggestions with model-backed planning.
  *
- * This is the "consciousness" layer of DjimFlo. It:
+ * This service:
  * 1. Observes system state and identifies opportunities
  * 2. Deduces high-level goals from first principles
  * 3. Plans multi-step strategies to achieve goals
@@ -11,15 +11,15 @@
  * Architecture:
  *   Observe → Deduce → Plan → Execute → Monitor → Learn
  *
- * Inspired by:
- * - OpenAI o1/o3 chain-of-thought reasoning
- * - Anthropic's constitutional AI (self-reflection)
- * - Ruflo's GOAP A* planner
- * - DjimFlo's cognitive loop closure
+ * It requests only structured action lists and does not store hidden chain-of-thought.
  */
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { z } from 'zod';
+import { LlmRouterService } from './llm-router-service';
+
+const strategySchema = z.object({ steps: z.array(z.string().trim().min(1)).min(1).max(12) });
 
 interface GoalHypothesis {
   id: string;
@@ -56,8 +56,10 @@ interface StrategyNode {
 
 export class AgiGoalReasoningEngine {
   private reasoningLog: ReasoningStep[] = [];
+  private readonly llmRouter: LlmRouterService;
 
-  constructor(private db: Database) {
+  constructor(private db: Database, llmRouter?: LlmRouterService) {
+    this.llmRouter = llmRouter || new LlmRouterService(db);
     this.ensureTables();
   }
 
@@ -163,13 +165,13 @@ export class AgiGoalReasoningEngine {
 
   /**
    * Plan a multi-step strategy to achieve a goal.
-   * Uses LLM when available, falls back to templates.
+   * Uses the canonical LLM router and validates its structured response.
    */
-  planStrategy(goalId: string): StrategyNode[] {
+  async planStrategy(goalId: string): Promise<StrategyNode[]> {
     const goal = this.db.prepare('SELECT * FROM goal_hypotheses WHERE id = ?').get(goalId) as any;
     if (!goal) return [];
 
-    const steps = this.decomposeGoal(goal.statement);
+    const steps = await this.decomposeGoal(goal.statement);
 
     const nodes: StrategyNode[] = [];
 
@@ -203,11 +205,11 @@ export class AgiGoalReasoningEngine {
   /**
    * Execute reasoning chain: Observe → Deduce → Plan.
    */
-  reason(): {
+  async reason(): Promise<{
     observations: { observations: string[]; anomalies: string[]; opportunities: string[] };
     hypotheses: GoalHypothesis[];
     strategies: StrategyNode[][];
-  } {
+  }> {
     const startTime = Date.now();
 
     // Phase 1: Observe
@@ -221,7 +223,7 @@ export class AgiGoalReasoningEngine {
     // Phase 3: Plan
     const strategies: StrategyNode[][] = [];
     for (const hypothesis of hypotheses.slice(0, 3)) {
-      const strategy = this.planStrategy(hypothesis.id);
+      const strategy = await this.planStrategy(hypothesis.id);
       strategies.push(strategy);
     }
     this.logReasoning('plan', JSON.stringify(hypotheses.map(h => h.id)), JSON.stringify(strategies.map(s => s.length)), 0.7, Date.now() - startTime);
@@ -262,32 +264,15 @@ export class AgiGoalReasoningEngine {
     return Math.min(1, confidence);
   }
 
-  private decomposeGoal(goal: string): string[] {
-    // Simple decomposition; v2 will use LLM-based decomposition
-    const steps: string[] = [];
-
-    if (/investigate|analyze|understand/i.test(goal)) {
-      steps.push('Gather relevant data');
-      steps.push('Analyze patterns and anomalies');
-      steps.push('Formulate findings');
-    } else if (/fix|repair|resolve/i.test(goal)) {
-      steps.push('Identify root cause');
-      steps.push('Design fix');
-      steps.push('Implement fix');
-      steps.push('Verify resolution');
-    } else if (/implement|build|create/i.test(goal)) {
-      steps.push('Design architecture');
-      steps.push('Implement core functionality');
-      steps.push('Add tests');
-      steps.push('Document and ship');
-    } else {
-      steps.push('Analyze requirements');
-      steps.push('Plan approach');
-      steps.push('Execute plan');
-      steps.push('Validate results');
-    }
-
-    return steps;
+  private async decomposeGoal(goal: string): Promise<string[]> {
+    const content = await this.llmRouter.generateStructured({
+      taskType: 'reasoning',
+      prompt: `Decompose this goal into 1-12 concrete, ordered actions. Return only JSON matching {"steps":["action"]}. Goal: ${JSON.stringify(goal)}`,
+      maxTokens: 1024,
+      temperature: 0.2,
+    });
+    const json = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    return strategySchema.parse(JSON.parse(json)).steps;
   }
 
   private logReasoning(phase: ReasoningStep['phase'], input: string, output: string, confidence: number, durationMs: number): void {

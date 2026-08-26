@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Task } from '@djimitflo/shared';
 import type { ExecutorOptions } from '../execution/types';
 import { EditorExecutor } from '../execution/executors/editor-executor';
+import { ExecutionEventType } from '@djimitflo/shared';
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -98,5 +99,10 @@ describe('EditorExecutor (cline)', () => {
     delete process.env.DJIMITFLO_CLINE_MODEL;
     const noModelArgs = (executor as any).buildEditorArgs(task, { workingDirectory: '/tmp/project' });
     expect(noModelArgs).not.toContain('-m');
+  });
+
+  it('maps Cline asks to typed tool calls', () => {
+    const event = (executor as any).lineToExecutionEvent('task', JSON.stringify({ type: 'ask', ask: 'command', arguments: { command: 'npm test' } }), 'stdout');
+    expect(event).toMatchObject({ event_type: ExecutionEventType.TOOL_CALL, tool_name: 'command' });
   });
 });

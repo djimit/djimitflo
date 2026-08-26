@@ -12,6 +12,18 @@ import { AuthorizationService } from './authorization-service';
 
 type ClientFilter = (client: AuthenticatedClient) => boolean;
 
+export function extractWebSocketToken(req: { url?: string; headers?: Record<string, string | string[] | undefined> }): string | null {
+  const protocolHeader = req.headers?.['sec-websocket-protocol'];
+  const protocols = (Array.isArray(protocolHeader) ? protocolHeader.join(',') : protocolHeader || '')
+    .split(',')
+    .map(protocol => protocol.trim());
+  const bearerProtocol = protocols.find(protocol => protocol.startsWith('bearer.'));
+  if (bearerProtocol) return bearerProtocol.slice('bearer.'.length) || null;
+
+  const queryString = (req.url || '').split('?')[1] || '';
+  return new URLSearchParams(queryString).get('token');
+}
+
 export class WebSocketService {
   private wss: WebSocketServer;
   private clients: Map<WebSocket, AuthenticatedClient> = new Map();
@@ -60,16 +72,7 @@ export class WebSocketService {
   }
 
   authenticateConnection(req: any, ws?: WebSocket): AuthenticatedClient | null {
-    const url = req?.url || '';
-    let token: string | null = null;
-
-    try {
-      const queryString = url.split('?')[1] || '';
-      const params = new URLSearchParams(queryString);
-      token = params.get('token');
-    } catch {
-      token = null;
-    }
+    const token = extractWebSocketToken(req || {});
 
     if (!token) {
       this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_REQUIRED);
@@ -106,9 +109,7 @@ export class WebSocketService {
   }
 
   send(client: WebSocket, message: WebSocketMessage) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(message));
-    }
+    this.safeSend(client, JSON.stringify(message));
   }
 
   broadcastToAuthenticated(message: WebSocketMessage) {
@@ -121,7 +122,7 @@ export class WebSocketService {
           this.clients.delete(ws);
           return;
         }
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -137,7 +138,7 @@ export class WebSocketService {
         return;
       }
       if (filterFn(clientInfo)) {
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -227,7 +228,7 @@ export class WebSocketService {
 
       const subscriptions = (clientInfo as any).debateSubscriptions as Set<string>;
       if (subscriptions && subscriptions.has(debateId)) {
-        ws.send(data);
+        this.safeSend(ws, data);
       }
     });
   }
@@ -244,5 +245,12 @@ export class WebSocketService {
       }
     });
     return count;
+  }
+
+  private safeSend(ws: WebSocket, data: string): boolean {
+    const maxBuffered = Math.max(64 * 1024, Number(process.env.WS_MAX_BUFFERED_BYTES || 1024 * 1024));
+    if (ws.readyState !== WebSocket.OPEN || (ws.bufferedAmount || 0) > maxBuffered) return false;
+    ws.send(data);
+    return true;
   }
 }

@@ -29,6 +29,7 @@ const approvalColumns: ColumnSpec[] = [
 ];
 
 const approvalPolicyColumns: ColumnSpec[] = [
+  { name: 'version', definition: "INTEGER NOT NULL DEFAULT 1" },
   { name: 'action_type', definition: "TEXT" },
   { name: 'decision', definition: "TEXT NOT NULL DEFAULT 'require_approval'" },
   { name: 'match_pattern', definition: "TEXT" },

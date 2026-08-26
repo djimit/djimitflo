@@ -23,6 +23,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   token_usage INTEGER,
   tags TEXT, -- JSON array
   metadata TEXT, -- JSON object
+  outcome TEXT NOT NULL DEFAULT 'success' CHECK(outcome IN ('success', 'failure', 'denied')),
+  previous_hash TEXT NOT NULL DEFAULT 'genesis',
+  hash TEXT NOT NULL DEFAULT '',
+  chain_sequence INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE SET NULL,
@@ -216,6 +220,7 @@ CREATE TABLE IF NOT EXISTS approval_policies (
   auto_approve INTEGER NOT NULL DEFAULT 0,
   approval_timeout_ms INTEGER,
   metadata TEXT, -- JSON object
+  version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

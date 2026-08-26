@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import Database from 'better-sqlite3';
 import type { DbHandle } from '../db.js';
-import { registerLoopTools } from '../tools/loops.js';
-import { registerGoalTools } from '../tools/goals.js';
-import { registerAgentTools } from '../tools/agents.js';
-import { registerMissionControlTools } from '../tools/mission-control.js';
-import { registerOpenMythosTools } from '../tools/openmythos.js';
+import { registerTools } from '../register-tools.js';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -52,17 +48,18 @@ function createTestDb(): DbHandle {
       categories_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE memory_candidates (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
+      memory_type TEXT NOT NULL, status TEXT NOT NULL, source_ref TEXT,
+      metadata TEXT DEFAULT '{}', created_at TEXT NOT NULL
+    );
   `);
   return { db, close: () => db.close() };
 }
 
 function createTestServer(dbHandle: DbHandle): McpServer {
   const server = new McpServer({ name: 'test', version: '0.0.0' });
-  registerLoopTools(server, dbHandle);
-  registerGoalTools(server, dbHandle);
-  registerAgentTools(server, dbHandle);
-  registerMissionControlTools(server, dbHandle);
-  registerOpenMythosTools(server, dbHandle);
+  registerTools(server, dbHandle);
   return server;
 }
 
@@ -91,6 +88,21 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_agent_status');
     expect(toolNames).toContain('djimitflo_get_mission_control');
     expect(toolNames).toContain('djimitflo_get_system_health');
+    expect(toolNames).toContain('notebook_list');
+    expect(toolNames).toContain('explainer_create_task');
+    expect(toolNames).toContain('djimitflo_mcp_doctor');
+    expect(toolNames).toContain('djimitflo_council_ask');
+    expect(toolNames).toContain('djimitflo_memory_search');
+    expect(toolNames).toContain('djimitflo_generate_export');
+  });
+
+  it('searches memory candidates', async () => {
+    dbHandle.db.prepare('INSERT INTO memory_candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+      'm1', 'Focused tests', 'Run focused tests before the full suite', 'engineering_rule', 'promoted', 'loop:1', '{}', new Date().toISOString(),
+    );
+    const tool = (server as any)._registeredTools['djimitflo_memory_search'];
+    const result = await tool.handler({ query: 'focused', limit: 5 });
+    expect(JSON.parse(result.content[0].text)[0].id).toBe('m1');
   });
 
   it('list_loop_runs returns empty array when no runs', async () => {
