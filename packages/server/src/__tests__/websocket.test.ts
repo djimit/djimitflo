@@ -162,6 +162,17 @@ describe('WebSocketService', () => {
       expect(expiredWs.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
       expect(wsService['clients'].has(expiredWs)).toBe(false);
     });
+
+    it('does not enqueue more data for a client over the backpressure limit', () => {
+      const slowWs = createMockWs();
+      slowWs.bufferedAmount = 1_048_577;
+      wsService['clients'].set(slowWs, makeClient(UserRole.ADMIN, 'slow-admin'));
+
+      const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
+      wsService.broadcastFiltered(msg, () => true);
+
+      expect(slowWs.send).not.toHaveBeenCalled();
+    });
   });
 
   describe('broadcastToAdmins', () => {

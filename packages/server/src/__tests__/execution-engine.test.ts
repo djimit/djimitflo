@@ -218,6 +218,30 @@ describe('ExecutionEngine', () => {
     }
   });
 
+  it('persists a stream-truncated event when the event deadline is reached', async () => {
+    const previousTimeout = process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
+    process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = '-1';
+    const session = {
+      taskId: 'stream-timeout-task',
+      executorKind: 'mock',
+      events: (async function* () {
+        yield { task_id: 'stream-timeout-task', event_type: 'log', message: 'too late', level: 'info' };
+      })(),
+    };
+
+    try {
+      await (engine as any).processEventStream(session);
+      const events = db.prepare('SELECT event_type, message, metadata FROM execution_events WHERE task_id = ?').all(session.taskId) as any[];
+      expect(events).toHaveLength(1);
+      expect(events[0].event_type).toBe('stream.truncated');
+      expect(events[0].message).toContain('truncated');
+      expect(JSON.parse(events[0].metadata)).toMatchObject({ stream_timeout_ms: -1, executor_kind: 'mock' });
+    } finally {
+      if (previousTimeout === undefined) delete process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
+      else process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = previousTimeout;
+    }
+  });
+
   it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
     const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
     try {

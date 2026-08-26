@@ -666,7 +666,18 @@ export class ExecutionEngine {
     try {
       const streamDeadline = Date.now() + streamTimeoutMs;
       for await (const event of session.events) {
-        if (Date.now() > streamDeadline) { break; }
+        if (Date.now() > streamDeadline) {
+          const truncatedEvent: ExecutionEventCreateInput = {
+            task_id: session.taskId,
+            event_type: ExecutionEventType.STREAM_TRUNCATED,
+            message: `Execution event stream truncated after ${streamTimeoutMs}ms`,
+            level: LogLevel.WARNING,
+            metadata: { stream_timeout_ms: streamTimeoutMs, executor_kind: session.executorKind },
+          };
+          const truncatedEventId = this.persistEvent(truncatedEvent);
+          this.broadcastExecutionEvent(session.taskId, truncatedEventId, truncatedEvent);
+          break;
+        }
         // Persist event to database
         const eventId = this.persistEvent(event);
         
