@@ -17,6 +17,7 @@ import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { captureExecutorOutput } from '../executor-output';
 
 interface ParsedOutput {
   type: 'log' | 'error' | 'thinking' | 'unknown';
@@ -42,6 +43,10 @@ export class GeminiExecutor implements TaskExecutor {
     return true;
   }
 
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.geminiPath, args: this.buildGeminiArgs(task, options) };
+  }
+
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     const sessionId = randomUUID();
     const startedAt = new Date();
@@ -56,6 +61,7 @@ export class GeminiExecutor implements TaskExecutor {
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
+      const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
       const child = spawn(this.geminiPath, args, {
         cwd,
@@ -74,8 +80,8 @@ export class GeminiExecutor implements TaskExecutor {
             }
           }, 5000);
         }
-        emitter.emit('error', new Error(`Gemini execution timed out after ${this.executionTimeoutMs}ms`));
-      }, this.executionTimeoutMs);
+        emitter.emit('error', new Error(`Gemini execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       child.stdout?.on('data', (data) => {
         emitter.emit('output', data.toString(), 'stdout');
@@ -315,7 +321,9 @@ export class GeminiExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

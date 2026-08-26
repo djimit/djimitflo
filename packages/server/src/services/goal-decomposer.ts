@@ -27,6 +27,7 @@ export interface CapabilityDAG {
   goal_id: string;
   nodes: DAGNode[];
   fallback: boolean; // true if fell back to predefined loops
+  candidates?: ReturnType<LoopService['decomposeGoal']>['candidates'];
 }
 
 const STEP_KEYWORDS: Array<{ keywords: string[]; step: string; role: string }> = [
@@ -67,11 +68,12 @@ export class GoalDecomposer {
 
     // If no steps matched, fall back to predefined loops.
     if (steps.length === 0) {
-      this.loops.decomposeGoal(goalId);
+      const { candidates } = this.loops.decomposeGoal(goalId);
       return {
         goal_id: goalId,
         nodes: [],
         fallback: true,
+        candidates,
       };
     }
 

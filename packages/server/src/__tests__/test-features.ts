@@ -4,18 +4,20 @@ import { TrajectoryStore } from '../services/trajectory-store';
 
 const db = new Database('../../.data/djimitflo.sqlite');
 
+async function main() {
+
 console.log('=== Vector Memory Test ===');
 const vmem = new VectorMemoryService(db);
 console.log('Initial stats:', vmem.getStats());
 
 // Store test memories
-const m1 = vmem.storeMemory({ content: 'TypeScript generics improve type safety', metadata: { test: true } });
-const m2 = vmem.storeMemory({ content: 'Vector embeddings enable semantic search', metadata: { test: true } });
-vmem.storeMemory({ content: 'Self-learning systems adapt from feedback', metadata: { test: true } });
+const m1 = await vmem.storeMemory({ content: 'TypeScript generics improve type safety', metadata: { test: true } });
+const m2 = await vmem.storeMemory({ content: 'Vector embeddings enable semantic search', metadata: { test: true } });
+await vmem.storeMemory({ content: 'Self-learning systems adapt from feedback', metadata: { test: true } });
 console.log('Stored 3 memories');
 
 // Search
-const results = vmem.search('TypeScript type safety', 5, 0.1);
+const results = await vmem.search('TypeScript type safety', 5, 0.1);
 console.log('Search results:', results.length);
 for (const r of results) {
   console.log('  ', r.id.slice(0,12), r.score.toFixed(3), r.content.slice(0, 50));
@@ -27,7 +29,7 @@ vmem.recordFeedback(m2.id, 0.3);
 console.log('Feedback recorded');
 
 // Search again (should re-rank)
-const results2 = vmem.search('TypeScript type safety', 5, 0.1);
+const results2 = await vmem.search('TypeScript type safety', 5, 0.1);
 console.log('Search after feedback:', results2.length);
 for (const r of results2) {
   console.log('  ', r.id.slice(0,12), r.score.toFixed(3), r.content.slice(0, 50));
@@ -50,3 +52,6 @@ console.log('\nStats after:', traj.getStats());
 
 db.close();
 console.log('\nDone!');
+}
+
+void main();

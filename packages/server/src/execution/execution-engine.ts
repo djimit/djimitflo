@@ -48,12 +48,15 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
+import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
   approvalId?: string;
   reason?: string;
+  completion?: Promise<ExecutionResult>;
 }
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
@@ -63,6 +66,7 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
+  private pendingExecutions = new Set<string>();
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
@@ -81,6 +85,7 @@ export class ExecutionEngine {
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
   private toolBroker: ToolBroker;
+  private runtimeGovernance: RuntimeGovernanceService;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -102,9 +107,17 @@ export class ExecutionEngine {
     return this.toolBroker;
   }
 
-  constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
+  constructor(
+    db: Database,
+    wsService?: WebSocketService,
+    skillsDir?: string,
+    runtimeGovernance = new RuntimeGovernanceService(db),
+  ) {
     this.db = db;
-    this.wsService = wsService;
+    this.wsService = wsService || ({
+      broadcastTaskEvent: () => {},
+      broadcastTaskEventById: () => {},
+    } as unknown as WebSocketService);
     this.executors = new Map();
     this.circuitBreaker = new CircuitBreakerService();
     this.fallbackChain = new FallbackChainService();
@@ -117,10 +130,11 @@ export class ExecutionEngine {
     this.policyDecisionService = new PolicyDecisionService(db);
     this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
-    this.approvalService = new ApprovalService(db, wsService, this.auditService);
+    this.approvalService = new ApprovalService(db, this.wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
     this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
+    this.runtimeGovernance = runtimeGovernance;
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -152,7 +166,7 @@ export class ExecutionEngine {
    */
   async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId)) {
+    if (this.activeSessions.has(taskId) || this.pendingExecutions.has(taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -172,6 +186,19 @@ export class ExecutionEngine {
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
+    }
+
+    if (parsedTask.agent_id && !this.runtimeGovernance.isAllowed(parsedTask.agent_id)) {
+      const reason = `Agent ${parsedTask.agent_id} is blocked by runtime governance`;
+      this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.ERROR,
+        message: reason,
+        level: LogLevel.ERROR,
+        metadata: { agentId: parsedTask.agent_id, source: 'runtime-governance' },
+      });
+      return { status: 'denied', reason };
     }
 
     const attributionBlockReason = this.blockInvalidSkillAttribution(parsedTask);
@@ -336,13 +363,20 @@ export class ExecutionEngine {
       }
     }
 
+    this.pendingExecutions.add(taskId);
+    try {
+      await runtimeConcurrencySemaphore.acquire(`execution:${taskId}`);
+    } finally {
+      this.pendingExecutions.delete(taskId);
+    }
     try {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
-      await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
-      return { status: 'started' };
+      const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
+      return { status: 'started', completion: session.result };
     } catch (error) {
+      runtimeConcurrencySemaphore.release(`execution:${taskId}`);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -384,7 +418,13 @@ export class ExecutionEngine {
       : executor;
 
     try {
-      const session = await activeExecutor.start(task, workingDirectory ? { workingDirectory } : undefined);
+      const executionMetadata = task.metadata as Record<string, unknown>;
+      const session = await activeExecutor.start(task, {
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(executionMetadata.environment ? { environment: executionMetadata.environment as Record<string, string> } : {}),
+        ...(executionMetadata.timeoutMs ? { timeout: Number(executionMetadata.timeoutMs) } : {}),
+        ...(executionMetadata.skipPermissions === true ? { skipPermissions: true } : {}),
+      });
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
@@ -611,6 +651,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.diffContexts.delete(taskId);
     
     // Update task status
@@ -646,7 +687,18 @@ export class ExecutionEngine {
     try {
       const streamDeadline = Date.now() + streamTimeoutMs;
       for await (const event of session.events) {
-        if (Date.now() > streamDeadline) { break; }
+        if (Date.now() > streamDeadline) {
+          const truncatedEvent: ExecutionEventCreateInput = {
+            task_id: session.taskId,
+            event_type: ExecutionEventType.STREAM_TRUNCATED,
+            message: `Execution event stream truncated after ${streamTimeoutMs}ms`,
+            level: LogLevel.WARNING,
+            metadata: { stream_timeout_ms: streamTimeoutMs, executor_kind: session.executorKind },
+          };
+          const truncatedEventId = this.persistEvent(truncatedEvent);
+          this.broadcastExecutionEvent(session.taskId, truncatedEventId, truncatedEvent);
+          break;
+        }
         // Persist event to database
         const eventId = this.persistEvent(event);
         
@@ -724,6 +776,9 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
+    this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
+      .run(JSON.stringify(result), taskId);
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);
@@ -816,6 +871,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);

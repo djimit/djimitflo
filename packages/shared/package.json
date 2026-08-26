@@ -5,6 +5,21 @@
   "description": "Shared types and utilities for Djimitflo",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "jwt": ["dist/jwt.d.ts"]
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./jwt": {
+      "types": "./dist/jwt.d.ts",
+      "default": "./dist/jwt.js"
+    }
+  },
   "scripts": {
     "build": "tsc -b --force",
     "dev": "tsc --watch",

@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { LoopService } from '../services/loop-service';
+import type { ExecutionEngine } from '../execution/execution-engine';
 
 function mapLoopServiceError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -35,6 +36,9 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'MAKER_RUNTIME_UNSUPPORTED') throw createError(400, 'maker runtime is unsupported', 'MAKER_RUNTIME_UNSUPPORTED');
   if (message === 'RUNTIME_UNAVAILABLE') throw createError(409, 'requested runtime is unavailable', 'RUNTIME_UNAVAILABLE');
   if (message === 'RUNTIME_CONTRACT_DRIFTED') throw createError(409, 'requested runtime contract is drifted or unavailable', 'RUNTIME_CONTRACT_DRIFTED');
+  if (message === 'LOOP_WORKER_APPROVAL_REQUIRED') throw createError(409, 'worker execution requires approval', 'LOOP_WORKER_APPROVAL_REQUIRED');
+  if (message === 'LOOP_WORKER_EXECUTION_IN_PROGRESS') throw createError(409, 'worker execution is already in progress', 'LOOP_WORKER_EXECUTION_IN_PROGRESS');
+  if (message === 'LOOP_WORKER_EXECUTION_DENIED') throw createError(403, 'worker execution was denied by policy', 'LOOP_WORKER_EXECUTION_DENIED');
   if (message === 'CHECKER_VERDICT_REQUIRED') throw createError(400, 'checker verdict is required', 'CHECKER_VERDICT_REQUIRED');
   if (message === 'CHECKER_VERDICT_INVALID') throw createError(400, 'checker verdict is invalid', 'CHECKER_VERDICT_INVALID');
   if (message === 'CHECKER_LEASE_NOT_FOUND') throw createError(404, 'checker lease not found', 'CHECKER_LEASE_NOT_FOUND');
@@ -58,10 +62,10 @@ function mapLoopServiceError(error: unknown): never {
   throw error;
 }
 
-export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRoot?: string): Router {
+export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRoot?: string, executionEngine?: ExecutionEngine): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const loopService = new LoopService(db, evidenceRoot);
+  const loopService = new LoopService(db, evidenceRoot, executionEngine);
 
   router.get('/catalog', requirePermission('read:evidence'), (_req, res, next) => {
     try {

@@ -46,6 +46,7 @@ import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from './services/emergent-specialization-service';
 import { RsiSafetyGuard } from './services/rsi-safety-guard';
+import { RuntimeGovernanceService } from './services/runtime-governance-service';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -195,15 +196,30 @@ async function main() {
   const httpServer = createServer(app);
   
   // Create WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // handleProtocols echoes back the "bearer.<token>" subprotocol the dashboard
+  // client offers (see packages/dashboard/src/hooks/useWebSocket.ts) so the
+  // handshake response names the negotiated protocol per RFC 6455 §4.2.2.
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: '/ws',
+    handleProtocols: (protocols: Set<string>) => {
+      for (const protocol of protocols) {
+        if (protocol.startsWith('bearer.')) return protocol;
+      }
+      const [first] = protocols;
+      return first ?? false;
+    },
+  });
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
   
   // Prometheus exposition — default-off, armed by METRICS_TOKEN (see routes/metrics.ts)
   app.get('/metrics', metricsRateLimiter, createMetricsHandler(db, () => wsService.getClientCount()));
 
-  // Create execution engine
-  const executionEngine = new ExecutionEngine(db, wsService);
+  // One persistent runtime-governance authority shared by dispatch and API routes.
+  const runtimeGovernance = new RuntimeGovernanceService(db);
+  runtimeGovernance.start();
+  const executionEngine = new ExecutionEngine(db, wsService, undefined, runtimeGovernance);
   console.log('⚙️  Execution engine initialized');
 
   const memorySync = new MemorySyncService(db);
@@ -259,7 +275,7 @@ async function main() {
   }
 
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, undefined, runtimeGovernance));
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;

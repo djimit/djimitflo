@@ -22,6 +22,8 @@ import { registerMissionControlTools } from './tools/mission-control.js';
 import { registerOrchestrationTools } from './tools/orchestration.js';
 import { registerOkfTools } from './tools/okf.js';
 import { registerOpenMythosTools } from './tools/openmythos.js';
+import { runWithMcpAuth } from './auth-context.js';
+import { UserRole } from '@djimitflo/shared';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -57,7 +59,17 @@ async function main() {
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
-    await server.connect(transport);
+    const now = Math.floor(Date.now() / 1000);
+    await runWithMcpAuth({
+      payload: {
+        sub: process.env.DJIMITFLO_MCP_STDIO_PRINCIPAL || `stdio:${process.getuid?.() ?? 'local'}`,
+        email: 'stdio@localhost',
+        role: UserRole.VIEWER,
+        iat: now,
+        exp: now + 24 * 60 * 60,
+      },
+      token: process.env.DJIMITFLO_MCP_TOKEN || '',
+    }, () => server.connect(transport));
     console.error('DjimFlo MCP Server running on stdio');
   } else {
     const { startHttpServer } = await import('./transports/http.js');

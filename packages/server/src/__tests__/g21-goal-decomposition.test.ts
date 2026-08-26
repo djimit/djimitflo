@@ -73,6 +73,10 @@ describe('G21: Goal decomposition into capability DAGs', () => {
     const dag = decomposer.decomposeGoalToDAG(goal.id);
     expect(dag.fallback).toBe(true);
     expect(dag.nodes.length).toBe(0);
+    expect(dag.candidates?.[0]).toMatchObject({
+      loop_name: 'doc-drift-and-small-fix-loop',
+      recommended_first: true,
+    });
   });
 
   it('emits a decomposition event on the SSE stream', () => {

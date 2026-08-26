@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
+import { createError } from '../middleware/error-handler';
 import { SegmlFederatedGovernanceBridge } from '../services/segml-federated-governance-bridge';
 
 export function createSegmlFederationRoutes(db: Database, auth?: AuthMiddleware): Router {
@@ -53,7 +54,9 @@ export function createSegmlFederationRoutes(db: Database, auth?: AuthMiddleware)
       const result = bridge.receivePeerPatterns(peerId, patterns);
       res.json(result);
     } catch (error) {
-      next(error);
+      next(error instanceof Error && error.message === 'FEDERATION_UNKNOWN_PEER'
+        ? createError(404, 'Federation peer not found', 'FEDERATION_UNKNOWN_PEER')
+        : error);
     }
   });
 

@@ -6,6 +6,7 @@ import { spawnSync } from 'child_process';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
+import type { ExecutionEngine } from '../execution/execution-engine';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -310,7 +311,7 @@ export class LoopService {
    */
   private spawnTokenSecret: string | undefined;
 
-  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT) {
+  constructor(db: Database, evidenceRoot = DEFAULT_EVIDENCE_ROOT, executionEngine?: ExecutionEngine) {
     this.db = db;
     this.evidenceRoot = evidenceRoot;
     this.assurance = new AgentAssuranceService(db);
@@ -331,7 +332,7 @@ export class LoopService {
     this.recovery = new LoopRecoveryService(db);
     this.persistence = new LoopPersistenceService(evidenceRoot);
     this.experience = new ExperienceRetrievalService(db);
-    this.workerExecutor = new LoopWorkerExecutorService(db, this);
+    this.workerExecutor = new LoopWorkerExecutorService(db, this, executionEngine);
     this.runtimeCommand = new RuntimeCommandService(db, this);
     this.lifecycle = new LoopLifecycleService(this);
     this.discovery = new LoopDiscoveryService();
@@ -1469,8 +1470,8 @@ export class LoopService {
     return this.worktree.branchNameFor(runId, findingId, retryAttempt);
   }
 
-  public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
-    return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName);
+  public createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
+    return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName, linkDependencies);
   }
 
 
@@ -2132,17 +2133,11 @@ export class LoopService {
   }
 
   public extractCheckerVerdict(stdout: string): CheckerVerdictInput['verdict'] {
-    for (const line of stdout.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed.startsWith('{')) continue;
-      try {
-        const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        const verdict = String(parsed.verdict || parsed.checker_verdict || '').trim();
-        if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
-          return verdict as CheckerVerdictInput['verdict'];
-        }
-      } catch {
-        continue;
+    const payload = this.extractCheckerPayload(stdout);
+    if (payload) {
+      const verdict = String(payload.verdict || payload.checker_verdict || '').trim();
+      if (['accepted', 'needs_revision', 'rejected', 'insufficient_evidence'].includes(verdict)) {
+        return verdict as CheckerVerdictInput['verdict'];
       }
     }
     if (/\baccepted\b/i.test(stdout)) return 'accepted';
@@ -2152,19 +2147,33 @@ export class LoopService {
   }
 
   public extractCheckerNotes(stdout: string): string {
+    const notes = this.extractCheckerPayload(stdout)?.notes;
+    return typeof notes === 'string' ? notes : stdout.trim().slice(0, 1_000);
+  }
+
+  private extractCheckerPayload(stdout: string): Record<string, unknown> | undefined {
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) continue;
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-        if (typeof parsed.notes === 'string') {
-          return parsed.notes;
+        const part = parsed.part;
+        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined];
+        const text = candidates.map((candidate) => candidate?.text).find((value) => typeof value === 'string');
+        if (typeof text === 'string' && text.trim().startsWith('{')) {
+          candidates.push(JSON.parse(text) as Record<string, unknown>);
         }
+        const payload = candidates.find((candidate) => candidate && (
+          typeof candidate.verdict === 'string'
+          || typeof candidate.checker_verdict === 'string'
+          || typeof candidate.notes === 'string'
+        ));
+        if (payload) return payload;
       } catch {
         continue;
       }
     }
-    return stdout.trim().slice(0, 1_000);
+    return undefined;
   }
 
   public mergeGates(existing: LoopGate[], patch: LoopGate[]): LoopGate[] {
@@ -2181,6 +2190,10 @@ export class LoopService {
 
   public updateWorkerLeaseStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
     this.workerLeases.updateStatus(id, status, metadataPatch);
+  }
+
+  public updateWorkerLeaseWorktree(id: string, worktreePath: string, branchName: string): void {
+    this.workerLeases.updateWorktree(id, worktreePath, branchName);
   }
 
   public updateWorkerLeaseRuntime(id: string, runtime: string): void {

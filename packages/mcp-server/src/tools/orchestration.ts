@@ -11,6 +11,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { requireLiveMode, type DbHandle } from '../db.js';
+import { ROLE_PERMISSIONS } from '@djimitflo/shared';
+import { currentMcpAuth } from '../auth-context.js';
+
+function requirePermission(permission: string) {
+  const principal = currentMcpAuth().payload;
+  if (!ROLE_PERMISSIONS[principal.role]?.includes(permission)) throw new Error(`MCP_PERMISSION_DENIED: ${permission}`);
+  return principal;
+}
 
 export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle) {
   const { db } = dbHandle;
@@ -30,6 +38,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
       requireLiveMode(dbHandle);
+      const principal = requirePermission('write:swarm_action');
       const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       // Register the sub-agent
@@ -41,7 +50,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
         `${role}-${runtime}`,
         task,
         JSON.stringify([role]),
-        JSON.stringify({ parent_run_id, context_budget, spawned_by: 'mcp-orchestrator' })
+        JSON.stringify({ parent_run_id, context_budget, spawned_by: principal.sub, spawned_by_role: principal.role })
       );
 
       return {
@@ -77,6 +86,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     },
     async ({ from_node_id, to_node_id, agent_id, lease_id, summary, artifacts }) => {
       requireLiveMode(dbHandle);
+      const principal = requirePermission('write:swarm_action');
       if (!db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(from_node_id)
         || !db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(to_node_id)) {
         return { content: [{ type: 'text' as const, text: 'Unknown fleet node' }], isError: true };
@@ -92,7 +102,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       db.prepare(`
         INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, lease_id, context_json, status, priority, created_at)
         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'medium', datetime('now'))
-      `).run(handoffId, from_node_id, to_node_id, agent_id, lease_id, JSON.stringify({ summary, artifacts }));
+      `).run(handoffId, from_node_id, to_node_id, agent_id, lease_id, JSON.stringify({ summary, artifacts, principal_id: principal.sub, principal_role: principal.role }));
 
       return {
         content: [{
@@ -125,13 +135,14 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     },
     async ({ action, reason, risk_level, context }) => {
       requireLiveMode(dbHandle);
+      const principal = requirePermission('create:task');
       const approvalId = `approval-${Date.now()}`;
 
       // Store approval request using existing approvals table
       db.prepare(`
-        INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, created_at)
-        VALUES (?, 'mcp-orchestrator', 'pending', ?, 'high_risk_action', ?, ?, datetime('now'))
-      `).run(approvalId, risk_level, action, JSON.stringify({ reason, context }));
+        INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, requested_by, created_at)
+        VALUES (?, 'mcp-orchestrator', 'pending', ?, 'high_risk_action', ?, ?, ?, datetime('now'))
+      `).run(approvalId, risk_level, action, JSON.stringify({ reason, context }), principal.sub);
 
       return {
         content: [{

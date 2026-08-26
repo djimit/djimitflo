@@ -2,11 +2,16 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AdversarialRedTeamService } from '../services/adversarial-red-team-service';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
-export function createRedTeamRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createRedTeamRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  governance = new RuntimeGovernanceService(db),
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const service = new AdversarialRedTeamService(db);
+  const service = new AdversarialRedTeamService(db, governance);
 
   router.post('/assess', requirePermission('write:governance'), async (_req, res) => {
     const report = await service.runAssessment();

@@ -23,7 +23,7 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
     const { agent_id, content, memory_type, metadata } = req.body;
     if (!agent_id || !content) { res.status(400).json({ error: 'agent_id and content required' }); return; }
     try {
-      const candidate = { id: 'mc-'+Date.now(), title: metadata?.title || 'Trace from '+agent_id, content, memory_type: memory_type || 'operational_memory', status: 'candidate', promotion_status: 'proposed', created_at: new Date().toISOString() };
+      const candidate = service.ingestTrace({ agentId: agent_id, content, memoryType: memory_type, metadata });
       res.status(201).json({ status: 'ingested', candidate });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -31,8 +31,12 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
   // POST /evolve — trigger evolution pipeline
   router.post('/evolve', (req, res) => {
     const { action, candidate_ids, agent_id } = req.body;
-    if (!action) { res.status(400).json({ error: 'action required: consolidate|prune|evaluate' }); return; }
-    try { res.json({ action, status: 'triggered', candidate_ids: candidate_ids || [], agent_id: agent_id || 'system', timestamp: new Date().toISOString() }); }
+    if (!['consolidate', 'prune', 'evaluate'].includes(action)) { res.status(400).json({ error: 'action required: consolidate|prune|evaluate' }); return; }
+    try {
+      const ids = Array.isArray(candidate_ids) ? candidate_ids : [];
+      const goals = service.scheduleEvolution(action, ids);
+      res.json({ action, status: 'scheduled', candidate_ids: ids, agent_id: agent_id || 'system', goals });
+    }
     catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -40,11 +44,12 @@ export function createMemoryEvolutionRoutes(db: Database): Router {
   router.get('/retrieve', (req, res) => {
     const agentId = req.query.agent_id as string;
     const scope = req.query.scope as string;
-    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const requestedLimit = Number(req.query.limit ?? 20);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0 ? Math.min(Math.trunc(requestedLimit), 100) : 20;
     if (!agentId) { res.status(400).json({ error: 'agent_id query param required' }); return; }
     try {
-      const candidateIds = service.getCandidatesByScope(agentId);
-      res.json({ agent_id: agentId, scope: scope || 'all', candidates: candidateIds.slice(0, limit), total: candidateIds.length });
+      const candidateIds = service.retrieveCandidates(agentId, scope || 'all', limit);
+      res.json({ agent_id: agentId, scope: scope || 'all', candidates: candidateIds, total: candidateIds.length });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 

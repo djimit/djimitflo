@@ -153,6 +153,9 @@ export class SegmlFederatedGovernanceBridge {
     trendDirection: 'improving' | 'stable' | 'declining';
     confidence: number;
   }>): PeerSyncResult {
+    const peer = this.db.prepare('SELECT 1 FROM federation_peers WHERE id = ?').get(peerId);
+    if (!peer) throw new Error('FEDERATION_UNKNOWN_PEER');
+
     let validated = 0;
     let rejected = 0;
 

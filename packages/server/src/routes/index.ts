@@ -45,6 +45,7 @@ import { createGymRoutes } from './gym';
 import { createRuntimeGovernanceRoutes } from './runtime-governance';
 import { createCognitiveRoutes } from './cognitive';
 import { createMemoryRoutes } from './memory';
+import { createMemoryEvolutionRoutes } from './memory-evolution';
 import { createSelfModificationRoutes } from './self-modification';
 import { createFleetRoutes } from './fleet';
 import { createMultiModelRoutes } from './multi-model';
@@ -83,6 +84,8 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
 export function createRoutes(
   db: Database,
@@ -92,6 +95,7 @@ export function createRoutes(
   wsService?: WebSocketService,
   metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService,
   operatorRuntime?: boolean,
+  runtimeGovernance = new RuntimeGovernanceService(db),
 ): Router {
   const router = Router();
 
@@ -111,6 +115,7 @@ export function createRoutes(
   // the router, so a token-only child cannot create roots.
   const requireAuthOrSpawnToken = auth.requireAuthOrSpawnToken;
   const auditService = new AuditService(db);
+  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // Security headers
   router.use(securityHeaders);
@@ -168,7 +173,7 @@ export function createRoutes(
   mounts.push(
     { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
     { prefix: '/goals', middleware: [requireAuth], router: createGoalRoutes(db, auth) },
-    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth) },
+    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth, undefined, executionEngine) },
     { prefix: '/work-items', middleware: [requireAuth], router: createWorkItemRoutes(db, auth) },
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.
@@ -179,29 +184,30 @@ export function createRoutes(
     { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
     { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
     { prefix: '/usage', middleware: [requireAuth], router: createUsageRoutes(db, auth) },
-    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth) },
+    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
     { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
+    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
-    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth) },
-    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth) },
+    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
+    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
     { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
-    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth) },
-    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth) },
+    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
+    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
     { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
-    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
@@ -211,7 +217,7 @@ export function createRoutes(
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth) },
+    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth, wsService) },
     { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
     { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },

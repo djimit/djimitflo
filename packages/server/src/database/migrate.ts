@@ -29,6 +29,7 @@ const approvalColumns: ColumnSpec[] = [
 ];
 
 const approvalPolicyColumns: ColumnSpec[] = [
+  { name: 'version', definition: "INTEGER NOT NULL DEFAULT 1" },
   { name: 'action_type', definition: "TEXT" },
   { name: 'decision', definition: "TEXT NOT NULL DEFAULT 'require_approval'" },
   { name: 'match_pattern', definition: "TEXT" },
@@ -769,6 +770,17 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_memory_candidates_status ON memory_candidates(status);
     CREATE INDEX IF NOT EXISTS idx_memory_candidates_source_ref ON memory_candidates(source_ref);
     CREATE INDEX IF NOT EXISTS idx_memory_candidates_created_at ON memory_candidates(created_at);
+
+    CREATE TABLE IF NOT EXISTS memory_access_log (
+      id TEXT PRIMARY KEY,
+      candidate_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      accessed_at TEXT NOT NULL,
+      FOREIGN KEY (candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_access_candidate ON memory_access_log(candidate_id);
+    CREATE INDEX IF NOT EXISTS idx_memory_access_agent ON memory_access_log(agent_id);
 
     CREATE TABLE IF NOT EXISTS specialist_panels (
       id TEXT PRIMARY KEY,
