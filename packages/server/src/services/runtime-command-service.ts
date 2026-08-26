@@ -14,14 +14,30 @@ import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
 import { startRuntimeProcess, type RuntimeProcess } from '../execution/executors/runtime-process';
 import { structuredRuntimeEvent } from '../execution/executors/structured-runtime-event';
-import type { ExecutionEventCreateInput } from '@djimitflo/shared';
+import type { ExecutionEventCreateInput, Task } from '@djimitflo/shared';
+import { ConcurrencySemaphore } from './concurrency-semaphore';
+import type { TaskExecutor } from '../execution/types';
+import { CodexExecutor } from '../execution/executors/codex-executor';
+import { OpenCodeExecutor } from '../execution/executors/opencode-executor';
+import { ClaudeExecutor } from '../execution/executors/claude-executor';
+import { GeminiExecutor } from '../execution/executors/gemini-executor';
+import { EditorExecutor } from '../execution/executors/editor-executor';
+import { PiExecutor } from '../execution/executors/pi-executor';
 
 const DEFAULT_MAX_CONCURRENCY = 4;
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
-  private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }> } = { active: new Set(), queue: [] };
+  private static readonly runtimeSemaphore = new ConcurrencySemaphore();
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
+  private readonly executorFactories = new Map<string, () => TaskExecutor>([
+    ['codex', () => new CodexExecutor()],
+    ['opencode', () => new OpenCodeExecutor()],
+    ['claude', () => new ClaudeExecutor()],
+    ['gemini', () => new GeminiExecutor()],
+    ['editor', () => new EditorExecutor()],
+    ['pi', () => new PiExecutor()],
+  ]);
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
   constructor(private db: Database, private loopService: LoopService) {
@@ -94,54 +110,15 @@ export class RuntimeCommandService {
       ].join('\n');
       return { command: process.execPath, args: ['-e', script, worktreePath] };
     }
-    if (runtime === 'codex') {
-      const args = skipPermissions
-        ? ['exec', '--dangerously-bypass-approvals-and-sandbox', '--json', '--cd', worktreePath, prompt]
-        : ['exec', '--json', '--cd', worktreePath, prompt];
-      return { command: process.env.CODEX_BIN_PATH || 'codex', args };
-    }
-    if (runtime === 'opencode') {
-      const args = skipPermissions
-        ? ['run', '--auto', '--format', 'json', '--dir', worktreePath, prompt]
-        : ['run', '--format', 'json', '--dir', worktreePath, prompt];
-      const model = process.env.DJIMITFLO_OPENCODE_MODEL;
-      if (model) args.splice(args.length - 1, 0, '--model', model);
-      return { command: process.env.OPENCODE_BIN_PATH || 'opencode', args };
-    }
-    if (runtime === 'claude') {
-      const args = ['-p', prompt, '--output-format', 'json'];
-      if (skipPermissions) args.push('--dangerously-skip-permissions');
-      const model = process.env.DJIMITFLO_CLAUDE_MODEL;
-      if (model) args.push('--model', model);
-      return { command: process.env.CLAUDE_BIN_PATH || 'claude', args };
-    }
-    if (runtime === 'gemini') {
-      const args = ['-p', prompt, '-o', 'json'];
-      if (skipPermissions) args.push('-y');
-      const model = process.env.DJIMITFLO_GEMINI_MODEL;
-      if (model) args.push('-m', model);
-      return { command: process.env.GEMINI_BIN_PATH || 'gemini', args };
-    }
-    if (runtime === 'editor') {
-      const args = ['--json', '--auto-approve', skipPermissions ? 'true' : 'false', '-c', worktreePath];
-      args.push('--thinking', process.env.DJIMITFLO_CLINE_THINKING || 'medium');
-      const model = process.env.DJIMITFLO_CLINE_MODEL;
-      if (model) args.push('-m', model);
-      args.push(prompt);
-      return { command: process.env.CLINE_BIN_PATH || 'cline', args };
-    }
-    if (runtime === 'pi') {
-      const args = ['--mode', 'json', '-p', '--no-session'];
-      if ((process.env.PI_NO_APPROVE ?? '1') === '1') args.push('--no-approve');
-      if (process.env.PI_NO_CONTEXT_FILES === '1') args.push('--no-context-files');
-      if ((process.env.PI_NO_EXTENSIONS ?? '1') === '1') args.push('--no-extensions');
-      if ((process.env.PI_NO_SKILLS ?? '1') === '1') args.push('--no-skills');
-      if (process.env.PI_OFFLINE === '1') args.push('--offline');
-      if (process.env.PI_TOOLS) args.push('--tools', process.env.PI_TOOLS);
-      if (process.env.PI_PROVIDER) args.push('--provider', process.env.PI_PROVIDER);
-      if (process.env.PI_MODEL) args.push('--model', process.env.PI_MODEL);
-      args.push(prompt);
-      return { command: process.env.PI_BIN_PATH || 'pi', args };
+    const executor = this.executorFactories.get(runtime)?.();
+    if (executor?.buildCommand) {
+      return executor.buildCommand({ id: `loop-${runtime}`, title: prompt, description: prompt } as Task, {
+        workingDirectory: worktreePath,
+        skipPermissions,
+        ...(runtime === 'opencode' && process.env.DJIMITFLO_OPENCODE_MODEL
+          ? { model: process.env.DJIMITFLO_OPENCODE_MODEL }
+          : {}),
+      });
     }
     throw new Error('MAKER_RUNTIME_UNSUPPORTED');
   }
@@ -370,7 +347,7 @@ export class RuntimeCommandService {
     return { total_tokens: runtimeUsage.total_tokens, diff_lines: diffLines, tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null, tokens_per_successful_worker: runtimeUsage.total_tokens };
   }
 
-  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.active.size; }
+  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.activeCount(); }
 
   // ─── Semaphore ────────────────────────────────────────────────────────
 
@@ -382,28 +359,15 @@ export class RuntimeCommandService {
   }
 
   private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) { sem.active.add(leaseId); return Promise.resolve(); }
-    return new Promise<void>((resolve, reject) => { sem.queue.push({ leaseId, resolve, reject }); });
+    return RuntimeCommandService.runtimeSemaphore.acquire(leaseId, this.runtimeSemaphoreLimit());
   }
 
   private releaseRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) { sem.active.add(next.leaseId); next.resolve(); }
-    } else {
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
+    RuntimeCommandService.runtimeSemaphore.release(leaseId);
   }
 
   private cancelRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) { const [waiter] = sem.queue.splice(idx, 1); waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED')); }
+    RuntimeCommandService.runtimeSemaphore.cancel(leaseId, 'RUNTIME_PERMIT_CANCELLED');
   }
 
   private registerRuntimeLease(leaseId: string, runtime: RuntimeProcess, command: string, args: string[]): void {

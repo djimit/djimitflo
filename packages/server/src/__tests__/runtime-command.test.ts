@@ -81,7 +81,7 @@ describe('buildRuntimeCommand: claude / gemini / editor', () => {
     process.env.DJIMITFLO_OPENCODE_MODEL = 'ollama-cloud/gpt-oss:120b';
     const loops = new LoopService(db);
     const cmd = (loops as any).buildRuntimeCommand('opencode', '/wt', 'do work', true) as { args: string[] };
-    expect(cmd.args).toEqual(['run', '--auto', '--format', 'json', '--dir', '/wt', '--model', 'ollama-cloud/gpt-oss:120b', 'do work']);
+    expect(cmd.args).toEqual(['run', '--format', 'json', '--dir', '/wt', '--model', 'ollama-cloud/gpt-oss:120b', '--auto', 'do work']);
   });
 
   it('claude: -p <prompt> --output-format json, skip-permissions + model toggles', () => {

@@ -41,6 +41,7 @@ export class LoopDaemon {
   // G19: max concurrent goals (separate from AIMD runtime leases — a goal may have
   // multiple leases). Default: min(4, dynamicLimit). Operator-tunable via GOAL_MAX_CONCURRENT.
   private maxConcurrentGoals: number;
+  private lastWorktreePruneAt = 0;
 
   private decomposer: GoalDecomposer;
   private scheduler: ResourceScheduler;
@@ -108,6 +109,11 @@ export class LoopDaemon {
     // Allow tick to run even when not started (for testing)
 
     try {
+      const pruneIntervalMs = Math.max(60_000, Number(process.env.LOOP_WORKTREE_PRUNE_INTERVAL_MS || 3_600_000));
+      if (Date.now() - this.lastWorktreePruneAt >= pruneIntervalMs) {
+        this.loops.pruneOrphanedWorktrees();
+        this.lastWorktreePruneAt = Date.now();
+      }
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();

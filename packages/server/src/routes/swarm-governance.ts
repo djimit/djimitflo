@@ -70,6 +70,10 @@ function mapCsSkillSwarmHarnessError(error: unknown): never {
   throw error;
 }
 
+function mappedError(error: unknown, mapper: (error: unknown) => never): unknown {
+  try { mapper(error); } catch (mapped) { return mapped; }
+}
+
 function emitProofRunUpdated(wsService: WebSocketService | undefined, summary: ProofRunSummary) {
   if (!wsService) return;
   wsService.broadcastToAuthenticated({
@@ -91,24 +95,24 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
 
   // Proof runs
   router.post('/proof-runs', requirePermission('write:governance'), async (req, res, next) => {
-    try { const summary = await proofRuns.create(req.body || {}); emitProofRunUpdated(wsService, summary); res.status(201).json(summary); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const summary = await proofRuns.create(req.body || {}); emitProofRunUpdated(wsService, summary); res.status(201).json(summary); } catch (error) { next(mappedError(error, mapProofRunError)); }
   });
 
   router.get('/proof-runs/latest', requirePermission('read:evidence'), (_req, res, next) => {
-    try { const latest = proofRuns.latest(); if (!latest) throw new Error('PROOF_RUN_NOT_FOUND'); res.json(latest); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const latest = proofRuns.latest(); if (!latest) throw new Error('PROOF_RUN_NOT_FOUND'); res.json(latest); } catch (error) { next(mappedError(error, mapProofRunError)); }
   });
 
   router.get('/proof-runs/:id', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(proofRuns.get(req.params.id)); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(proofRuns.get(req.params.id)); } catch (error) { next(mappedError(error, mapProofRunError)); }
   });
 
   router.post('/proof-runs/:id/rollback', requirePermission('write:governance'), (req, res, next) => {
-    try { const summary = proofRuns.rollback(req.params.id); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { try { mapProofRunError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { const summary = proofRuns.rollback(req.params.id); emitProofRunUpdated(wsService, summary); res.json(summary); } catch (error) { next(mappedError(error, mapProofRunError)); }
   });
 
   // Evolution
   router.post('/evolution/run', requirePermission('write:governance'), (req, res, next) => {
-    try { res.status(201).json(service.runEvolutionCycle(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(service.runEvolutionCycle(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/evolution/close-loop', requirePermission('write:governance'), (req, res, next) => {
@@ -117,7 +121,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
 
   // CS skill intelligence
   router.post('/cs-skill-intelligence/run', requirePermission('write:swarm_action'), async (req, res, next) => {
-    try { res.status(201).json(await csSkillSwarmHarness.run(req.body || {})); } catch (error) { try { mapCsSkillSwarmHarnessError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(await csSkillSwarmHarness.run(req.body || {})); } catch (error) { next(mappedError(error, mapCsSkillSwarmHarnessError)); }
   });
 
   // Assurance
@@ -126,39 +130,39 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.post('/assurance/trace-spans', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.createTraceSpan(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.createTraceSpan(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.get('/assurance/traces/:traceId', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.getTrace(req.params.traceId)); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(assurance.getTrace(req.params.traceId)); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/assurance/checkpoints', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.createCheckpoint(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.createCheckpoint(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/assurance/checkpoints/:id/branch', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.branchCheckpoint(req.params.id, req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.branchCheckpoint(req.params.id, req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/assurance/evals/run', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.runEval(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.runEval(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.get('/assurance/capability-tokens', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.listCapabilityTokens(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(assurance.listCapabilityTokens(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/assurance/capability-tokens', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.issueCapabilityToken(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.issueCapabilityToken(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.get('/assurance/reflections', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.listReflections(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(assurance.listReflections(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   router.post('/assurance/reflections', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.status(201).json(assurance.createReflection(req.body || {})); } catch (error) { try { mapAssuranceError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(assurance.createReflection(req.body || {})); } catch (error) { next(mappedError(error, mapAssuranceError)); }
   });
 
   // Memory candidates
@@ -167,11 +171,11 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.post('/memory/candidates', requirePermission('write:claim'), (req, res, next) => {
-    try { res.status(201).json(memoryCandidates.create(req.body || {})); } catch (error) { try { mapMemoryCandidateError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.status(201).json(memoryCandidates.create(req.body || {})); } catch (error) { next(mappedError(error, mapMemoryCandidateError)); }
   });
 
   router.post('/memory/candidates/:id/promote', requirePermission('write:claim'), (req, res, next) => {
-    try { res.json(memoryCandidates.promote(req.params.id, req.body || {})); } catch (error) { try { mapMemoryCandidateError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(memoryCandidates.promote(req.params.id, req.body || {})); } catch (error) { next(mappedError(error, mapMemoryCandidateError)); }
   });
 
   return router;

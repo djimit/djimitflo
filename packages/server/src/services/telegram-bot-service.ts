@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
 import { CouncilOrchestrator } from './council-orchestrator';
 import { swarmEventBus } from './swarm-event-bus';
+import type { ApprovalService } from './approval-service';
 
 interface TelegramConfig {
   botToken: string;
@@ -37,7 +38,11 @@ export class TelegramBotService {
   private baseUrl = 'https://api.telegram.org/bot';
   private unsubscribe: (() => void) | null = null;
 
-  constructor(private db: Database) {
+  constructor(
+    private db: Database,
+    private approvalService?: ApprovalService,
+    private dennisAgentService = new DennisAgentService(db),
+  ) {
     this.db.exec("CREATE TABLE IF NOT EXISTS telegram_user_links (telegram_user_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
 
@@ -406,21 +411,21 @@ export class TelegramBotService {
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'approved', approved_at = ?, approved_by = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, actorUserId, now, actorUserId, now, approvalId);
-    const approval = this.db.prepare('SELECT id FROM approvals WHERE id = ?').get(approvalId);
-    if (!approval) {
-      await this.sendMessage(chatId, `Approval not found: ${approvalId}`);
-      return;
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, true, actorUserId);
+      const materialized = this.dennisAgentService.materializeApprovedDryRun(approvalId, actorUserId);
+      await this.sendMessage(chatId, materialized.status === 'materialized'
+        ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
+        : `✅ Approved: ${approvalId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith('SELF_APPROVAL_FORBIDDEN')) {
+        await this.sendMessage(chatId, '⛔ Je kunt je eigen aanvraag niet goedkeuren.');
+        return;
+      }
+      await this.sendMessage(chatId, `Fout: ${message}`);
     }
-    const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, actorUserId);
-    await this.sendMessage(chatId, materialized.status === 'materialized'
-      ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
-      : `✅ Approved: ${approvalId}${result.changes === 0 ? ' \\(already processed\\)' : ''}`);
   }
 
   private async handleReject(chatId: number, args: string[], actorUserId: string): Promise<void> {
@@ -430,13 +435,13 @@ export class TelegramBotService {
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'denied', denied_at = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, now, actorUserId, now, approvalId);
-    await this.sendMessage(chatId, result.changes > 0 ? `❌ Rejected: ${approvalId}` : `Approval not pending: ${approvalId}`);
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, false, actorUserId);
+      await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
+    } catch (error) {
+      await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async sendHelp(chatId: number): Promise<void> {

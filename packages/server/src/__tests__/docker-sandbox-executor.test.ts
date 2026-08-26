@@ -110,6 +110,18 @@ describe('DockerSandboxExecutor.buildDockerArgs', () => {
     expect(args).toContain('/tmp:size=64m');
   });
 
+  it('omits read-only flags when the sandbox config disables them', () => {
+    const args = DockerSandboxExecutor.buildDockerArgs(
+      'test-container',
+      { ...DEFAULT_SANDBOX_CONFIG, readOnlyRoot: false },
+      'echo',
+      ['hello'],
+    );
+
+    expect(args).not.toContain('--read-only');
+    expect(args).not.toContain('/tmp:size=64m');
+  });
+
   it('includes working directory bind mount', () => {
     const args = DockerSandboxExecutor.buildDockerArgs(
       'test-container',

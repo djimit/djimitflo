@@ -220,6 +220,7 @@ CREATE TABLE IF NOT EXISTS approval_policies (
   auto_approve INTEGER NOT NULL DEFAULT 0,
   approval_timeout_ms INTEGER,
   metadata TEXT, -- JSON object
+  version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

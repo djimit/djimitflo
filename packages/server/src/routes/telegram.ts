@@ -6,6 +6,9 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { TelegramBotService } from '../services/telegram-bot-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import type { WebSocketService } from '../services/websocket-service';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
 
 export function parseTelegramAllowedUsers(value = ''): number[] {
   return value.split(',').map((part) => part.trim()).filter(Boolean).map(Number).filter(Number.isFinite);
@@ -41,9 +44,10 @@ export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, confi
   };
 }
 
-export function createTelegramRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
-  const bot = new TelegramBotService(db);
+  const approvalService = wsService ? new ApprovalService(db, wsService, new AuditService(db)) : undefined;
+  const bot = new TelegramBotService(db, approvalService);
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
   if (botToken) {

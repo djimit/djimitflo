@@ -3,6 +3,8 @@ import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
+import { AuditEventType } from '@djimitflo/shared';
+import { AuditService } from '../services/audit-service';
 
 function parsePolicy(row: any) {
   const riskLevels = JSON.parse(row.risk_levels || '[]');
@@ -25,6 +27,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const audit = new AuditService(db);
 
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -47,7 +50,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
     }
   });
 
-  router.post('/', requirePermission('manage:config'), (req, res, next) => {
+  router.post('/', requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
       const id = randomUUID();
       const now = new Date().toISOString();
@@ -83,13 +86,14 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
         now
       );
       const created = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(id) as any;
+      audit.record({ event_type: AuditEventType.POLICY_CREATED, action: 'policy.created', resource_type: 'approval_policy', resource_id: id, user_id: req.user?.sub, after: parsePolicy(created), metadata: { version: created.version || 1 } });
       res.status(201).json(parsePolicy(created));
     } catch (error) {
       next(error);
     }
   });
 
-  router.patch('/:id', requirePermission('manage:config'), (req, res, next) => {
+  router.patch('/:id', requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
       const existing = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
       if (!existing) {
@@ -101,7 +105,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
           name = ?, description = ?, enabled = ?, priority = ?, action_type = ?, decision = ?,
           risk_levels = ?, tool_patterns = ?, file_patterns = ?, requires_approval = ?, auto_approve = ?,
           approval_timeout_ms = ?, match_pattern = ?, protected_paths = ?, allowed_tools = ?,
-          blocked_tools = ?, require_reason = ?, metadata = ?, updated_at = ?
+          blocked_tools = ?, require_reason = ?, metadata = ?, version = version + 1, updated_at = ?
         WHERE id = ?
       `).run(
         input.name ?? existing.name,
@@ -126,18 +130,21 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
         req.params.id
       );
       const updated = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
+      audit.record({ event_type: AuditEventType.POLICY_UPDATED, action: 'policy.updated', resource_type: 'approval_policy', resource_id: req.params.id, user_id: req.user?.sub, before: parsePolicy(existing), after: parsePolicy(updated), metadata: { version: updated.version } });
       res.json(parsePolicy(updated));
     } catch (error) {
       next(error);
     }
   });
 
-  router.delete('/:id', requirePermission('manage:config'), (req, res, next) => {
+  router.delete('/:id', requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
+      const existing = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
       const result = db.prepare('DELETE FROM approval_policies WHERE id = ?').run(req.params.id);
       if (result.changes === 0) {
         throw createError(404, 'Policy not found', 'POLICY_NOT_FOUND');
       }
+      audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'policy.deleted', resource_type: 'approval_policy', resource_id: req.params.id, user_id: req.user?.sub, before: parsePolicy(existing), metadata: { deleted_version: existing.version || 1 } });
       res.status(204).send();
     } catch (error) {
       next(error);

@@ -118,7 +118,7 @@ describe('P1 per-task skipPermissions gating (resolveSkipPermissions + buildRunt
     expect(off.args).not.toContain('--dangerously-bypass-approvals-and-sandbox');
     const on = s.buildRuntimeCommand('codex', '/tmp/wt', 'prompt', true);
     expect(on.args).toContain('--dangerously-bypass-approvals-and-sandbox');
-    expect(on.args.indexOf('--dangerously-bypass-approvals-and-sandbox')).toBeLessThan(on.args.indexOf('--json'));
+    expect(on.args.at(-1)).toBe('prompt');
   });
 
   it('injects the opencode bypass flag only when skipPermissions is true', () => {

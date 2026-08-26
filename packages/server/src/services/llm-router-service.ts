@@ -25,7 +25,7 @@ interface ProviderConfig {
   lastHealthCheck: string;
 }
 
-interface RoutingRequest {
+export interface RoutingRequest {
   taskType: 'coding' | 'analysis' | 'creative' | 'reasoning' | 'chat' | 'embedding';
   prompt: string;
   maxTokens?: number;
@@ -138,6 +138,49 @@ export class LlmRouterService {
       return { provider: provider.name, model: provider.model, reason: 'Static fallback for ' + request.taskType, estimatedCost: (request.maxTokens || 4096) / 1_000_000 * provider.costPerMtok, estimatedLatencyMs: provider.avgLatencyMs };
     }
     throw new Error('LLM_PROVIDER_UNAVAILABLE');
+  }
+
+  async generateStructured(request: RoutingRequest): Promise<string> {
+    if (!this.arms.some((arm) => arm.status === 'active')) await this.refreshProviderHealth();
+    const decision = this.route(request);
+    const startedAt = Date.now();
+    try {
+      let content: string;
+      if (decision.provider === 'ollama') {
+        const base = (process.env.OLLAMA_URL || 'http://192.168.1.28:11434').replace(/\/$/, '');
+        const response = await fetch(`${base}/api/generate`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ model: decision.model, prompt: request.prompt, stream: false, format: 'json' }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (!response.ok) throw new Error(`LLM_GENERATION_FAILED: HTTP ${response.status}`);
+        content = String((await response.json() as { response?: string }).response || '');
+      } else {
+        const base = (process.env.LITELLM_URL || 'http://192.168.1.28:4000').replace(/\/$/, '');
+        const apiKey = process.env.LITELLM_API_KEY || process.env.LITELLM_OPENCODE_KEY || '';
+        const response = await fetch(`${base}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
+          body: JSON.stringify({
+            model: decision.model,
+            messages: [{ role: 'user', content: request.prompt }],
+            response_format: { type: 'json_object' },
+            max_tokens: request.maxTokens || 1024,
+            temperature: request.temperature ?? 0.2,
+          }),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (!response.ok) throw new Error(`LLM_GENERATION_FAILED: HTTP ${response.status}`);
+        const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+        content = String(data.choices?.[0]?.message?.content || '');
+      }
+      this.recordPerformance({ provider: decision.provider, taskType: request.taskType, latencyMs: Date.now() - startedAt, success: true });
+      return content;
+    } catch (error) {
+      this.recordPerformance({ provider: decision.provider, taskType: request.taskType, latencyMs: Date.now() - startedAt, success: false });
+      throw error;
+    }
   }
 
   private selectThompson(taskType: string): { arm: BanditArm; wasExploration: boolean } | null {

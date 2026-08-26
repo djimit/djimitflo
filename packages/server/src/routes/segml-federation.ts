@@ -50,9 +50,20 @@ export function createSegmlFederationRoutes(db: Database, auth?: AuthMiddleware)
         res.status(400).json({ error: 'peerId and patterns required' });
         return;
       }
-      const result = bridge.receivePeerPatterns(peerId, patterns);
+      const signature = req.get('X-Federation-Signature') || undefined;
+      const rawBody = (req as typeof req & { rawBody?: Buffer }).rawBody?.toString('utf8');
+      const result = bridge.receivePeerPatterns(peerId, patterns, signature, rawBody);
       res.json(result);
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith('FEDERATION_UNKNOWN_PEER')) {
+        res.status(404).json({ error: { code: 'FEDERATION_UNKNOWN_PEER', message } });
+        return;
+      }
+      if (message.startsWith('FEDERATION_PEER_SECRET_REQUIRED') || message.startsWith('FEDERATION_SIGNATURE_INVALID')) {
+        res.status(401).json({ error: { code: message.split(':')[0], message } });
+        return;
+      }
       next(error);
     }
   });

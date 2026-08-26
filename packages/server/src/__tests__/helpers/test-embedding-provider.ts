@@ -11,6 +11,8 @@ const concepts = [
 
 export const testEmbeddingProvider: EmbeddingProvider = {
   id: 'test:concepts',
+  modelId: 'concepts',
+  dimensions: concepts.length + 1,
   async embed(text: string) {
     const words = new Set(text.toLowerCase().split(/\W+/));
     const vector: number[] = concepts.map((concept) => concept.filter((word) => words.has(word)).length);

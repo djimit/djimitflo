@@ -272,14 +272,23 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = runtime === 'mock'
-      ? this.loopService.buildMockCheckerCommand(maker.worktree_path!, prompt)
-      : this.loopService.buildRuntimeCommand(runtime, maker.worktree_path!, prompt, skipPermissions);
-    const result = await this.executeRuntimeSafely(checker.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
-      cwd: maker.worktree_path!, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
-      runtime,
-    }));
+    if (!run.repository_path || !maker.branch_name) throw new Error('CHECKER_WORKTREE_SOURCE_REQUIRED');
+    const checkerWorktree = this.loopService.createReviewWorktree(run.repository_path, run.id, checker.id, maker.branch_name);
+    const { result, checkerDiff } = await (async () => {
+      try {
+        const { command, args } = runtime === 'mock'
+          ? this.loopService.buildMockCheckerCommand(checkerWorktree, prompt)
+          : this.loopService.buildRuntimeCommand(runtime, checkerWorktree, prompt, skipPermissions);
+        const result = await this.executeRuntimeSafely(checker.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
+          cwd: checkerWorktree, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
+          env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
+          runtime,
+        }));
+        return { result, checkerDiff: this.loopService.git(checkerWorktree, ['status', '--porcelain']) };
+      } finally {
+        this.loopService.cleanupWorktree(run.repository_path!, checkerWorktree);
+      }
+    })();
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     const exitStatus = result.exitCode;
@@ -300,7 +309,7 @@ export class LoopWorkerExecutorService {
     const gates: LoopGate[] = [
       { name: 'checker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
       { name: 'checker_verdict', status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `checker verdict=${verdict}` },
-      { name: 'checker_read_only_contract', status: 'pass', evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.' },
+      { name: 'checker_read_only_contract', status: checkerDiff ? 'fail' : 'pass', evidence: checkerDiff || 'Checker worktree remained unchanged.' },
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');

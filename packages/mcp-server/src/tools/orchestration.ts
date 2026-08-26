@@ -11,6 +11,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { requireLiveMode, type DbHandle } from '../db.js';
+import { currentMcpAuth } from '../auth-context.js';
+import { ROLE_PERMISSIONS } from '@djimitflo/shared';
+
+function requirePermission(permission: string) {
+  const principal = currentMcpAuth().payload;
+  if (!ROLE_PERMISSIONS[principal.role]?.includes(permission)) throw new Error(`MCP_PERMISSION_DENIED: ${permission}`);
+  return principal;
+}
 
 export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle) {
   const { db } = dbHandle;
@@ -30,6 +38,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
       requireLiveMode(dbHandle);
+      const principal = requirePermission('write:swarm_action');
       const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
       // Register the sub-agent
@@ -41,7 +50,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
         `${role}-${runtime}`,
         task,
         JSON.stringify([role]),
-        JSON.stringify({ parent_run_id, context_budget, spawned_by: 'mcp-orchestrator' })
+        JSON.stringify({ parent_run_id, context_budget, spawned_by: principal.sub, spawned_by_role: principal.role })
       );
 
       return {
@@ -77,6 +86,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     },
     async ({ from_node_id, to_node_id, agent_id, lease_id, summary, artifacts }) => {
       requireLiveMode(dbHandle);
+      const principal = requirePermission('write:swarm_action');
       if (!db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(from_node_id)
         || !db.prepare('SELECT 1 FROM fleet_nodes WHERE id = ?').get(to_node_id)) {
         return { content: [{ type: 'text' as const, text: 'Unknown fleet node' }], isError: true };
@@ -92,7 +102,7 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
       db.prepare(`
         INSERT INTO fleet_handoffs (id, from_node, to_node, agent_id, lease_id, context_json, status, priority, created_at)
         VALUES (?, ?, ?, ?, ?, ?, 'pending', 'medium', datetime('now'))
-      `).run(handoffId, from_node_id, to_node_id, agent_id, lease_id, JSON.stringify({ summary, artifacts }));
+      `).run(handoffId, from_node_id, to_node_id, agent_id, lease_id, JSON.stringify({ summary, artifacts, principal_id: principal.sub, principal_role: principal.role }));
 
       return {
         content: [{
@@ -115,33 +125,39 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
   server.registerTool(
     'djimitflo_approve_action',
     {
-      description: 'Request human approval for a high-risk action. Returns a pending approval that must be confirmed before the action proceeds.',
+      description: 'Approve or deny an existing action through DjimFlo ApprovalService.',
       inputSchema: {
-        action: z.string().describe('The action requiring approval'),
-        reason: z.string().describe('Why approval is needed'),
-        risk_level: z.enum(['low', 'medium', 'high', 'critical']).describe('Risk level of the action'),
-        context: z.record(z.string(), z.unknown()).default({}).describe('Additional context for the approver'),
+        approval_id: z.string().describe('Existing approval identifier'),
+        decision: z.enum(['approved', 'denied']).describe('Decision to record'),
+        reason: z.string().optional().describe('Decision reason'),
       },
     },
-    async ({ action, reason, risk_level, context }) => {
+    async ({ approval_id, decision, reason }) => {
       requireLiveMode(dbHandle);
-      const approvalId = `approval-${Date.now()}`;
-
-      // Store approval request using existing approvals table
-      db.prepare(`
-        INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, created_at)
-        VALUES (?, 'mcp-orchestrator', 'pending', ?, 'high_risk_action', ?, ?, datetime('now'))
-      `).run(approvalId, risk_level, action, JSON.stringify({ reason, context }));
+      requirePermission('approve:task');
+      const { payload, token } = currentMcpAuth();
+      const apiUrl = process.env.DJIMITFLO_API_URL;
+      if (!apiUrl) throw new Error('DJIMITFLO_API_URL is required for approval decisions');
+      const endpoint = `${apiUrl.replace(/\/$/, '')}/api/approvals/${encodeURIComponent(approval_id)}/${decision === 'approved' ? 'approve' : 'deny'}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason, principal_id: payload.sub }),
+      });
+      const body = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) {
+        const apiError = body.error as { code?: string; message?: string } | undefined;
+        throw new Error(`${apiError?.code || 'APPROVAL_DECISION_FAILED'}: ${apiError?.message || response.statusText}`);
+      }
 
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            approval_id: approvalId,
-            status: 'pending',
-            action: action.slice(0, 200),
-            risk_level,
-            message: `Approval requested for ${risk_level}-risk action. Use the DjimFlo dashboard or API to approve/reject.`,
+            approval_id,
+            decision,
+            decided_by: payload.sub,
+            approval: body,
           }, null, 2),
         }],
       };

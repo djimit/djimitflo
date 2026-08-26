@@ -1485,6 +1485,14 @@ export class LoopService {
     return this.worktree.createWorktree(repositoryPath, runId, findingId, branchName);
   }
 
+  public createReviewWorktree(repositoryPath: string, runId: string, checkerId: string, makerBranch: string): string {
+    return this.worktree.createReviewWorktree(repositoryPath, runId, checkerId, makerBranch);
+  }
+
+  public cleanupWorktree(repositoryPath: string, worktreePath: string): void {
+    this.worktree.cleanupWorktree(repositoryPath, worktreePath);
+  }
+
 
 
 

@@ -16,6 +16,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createDatabase } from './db.js';
 import { registerTools } from './register-tools.js';
+import { runWithMcpAuth } from './auth-context.js';
+import { UserRole } from '@djimitflo/shared';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -45,7 +47,17 @@ async function main() {
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
-    await server.connect(transport);
+    const now = Math.floor(Date.now() / 1000);
+    await runWithMcpAuth({
+      payload: {
+        sub: process.env.DJIMITFLO_MCP_STDIO_PRINCIPAL || `stdio:${process.getuid?.() ?? 'local'}`,
+        email: 'stdio@localhost',
+        role: UserRole.VIEWER,
+        iat: now,
+        exp: now + 24 * 60 * 60,
+      },
+      token: process.env.DJIMITFLO_MCP_TOKEN || '',
+    }, () => server.connect(transport));
     console.error('DjimFlo MCP Server running on stdio');
   } else {
     const { startHttpServer } = await import('./transports/http.js');

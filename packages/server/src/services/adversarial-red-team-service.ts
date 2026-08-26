@@ -17,6 +17,8 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { CommandRiskClassifier } from './command-risk-classifier';
 import { ContextSanitizer } from './context-sanitizer';
+import { SecurityScanningAgent } from './security-scanning-agent';
+import { RuntimeGovernanceService } from './runtime-governance-service';
 
 interface AttackVector {
   id: string;
@@ -153,8 +155,12 @@ const ATTACK_VECTORS: AttackVector[] = [
 export class AdversarialRedTeamService {
   private commandClassifier = new CommandRiskClassifier();
   private contextSanitizer = new ContextSanitizer();
+  private secretScanner: SecurityScanningAgent;
+  private runtimeGovernance: RuntimeGovernanceService;
 
   constructor(private db: Database) {
+    this.secretScanner = new SecurityScanningAgent(db);
+    this.runtimeGovernance = new RuntimeGovernanceService(db);
     this.ensureTables();
   }
 
@@ -246,10 +252,17 @@ export class AdversarialRedTeamService {
     }
 
     const assessment = this.commandClassifier.classify(vector.payload, { workspacePath: process.cwd() });
-    const blocked = assessment.recommended_decision !== 'allow';
+    const secretFindings = this.secretScanner.scanTextForSecrets(vector.payload, `red-team:${vector.id}`);
+    const runtimeAllowed = this.runtimeGovernance.isAllowed(`red-team-${vector.category}`);
+    const blocked = assessment.recommended_decision !== 'allow' || secretFindings.length > 0 || !runtimeAllowed;
+    const methods = [
+      ...assessment.matched_rules,
+      ...secretFindings.map((finding) => `secret-scanner:${finding.category}`),
+      ...(!runtimeAllowed ? ['runtime-governance:quarantined'] : []),
+    ];
     return {
       blocked,
-      method: assessment.matched_rules.join(',') || 'command_classifier:none',
+      method: methods.join(',') || 'governance:no_match',
       response: assessment.explanation,
       severity: assessment.risk_level === 'critical' ? 'critical' : 'high',
       recommendation: blocked ? 'Regression defense passed' : `Add classifier coverage for ${vector.id}`,

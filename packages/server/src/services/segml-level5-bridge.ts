@@ -200,8 +200,7 @@ export class SegmlLevel5Bridge {
       bridges: [
         'SegmlCpoBridge', 'SegmlRuntimeGovernanceBridge', 'SegmlRedTeamBridge',
         'SegmlPsychometryBridge', 'SegmlComplianceBridge', 'SegmlFleetMemoryBridge',
-        'SegmlPredictiveBridge', 'SegmlSkillEvolutionBridge', 'SegmlMetaLearningBridge',
-        'SegmlWorldModelBridge', 'SegmlFederatedGovernanceBridge',
+        'SegmlPredictiveBridge', 'SegmlSkillEvolutionBridge', 'SegmlFederatedGovernanceBridge',
       ],
       routes: ['/api/segml/*', '/api/segml/federation/*', '/api/segml/literature/*', '/api/segml/l3/*', '/api/segml/l4/*'],
       servicesCount: 157,

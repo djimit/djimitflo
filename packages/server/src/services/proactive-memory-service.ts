@@ -84,13 +84,13 @@ export class ProactiveMemoryService {
     this.db.prepare(`
       INSERT INTO proactive_memories (
         id, content, type, status, relevance_score, usage_count,
-        last_accessed_at, created_at, expires_at, metadata_json, embedding_json, embedding_provider
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_accessed_at, created_at, expires_at, metadata_json, embedding_json, embedding_provider, embedding_dimensions
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       entry.id, entry.content, entry.type, entry.status,
       entry.relevanceScore, entry.usageCount, entry.lastAccessedAt,
       entry.createdAt, entry.expiresAt, JSON.stringify(entry.metadata),
-      JSON.stringify(embedding), this.embeddings.id,
+      JSON.stringify(embedding), this.embeddings.id, embedding.length,
     );
 
     return entry;
@@ -353,12 +353,12 @@ export class ProactiveMemoryService {
   private async embeddingForRow(row: any): Promise<number[]> {
     if (row.embedding_provider === this.embeddings.id) {
       const stored = JSON.parse(row.embedding_json || '[]') as number[];
-      if (stored.length > 0) return stored;
+      if (stored.length > 0 && Number(row.embedding_dimensions || 0) === stored.length) return stored;
     }
     const embedding = await this.embeddings.embed(row.content);
     this.db.prepare(`
-      UPDATE proactive_memories SET embedding_json = ?, embedding_provider = ? WHERE id = ?
-    `).run(JSON.stringify(embedding), this.embeddings.id, row.id);
+      UPDATE proactive_memories SET embedding_json = ?, embedding_provider = ?, embedding_dimensions = ? WHERE id = ?
+    `).run(JSON.stringify(embedding), this.embeddings.id, embedding.length, row.id);
     return embedding;
   }
 
@@ -398,7 +398,8 @@ export class ProactiveMemoryService {
         expires_at TEXT,
         metadata_json TEXT NOT NULL DEFAULT '{}',
         embedding_json TEXT NOT NULL DEFAULT '[]',
-        embedding_provider TEXT NOT NULL DEFAULT 'legacy'
+        embedding_provider TEXT NOT NULL DEFAULT 'legacy',
+        embedding_dimensions INTEGER NOT NULL DEFAULT 0
       );
 
       CREATE INDEX IF NOT EXISTS idx_proactive_memories_status ON proactive_memories(status);
@@ -426,6 +427,9 @@ export class ProactiveMemoryService {
     }
     if (!columns.some((column) => column.name === 'embedding_provider')) {
       this.db.exec("ALTER TABLE proactive_memories ADD COLUMN embedding_provider TEXT NOT NULL DEFAULT 'legacy'");
+    }
+    if (!columns.some((column) => column.name === 'embedding_dimensions')) {
+      this.db.exec("ALTER TABLE proactive_memories ADD COLUMN embedding_dimensions INTEGER NOT NULL DEFAULT 0");
     }
   }
 }

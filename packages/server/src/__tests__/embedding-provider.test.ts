@@ -12,14 +12,18 @@ describe('embedding providers', () => {
   it('sends the Ollama contract and normalizes its URL', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ embedding: [1, 2] }) });
     vi.stubGlobal('fetch', fetchMock);
-    expect(await new OllamaEmbeddingProvider('http://ollama/', 'model', 99).embed('hello')).toEqual([1, 2]);
+    const provider = new OllamaEmbeddingProvider('http://ollama/', 'model', 99);
+    expect(await provider.embed('hello')).toEqual([1, 2]);
+    expect(provider).toMatchObject({ modelId: 'model', dimensions: 2 });
     expect(fetchMock).toHaveBeenCalledWith('http://ollama/api/embeddings', expect.objectContaining({ method: 'POST', body: JSON.stringify({ model: 'model', prompt: 'hello' }) }));
   });
 
   it('sends the OpenAI-compatible contract with attribution header', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ data: [{ embedding: [3, 4] }] }) });
     vi.stubGlobal('fetch', fetchMock);
-    expect(await new OpenAICompatibleEmbeddingProvider('http://api/', 'secret', 'model').embed('hello')).toEqual([3, 4]);
+    const provider = new OpenAICompatibleEmbeddingProvider('http://api/', 'secret', 'model');
+    expect(await provider.embed('hello')).toEqual([3, 4]);
+    expect(provider).toMatchObject({ modelId: 'model', dimensions: 2 });
     expect(fetchMock).toHaveBeenCalledWith('http://api/embeddings', expect.objectContaining({ headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' }, body: JSON.stringify({ model: 'model', input: 'hello' }) }));
   });
 

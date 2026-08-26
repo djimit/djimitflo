@@ -37,7 +37,6 @@ import { WebSocketService } from '../services/websocket-service';
 import { randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
-import { ToolBroker } from '../services/tool-broker';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
@@ -49,6 +48,7 @@ import { MetaOrchestrationService } from '../services/meta-orchestration-service
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { MultiModelIntelligence } from '../services/multi-model-intelligence';
+import { ConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -64,8 +64,7 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
-  private executionPermits = new Set<string>();
-  private executionQueue: Array<{ taskId: string; resolve: () => void }> = [];
+  private readonly executionSemaphore = new ConcurrencySemaphore();
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
@@ -82,7 +81,6 @@ export class ExecutionEngine {
   private executionModePolicy: ExecutionModePolicyService;
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
-  private toolBroker: ToolBroker;
   private modelRouter: MultiModelIntelligence;
 
   setMemorySyncService(service: MemorySyncService): void {
@@ -101,10 +99,6 @@ export class ExecutionEngine {
     this.metaOrchestration = service;
   }
 
-  getToolBroker(): ToolBroker {
-    return this.toolBroker;
-  }
-
   constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
     this.db = db;
     this.wsService = wsService;
@@ -119,7 +113,6 @@ export class ExecutionEngine {
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
     this.policyDecisionService = new PolicyDecisionService(db);
-    this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
     this.approvalService = new ApprovalService(db, wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
@@ -155,7 +148,7 @@ export class ExecutionEngine {
    */
   async executeTask(taskId: string, requestedExecutorKind?: ExecutorKind): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId) || this.executionPermits.has(taskId) || this.executionQueue.some(item => item.taskId === taskId)) {
+    if (this.activeSessions.has(taskId) || this.executionSemaphore.has(taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -925,20 +918,11 @@ export class ExecutionEngine {
   private acquireExecutionPermit(taskId: string): Promise<void> {
     const configured = Number(process.env.EXECUTION_MAX_CONCURRENCY || 4);
     const limit = Number.isFinite(configured) && configured >= 1 ? Math.trunc(configured) : 4;
-    if (this.executionPermits.size < limit) {
-      this.executionPermits.add(taskId);
-      return Promise.resolve();
-    }
-    return new Promise(resolve => this.executionQueue.push({ taskId, resolve }));
+    return this.executionSemaphore.acquire(taskId, limit);
   }
 
   private releaseExecutionPermit(taskId: string): void {
-    if (!this.executionPermits.delete(taskId)) return;
-    const next = this.executionQueue.shift();
-    if (next) {
-      this.executionPermits.add(next.taskId);
-      next.resolve();
-    }
+    this.executionSemaphore.release(taskId);
   }
   
   /**

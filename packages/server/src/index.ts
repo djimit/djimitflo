@@ -197,7 +197,11 @@ async function main() {
   const httpServer = createServer(app);
   
   // Create WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: '/ws',
+    handleProtocols: protocols => [...protocols].find(protocol => protocol.startsWith('bearer.')) || false,
+  });
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
   

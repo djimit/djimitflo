@@ -6,7 +6,7 @@
  *   GET  /api/governance-feedback/health — loop health status
  *   POST /api/governance-feedback/analyze — analyze failures for an agent
  *   POST /api/governance-feedback/propose — create improvement proposals
- *   POST /api/governance-feedback/authorize — authorize proposals via ToolBroker
+ *   POST /api/governance-feedback/authorize — authorize proposals via the canonical policy path
  *   POST /api/governance-feedback/run — run full feedback loop
  *   GET  /api/governance-feedback/history — loop execution history
  *   GET  /api/governance-feedback/proposals — list proposals by status
@@ -16,11 +16,16 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { GovernanceFeedbackLoopService } from '../services/governance-feedback-loop';
+import { PolicyDecisionService } from '../services/policy-decision-service';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
+import type { WebSocketService } from '../services/websocket-service';
 
-export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const service = new GovernanceFeedbackLoopService(db);
+  const approvalService = wsService ? new ApprovalService(db, wsService, new AuditService(db)) : undefined;
+  const service = new GovernanceFeedbackLoopService(db, {}, new PolicyDecisionService(db), approvalService);
 
   // GET /api/governance-feedback/health — loop health status
   router.get('/health', requirePermission('read:evidence'), (_req, res) => {
@@ -76,13 +81,11 @@ export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddlewa
       return;
     }
 
-    const principal = (req.user || {
-      sub: 'system',
-      email: 'system@djimitflo',
-      role: 'admin',
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 3600,
-    }) as import('@djimitflo/shared').AuthTokenPayload;
+    if (!req.user) {
+      res.status(401).json({ error: { message: 'Authentication required', code: 'UNAUTHENTICATED' } });
+      return;
+    }
+    const principal = req.user as import('@djimitflo/shared').AuthTokenPayload;
 
     try {
       const result = await service.runFeedbackLoop(agent_id, principal);

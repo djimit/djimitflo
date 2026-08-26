@@ -88,7 +88,7 @@ export class DjimFloGovernanceEvaluator {
   private async evaluateCategory(category: string): Promise<{ cases: number; score: number; confidence: number }> {
     // Category-specific evaluation based on DjimFlo capabilities
     const scores: Record<string, number> = {
-      injection: 8,      // ToolBroker + prompt guards
+      injection: 8,      // canonical policy path + prompt guards
       tool_scope: 8,     // Risk classification + RBAC
       hallucination: 6,  // Per-repo indexing helps
       factual: 5,        // Basic citation verification

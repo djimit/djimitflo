@@ -5,7 +5,7 @@
  * - Percentage-based traffic splitting
  * - Metric comparison (success_rate, latency, error_rate)
  * - Automatic rollback on degradation
- * - Integration with ToolBroker for authorization
+ * - Integration with the canonical policy path for authorization
  */
 
 import type { Database } from 'better-sqlite3';

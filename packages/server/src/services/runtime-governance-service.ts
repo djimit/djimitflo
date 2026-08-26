@@ -60,7 +60,31 @@ export class RuntimeGovernanceService {
   private unsubscribe: (() => void) | null = null;
 
   constructor(private db: Database) {
-    // Database available for persistent baseline storage and feedback
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS runtime_governance_state (
+        agent_id TEXT PRIMARY KEY,
+        baseline_json TEXT,
+        violation_count INTEGER NOT NULL DEFAULT 0,
+        circuit_breaker_tripped INTEGER NOT NULL DEFAULT 0,
+        quarantined INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runtime_governance_alerts (
+        id TEXT PRIMARY KEY,
+        agent_id TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL
+      );
+    `);
+    for (const row of this.db.prepare('SELECT * FROM runtime_governance_state').all() as any[]) {
+      if (row.baseline_json) this.baselines.set(row.agent_id, JSON.parse(row.baseline_json));
+      this.violationCounts.set(row.agent_id, Number(row.violation_count || 0));
+      if (row.circuit_breaker_tripped) this.circuitBreakerTripped.add(row.agent_id);
+      if (row.quarantined) this.quarantinedAgents.add(row.agent_id);
+    }
   }
 
   /**
@@ -100,6 +124,7 @@ export class RuntimeGovernanceService {
       circuitBreakerThreshold: DEFAULT_CIRCUIT_BREAKER_THRESHOLD,
       quarantineThreshold: DEFAULT_QUARANTINE_THRESHOLD,
     });
+    this.persistState(agentId);
   }
 
   /**
@@ -133,6 +158,7 @@ export class RuntimeGovernanceService {
     this.quarantinedAgents.delete(agentId);
     this.circuitBreakerTripped.delete(agentId);
     this.violationCounts.set(agentId, 0);
+    this.persistState(agentId);
 
     this.emitAlert({
       agentId,
@@ -149,6 +175,7 @@ export class RuntimeGovernanceService {
   resetCircuitBreaker(agentId: string): void {
     this.circuitBreakerTripped.delete(agentId);
     this.violationCounts.set(agentId, Math.max(0, (this.violationCounts.get(agentId) || 0) - 1));
+    this.persistState(agentId);
 
     this.emitAlert({
       agentId,
@@ -303,6 +330,7 @@ export class RuntimeGovernanceService {
 
     if (riskLevel === 'CRITICAL' && confidence >= 0.9) {
       this.circuitBreakerTripped.add(agentId);
+      this.persistState(agentId);
     }
   }
 
@@ -344,6 +372,7 @@ export class RuntimeGovernanceService {
         evidence: { threshold: baseline.quarantineThreshold },
       });
     }
+    this.persistState(violation.agentId);
 
     // Record feedback for governance learning loop
     try {
@@ -367,6 +396,10 @@ export class RuntimeGovernanceService {
       timestamp: alert.timestamp || new Date().toISOString(),
     };
     this.alerts.push(fullAlert);
+    this.db.prepare(`INSERT INTO runtime_governance_alerts
+      (id, agent_id, severity, type, message, evidence_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(fullAlert.id, fullAlert.agentId, fullAlert.severity, fullAlert.type, fullAlert.message, JSON.stringify(fullAlert.evidence), fullAlert.timestamp);
 
     // Broadcast via event bus
     swarmEventBus.emit('governance_alert' as any, {
@@ -376,6 +409,25 @@ export class RuntimeGovernanceService {
       message: fullAlert.message,
     });
   }
-}
 
+  private persistState(agentId: string): void {
+    this.db.prepare(`INSERT INTO runtime_governance_state
+      (agent_id, baseline_json, violation_count, circuit_breaker_tripped, quarantined, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        baseline_json=excluded.baseline_json,
+        violation_count=excluded.violation_count,
+        circuit_breaker_tripped=excluded.circuit_breaker_tripped,
+        quarantined=excluded.quarantined,
+        updated_at=excluded.updated_at`)
+      .run(
+        agentId,
+        this.baselines.has(agentId) ? JSON.stringify(this.baselines.get(agentId)) : null,
+        this.violationCounts.get(agentId) || 0,
+        this.circuitBreakerTripped.has(agentId) ? 1 : 0,
+        this.quarantinedAgents.has(agentId) ? 1 : 0,
+        new Date().toISOString(),
+      );
+  }
+}
 

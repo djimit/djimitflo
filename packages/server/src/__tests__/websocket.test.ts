@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WebSocketService } from '../services/websocket-service';
 import { WS_CLOSE_CODES, UserRole, WebSocketEventType } from '@djimitflo/shared';
 import type { AuthenticatedClient } from '@djimitflo/shared';
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
+import { createServer } from 'http';
+import { openAuthenticatedWebSocket } from '../../../dashboard/src/hooks/useWebSocket';
 
 function mockAuthService(payload: any = null, user: any = null) {
   return {
@@ -243,5 +245,42 @@ describe('WS_CLOSE_CODES', () => {
     expect(WS_CLOSE_CODES.AUTH_INVALID).toBe(4002);
     expect(WS_CLOSE_CODES.AUTH_EXPIRED).toBe(4003);
     expect(WS_CLOSE_CODES.FORBIDDEN).toBe(4004);
+  });
+});
+
+describe('WebSocket authentication handshake', () => {
+  async function connect(path: string, protocol?: string) {
+    const httpServer = createServer();
+    const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+    const payload = { sub: 'user-1', email: 'user@test.com', role: UserRole.MAKER, exp: Math.floor(Date.now() / 1000) + 60 };
+    new WebSocketService(wss, mockAuthService(payload, { id: 'user-1', isActive: true }), mockDb());
+    await new Promise<void>(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+    const address = httpServer.address();
+    if (!address || typeof address === 'string') throw new Error('listener unavailable');
+    const socket = new WebSocket(`ws://127.0.0.1:${address.port}${path}`, protocol);
+    await new Promise<void>((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+    return { socket, close: async () => { socket.close(); wss.close(); await new Promise<void>(resolve => httpServer.close(() => resolve())); } };
+  }
+
+  it('accepts the dashboard bearer subprotocol without a query token', async () => {
+    const httpServer = createServer();
+    const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+    const payload = { sub: 'user-1', email: 'user@test.com', role: UserRole.MAKER, exp: Math.floor(Date.now() / 1000) + 60 };
+    new WebSocketService(wss, mockAuthService(payload, { id: 'user-1', isActive: true }), mockDb());
+    await new Promise<void>(resolve => httpServer.listen(0, '127.0.0.1', resolve));
+    const address = httpServer.address();
+    if (!address || typeof address === 'string') throw new Error('listener unavailable');
+    const socket = openAuthenticatedWebSocket(`ws://127.0.0.1:${address.port}/ws`, 'validtoken', WebSocket as any) as WebSocket;
+    await new Promise<void>((resolve, reject) => { socket.once('open', resolve); socket.once('error', reject); });
+    expect(socket.protocol).toBe('bearer.validtoken');
+    socket.close();
+    wss.close();
+    await new Promise<void>(resolve => httpServer.close(() => resolve()));
+  });
+
+  it('keeps the query-string token fallback', async () => {
+    const connection = await connect('/ws?token=validtoken');
+    expect(connection.socket.readyState).toBe(WebSocket.OPEN);
+    await connection.close();
   });
 });

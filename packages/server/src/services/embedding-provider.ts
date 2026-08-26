@@ -1,7 +1,5 @@
-export interface EmbeddingProvider {
-  readonly id: string;
-  embed(text: string): Promise<number[]>;
-}
+import type { EmbeddingProvider } from '@djimitflo/shared';
+export type { EmbeddingProvider } from '@djimitflo/shared';
 
 function validateEmbedding(value: unknown, providerId: string): number[] {
   if (!Array.isArray(value) || value.length === 0 || value.some((item) => typeof item !== 'number' || !Number.isFinite(item))) {
@@ -23,6 +21,9 @@ async function postJson(url: string, body: unknown, headers: Record<string, stri
 
 export class OllamaEmbeddingProvider implements EmbeddingProvider {
   readonly id: string;
+  readonly modelId: string;
+  private detectedDimensions = 0;
+  get dimensions(): number { return this.detectedDimensions; }
 
   constructor(
     private readonly baseUrl: string,
@@ -30,6 +31,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     private readonly timeoutMs = 30_000,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.modelId = model;
     this.id = `ollama:${model}`;
   }
 
@@ -40,12 +42,17 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       {},
       this.timeoutMs,
     ) as { embedding?: unknown };
-    return validateEmbedding(result.embedding, this.id);
+    const embedding = validateEmbedding(result.embedding, this.id);
+    this.detectedDimensions = embedding.length;
+    return embedding;
   }
 }
 
 export class OpenAICompatibleEmbeddingProvider implements EmbeddingProvider {
   readonly id: string;
+  readonly modelId: string;
+  private detectedDimensions = 0;
+  get dimensions(): number { return this.detectedDimensions; }
 
   constructor(
     private readonly baseUrl: string,
@@ -54,6 +61,7 @@ export class OpenAICompatibleEmbeddingProvider implements EmbeddingProvider {
     private readonly timeoutMs = 30_000,
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.modelId = model;
     this.id = `openai-compatible:${model}`;
   }
 
@@ -64,7 +72,9 @@ export class OpenAICompatibleEmbeddingProvider implements EmbeddingProvider {
       { Authorization: `Bearer ${this.apiKey}` },
       this.timeoutMs,
     ) as { data?: Array<{ embedding?: unknown }> };
-    return validateEmbedding(result.data?.[0]?.embedding, this.id);
+    const embedding = validateEmbedding(result.data?.[0]?.embedding, this.id);
+    this.detectedDimensions = embedding.length;
+    return embedding;
   }
 }
 

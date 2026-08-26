@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { swarmEventBus } from '../services/swarm-event-bus';
 import { LoopService } from '../services/loop-service';
+import { createHash } from 'crypto';
 
 /**
  * G26: Federation protocol — peer discovery, registration, claim sharing,
@@ -31,9 +32,14 @@ export function createFederationRoutes(db: Database, auth: AuthMiddleware): Rout
       trust_level TEXT NOT NULL DEFAULT 'medium',
       registered_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+      shared_secret_hash TEXT,
       metadata TEXT NOT NULL DEFAULT '{}'
     );
   `);
+  const peerColumns = db.prepare('PRAGMA table_info(federation_peers)').all() as Array<{ name: string }>;
+  if (!peerColumns.some(column => column.name === 'shared_secret_hash')) {
+    db.exec('ALTER TABLE federation_peers ADD COLUMN shared_secret_hash TEXT');
+  }
 
   // GET /api/federation/peers — list known peers.
   router.get('/peers', requireAuth, (_req: Request, res: Response, next: NextFunction) => {
@@ -49,16 +55,21 @@ export function createFederationRoutes(db: Database, auth: AuthMiddleware): Rout
   // POST /api/federation/register — register a peer.
   router.post('/register', requireAuth, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { url, trust_level, metadata } = req.body;
+      const { url, trust_level, metadata, shared_secret } = req.body;
       if (!url) {
         res.status(400).json({ error: 'url is required' });
+        return;
+      }
+      if (typeof shared_secret !== 'string' || shared_secret.length < 32) {
+        res.status(400).json({ error: 'shared_secret must contain at least 32 characters' });
         return;
       }
       const id = `peer_${Date.now()}`;
       const trust = trust_level || 'medium';
       const now = new Date().toISOString();
-      db.prepare('INSERT INTO federation_peers (id, url, trust_level, registered_at, last_seen, metadata) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(id, url, trust, now, now, JSON.stringify(metadata || {}));
+      const sharedSecretHash = createHash('sha256').update(shared_secret).digest('hex');
+      db.prepare('INSERT INTO federation_peers (id, url, trust_level, registered_at, last_seen, shared_secret_hash, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(id, url, trust, now, now, sharedSecretHash, JSON.stringify(metadata || {}));
       swarmEventBus.emit('convergence', { federation: 'peer_registered', peer_id: id, url });
       res.status(201).json({ id, url, trust_level: trust, registered: true });
     } catch (error) {

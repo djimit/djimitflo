@@ -71,6 +71,25 @@ export class WorktreeManager {
     throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
   }
 
+  createReviewWorktree(repositoryPath: string, runId: string, checkerId: string, makerBranch: string): string {
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
+    const worktreePath = path.join(worktreeRoot, runId, `checker-${checkerId.replace(/[^a-zA-Z0-9_.-]/g, '-')}`);
+    mkdirSync(path.dirname(worktreePath), { recursive: true });
+    this.git(repositoryRoot, ['worktree', 'add', '--detach', worktreePath, makerBranch]);
+    this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
+    return worktreePath;
+  }
+
+  cleanupWorktree(repositoryPath: string, worktreePath: string): void {
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const worktreeRoot = path.resolve(process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees'));
+    const resolved = path.resolve(worktreePath);
+    if (!resolved.startsWith(`${worktreeRoot}${path.sep}`)) throw new Error('WORKTREE_PATH_OUTSIDE_ALLOWED_ROOT');
+    try { this.git(repositoryPath, ['worktree', 'remove', '--force', worktreePath]); }
+    finally { if (existsSync(worktreePath)) rmSync(worktreePath, { recursive: true, force: true }); }
+  }
+
   /**
    * Snapshot untracked source files into a worker worktree.
    * Includes path traversal guards to prevent writes outside the worktree.

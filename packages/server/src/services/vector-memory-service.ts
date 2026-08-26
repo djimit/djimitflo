@@ -18,6 +18,7 @@ interface MemoryVector {
   content: string;
   embedding: number[];
   embeddingProvider: string;
+  embeddingDimensions: number;
   metadata: Record<string, unknown>;
   createdAt: string;
   ttl: number | null;
@@ -66,6 +67,7 @@ export class VectorMemoryService {
       content: input.content,
       embedding: await this.generateEmbeddingCached(input.content),
       embeddingProvider: this.embeddings.id,
+      embeddingDimensions: 0,
       metadata: input.metadata || {},
       createdAt: now,
       ttl: input.ttl || null,
@@ -73,13 +75,14 @@ export class VectorMemoryService {
       lastAccessed: now,
     };
 
+    vector.embeddingDimensions = vector.embedding.length;
     this.index.set(id, vector);
     this.accessOrder.push(id);
 
     this.db.prepare(`
-      INSERT OR REPLACE INTO vector_memories (id, content, embedding_json, embedding_provider, metadata_json, created_at, ttl, access_count, last_accessed)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
-    `).run(id, input.content, JSON.stringify(vector.embedding), vector.embeddingProvider, JSON.stringify(vector.metadata), now, vector.ttl, now);
+      INSERT OR REPLACE INTO vector_memories (id, content, embedding_json, embedding_provider, embedding_dimensions, metadata_json, created_at, ttl, access_count, last_accessed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(id, input.content, JSON.stringify(vector.embedding), vector.embeddingProvider, vector.embeddingDimensions, JSON.stringify(vector.metadata), now, vector.ttl, now);
 
     if (this.index.size > MAX_MEMORIES) {
       this.evictOldest();
@@ -105,7 +108,7 @@ export class VectorMemoryService {
         }
       }
 
-      if (vector.embeddingProvider !== this.embeddings.id) continue;
+      if (vector.embeddingProvider !== this.embeddings.id || vector.embeddingDimensions !== queryEmbedding.length) continue;
       const denseScore = cosineSimilarity(queryEmbedding, vector.embedding);
       const sparseScore = this.bm25Score(queryTerms, vector.content);
       const banditBonus = this.banditBonus(id);
@@ -290,6 +293,7 @@ export class VectorMemoryService {
           content: row.content,
           embedding: JSON.parse(row.embedding_json || '[]'),
           embeddingProvider: row.embedding_provider || 'legacy',
+          embeddingDimensions: Number(row.embedding_dimensions || 0),
           metadata: JSON.parse(row.metadata_json || '{}'),
           createdAt: row.created_at,
           ttl: row.ttl,
@@ -319,6 +323,7 @@ export class VectorMemoryService {
         content TEXT NOT NULL,
         embedding_json TEXT NOT NULL DEFAULT '[]',
         embedding_provider TEXT NOT NULL DEFAULT 'legacy',
+        embedding_dimensions INTEGER NOT NULL DEFAULT 0,
         metadata_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         ttl INTEGER,
@@ -339,6 +344,9 @@ export class VectorMemoryService {
     const columns = this.db.prepare('PRAGMA table_info(vector_memories)').all() as Array<{ name: string }>;
     if (!columns.some((column) => column.name === 'embedding_provider')) {
       this.db.exec("ALTER TABLE vector_memories ADD COLUMN embedding_provider TEXT NOT NULL DEFAULT 'legacy'");
+    }
+    if (!columns.some((column) => column.name === 'embedding_dimensions')) {
+      this.db.exec("ALTER TABLE vector_memories ADD COLUMN embedding_dimensions INTEGER NOT NULL DEFAULT 0");
     }
   }
 }

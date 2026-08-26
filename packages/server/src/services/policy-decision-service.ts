@@ -18,6 +18,8 @@ export class PolicyDecisionService {
   }
 
   getPolicies(): ExecutionPolicy[] {
+    const table = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'approval_policies'").get();
+    if (!table) return [];
     const rows = this.db.prepare('SELECT * FROM approval_policies ORDER BY priority DESC, created_at DESC').all() as any[];
     return rows.map((row) => this.mapPolicy(row));
   }

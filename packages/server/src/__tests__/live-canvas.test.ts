@@ -6,6 +6,8 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { DENNIS_AGENT_ID } from '../services/dennis-agent-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap, telegramConfigStatus } from '../routes/telegram';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
 
 describe('LiveCanvasService', () => {
   let db: Database.Database;
@@ -89,7 +91,8 @@ describe('TelegramBotService', () => {
     db.exec(schema);
     runMigrations(db);
     db.prepare("INSERT INTO users (id,email,password_hash,role) VALUES ('user-1','operator@example.test','x','admin')").run();
-    service = new TelegramBotService(db);
+    const ws = { broadcastTaskEventById: () => undefined } as any;
+    service = new TelegramBotService(db, new ApprovalService(db, ws, new AuditService(db)));
   });
 
   afterEach(() => service.stop());
@@ -202,5 +205,21 @@ describe('TelegramBotService', () => {
     expect((db.prepare('SELECT status, decided_by FROM approvals WHERE id = ?').get(approvalId) as any)).toMatchObject({ status: 'approved', decided_by: 'user-1' });
     const event = db.prepare("SELECT * FROM execution_events WHERE task_id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(taskId) as any;
     expect(JSON.parse(event.tool_output).executed_mutations).toEqual([]);
+  });
+
+  it('keeps a self-approved Telegram request pending', async () => {
+    const replies: string[] = [];
+    const now = new Date().toISOString();
+    service.configure({ botToken: 'mock-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
+    service.sendMessage = async (_chatId: number, text: string) => { replies.push(text); };
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,tags,metadata,created_at,updated_at)
+      VALUES ('self-task','Self','Self','awaiting_approval','medium','medium','review_only','[]','{}',?,?)`).run(now, now);
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,created_at,updated_at)
+      VALUES ('self-approval','self-task','pending','medium','high_risk_action','Self','{}','user-1',?,?)`).run(now, now);
+
+    await service.handleWebhook({ callback_query: { from: { id: 123 }, data: 'approve:self-approval', message: { chat: { id: 123 }, message_id: 2 } } });
+
+    expect(replies[0]).toContain('Je kunt je eigen aanvraag niet goedkeuren');
+    expect((db.prepare("SELECT status FROM approvals WHERE id = 'self-approval'").get() as { status: string }).status).toBe('pending');
   });
 });
