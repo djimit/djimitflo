@@ -54,6 +54,7 @@ export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
   approvalId?: string;
   reason?: string;
+  completion?: Promise<ExecutionResult>;
 }
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
@@ -340,8 +341,8 @@ export class ExecutionEngine {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
-      await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
-      return { status: 'started' };
+      const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
+      return { status: 'started', completion: session.result };
     } catch (error) {
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),

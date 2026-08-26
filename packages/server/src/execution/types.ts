@@ -42,6 +42,8 @@ export class ExecutionFailureError extends Error {
 export interface ExecutionResult {
   status: 'completed' | 'failed' | 'cancelled';
   message: string;
+  stdout?: string;
+  stderr?: string;
   error?: string;
   failure?: ExecutionFailure;
   artifacts?: ExecutionArtifact[];

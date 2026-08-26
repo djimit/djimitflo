@@ -19,6 +19,7 @@ import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { captureExecutorOutput } from '../executor-output';
 
 // ── Structured Codex JSON event types ───────────────────────────────────────
 
@@ -525,7 +526,9 @@ export class CodexExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

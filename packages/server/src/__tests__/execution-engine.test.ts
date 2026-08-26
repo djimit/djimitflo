@@ -193,7 +193,7 @@ describe('ExecutionEngine', () => {
         start: async (task: Task) => ({
           id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
           events: (async function* () {})(),
-          result: Promise.resolve({ status: 'completed', message: 'ok', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+          result: Promise.resolve({ status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
           cancel: async () => {},
         }),
       } as any);
@@ -204,7 +204,8 @@ describe('ExecutionEngine', () => {
         VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
       `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
 
-      await attributedEngine.executeTask('task-skill', 'mock');
+      const execution = await attributedEngine.executeTask('task-skill', 'mock');
+      await expect(execution.completion).resolves.toMatchObject({ status: 'completed', stdout: 'worker output' });
       await new Promise((resolve) => setTimeout(resolve, 0));
 
       const row = db.prepare(`
