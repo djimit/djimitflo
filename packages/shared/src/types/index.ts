@@ -23,3 +23,4 @@ export * from './repository-intelligence';
 export * from './auth';
 export * from './export';
 export * from './explainer';
+export * from './embedding';

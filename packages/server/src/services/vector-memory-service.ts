@@ -1,8 +1,8 @@
 /**
- * VectorMemoryService — local hash-vector memory with self-learning feedback.
+ * VectorMemoryService — provider-backed vector memory with self-learning feedback.
  *
  * Features:
- * - Deterministic hash embeddings (128d)
+ * - Real embeddings through the configured provider
  * - Thompson Sampling bandit for result re-ranking (self-learning)
  * - Hybrid search: dense cosine + sparse BM25 with RRF fusion
  * - Memory clustering for topic discovery
@@ -11,6 +11,8 @@
 
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import type { EmbeddingProvider } from '@djimitflo/shared';
+import { OllamaEmbeddingProvider } from './ollama-embedding-provider';
 
 interface MemoryVector {
   id: string;
@@ -48,7 +50,7 @@ export class VectorMemoryService {
   private banditStates: Map<string, BanditState> = new Map();
   private embeddingCache: Map<string, number[]> = new Map();
 
-  constructor(private db: Database) {
+  constructor(private db: Database, private embeddingProvider: EmbeddingProvider = new OllamaEmbeddingProvider()) {
     this.ensureTables();
     this.loadFromDb();
   }
@@ -56,18 +58,18 @@ export class VectorMemoryService {
   /**
    * Store a new memory with automatic embedding generation.
    */
-  storeMemory(input: {
+  async storeMemory(input: {
     content: string;
     metadata?: Record<string, unknown>;
     ttl?: number | null;
-  }): MemoryVector {
+  }): Promise<MemoryVector> {
     const id = `mem-${createHash('sha256').update(input.content + Date.now()).digest('hex').slice(0, 12)}`;
     const now = new Date().toISOString();
 
     const vector: MemoryVector = {
       id,
       content: input.content,
-      embedding: this.generateEmbeddingCached(input.content),
+      embedding: await this.generateEmbeddingCached(input.content),
       metadata: input.metadata || {},
       createdAt: now,
       ttl: input.ttl || null,
@@ -79,9 +81,10 @@ export class VectorMemoryService {
     this.accessOrder.push(id);
 
     this.db.prepare(`
-      INSERT OR REPLACE INTO vector_memories (id, content, embedding_json, metadata_json, created_at, ttl, access_count, last_accessed)
-      VALUES (?, ?, ?, ?, ?, ?, 0, ?)
-    `).run(id, input.content, JSON.stringify(vector.embedding), JSON.stringify(vector.metadata), now, vector.ttl, now);
+      INSERT OR REPLACE INTO vector_memories
+        (id, content, embedding_json, embedding_provider, metadata_json, created_at, ttl, access_count, last_accessed)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+    `).run(id, input.content, JSON.stringify(vector.embedding), this.embeddingProvider.name, JSON.stringify(vector.metadata), now, vector.ttl, now);
 
     if (this.index.size > MAX_MEMORIES) {
       this.evictOldest();
@@ -93,8 +96,9 @@ export class VectorMemoryService {
   /**
    * Semantic search with hybrid scoring (dense + sparse + bandit re-ranking).
    */
-  search(query: string, limit = 10, minScore = 0.5): SearchResult[] {
-    const queryEmbedding = this.generateEmbeddingCached(query);
+  async search(query: string, limit = 10, minScore = 0.5): Promise<SearchResult[]> {
+    await this.reindexLegacyMemories();
+    const queryEmbedding = await this.generateEmbeddingCached(query);
     const queryTerms = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     const dim = detectDim(queryEmbedding);
     const results: SearchResult[] = [];
@@ -177,7 +181,12 @@ export class VectorMemoryService {
   /**
    * Get memory clusters (grouped by similarity).
    */
-  getClusters(minSimilarity = 0.7): Array<{ centroid: string; memories: string[]; size: number }> {
+  async getClusters(minSimilarity = 0.7): Promise<Array<{ centroid: string; memories: string[]; size: number }>> {
+    await this.reindexLegacyMemories();
+    return this.calculateClusters(minSimilarity);
+  }
+
+  private calculateClusters(minSimilarity: number): Array<{ centroid: string; memories: string[]; size: number }> {
     const clusters: Array<{ centroid: string; memories: Set<string> }> = [];
     const assigned = new Set<string>();
     const dim = this.detectIndexDim();
@@ -218,7 +227,6 @@ export class VectorMemoryService {
     feedbackCount: number;
   } {
     const memories = Array.from(this.index.values());
-    const clusters = this.getClusters();
     const feedbackRows = (this.db.prepare('SELECT COUNT(*) as c FROM vector_feedback').get() as any)?.c || 0;
 
     return {
@@ -226,23 +234,23 @@ export class VectorMemoryService {
       avgAccessCount: memories.length > 0
         ? memories.reduce((sum, m) => sum + m.accessCount, 0) / memories.length
         : 0,
-      clusterCount: clusters.length,
+      clusterCount: this.calculateClusters(0.7).length,
       oldestMemory: memories.length > 0
         ? memories.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0].id
         : null,
-      embeddingMode: 'hash-based',
+      embeddingMode: this.embeddingProvider.name,
       feedbackCount: feedbackRows,
     };
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private generateEmbeddingCached(text: string): number[] {
-    const cacheKey = createHash('md5').update(text).digest('hex');
+  private async generateEmbeddingCached(text: string): Promise<number[]> {
+    const cacheKey = createHash('sha256').update(text).digest('hex');
     const cached = this.embeddingCache.get(cacheKey);
     if (cached) return cached;
 
-    const embedding = this.generateHashEmbedding(text);
+    const embedding = await this.embeddingProvider.embed(text);
 
     // Cache last 500 embeddings
     if (this.embeddingCache.size > 500) {
@@ -253,26 +261,30 @@ export class VectorMemoryService {
     return embedding;
   }
 
-  private generateHashEmbedding(text: string): number[] {
-    const dim = HASH_DIM;
-    const embedding: number[] = new Array(dim).fill(0);
-    const words = text.toLowerCase().split(/\s+/);
+  private async reindexLegacyMemories(): Promise<void> {
+    const rows = this.db.prepare(`
+      SELECT * FROM vector_memories
+      WHERE embedding_provider IS NULL OR embedding_provider != ?
+      ORDER BY created_at ASC LIMIT ?
+    `).all(this.embeddingProvider.name, MAX_MEMORIES) as any[];
 
-    for (const word of words) {
-      const hash = createHash('md5').update(word).digest();
-      for (let i = 0; i < dim; i++) {
-        embedding[i] += (hash[i % hash.length] - 128) / 128;
-      }
+    for (const row of rows) {
+      const embedding = await this.generateEmbeddingCached(row.content);
+      this.db.prepare(`
+        UPDATE vector_memories SET embedding_json = ?, embedding_provider = ? WHERE id = ?
+      `).run(JSON.stringify(embedding), this.embeddingProvider.name, row.id);
+      this.index.set(row.id, {
+        id: row.id,
+        content: row.content,
+        embedding,
+        metadata: JSON.parse(row.metadata_json || '{}'),
+        createdAt: row.created_at,
+        ttl: row.ttl,
+        accessCount: row.access_count,
+        lastAccessed: row.last_accessed,
+      });
+      if (!this.accessOrder.includes(row.id)) this.accessOrder.push(row.id);
     }
-
-    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
-    if (magnitude > 0) {
-      for (let i = 0; i < dim; i++) {
-        embedding[i] /= magnitude;
-      }
-    }
-
-    return embedding;
   }
 
   private bm25Score(queryTerms: string[], content: string): number {
@@ -343,7 +355,11 @@ export class VectorMemoryService {
 
   private loadFromDb(): void {
     try {
-      const rows = this.db.prepare('SELECT * FROM vector_memories ORDER BY created_at DESC LIMIT ?').all(MAX_MEMORIES) as any[];
+      const rows = this.db.prepare(`
+        SELECT * FROM vector_memories
+        WHERE embedding_provider = ?
+        ORDER BY created_at DESC LIMIT ?
+      `).all(this.embeddingProvider.name, MAX_MEMORIES) as any[];
       for (const row of rows) {
         const vector: MemoryVector = {
           id: row.id,
@@ -377,6 +393,7 @@ export class VectorMemoryService {
         id TEXT PRIMARY KEY,
         content TEXT NOT NULL,
         embedding_json TEXT NOT NULL DEFAULT '[]',
+        embedding_provider TEXT,
         metadata_json TEXT NOT NULL DEFAULT '{}',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         ttl INTEGER,
@@ -394,5 +411,9 @@ export class VectorMemoryService {
       );
       CREATE INDEX IF NOT EXISTS idx_vf_memory ON vector_feedback(memory_id);
     `);
+    const columns = this.db.prepare('PRAGMA table_info(vector_memories)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'embedding_provider')) {
+      this.db.exec('ALTER TABLE vector_memories ADD COLUMN embedding_provider TEXT');
+    }
   }
 }
