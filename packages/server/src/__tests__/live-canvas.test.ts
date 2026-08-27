@@ -111,12 +111,13 @@ describe('TelegramBotService', () => {
       ready: false,
       allowed_user_count: 0,
       webhook_configured: false,
-      missing_env: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_USERS', 'TELEGRAM_WEBHOOK_URL', 'TELEGRAM_USER_MAP'],
+      missing_env: ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_ALLOWED_USERS', 'TELEGRAM_WEBHOOK_URL', 'TELEGRAM_WEBHOOK_SECRET', 'TELEGRAM_USER_MAP'],
     });
     expect(JSON.stringify(telegramConfigStatus({
       TELEGRAM_BOT_TOKEN: 'secret-token',
       TELEGRAM_ALLOWED_USERS: '123,456',
       TELEGRAM_WEBHOOK_URL: 'https://example.test/api/telegram/webhook',
+      TELEGRAM_WEBHOOK_SECRET: 'webhook-secret',
       TELEGRAM_USER_MAP: '{"123":"user-1"}',
     }, true))).not.toContain('secret-token');
   });

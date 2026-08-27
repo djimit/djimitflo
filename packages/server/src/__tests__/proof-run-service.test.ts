@@ -14,7 +14,9 @@ import { errorHandler } from '../middleware/error-handler';
 
 let inGitRepo = true;
 try { execSync('git rev-parse --git-dir', { stdio: 'pipe' }); } catch { inGitRepo = false; }
-const describeOrSkip = inGitRepo ? describe : describe.skip;
+// Stryker runs Vitest inside workers where process.chdir() is unsupported. This
+// integration suite does not exercise the two configured mutation targets.
+const describeOrSkip = inGitRepo && !process.env.STRYKER_MUTATOR_WORKER ? describe : describe.skip;
 
 let db: Database.Database;
 let server: Server;

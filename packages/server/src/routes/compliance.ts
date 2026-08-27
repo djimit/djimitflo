@@ -12,6 +12,15 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const service = new ComplianceAuditService(db);
+  let cachedSpecReport: ReturnType<typeof generateComplianceReport> | null = null;
+  let specReportCachedAt = 0;
+  const getSpecReport = (refresh = false) => {
+    if (refresh || !cachedSpecReport || Date.now() - specReportCachedAt >= 60 * 60 * 1000) {
+      cachedSpecReport = generateComplianceReport(scanSpecsDirectory());
+      specReportCachedAt = Date.now();
+    }
+    return cachedSpecReport;
+  };
 
   // GET /api/compliance/status — compliance status summary
   router.get('/status', requirePermission('read:evidence'), (_req, res) => {
@@ -59,10 +68,9 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
 
 
   // GET /api/compliance/specs — SDD v1.1.0 spec compliance report
-  router.get('/specs', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/specs', requirePermission('read:evidence'), (req, res) => {
     try {
-      const report = generateComplianceReport(scanSpecsDirectory());
-      res.json(report);
+      res.json(getSpecReport(req.query.refresh === '1'));
     } catch (error) {
       res.status(500).json({ error: { message: 'Failed to scan specs', details: error instanceof Error ? error.message : String(error) } });
     }
@@ -79,8 +87,7 @@ export function createComplianceRoutes(db: Database, auth?: AuthMiddleware): Rou
     }
 
     try {
-      const specs = scanSpecsDirectory();
-      const report = generateComplianceReport(specs);
+      const report = getSpecReport();
 
       if (format === 'csv') {
         const csv = exportReportAsCsv(report);

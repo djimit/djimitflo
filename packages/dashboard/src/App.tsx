@@ -40,6 +40,7 @@ const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
 const GovernanceScorecardPage = lazy(() => import('./pages/GovernanceScorecardPage').then((module) => ({ default: module.GovernanceScorecardPage })));
+const CompliancePage = lazy(() => import('./pages/CompliancePage').then((module) => ({ default: module.CompliancePage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -94,6 +95,7 @@ export function App() {
           <Route path="approvals" element={<ApprovalQueuePage />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="governance" element={<GovernanceScorecardPage />} />
+          <Route path="compliance" element={<CompliancePage />} />
           <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />

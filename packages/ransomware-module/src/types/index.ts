@@ -87,6 +87,7 @@ export interface BackupTriggerConfig {
   enabled: boolean;
   webhookUrl?: string;
   eventBusTopic: string;
+  targetDb?: string;
 }
 
 export interface RansomwareEvent {

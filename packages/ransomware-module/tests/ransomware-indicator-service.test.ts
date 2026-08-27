@@ -62,4 +62,14 @@ describe('RansomwareIndicatorService', () => {
     shadowService.analyzeCommand('DROP DATABASE production', 'agent-1');
     expect(emitted).toBe(false);
   });
+
+  it('uses configured patterns', () => {
+    const configured = new RansomwareIndicatorService({
+      criticalPatterns: ['destroy-all-tenants'],
+      highPatterns: []
+    });
+    const result = configured.analyzeCommand('run destroy-all-tenants now', 'agent-1');
+    expect(result.riskLevel).toBe('CRITICAL');
+    expect(result.patternMatches[0]?.category).toBe('configured_pattern');
+  });
 });

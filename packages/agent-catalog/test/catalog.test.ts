@@ -90,6 +90,15 @@ describe('activation', () => {
     expect(cat.registry.deactivate(passed.id).status).toBe('deactivated');
     cat.close();
   });
+  it('blocks activation after the evaluated profile changes', () => {
+    const cat = new AgentCatalog();
+    cat.importDir(join(process.cwd(), 'fixtures/agents'), 'r');
+    const passed = cat.list().find(p => cat.db.getEvaluation(p.id)?.status === 'passed')!;
+    cat.db.upsertProfile({ ...passed, version_hash: `${passed.version_hash}-changed` });
+
+    expect(() => cat.registry.activate(passed.id, 'openclaw')).toThrow(/evaluation is stale/);
+    cat.close();
+  });
 });
 
 describe('compile', () => {

@@ -36,12 +36,13 @@ function toOpenApiPath(path: string): string {
 export function collectRoutes(mounts: RouteMount[], basePath = '/api'): RouteEntry[] {
   const entries: RouteEntry[] = [];
   for (const mount of mounts) {
-    const authenticated = mount.middleware.length > 0;
-    const stack: Array<{ route?: { path: string | string[]; methods: Record<string, boolean> } }> =
+    const mountAuthenticated = mount.middleware.length > 0;
+    const stack: Array<{ route?: { path: string | string[]; methods: Record<string, boolean>; stack?: Array<{ handle?: RequestHandler & { requiresAuth?: boolean; name?: string } }> } }> =
       (mount.router as unknown as { stack?: never[] }).stack ?? [];
     for (const layer of stack) {
       if (!layer.route) continue; // plain middleware; current factories don't nest routers
       const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
+      const authenticated = mountAuthenticated || Boolean(layer.route.stack?.some(({ handle }) => handle?.requiresAuth || handle?.name === 'requireAuth'));
       for (const path of paths) {
         for (const method of Object.keys(layer.route.methods)) {
           entries.push({ method: method.toUpperCase(), path: joinPath(basePath, mount.prefix, path), authenticated });

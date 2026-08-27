@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import Database from 'better-sqlite3';
 import type { DbHandle } from '../db.js';
-import { registerLoopTools } from '../tools/loops.js';
-import { registerGoalTools } from '../tools/goals.js';
-import { registerAgentTools } from '../tools/agents.js';
-import { registerMissionControlTools } from '../tools/mission-control.js';
-import { registerOpenMythosTools } from '../tools/openmythos.js';
+import { registerTools } from '../index.js';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -58,11 +54,7 @@ function createTestDb(): DbHandle {
 
 function createTestServer(dbHandle: DbHandle): McpServer {
   const server = new McpServer({ name: 'test', version: '0.0.0' });
-  registerLoopTools(server, dbHandle);
-  registerGoalTools(server, dbHandle);
-  registerAgentTools(server, dbHandle);
-  registerMissionControlTools(server, dbHandle);
-  registerOpenMythosTools(server, dbHandle);
+  registerTools(server, dbHandle);
   return server;
 }
 
@@ -91,6 +83,9 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_agent_status');
     expect(toolNames).toContain('djimitflo_get_mission_control');
     expect(toolNames).toContain('djimitflo_get_system_health');
+    expect(toolNames).toContain('djimitflo_get_data_provenance');
+    expect(toolNames).toContain('notebook_list');
+    expect(toolNames).toContain('explainer_create_task');
   });
 
   it('list_loop_runs returns empty array when no runs', async () => {

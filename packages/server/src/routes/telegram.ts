@@ -31,12 +31,13 @@ export function telegramConfigStatus(env: NodeJS.ProcessEnv = process.env, confi
     ['TELEGRAM_BOT_TOKEN', env.TELEGRAM_BOT_TOKEN],
     ['TELEGRAM_ALLOWED_USERS', env.TELEGRAM_ALLOWED_USERS],
     ['TELEGRAM_WEBHOOK_URL', env.TELEGRAM_WEBHOOK_URL],
+    ['TELEGRAM_WEBHOOK_SECRET', env.TELEGRAM_WEBHOOK_SECRET],
     ['TELEGRAM_USER_MAP', env.TELEGRAM_USER_MAP],
   ].filter(([, value]) => !value).map(([key]) => key);
 
   return {
     configured,
-    ready: Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL && Object.keys(userMap).length > 0),
+    ready: Boolean(env.TELEGRAM_BOT_TOKEN && allowedUsers.length > 0 && env.TELEGRAM_WEBHOOK_URL && env.TELEGRAM_WEBHOOK_SECRET && Object.keys(userMap).length > 0),
     allowed_user_count: allowedUsers.length,
     webhook_configured: Boolean(env.TELEGRAM_WEBHOOK_URL),
     linked_identity_count: Object.keys(userMap).length,
@@ -66,7 +67,11 @@ export function createTelegramRoutes(db: Database, auth?: AuthMiddleware, wsServ
         return;
       }
       const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
-      if (secret && req.get('X-Telegram-Bot-Api-Secret-Token') !== secret) {
+      if (!secret) {
+        res.status(503).json({ error: 'Telegram webhook secret is not configured' });
+        return;
+      }
+      if (req.get('X-Telegram-Bot-Api-Secret-Token') !== secret) {
         res.status(401).json({ error: 'Invalid webhook secret' });
         return;
       }

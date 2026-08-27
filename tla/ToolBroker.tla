@@ -99,7 +99,7 @@ Safety ==
 (* Liveness: Every tool call eventually gets a decision *)
 Liveness ==
     \A principal \in Principals :
-        \A tool \Tools :
+        \A tool \in Tools :
             <>(\E d \in DOMAIN decisions :
                 decisions[d].principal = principal /\ decisions[d].tool = tool)
 
