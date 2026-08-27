@@ -59,7 +59,10 @@ RUN apt-get update && \
 
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.
-RUN npm install --global npm@12.0.2 @openai/codex@0.146.0 opencode-ai@1.18.10 && \
+RUN npm install --global npm@12.0.2 && \
+    npm install --prefix /usr/local/lib/node_modules/npm --no-save \
+      brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 undici@7.29.0 && \
+    npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10 && \
     git --version && codex --version && opencode --version
 
 # Create non-root user
