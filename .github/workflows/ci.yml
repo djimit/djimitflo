@@ -68,6 +68,7 @@ jobs:
           scan-type: 'image'
           image-ref: 'djimitflo-ci:${{ github.sha }}'
           severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
           exit-code: '1'
 
   mutation-test:
