@@ -20,6 +20,7 @@ async function main() {
     execution_id: task.metadata.deep_agent_contract.identity.execution_id,
     event_types: eventTypes,
     status: result.status,
+    error: result.status === 'failed' ? result.error : undefined,
   }));
   if (result.status !== 'completed') process.exitCode = 1;
 }
