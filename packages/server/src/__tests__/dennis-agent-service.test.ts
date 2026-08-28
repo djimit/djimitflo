@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -181,7 +181,8 @@ describe('DennisAgentService', () => {
       affected_files: ['src/a.ts'],
     }));
 
-    const service = new DennisAgentService(db, { okfBase });
+    const broadcastTaskEventById = vi.fn();
+    const service = new DennisAgentService(db, { okfBase, wsService: { broadcastTaskEventById } });
     service.heartbeat();
     service.importPaperclipPending(pending);
 
@@ -204,6 +205,8 @@ describe('DennisAgentService', () => {
     expect(approval.status).toBe('pending');
     expect(new Date(approval.expires_at).getTime()).toBeGreaterThan(Date.now());
     expect(JSON.parse(approval.metadata).dennis_action).toBe('materialize_dry_run');
+    expect(broadcastTaskEventById).toHaveBeenCalledTimes(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.requested'").get(task.id) as any).count).toBe(1);
     const snapshot = service.readinessSnapshot();
     expect(snapshot.counts.dry_run_pending_tasks).toBe(0);
     expect(snapshot.counts.paperclip_blocked_work_items).toBe(1);
@@ -227,6 +230,8 @@ describe('DennisAgentService', () => {
     expect(renewedApprovalId).not.toBe(approvalId);
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('expired');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(renewedApprovalId) as any).status).toBe('pending');
+    expect(broadcastTaskEventById).toHaveBeenCalledTimes(2);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.requested'").get(task.id) as any).count).toBe(2);
     approvalId = renewedApprovalId;
 
     db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);

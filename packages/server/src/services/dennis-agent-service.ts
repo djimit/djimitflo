@@ -5,6 +5,10 @@ import SQLite, { type Database } from 'better-sqlite3';
 import { AgentRegistryService } from './agent-registry-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { WorkItemService } from './work-item-service';
+import { ApprovalService } from './approval-service';
+import { AuditService } from './audit-service';
+import type { WebSocketService } from './websocket-service';
+import { ApprovalRequestType, RiskLevel, type Task } from '@djimitflo/shared';
 
 export const DENNIS_AGENT_ID = 'dennis-agent';
 
@@ -117,7 +121,21 @@ interface PaperclipEvent {
 }
 
 export class DennisAgentService {
-  constructor(private db: Database, private options: { okfBase?: string } = {}) {}
+  private approvalService: ApprovalService;
+
+  constructor(
+    private db: Database,
+    private options: {
+      okfBase?: string;
+      wsService?: Pick<WebSocketService, 'broadcastTaskEventById'>;
+    } = {},
+  ) {
+    this.approvalService = new ApprovalService(
+      db,
+      options.wsService || { broadcastTaskEventById: () => undefined },
+      new AuditService(db),
+    );
+  }
 
   heartbeat(metadata: Record<string, unknown> = {}): DennisHeartbeatResult {
     const now = new Date().toISOString();
@@ -538,23 +556,24 @@ export class DennisAgentService {
         && (row.status === 'approved' || (row.status === 'pending' && !!row.expires_at && new Date(row.expires_at).getTime() > new Date(now).getTime())));
     if (existing) return existing.id;
 
-    const id = `dennis-approval-${randomUUID()}`;
-    this.db.prepare(`
-      INSERT INTO approvals (
-        id, task_id, status, risk_level, request_type, request_message, request_data, expires_at, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      taskId,
-      plan.risk_level,
-      `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
-      JSON.stringify({ action: 'materialize_dry_run', task_id: taskId, plan }),
-      new Date(new Date(now).getTime() + 60 * 60 * 1000).toISOString(),
-      JSON.stringify({ source: 'dennis-agent', dennis_action: 'materialize_dry_run' }),
-      now,
-      now,
-    );
-    return id;
+    const task = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Task | undefined;
+    if (!task) throw new Error(`Dennis task not found: ${taskId}`);
+    return this.approvalService.createApproval({
+      task,
+      assessment: {
+        action_type: 'task_execution',
+        risk_level: plan.risk_level as RiskLevel,
+        matched_rules: ['dennis_dry_run_materialization'],
+        explanation: 'Human approval is required before Dennis materializes dry-run evidence.',
+        recommended_decision: 'require_approval',
+        metadata: { plan },
+      },
+      requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+      title: 'Approve Dennis dry-run materialization',
+      description: `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
+      metadata: { source: 'dennis-agent', dennis_action: 'materialize_dry_run' },
+      requestedBy: DENNIS_AGENT_ID,
+    }).id;
   }
 
   private renewExpiredDryRunApprovals(now: string): void {

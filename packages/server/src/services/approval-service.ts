@@ -21,7 +21,7 @@ export interface CreateApprovalInput {
 export class ApprovalService {
   constructor(
     private db: Database,
-    private wsService: WebSocketService,
+    private wsService: Pick<WebSocketService, 'broadcastTaskEventById'>,
     private auditService: AuditService
   ) {}
 
@@ -115,17 +115,16 @@ export class ApprovalService {
     if (approval.status !== ApprovalStatus.PENDING) {
       throw new Error('Approval already processed');
     }
+    if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
+      this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    }
     // SECURITY INVARIANT: Self-approval prevention.
     // The maker (requested_by) cannot be the approver (decided_by).
     // This enforces separation of duties at the data layer.
     if (approval.requested_by && decidedBy === approval.requested_by) {
       throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
     }
-    if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
-      this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
-      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
-    }
-
     const now = new Date().toISOString();
     const status = approved ? ApprovalStatus.APPROVED : ApprovalStatus.DENIED;
 
