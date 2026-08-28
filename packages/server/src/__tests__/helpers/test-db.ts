@@ -33,10 +33,13 @@ const SCHEMA = `
     acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
     risk_class TEXT NOT NULL DEFAULT 'low' CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
     owner_user_id TEXT,
+    improvement_id TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_improvement_id ON goals(improvement_id) WHERE improvement_id IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS loop_runs (
     id TEXT PRIMARY KEY,
@@ -769,11 +772,39 @@ const SCHEMA = `
     recommendations_json TEXT NOT NULL DEFAULT '[]',
     evidence_refs_json TEXT NOT NULL DEFAULT '[]',
     limitations TEXT,
+    reviewer_actor TEXT,
     status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'rejected')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE CASCADE,
     UNIQUE(panel_id, specialist_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS self_improvements (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    priority REAL NOT NULL DEFAULT 0.5,
+    fingerprint TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    panel_id TEXT,
+    approved_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS loop_learning_closures (
+    loop_run_id TEXT PRIMARY KEY,
+    eval_run_id TEXT NOT NULL,
+    reflection_id TEXT NOT NULL,
+    memory_candidate_id TEXT NOT NULL,
+    previous_score REAL,
+    score_delta REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS sub_agent_spawns (
