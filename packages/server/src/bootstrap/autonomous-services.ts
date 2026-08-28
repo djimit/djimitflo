@@ -17,8 +17,16 @@ import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
+  const learningLoop = new ContinuousLearningLoop(db);
+  learningLoop.start();
+  lifecycleManager.register({ serviceName: 'ContinuousLearningLoop', stop: () => learningLoop.stop() });
+  void learningLoop.runCycle().catch((error) => {
+    console.warn('⚠️  Initial continuous learning cycle failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  });
+
   const intelligence = new SwarmIntelligenceService(db);
   const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
 

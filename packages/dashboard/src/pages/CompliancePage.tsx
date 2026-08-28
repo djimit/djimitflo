@@ -1,4 +1,5 @@
 import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
+import { ImprovementInbox } from '../components/ImprovementInbox';
 
 export function CompliancePage() {
   return (
@@ -7,6 +8,7 @@ export function CompliancePage() {
         <h1 className="text-3xl font-bold text-foreground">Assurance &amp; SDD Compliance</h1>
         <p className="text-foreground-secondary mt-2">Current Speckit and OpenSpec evidence, missing quality layers, and the next safe action.</p>
       </div>
+      <ImprovementInbox />
       <SpecComplianceWidget controls />
     </div>
   );

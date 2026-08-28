@@ -498,7 +498,7 @@ export class LoopService {
       if (findings.length === 0 && this.completeGoalIfSettled(goal.id, runId, now)) {
         const improvementId = typeof goal.metadata?.improvement_id === 'string' ? goal.metadata.improvement_id : null;
         if (improvementId) {
-          this.db.prepare("UPDATE self_improvements SET status = 'no_change' WHERE id = ?").run(improvementId);
+          this.db.prepare("UPDATE self_improvements SET status = 'no_change', updated_at = ? WHERE id = ?").run(now, improvementId);
         }
       }
     }
@@ -743,7 +743,7 @@ export class LoopService {
         const improvementId = typeof goal.metadata?.improvement_id === 'string' ? goal.metadata.improvement_id : null;
         const goalSettled = this.completeGoalIfSettled(current.goal_id, id, now);
         if (improvementId && goalSettled) {
-          this.db.prepare("UPDATE self_improvements SET status = 'applied' WHERE id = ?").run(improvementId);
+          this.db.prepare("UPDATE self_improvements SET status = 'verified', updated_at = ? WHERE id = ?").run(now, improvementId);
         }
       }
 
