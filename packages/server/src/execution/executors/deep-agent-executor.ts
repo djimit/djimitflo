@@ -86,7 +86,7 @@ export class DeepAgentExecutor implements TaskExecutor {
     const startedAt = new Date();
     let child: ChildProcess | null = null;
     const { command, args } = this.buildCommand(task);
-    const output = new Promise<ProcessOutput>((resolve) => {
+    const processOutput = new Promise<ProcessOutput>((resolve) => {
       const env: NodeJS.ProcessEnv = {};
       for (const name of ['PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TMPDIR', 'TMP', 'TEMP']) {
         if (process.env[name] !== undefined) env[name] = process.env[name];
@@ -109,8 +109,21 @@ export class DeepAgentExecutor implements TaskExecutor {
     });
 
     const timeoutMs = options?.timeout ?? 10_000;
-    const timeout = setTimeout(() => child?.kill('SIGTERM'), timeoutMs);
-    void output.finally(() => clearTimeout(timeout));
+    let forceKill: NodeJS.Timeout | undefined;
+    let timeout: NodeJS.Timeout;
+    const timeoutOutput = new Promise<ProcessOutput>((resolve) => {
+      timeout = setTimeout(() => {
+        child?.kill('SIGTERM');
+        forceKill = setTimeout(() => {
+          child?.kill('SIGKILL');
+          resolve({ code: 1, stdout: '', stderr: `Wall-clock timeout exceeded (${timeoutMs}ms)` });
+        }, 1_000);
+      }, timeoutMs);
+    });
+    const output = Promise.race([processOutput, timeoutOutput]).finally(() => {
+      clearTimeout(timeout);
+      if (forceKill) clearTimeout(forceKill);
+    });
     const result = output.then((value) => this.toResult(value, Date.now() - startedAt.getTime()));
 
     const session: ExecutionSession = {

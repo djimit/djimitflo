@@ -189,7 +189,8 @@ describe('ExecutionEngine', () => {
     `).run('approval-expired', task.id, new Date(Date.now() - 1_000).toISOString());
 
     expect(() => (engine as any).approvalService.decideApproval('approval-expired', true, 'checker-1')).toThrow('APPROVAL_EXPIRED');
-    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('pending');
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
+    expect((engine as any).approvalService.getLatestPendingForTask(task.id)).toBeNull();
   });
 
   it('replaces task-supplied Deep Agent authority with a Federation contract', async () => {

@@ -94,7 +94,7 @@ process.stdin.on('end', () => {
   it('fails a runtime that exceeds its wall-clock timeout', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-deep-timeout-'));
     const executable = path.join(root, 'fake-python');
-    fs.writeFileSync(executable, '#!/usr/bin/env node\nsetInterval(() => {}, 1000);\n', { mode: 0o700 });
+    fs.writeFileSync(executable, '#!/usr/bin/env node\nprocess.on("SIGTERM", () => {});\nsetInterval(() => {}, 1000);\n', { mode: 0o700 });
     process.env.DJIMIT_CANARY_SIGNING_KEY = 'test-only';
 
     const session = await new DeepAgentExecutor(root, executable).start(task(), { timeout: 25 });

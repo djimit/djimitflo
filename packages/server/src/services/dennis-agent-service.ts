@@ -539,14 +539,15 @@ export class DennisAgentService {
     const id = `dennis-approval-${randomUUID()}`;
     this.db.prepare(`
       INSERT INTO approvals (
-        id, task_id, status, risk_level, request_type, request_message, request_data, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, ?, ?, ?)
+        id, task_id, status, risk_level, request_type, request_message, request_data, expires_at, metadata, created_at, updated_at
+      ) VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       taskId,
       plan.risk_level,
       `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
       JSON.stringify({ action: 'materialize_dry_run', task_id: taskId, plan }),
+      new Date(new Date(now).getTime() + 60 * 60 * 1000).toISOString(),
       JSON.stringify({ source: 'dennis-agent', dennis_action: 'materialize_dry_run' }),
       now,
       now,

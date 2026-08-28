@@ -38,6 +38,12 @@ export class ApprovalService {
   }
 
   getLatestPendingForTask(taskId: string): ApprovalRequest | null {
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE approvals SET status = 'expired', updated_at = ?
+      WHERE task_id = ? AND status = 'pending'
+        AND (expires_at IS NULL OR julianday(expires_at) <= julianday(?))
+    `).run(now, taskId, now);
     const row = this.db.prepare("SELECT * FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(taskId) as any;
     return row ? this.mapApproval(row) : null;
   }
@@ -116,6 +122,7 @@ export class ApprovalService {
       throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
     }
     if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
+      this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
       throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
     }
 

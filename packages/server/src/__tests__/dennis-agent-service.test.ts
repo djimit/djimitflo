@@ -202,6 +202,7 @@ describe('DennisAgentService', () => {
     const approvalId = JSON.parse(workItem.metadata).approval_id;
     const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as any;
     expect(approval.status).toBe('pending');
+    expect(new Date(approval.expires_at).getTime()).toBeGreaterThan(Date.now());
     expect(JSON.parse(approval.metadata).dennis_action).toBe('materialize_dry_run');
     const snapshot = service.readinessSnapshot();
     expect(snapshot.counts.dry_run_pending_tasks).toBe(0);
