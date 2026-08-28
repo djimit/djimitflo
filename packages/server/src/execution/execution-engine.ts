@@ -28,6 +28,7 @@ import { ClaudeExecutor } from './executors/claude-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
+import { DeepAgentExecutor } from './executors/deep-agent-executor';
 import { DockerSandboxExecutor, DEFAULT_SANDBOX_CONFIG } from './executors/docker-sandbox-executor';
 import { CircuitBreakerService } from '../services/circuit-breaker-service';
 import { FallbackChainService, ExecutionMode } from '../services/fallback-chain-service';
@@ -50,6 +51,7 @@ import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -86,6 +88,7 @@ export class ExecutionEngine {
   private skillLoader: SkillLoaderService;
   private toolBroker: ToolBroker;
   private runtimeGovernance: RuntimeGovernanceService;
+  private deepAgentIssuer?: DeepAgentContractIssuer;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -144,6 +147,10 @@ export class ExecutionEngine {
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
+    if (process.env.DJIMIT_DEEP_ENABLED === 'true') {
+      this.deepAgentIssuer = new DeepAgentContractIssuer();
+      this.registerExecutor(new DeepAgentExecutor());
+    }
   }
   
   /**
@@ -210,6 +217,13 @@ export class ExecutionEngine {
     const executor = this.executors.get(executorKind);
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
+    }
+
+    if (executorKind === 'deep-agent') {
+      if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
+      parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask);
+      this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.deep_agent_contract', json(?)) WHERE id = ?")
+        .run(JSON.stringify(parsedTask.metadata.deep_agent_contract), taskId);
     }
     
     if (!executor.canExecute(parsedTask)) {
@@ -472,6 +486,7 @@ export class ExecutionEngine {
     maxRetries: number,
     workingDirectory?: string,
   ): Promise<void> {
+    if (session.status === 'cancelled') return;
     if (result.status === 'completed') {
       this.circuitBreaker.recordSuccess(session.executorKind);
       if (this.trajectoryStore) {
@@ -779,6 +794,27 @@ export class ExecutionEngine {
     runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
       .run(JSON.stringify(result), taskId);
+
+    if (session.executorKind === 'deep-agent' && result.status === 'completed') {
+      this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.POLICY_DECISION,
+        severity: EvidenceSeverity.WARNING,
+        title: 'Deep Agent completion held for independent assurance',
+        summary: 'Executor success is not promotion authority; the authenticated EVE-V adapter is not installed.',
+        details: { executorKind: session.executorKind },
+        source: 'system',
+      });
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.LOG,
+        message: 'Deep Agent execution completed but authoritative task completion is on HOLD.',
+        level: LogLevel.WARNING,
+        metadata: { executor: session.executorKind, reason: 'EVE_V_ADAPTER_REQUIRED' },
+      });
+      return;
+    }
     
     // Capture post-execution diff if task has a repository
     this.capturePostExecutionDiff(taskId);

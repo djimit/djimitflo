@@ -109,12 +109,14 @@ export class ApprovalService {
     if (approval.status !== ApprovalStatus.PENDING) {
       throw new Error('Approval already processed');
     }
-
     // SECURITY INVARIANT: Self-approval prevention.
     // The maker (requested_by) cannot be the approver (decided_by).
     // This enforces separation of duties at the data layer.
     if (approval.requested_by && decidedBy === approval.requested_by) {
       throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
+    }
+    if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
     }
 
     const now = new Date().toISOString();
