@@ -421,6 +421,9 @@ export class ExecutionEngine {
     }
 
     const sandboxMeta = (task.metadata?.sandbox ?? {}) as Record<string, unknown>;
+    if (executorKind === 'deep-agent' && sandboxMeta.enabled === true) {
+      throw new Error('Deep Agent sandboxing is controlled by the sovereign runtime');
+    }
     const activeExecutor = sandboxMeta.enabled === true
       ? new DockerSandboxExecutor(executor, {
           ...DEFAULT_SANDBOX_CONFIG,

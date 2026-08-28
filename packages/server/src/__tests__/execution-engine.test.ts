@@ -189,6 +189,14 @@ describe('ExecutionEngine', () => {
     })).toBeNull();
   });
 
+  it('rejects task-supplied sandbox wrapping for Deep Agent executions', async () => {
+    engine.registerExecutor({ kind: 'deep-agent', canExecute: () => true } as any);
+    const task = createTask({ metadata: { deep_agent_contract: {}, sandbox: { enabled: true } } });
+    await expect((engine as any).startExecutionAttempt(task, 'deep-agent', 'standard', 0, 0)).rejects.toThrow(
+      'sandboxing is controlled by the sovereign runtime',
+    );
+  });
+
   it('rejects an expired approval before it can resume execution', () => {
     const task = createTask({ id: 'expired-approval' });
     db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)`)
