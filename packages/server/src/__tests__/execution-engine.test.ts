@@ -216,7 +216,7 @@ describe('ExecutionEngine', () => {
     const keyFile = path.join(root, 'federation.pem');
     const { privateKey } = generateKeyPairSync('ed25519');
     fs.writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-    (engine as any).deepAgentIssuer = new DeepAgentContractIssuer(keyFile, 'engine-key');
+    (engine as any).deepAgentIssuer = new DeepAgentContractIssuer(keyFile, 'engine-key', 'server-tenant');
     let dispatched: any;
     engine.registerExecutor({
       kind: 'deep-agent',
@@ -232,7 +232,7 @@ describe('ExecutionEngine', () => {
     await expect(engine.executeTask('federation-overwrite', 'deep-agent')).rejects.toThrow('cannot execute');
 
     expect(dispatched.attacker).toBeUndefined();
-    expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'tenant-1' });
+    expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'server-tenant' });
     expect(dispatched.signature).toMatchObject({ algorithm: 'Ed25519', key_id: 'engine-key' });
     expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('federation-overwrite') as any).metadata).deep_agent_contract.signature.algorithm).toBe('Ed25519');
     fs.rmSync(root, { recursive: true });

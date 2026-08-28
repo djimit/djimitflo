@@ -103,6 +103,20 @@ process.stdin.on('end', () => {
     fs.rmSync(root, { recursive: true });
   });
 
+  it('force-stops a local runtime that ignores cancellation', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-deep-cancel-'));
+    const executable = path.join(root, 'fake-python');
+    fs.writeFileSync(executable, '#!/usr/bin/env node\nprocess.on("SIGTERM", () => {});\nsetInterval(() => {}, 1000);\n', { mode: 0o700 });
+    process.env.DJIMIT_CANARY_SIGNING_KEY = 'test-only';
+
+    const session = await new DeepAgentExecutor(root, executable).start(task());
+    await session.cancel();
+
+    expect(session.status).toBe('cancelled');
+    expect((await session.result).status).toBe('failed');
+    fs.rmSync(root, { recursive: true });
+  });
+
   it('posts the signed contract only to a loopback or Tailscale runtime', async () => {
     let redirect = false;
     const server = http.createServer((request, response) => {
@@ -143,17 +157,20 @@ describe('DeepAgentContractIssuer', () => {
     fs.writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
     const identified = task();
     identified.created_by = 'operator-1';
-    identified.metadata.tenant_id = 'tenant-1';
-    identified.metadata.workload_id = 'workload-1';
+    identified.metadata.tenant_id = 'attacker-tenant';
 
-    const contract = new DeepAgentContractIssuer(keyFile, 'test-key').issue(identified) as any;
+    const contract = new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(identified) as any;
     const unsigned = { ...contract };
     delete unsigned.signature;
 
     expect(contract.identity.issuer).toBe('djimitflo-federation');
     expect(contract.identity.audience).toBe('djimit-deep-runtime');
+    expect(contract.identity.tenant_id).toBe('server-tenant');
+    expect(contract.identity.workload_id).toBe('content-flywheel-canary');
+    expect(contract.task.objective).toBe('Prove contract-gated no-tool execution');
+    expect(contract.task.objective).not.toContain(identified.description);
     expect(verify(null, Buffer.from(canonicalJson(unsigned)), publicKey, Buffer.from(contract.signature.value, 'base64'))).toBe(true);
-    expect(() => new DeepAgentContractIssuer(keyFile).issue(task())).toThrow('requires tenant_id, actor identity and workload_id');
+    expect(() => new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(task())).toThrow('authenticated actor identity');
     fs.rmSync(root, { recursive: true });
   });
 });

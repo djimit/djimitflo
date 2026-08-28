@@ -136,6 +136,8 @@ export class DeepAgentExecutor implements TaskExecutor {
       result,
       cancel: async () => {
         child?.kill('SIGTERM');
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
+        if (child?.exitCode === null) child.kill('SIGKILL');
         session.status = 'cancelled';
         session.completedAt = new Date();
       },

@@ -18,20 +18,19 @@ export class DeepAgentContractIssuer {
   constructor(
     privateKeyFile = process.env.DJIMIT_DEEP_FEDERATION_PRIVATE_KEY_FILE ?? '',
     private readonly keyId = process.env.DJIMIT_DEEP_FEDERATION_KEY_ID ?? 'federation-1',
+    private readonly tenantId = process.env.DJIMIT_DEEP_TENANT_ID ?? '',
   ) {
     if (!privateKeyFile) throw new Error('DJIMIT_DEEP_FEDERATION_PRIVATE_KEY_FILE is required');
+    if (!this.tenantId) throw new Error('DJIMIT_DEEP_TENANT_ID is required');
     const stat = fs.statSync(privateKeyFile);
     if (!stat.isFile() || (stat.mode & 0o077) !== 0) throw new Error('Federation private key must be a regular file with mode 0600 or stricter');
     this.privateKey = createPrivateKey(fs.readFileSync(privateKeyFile));
   }
 
   issue(task: Task): Record<string, unknown> {
-    const metadata = task.metadata as Record<string, unknown>;
-    const tenantId = metadata.tenant_id;
     const actorId = task.owner_user_id ?? task.created_by;
-    const workloadId = metadata.workload_id;
-    if (typeof tenantId !== 'string' || !tenantId || typeof actorId !== 'string' || !actorId || typeof workloadId !== 'string' || !workloadId) {
-      throw new Error('Deep Agent dispatch requires tenant_id, actor identity and workload_id');
+    if (typeof actorId !== 'string' || !actorId) {
+      throw new Error('Deep Agent dispatch requires an authenticated actor identity');
     }
     const now = new Date();
     const contract: Record<string, any> = {
@@ -41,9 +40,9 @@ export class DeepAgentContractIssuer {
         execution_id: randomUUID(),
         parent_execution_id: null,
         delegation_id: null,
-        tenant_id: tenantId,
+        tenant_id: this.tenantId,
         actor_id: actorId,
-        workload_id: workloadId,
+        workload_id: 'content-flywheel-canary',
         issuer: 'djimitflo-federation',
         audience: 'djimit-deep-runtime',
         issued_at: now.toISOString(),
@@ -51,7 +50,7 @@ export class DeepAgentContractIssuer {
         nonce: randomUUID(),
       },
       task: {
-        objective: task.description,
+        objective: 'Prove contract-gated no-tool execution',
         use_case: 'foundation-canary',
         risk_class: String(task.risk_level).toUpperCase(),
         input_refs: [],
