@@ -27,8 +27,7 @@ export class DeepAgentContractIssuer {
     this.privateKey = createPrivateKey(fs.readFileSync(privateKeyFile));
   }
 
-  issue(task: Task): Record<string, unknown> {
-    const actorId = task.owner_user_id ?? task.created_by;
+  issue(task: Task, actorId: string): Record<string, unknown> {
     if (typeof actorId !== 'string' || !actorId) {
       throw new Error('Deep Agent dispatch requires an authenticated actor identity');
     }

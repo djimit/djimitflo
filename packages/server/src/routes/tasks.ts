@@ -334,7 +334,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         throw createError(409, 'Task is already running', 'TASK_RUNNING');
       }
 
-      const result = await executionEngine.executeTask(id, executor as ExecutorKind);
+      const result = await executionEngine.executeTask(id, executor as ExecutorKind, user.sub);
 
       res.json({
         message: result.status === 'awaiting_approval'

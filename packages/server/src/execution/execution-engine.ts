@@ -171,7 +171,7 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode'): Promise<ExecuteTaskResult> {
+  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode', dispatcherId?: string): Promise<ExecuteTaskResult> {
     // Check if task is already running
     if (this.activeSessions.has(taskId) || this.pendingExecutions.has(taskId)) {
       throw new Error('Task is already running');
@@ -379,7 +379,7 @@ export class ExecutionEngine {
     try {
       if (executorKind === 'deep-agent') {
         if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
-        parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask);
+        parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask, dispatcherId || '');
         this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.deep_agent_contract', json(?)) WHERE id = ?")
           .run(JSON.stringify(parsedTask.metadata.deep_agent_contract), taskId);
         if (!executor.canExecute(parsedTask)) throw new Error('Executor deep-agent cannot execute this task');
@@ -657,7 +657,7 @@ export class ExecutionEngine {
       metadata: { approvalId },
     });
     const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
-    return this.executeTask(approval.task_id, executorKind);
+    return this.executeTask(approval.task_id, executorKind, decidedBy);
   }
   
   /**

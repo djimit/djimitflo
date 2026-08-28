@@ -159,18 +159,19 @@ describe('DeepAgentContractIssuer', () => {
     identified.created_by = 'operator-1';
     identified.metadata.tenant_id = 'attacker-tenant';
 
-    const contract = new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(identified) as any;
+    const contract = new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(identified, 'dispatcher-1') as any;
     const unsigned = { ...contract };
     delete unsigned.signature;
 
     expect(contract.identity.issuer).toBe('djimitflo-federation');
     expect(contract.identity.audience).toBe('djimit-deep-runtime');
     expect(contract.identity.tenant_id).toBe('server-tenant');
+    expect(contract.identity.actor_id).toBe('dispatcher-1');
     expect(contract.identity.workload_id).toBe('content-flywheel-canary');
     expect(contract.task.objective).toBe('Prove contract-gated no-tool execution');
     expect(contract.task.objective).not.toContain(identified.description);
     expect(verify(null, Buffer.from(canonicalJson(unsigned)), publicKey, Buffer.from(contract.signature.value, 'base64'))).toBe(true);
-    expect(() => new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(task())).toThrow('authenticated actor identity');
+    expect(() => new DeepAgentContractIssuer(keyFile, 'test-key', 'server-tenant').issue(task(), '')).toThrow('authenticated actor identity');
     fs.rmSync(root, { recursive: true });
   });
 });

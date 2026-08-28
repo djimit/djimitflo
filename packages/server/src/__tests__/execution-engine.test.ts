@@ -229,10 +229,10 @@ describe('ExecutionEngine', () => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run('federation-overwrite', 'Canary', 'No-tool canary', 'pending', 'low', 'low', 'local', 'operator-1', JSON.stringify(metadata));
 
-    await expect(engine.executeTask('federation-overwrite', 'deep-agent')).rejects.toThrow('cannot execute');
+    await expect(engine.executeTask('federation-overwrite', 'deep-agent', 'dispatcher-1')).rejects.toThrow('cannot execute');
 
     expect(dispatched.attacker).toBeUndefined();
-    expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'server-tenant' });
+    expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'server-tenant', actor_id: 'dispatcher-1' });
     expect(dispatched.signature).toMatchObject({ algorithm: 'Ed25519', key_id: 'engine-key' });
     expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('federation-overwrite') as any).metadata).deep_agent_contract.signature.algorithm).toBe('Ed25519');
     fs.rmSync(root, { recursive: true });
