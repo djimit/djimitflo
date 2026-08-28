@@ -1,12 +1,15 @@
 import { EventEmitter } from 'events';
 import { CRITICAL_PATTERNS, HIGH_PATTERNS, PatternDefinition } from '../patterns';
+import { ConfidenceScorer } from './confidence-scorer';
 import {
+  BehavioralSignal,
   DetectionResult,
   PatternMatch,
   RiskLevel,
   ResponseAction,
   RansomwareModuleConfig,
-  RansomwareEvent
+  RansomwareEvent,
+  SelfNarrationMatch
 } from '../types';
 
 export const DEFAULT_CONFIG: RansomwareModuleConfig = {
@@ -36,6 +39,7 @@ export const DEFAULT_CONFIG: RansomwareModuleConfig = {
 export class RansomwareIndicatorService {
   private config: RansomwareModuleConfig;
   private eventEmitter: EventEmitter;
+  private confidenceScorer = new ConfidenceScorer();
 
   constructor(config: Partial<RansomwareModuleConfig> = {}, eventEmitter?: EventEmitter) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -43,12 +47,21 @@ export class RansomwareIndicatorService {
   }
 
   analyzeCommand(command: string, agentId: string): DetectionResult {
+    return this.analyzeEvidence(command, agentId);
+  }
+
+  analyzeEvidence(
+    command: string,
+    agentId: string,
+    behavioralSignals: BehavioralSignal[] = [],
+    selfNarrationMatches: SelfNarrationMatch[] = []
+  ): DetectionResult {
     const patternMatches = this.matchPatterns(command);
     const criticalCount = patternMatches.filter(m => m.riskLevel === 'CRITICAL').length;
     const highCount = patternMatches.filter(m => m.riskLevel === 'HIGH').length;
 
-    const confidence = this.computeConfidence(patternMatches, [], []);
-    const riskLevel = this.determineRiskLevel(criticalCount, highCount);
+    const confidence = this.confidenceScorer.compute(patternMatches, behavioralSignals, selfNarrationMatches);
+    const riskLevel = this.determineRiskLevel(criticalCount, highCount, behavioralSignals, selfNarrationMatches);
     const recommendedAction = this.determineAction(riskLevel, confidence);
 
     const result: DetectionResult = {
@@ -58,8 +71,8 @@ export class RansomwareIndicatorService {
       confidence,
       riskLevel,
       patternMatches,
-      behavioralSignals: [],
-      selfNarrationMatches: [],
+      behavioralSignals,
+      selfNarrationMatches,
       recommendedAction
     };
 
@@ -72,7 +85,12 @@ export class RansomwareIndicatorService {
 
   private matchPatterns(command: string): PatternMatch[] {
     const matches: PatternMatch[] = [];
-    const allPatterns: PatternDefinition[] = [...CRITICAL_PATTERNS, ...HIGH_PATTERNS];
+    const knownSources = new Set([...CRITICAL_PATTERNS, ...HIGH_PATTERNS].map(def => def.pattern.source));
+    const configuredPatterns: PatternDefinition[] = [
+      ...this.config.criticalPatterns.map(pattern => this.configuredPattern(pattern, 'CRITICAL')),
+      ...this.config.highPatterns.map(pattern => this.configuredPattern(pattern, 'HIGH'))
+    ].filter(def => !knownSources.has(def.pattern.source));
+    const allPatterns: PatternDefinition[] = [...CRITICAL_PATTERNS, ...HIGH_PATTERNS, ...configuredPatterns];
 
     for (const def of allPatterns) {
       if (def.pattern.test(command)) {
@@ -88,33 +106,24 @@ export class RansomwareIndicatorService {
     return matches;
   }
 
-  private computeConfidence(
-    patternMatches: PatternMatch[],
-    behavioralSignals: unknown[],
-    selfNarrationMatches: unknown[]
-  ): number {
-    if (patternMatches.length === 0 && behavioralSignals.length === 0 && selfNarrationMatches.length === 0) {
-      return 0;
-    }
-
-    let score = 0;
-    const criticalCount = patternMatches.filter(m => m.riskLevel === 'CRITICAL').length;
-    const highCount = patternMatches.filter(m => m.riskLevel === 'HIGH').length;
-
-    if (criticalCount >= 2) score = 0.95;
-    else if (criticalCount === 1) score = 0.85;
-    else if (highCount >= 2) score = 0.75;
-    else if (highCount === 1) score = 0.65;
-
-    if (behavioralSignals.length > 0) score = Math.min(score + 0.1, 0.99);
-    if (selfNarrationMatches.length > 0) score = Math.min(score + 0.15, 0.99);
-
-    return Math.round(score * 100) / 100;
+  private configuredPattern(pattern: string, riskLevel: 'CRITICAL' | 'HIGH'): PatternDefinition {
+    return {
+      pattern: new RegExp(pattern, 'i'),
+      riskLevel,
+      category: 'configured_pattern',
+      description: `Configured ${riskLevel.toLowerCase()} ransomware indicator`
+    };
   }
 
-  private determineRiskLevel(criticalCount: number, highCount: number): RiskLevel {
+  private determineRiskLevel(
+    criticalCount: number,
+    highCount: number,
+    behavioralSignals: BehavioralSignal[],
+    selfNarrationMatches: SelfNarrationMatch[]
+  ): RiskLevel {
     if (criticalCount > 0) return 'CRITICAL';
-    if (highCount > 0) return 'HIGH';
+    if (highCount > 0 || behavioralSignals.length > 0) return 'HIGH';
+    if (selfNarrationMatches.length > 0) return 'MEDIUM';
     return 'LOW';
   }
 
@@ -125,6 +134,7 @@ export class RansomwareIndicatorService {
     if (riskLevel === 'CRITICAL' && confidence >= 0.9) return 'kill';
     if (riskLevel === 'CRITICAL' || (riskLevel === 'HIGH' && confidence >= 0.7)) return 'require_approval';
     if (riskLevel === 'HIGH') return 'log_only';
+    if (riskLevel === 'MEDIUM') return 'log_only';
     return 'no_action';
   }
 

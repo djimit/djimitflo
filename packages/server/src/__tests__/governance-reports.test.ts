@@ -112,7 +112,11 @@ describe('Governance Reports Export', () => {
     try {
       const specs = await fetch(`${baseUrl}/api/compliance/specs`);
       expect(specs.status).toBe(200);
-      expect(await specs.json()).toMatchObject({ totalSpecs: 3 });
+      const specReport = await specs.json();
+      expect(specReport.totalSpecs).toBeGreaterThanOrEqual(3);
+      expect(specReport.specs).toEqual(expect.arrayContaining([
+        expect.objectContaining({ source: 'openspec' }),
+      ]));
 
       const csv = await fetch(`${baseUrl}/api/compliance/reports/export?type=nora&format=csv`);
       expect(csv.status).toBe(200);

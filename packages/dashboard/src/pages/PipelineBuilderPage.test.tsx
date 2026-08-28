@@ -1,11 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { PipelineBuilderPage } from './PipelineBuilderPage';
+
+vi.mock('@xyflow/react', () => ({
+  ReactFlow: ({ children }: { children: React.ReactNode }) => <div data-testid="pipeline-canvas">{children}</div>,
+  Background: () => null,
+  Controls: () => null,
+  MiniMap: () => null,
+  Handle: () => null,
+  Position: { Top: 'top', Bottom: 'bottom' },
+  BackgroundVariant: { Dots: 'dots' },
+  addEdge: vi.fn(),
+  applyNodeChanges: vi.fn(),
+  applyEdgeChanges: vi.fn(),
+}));
 
 describe('PipelineBuilderPage', () => {
   it('renders the pipeline builder heading', () => {
-    // Minimal smoke test — React Flow requires jsdom canvas which is complex to mock
-    // This verifies the component at least has the expected structure
-    expect(true).toBe(true);
+    render(<PipelineBuilderPage />);
+    expect(screen.getByDisplayValue('Untitled Pipeline')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Goal/ })).toBeTruthy();
+    expect(screen.getByTestId('pipeline-canvas')).toBeTruthy();
   });
 });

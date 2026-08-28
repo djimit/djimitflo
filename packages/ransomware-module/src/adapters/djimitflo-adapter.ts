@@ -4,7 +4,6 @@ import { SelfNarrationDetector } from '../services/self-narration-detector';
 import { BehavioralDetector } from '../services/behavioral-detector';
 import { ResponseOrchestrator } from '../services/response-orchestrator';
 import { ForensicCapture } from '../services/forensic-capture';
-import { ConfidenceScorer } from '../services/confidence-scorer';
 import { DetectionResult, RansomwareModuleConfig, RansomwareEvent } from '../types';
 
 interface SwarmEventBus {
@@ -27,7 +26,7 @@ export class DjimitfloRansomwareAdapter {
   private behavioralDetector: BehavioralDetector;
   private responseOrchestrator: ResponseOrchestrator;
   private forensicCapture: ForensicCapture;
-  private confidenceScorer: ConfidenceScorer;
+  private backupEventTopic: string;
   private config: DjimitfloAdapterConfig;
   private unsubscribe: (() => void) | null = null;
   private localEmitter: EventEmitter;
@@ -46,7 +45,7 @@ export class DjimitfloRansomwareAdapter {
     this.behavioralDetector = new BehavioralDetector(fullConfig.behavioralThresholds, this.localEmitter);
     this.responseOrchestrator = new ResponseOrchestrator(fullConfig, this.localEmitter);
     this.forensicCapture = new ForensicCapture();
-    this.confidenceScorer = new ConfidenceScorer();
+    this.backupEventTopic = fullConfig.backupTrigger.eventBusTopic;
 
     this.setupLocalListeners();
   }
@@ -89,18 +88,7 @@ export class DjimitfloRansomwareAdapter {
     this.forensicCapture.recordCommand(agentId, command);
     const result = this.indicatorService.analyzeCommand(command, agentId);
 
-    if (result.confidence > 0) {
-      this.emitToSwarm('ransomware:detected', {
-        agentId: result.agentId,
-        confidence: result.confidence,
-        riskLevel: result.riskLevel,
-        patterns: result.patternMatches.map(m => m.category),
-        action: result.recommendedAction,
-        timestamp: result.timestamp.toISOString()
-      });
-
-      this.responseOrchestrator.executeResponse(result);
-    }
+    this.handleDetection(result);
   }
 
   private handleWorkerExecuted(payload: Record<string, unknown>): void {
@@ -117,6 +105,7 @@ export class DjimitfloRansomwareAdapter {
         summary: this.selfNarrationDetector.getMatchSummary(output),
         timestamp: new Date().toISOString()
       });
+      this.handleDetection(this.indicatorService.analyzeEvidence(output, agentId, [], narrationMatches));
     }
   }
 
@@ -125,7 +114,10 @@ export class DjimitfloRansomwareAdapter {
     const fileChanges = payload.fileChanges as string[];
 
     if (fileChanges && fileChanges.length > 0) {
-      this.behavioralDetector.recordFileRename(agentId, { count: fileChanges.length });
+      const signal = this.behavioralDetector.recordFileRename(agentId, { count: fileChanges.length });
+      if (signal) {
+        this.handleDetection(this.indicatorService.analyzeEvidence(fileChanges.join('\n'), agentId, [signal]));
+      }
     }
   }
 
@@ -151,6 +143,26 @@ export class DjimitfloRansomwareAdapter {
         await this.config.onForensicCapture(event.payload.evidence);
       }
     });
+
+    this.localEmitter.on(this.backupEventTopic, async (event: RansomwareEvent) => {
+      const targetDb = event.payload.targetDb as string;
+      const restorePoint = event.payload.restorePoint as Date;
+      if (targetDb && this.config.onBackupRestore) await this.config.onBackupRestore(targetDb, restorePoint);
+      this.emitToSwarm(this.backupEventTopic, event.payload);
+    });
+  }
+
+  private handleDetection(result: DetectionResult): void {
+    if (result.confidence === 0) return;
+    this.emitToSwarm('ransomware:detected', {
+      agentId: result.agentId,
+      confidence: result.confidence,
+      riskLevel: result.riskLevel,
+      patterns: result.patternMatches.map(m => m.category),
+      action: result.recommendedAction,
+      timestamp: result.timestamp.toISOString()
+    });
+    this.responseOrchestrator.executeResponse(result);
   }
 
   private emitToSwarm(eventType: string, payload: unknown): void {

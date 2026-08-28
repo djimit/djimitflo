@@ -61,11 +61,16 @@ export class BehavioralDetector {
     const threshold = this.thresholds[thresholdKey];
     const events = this.getRecentEvents(eventStore, agentId, threshold.windowMs);
 
-    if (events.length >= threshold.threshold) {
+    const actual = events.reduce((total, event) => {
+      const count = event.metadata?.count;
+      return total + (typeof count === 'number' && Number.isFinite(count) && count > 0 ? Math.floor(count) : 1);
+    }, 0);
+
+    if (actual >= threshold.threshold) {
       const signal: BehavioralSignal = {
         type: signalType,
         threshold: threshold.threshold,
-        actual: events.length,
+        actual,
         windowMs: threshold.windowMs,
         context: metadata || {}
       };

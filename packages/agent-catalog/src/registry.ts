@@ -10,6 +10,7 @@ export class ActivationRegistry {
     const ev = this.db.getEvaluation(profileId);
     if (!ev) throw new Error('no evaluation record — activation blocked (no-active-without-eval)');
     if (ev.status !== 'passed') throw new Error(`evaluation not passed: ${ev.status}`);
+    if (ev.version_hash !== profile.version_hash) throw new Error('evaluation is stale for current profile version');
     if (!target || !['openclaw', 'codex'].includes(target)) throw new Error(`activation target must be openclaw|codex (got ${target})`);
     const artifact = compile(profile, target);
     this.db.setActivation(profileId, 'active', target, JSON.stringify(artifact));

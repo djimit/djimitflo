@@ -25,5 +25,5 @@ module.exports = {
   plugins: [
     '@stryker-mutator/vitest-runner',
   ],
-  vitest: { dir: 'packages', related: true },
+  vitest: { dir: '.', related: false, configFile: 'vitest.mutation.config.ts' },
 };

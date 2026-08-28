@@ -40,7 +40,7 @@ export function createAuthMiddleware(authService: AuthService) {
   }
 
   function requirePermission(permission: string) {
-    return (req: Request, res: Response, next: NextFunction) => {
+    const handler = (req: Request, res: Response, next: NextFunction) => {
       if (!req.user) {
         res.status(401).json({ error: { message: 'Authentication required', code: 'AUTH_REQUIRED' } });
         return;
@@ -55,6 +55,7 @@ export function createAuthMiddleware(authService: AuthService) {
 
       next();
     };
+    return Object.assign(handler, { requiresAuth: true as const });
   }
 
   function optionalAuth(req: Request, _res: Response, next: NextFunction) {
@@ -116,6 +117,8 @@ export function createAuthMiddleware(authService: AuthService) {
     res.status(401).json({ error: { message: 'Authentication required', code: 'AUTH_REQUIRED' } });
   }
 
+  Object.assign(requireAuth, { requiresAuth: true as const });
+  Object.assign(requireAuthOrSpawnToken, { requiresAuth: true as const });
   return { requireAuth, requirePermission, optionalAuth, requireAuthOrSpawnToken };
 }
 

@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc -b --force",
     "dev": "tsc --watch",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit",
