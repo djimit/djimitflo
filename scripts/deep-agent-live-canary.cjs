@@ -3,15 +3,17 @@ const { DeepAgentExecutor } = require('../packages/server/dist/execution/executo
 const { DeepAgentContractIssuer } = require('../packages/server/dist/services/deep-agent-contract-issuer');
 
 async function main() {
+  const actorId = process.env.DJIMIT_DEEP_CANARY_ACTOR_ID;
+  if (!actorId) throw new Error('DJIMIT_DEEP_CANARY_ACTOR_ID is required');
   const task = {
     id: randomUUID(),
     description: 'Verify the contract-gated no-tool Deep Agents path',
     risk_level: 'low',
     owner_user_id: 'deep-agent-canary',
     created_by: null,
-    metadata: { tenant_id: 'djimit-platform', workload_id: `canary-${randomUUID()}` },
+    metadata: {},
   };
-  task.metadata.deep_agent_contract = new DeepAgentContractIssuer().issue(task);
+  task.metadata.deep_agent_contract = new DeepAgentContractIssuer().issue(task, actorId);
   const session = await new DeepAgentExecutor().start(task, { timeout: 10_000 });
   const eventTypes = [];
   for await (const event of session.events) eventTypes.push(event.event_type);
