@@ -1,4 +1,5 @@
 import fs from 'fs';
+import http from 'http';
 import os from 'os';
 import path from 'path';
 import { generateKeyPairSync, verify } from 'crypto';
@@ -100,6 +101,28 @@ process.stdin.on('end', () => {
 
     expect((await session.result).status).toBe('failed');
     fs.rmSync(root, { recursive: true });
+  });
+
+  it('posts the signed contract only to a loopback or Tailscale runtime', async () => {
+    const server = http.createServer((request, response) => {
+      let body = '';
+      request.on('data', (chunk) => { body += chunk; });
+      request.on('end', () => {
+        response.setHeader('content-type', 'application/json');
+        response.end(JSON.stringify({ status: JSON.parse(body).identity.task_id === 'task-1' ? 'COMPLETED' : 'FAILED' }));
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test server has no TCP address');
+
+    const session = await new DeepAgentExecutor('', '', `http://127.0.0.1:${address.port}`).start(task());
+    expect((await session.result).status).toBe('completed');
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+
+    await expect(new DeepAgentExecutor('', '', 'https://example.com').start(task())).rejects.toThrow(
+      'loopback or literal Tailscale IPv4',
+    );
   });
 });
 

@@ -27,7 +27,21 @@ export class DeepAgentExecutor implements TaskExecutor {
   constructor(
     private readonly runtimeRoot = process.env.DJIMIT_DEEP_RUNTIME_ROOT ?? '',
     private readonly pythonPath = process.env.DJIMIT_DEEP_PYTHON ?? '',
+    private readonly runtimeUrl = process.env.DJIMIT_DEEP_URL ?? '',
   ) {}
+
+  private executionUrl(): string {
+    const url = new URL(this.runtimeUrl);
+    const octets = url.hostname.split('.').map(Number);
+    const tailscale = octets.length === 4
+      && octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
+      && octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127;
+    const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+    if (url.protocol !== 'http:' || (!tailscale && !loopback) || url.pathname !== '/' || url.username || url.password || url.search || url.hash) {
+      throw new Error('DJIMIT_DEEP_URL must be an HTTP loopback or literal Tailscale IPv4 origin');
+    }
+    return new URL('/v1/execute', url).toString();
+  }
 
   canExecute(task: Task): boolean {
     const contract = task.metadata.deep_agent_contract;
@@ -62,6 +76,7 @@ export class DeepAgentExecutor implements TaskExecutor {
 
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
     if (!this.canExecute(task)) throw new Error('DEEP_AGENT_CONTRACT_INVALID_FOR_TASK');
+    if (this.runtimeUrl) return this.startRemote(task, options);
     if (!this.runtimeRoot) throw new Error('DJIMIT_DEEP_RUNTIME_ROOT is required');
     const contract = task.metadata.deep_agent_contract as Record<string, any>;
     const ed25519 = contract?.signature?.algorithm === 'Ed25519';
@@ -108,6 +123,41 @@ export class DeepAgentExecutor implements TaskExecutor {
       result,
       cancel: async () => {
         child?.kill('SIGTERM');
+        session.status = 'cancelled';
+        session.completedAt = new Date();
+      },
+    };
+    return session;
+  }
+
+  private async startRemote(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
+    const startedAt = new Date();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options?.timeout ?? 10_000);
+    const output = fetch(this.executionUrl(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(task.metadata.deep_agent_contract),
+      signal: controller.signal,
+    }).then(async (response): Promise<ProcessOutput> => {
+      const body = (await response.text()).slice(-1024 * 1024);
+      return { code: response.ok ? 0 : response.status, stdout: response.ok ? body : '', stderr: response.ok ? '' : body };
+    }).catch((error: unknown): ProcessOutput => ({
+      code: 1,
+      stdout: '',
+      stderr: error instanceof Error ? error.message : String(error),
+    })).finally(() => clearTimeout(timeout));
+    const result = output.then((value) => this.toResult(value, Date.now() - startedAt.getTime()));
+    const session: ExecutionSession = {
+      id: randomUUID(),
+      taskId: task.id,
+      executorKind: this.kind,
+      status: 'running',
+      startedAt,
+      events: this.events(task.id, output),
+      result,
+      cancel: async () => {
+        controller.abort();
         session.status = 'cancelled';
         session.completedAt = new Date();
       },
