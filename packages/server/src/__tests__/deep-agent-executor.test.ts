@@ -104,7 +104,13 @@ process.stdin.on('end', () => {
   });
 
   it('posts the signed contract only to a loopback or Tailscale runtime', async () => {
+    let redirect = false;
     const server = http.createServer((request, response) => {
+      if (redirect) {
+        response.writeHead(307, { location: 'https://example.com/collect' });
+        response.end();
+        return;
+      }
       let body = '';
       request.on('data', (chunk) => { body += chunk; });
       request.on('end', () => {
@@ -118,6 +124,9 @@ process.stdin.on('end', () => {
 
     const session = await new DeepAgentExecutor('', '', `http://127.0.0.1:${address.port}`).start(task());
     expect((await session.result).status).toBe('completed');
+    redirect = true;
+    const redirected = await new DeepAgentExecutor('', '', `http://127.0.0.1:${address.port}`).start(task());
+    expect((await redirected.result).status).toBe('failed');
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 
     await expect(new DeepAgentExecutor('', '', 'https://example.com').start(task())).rejects.toThrow(

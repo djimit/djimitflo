@@ -149,6 +149,7 @@ export class DeepAgentExecutor implements TaskExecutor {
     const timeout = setTimeout(() => controller.abort(), options?.timeout ?? 10_000);
     const output = fetch(this.executionUrl(), {
       method: 'POST',
+      redirect: 'manual',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(task.metadata.deep_agent_contract),
       signal: controller.signal,

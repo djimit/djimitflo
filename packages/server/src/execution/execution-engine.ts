@@ -219,14 +219,7 @@ export class ExecutionEngine {
       throw new Error(`Executor not found: ${executorKind}`);
     }
 
-    if (executorKind === 'deep-agent') {
-      if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
-      parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask);
-      this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.deep_agent_contract', json(?)) WHERE id = ?")
-        .run(JSON.stringify(parsedTask.metadata.deep_agent_contract), taskId);
-    }
-    
-    if (!executor.canExecute(parsedTask)) {
+    if (executorKind !== 'deep-agent' && !executor.canExecute(parsedTask)) {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
 
@@ -384,6 +377,13 @@ export class ExecutionEngine {
       this.pendingExecutions.delete(taskId);
     }
     try {
+      if (executorKind === 'deep-agent') {
+        if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
+        parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask);
+        this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.deep_agent_contract', json(?)) WHERE id = ?")
+          .run(JSON.stringify(parsedTask.metadata.deep_agent_contract), taskId);
+        if (!executor.canExecute(parsedTask)) throw new Error('Executor deep-agent cannot execute this task');
+      }
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
@@ -411,6 +411,7 @@ export class ExecutionEngine {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
     if (!this.circuitBreaker.canExecute(executorKind)) {
+      if (executorKind === 'deep-agent') throw new Error('Deep Agent circuit breaker is open; fallback is forbidden');
       const fallback = this.fallbackChain.getNextAvailable(executorKind, mode, this.circuitBreaker);
       if (!fallback || attempt >= maxRetries) throw new Error(`No fallback available for ${executorKind}`);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
@@ -549,6 +550,7 @@ export class ExecutionEngine {
     maxRetries: number,
     failure: ExecutionFailure,
   ): ExecutorKind | null {
+    if (current === 'deep-agent') return null;
     if (attempt >= maxRetries || !failure.retryable || failure.sideEffectsPossible) {
       return null;
     }

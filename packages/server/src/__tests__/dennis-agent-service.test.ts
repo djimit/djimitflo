@@ -199,7 +199,7 @@ describe('DennisAgentService', () => {
     const workItem = db.prepare("SELECT * FROM work_items WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl'").get(DENNIS_AGENT_ID) as any;
     expect(workItem.status).toBe('blocked');
     expect(JSON.parse(workItem.metadata).blocked_reason).toBe('human_approval_required_before_execution');
-    const approvalId = JSON.parse(workItem.metadata).approval_id;
+    let approvalId = JSON.parse(workItem.metadata).approval_id;
     const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as any;
     expect(approval.status).toBe('pending');
     expect(new Date(approval.expires_at).getTime()).toBeGreaterThan(Date.now());
@@ -219,6 +219,15 @@ describe('DennisAgentService', () => {
       status: 'completed',
       risk_level: 'high',
     });
+
+    db.prepare('UPDATE approvals SET expires_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', approvalId);
+    service.heartbeat();
+    const renewedWorkItem = db.prepare('SELECT metadata FROM work_items WHERE id = ?').get(workItem.id) as any;
+    const renewedApprovalId = JSON.parse(renewedWorkItem.metadata).approval_id;
+    expect(renewedApprovalId).not.toBe(approvalId);
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('expired');
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(renewedApprovalId) as any).status).toBe('pending');
+    approvalId = renewedApprovalId;
 
     db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
     const materialized = service.materializeApprovedDryRun(approvalId, 'test-user');

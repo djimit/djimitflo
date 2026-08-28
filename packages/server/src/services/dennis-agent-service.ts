@@ -197,6 +197,7 @@ export class DennisAgentService {
     }
 
     const paperclipImport = this.importPaperclipPending();
+    this.renewExpiredDryRunApprovals(now);
     const dryRunProcessing = this.processDryRunTasks();
     const traceSpanId = this.recordTrace(now, {
       okf_concept_path: okfConceptPath,
@@ -532,8 +533,9 @@ export class DennisAgentService {
   }
 
   private ensureDryRunApproval(taskId: string, plan: ReturnType<DennisAgentService['dryRunPlan']>, now: string): string {
-    const existing = (this.db.prepare('SELECT id, metadata FROM approvals WHERE task_id = ?').all(taskId) as Array<{ id: string; metadata: string | null }>)
-      .find((row) => this.safeJson(row.metadata || '{}').dennis_action === 'materialize_dry_run');
+    const existing = (this.db.prepare('SELECT id, status, expires_at, metadata FROM approvals WHERE task_id = ?').all(taskId) as Array<{ id: string; status: string; expires_at: string | null; metadata: string | null }>)
+      .find((row) => this.safeJson(row.metadata || '{}').dennis_action === 'materialize_dry_run'
+        && (row.status === 'approved' || (row.status === 'pending' && !!row.expires_at && new Date(row.expires_at).getTime() > new Date(now).getTime())));
     if (existing) return existing.id;
 
     const id = `dennis-approval-${randomUUID()}`;
@@ -553,6 +555,25 @@ export class DennisAgentService {
       now,
     );
     return id;
+  }
+
+  private renewExpiredDryRunApprovals(now: string): void {
+    if (!this.hasTable('work_items')) return;
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl' AND status = 'blocked'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string | null }>;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (typeof metadata.approval_id !== 'string' || typeof metadata.task_id !== 'string' || !metadata.dry_run_plan) continue;
+      const approval = this.db.prepare('SELECT status, expires_at FROM approvals WHERE id = ?').get(metadata.approval_id) as { status: string; expires_at: string | null } | undefined;
+      if (!approval || (approval.status !== 'expired' && !(approval.status === 'pending' && (!approval.expires_at || new Date(approval.expires_at).getTime() <= new Date(now).getTime())))) continue;
+      this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, metadata.approval_id);
+      const approvalId = this.ensureDryRunApproval(metadata.task_id, metadata.dry_run_plan as ReturnType<DennisAgentService['dryRunPlan']>, now);
+      this.db.prepare('UPDATE work_items SET metadata = ?, updated_at = ? WHERE id = ?').run(
+        JSON.stringify({ ...metadata, approval_id: approvalId, blocked_at: now }), now, row.id,
+      );
+    }
   }
 
   private markWorkItemsDone(taskId: string, approvalId: string, eventId: string, now: string): void {

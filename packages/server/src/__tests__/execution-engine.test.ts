@@ -179,6 +179,16 @@ describe('ExecutionEngine', () => {
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = ? AND source = 'system'").get(task.id) as any).count).toBe(1);
   });
 
+  it('never retries a Deep Agent execution through a generic fallback', () => {
+    expect((engine as any).nextRetryExecutor('deep-agent', 'standard', 0, 3, {
+      code: 'RUNTIME_UNAVAILABLE',
+      message: 'runtime unavailable',
+      retryable: true,
+      sideEffectsPossible: false,
+      failureDomain: 'deep-agent',
+    })).toBeNull();
+  });
+
   it('rejects an expired approval before it can resume execution', () => {
     const task = createTask({ id: 'expired-approval' });
     db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)`)
