@@ -44,4 +44,44 @@ describe('ExternalEventIngestService', () => {
     expect(insert.run('redelivery').changes).toBe(0);
     db.close();
   });
+
+  it('imports a complete outcome once and rejects incomplete outcome evidence', async () => {
+    const db = new Database(':memory:');
+    db.exec(schema);
+    const outcome = {
+      event_id: 'outcome:publication-1:qualified-lead',
+      event_type: 'outcome.observed',
+      source: 'eve-v',
+      outcome_id: 'outcome-1',
+      subject_type: 'publication',
+      subject_id: 'publication-1',
+      task_id: 'task-1',
+      candidate_id: 'candidate-1',
+      capability_id: 'eve-content',
+      model_id: 'model-1',
+      skill_hash: 'sha256:skill',
+      runtime_identity: 'git:abc123',
+      metric: 'qualified_lead',
+      value: 1,
+      baseline: 0,
+      observation_window: 'P30D',
+      evidence_refs: ['paperclip:task-1'],
+      confidence: 0.8,
+      causal_status: 'correlated',
+      observed_at: '2026-08-29T12:00:00Z',
+      dedupe_key: 'outcome:publication-1:qualified-lead:P30D',
+    };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
+      outcome,
+      { ...outcome, event_id: 'outcome:redelivery' },
+      { event_id: 'outcome:invalid', event_type: 'outcome.observed', outcome_id: 'missing-fields' },
+    ] }), { status: 200 })));
+
+    const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
+    expect(await service.pollOnce()).toBe(1);
+    expect(db.prepare("SELECT id, event_type, source FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
+      { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v' },
+    ]);
+    db.close();
+  });
 });

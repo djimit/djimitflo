@@ -27,9 +27,13 @@ function binary(id, command, required) {
 }
 
 const probes = await Promise.all([
-  http('ollama', `${process.env.OLLAMA_URL || 'http://192.168.1.28:11434'}/api/tags`, true),
-  http('litellm', `${process.env.LITELLM_URL || 'http://192.168.1.28:4000'}/health`, true),
-  http('qdrant', `${process.env.QDRANT_URL || 'http://192.168.1.28:6333'}/healthz`, true),
+  http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true),
+  http('event_bus', `${process.env.DJIMIT_EVENT_BUS_URL || 'http://100.86.47.122:8083'}/health`, true),
+  http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true),
+  http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true),
+  http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true),
+  http('qdrant', `${process.env.QDRANT_URL || 'http://100.77.58.72:6333'}/healthz`, true),
+  http('litellm', `${process.env.LITELLM_URL || 'http://192.168.1.28:4000'}/health`, false),
   http('context7', process.env.CONTEXT7_URL || 'https://mcp.context7.com/mcp', false),
   Promise.resolve(binary('codex', process.env.CODEX_COMMAND || 'codex', true)),
   Promise.resolve(binary('opencode', process.env.OPENCODE_COMMAND || 'opencode', false)),

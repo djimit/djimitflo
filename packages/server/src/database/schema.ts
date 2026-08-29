@@ -677,7 +677,7 @@ CREATE TABLE IF NOT EXISTS agents_md_files (
 
 CREATE INDEX IF NOT EXISTS idx_agents_md_files_repository_id ON agents_md_files(repository_id);
 
--- External events table (Paperclip event bus ingest)
+-- External causal events table (Paperclip and outcome ingest)
 CREATE TABLE IF NOT EXISTS external_events (
   id TEXT PRIMARY KEY,
   event_type TEXT NOT NULL,
