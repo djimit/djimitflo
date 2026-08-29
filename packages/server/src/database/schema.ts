@@ -701,6 +701,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
   ON external_events(source, aggregate_id, aggregate_version)
   WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS system_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 `;
 
 export const explainerSchema = `-- Explainer tasks table

@@ -7,9 +7,15 @@ import { ExternalEventIngestService } from '../services/external-event-ingest-se
 describe('ExternalEventIngestService', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('imports one causal Paperclip transition despite bus redelivery', async () => {
+  function createDb(): Database.Database {
     const db = new Database(':memory:');
+    runPreSchemaMigrations(db);
     db.exec(schema);
+    return db;
+  }
+
+  it('imports one causal Paperclip transition despite bus redelivery', async () => {
+    const db = createDb();
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
       null,
       { _id: '1-0', event_id: 'paperclip:issue-1:1', event_type: 'paperclip.issue.created', source: 'paperclip', correlation_id: 'issue-1', aggregate_id: 'issue-1', aggregate_version: '1', dedupe_key: 'paperclip:issue-1:todo', occurred_at: '2026-08-20T00:00:00Z' },
@@ -22,6 +28,36 @@ describe('ExternalEventIngestService', () => {
     expect(await service.pollOnce()).toBe(0);
     expect(db.prepare('SELECT id, correlation_id, causation_id, aggregate_id, aggregate_version FROM external_events').all()).toEqual([
       { id: 'paperclip:issue-1:1', correlation_id: 'issue-1', causation_id: null, aggregate_id: 'issue-1', aggregate_version: 1 },
+    ]);
+    db.close();
+  });
+
+  it('backfills beyond 5000 events and resumes from a durable cursor', async () => {
+    const db = createDb();
+    const events = Array.from({ length: 5001 }, (_, index) => ({
+      _id: `${6000 - index}-0`,
+      event_id: `fleet:${index}`,
+      event_type: 'fleet.status.changed',
+    }));
+    events[0] = { ...events[0], event_id: 'paperclip:newest', event_type: 'paperclip.issue.created' };
+    events[5000] = { ...events[5000], event_id: 'paperclip:oldest', event_type: 'paperclip.issue.created' };
+    const fetchMock = vi.fn().mockImplementation(async (input: string | URL | Request) => {
+      const count = Number(new URL(String(input)).searchParams.get('count'));
+      return new Response(JSON.stringify({ events: events.slice(0, count) }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((db.prepare("SELECT value FROM system_state WHERE key = 'external_event_ingest_cursor:djimit.events'").get() as { value: string }).value).toBe('6000-0');
+
+    events.unshift({ _id: '7000-0', event_id: 'paperclip:after-restart', event_type: 'paperclip.issue.created' });
+    expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(db.prepare('SELECT id FROM external_events ORDER BY id').all()).toEqual([
+      { id: 'paperclip:after-restart' },
+      { id: 'paperclip:newest' },
+      { id: 'paperclip:oldest' },
     ]);
     db.close();
   });
@@ -47,8 +83,7 @@ describe('ExternalEventIngestService', () => {
   });
 
   it('imports a complete outcome once and rejects incomplete outcome evidence', async () => {
-    const db = new Database(':memory:');
-    db.exec(schema);
+    const db = createDb();
     const outcome = {
       event_id: 'outcome:publication-1:qualified-lead',
       event_type: 'outcome.observed',
