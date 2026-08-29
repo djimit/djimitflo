@@ -1,41 +1,29 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-07-31T21:35:44.598Z",
-  "status": "blocked",
+  "generated_at": "2026-08-29T20:19:19.173Z",
+  "status": "fail",
   "intended": {
-    "commit": "cb9944fffe47e07e648a302d1d520406125fe880",
+    "commit": "e52880d6cc96b2c2e593b8819d11d1dda8d8ddba",
     "dirty": true,
-    "dirty_state_sha256": "a4731492f941fdf072c8817ccc3cb4b0b5a2ea66d972f4842beb153b8e867c5e",
-    "database": "/Users/dlandman/djimitflo/.data/djimitflo.sqlite"
+    "dirty_state_sha256": "c24770d555927db82ebcf07081462ba47a7a36cf2f9fe09ba58af113a01f536e",
+    "database": "/Users/dlandman/VPS/djimitflo-eve-l3/.data/djimitflo.sqlite"
   },
   "observed": {
     "base_url": "http://127.0.0.1:3001",
     "health": {
-      "status": 200,
-      "ok": true,
-      "body": {
-        "status": "healthy",
-        "timestamp": "2026-07-31T21:35:44.421Z",
-        "uptime": 8.135362667
-      }
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
     },
     "version": {
-      "status": 200,
-      "ok": true,
-      "body": {
-        "version": "0.5.8",
-        "name": "Djimitflo API"
-      }
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
     },
     "authenticated_provenance": {
-      "status": 401,
+      "status": null,
       "ok": false,
-      "body": {
-        "error": {
-          "message": "Authentication required",
-          "code": "AUTH_REQUIRED"
-        }
-      }
+      "error": "fetch failed"
     },
     "database_integrity": {
       "ok": true,
@@ -45,5 +33,5 @@
   },
   "identity_verified": false,
   "reason": "Health is not deployment identity: authenticated provenance and a clean intended revision are required.",
-  "next_safe_action": "Provide operator-authorized read:evidence authentication or run MCP doctor locally."
+  "next_safe_action": "Reconcile observed and intended runtime identity."
 }
