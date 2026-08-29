@@ -63,7 +63,7 @@ export class ExternalEventIngestService {
       for (const event of body.events || []) {
         if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
         const id = [event.event_id, event._id]
-          .map(value => String(value ?? '').trim())
+          .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
         if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
@@ -83,7 +83,9 @@ export class ExternalEventIngestService {
           normalizedEvent.aggregate_id ? String(normalizedEvent.aggregate_id) : null,
           Number.isSafeInteger(aggregateVersion) && aggregateVersion > 0 ? aggregateVersion : null,
           normalizedEvent.dedupe_key ? String(normalizedEvent.dedupe_key) : null,
-          String(normalizedEvent.occurred_at || normalizedEvent.timestamp || (eventType === 'outcome.observed' ? normalizedEvent.observed_at : '') || new Date().toISOString()),
+          eventType === 'outcome.observed'
+            ? String(normalizedEvent.observed_at)
+            : String(normalizedEvent.occurred_at || normalizedEvent.timestamp || new Date().toISOString()),
           JSON.stringify(normalizedEvent),
         ).changes;
       }

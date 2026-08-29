@@ -70,11 +70,13 @@ describe('ExternalEventIngestService', () => {
       confidence: 0.8,
       causal_status: 'correlated',
       observed_at: '2026-08-29T12:00:00Z',
+      occurred_at: '2026-08-29T13:00:00Z',
       dedupe_key: 'outcome:publication-1:qualified-lead:P30D',
     };
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
       outcome,
       { ...outcome, event_id: '   ', _id: 'outcome:fallback', outcome_id: 'outcome-2', dedupe_key: 'outcome:fallback' },
+      { ...outcome, event_id: {}, _id: 'outcome:object-id-fallback', outcome_id: 'outcome-3', dedupe_key: 'outcome:object-id-fallback' },
       { ...outcome, event_id: 'outcome:redelivery' },
       { ...outcome, event_id: 'outcome:padded-redelivery', dedupe_key: ` ${outcome.dedupe_key} ` },
       { ...outcome, event_id: 'outcome:missing-dedupe', dedupe_key: undefined },
@@ -83,10 +85,11 @@ describe('ExternalEventIngestService', () => {
     ] }), { status: 200 })));
 
     const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
-    expect(await service.pollOnce()).toBe(2);
+    expect(await service.pollOnce()).toBe(3);
     expect(db.prepare("SELECT id, event_type, source, occurred_at FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
       { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
       { id: 'outcome:fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
+      { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
     ]);
     db.close();
   });
