@@ -201,6 +201,7 @@ describe('MCP Server Tools', () => {
       ['djimitflo_get_mcp_permissions', {}],
       ['djimitflo_get_cost_summary', {}],
       ['djimitflo_get_evidence_chain', { taskId: 'missing' }],
+      ['djimitflo_get_data_provenance', {}],
       ['djimitflo_list_openmythos_runs', {}],
       ['djimitflo_list_skill_outcomes', {}],
       ['djimitflo_list_orchestration_agents', {}],
