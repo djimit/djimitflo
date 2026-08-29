@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-29T21:11:09.085Z",
+  "generated_at": "2026-08-29T21:20:50.598Z",
   "routes": {
     "total": 531,
-    "tested": 85,
-    "module_covered": 279,
-    "unclassified": 167,
+    "tested": 56,
+    "module_covered": 298,
+    "unclassified": 177,
     "critical_unclassified": [],
     "items": [
       {
@@ -1765,19 +1765,10 @@
         "critical": false,
         "status": "exercised",
         "evidence": [
-          "packages/mcp-server/src/__tests__/http-auth.test.ts",
-          "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
-          "packages/server/src/__tests__/explore-public.test.ts",
           "packages/server/src/__tests__/governance-reports.test.ts",
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
-          "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
-          "packages/server/src/__tests__/loop-service.test.ts",
           "packages/server/src/__tests__/memory-evolution.test.ts",
           "packages/server/src/__tests__/production-runtime-readiness.test.ts",
-          "packages/server/src/__tests__/proof-run-service.test.ts",
           "packages/server/src/__tests__/public-boundaries.test.ts",
-          "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
@@ -1790,10 +1781,8 @@
         "method": "GET",
         "path": "/:owner/:repo/llms.txt",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/explore-public.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explore-public.test.ts"
         ]
@@ -1804,10 +1793,8 @@
         "method": "GET",
         "path": "/:owner/:repo/opengraph.svg",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/explore-public.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explore-public.test.ts"
         ]
@@ -1944,10 +1931,8 @@
         "method": "GET",
         "path": "/status",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -2054,7 +2039,6 @@
         "critical": false,
         "status": "exercised",
         "evidence": [
-          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
         "module_evidence": [
@@ -2623,10 +2607,8 @@
         "method": "GET",
         "path": "/runs",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/loop-service.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g15-enforcement.test.ts",
@@ -4815,11 +4797,8 @@
         "method": "POST",
         "path": "/proof-runs",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/proof-run-service.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4844,10 +4823,8 @@
         "method": "GET",
         "path": "/proof-runs/:id",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/proof-run-service.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4859,10 +4836,8 @@
         "method": "POST",
         "path": "/proof-runs/:id/rollback",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/proof-run-service.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4874,10 +4849,8 @@
         "method": "POST",
         "path": "/evolution/run",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4889,13 +4862,8 @@
         "method": "POST",
         "path": "/evolution/close-loop",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
-          "packages/server/src/__tests__/learning-closure-service.test.ts",
-          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4907,10 +4875,8 @@
         "method": "POST",
         "path": "/cs-skill-intelligence/run",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4935,10 +4901,8 @@
         "method": "POST",
         "path": "/assurance/trace-spans",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4963,10 +4927,8 @@
         "method": "POST",
         "path": "/assurance/checkpoints",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4978,10 +4940,8 @@
         "method": "POST",
         "path": "/assurance/checkpoints/:id/branch",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -4993,10 +4953,8 @@
         "method": "POST",
         "path": "/assurance/evals/run",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5021,10 +4979,8 @@
         "method": "POST",
         "path": "/assurance/capability-tokens",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5049,10 +5005,8 @@
         "method": "POST",
         "path": "/assurance/reflections",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5077,10 +5031,8 @@
         "method": "POST",
         "path": "/memory/candidates",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5092,10 +5044,8 @@
         "method": "POST",
         "path": "/memory/candidates/:id/promote",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5539,13 +5489,8 @@
         "method": "POST",
         "path": "/scheduler/tick",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
-          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5554,10 +5499,8 @@
         "method": "POST",
         "path": "/backlog/sync",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5566,11 +5509,8 @@
         "method": "POST",
         "path": "/worker-pool/plan",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5579,10 +5519,8 @@
         "method": "POST",
         "path": "/worker-pool/start-next",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5591,13 +5529,8 @@
         "method": "POST",
         "path": "/worker-pool/drain",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
-          "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5606,10 +5539,8 @@
         "method": "POST",
         "path": "/worker-pool/stop/:leaseId",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5618,10 +5549,8 @@
         "method": "POST",
         "path": "/handoffs",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5630,10 +5559,8 @@
         "method": "POST",
         "path": "/handoffs/drain",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5642,10 +5569,8 @@
         "method": "POST",
         "path": "/handoffs/:id/accept",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "unclassified",
+        "evidence": [],
         "module_evidence": []
       },
       {
@@ -5681,10 +5606,8 @@
         "method": "GET",
         "path": "/specialist-panels",
         "critical": true,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
@@ -6672,10 +6595,8 @@
         "method": "POST",
         "path": "/",
         "critical": false,
-        "status": "exercised",
-        "evidence": [
-          "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
-        ],
+        "status": "module_covered",
+        "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts",
@@ -6902,9 +6823,6 @@
         "critical": false,
         "status": "exercised",
         "evidence": [
-          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
-          "packages/server/src/__tests__/integration-spine-service.test.ts",
-          "packages/server/src/__tests__/integration-spine-smoke.test.ts",
           "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],

@@ -28,7 +28,8 @@ function endpointPattern(factory, routePath) {
   const prefix = mountPrefixes.get(factory) ?? '';
   const endpoint = `${prefix}${routePath === '/' ? '' : routePath}` || '/';
   const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)'));
+  const path = escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)');
+  return new RegExp(`(?<![A-Za-z0-9_/-])(?:https?:\\/\\/[^/\\s\"'\\x60]+)?(?:\\/api)?${path}(?=[?&\\s\"'\\x60),}]|$)`);
 }
 
 function routeExecuted(content, method, endpoint) {
@@ -61,6 +62,7 @@ if (mountPrefixes.get('createApprovalRoutes') !== '/approvals') throw new Error(
 if (!endpointPattern('createSpawnRoutes', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
 if (!routeExecuted('await fetch(`${baseUrl}/approvals`, { method: \'POST\' });', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route execution self-check failed');
 if (routeExecuted('await fetch(`${baseUrl}/approvals`);', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route method self-check failed');
+if (routeExecuted('await fetch(`${baseUrl}/approvals/id`);', 'GET', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route boundary self-check failed');
 if (toolExecuted("expect(names).toContain('example_tool')", 'example_tool')) throw new Error('contract inventory MCP registration self-check failed');
 if (!toolExecuted("const tool = getTool('example_tool'); await tool({});", 'example_tool')) throw new Error('contract inventory MCP execution self-check failed');
 
