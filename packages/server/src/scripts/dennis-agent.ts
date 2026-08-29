@@ -22,6 +22,7 @@ function heartbeat() {
       cwd: process.cwd(),
       script: path.relative(process.cwd(), __filename),
     });
+    result.dry_run_processing = service.processGovernedQueue();
     const snapshot = service.readinessSnapshot();
     const gate = process.argv.includes('--openmythos-gate') ? runOpenMythosGate() : { status: 'skipped', output: '' };
     console.log(JSON.stringify({ result, snapshot, openmythos_skill_lifecycle_gate: gate }, null, 2));

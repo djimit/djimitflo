@@ -373,7 +373,7 @@ export class DennisAgentService {
   }
 
   processGovernedQueue(): DennisDryRunProcessingResult {
-    this.renewExpiredDryRunApprovals(new Date().toISOString());
+    this.reconcileDryRunApprovals(new Date().toISOString());
     return this.processDryRunTasks();
   }
 
@@ -402,38 +402,42 @@ export class DennisAgentService {
       return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'missing_dry_run_plan' };
     }
     if (metadata.approved_materialized_at) {
+      if (typeof metadata.approved_execution_event_id === 'string') {
+        this.markWorkItemsDone(task.id, approvalId, metadata.approved_execution_event_id, new Date().toISOString());
+      }
       return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'already_materialized' };
     }
 
     const now = new Date().toISOString();
     const eventId = randomUUID();
-    this.db.prepare(`
-      INSERT INTO execution_events (
-        id, task_id, event_type, message, level, tool_name, tool_input, tool_output, approval_id, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'dennis_approved_dry_run_materialized', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?, ?)
-    `).run(
-      eventId,
-      task.id,
-      `Dennis approved dry-run materialized for ${task.title}`,
-      JSON.stringify({ task_id: task.id, approval_id: approvalId, approved_by: approvedBy }),
-      JSON.stringify({
-        mode: 'evidence_only',
-        executed_mutations: [],
-        plan: metadata.dry_run_plan,
-        gates: ['approval_present', 'no_shell', 'no_file_write', 'no_network_write'],
-      }),
-      approvalId,
-      JSON.stringify({ source: 'dennis-agent', approved_by: approvedBy }),
-      now,
-      now,
-    );
-
-    this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?').run(
-      JSON.stringify({ ...metadata, approved_materialized_at: now, approved_by: approvedBy, approved_execution_event_id: eventId, approval_id: approvalId }),
-      now,
-      task.id,
-    );
-    this.markWorkItemsDone(task.id, approvalId, eventId, now);
+    this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO execution_events (
+          id, task_id, event_type, message, level, tool_name, tool_input, tool_output, approval_id, metadata, created_at, updated_at
+        ) VALUES (?, ?, 'dennis_approved_dry_run_materialized', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?, ?)
+      `).run(
+        eventId,
+        task.id,
+        `Dennis approved dry-run materialized for ${task.title}`,
+        JSON.stringify({ task_id: task.id, approval_id: approvalId, approved_by: approvedBy }),
+        JSON.stringify({
+          mode: 'evidence_only',
+          executed_mutations: [],
+          plan: metadata.dry_run_plan,
+          gates: ['approval_present', 'no_shell', 'no_file_write', 'no_network_write'],
+        }),
+        approvalId,
+        JSON.stringify({ source: 'dennis-agent', approved_by: approvedBy }),
+        now,
+        now,
+      );
+      this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?').run(
+        JSON.stringify({ ...metadata, approved_materialized_at: now, approved_by: approvedBy, approved_execution_event_id: eventId, approval_id: approvalId }),
+        now,
+        task.id,
+      );
+      this.markWorkItemsDone(task.id, approvalId, eventId, now);
+    })();
     return { status: 'materialized', approval_id: approvalId, task_id: task.id, event_id: eventId };
   }
 
@@ -598,7 +602,7 @@ export class DennisAgentService {
     }).id;
   }
 
-  private renewExpiredDryRunApprovals(now: string): void {
+  private reconcileDryRunApprovals(now: string): void {
     if (!this.hasTable('work_items')) return;
     const rows = this.db.prepare(`
       SELECT id, metadata FROM work_items
@@ -607,7 +611,15 @@ export class DennisAgentService {
     for (const row of rows) {
       const metadata = this.safeJson(row.metadata || '{}');
       if (typeof metadata.approval_id !== 'string' || typeof metadata.task_id !== 'string' || !metadata.dry_run_plan) continue;
-      const approval = this.db.prepare('SELECT status, expires_at FROM approvals WHERE id = ?').get(metadata.approval_id) as { status: string; expires_at: string | null } | undefined;
+      const approval = this.db.prepare('SELECT status, expires_at, decided_by, approved_by FROM approvals WHERE id = ?').get(metadata.approval_id) as { status: string; expires_at: string | null; decided_by: string | null; approved_by: string | null } | undefined;
+      if (approval?.status === 'approved') {
+        this.materializeApprovedDryRun(metadata.approval_id, approval.decided_by || approval.approved_by || 'dennis-reconciler');
+        continue;
+      }
+      if (approval?.status === 'denied') {
+        this.finalizeDeniedDryRun(metadata.approval_id, approval.decided_by || 'dennis-reconciler');
+        continue;
+      }
       if (!approval || (approval.status !== 'expired' && !(approval.status === 'pending' && (!approval.expires_at || new Date(approval.expires_at).getTime() <= new Date(now).getTime())))) continue;
       this.approvalService.getLatestPendingForTask(metadata.task_id);
       const approvalId = this.ensureDryRunApproval(metadata.task_id, metadata.dry_run_plan as ReturnType<DennisAgentService['dryRunPlan']>, now);

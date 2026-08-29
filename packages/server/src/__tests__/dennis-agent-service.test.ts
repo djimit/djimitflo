@@ -238,12 +238,18 @@ describe('DennisAgentService', () => {
     approvalId = renewedApprovalId;
 
     db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
-    const materialized = service.materializeApprovedDryRun(approvalId, 'test-user');
-    expect(materialized.status).toBe('materialized');
-    expect(materialized.event_id).toBeTruthy();
-    const materializedEvent = db.prepare("SELECT * FROM execution_events WHERE id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(materialized.event_id) as any;
+    service.processGovernedQueue();
+    const materializedEvent = db.prepare("SELECT * FROM execution_events WHERE approval_id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(approvalId) as any;
     expect(JSON.parse(materializedEvent.tool_output).executed_mutations).toEqual([]);
     const doneWorkItem = db.prepare('SELECT * FROM work_items WHERE id = ?').get(workItem.id) as any;
     expect(doneWorkItem.status).toBe('done');
+
+    db.prepare(`INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, metadata)
+      VALUES ('dennis-denied-recovery', ?, 'denied', 'high', 'high_risk_action', 'Denied', '{}', '{}')`).run(task.id);
+    db.prepare(`INSERT INTO work_items (id, title, description, source, risk_class, status, assigned_agent_id, metadata)
+      VALUES ('dennis-denied-recovery-work', 'Denied', '', 'paperclip_pending_jsonl', 'high', 'blocked', ?, ?)`)
+      .run(DENNIS_AGENT_ID, JSON.stringify({ task_id: task.id, approval_id: 'dennis-denied-recovery', dry_run_plan: metadata.dry_run_plan }));
+    service.processGovernedQueue();
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-denied-recovery-work'").get() as any).status).toBe('discarded');
   });
 });
