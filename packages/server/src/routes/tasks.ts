@@ -194,6 +194,10 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       const setClauses: string[] = [];
       const params: any[] = [];
       const existingMetadata = JSON.parse(task.metadata || '{}') as Record<string, unknown>;
+      const executionStateFields = ['status', 'token_usage', 'execution_time_ms', 'started_at', 'completed_at', 'failed_at'];
+      if (existingMetadata.deep_agent_assurance_hold === true && executionStateFields.some((field) => field in updates)) {
+        throw createError(409, 'Task is held for independent EVE-V assurance', 'DEEP_AGENT_ASSURANCE_HOLD');
+      }
 
       for (const key of allowed) {
         if (key in updates) {

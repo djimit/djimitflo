@@ -164,5 +164,13 @@ describe('task execution provider fallback HTTP chain', () => {
       deep_agent_assurance_hold: true,
       deep_agent_assurance_reason: 'EVE_V_ADAPTER_REQUIRED',
     });
+
+    const promotion = await fetch(`${baseUrl}/api/tasks/task-assurance-hold`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'completed', completed_at: new Date().toISOString() }),
+    });
+    expect(promotion.status).toBe(409);
+    expect(db.prepare("SELECT status FROM tasks WHERE id = 'task-assurance-hold'").get()).toEqual({ status: 'awaiting_approval' });
   });
 });
