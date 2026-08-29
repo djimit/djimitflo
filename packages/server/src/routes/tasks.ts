@@ -193,12 +193,20 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       const allowed = ['title', 'description', 'status', 'priority', 'tags', 'metadata', 'token_usage', 'execution_time_ms', 'started_at', 'completed_at', 'failed_at'];
       const setClauses: string[] = [];
       const params: any[] = [];
+      const existingMetadata = JSON.parse(task.metadata || '{}') as Record<string, unknown>;
 
       for (const key of allowed) {
         if (key in updates) {
           setClauses.push(`${key} = ?`);
+          if (key === 'metadata') {
+            const metadata = { ...(updates.metadata || {}) } as Record<string, unknown>;
+            for (const reserved of Object.keys(metadata).filter((name) => name.startsWith('deep_agent_assurance_'))) delete metadata[reserved];
+            for (const [name, value] of Object.entries(existingMetadata).filter(([name]) => name.startsWith('deep_agent_assurance_'))) metadata[name] = value;
+            params.push(JSON.stringify(metadata));
+            continue;
+          }
           params.push(
-            key === 'tags' || key === 'metadata' ? JSON.stringify(updates[key]) : updates[key]
+            key === 'tags' ? JSON.stringify(updates[key]) : updates[key]
           );
         }
       }

@@ -103,6 +103,18 @@ process.stdin.on('end', () => {
     fs.rmSync(root, { recursive: true });
   });
 
+  it('fails at the deadline even when SIGTERM produces a successful result', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-deep-timeout-race-'));
+    const executable = path.join(root, 'fake-python');
+    fs.writeFileSync(executable, '#!/usr/bin/env node\nprocess.on("SIGTERM", () => { console.log(JSON.stringify({ status: "COMPLETED" })); process.exit(0); });\nsetInterval(() => {}, 1000);\n', { mode: 0o700 });
+    process.env.DJIMIT_CANARY_SIGNING_KEY = 'test-only';
+
+    const session = await new DeepAgentExecutor(root, executable).start(task(), { timeout: 25 });
+
+    expect((await session.result).status).toBe('failed');
+    fs.rmSync(root, { recursive: true });
+  });
+
   it('force-stops a local runtime that ignores cancellation', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-deep-cancel-'));
     const executable = path.join(root, 'fake-python');

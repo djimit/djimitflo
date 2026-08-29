@@ -16,6 +16,7 @@ describe('task execution provider fallback HTTP chain', () => {
 
   beforeEach(async () => {
     db = createTestDb();
+    db.exec('ALTER TABLE tasks ADD COLUMN updated_by TEXT;');
     db.exec(`
       CREATE TABLE IF NOT EXISTS execution_events (
         id TEXT PRIMARY KEY, task_id TEXT NOT NULL, event_type TEXT NOT NULL,
@@ -143,5 +144,25 @@ describe('task execution provider fallback HTTP chain', () => {
       WHERE task_id = 'task-http-fallback' AND message = 'Retrying with fallback executor codex'
     `).get()).toEqual({ count: 1 });
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = 'task-http-fallback'").get() as { count: number }).count).toBeGreaterThan(0);
+  });
+
+  it('preserves server-owned Deep Agent assurance metadata on task updates', async () => {
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
+      VALUES ('task-assurance-hold', 'Held task', '', 'awaiting_approval', 'medium', 'low', 'local', ?)
+    `).run(JSON.stringify({ deep_agent_assurance_hold: true, deep_agent_assurance_reason: 'EVE_V_ADAPTER_REQUIRED' }));
+
+    const response = await fetch(`${baseUrl}/api/tasks/task-assurance-hold`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ metadata: { client_note: 'preserved', deep_agent_assurance_hold: false } }),
+    });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).metadata).toEqual({
+      client_note: 'preserved',
+      deep_agent_assurance_hold: true,
+      deep_agent_assurance_reason: 'EVE_V_ADAPTER_REQUIRED',
+    });
   });
 });

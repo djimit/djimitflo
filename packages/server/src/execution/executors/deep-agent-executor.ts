@@ -113,18 +113,18 @@ export class DeepAgentExecutor implements TaskExecutor {
     const timeoutMs = options?.timeout ?? 10_000;
     let forceKill: NodeJS.Timeout | undefined;
     let timeout: NodeJS.Timeout;
+    let timedOut = false;
     const timeoutOutput = new Promise<ProcessOutput>((resolve) => {
       timeout = setTimeout(() => {
+        timedOut = true;
         child?.kill('SIGTERM');
-        forceKill = setTimeout(() => {
-          child?.kill('SIGKILL');
-          resolve({ code: 1, stdout: '', stderr: `Wall-clock timeout exceeded (${timeoutMs}ms)` });
-        }, 1_000);
+        forceKill = setTimeout(() => child?.kill('SIGKILL'), 1_000);
+        resolve({ code: 1, stdout: '', stderr: `Wall-clock timeout exceeded (${timeoutMs}ms)` });
       }, timeoutMs);
     });
     const output = Promise.race([processOutput, timeoutOutput]).finally(() => {
       clearTimeout(timeout);
-      if (forceKill) clearTimeout(forceKill);
+      if (forceKill && !timedOut) clearTimeout(forceKill);
     });
     const result = output.then((value) => this.toResult(value, Date.now() - startedAt.getTime()));
 
