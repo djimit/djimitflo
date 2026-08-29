@@ -110,10 +110,16 @@ process.stdin.on('end', () => {
     process.env.DJIMIT_CANARY_SIGNING_KEY = 'test-only';
 
     const session = await new DeepAgentExecutor(root, executable).start(task());
+    const events = (async () => {
+      const types = [];
+      for await (const event of session.events) types.push(event.event_type);
+      return types;
+    })();
     await session.cancel();
 
     expect(session.status).toBe('cancelled');
     expect((await session.result).status).toBe('failed');
+    expect(await events).toEqual(['task.started']);
     fs.rmSync(root, { recursive: true });
   });
 

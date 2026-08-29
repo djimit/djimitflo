@@ -285,7 +285,7 @@ export class ExecutionEngine {
       return { status: 'denied', reason: evaluation.explanation };
     }
 
-    if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId)) {
+    if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId, executorKind)) {
       this.evidenceService.captureEvidence({
         task_id: taskId,
         evidence_type: EvidenceType.RISK_ASSESSMENT,
@@ -582,7 +582,7 @@ export class ExecutionEngine {
     const evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
     if (evaluation.decision === 'deny') return false;
-    return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
+    return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id, executorKind);
   }
 
   private persistFallbackEvent(taskId: string, from: ExecutorKind, to: ExecutorKind, attempt: number, failure: ExecutionFailure): void {
@@ -1183,15 +1183,15 @@ export class ExecutionEngine {
     return id;
   }
 
-  private hasApprovedStart(taskId: string): boolean {
+  private hasApprovedStart(taskId: string, executorKind: ExecutorKind): boolean {
     const approval = this.db.prepare(`
       SELECT * FROM approvals
       WHERE task_id = ? AND status = 'approved'
         AND json_valid(COALESCE(metadata, '{}')) = 1
-        AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.dennis_action'), '') != 'materialize_dry_run'
+        AND json_extract(COALESCE(metadata, '{}'), '$.executorKind') = ?
       ORDER BY updated_at DESC
       LIMIT 1
-    `).get(taskId) as any;
+    `).get(taskId, executorKind) as any;
     return Boolean(approval);
   }
 

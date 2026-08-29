@@ -231,7 +231,19 @@ describe('ExecutionEngine', () => {
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'approval.granted'").get() as any).count).toBe(0);
     expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = 'dennis-task' AND event_type = 'execution.resumed'").get() as any).count).toBe(0);
     expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-work'").get() as any).status).toBe('done');
-    expect((engine as any).hasApprovedStart('dennis-task')).toBe(false);
+    expect((engine as any).hasApprovedStart('dennis-task', 'opencode')).toBe(false);
+  });
+
+  it('scopes execution approval to its selected executor', () => {
+    const task = createTask({ id: 'scoped-approval' });
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode)
+      VALUES (?,?,?,?,?,?,?)`).run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'high', 'local');
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,metadata)
+      VALUES ('scoped','scoped-approval','approved','high','high_risk_action','Run','{}','maker',?)`)
+      .run(JSON.stringify({ executorKind: 'deep-agent' }));
+
+    expect((engine as any).hasApprovedStart(task.id, 'deep-agent')).toBe(true);
+    expect((engine as any).hasApprovedStart(task.id, 'opencode')).toBe(false);
   });
 
   it('replaces task-supplied Deep Agent authority with a Federation contract', async () => {

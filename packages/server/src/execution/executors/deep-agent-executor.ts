@@ -134,7 +134,7 @@ export class DeepAgentExecutor implements TaskExecutor {
       executorKind: this.kind,
       status: 'running',
       startedAt,
-      events: this.events(task.id, output),
+      events: this.events(task.id, output, () => session.status === 'cancelled'),
       result,
       cancel: async () => {
         session.status = 'cancelled';
@@ -185,7 +185,7 @@ export class DeepAgentExecutor implements TaskExecutor {
       executorKind: this.kind,
       status: 'running',
       startedAt,
-      events: this.events(task.id, output),
+      events: this.events(task.id, output, () => session.status === 'cancelled'),
       result,
       cancel: async () => {
         controller.abort();
@@ -196,7 +196,7 @@ export class DeepAgentExecutor implements TaskExecutor {
     return session;
   }
 
-  private async *events(taskId: string, output: Promise<ProcessOutput>): AsyncIterable<ExecutionEventCreateInput> {
+  private async *events(taskId: string, output: Promise<ProcessOutput>, cancelled: () => boolean): AsyncIterable<ExecutionEventCreateInput> {
     yield {
       task_id: taskId,
       event_type: ExecutionEventType.TASK_STARTED,
@@ -205,6 +205,7 @@ export class DeepAgentExecutor implements TaskExecutor {
       metadata: { executor: this.kind, profile: 'no-tool-canary' },
     };
     const value = await output;
+    if (cancelled()) return;
     const completed = this.completed(value);
     yield {
       task_id: taskId,
