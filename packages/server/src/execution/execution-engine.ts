@@ -52,6 +52,7 @@ import { SkillLoaderService, type SkillDefinition } from '../services/skill-load
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
+import { DennisAgentService } from '../services/dennis-agent-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
@@ -656,6 +657,10 @@ export class ExecutionEngine {
       risk_level: approval.risk_level,
       metadata: { approvalId },
     });
+    if (approval.metadata?.dennis_action === 'materialize_dry_run') {
+      new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, decidedBy);
+      return null;
+    }
     const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
     return this.executeTask(approval.task_id, executorKind, decidedBy);
   }

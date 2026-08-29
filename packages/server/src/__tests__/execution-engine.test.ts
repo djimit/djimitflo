@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -209,6 +209,26 @@ describe('ExecutionEngine', () => {
     expect(() => (engine as any).approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
     expect((engine as any).approvalService.getLatestPendingForTask(task.id)).toBeNull();
+  });
+
+  it('materializes Dennis approvals without starting a generic executor', async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    db.prepare("INSERT INTO agents (id, name) VALUES ('dennis-agent', 'Dennis Agent')").run();
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id,metadata)
+      VALUES ('dennis-task','Dennis','Evidence only','completed','medium','high','dry_run','dennis-agent',?)`)
+      .run(JSON.stringify({ dry_run_plan: { gates: ['dry_run_only'] } }));
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('dennis-approval','dennis-task','pending','high','high_risk_action','Materialize','{}','dennis-agent',?,?)`)
+      .run(expiresAt, JSON.stringify({ dennis_action: 'materialize_dry_run' }));
+    db.prepare(`INSERT INTO work_items (id,title,description,source,risk_class,status,assigned_agent_id,metadata)
+      VALUES ('dennis-work','Dennis','Evidence only','paperclip_pending_jsonl','high','blocked','dennis-agent',?)`)
+      .run(JSON.stringify({ task_id: 'dennis-task', approval_id: 'dennis-approval' }));
+    const executeTask = vi.spyOn(engine, 'executeTask');
+
+    expect(await engine.handleApprovalDecision('dennis-approval', true, 'checker')).toBeNull();
+    expect(executeTask).not.toHaveBeenCalled();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'dennis_approved_dry_run_materialized'").get() as any).count).toBe(1);
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-work'").get() as any).status).toBe('done');
   });
 
   it('replaces task-supplied Deep Agent authority with a Federation contract', async () => {
