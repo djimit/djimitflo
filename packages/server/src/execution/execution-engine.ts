@@ -809,6 +809,9 @@ export class ExecutionEngine {
     this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
       .run(JSON.stringify(result), taskId);
 
+    // Capture repository changes before any terminal status or assurance hold.
+    this.capturePostExecutionDiff(taskId);
+
     if (session.executorKind === 'deep-agent' && result.status === 'completed') {
       this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
       this.evidenceService.captureEvidence({
@@ -830,9 +833,6 @@ export class ExecutionEngine {
       return;
     }
     
-    // Capture post-execution diff if task has a repository
-    this.capturePostExecutionDiff(taskId);
-
     const completedAt = new Date().toISOString();
     const executionTimeMs = Date.now() - session.startedAt.getTime();
     

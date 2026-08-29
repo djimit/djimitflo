@@ -170,6 +170,9 @@ describe('ExecutionEngine', () => {
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(task.id, task.title, task.description, 'running', 'low', 'low', 'local', JSON.stringify(task.metadata));
+    const capturePostExecutionDiff = vi.spyOn((engine as any).diffCaptureService, 'capturePostExecutionDiff')
+      .mockReturnValue({ files: [], summary: { redactedSecrets: 0 } });
+    (engine as any).diffContexts.set(task.id, { repositoryId: 'repo-1', repositoryPath: '/tmp/repo', preSnapshotId: 'snapshot-1' });
 
     (engine as any).handleExecutionComplete(task.id, {
       taskId: task.id,
@@ -178,6 +181,8 @@ describe('ExecutionEngine', () => {
     }, { status: 'completed', message: 'executor-only success', metrics: { toolCalls: 0 } });
 
     expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('awaiting_approval');
+    expect(capturePostExecutionDiff).toHaveBeenCalledWith('/tmp/repo', 'repo-1', task.id, 'snapshot-1');
+    expect((engine as any).diffContexts.has(task.id)).toBe(false);
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = ? AND source = 'system'").get(task.id) as any).count).toBe(1);
   });
 
