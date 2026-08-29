@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "status": "fail",
-  "generated_at": "2026-08-29T20:32:30.431Z",
+  "generated_at": "2026-08-29T20:39:50.515Z",
   "source": {
-    "commit": "f0fa30c81476735e5bc777d3f2ca429cd80e1c6a",
-    "dirty": true,
-    "dirty_state_sha256": "da467369218c609461cf919d277a0cfae496c464a8b51b2146c9151c1f3ea556",
+    "commit": "8fdf15fab747b766f06355753311a198f482cfa6",
+    "dirty": false,
+    "dirty_state_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "package_lock_sha256": "b480f2b5bee311a345d1304bd7c00bb7fb7fa66d084131bae32ac13c185108a8"
   },
   "environment": {
@@ -18,25 +18,25 @@
       "mandatory": true,
       "status": "pass",
       "evidence": "node=v22.23.2; required=>=20 <25",
-      "started_at": "2026-08-29T20:32:30.431Z",
-      "finished_at": "2026-08-29T20:32:30.431Z"
+      "started_at": "2026-08-29T20:39:50.515Z",
+      "finished_at": "2026-08-29T20:39:50.515Z"
     },
     {
       "id": "tests",
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:32:30.432Z",
-      "finished_at": "2026-08-29T20:33:03.688Z",
-      "evidence": "\n> djimitflo@0.5.8 test\n> npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present\n\n\n> @djimitflo/shared@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/agent-catalog@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/agent-catalog@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/agent-catalog\n\n\n Test Files  2 passed (2)\n      Tests  25 passed (25)\n   Start at  22:32:31\n   Duration  205ms (transform 172ms, setup 0ms, import 221ms, tests 40ms, environment 0ms)\n\n\n> @djimitflo/dashboard@0.5.8 test\n> vitest run --passWithNoTests\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/dashboard\n\n\n Test Files  6 passed (6)\n      Tests  26 passed (26)\n   Start at  22:32:32\n   Duration  1.75s (transform 894ms, setup 0ms, import 1.73s, tests 675ms, environment 4.24s)\n\n\n> @djimitflo/mcp-server@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/mcp-server\n\n\n Test Files  6 passed (6)\n      Tests  22 passed (22)\n   Start at  22:32:34\n   Duration  305ms (transform 225ms, setup 0ms, import 790ms, tests 165ms, environment 0ms)\n\n\n> @djimitflo/ransomware-module@1.0.0 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/ransomware-module\n\n\n Test Files  6 passed (6)\n      Tests  40 passed (40)\n   Start at  22:32:34\n   Duration  139ms (transform 205ms, setup 0ms, import 267ms, tests 26ms, environment 0ms)\n\n\n> @djimitflo/server@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/server\n\n\n Test Files  232 passed | 1 skipped (233)\n      Tests  1904 passed | 21 skipped (1925)\n   Start at  22:32:35\n   Duration  27.69s (transform 13.16s, setup 0ms, import 39.23s, tests 241.72s, environment 13ms)\n\n\n> @djimitflo/shared@0.5.8 test\n> vitest run --passWithNoTests\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/shared\n\n\n Test Files  2 passed (2)\n      Tests  3 passed (3)\n   Start at  22:33:02\n   Duration  100ms (transform 36ms, setup 0ms, import 52ms, tests 4ms, environment 0ms)\n\n\n> @djimitflo/telegram@0.5.8 test\n> vitest run\n\n\n RUN  v3.2.7 /Users/dlandman/VPS/djimitflo-eve-l3/packages/telegram\n\n ✓ src/index.test.ts (7 tests) 3ms\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  22:33:03\n   Duration  222ms (transform 25ms, setup 0ms, collect 22ms, tests 3ms, environment 0ms, prepare 38ms)\n\n\nfatal: not a git repository (or any of the parent directories): .git\n"
+      "started_at": "2026-08-29T20:39:50.592Z",
+      "finished_at": "2026-08-29T20:40:21.419Z",
+      "evidence": "\n> djimitflo@0.5.8 test\n> npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/agent-catalog && npm run test --workspaces --if-present\n\n\n> @djimitflo/shared@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/agent-catalog@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/agent-catalog@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/agent-catalog\n\n\n Test Files  2 passed (2)\n      Tests  25 passed (25)\n   Start at  22:39:51\n   Duration  181ms (transform 114ms, setup 0ms, import 166ms, tests 39ms, environment 0ms)\n\n\n> @djimitflo/dashboard@0.5.8 test\n> vitest run --passWithNoTests\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/dashboard\n\n\n Test Files  6 passed (6)\n      Tests  26 passed (26)\n   Start at  22:39:52\n   Duration  1.70s (transform 730ms, setup 0ms, import 1.55s, tests 649ms, environment 4.15s)\n\n\n> @djimitflo/mcp-server@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/mcp-server\n\n\n Test Files  6 passed (6)\n      Tests  22 passed (22)\n   Start at  22:39:54\n   Duration  308ms (transform 229ms, setup 0ms, import 792ms, tests 158ms, environment 0ms)\n\n\n> @djimitflo/ransomware-module@1.0.0 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/ransomware-module\n\n\n Test Files  6 passed (6)\n      Tests  40 passed (40)\n   Start at  22:39:54\n   Duration  142ms (transform 214ms, setup 0ms, import 276ms, tests 26ms, environment 0ms)\n\n\n> @djimitflo/server@0.5.8 test\n> vitest run\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/server\n\n\n Test Files  232 passed | 1 skipped (233)\n      Tests  1904 passed | 21 skipped (1925)\n   Start at  22:39:55\n   Duration  25.44s (transform 10.92s, setup 0ms, import 32.16s, tests 230.06s, environment 14ms)\n\n\n> @djimitflo/shared@0.5.8 test\n> vitest run --passWithNoTests\n\n\n RUN  v4.1.10 /Users/dlandman/VPS/djimitflo-eve-l3/packages/shared\n\n\n Test Files  2 passed (2)\n      Tests  3 passed (3)\n   Start at  22:40:20\n   Duration  100ms (transform 35ms, setup 0ms, import 51ms, tests 4ms, environment 0ms)\n\n\n> @djimitflo/telegram@0.5.8 test\n> vitest run\n\n\n RUN  v3.2.7 /Users/dlandman/VPS/djimitflo-eve-l3/packages/telegram\n\n ✓ src/index.test.ts (7 tests) 3ms\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  22:40:21\n   Duration  234ms (transform 26ms, setup 0ms, collect 22ms, tests 3ms, environment 0ms, prepare 39ms)\n\n\nfatal: not a git repository (or any of the parent directories): .git\n"
     },
     {
       "id": "type_check",
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:03.688Z",
-      "finished_at": "2026-08-29T20:33:11.164Z",
+      "started_at": "2026-08-29T20:40:21.420Z",
+      "finished_at": "2026-08-29T20:40:29.283Z",
       "evidence": "\n> djimitflo@0.5.8 type-check\n> npm run build --workspace=@djimitflo/shared && npm run build --workspace=@djimitflo/telegram && npm run build --workspace=@djimitflo/agent-catalog && npm run build --workspace=@djimitflo/mcp-server && npm run build --workspace=@djimitflo/ransomware-module && npm run type-check --workspaces --if-present\n\n\n> @djimitflo/shared@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/telegram@0.5.8 build\n> tsc -p tsconfig.json\n\n\n> @djimitflo/agent-catalog@0.5.8 build\n> tsc -b --force\n\n\n> @djimitflo/mcp-server@0.5.8 build\n> tsc\n\n\n> @djimitflo/ransomware-module@1.0.0 build\n> tsc -b --force\n\n\n> @djimitflo/dashboard@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/mcp-server@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/ransomware-module@1.0.0 type-check\n> tsc --noEmit\n\n\n> @djimitflo/server@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/shared@0.5.8 type-check\n> tsc --noEmit\n\n\n> @djimitflo/telegram@0.5.8 type-check\n> tsc -p tsconfig.json --noEmit\n\n\n"
     },
     {
@@ -44,8 +44,8 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:11.164Z",
-      "finished_at": "2026-08-29T20:33:17.374Z",
+      "started_at": "2026-08-29T20:40:29.283Z",
+      "finished_at": "2026-08-29T20:40:35.540Z",
       "evidence": "\n> djimitflo@0.5.8 lint\n> npm run lint --workspaces --if-present\n\n\n> @djimitflo/agent-catalog@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/dashboard@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/mcp-server@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/ransomware-module@1.0.0 lint\n> eslint .\n\n\n> @djimitflo/server@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/shared@0.5.8 lint\n> eslint .\n\n\n> @djimitflo/telegram@0.5.8 lint\n> eslint .\n\n\n"
     },
     {
@@ -53,17 +53,17 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:17.374Z",
-      "finished_at": "2026-08-29T20:33:24.689Z",
-      "evidence": "   15.28 kB │ gzip:  2.55 kB\ndist/assets/index-BReGOMWz.css                    38.43 kB │ gzip:  7.44 kB\ndist/assets/export-CASpLWa5.js                     0.09 kB │ gzip:  0.11 kB\ndist/assets/square-VQNRZq_L.js                     0.13 kB │ gzip:  0.14 kB\ndist/assets/arrow-left-B72qoRb2.js                 0.15 kB │ gzip:  0.15 kB\ndist/assets/trending-up-BHdc0kjM.js                0.16 kB │ gzip:  0.16 kB\ndist/assets/play-YvMsTw2r.js                       0.17 kB │ gzip:  0.16 kB\ndist/assets/circle-check-big-BavgkbwB.js           0.18 kB │ gzip:  0.17 kB\ndist/assets/rotate-ccw-DhiuTUKY.js                 0.18 kB │ gzip:  0.17 kB\ndist/assets/target-Dv3nfvzH.js                     0.21 kB │ gzip:  0.15 kB\ndist/assets/git-branch-DS8pfopC.js                 0.21 kB │ gzip:  0.18 kB\ndist/assets/download-R2dlNzIb.js                   0.22 kB │ gzip:  0.18 kB\ndist/assets/message-square-Mkjxp4JU.js             0.22 kB │ gzip:  0.19 kB\ndist/assets/database-DO98kH7r.js                   0.23 kB │ gzip:  0.19 kB\ndist/assets/circle-alert-D4lzb9mJ.js               0.23 kB │ gzip:  0.17 kB\ndist/assets/route-CuG8XxIY.js                      0.24 kB │ gzip:  0.19 kB\ndist/assets/funnel-CPeitRMZ.js                     0.24 kB │ gzip:  0.20 kB\ndist/assets/zap-hlRPt9lQ.js                        0.25 kB │ gzip:  0.19 kB\ndist/assets/refresh-cw-CltGgp_E.js                 0.31 kB │ gzip:  0.21 kB\ndist/assets/server-BW9Cx5Gy.js                     0.32 kB │ gzip:  0.20 kB\ndist/assets/file-text-rOTwEZcv.js                  0.37 kB │ gzip:  0.24 kB\ndist/assets/PolicyCenterPage-C5ZE4PpU.js           2.07 kB │ gzip:  0.79 kB\ndist/assets/SelfHealingPage-DVBiHi5l.js            2.42 kB │ gzip:  1.10 kB\ndist/assets/PredictiveAnalyticsPage-SdNJOFYf.js    2.76 kB │ gzip:  1.15 kB\ndist/assets/ApprovalQueuePage-CQXvg9l-.js          3.21 kB │ gzip:  1.29 kB\ndist/assets/AuditPage-DD0OAKPU.js                  3.61 kB │ gzip:  1.26 kB\ndist/assets/SelfDrivingDashboard-CapASwIK.js       4.20 kB │ gzip:  1.41 kB\ndist/assets/CompliancePage-DGuhiIhQ.js             4.22 kB │ gzip:  1.55 kB\ndist/assets/AgiReasoningPage-gzzPRj-A.js           4.49 kB │ gzip:  1.57 kB\ndist/assets/ApprovalCard-DytdI1gC.js               4.68 kB │ gzip:  1.52 kB\ndist/assets/FederationPage-MRh4yP45.js             4.69 kB │ gzip:  1.57 kB\ndist/assets/WorkstationUrlsPage-C6b8RFYi.js        4.69 kB │ gzip:  1.35 kB\ndist/assets/ConsensusDebatePage-C5L-HXEt.js        4.78 kB │ gzip:  1.73 kB\ndist/assets/EconomyPage-CQpNPg4L.js                4.97 kB │ gzip:  1.09 kB\ndist/assets/GovernanceScorecardPage-DIEiT3WO.js    5.62 kB │ gzip:  1.88 kB\ndist/assets/CognitiveRuntimePage-HR6_7WgW.js       5.63 kB │ gzip:  1.78 kB\ndist/assets/RepositoriesPage-B7oDk1lH.js           6.55 kB │ gzip:  1.92 kB\ndist/assets/MCPPermissionsPage-Dtxr6xXH.js         7.11 kB │ gzip:  1.86 kB\ndist/assets/ProofRunDetailPage-B-geW_6Q.js         7.16 kB │ gzip:  2.13 kB\ndist/assets/ObservabilityPage-CN5E6rfN.js          7.48 kB │ gzip:  2.28 kB\ndist/assets/RepositoryDetailPage-F72lbMcA.js       8.22 kB │ gzip:  2.05 kB\ndist/assets/UsagePage-WdRSc_ii.js                  8.23 kB │ gzip:  2.25 kB\ndist/assets/AgentCatalogPage-DVdVBFol.js           8.34 kB │ gzip:  2.42 kB\ndist/assets/jsx-runtime-bzQ4Vb5N.js                8.40 kB │ gzip:  3.20 kB\ndist/assets/ReviewPage-B3iSYuma.js                14.45 kB │ gzip:  3.38 kB\ndist/assets/SwarmOverviewPage-s9FYeup6.js         16.03 kB │ gzip:  3.63 kB\ndist/assets/TaskDetailPage-DLbRIVuO.js            17.06 kB │ gzip:  4.31 kB\ndist/assets/GoalsLoopsPage-E84zkkr6.js            23.07 kB │ gzip:  5.29 kB\ndist/assets/FleetCockpitPage-z1L-br6Y.js          23.64 kB │ gzip:  5.17 kB\ndist/assets/SwarmResourcesPage-CSOuvkWx.js        27.79 kB │ gzip:  6.08 kB\ndist/assets/SwarmMissionControlPage-B6dBZdBC.js   44.19 kB │ gzip:  8.55 kB\ndist/assets/PipelineBuilderPage-BBaZ-eUe.js      181.90 kB │ gzip: 58.86 kB\ndist/assets/index-146_wIev.js                    298.80 kB │ gzip: 90.99 kB\n\n✓ built in 593ms\n\n"
+      "started_at": "2026-08-29T20:40:35.540Z",
+      "finished_at": "2026-08-29T20:40:42.492Z",
+      "evidence": "   15.28 kB │ gzip:  2.55 kB\ndist/assets/index-BReGOMWz.css                    38.43 kB │ gzip:  7.44 kB\ndist/assets/export-CASpLWa5.js                     0.09 kB │ gzip:  0.11 kB\ndist/assets/square-VQNRZq_L.js                     0.13 kB │ gzip:  0.14 kB\ndist/assets/arrow-left-B72qoRb2.js                 0.15 kB │ gzip:  0.15 kB\ndist/assets/trending-up-BHdc0kjM.js                0.16 kB │ gzip:  0.16 kB\ndist/assets/play-YvMsTw2r.js                       0.17 kB │ gzip:  0.16 kB\ndist/assets/circle-check-big-BavgkbwB.js           0.18 kB │ gzip:  0.17 kB\ndist/assets/rotate-ccw-DhiuTUKY.js                 0.18 kB │ gzip:  0.17 kB\ndist/assets/target-Dv3nfvzH.js                     0.21 kB │ gzip:  0.15 kB\ndist/assets/git-branch-DS8pfopC.js                 0.21 kB │ gzip:  0.18 kB\ndist/assets/download-R2dlNzIb.js                   0.22 kB │ gzip:  0.18 kB\ndist/assets/message-square-Mkjxp4JU.js             0.22 kB │ gzip:  0.19 kB\ndist/assets/database-DO98kH7r.js                   0.23 kB │ gzip:  0.19 kB\ndist/assets/circle-alert-D4lzb9mJ.js               0.23 kB │ gzip:  0.17 kB\ndist/assets/route-CuG8XxIY.js                      0.24 kB │ gzip:  0.19 kB\ndist/assets/funnel-CPeitRMZ.js                     0.24 kB │ gzip:  0.20 kB\ndist/assets/zap-hlRPt9lQ.js                        0.25 kB │ gzip:  0.19 kB\ndist/assets/refresh-cw-CltGgp_E.js                 0.31 kB │ gzip:  0.21 kB\ndist/assets/server-BW9Cx5Gy.js                     0.32 kB │ gzip:  0.20 kB\ndist/assets/file-text-rOTwEZcv.js                  0.37 kB │ gzip:  0.24 kB\ndist/assets/PolicyCenterPage-C5ZE4PpU.js           2.07 kB │ gzip:  0.79 kB\ndist/assets/SelfHealingPage-DVBiHi5l.js            2.42 kB │ gzip:  1.10 kB\ndist/assets/PredictiveAnalyticsPage-SdNJOFYf.js    2.76 kB │ gzip:  1.15 kB\ndist/assets/ApprovalQueuePage-CQXvg9l-.js          3.21 kB │ gzip:  1.29 kB\ndist/assets/AuditPage-DD0OAKPU.js                  3.61 kB │ gzip:  1.26 kB\ndist/assets/SelfDrivingDashboard-CapASwIK.js       4.20 kB │ gzip:  1.41 kB\ndist/assets/CompliancePage-DGuhiIhQ.js             4.22 kB │ gzip:  1.55 kB\ndist/assets/AgiReasoningPage-gzzPRj-A.js           4.49 kB │ gzip:  1.57 kB\ndist/assets/ApprovalCard-DytdI1gC.js               4.68 kB │ gzip:  1.52 kB\ndist/assets/FederationPage-MRh4yP45.js             4.69 kB │ gzip:  1.57 kB\ndist/assets/WorkstationUrlsPage-C6b8RFYi.js        4.69 kB │ gzip:  1.35 kB\ndist/assets/ConsensusDebatePage-C5L-HXEt.js        4.78 kB │ gzip:  1.73 kB\ndist/assets/EconomyPage-CQpNPg4L.js                4.97 kB │ gzip:  1.09 kB\ndist/assets/GovernanceScorecardPage-DIEiT3WO.js    5.62 kB │ gzip:  1.88 kB\ndist/assets/CognitiveRuntimePage-HR6_7WgW.js       5.63 kB │ gzip:  1.78 kB\ndist/assets/RepositoriesPage-B7oDk1lH.js           6.55 kB │ gzip:  1.92 kB\ndist/assets/MCPPermissionsPage-Dtxr6xXH.js         7.11 kB │ gzip:  1.86 kB\ndist/assets/ProofRunDetailPage-B-geW_6Q.js         7.16 kB │ gzip:  2.13 kB\ndist/assets/ObservabilityPage-CN5E6rfN.js          7.48 kB │ gzip:  2.28 kB\ndist/assets/RepositoryDetailPage-F72lbMcA.js       8.22 kB │ gzip:  2.05 kB\ndist/assets/UsagePage-WdRSc_ii.js                  8.23 kB │ gzip:  2.25 kB\ndist/assets/AgentCatalogPage-DVdVBFol.js           8.34 kB │ gzip:  2.42 kB\ndist/assets/jsx-runtime-bzQ4Vb5N.js                8.40 kB │ gzip:  3.20 kB\ndist/assets/ReviewPage-B3iSYuma.js                14.45 kB │ gzip:  3.38 kB\ndist/assets/SwarmOverviewPage-s9FYeup6.js         16.03 kB │ gzip:  3.63 kB\ndist/assets/TaskDetailPage-DLbRIVuO.js            17.06 kB │ gzip:  4.31 kB\ndist/assets/GoalsLoopsPage-E84zkkr6.js            23.07 kB │ gzip:  5.29 kB\ndist/assets/FleetCockpitPage-z1L-br6Y.js          23.64 kB │ gzip:  5.17 kB\ndist/assets/SwarmResourcesPage-CSOuvkWx.js        27.79 kB │ gzip:  6.08 kB\ndist/assets/SwarmMissionControlPage-B6dBZdBC.js   44.19 kB │ gzip:  8.55 kB\ndist/assets/PipelineBuilderPage-BBaZ-eUe.js      181.90 kB │ gzip: 58.86 kB\ndist/assets/index-146_wIev.js                    298.80 kB │ gzip: 90.99 kB\n\n✓ built in 643ms\n\n"
     },
     {
       "id": "dependency_audit",
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:24.689Z",
-      "finished_at": "2026-08-29T20:33:25.394Z",
+      "started_at": "2026-08-29T20:40:42.492Z",
+      "finished_at": "2026-08-29T20:40:43.196Z",
       "evidence": "\n> djimitflo@0.5.8 audit:ci\n> node scripts/ci-audit.mjs\n\nNo unaccepted high/critical production advisories.\n\n"
     },
     {
@@ -71,8 +71,8 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:25.394Z",
-      "finished_at": "2026-08-29T20:33:26.222Z",
+      "started_at": "2026-08-29T20:40:43.196Z",
+      "finished_at": "2026-08-29T20:40:43.992Z",
       "evidence": "\n> djimitflo@0.5.8 assurance:contracts\n> node scripts/contract-inventory.mjs\n\n{\n  \"output\": \"/Users/dlandman/VPS/djimitflo-eve-l3/openspec/changes/assurance-truth-closure/contract-inventory.json\",\n  \"routes\": {\n    \"total\": 531,\n    \"tested\": 279,\n    \"critical_unclassified\": 0\n  },\n  \"mcp_tools\": {\n    \"total\": 46,\n    \"tested\": 46,\n    \"critical_unclassified\": 0\n  }\n}\n\n"
     },
     {
@@ -80,8 +80,8 @@
       "mandatory": true,
       "status": "blocked",
       "exit_code": 2,
-      "started_at": "2026-08-29T20:33:26.222Z",
-      "finished_at": "2026-08-29T20:33:27.398Z",
+      "started_at": "2026-08-29T20:40:43.992Z",
+      "finished_at": "2026-08-29T20:40:45.163Z",
       "evidence": "\n> djimitflo@0.5.8 assurance:openmythos\n> node scripts/openmythos-evidence.mjs\n\nBLOCKED /Users/dlandman/VPS/djimitflo-eve-l3/openspec/changes/assurance-truth-closure/openmythos-evidence.json\n\n"
     },
     {
@@ -89,8 +89,8 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:27.398Z",
-      "finished_at": "2026-08-29T20:33:28.144Z",
+      "started_at": "2026-08-29T20:40:45.163Z",
+      "finished_at": "2026-08-29T20:40:45.960Z",
       "evidence": "\n> djimitflo@0.5.8 assurance:integrations\n> node scripts/integration-probes.mjs\n\nPASS /Users/dlandman/VPS/djimitflo-eve-l3/openspec/changes/assurance-truth-closure/integration-evidence.json\n\n"
     },
     {
@@ -98,8 +98,8 @@
       "mandatory": true,
       "status": "fail",
       "exit_code": 1,
-      "started_at": "2026-08-29T20:33:28.144Z",
-      "finished_at": "2026-08-29T20:33:28.356Z",
+      "started_at": "2026-08-29T20:40:45.960Z",
+      "finished_at": "2026-08-29T20:40:46.177Z",
       "evidence": "\n> djimitflo@0.5.8 assurance:live\n> node scripts/live-identity-evidence.mjs\n\nFAIL /Users/dlandman/VPS/djimitflo-eve-l3/openspec/changes/assurance-truth-closure/live-identity-evidence.json\n\n"
     },
     {
@@ -107,8 +107,8 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-08-29T20:33:28.356Z",
-      "finished_at": "2026-08-29T20:33:28.377Z",
+      "started_at": "2026-08-29T20:40:46.177Z",
+      "finished_at": "2026-08-29T20:40:46.196Z",
       "evidence": "\n"
     }
   ],
