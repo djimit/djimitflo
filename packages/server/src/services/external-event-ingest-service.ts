@@ -64,19 +64,24 @@ export class ExternalEventIngestService {
         const id = String(event.event_id || event._id || '');
         const eventType = String(event.event_type || '');
         if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
-        if (eventType === 'outcome.observed' && !outcomeObservedSchema.safeParse(event).success) continue;
-        const aggregateVersion = Number(event.aggregate_version);
+        let normalizedEvent = event;
+        if (eventType === 'outcome.observed') {
+          const parsed = outcomeObservedSchema.safeParse(event);
+          if (!parsed.success) continue;
+          normalizedEvent = { ...event, ...parsed.data };
+        }
+        const aggregateVersion = Number(normalizedEvent.aggregate_version);
         inserted += insert.run(
           id,
           eventType,
-          String(event.source || (eventType.startsWith('paperclip.') ? 'paperclip' : 'external')),
-          event.correlation_id ? String(event.correlation_id) : null,
-          event.causation_id ? String(event.causation_id) : null,
-          event.aggregate_id ? String(event.aggregate_id) : null,
+          String(normalizedEvent.source || (eventType.startsWith('paperclip.') ? 'paperclip' : 'external')),
+          normalizedEvent.correlation_id ? String(normalizedEvent.correlation_id) : null,
+          normalizedEvent.causation_id ? String(normalizedEvent.causation_id) : null,
+          normalizedEvent.aggregate_id ? String(normalizedEvent.aggregate_id) : null,
           Number.isSafeInteger(aggregateVersion) && aggregateVersion > 0 ? aggregateVersion : null,
-          event.dedupe_key ? String(event.dedupe_key) : null,
-          String(event.occurred_at || event.timestamp || (eventType === 'outcome.observed' ? event.observed_at : '') || new Date().toISOString()),
-          JSON.stringify(event),
+          normalizedEvent.dedupe_key ? String(normalizedEvent.dedupe_key) : null,
+          String(normalizedEvent.occurred_at || normalizedEvent.timestamp || (eventType === 'outcome.observed' ? normalizedEvent.observed_at : '') || new Date().toISOString()),
+          JSON.stringify(normalizedEvent),
         ).changes;
       }
     });
