@@ -278,7 +278,7 @@ describe('ExecutionEngine', () => {
     expect(dispatched.attacker).toBeUndefined();
     expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'server-tenant', actor_id: 'dispatcher-1' });
     expect(dispatched.signature).toMatchObject({ algorithm: 'Ed25519', key_id: 'engine-key' });
-    expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('federation-overwrite') as any).metadata).deep_agent_contract.signature.algorithm).toBe('Ed25519');
+    expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('federation-overwrite') as any).metadata).deep_agent_contract).toBeUndefined();
     fs.rmSync(root, { recursive: true });
   });
 

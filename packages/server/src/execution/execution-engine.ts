@@ -381,8 +381,7 @@ export class ExecutionEngine {
       if (executorKind === 'deep-agent') {
         if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
         parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask, dispatcherId || '');
-        this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.deep_agent_contract', json(?)) WHERE id = ?")
-          .run(JSON.stringify(parsedTask.metadata.deep_agent_contract), taskId);
+        this.db.prepare("UPDATE tasks SET metadata = json_remove(COALESCE(metadata, '{}'), '$.deep_agent_contract') WHERE id = ?").run(taskId);
         if (!executor.canExecute(parsedTask)) throw new Error('Executor deep-agent cannot execute this task');
       }
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
