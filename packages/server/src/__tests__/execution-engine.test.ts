@@ -9,6 +9,8 @@ import { RuntimeGovernanceService } from '../services/runtime-governance-service
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
 import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -206,9 +208,13 @@ describe('ExecutionEngine', () => {
       VALUES (?, ?, 'pending', 'low', 'high_risk_action', 'expired', '{}', 'maker-1', ?, '{}')
     `).run('approval-expired', task.id, new Date(Date.now() - 1_000).toISOString());
 
-    expect(() => (engine as any).approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
+    const broadcastTaskEventById = vi.fn();
+    const approvalService = new ApprovalService(db, { broadcastTaskEventById }, new AuditService(db));
+    expect(() => approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
-    expect((engine as any).approvalService.getLatestPendingForTask(task.id)).toBeNull();
+    expect(approvalService.getLatestPendingForTask(task.id)).toBeNull();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(1);
+    expect(broadcastTaskEventById).toHaveBeenCalledWith(task.id, expect.objectContaining({ type: 'approval.expired' }));
   });
 
   it('materializes Dennis approvals without starting a generic executor', async () => {
