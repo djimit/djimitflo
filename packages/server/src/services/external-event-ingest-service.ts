@@ -1,25 +1,26 @@
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 
+const nonBlank = z.string().trim().min(1);
 const outcomeObservedSchema = z.object({
-  outcome_id: z.string().min(1),
-  subject_type: z.string().min(1),
-  subject_id: z.string().min(1),
-  task_id: z.string().min(1),
-  candidate_id: z.string().min(1),
-  capability_id: z.string().min(1),
-  model_id: z.string().min(1),
-  skill_hash: z.string().min(1),
-  runtime_identity: z.string().min(1),
-  metric: z.string().min(1),
-  value: z.union([z.string(), z.number(), z.boolean()]),
-  baseline: z.union([z.string(), z.number(), z.boolean()]),
-  observation_window: z.string().min(1),
-  evidence_refs: z.array(z.string().min(1)).min(1),
+  outcome_id: nonBlank,
+  subject_type: nonBlank,
+  subject_id: nonBlank,
+  task_id: nonBlank,
+  candidate_id: nonBlank,
+  capability_id: nonBlank,
+  model_id: nonBlank,
+  skill_hash: nonBlank,
+  runtime_identity: nonBlank,
+  metric: nonBlank,
+  value: z.union([nonBlank, z.number(), z.boolean()]),
+  baseline: z.union([nonBlank, z.number(), z.boolean()]),
+  observation_window: nonBlank,
+  evidence_refs: z.array(nonBlank).min(1),
   confidence: z.number().min(0).max(1),
-  causal_status: z.string().min(1),
+  causal_status: nonBlank,
   observed_at: z.string().datetime({ offset: true }),
-  dedupe_key: z.string().min(1),
+  dedupe_key: nonBlank,
 });
 
 export class ExternalEventIngestService {

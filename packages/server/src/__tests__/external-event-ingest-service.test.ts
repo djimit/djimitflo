@@ -75,6 +75,7 @@ describe('ExternalEventIngestService', () => {
       outcome,
       { ...outcome, event_id: 'outcome:redelivery' },
       { ...outcome, event_id: 'outcome:missing-dedupe', dedupe_key: undefined },
+      { ...outcome, event_id: 'outcome:blank-id', outcome_id: '   ', dedupe_key: 'outcome:blank-id' },
       { event_id: 'outcome:invalid', event_type: 'outcome.observed', outcome_id: 'missing-fields' },
     ] }), { status: 200 })));
 
