@@ -185,8 +185,10 @@ describe('DennisAgentService', () => {
     const service = new DennisAgentService(db, { okfBase, wsService: { broadcastTaskEventById } });
     service.heartbeat();
     service.importPaperclipPending(pending);
+    expect((db.prepare("SELECT status FROM tasks WHERE agent_id = ? AND execution_mode = 'dry_run'").get(DENNIS_AGENT_ID) as any).status).toBe('pending');
+    expect(broadcastTaskEventById).not.toHaveBeenCalled();
 
-    const result = service.processDryRunTasks();
+    const result = service.processGovernedQueue();
 
     expect(result.processed).toBe(1);
     expect(result.work_items_blocked).toBe(1);
@@ -224,7 +226,7 @@ describe('DennisAgentService', () => {
     });
 
     db.prepare('UPDATE approvals SET expires_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', approvalId);
-    service.heartbeat();
+    service.processGovernedQueue();
     const renewedWorkItem = db.prepare('SELECT metadata FROM work_items WHERE id = ?').get(workItem.id) as any;
     const renewedApprovalId = JSON.parse(renewedWorkItem.metadata).approval_id;
     expect(renewedApprovalId).not.toBe(approvalId);

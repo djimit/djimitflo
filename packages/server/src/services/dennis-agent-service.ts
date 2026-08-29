@@ -215,8 +215,7 @@ export class DennisAgentService {
     }
 
     const paperclipImport = this.importPaperclipPending();
-    this.renewExpiredDryRunApprovals(now);
-    const dryRunProcessing = this.processDryRunTasks();
+    const dryRunProcessing = { processed: 0, skipped: 0, work_items_blocked: 0 };
     const traceSpanId = this.recordTrace(now, {
       okf_concept_path: okfConceptPath,
       capabilities: CAPABILITIES,
@@ -371,6 +370,11 @@ export class DennisAgentService {
     }
 
     return result;
+  }
+
+  processGovernedQueue(): DennisDryRunProcessingResult {
+    this.renewExpiredDryRunApprovals(new Date().toISOString());
+    return this.processDryRunTasks();
   }
 
   materializeApprovedDryRun(approvalId: string, approvedBy = 'system'): DennisApprovedDryRunResult {
