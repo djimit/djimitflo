@@ -148,17 +148,20 @@ async function main() {
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
 
-  const dennisAgent = new DennisAgentService(db, { wsService });
-  const processDennisQueue = () => {
-    try {
-      dennisAgent.processGovernedQueue();
-    } catch (error) {
-      console.warn('⚠️ Dennis governed queue failed:', error instanceof Error ? error.message : String(error));
-    }
-  };
-  processDennisQueue();
-  const dennisQueueTimer = setInterval(processDennisQueue, 60_000);
-  dennisQueueTimer.unref();
+  let dennisQueueTimer: NodeJS.Timeout | undefined;
+  if (operatorRuntime) {
+    const dennisAgent = new DennisAgentService(db, { wsService });
+    const processDennisQueue = () => {
+      try {
+        dennisAgent.processGovernedQueue();
+      } catch (error) {
+        console.warn('⚠️ Dennis governed queue failed:', error instanceof Error ? error.message : String(error));
+      }
+    };
+    processDennisQueue();
+    dennisQueueTimer = setInterval(processDennisQueue, 60_000);
+    dennisQueueTimer.unref();
+  }
   
   // Prometheus exposition — default-off, armed by METRICS_TOKEN (see routes/metrics.ts)
   app.get('/metrics', metricsRateLimiter, createMetricsHandler(db, () => wsService.getClientCount()));
@@ -299,7 +302,7 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
-    clearInterval(dennisQueueTimer);
+    if (dennisQueueTimer) clearInterval(dennisQueueTimer);
     httpServer.close(() => {
       console.log('👋 Server closed');
       db.close();

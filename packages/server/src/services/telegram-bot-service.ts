@@ -366,6 +366,7 @@ export class TelegramBotService {
     try {
       if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
       this.approvalService.decideApproval(approvalId, false, actorUserId);
+      new DennisAgentService(this.db).finalizeDeniedDryRun(approvalId, actorUserId);
       await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
     } catch (error) {
       await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
