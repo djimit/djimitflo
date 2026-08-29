@@ -36,7 +36,7 @@ import { LoopDaemon } from './services/loop-daemon';
 import { SelfModelService } from './services/self-model-service';
 import { RuntimeGovernanceService } from './services/runtime-governance-service';
 import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
-import { initOperatorServices } from './bootstrap/operator-services';
+import { initExternalEventIngest, initOperatorServices } from './bootstrap/operator-services';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
@@ -88,6 +88,7 @@ async function main() {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  initExternalEventIngest(db);
   if (operatorRuntime) initOperatorServices(db);
   if (autonomousRuntime) {
     initAutonomousServices(db, recoverySvc);

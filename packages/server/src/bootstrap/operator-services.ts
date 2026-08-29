@@ -9,10 +9,6 @@ import { PromptIntelService } from '../services/prompt-intel-service';
 
 export function initOperatorServices(db: any): void {
   try {
-    const externalEventIngest = new ExternalEventIngestService(db);
-    externalEventIngest.start();
-    lifecycleManager.register(externalEventIngest);
-
     const promptIntel = new PromptIntelService(db);
     lifecycleManager.register({ serviceName: 'PromptIntel', stop: () => (promptIntel as any)?.stop?.() });
     const pendingPath = process.env.PROMPT_INTEL_PENDING || (process.env.HOME || '/Users/djimit') + '/.djimit/roborev/paperclip-tasks.pending.jsonl';
@@ -23,4 +19,10 @@ export function initOperatorServices(db: any): void {
   } catch (error) {
     console.warn('⚠️  PromptIntel ingestion failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
+}
+
+export function initExternalEventIngest(db: any): void {
+  const externalEventIngest = new ExternalEventIngestService(db);
+  externalEventIngest.start();
+  lifecycleManager.register(externalEventIngest);
 }

@@ -18,18 +18,24 @@ async function http(id, url, required) {
 
 async function eventStream(url) {
   const started = Date.now();
+  let response;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    const body = response.ok ? await response.json() : null;
-    return {
-      id: 'event_bus', kind: 'http-json', required: true, target: url,
-      status: response.ok && Array.isArray(body?.events) ? 'pass' : 'fail',
-      http_status: response.status, latency_ms: Date.now() - started,
-      reason: response.ok && !Array.isArray(body?.events) ? 'response.events is not an array' : undefined,
-    };
+    response = await fetch(url, { signal: AbortSignal.timeout(3000) });
   } catch (error) {
     return { id: 'event_bus', kind: 'http-json', required: true, target: url, status: 'blocked', latency_ms: Date.now() - started, reason: error instanceof Error ? error.message : String(error) };
   }
+  let body;
+  try {
+    body = response.ok ? await response.json() : null;
+  } catch {
+    return { id: 'event_bus', kind: 'http-json', required: true, target: url, status: 'fail', http_status: response.status, latency_ms: Date.now() - started, reason: 'response is not valid JSON' };
+  }
+  return {
+    id: 'event_bus', kind: 'http-json', required: true, target: url,
+    status: response.ok && Array.isArray(body?.events) ? 'pass' : 'fail',
+    http_status: response.status, latency_ms: Date.now() - started,
+    reason: response.ok && !Array.isArray(body?.events) ? 'response.events is not an array' : undefined,
+  };
 }
 
 function binary(id, command, required) {
