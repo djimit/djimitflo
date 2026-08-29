@@ -61,7 +61,9 @@ export class ExternalEventIngestService {
     let inserted = 0;
     const transaction = this.db.transaction(() => {
       for (const event of body.events || []) {
-        const id = String(event.event_id || event._id || '');
+        const id = [event.event_id, event._id]
+          .map(value => String(value ?? '').trim())
+          .find(Boolean) || '';
         const eventType = String(event.event_type || '');
         if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
         let normalizedEvent = event;

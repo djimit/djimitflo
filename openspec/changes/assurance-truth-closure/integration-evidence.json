@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-29T20:19:18.976Z",
+  "generated_at": "2026-08-29T20:26:18.868Z",
   "status": "pass",
   "probes": [
     {
@@ -10,16 +10,16 @@
       "target": "http://100.86.47.122:3001/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 350
+      "latency_ms": 309
     },
     {
       "id": "event_bus",
-      "kind": "http",
+      "kind": "http-json",
       "required": true,
-      "target": "http://100.86.47.122:8083/health",
+      "target": "http://100.86.47.122:8083/events/djimit.events?count=1",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 341
+      "latency_ms": 299
     },
     {
       "id": "paperclip",
@@ -28,7 +28,7 @@
       "target": "http://192.168.1.28:3100/api/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 380
+      "latency_ms": 333
     },
     {
       "id": "uams",
@@ -37,7 +37,7 @@
       "target": "http://100.77.58.72:8000/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 437
+      "latency_ms": 397
     },
     {
       "id": "ollama",
@@ -46,7 +46,7 @@
       "target": "http://100.77.58.72:11434/api/tags",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 338
+      "latency_ms": 299
     },
     {
       "id": "qdrant",
@@ -55,7 +55,7 @@
       "target": "http://100.77.58.72:6333/healthz",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 339
+      "latency_ms": 295
     },
     {
       "id": "litellm",
@@ -63,7 +63,7 @@
       "required": false,
       "target": "http://192.168.1.28:4000/health",
       "status": "unavailable",
-      "latency_ms": 356,
+      "latency_ms": 306,
       "reason": "fetch failed"
     },
     {
@@ -73,7 +73,7 @@
       "target": "https://mcp.context7.com/mcp",
       "status": "fail",
       "http_status": 405,
-      "latency_ms": 644
+      "latency_ms": 576
     },
     {
       "id": "codex",

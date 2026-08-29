@@ -16,6 +16,22 @@ async function http(id, url, required) {
   }
 }
 
+async function eventStream(url) {
+  const started = Date.now();
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    const body = response.ok ? await response.json() : null;
+    return {
+      id: 'event_bus', kind: 'http-json', required: true, target: url,
+      status: response.ok && Array.isArray(body?.events) ? 'pass' : 'fail',
+      http_status: response.status, latency_ms: Date.now() - started,
+      reason: response.ok && !Array.isArray(body?.events) ? 'response.events is not an array' : undefined,
+    };
+  } catch (error) {
+    return { id: 'event_bus', kind: 'http-json', required: true, target: url, status: 'blocked', latency_ms: Date.now() - started, reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 function binary(id, command, required) {
   const result = spawnSync(command, ['--version'], { encoding: 'utf8', timeout: 5000 });
   return {
@@ -26,9 +42,11 @@ function binary(id, command, required) {
   };
 }
 
+const eventBusUrl = process.env.DJIMIT_EVENT_BUS_URL || 'http://100.86.47.122:8083';
+const eventStreamUrl = `${eventBusUrl.replace(/\/$/, '')}/events/${encodeURIComponent(process.env.DJIMIT_EVENT_STREAM || 'djimit.events')}?count=1`;
 const probes = await Promise.all([
   http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true),
-  http('event_bus', `${process.env.DJIMIT_EVENT_BUS_URL || 'http://100.86.47.122:8083'}/health`, true),
+  eventStream(eventStreamUrl),
   http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true),
   http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true),
   http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true),
