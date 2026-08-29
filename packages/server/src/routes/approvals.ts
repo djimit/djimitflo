@@ -31,6 +31,16 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     return approval;
   }
 
+  function sendDecisionError(error: unknown, res: any): boolean {
+    if (!(error instanceof Error)) return false;
+    const code = error.message.includes('SELF_APPROVAL_FORBIDDEN')
+      ? 'SELF_APPROVAL_FORBIDDEN'
+      : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED' : null;
+    if (!code) return false;
+    res.status(code === 'APPROVAL_EXPIRED' ? 410 : 409).json({ error: { message: error.message, code } });
+    return true;
+  }
+
   function loadTaskForApproval(approval: any): any | null {
     if (!approval || !approval.task_id) return null;
     return db.prepare('SELECT * FROM tasks WHERE id = ?').get(approval.task_id) as any;
@@ -125,10 +135,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       try {
         await executionEngine.handleApprovalDecision(id, Boolean(approved), decidedBy, reason);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
-          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
-          return;
-        }
+        if (sendDecisionError(error, res)) return;
         throw error;
       }
 
@@ -161,10 +168,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       try {
         await executionEngine.handleApprovalDecision(req.params.id, true, decidedBy, req.body.reason);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
-          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
-          return;
-        }
+        if (sendDecisionError(error, res)) return;
         throw error;
       }
 
@@ -197,10 +201,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       try {
         await executionEngine.handleApprovalDecision(req.params.id, false, decidedBy, req.body.reason);
       } catch (error) {
-        if (error instanceof Error && error.message.includes('SELF_APPROVAL_FORBIDDEN')) {
-          res.status(409).json({ error: { message: error.message, code: 'SELF_APPROVAL_FORBIDDEN' } });
-          return;
-        }
+        if (sendDecisionError(error, res)) return;
         throw error;
       }
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(req.params.id) as any;

@@ -55,7 +55,10 @@ describe('critical HTTP contracts', () => {
     app.use(express.json());
     app.use((req: any, _res, next) => { req.user = { sub: 'contract-admin', email: 'contract@example.com', role: 'admin' }; next(); });
     app.use('/auth', createAuthRoutes(authService, realAuth, new AuditService(db)));
-    app.use('/approvals', createApprovalRoutes(db, undefined, passAuth));
+    const expiredEngine = {
+      handleApprovalDecision: async () => { throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.'); },
+    } as any;
+    app.use('/approvals', createApprovalRoutes(db, expiredEngine, passAuth));
     app.use('/backups', createBackupRoutes(db, passAuth));
     app.use('/exports', createExportRoutes(db, passAuth));
     app.use('/openmythos', createOpenMythosRoutes(db, passAuth));
@@ -91,6 +94,14 @@ describe('critical HTTP contracts', () => {
       ['/approvals/missing', 'GET'], ['/approvals/missing', 'PATCH'], ['/approvals/missing/approve', 'POST'],
       ['/approvals/missing/deny', 'POST'], ['/approvals/missing/cancel', 'POST'],
     ]) expect((await request(path, { method })).status).toBe(404);
+
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,tags,metadata)
+      VALUES ('expired-task','Expired','Expired approval','awaiting_approval','low','high','local','[]','{}')`).run();
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by)
+      VALUES ('expired-approval','expired-task','expired','high','high_risk_action','Expired','{}','maker')`).run();
+    const expired = await request('/approvals/expired-approval/approve', { method: 'POST', body: '{}' });
+    expect(expired.status).toBe(410);
+    expect((await expired.json() as any).error.code).toBe('APPROVAL_EXPIRED');
   });
 
   it('exercises backup creation, retrieval, download, validation, and restore refusal', async () => {

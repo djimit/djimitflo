@@ -21,6 +21,8 @@ interface ProcessOutput {
   stderr: string;
 }
 
+const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
+
 export class DeepAgentExecutor implements TaskExecutor {
   readonly kind: ExecutorKind = 'deep-agent';
 
@@ -156,7 +158,20 @@ export class DeepAgentExecutor implements TaskExecutor {
       body: JSON.stringify(task.metadata.deep_agent_contract),
       signal: controller.signal,
     }).then(async (response): Promise<ProcessOutput> => {
-      const body = (await response.text()).slice(-1024 * 1024);
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytes += value.byteLength;
+        if (bytes > MAX_RUNTIME_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw new Error(`Deep Agent runtime response exceeds ${MAX_RUNTIME_RESPONSE_BYTES} bytes`);
+        }
+        chunks.push(value);
+      }
+      const body = new TextDecoder().decode(Buffer.concat(chunks));
       return { code: response.ok ? 0 : response.status, stdout: response.ok ? body : '', stderr: response.ok ? '' : body };
     }).catch((error: unknown): ProcessOutput => ({
       code: 1,

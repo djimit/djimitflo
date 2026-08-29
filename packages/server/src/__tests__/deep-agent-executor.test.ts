@@ -147,6 +147,22 @@ process.stdin.on('end', () => {
       'loopback or literal Tailscale IPv4',
     );
   });
+
+  it('fails closed before buffering an oversized remote response', async () => {
+    const server = http.createServer((_request, response) => {
+      response.write('x'.repeat(1024 * 1024));
+      response.end('x');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('test server has no TCP address');
+
+    const session = await new DeepAgentExecutor('', '', `http://127.0.0.1:${address.port}`).start(task());
+    const result = await session.result;
+    expect(result.status).toBe('failed');
+    expect(result.stderr).toContain('runtime response exceeds');
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  });
 });
 
 describe('DeepAgentContractIssuer', () => {
