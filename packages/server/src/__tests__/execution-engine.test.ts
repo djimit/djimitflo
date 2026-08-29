@@ -232,6 +232,15 @@ describe('ExecutionEngine', () => {
     expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = 'dennis-task' AND event_type = 'execution.resumed'").get() as any).count).toBe(0);
     expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-work'").get() as any).status).toBe('done');
     expect((engine as any).hasApprovedStart('dennis-task', 'opencode')).toBe(false);
+
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('dennis-denied','dennis-task','pending','high','high_risk_action','Materialize','{}','dennis-agent',?,?)`)
+      .run(expiresAt, JSON.stringify({ dennis_action: 'materialize_dry_run' }));
+    db.prepare(`INSERT INTO work_items (id,title,description,source,risk_class,status,assigned_agent_id,metadata)
+      VALUES ('dennis-denied-work','Dennis','Evidence only','paperclip_pending_jsonl','high','blocked','dennis-agent',?)`)
+      .run(JSON.stringify({ task_id: 'dennis-task', approval_id: 'dennis-denied' }));
+    expect((await engine.handleApprovalDecision('dennis-denied', false, 'checker'))?.status).toBe('denied');
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-denied-work'").get() as any).status).toBe('discarded');
   });
 
   it('scopes execution approval to its selected executor', () => {

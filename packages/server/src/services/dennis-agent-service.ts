@@ -437,6 +437,24 @@ export class DennisAgentService {
     return { status: 'materialized', approval_id: approvalId, task_id: task.id, event_id: eventId };
   }
 
+  finalizeDeniedDryRun(approvalId: string, deniedBy = 'system'): number {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND status = 'blocked'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string | null }>;
+    let finalized = 0;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (metadata.approval_id !== approvalId) continue;
+      this.db.prepare('UPDATE work_items SET status = ?, metadata = ?, updated_at = ? WHERE id = ?').run(
+        'discarded', JSON.stringify({ ...metadata, denied_approval_id: approvalId, denied_by: deniedBy, denied_at: now }), now, row.id,
+      );
+      finalized++;
+    }
+    return finalized;
+  }
+
   readinessSnapshot(maxHeartbeatAgeMs = 120_000): DennisReadinessSnapshot {
     const agent = this.db.prepare('SELECT last_heartbeat_at FROM agents WHERE id = ?').get(DENNIS_AGENT_ID) as { last_heartbeat_at?: string } | undefined;
     const lastHeartbeat = agent?.last_heartbeat_at ? Date.parse(agent.last_heartbeat_at) : 0;

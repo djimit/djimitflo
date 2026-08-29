@@ -607,6 +607,9 @@ export class ExecutionEngine {
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
     const approval = this.approvalService.decideApproval(approvalId, approved, decidedBy || 'system', reason);
     if (!approved) {
+      if (approval.metadata?.dennis_action === 'materialize_dry_run') {
+        new DennisAgentService(this.db).finalizeDeniedDryRun(approvalId, decidedBy);
+      }
       this.evidenceService.captureEvidence({
         task_id: approval.task_id,
         approval_id: approvalId,
