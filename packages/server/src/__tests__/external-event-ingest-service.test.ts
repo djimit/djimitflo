@@ -74,13 +74,14 @@ describe('ExternalEventIngestService', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
       outcome,
       { ...outcome, event_id: 'outcome:redelivery' },
+      { ...outcome, event_id: 'outcome:missing-dedupe', dedupe_key: undefined },
       { event_id: 'outcome:invalid', event_type: 'outcome.observed', outcome_id: 'missing-fields' },
     ] }), { status: 200 })));
 
     const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
     expect(await service.pollOnce()).toBe(1);
-    expect(db.prepare("SELECT id, event_type, source FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
-      { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v' },
+    expect(db.prepare("SELECT id, event_type, source, occurred_at FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
+      { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
     ]);
     db.close();
   });

@@ -19,6 +19,7 @@ const outcomeObservedSchema = z.object({
   confidence: z.number().min(0).max(1),
   causal_status: z.string().min(1),
   observed_at: z.string().datetime({ offset: true }),
+  dedupe_key: z.string().min(1),
 });
 
 export class ExternalEventIngestService {
@@ -73,7 +74,7 @@ export class ExternalEventIngestService {
           event.aggregate_id ? String(event.aggregate_id) : null,
           Number.isSafeInteger(aggregateVersion) && aggregateVersion > 0 ? aggregateVersion : null,
           event.dedupe_key ? String(event.dedupe_key) : null,
-          String(event.occurred_at || event.timestamp || new Date().toISOString()),
+          String(event.occurred_at || event.timestamp || (eventType === 'outcome.observed' ? event.observed_at : '') || new Date().toISOString()),
           JSON.stringify(event),
         ).changes;
       }
