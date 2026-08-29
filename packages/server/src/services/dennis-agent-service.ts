@@ -609,7 +609,7 @@ export class DennisAgentService {
       if (typeof metadata.approval_id !== 'string' || typeof metadata.task_id !== 'string' || !metadata.dry_run_plan) continue;
       const approval = this.db.prepare('SELECT status, expires_at FROM approvals WHERE id = ?').get(metadata.approval_id) as { status: string; expires_at: string | null } | undefined;
       if (!approval || (approval.status !== 'expired' && !(approval.status === 'pending' && (!approval.expires_at || new Date(approval.expires_at).getTime() <= new Date(now).getTime())))) continue;
-      this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, metadata.approval_id);
+      this.approvalService.getLatestPendingForTask(metadata.task_id);
       const approvalId = this.ensureDryRunApproval(metadata.task_id, metadata.dry_run_plan as ReturnType<DennisAgentService['dryRunPlan']>, now);
       this.db.prepare('UPDATE work_items SET metadata = ?, updated_at = ? WHERE id = ?').run(
         JSON.stringify({ ...metadata, approval_id: approvalId, blocked_at: now }), now, row.id,

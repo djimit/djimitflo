@@ -232,7 +232,8 @@ describe('DennisAgentService', () => {
     expect(renewedApprovalId).not.toBe(approvalId);
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('expired');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(renewedApprovalId) as any).status).toBe('pending');
-    expect(broadcastTaskEventById).toHaveBeenCalledTimes(2);
+    expect(broadcastTaskEventById).toHaveBeenCalledTimes(3);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.expired'").get(task.id) as any).count).toBe(1);
     expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.requested'").get(task.id) as any).count).toBe(2);
     approvalId = renewedApprovalId;
 
