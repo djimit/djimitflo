@@ -1,12 +1,22 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-29T21:35:32.551Z",
+  "generated_at": "2026-08-29T21:46:12.429Z",
   "routes": {
     "total": 531,
-    "tested": 56,
-    "module_covered": 298,
+    "tested": 159,
+    "module_covered": 193,
     "unclassified": 177,
     "critical_unclassified": [],
+    "critical_exempted": [
+      {
+        "id": "swarms:POST:/expert/dispatch",
+        "reason": "Dispatches external research providers; requires an isolated network-controlled contract canary."
+      },
+      {
+        "id": "swarms:POST:/fix",
+        "reason": "Can modify a repository and invoke an agent runtime; requires an isolated disposable-worktree canary."
+      }
+    ],
     "items": [
       {
         "id": "advanced:GET:/compression/stats",
@@ -15,6 +25,7 @@
         "path": "/compression/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -25,6 +36,7 @@
         "path": "/compression/compress",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -35,6 +47,7 @@
         "path": "/compression/retrieve/:hash",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -45,6 +58,7 @@
         "path": "/workflows",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -55,6 +69,7 @@
         "path": "/workflows/:id",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -65,6 +80,7 @@
         "path": "/workflows/:id/next",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -75,6 +91,7 @@
         "path": "/workflows/:id/nodes/:nodeId/approve",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -85,6 +102,7 @@
         "path": "/workflows/:id/nodes/:nodeId/reject",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -95,6 +113,7 @@
         "path": "/workflows/:id/nodes/:nodeId/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -105,6 +124,7 @@
         "path": "/feedback",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -115,6 +135,7 @@
         "path": "/feedback/analyze",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -125,6 +146,7 @@
         "path": "/feedback/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -135,6 +157,7 @@
         "path": "/feedback/recent",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -145,6 +168,7 @@
         "path": "/feedback/apply",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -155,6 +179,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -168,6 +193,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -181,6 +207,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -194,6 +221,7 @@
         "path": "/:id/status",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -207,6 +235,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -220,6 +249,7 @@
         "path": "/:id/heartbeat",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -233,6 +263,7 @@
         "path": "/create-from-description",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -246,6 +277,7 @@
         "path": "/:id/approve",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -259,6 +291,7 @@
         "path": "/reason",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -269,6 +302,7 @@
         "path": "/observe",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -279,6 +313,7 @@
         "path": "/reasoning/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -289,6 +324,7 @@
         "path": "/consensus/debates",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -299,6 +335,7 @@
         "path": "/consensus/debates/:debateId/proposals",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -309,6 +346,7 @@
         "path": "/consensus/debates/:debateId/vote",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -319,6 +357,7 @@
         "path": "/consensus/debates/:debateId/resolve",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -329,6 +368,7 @@
         "path": "/consensus/debates/:debateId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -339,6 +379,7 @@
         "path": "/consensus/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -349,6 +390,7 @@
         "path": "/plugins",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -359,6 +401,7 @@
         "path": "/plugins/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -369,6 +412,7 @@
         "path": "/plugins/:id/enable",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -379,6 +423,7 @@
         "path": "/plugins/:id/disable",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -389,6 +434,7 @@
         "path": "/memory/store",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -399,6 +445,7 @@
         "path": "/memory/search",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -409,6 +456,7 @@
         "path": "/memory/clusters",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -419,6 +467,7 @@
         "path": "/memory/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -429,6 +478,7 @@
         "path": "/workers/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -439,6 +489,7 @@
         "path": "/workers/:id/run",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -449,6 +500,7 @@
         "path": "/workers/:id/start",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -459,6 +511,7 @@
         "path": "/workers/:id/stop",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -469,6 +522,7 @@
         "path": "/llm/route",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -479,6 +533,7 @@
         "path": "/llm/providers",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -489,6 +544,7 @@
         "path": "/llm/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -499,6 +555,7 @@
         "path": "/llm/performance",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -508,8 +565,11 @@
         "method": "GET",
         "path": "/",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -521,8 +581,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -534,8 +597,11 @@
         "method": "PATCH",
         "path": "/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -547,8 +613,11 @@
         "method": "POST",
         "path": "/:id/approve",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -560,8 +629,11 @@
         "method": "POST",
         "path": "/:id/deny",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -573,8 +645,11 @@
         "method": "POST",
         "path": "/:id/cancel",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -587,6 +662,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -599,6 +675,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -611,7 +688,9 @@
         "path": "/login",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/e2e-smoke.test.ts"
         ],
         "module_evidence": [
@@ -625,8 +704,11 @@
         "method": "GET",
         "path": "/me",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -638,8 +720,11 @@
         "method": "POST",
         "path": "/logout",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -651,8 +736,11 @@
         "method": "POST",
         "path": "/",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -664,8 +752,11 @@
         "method": "GET",
         "path": "/",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -677,8 +768,11 @@
         "method": "GET",
         "path": "/:filename",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -690,8 +784,11 @@
         "method": "GET",
         "path": "/:filename/download",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -703,8 +800,11 @@
         "method": "POST",
         "path": "/:filename/validate",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -716,8 +816,11 @@
         "method": "POST",
         "path": "/:filename/restore",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -730,6 +833,7 @@
         "path": "/sessions",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -740,6 +844,7 @@
         "path": "/sessions/:runId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -750,6 +855,7 @@
         "path": "/sessions",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -760,6 +866,7 @@
         "path": "/sessions/:runId/thinking",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -770,6 +877,7 @@
         "path": "/sessions/:runId/tool-call",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -780,6 +888,7 @@
         "path": "/sessions/:runId/tool-result",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -790,6 +899,7 @@
         "path": "/sessions/:runId/diff",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -800,6 +910,7 @@
         "path": "/sessions/:runId/progress",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -810,6 +921,7 @@
         "path": "/sessions/:runId/complete",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -820,6 +932,7 @@
         "path": "/counts",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -832,6 +945,7 @@
         "path": "/agents",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -844,6 +958,7 @@
         "path": "/agents/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -856,6 +971,7 @@
         "path": "/search",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -868,6 +984,7 @@
         "path": "/compile/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -880,6 +997,7 @@
         "path": "/activate/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -892,6 +1010,7 @@
         "path": "/deactivate/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -904,6 +1023,7 @@
         "path": "/evaluate/batch",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -916,6 +1036,7 @@
         "path": "/evaluate/summary",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -928,6 +1049,7 @@
         "path": "/evaluate/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -940,6 +1062,7 @@
         "path": "/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -952,6 +1075,7 @@
         "path": "/meta-learning",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -964,6 +1088,7 @@
         "path": "/strategy/:goalType",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -976,6 +1101,7 @@
         "path": "/episodes",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -988,6 +1114,7 @@
         "path": "/extract-patterns",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -1000,6 +1127,7 @@
         "path": "/evolve-strategies",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -1012,6 +1140,7 @@
         "path": "/status",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1024,6 +1153,7 @@
         "path": "/audit/append",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1036,6 +1166,7 @@
         "path": "/audit/log",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1048,6 +1179,7 @@
         "path": "/audit/verify",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1060,6 +1192,7 @@
         "path": "/reports/generate",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1072,6 +1205,7 @@
         "path": "/specs",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
         ],
@@ -1086,6 +1220,7 @@
         "path": "/export",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
@@ -1098,6 +1233,7 @@
         "path": "/reports/export",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/governance-reports.test.ts"
         ],
@@ -1112,6 +1248,7 @@
         "path": "/overview",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1122,6 +1259,7 @@
         "path": "/capabilities",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1132,6 +1270,7 @@
         "path": "/gates",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1142,6 +1281,7 @@
         "path": "/memory",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1152,6 +1292,7 @@
         "path": "/models",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1162,6 +1303,7 @@
         "path": "/audit",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1172,6 +1314,7 @@
         "path": "/improvements",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1181,8 +1324,11 @@
         "method": "POST",
         "path": "/sessions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1193,8 +1339,11 @@
         "method": "GET",
         "path": "/sessions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1205,8 +1354,11 @@
         "method": "GET",
         "path": "/sessions/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1217,8 +1369,11 @@
         "method": "POST",
         "path": "/sessions/:id/execute",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1229,8 +1384,11 @@
         "method": "GET",
         "path": "/sessions/:id/outputs",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1241,8 +1399,11 @@
         "method": "GET",
         "path": "/sessions/:id/evaluations",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1253,8 +1414,11 @@
         "method": "GET",
         "path": "/sessions/:id/aggregate",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1265,8 +1429,11 @@
         "method": "POST",
         "path": "/models",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1277,8 +1444,11 @@
         "method": "GET",
         "path": "/models",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1289,8 +1459,11 @@
         "method": "GET",
         "path": "/models/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1301,8 +1474,11 @@
         "method": "DELETE",
         "path": "/models/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1313,8 +1489,11 @@
         "method": "POST",
         "path": "/classify",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1325,8 +1504,11 @@
         "method": "GET",
         "path": "/stats",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/council-routes.test.ts"
         ]
@@ -1338,6 +1520,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1352,6 +1535,7 @@
         "path": "/",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/discussion-turns.test.ts"
         ],
@@ -1367,8 +1551,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/discussion-turns.test.ts",
@@ -1382,6 +1569,7 @@
         "path": "/:id",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/discussion-turns.test.ts"
         ],
@@ -1398,6 +1586,7 @@
         "path": "/:id/proposals",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1412,6 +1601,7 @@
         "path": "/:id/proposals",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1426,6 +1616,7 @@
         "path": "/:id/votes",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1440,6 +1631,7 @@
         "path": "/:id/votes",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1454,6 +1646,7 @@
         "path": "/:id/consensus",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1468,6 +1661,7 @@
         "path": "/:id/timeline",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -1482,6 +1676,7 @@
         "path": "/:id/turns",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/discussion-turns.test.ts"
         ],
@@ -1497,8 +1692,11 @@
         "method": "GET",
         "path": "/:id/turns",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/discussion-turns.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/discussion-turns.test.ts",
@@ -1512,6 +1710,7 @@
         "path": "/:id/tick",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/discussion-turns.test.ts"
         ],
@@ -1528,6 +1727,7 @@
         "path": "/:id/turns/:turnId",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/discussion-turns.test.ts"
         ],
@@ -1544,6 +1744,7 @@
         "path": "/task/:taskId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1554,6 +1755,7 @@
         "path": "/summary/:taskId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1564,6 +1766,7 @@
         "path": "/file-changes/:taskId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1574,6 +1777,7 @@
         "path": "/audit-trail/:taskId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1584,6 +1788,7 @@
         "path": "/review/:taskId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1594,6 +1799,7 @@
         "path": "/tasks",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
@@ -1607,6 +1813,7 @@
         "path": "/tasks",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
@@ -1620,6 +1827,7 @@
         "path": "/tasks/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
@@ -1633,6 +1841,7 @@
         "path": "/tasks/:id/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
@@ -1646,6 +1855,7 @@
         "path": "/tasks/:id/bundles",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
@@ -1659,6 +1869,7 @@
         "path": "/fleet/status",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1674,6 +1885,7 @@
         "path": "/fleet/sync",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1689,6 +1901,7 @@
         "path": "/fleet/repos",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1704,6 +1917,7 @@
         "path": "/fleet/refresh-stale",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1719,6 +1933,7 @@
         "path": "/fleet/run",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1734,6 +1949,7 @@
         "path": "/fleet/pause",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1749,6 +1965,7 @@
         "path": "/fleet/resume",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/explainer-fleet-routes.test.ts"
         ],
@@ -1764,9 +1981,17 @@
         "path": "/:owner/:repo",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
+          "packages/server/src/__tests__/council-routes.test.ts",
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
+          "packages/server/src/__tests__/discussion-turns.test.ts",
           "packages/server/src/__tests__/governance-reports.test.ts",
+          "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+          "packages/server/src/__tests__/loop-service.test.ts",
           "packages/server/src/__tests__/memory-evolution.test.ts",
+          "packages/server/src/__tests__/messages.test.ts",
+          "packages/server/src/__tests__/nested-spawn-loop.test.ts",
           "packages/server/src/__tests__/production-runtime-readiness.test.ts",
           "packages/server/src/__tests__/public-boundaries.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
@@ -1782,6 +2007,7 @@
         "path": "/:owner/:repo/llms.txt",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explore-public.test.ts"
@@ -1794,6 +2020,7 @@
         "path": "/:owner/:repo/opengraph.svg",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/explore-public.test.ts"
@@ -1805,8 +2032,11 @@
         "method": "POST",
         "path": "/task/:taskId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1818,8 +2048,11 @@
         "method": "POST",
         "path": "/evidence/:taskId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1831,8 +2064,11 @@
         "method": "POST",
         "path": "/audit",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1844,8 +2080,11 @@
         "method": "POST",
         "path": "/repository/:repositoryId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1857,8 +2096,11 @@
         "method": "POST",
         "path": "/report/summary",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1870,8 +2112,11 @@
         "method": "GET",
         "path": "/training",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -1884,6 +2129,7 @@
         "path": "/peers",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/federation-capacity.test.ts"
@@ -1896,6 +2142,7 @@
         "path": "/register",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/federation-capacity.test.ts"
@@ -1908,6 +2155,7 @@
         "path": "/capabilities",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/federation-capacity.test.ts"
@@ -1920,6 +2168,7 @@
         "path": "/work",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/federation-capacity.test.ts"
@@ -1932,6 +2181,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1942,6 +2192,7 @@
         "path": "/nodes",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1952,6 +2203,7 @@
         "path": "/nodes",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1962,6 +2214,7 @@
         "path": "/nodes/:id",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1972,6 +2225,7 @@
         "path": "/handoff",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1982,6 +2236,7 @@
         "path": "/handoff/:id/accept",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -1992,6 +2247,7 @@
         "path": "/handoff/:id/complete",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2002,6 +2258,7 @@
         "path": "/distribute",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2012,6 +2269,7 @@
         "path": "/sync-capability",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2022,6 +2280,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2038,6 +2297,7 @@
         "path": "/",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2056,6 +2316,7 @@
         "path": "/batch/preview",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/learning-flywheel-smoke.test.ts"
         ],
@@ -2074,6 +2335,7 @@
         "path": "/batch/apply",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/learning-flywheel-smoke.test.ts"
         ],
@@ -2091,8 +2353,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
@@ -2108,6 +2373,7 @@
         "path": "/:id",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2126,6 +2392,7 @@
         "path": "/:id/decompose",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2144,6 +2411,7 @@
         "path": "/health",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2156,6 +2424,7 @@
         "path": "/analyze",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2168,6 +2437,7 @@
         "path": "/propose",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2180,6 +2450,7 @@
         "path": "/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2192,6 +2463,7 @@
         "path": "/history",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2204,6 +2476,7 @@
         "path": "/proposals",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2216,6 +2489,7 @@
         "path": "/dormant-capabilities",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/governance-feedback-loop.test.ts"
@@ -2228,6 +2502,7 @@
         "path": "/governance/:skillId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -2240,6 +2515,7 @@
         "path": "/governance/:skillId/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -2252,6 +2528,7 @@
         "path": "/governance/:skillId/history",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -2264,6 +2541,7 @@
         "path": "/governance/:skillId/retest",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -2276,6 +2554,7 @@
         "path": "/governance/:skillId/curriculum",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -2288,8 +2567,10 @@
         "path": "/",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/mcp-server/src/__tests__/http-auth.test.ts",
+          "packages/server/src/__tests__/e2e-smoke.test.ts",
           "packages/server/src/__tests__/public-boundaries.test.ts"
         ],
         "module_evidence": [
@@ -2303,6 +2584,7 @@
         "path": "/deep",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/public-boundaries.test.ts"
@@ -2315,6 +2597,7 @@
         "path": "/metrics",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/public-boundaries.test.ts"
@@ -2327,6 +2610,7 @@
         "path": "/metrics/json",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/public-boundaries.test.ts"
@@ -2339,6 +2623,7 @@
         "path": "/predict",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2349,6 +2634,7 @@
         "path": "/patterns",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2359,6 +2645,7 @@
         "path": "/predictive/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2369,6 +2656,7 @@
         "path": "/data-quality",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2379,6 +2667,7 @@
         "path": "/health",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2389,6 +2678,7 @@
         "path": "/heal",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2399,6 +2689,7 @@
         "path": "/incidents",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2409,6 +2700,7 @@
         "path": "/healing/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2419,6 +2711,7 @@
         "path": "/:goalId/pause",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2429,6 +2722,7 @@
         "path": "/:goalId/resume",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2439,6 +2733,7 @@
         "path": "/:goalId/inject",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2449,6 +2744,7 @@
         "path": "/:goalId/override",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2459,6 +2755,7 @@
         "path": "/publish",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2469,6 +2766,7 @@
         "path": "/subscribe/:capabilityId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2479,6 +2777,7 @@
         "path": "/events",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2489,6 +2788,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2502,6 +2802,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2515,6 +2816,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2528,6 +2830,7 @@
         "path": "/check-pii",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2538,6 +2841,7 @@
         "path": "/classify",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2548,6 +2852,7 @@
         "path": "/rechtsgebied/:ecli",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2558,6 +2863,7 @@
         "path": "/feedback",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2568,6 +2874,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -2577,8 +2884,11 @@
         "method": "GET",
         "path": "/catalog",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/loop-service.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g15-enforcement.test.ts",
@@ -2593,6 +2903,7 @@
         "path": "/runtime-contracts",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2608,6 +2919,7 @@
         "path": "/runs",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -2623,6 +2935,7 @@
         "path": "/runs/:id",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2640,6 +2953,7 @@
         "path": "/runs/:id/review-bundle",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2657,6 +2971,7 @@
         "path": "/start",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2674,6 +2989,7 @@
         "path": "/doc-drift-and-small-fix/start",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2691,6 +3007,7 @@
         "path": "/runs/:id/step",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2708,6 +3025,7 @@
         "path": "/runs/:id/continue",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2725,6 +3043,7 @@
         "path": "/runs/:id/retry",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2742,6 +3061,7 @@
         "path": "/runs/:id/split",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2759,6 +3079,7 @@
         "path": "/runs/:id/verify",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2776,6 +3097,7 @@
         "path": "/runs/:id/execute-maker",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2793,6 +3115,7 @@
         "path": "/runs/:id/execute-worker",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2810,6 +3133,7 @@
         "path": "/runs/:id/execute-checker",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2827,6 +3151,7 @@
         "path": "/runs/:id/checker-verdict",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2844,6 +3169,7 @@
         "path": "/runs/:id/security-verdict",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2861,6 +3187,7 @@
         "path": "/runs/:id/run-checks",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2878,6 +3205,7 @@
         "path": "/runs/:id/complete",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2895,6 +3223,7 @@
         "path": "/runs/:id/stop",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/loop-service.test.ts"
         ],
@@ -2911,9 +3240,13 @@
         "method": "GET",
         "path": "/servers",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/mcp-routes.test.ts"
         ]
       },
@@ -2923,9 +3256,13 @@
         "method": "GET",
         "path": "/tools",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/mcp-routes.test.ts"
         ]
       },
@@ -2935,9 +3272,13 @@
         "method": "GET",
         "path": "/permissions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/mcp-routes.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/mcp-routes.test.ts"
         ]
       },
@@ -2947,9 +3288,13 @@
         "method": "PATCH",
         "path": "/permissions/:toolId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/mcp-routes.test.ts"
         ]
       },
@@ -2960,6 +3305,7 @@
         "path": "/ingest",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
         ],
@@ -2974,6 +3320,7 @@
         "path": "/evolve",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
         ],
@@ -2988,6 +3335,7 @@
         "path": "/retrieve",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
         ],
@@ -3002,6 +3350,7 @@
         "path": "/quality/:id",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
         ],
@@ -3016,6 +3365,7 @@
         "path": "/promote/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
@@ -3028,6 +3378,7 @@
         "path": "/leases",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
@@ -3040,6 +3391,7 @@
         "path": "/leases",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/memory-evolution.test.ts"
@@ -3052,6 +3404,7 @@
         "path": "/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3066,6 +3419,7 @@
         "path": "/top",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3080,6 +3434,7 @@
         "path": "/store",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3093,8 +3448,11 @@
         "method": "GET",
         "path": "/search",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/memory-evolution.test.ts",
@@ -3107,8 +3465,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/memory-evolution.test.ts",
@@ -3122,6 +3483,7 @@
         "path": "/:id/related",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3136,6 +3498,7 @@
         "path": "/relations",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3150,6 +3513,7 @@
         "path": "/maintenance",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3164,6 +3528,7 @@
         "path": "/discover-relations",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3178,6 +3543,7 @@
         "path": "/consolidate",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3192,6 +3558,7 @@
         "path": "/",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/messages.test.ts"
         ],
@@ -3206,8 +3573,11 @@
         "method": "GET",
         "path": "/agent/:agent_id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/messages.test.ts"
@@ -3220,6 +3590,7 @@
         "path": "/:id/read",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/messages.test.ts"
         ],
@@ -3234,8 +3605,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/messages.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/messages.test.ts"
@@ -3248,6 +3622,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -3261,6 +3636,7 @@
         "path": "/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3273,6 +3649,7 @@
         "path": "/tuning/:goalType",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3285,6 +3662,7 @@
         "path": "/tuning-history",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3297,6 +3675,7 @@
         "path": "/routing/:taskType",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3309,6 +3688,7 @@
         "path": "/strategy/:goalType",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3321,6 +3701,7 @@
         "path": "/predict",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3333,6 +3714,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3343,6 +3725,7 @@
         "path": "/register",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3353,6 +3736,7 @@
         "path": "/route",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3363,6 +3747,7 @@
         "path": "/outcome",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3373,6 +3758,7 @@
         "path": "/best/:taskType",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3383,6 +3769,7 @@
         "path": "/metrics",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3393,6 +3780,7 @@
         "path": "/risk-trends",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3403,6 +3791,7 @@
         "path": "/policy-stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3413,6 +3802,7 @@
         "path": "/execution-activity",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3423,6 +3813,7 @@
         "path": "/stream",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3432,8 +3823,11 @@
         "method": "POST",
         "path": "/eval/:agentId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3445,8 +3839,11 @@
         "method": "GET",
         "path": "/runs",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3458,8 +3855,11 @@
         "method": "GET",
         "path": "/leaderboard",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3471,8 +3871,11 @@
         "method": "GET",
         "path": "/score/:agentId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3484,8 +3887,11 @@
         "method": "GET",
         "path": "/report/:agentId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3497,8 +3903,11 @@
         "method": "GET",
         "path": "/trend/:agentId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3510,8 +3919,11 @@
         "method": "GET",
         "path": "/apex/reports",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3523,8 +3935,11 @@
         "method": "GET",
         "path": "/apex/reports/:round",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3536,8 +3951,11 @@
         "method": "POST",
         "path": "/guard/check/:skillId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3549,8 +3967,11 @@
         "method": "GET",
         "path": "/guard/certified/:skillId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts"
@@ -3563,6 +3984,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3573,6 +3995,7 @@
         "path": "/cycle",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3583,6 +4006,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/policy-mutation-audit.test.ts"
@@ -3595,6 +4019,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/policy-mutation-audit.test.ts"
@@ -3607,6 +4032,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/policy-mutation-audit.test.ts"
@@ -3619,6 +4045,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/policy-mutation-audit.test.ts"
@@ -3631,6 +4058,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/policy-mutation-audit.test.ts"
@@ -3643,6 +4071,7 @@
         "path": "/assess",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3653,6 +4082,7 @@
         "path": "/latest",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3663,6 +4093,7 @@
         "path": "/history",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3673,6 +4104,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3685,6 +4117,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3697,6 +4130,7 @@
         "path": "/scan",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3709,6 +4143,7 @@
         "path": "/:id/rescan",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3721,6 +4156,7 @@
         "path": "/:id/health",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3733,6 +4169,7 @@
         "path": "/:id/agents-md",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3745,6 +4182,7 @@
         "path": "/:id/agents-md/effective",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3757,6 +4195,7 @@
         "path": "/:id/agents-md/validate",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3769,6 +4208,7 @@
         "path": "/:id/file-changes",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3781,6 +4221,7 @@
         "path": "/tasks/:taskId/diff",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3793,6 +4234,7 @@
         "path": "/tasks/:taskId/file-changes",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3805,6 +4247,7 @@
         "path": "/tasks/:taskId/snapshots",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -3817,6 +4260,7 @@
         "path": "/repositories",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3827,6 +4271,7 @@
         "path": "/register",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3837,6 +4282,7 @@
         "path": "/:id/index",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3847,6 +4293,7 @@
         "path": "/:id/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3857,6 +4304,7 @@
         "path": "/search",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3867,6 +4315,7 @@
         "path": "/:id",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3877,6 +4326,7 @@
         "path": "/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3887,6 +4337,7 @@
         "path": "/sources",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3897,6 +4348,7 @@
         "path": "/sources/trusted",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3907,6 +4359,7 @@
         "path": "/claims",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3917,6 +4370,7 @@
         "path": "/contradictions/detect",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3927,6 +4381,7 @@
         "path": "/reports/generate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3937,6 +4392,7 @@
         "path": "/plan/:agentId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3947,6 +4403,7 @@
         "path": "/retire/:agentId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3957,6 +4414,7 @@
         "path": "/status/:agentId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3967,6 +4425,7 @@
         "path": "/list",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3977,6 +4436,7 @@
         "path": "/command",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3987,6 +4447,7 @@
         "path": "/task",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -3996,8 +4457,11 @@
         "method": "GET",
         "path": "/status",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4008,8 +4472,11 @@
         "method": "GET",
         "path": "/alerts",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4020,8 +4487,11 @@
         "method": "GET",
         "path": "/agents/:agentId",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4032,8 +4502,11 @@
         "method": "POST",
         "path": "/agents/:agentId/register",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4044,8 +4517,11 @@
         "method": "POST",
         "path": "/agents/:agentId/check",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4056,8 +4532,11 @@
         "method": "POST",
         "path": "/agents/:agentId/release",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4068,8 +4547,11 @@
         "method": "POST",
         "path": "/agents/:agentId/reset",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts"
         ]
@@ -4081,6 +4563,7 @@
         "path": "/generate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4091,6 +4574,7 @@
         "path": "/summary",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4101,6 +4585,7 @@
         "path": "/summary",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4113,6 +4598,7 @@
         "path": "/sync-history",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4125,6 +4611,7 @@
         "path": "/extract",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4137,6 +4624,7 @@
         "path": "/receive",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4149,6 +4637,7 @@
         "path": "/generate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4159,6 +4648,7 @@
         "path": "/train",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4169,6 +4659,7 @@
         "path": "/ab-test",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4179,6 +4670,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4189,6 +4681,7 @@
         "path": "/generate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4199,6 +4692,7 @@
         "path": "/train",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4209,6 +4703,7 @@
         "path": "/world-model/update",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4219,6 +4714,7 @@
         "path": "/world-model/scenarios",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4229,6 +4725,7 @@
         "path": "/synthesize-tool",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4239,6 +4736,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4249,6 +4747,7 @@
         "path": "/tournament",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4259,6 +4758,7 @@
         "path": "/evolve",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4269,6 +4769,7 @@
         "path": "/ttsi",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4279,6 +4780,7 @@
         "path": "/coevolution",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4289,6 +4791,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4299,6 +4802,7 @@
         "path": "/self-improve",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4309,6 +4813,7 @@
         "path": "/revert/:id",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4319,6 +4824,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4329,6 +4835,7 @@
         "path": "/scan",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4339,6 +4846,7 @@
         "path": "/proposed",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4349,6 +4857,7 @@
         "path": "/approve/:id",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4359,6 +4868,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4369,6 +4879,7 @@
         "path": "/generate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4379,6 +4890,7 @@
         "path": "/train",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4389,6 +4901,7 @@
         "path": "/evaluate",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4399,6 +4912,7 @@
         "path": "/cycle",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4409,6 +4923,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4419,6 +4934,7 @@
         "path": "/run/:agentId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4431,6 +4947,7 @@
         "path": "/history",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4443,6 +4960,7 @@
         "path": "/latest",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4455,6 +4973,7 @@
         "path": "/blind-spots/:agentId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4467,6 +4986,7 @@
         "path": "/generated-cases",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4479,6 +4999,7 @@
         "path": "/judge-rubrics",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4491,6 +5012,7 @@
         "path": "/curriculum",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
@@ -4502,8 +5024,11 @@
         "method": "GET",
         "path": "/proposals",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/self-improvement-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
         ]
@@ -4515,6 +5040,7 @@
         "path": "/proposals/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4526,8 +5052,11 @@
         "method": "POST",
         "path": "/proposals/:id/approve",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/self-improvement-routes.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
         ]
@@ -4539,6 +5068,7 @@
         "path": "/proposals/:id/reject",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4551,6 +5081,7 @@
         "path": "/reconcile",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4563,6 +5094,7 @@
         "path": "/reconciliation",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4575,6 +5107,7 @@
         "path": "/docs/scan",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4587,6 +5120,7 @@
         "path": "/docs/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/self-improvement-routes.test.ts"
@@ -4599,6 +5133,7 @@
         "path": "/status",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4609,6 +5144,7 @@
         "path": "/analyze",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4619,6 +5155,7 @@
         "path": "/plan",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4629,6 +5166,7 @@
         "path": "/execute",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -4639,6 +5177,7 @@
         "path": "/",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4651,6 +5190,7 @@
         "path": "/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4663,6 +5203,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4675,6 +5216,7 @@
         "path": "/:id/enable",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4687,6 +5229,7 @@
         "path": "/:id/disable",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4699,6 +5242,7 @@
         "path": "/:id/assign/:agentId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4711,6 +5255,7 @@
         "path": "/:id/assign/:agentId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4723,6 +5268,7 @@
         "path": "/agent/:agentId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4735,6 +5281,7 @@
         "path": "/trigger/:trigger",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4747,6 +5294,7 @@
         "path": "/reload",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4758,8 +5306,11 @@
         "method": "POST",
         "path": "/root",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4771,8 +5322,11 @@
         "method": "POST",
         "path": "/",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4784,8 +5338,11 @@
         "method": "GET",
         "path": "/:id/status",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -4798,6 +5355,7 @@
         "path": "/proof-runs",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4811,6 +5369,7 @@
         "path": "/proof-runs/latest",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4824,6 +5383,7 @@
         "path": "/proof-runs/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4837,6 +5397,7 @@
         "path": "/proof-runs/:id/rollback",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4850,6 +5411,7 @@
         "path": "/evolution/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4863,6 +5425,7 @@
         "path": "/evolution/close-loop",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4876,6 +5439,7 @@
         "path": "/cs-skill-intelligence/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4889,6 +5453,7 @@
         "path": "/assurance/summary",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4902,6 +5467,7 @@
         "path": "/assurance/trace-spans",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4915,6 +5481,7 @@
         "path": "/assurance/traces/:traceId",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4928,6 +5495,7 @@
         "path": "/assurance/checkpoints",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4941,6 +5509,7 @@
         "path": "/assurance/checkpoints/:id/branch",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4954,6 +5523,7 @@
         "path": "/assurance/evals/run",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4967,6 +5537,7 @@
         "path": "/assurance/capability-tokens",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4980,6 +5551,7 @@
         "path": "/assurance/capability-tokens",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -4993,6 +5565,7 @@
         "path": "/assurance/reflections",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -5006,6 +5579,7 @@
         "path": "/assurance/reflections",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -5019,6 +5593,7 @@
         "path": "/memory/candidates",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -5032,6 +5607,7 @@
         "path": "/memory/candidates",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -5045,6 +5621,7 @@
         "path": "/memory/candidates/:id/promote",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-governance-errors.test.ts",
@@ -5058,6 +5635,7 @@
         "path": "/decompose",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5070,6 +5648,7 @@
         "path": "/plans",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5082,6 +5661,7 @@
         "path": "/plans/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5094,6 +5674,7 @@
         "path": "/knowledge/publish",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5106,6 +5687,7 @@
         "path": "/knowledge/query",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5118,6 +5700,7 @@
         "path": "/knowledge/subscribe",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5130,6 +5713,7 @@
         "path": "/knowledge/vote",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5142,6 +5726,7 @@
         "path": "/knowledge/contradictions",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5154,6 +5739,7 @@
         "path": "/knowledge/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5166,6 +5752,7 @@
         "path": "/evolution/register",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5178,6 +5765,7 @@
         "path": "/evolution/evolve",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5190,6 +5778,7 @@
         "path": "/evolution/outcome",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5202,6 +5791,7 @@
         "path": "/evolution/stats",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5214,6 +5804,7 @@
         "path": "/intelligence/runner-manifests",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5226,6 +5817,7 @@
         "path": "/intelligence/governance/evaluate",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5238,6 +5830,7 @@
         "path": "/intelligence/mission-control",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5250,6 +5843,7 @@
         "path": "/intelligence/okf-drift",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5262,6 +5856,7 @@
         "path": "/intelligence/capabilities",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5274,6 +5869,7 @@
         "path": "/intelligence/capabilities",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5286,6 +5882,7 @@
         "path": "/intelligence/capabilities/:id/evaluate",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5298,6 +5895,7 @@
         "path": "/intelligence/capabilities/:id/promote",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5310,6 +5908,7 @@
         "path": "/intelligence/specialists",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5322,6 +5921,7 @@
         "path": "/specialists/catalog",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5334,6 +5934,7 @@
         "path": "/intelligence/claims",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5346,6 +5947,7 @@
         "path": "/intelligence/claims",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5358,6 +5960,7 @@
         "path": "/intelligence/capacity/plan",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/swarm-intel-routes.test.ts"
@@ -5370,6 +5973,7 @@
         "path": "/knowledge/runtime",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5380,6 +5984,7 @@
         "path": "/knowledge/sync",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5390,6 +5995,7 @@
         "path": "/runtime-readiness",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5400,6 +6006,7 @@
         "path": "/sessions",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5410,6 +6017,7 @@
         "path": "/sessions",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5420,6 +6028,7 @@
         "path": "/sessions/:id/execute",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5430,6 +6039,7 @@
         "path": "/sessions/:id/progress",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5440,6 +6050,7 @@
         "path": "/messages",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5450,6 +6061,7 @@
         "path": "/messages/:agentId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5460,6 +6072,7 @@
         "path": "/messages/:id/acknowledge",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5470,6 +6083,7 @@
         "path": "/broadcast",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5480,6 +6094,7 @@
         "path": "/comms/stats",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5490,6 +6105,7 @@
         "path": "/scheduler/tick",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5500,6 +6116,7 @@
         "path": "/backlog/sync",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5510,6 +6127,7 @@
         "path": "/worker-pool/plan",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5520,6 +6138,7 @@
         "path": "/worker-pool/start-next",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5530,6 +6149,7 @@
         "path": "/worker-pool/drain",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5540,6 +6160,7 @@
         "path": "/worker-pool/stop/:leaseId",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5550,6 +6171,7 @@
         "path": "/handoffs",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5560,6 +6182,7 @@
         "path": "/handoffs/drain",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5570,6 +6193,7 @@
         "path": "/handoffs/:id/accept",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -5580,10 +6204,12 @@
         "path": "/status",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5606,9 +6232,13 @@
         "method": "GET",
         "path": "/specialist-panels",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5632,10 +6262,13 @@
         "path": "/specialist-panels/:id",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
+          "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5659,11 +6292,13 @@
         "path": "/specialist-panels",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5687,11 +6322,13 @@
         "path": "/specialist-panels/:id/reviews",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5715,11 +6352,13 @@
         "path": "/specialist-panels/:id/backlog",
         "critical": true,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5742,9 +6381,13 @@
         "method": "GET",
         "path": "/opencode/health",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5767,9 +6410,13 @@
         "method": "GET",
         "path": "/intelligence/hypotheses",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5792,9 +6439,13 @@
         "method": "POST",
         "path": "/intelligence/hypotheses",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5817,9 +6468,13 @@
         "method": "POST",
         "path": "/intelligence/hypotheses/:id/transition",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5842,9 +6497,13 @@
         "method": "GET",
         "path": "/intelligence/missions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5867,9 +6526,13 @@
         "method": "POST",
         "path": "/intelligence/missions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5892,9 +6555,13 @@
         "method": "GET",
         "path": "/intelligence/missions/:id",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5917,9 +6584,13 @@
         "method": "POST",
         "path": "/intelligence/missions/:id/transition",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5942,9 +6613,13 @@
         "method": "GET",
         "path": "/intelligence/missions/:id/tasks",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5967,9 +6642,13 @@
         "method": "POST",
         "path": "/intelligence/missions/:id/tasks",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -5992,9 +6671,13 @@
         "method": "POST",
         "path": "/intelligence/tasks/:id/transition",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6017,9 +6700,13 @@
         "method": "GET",
         "path": "/intelligence/missions/:id/decisions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6042,9 +6729,13 @@
         "method": "POST",
         "path": "/intelligence/decisions",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6067,9 +6758,13 @@
         "method": "GET",
         "path": "/intelligence/circuit-breaker/:scope",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6092,9 +6787,13 @@
         "method": "POST",
         "path": "/intelligence/circuit-breaker/:scope/failure",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6117,9 +6816,13 @@
         "method": "POST",
         "path": "/intelligence/circuit-breaker/:scope/reset",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6142,9 +6845,11 @@
         "method": "POST",
         "path": "/expert/dispatch",
         "critical": true,
-        "status": "module_covered",
+        "status": "exempted",
+        "exemption": "Dispatches external research providers; requires an isolated network-controlled contract canary.",
         "evidence": [],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6167,9 +6872,13 @@
         "method": "GET",
         "path": "/expert/history",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6192,9 +6901,13 @@
         "method": "GET",
         "path": "/expert/sources",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6217,9 +6930,13 @@
         "method": "GET",
         "path": "/expert/updates",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6242,9 +6959,13 @@
         "method": "POST",
         "path": "/rsi/analyze",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6267,9 +6988,13 @@
         "method": "GET",
         "path": "/rsi/proposals",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6292,9 +7017,13 @@
         "method": "GET",
         "path": "/rsi/specializations",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6317,9 +7046,13 @@
         "method": "GET",
         "path": "/rsi/safety",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6342,9 +7075,13 @@
         "method": "POST",
         "path": "/rsi/safety/toggle",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6367,9 +7104,13 @@
         "method": "POST",
         "path": "/learning/cycle",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6392,9 +7133,13 @@
         "method": "GET",
         "path": "/learning/history",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6417,9 +7162,13 @@
         "method": "GET",
         "path": "/learning/last",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6442,9 +7191,13 @@
         "method": "GET",
         "path": "/learning-curve",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6467,9 +7220,13 @@
         "method": "GET",
         "path": "/economy",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6492,9 +7249,11 @@
         "method": "POST",
         "path": "/fix",
         "critical": true,
-        "status": "module_covered",
+        "status": "exempted",
+        "exemption": "Can modify a repository and invoke an agent runtime; requires an isolated disposable-worktree canary.",
         "evidence": [],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6517,9 +7276,13 @@
         "method": "POST",
         "path": "/fix/batch",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6542,9 +7305,13 @@
         "method": "GET",
         "path": "/fix/history",
         "critical": true,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts",
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
           "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
@@ -6567,8 +7334,11 @@
         "method": "GET",
         "path": "/",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts",
@@ -6582,6 +7352,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6595,8 +7366,11 @@
         "method": "POST",
         "path": "/",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/critical-http-contracts.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
           "packages/server/src/__tests__/route-factories.test.ts",
@@ -6610,6 +7384,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6624,6 +7399,7 @@
         "path": "/:id",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6638,6 +7414,7 @@
         "path": "/:id/events",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6652,6 +7429,7 @@
         "path": "/:id/approvals",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6666,6 +7444,7 @@
         "path": "/:id/execute",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
         ],
@@ -6682,6 +7461,7 @@
         "path": "/:id/cancel",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts",
@@ -6696,6 +7476,7 @@
         "path": "/webhook",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/public-boundaries.test.ts"
         ],
@@ -6711,6 +7492,7 @@
         "path": "/status",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/live-canvas.test.ts",
@@ -6724,6 +7506,7 @@
         "path": "/matrix",
         "critical": false,
         "status": "unclassified",
+        "exemption": null,
         "evidence": [],
         "module_evidence": []
       },
@@ -6734,6 +7517,7 @@
         "path": "/tokens",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6746,6 +7530,7 @@
         "path": "/tokens",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6758,6 +7543,7 @@
         "path": "/costs",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6770,6 +7556,7 @@
         "path": "/quotas",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6782,6 +7569,7 @@
         "path": "/available-models",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6794,6 +7582,7 @@
         "path": "/recent",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/critical-routes.test.ts"
@@ -6805,8 +7594,11 @@
         "method": "GET",
         "path": "/",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
           "packages/server/src/__tests__/integration-spine-service.test.ts",
@@ -6822,6 +7614,7 @@
         "path": "/",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
@@ -6841,6 +7634,7 @@
         "path": "/integrations/preview",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/integration-spine-service.test.ts"
         ],
@@ -6859,6 +7653,7 @@
         "path": "/integrations/import",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
           "packages/server/src/__tests__/integration-spine-service.test.ts",
@@ -6878,8 +7673,11 @@
         "method": "GET",
         "path": "/:id",
         "critical": false,
-        "status": "module_covered",
-        "evidence": [],
+        "status": "exercised",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+        ],
         "module_evidence": [
           "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
           "packages/server/src/__tests__/integration-spine-service.test.ts",
@@ -6895,6 +7693,7 @@
         "path": "/:id",
         "critical": false,
         "status": "exercised",
+        "exemption": null,
         "evidence": [
           "packages/server/src/__tests__/swarm-resource-plan.test.ts"
         ],
@@ -6913,6 +7712,7 @@
         "path": "/:id/convert-to-goal",
         "critical": false,
         "status": "module_covered",
+        "exemption": null,
         "evidence": [],
         "module_evidence": [
           "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",

@@ -16,6 +16,10 @@ const testFiles = files(join(root, 'packages'), '.test.ts');
 const tests = testFiles.map(path => ({ path, content: readFileSync(path, 'utf8') }));
 const routeFiles = files(join(root, 'packages/server/src/routes'), '.ts').filter(path => basename(path) !== 'index.ts');
 const critical = /^(auth|approvals|backup|exports|council|openmythos|mcp|runtime-governance|swarms|spawns)$/;
+const routeExemptions = new Map([
+  ['swarms:POST:/expert/dispatch', 'Dispatches external research providers; requires an isolated network-controlled contract canary.'],
+  ['swarms:POST:/fix', 'Can modify a repository and invoke an agent runtime; requires an isolated disposable-worktree canary.'],
+]);
 const routes = [];
 const routeIndex = readFileSync(join(root, 'packages/server/src/routes/index.ts'), 'utf8');
 const factoryModules = new Map();
@@ -36,10 +40,20 @@ function routeExecuted(content, method, endpoint) {
   for (const match of content.matchAll(new RegExp(endpoint.source, 'g'))) {
     const before = content.slice(Math.max(0, match.index - 180), match.index);
     const after = content.slice(match.index + match[0].length, match.index + match[0].length + 800);
+    const callAfter = after.split(';', 1)[0];
+    const pathLoopStart = content.lastIndexOf('for (const path of [', match.index);
+    const pathLoopEnd = pathLoopStart >= 0 ? content.indexOf('request(path)', pathLoopStart) : -1;
+    if (method === 'GET' && pathLoopStart >= 0 && match.index < pathLoopEnd) return true;
     if (new RegExp(`request\\([^\\n]{0,140}['"]${method}['"][^\\n]{0,140}$`).test(before)) return true;
+    if (/request\s*\([^\n]{0,180}$/.test(before)) {
+      const explicitMethod = callAfter.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase();
+      if ((explicitMethod ?? 'GET') === method) return true;
+    }
+    if (new RegExp(`['"]${method}['"]\\s*[,\\]]?[^\\n]{0,80}$`).test(before) && /request\s*\(\s*path\s*,\s*\{\s*method\s*\}/.test(content)) return true;
+    if (new RegExp(`^[^\\n]{0,80}['"]${method}['"]`).test(after) && /request\s*\(\s*path\s*,\s*\{\s*method\s*\}/.test(content)) return true;
     if (new RegExp(`\\.${method.toLowerCase()}\\s*\\([^\\n]{0,140}$`).test(before)) return true;
     if (/fetch\s*\([^\n]{0,180}$/.test(before)) {
-      const explicitMethod = after.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase();
+      const explicitMethod = callAfter.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase();
       if ((explicitMethod ?? 'GET') === method) return true;
     }
   }
@@ -74,19 +88,25 @@ for (const path of routeFiles) {
     const factories = [...source.slice(0, match.index).matchAll(/(?:export\s+)?function\s+(create\w+Routes)\s*\(/g)];
     const factory = factories.at(-1)?.[1];
     const endpoint = endpointPattern(factory, match[3]);
+    const relativeEndpoint = endpointPattern(undefined, match[3]);
     const evidence = tests
-      .filter(test => routeExecuted(test.content, match[1].toUpperCase(), endpoint))
+      .filter(test => routeExecuted(test.content, match[1].toUpperCase(), endpoint)
+        || (test.content.includes(`../routes/${module}`)
+          && routeExecuted(test.content, match[1].toUpperCase(), relativeEndpoint)))
       .map(test => relative(root, test.path));
     const moduleEvidence = tests
       .filter(test => test.content.includes(`../routes/${module}`))
       .map(test => relative(root, test.path));
+    const id = `${module}:${match[1].toUpperCase()}:${match[3]}`;
+    const exemption = routeExemptions.get(id);
     routes.push({
-      id: `${module}:${match[1].toUpperCase()}:${match[3]}`,
+      id,
       module,
       method: match[1].toUpperCase(),
       path: match[3],
       critical: critical.test(module),
-      status: evidence.length ? 'exercised' : moduleEvidence.length ? 'module_covered' : 'unclassified',
+      status: evidence.length ? 'exercised' : exemption ? 'exempted' : moduleEvidence.length ? 'module_covered' : 'unclassified',
+      exemption: exemption || null,
       evidence,
       module_evidence: moduleEvidence,
     });
@@ -120,7 +140,8 @@ const report = {
     tested: routes.filter(item => item.status === 'exercised').length,
     module_covered: routes.filter(item => item.status === 'module_covered').length,
     unclassified: routes.filter(item => item.status === 'unclassified').length,
-    critical_unclassified: routes.filter(item => item.critical && item.status === 'unclassified').map(item => item.id),
+    critical_unclassified: routes.filter(item => item.critical && !['exercised', 'exempted'].includes(item.status)).map(item => item.id),
+    critical_exempted: routes.filter(item => item.critical && item.status === 'exempted').map(item => ({ id: item.id, reason: item.exemption })),
     items: routes,
   },
   mcp_tools: {
