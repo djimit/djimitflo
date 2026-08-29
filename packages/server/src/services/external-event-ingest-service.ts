@@ -61,6 +61,7 @@ export class ExternalEventIngestService {
     let inserted = 0;
     const transaction = this.db.transaction(() => {
       for (const event of body.events || []) {
+        if (!event || typeof event !== 'object' || Array.isArray(event)) continue;
         const id = [event.event_id, event._id]
           .map(value => String(value ?? '').trim())
           .find(Boolean) || '';

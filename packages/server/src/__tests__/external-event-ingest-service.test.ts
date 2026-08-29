@@ -11,6 +11,7 @@ describe('ExternalEventIngestService', () => {
     const db = new Database(':memory:');
     db.exec(schema);
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({ events: [
+      null,
       { _id: '1-0', event_id: 'paperclip:issue-1:1', event_type: 'paperclip.issue.created', source: 'paperclip', correlation_id: 'issue-1', aggregate_id: 'issue-1', aggregate_version: '1', dedupe_key: 'paperclip:issue-1:todo', occurred_at: '2026-08-20T00:00:00Z' },
       { _id: '2-0', event_id: 'paperclip:issue-1:retry', event_type: 'paperclip.issue.created', source: 'paperclip', correlation_id: 'issue-1', aggregate_id: 'issue-1', aggregate_version: '1', dedupe_key: 'paperclip:issue-1:todo', occurred_at: '2026-08-20T00:00:00Z' },
       { _id: '3-0', event_type: 'fleet.status.changed', source: 'agent-registry' },
