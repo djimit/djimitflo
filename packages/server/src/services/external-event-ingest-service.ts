@@ -84,7 +84,7 @@ export class ExternalEventIngestService {
           Number.isSafeInteger(aggregateVersion) && aggregateVersion > 0 ? aggregateVersion : null,
           normalizedEvent.dedupe_key ? String(normalizedEvent.dedupe_key) : null,
           eventType === 'outcome.observed'
-            ? String(normalizedEvent.observed_at)
+            ? new Date(String(normalizedEvent.observed_at)).toISOString()
             : String(normalizedEvent.occurred_at || normalizedEvent.timestamp || new Date().toISOString()),
           JSON.stringify(normalizedEvent),
         ).changes;

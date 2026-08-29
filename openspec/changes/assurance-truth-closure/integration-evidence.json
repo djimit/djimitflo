@@ -1,16 +1,16 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-29T20:47:09.419Z",
+  "generated_at": "2026-08-29T20:55:01.587Z",
   "status": "pass",
   "probes": [
     {
       "id": "djimitflo",
-      "kind": "http",
+      "kind": "http-contract",
       "required": true,
       "target": "http://100.86.47.122:3001/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 384
+      "latency_ms": 383
     },
     {
       "id": "event_bus",
@@ -19,43 +19,43 @@
       "target": "http://100.86.47.122:8083/events/djimit.events?count=1",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 374
+      "latency_ms": 371
     },
     {
       "id": "paperclip",
-      "kind": "http",
+      "kind": "http-contract",
       "required": true,
       "target": "http://192.168.1.28:3100/api/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 397
+      "latency_ms": 398
     },
     {
       "id": "uams",
-      "kind": "http",
+      "kind": "http-contract",
       "required": true,
       "target": "http://100.77.58.72:8000/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 472
+      "latency_ms": 458
     },
     {
       "id": "ollama",
-      "kind": "http",
+      "kind": "http-contract",
       "required": true,
       "target": "http://100.77.58.72:11434/api/tags",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 371
+      "latency_ms": 365
     },
     {
       "id": "qdrant",
-      "kind": "http",
+      "kind": "http-contract",
       "required": true,
       "target": "http://100.77.58.72:6333/healthz",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 372
+      "latency_ms": 365
     },
     {
       "id": "litellm",
@@ -63,7 +63,7 @@
       "required": false,
       "target": "http://192.168.1.28:4000/health",
       "status": "unavailable",
-      "latency_ms": 379,
+      "latency_ms": 368,
       "reason": "fetch failed"
     },
     {
@@ -73,7 +73,7 @@
       "target": "https://mcp.context7.com/mcp",
       "status": "fail",
       "http_status": 405,
-      "latency_ms": 619
+      "latency_ms": 617
     },
     {
       "id": "codex",

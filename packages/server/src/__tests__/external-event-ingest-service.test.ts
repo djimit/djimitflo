@@ -69,7 +69,7 @@ describe('ExternalEventIngestService', () => {
       evidence_refs: ['paperclip:task-1'],
       confidence: 0.8,
       causal_status: 'correlated',
-      observed_at: '2026-08-29T12:00:00Z',
+      observed_at: '2026-08-29T14:00:00+02:00',
       occurred_at: '2026-08-29T13:00:00Z',
       dedupe_key: 'outcome:publication-1:qualified-lead:P30D',
     };
@@ -87,9 +87,9 @@ describe('ExternalEventIngestService', () => {
     const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
     expect(await service.pollOnce()).toBe(3);
     expect(db.prepare("SELECT id, event_type, source, occurred_at FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
-      { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
-      { id: 'outcome:fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
-      { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: outcome.observed_at },
+      { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
+      { id: 'outcome:fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
+      { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
     ]);
     db.close();
   });

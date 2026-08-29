@@ -6,14 +6,26 @@ import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const output = resolve(root, 'openspec/changes/assurance-truth-closure/integration-evidence.json');
 
-async function http(id, url, required) {
+async function http(id, url, required, validate) {
   const started = Date.now();
+  let response;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(3000) });
-    return { id, kind: 'http', required, target: url, status: response.ok ? 'pass' : 'fail', http_status: response.status, latency_ms: Date.now() - started };
+    response = await fetch(url, { signal: AbortSignal.timeout(3000) });
   } catch (error) {
     return { id, kind: 'http', required, target: url, status: required ? 'blocked' : 'unavailable', latency_ms: Date.now() - started, reason: error instanceof Error ? error.message : String(error) };
   }
+  let contractValid = true;
+  try {
+    if (response.ok && validate) contractValid = await validate(response);
+  } catch {
+    contractValid = false;
+  }
+  return {
+    id, kind: validate ? 'http-contract' : 'http', required, target: url,
+    status: response.ok && contractValid ? 'pass' : 'fail', http_status: response.status,
+    latency_ms: Date.now() - started,
+    reason: response.ok && !contractValid ? 'response contract mismatch' : undefined,
+  };
 }
 
 async function eventStream(url) {
@@ -51,12 +63,12 @@ function binary(id, command, required) {
 const eventBusUrl = process.env.DJIMIT_EVENT_BUS_URL || 'http://100.86.47.122:8083';
 const eventStreamUrl = `${eventBusUrl.replace(/\/$/, '')}/events/${encodeURIComponent(process.env.DJIMIT_EVENT_STREAM || 'djimit.events')}?count=1`;
 const probes = await Promise.all([
-  http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true),
+  http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true, async response => (await response.json()).status === 'healthy'),
   eventStream(eventStreamUrl),
-  http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true),
-  http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true),
-  http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true),
-  http('qdrant', `${process.env.QDRANT_URL || 'http://100.77.58.72:6333'}/healthz`, true),
+  http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true, async response => { const body = await response.json(); return body.status === 'ok' && typeof body.commit === 'string'; }),
+  http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true, async response => (await response.json()).status === 'healthy'),
+  http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true, async response => Array.isArray((await response.json()).models)),
+  http('qdrant', `${process.env.QDRANT_URL || 'http://100.77.58.72:6333'}/healthz`, true, async response => (await response.text()).trim() === 'healthz check passed'),
   http('litellm', `${process.env.LITELLM_URL || 'http://192.168.1.28:4000'}/health`, false),
   http('context7', process.env.CONTEXT7_URL || 'https://mcp.context7.com/mcp', false),
   Promise.resolve(binary('codex', process.env.CODEX_COMMAND || 'codex', true)),
