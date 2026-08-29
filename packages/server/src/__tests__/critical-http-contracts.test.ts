@@ -10,6 +10,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { AuthService } from '../services/auth-service';
 import { AuditService } from '../services/audit-service';
+import { ApprovalService } from '../services/approval-service';
 import { createAuthMiddleware } from '../middleware/auth';
 import { errorHandler } from '../middleware/error-handler';
 import { createApprovalRoutes } from '../routes/approvals';
@@ -55,10 +56,12 @@ describe('critical HTTP contracts', () => {
     app.use(express.json());
     app.use((req: any, _res, next) => { req.user = { sub: 'contract-admin', email: 'contract@example.com', role: 'admin' }; next(); });
     app.use('/auth', createAuthRoutes(authService, realAuth, new AuditService(db)));
-    const expiredEngine = {
-      handleApprovalDecision: async () => { throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.'); },
+    const approvalService = new ApprovalService(db, { broadcastTaskEventById: () => {} } as any, new AuditService(db));
+    const approvalEngine = {
+      handleApprovalDecision: async (id: string, approved: boolean, decidedBy: string, reason?: string) =>
+        approvalService.decideApproval(id, approved, decidedBy, reason),
     } as any;
-    app.use('/approvals', createApprovalRoutes(db, expiredEngine, passAuth));
+    app.use('/approvals', createApprovalRoutes(db, approvalEngine, passAuth));
     app.use('/backups', createBackupRoutes(db, passAuth));
     app.use('/exports', createExportRoutes(db, passAuth));
     app.use('/openmythos', createOpenMythosRoutes(db, passAuth));

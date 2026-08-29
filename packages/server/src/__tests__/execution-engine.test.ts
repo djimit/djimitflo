@@ -228,7 +228,10 @@ describe('ExecutionEngine', () => {
     expect(await engine.handleApprovalDecision('dennis-approval', true, 'checker')).toBeNull();
     expect(executeTask).not.toHaveBeenCalled();
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'dennis_approved_dry_run_materialized'").get() as any).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'approval.granted'").get() as any).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = 'dennis-task' AND event_type = 'execution.resumed'").get() as any).count).toBe(0);
     expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-work'").get() as any).status).toBe('done');
+    expect((engine as any).hasApprovedStart('dennis-task')).toBe(false);
   });
 
   it('replaces task-supplied Deep Agent authority with a Federation contract', async () => {

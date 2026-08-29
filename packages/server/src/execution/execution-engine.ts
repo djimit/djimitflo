@@ -627,6 +627,11 @@ export class ExecutionEngine {
       return { status: 'denied', reason: reason || 'Approval denied' };
     }
 
+    if (approval.metadata?.dennis_action === 'materialize_dry_run') {
+      new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, decidedBy);
+      return null;
+    }
+
     this.evidenceService.captureEvidence({
       task_id: approval.task_id,
       approval_id: approvalId,
@@ -657,10 +662,6 @@ export class ExecutionEngine {
       risk_level: approval.risk_level,
       metadata: { approvalId },
     });
-    if (approval.metadata?.dennis_action === 'materialize_dry_run') {
-      new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, decidedBy);
-      return null;
-    }
     const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
     return this.executeTask(approval.task_id, executorKind, decidedBy);
   }
@@ -1186,6 +1187,8 @@ export class ExecutionEngine {
     const approval = this.db.prepare(`
       SELECT * FROM approvals
       WHERE task_id = ? AND status = 'approved'
+        AND json_valid(COALESCE(metadata, '{}')) = 1
+        AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.dennis_action'), '') != 'materialize_dry_run'
       ORDER BY updated_at DESC
       LIMIT 1
     `).get(taskId) as any;

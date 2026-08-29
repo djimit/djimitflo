@@ -112,6 +112,9 @@ export class ApprovalService {
     if (!approval) {
       throw new Error('Approval not found');
     }
+    if (approval.status === ApprovalStatus.EXPIRED) {
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    }
     if (approval.status !== ApprovalStatus.PENDING) {
       throw new Error('Approval already processed');
     }
