@@ -191,6 +191,10 @@ export class ExecutionEngine {
       metadata: JSON.parse(task.metadata || '{}'),
     };
 
+    if (parsedTask.metadata.deep_agent_assurance_hold === true) {
+      throw new Error('DEEP_AGENT_ASSURANCE_HOLD: Independent EVE-V assurance is required before redispatch.');
+    }
+
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
@@ -813,6 +817,13 @@ export class ExecutionEngine {
     this.capturePostExecutionDiff(taskId);
 
     if (session.executorKind === 'deep-agent' && result.status === 'completed') {
+      this.db.prepare(`
+        UPDATE tasks SET metadata = json_set(
+          COALESCE(metadata, '{}'),
+          '$.deep_agent_assurance_hold', json('true'),
+          '$.deep_agent_assurance_reason', 'EVE_V_ADAPTER_REQUIRED'
+        ) WHERE id = ?
+      `).run(taskId);
       this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
       this.evidenceService.captureEvidence({
         task_id: taskId,

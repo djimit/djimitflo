@@ -164,7 +164,7 @@ describe('ExecutionEngine', () => {
     expect(engine.getExecutor('custom')).toBe(custom);
   });
 
-  it('holds Deep Agent executor success until independent assurance is present', () => {
+  it('holds Deep Agent executor success until independent assurance is present', async () => {
     const task = createTask({ id: 'deep-agent-hold', metadata: { deep_agent_contract: {} } });
     db.prepare(`
       INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
@@ -184,6 +184,9 @@ describe('ExecutionEngine', () => {
     expect(capturePostExecutionDiff).toHaveBeenCalledWith('/tmp/repo', 'repo-1', task.id, 'snapshot-1');
     expect((engine as any).diffContexts.has(task.id)).toBe(false);
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = ? AND source = 'system'").get(task.id) as any).count).toBe(1);
+    expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get(task.id) as any).metadata).deep_agent_assurance_hold).toBe(true);
+    await expect(engine.executeTask(task.id, 'opencode')).rejects.toThrow('DEEP_AGENT_ASSURANCE_HOLD');
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('awaiting_approval');
   });
 
   it('never retries a Deep Agent execution through a generic fallback', () => {
