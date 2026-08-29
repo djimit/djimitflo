@@ -303,6 +303,7 @@ export class ExecutionEngine {
         description: evaluation.explanation,
         policyId: evaluation.matchingPolicies[0]?.id,
         metadata: { executorKind },
+        requestedBy: dispatcherId,
       });
       this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
       this.persistEvent({

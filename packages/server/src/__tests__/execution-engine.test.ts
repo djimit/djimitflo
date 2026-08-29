@@ -552,10 +552,12 @@ describe('ExecutionEngine', () => {
         task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
       );
 
-      const result = await engine.executeTask(task.id, 'mock');
+      const result = await engine.executeTask(task.id, 'mock', 'dispatch-admin');
 
       expect(result.status).toBe('awaiting_approval');
       expect(result.reason).toContain('Governance gate');
+      expect((db.prepare('SELECT requested_by FROM approvals WHERE id = ?').get(result.approvalId) as any).requested_by).toBe('dispatch-admin');
+      await expect(engine.handleApprovalDecision(result.approvalId!, true, 'dispatch-admin')).rejects.toThrow('SELF_APPROVAL_FORBIDDEN');
 
       const evidence = db.prepare("SELECT * FROM execution_evidence WHERE task_id = ? AND source = 'governance-gate'").all(task.id);
       expect(evidence.length).toBe(1);
