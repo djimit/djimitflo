@@ -1,14 +1,16 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 
 export function createAuditLogRoutes(db: Database, requireAuthMiddleware?: any): Router {
   const router = Router();
+  const auditLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
   /**
    * GET /api/audit-logs
    * Geef audit logs terug (gefilterd op organization_id, met paginering).
    */
-  router.get('/', requireAuthMiddleware, (req, res) => {
+  router.get('/', auditLimiter, requireAuthMiddleware, (req, res) => {
     const user = req.user as any;
     const organizationId = user?.organization_id ?? 'default';
     const { limit = 50, offset = 0, entity_type, action } = req.query;
@@ -36,7 +38,7 @@ export function createAuditLogRoutes(db: Database, requireAuthMiddleware?: any):
    * GET /api/audit-logs/export
    * Exporteer audit logs als CSV/JSON.
    */
-  router.get('/export', requireAuthMiddleware, (req, res) => {
+  router.get('/export', auditLimiter, requireAuthMiddleware, (req, res) => {
     const user = req.user as any;
     const organization_id = user?.organization_id ?? 'default';
     const { format = 'json' } = req.query;
