@@ -22,10 +22,13 @@ export interface LayerCompliance {
 export interface SpecComplianceResult {
   specName: string;
   path: string;
+  source: 'speckit' | 'openspec';
   lifecycleState: string;
   layers: LayerCompliance[];
   score: number;  // 0-7
   fullCompliance: boolean;
+  assuranceStatus: 'pass' | 'fail' | 'blocked';
+  nextSafeAction: string;
 }
 
 export interface ComplianceReport {
@@ -47,7 +50,12 @@ const LAYER_DEFINITIONS = [
   { id: 'L7', name: 'Verified Library Specs', pattern: /## Verified Library Specs/ },
 ];
 
-export function evaluateSpecCompliance(specContent: string, specName: string, path: string): SpecComplianceResult {
+export function evaluateSpecCompliance(
+  specContent: string,
+  specName: string,
+  path: string,
+  source: SpecComplianceResult['source'] = 'speckit'
+): SpecComplianceResult {
   const layers: LayerCompliance[] = LAYER_DEFINITIONS.map(def => {
     const match = def.pattern.test(specContent);
     return {
@@ -63,19 +71,24 @@ export function evaluateSpecCompliance(specContent: string, specName: string, pa
   const lifecycleState = stateMatch ? stateMatch[1] : 'unknown';
 
   const score = layers.filter(l => l.present).length;
+  const missing = layers.filter(layer => !layer.present).map(layer => layer.layer);
+  const blocked = /^(blocked|paused)$/i.test(lifecycleState);
 
   return {
     specName,
     path,
+    source,
     lifecycleState,
     layers,
     score,
     fullCompliance: score === 7,
+    assuranceStatus: score === 7 ? 'pass' : blocked ? 'blocked' : 'fail',
+    nextSafeAction: score === 7 ? 'No action required' : `Add missing layers: ${missing.join(', ')}`,
   };
 }
 
-export function generateComplianceReport(specs: Array<{ name: string; path: string; content: string }>): ComplianceReport {
-  const results = specs.map(s => evaluateSpecCompliance(s.content, s.name, s.path));
+export function generateComplianceReport(specs: Array<{ name: string; path: string; content: string; source?: SpecComplianceResult['source'] }>): ComplianceReport {
+  const results = specs.map(s => evaluateSpecCompliance(s.content, s.name, s.path, s.source));
 
   return {
     generatedAt: new Date().toISOString(),
@@ -93,11 +106,15 @@ export function exportReportAsJson(report: ComplianceReport): string {
 }
 
 export function exportReportAsCsv(report: ComplianceReport): string {
-  const headers = ['spec_name', 'lifecycle_state', 'score', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'];
+  const headers = ['spec_name', 'source', 'path', 'lifecycle_state', 'assurance_status', 'score', 'next_safe_action', 'L1', 'L2', 'L3', 'L4', 'L5', 'L6', 'L7'];
   const rows = report.specs.map(spec => [
     spec.specName,
+    spec.source,
+    spec.path,
     spec.lifecycleState,
+    spec.assuranceStatus,
     String(spec.score),
+    spec.nextSafeAction,
     ...spec.layers.map(l => l.present ? 'pass' : 'fail'),
   ]);
 
@@ -117,12 +134,12 @@ export function exportReportAsCsv(report: ComplianceReport): string {
   return csvLines.join('\n');
 }
 
-export function scanSpecsDirectory(): Array<{ name: string; path: string; content: string }> {
+export function scanSpecsDirectory(repoRoot = require('path').resolve(__dirname, '../../../..')): Array<{ name: string; path: string; content: string; source: SpecComplianceResult['source'] }> {
   const fs = require('fs');
   const path = require('path');
-  const specsDir = path.resolve(__dirname, '../../../..', 'specs');
+  const specsDir = path.join(repoRoot, 'specs');
   const archiveDir = path.join(specsDir, 'archive');
-  const specs: Array<{ name: string; path: string; content: string }> = [];
+  const specs: Array<{ name: string; path: string; content: string; source: SpecComplianceResult['source'] }> = [];
   const seen = new Set<string>();
 
   for (const dir of [specsDir, archiveDir]) {
@@ -133,10 +150,34 @@ export function scanSpecsDirectory(): Array<{ name: string; path: string; conten
         const specFile = path.join(dir, entry.name, 'spec.md');
         if (!seen.has(entry.name) && fs.existsSync(specFile)) {
           const content = fs.readFileSync(specFile, 'utf-8');
-          specs.push({ name: entry.name, path: specFile, content });
+          specs.push({ name: entry.name, path: specFile, content, source: 'speckit' });
           seen.add(entry.name);
         }
       }
+    }
+  }
+
+  const openSpecDir = path.join(repoRoot, 'openspec', 'changes');
+  if (fs.existsSync(openSpecDir)) {
+    for (const entry of fs.readdirSync(openSpecDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const changeDir = path.join(openSpecDir, entry.name);
+      const files = ['proposal.md', 'design.md', 'tasks.md', 'spec.md']
+        .map(file => path.join(changeDir, file))
+        .filter(file => fs.existsSync(file));
+      if (files.length === 0) continue;
+      const content = files.map(file => fs.readFileSync(file, 'utf-8')).join('\n\n');
+      const tasks = files.find(file => file.endsWith('tasks.md'));
+      const taskContent = tasks ? fs.readFileSync(tasks, 'utf-8') : '';
+      const taskCount = (taskContent.match(/^- \[[ xX]\]/gm) || []).length;
+      const doneCount = (taskContent.match(/^- \[[xX]\]/gm) || []).length;
+      const lifecycle = taskCount > 0 && doneCount === taskCount ? 'implemented' : doneCount > 0 ? 'in_progress' : 'proposed';
+      specs.push({
+        name: `openspec/${entry.name}`,
+        path: changeDir,
+        content: `---\nstatus: ${lifecycle}\n---\n${content}`,
+        source: 'openspec',
+      });
     }
   }
   return specs;

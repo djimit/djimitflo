@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { AgentRetirementService } from '../services/agent-retirement-service';
 import { AdversarialRedTeamService } from '../services/adversarial-red-team-service';
 import { CognitivePlatformOrchestrator } from '../services/cognitive-platform-orchestrator';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
 describe('AgentRetirementService', () => {
   let db: Database.Database;
@@ -65,6 +66,35 @@ describe('AdversarialRedTeamService', () => {
     await service.runAssessment();
     const history = service.getHistory();
     expect(history.length).toBeGreaterThan(0);
+  });
+
+  it('reports the actual command classifier as the ransomware defense', async () => {
+    const report = await service.runAssessment();
+    const ransomware = report.findings.find((finding) => finding.vectorId === 'ransomware-001');
+    expect(ransomware).toMatchObject({ blocked: true, detectionMethod: 'command_risk_classifier' });
+  });
+
+  it('uses persistent runtime governance and the secret scanner', async () => {
+    const governance = new RuntimeGovernanceService(db);
+    governance.registerBaseline('red-team-scope_escape', {
+      overallScore: 1,
+      categoryScores: {},
+      certifiedAt: new Date().toISOString(),
+    });
+    db.prepare(`
+      UPDATE runtime_governance_agents SET circuit_breaker_tripped = 1
+      WHERE agent_id = 'red-team-scope_escape'
+    `).run();
+    const governed = new AdversarialRedTeamService(db, governance);
+    const report = await governed.runAssessment();
+    expect(report.findings.find((finding) => finding.vectorId === 'scope-001'))
+      .toMatchObject({ blocked: true, detectionMethod: 'runtime_governance' });
+
+    const secretResult = (governed as any).checkDefense(
+      { category: 'exfiltration', payload: `token=${'x'.repeat(20)}` },
+      'red-team-exfiltration',
+    );
+    expect(secretResult).toMatchObject({ blocked: true, method: 'secret_scanner' });
   });
 });
 

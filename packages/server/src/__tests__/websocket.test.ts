@@ -19,8 +19,8 @@ function mockDb() {
   } as any;
 }
 
-function mockReq(url: string) {
-  return { url };
+function mockReq(url: string, headers: Record<string, string> = {}) {
+  return { url, headers };
 }
 
 function createMockWs() {
@@ -97,6 +97,45 @@ describe('WebSocketService', () => {
         tokenExp: exp,
       });
     });
+
+    it('accepts a token sent via the "bearer.<token>" sec-websocket-protocol header (dashboard client path)', () => {
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      const payload = { sub: 'user-1', email: 'admin@test.com', role: 'admin', exp };
+      authService.verifyToken.mockReturnValue(payload);
+      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true });
+
+      // No ?token= in the URL at all — this is exactly how packages/dashboard/src/hooks/useWebSocket.ts
+      // connects: `new WebSocket(WS_BASE_URL, "bearer.<token>")`.
+      const req = mockReq('/ws', { 'sec-websocket-protocol': 'bearer.subprotocol-token' });
+      const result = wsService.authenticateConnection(req);
+
+      expect(authService.verifyToken).toHaveBeenCalledWith('subprotocol-token');
+      expect(result).toEqual({
+        userId: 'user-1',
+        email: 'admin@test.com',
+        role: 'admin',
+        tokenExp: exp,
+      });
+    });
+
+    it('prefers the subprotocol token over a query-string token when both are present', () => {
+      authService.verifyToken.mockReturnValue({ sub: 'user-1', email: 'a@test.com', role: 'maker', exp: Math.floor(Date.now() / 1000) + 3600 });
+      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true });
+
+      const req = mockReq('/ws?token=query-token', { 'sec-websocket-protocol': 'bearer.protocol-token' });
+      wsService.authenticateConnection(req);
+
+      expect(authService.verifyToken).toHaveBeenCalledWith('protocol-token');
+    });
+
+    it('rejects when sec-websocket-protocol is present but not a bearer.<token> value and no query token exists', () => {
+      const req = mockReq('/ws', { 'sec-websocket-protocol': 'some-other-protocol' });
+      const ws = createMockWs();
+      const result = wsService.authenticateConnection(req, ws);
+
+      expect(result).toBeNull();
+      expect(ws.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_REQUIRED, 'Authentication failed');
+    });
   });
 
   describe('broadcastFiltered', () => {
@@ -122,6 +161,17 @@ describe('WebSocketService', () => {
 
       expect(expiredWs.close).toHaveBeenCalledWith(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
       expect(wsService['clients'].has(expiredWs)).toBe(false);
+    });
+
+    it('does not enqueue more data for a client over the backpressure limit', () => {
+      const slowWs = createMockWs();
+      slowWs.bufferedAmount = 1_048_577;
+      wsService['clients'].set(slowWs, makeClient(UserRole.ADMIN, 'slow-admin'));
+
+      const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
+      wsService.broadcastFiltered(msg, () => true);
+
+      expect(slowWs.send).not.toHaveBeenCalled();
     });
   });
 

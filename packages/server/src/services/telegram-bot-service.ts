@@ -14,11 +14,13 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
+import type { ApprovalService } from './approval-service';
 
 interface TelegramConfig {
   botToken: string;
   allowedUsers: number[];
   webhookUrl?: string;
+  userMap?: Record<string, string>;
 }
 
 interface TelegramMessage {
@@ -26,19 +28,26 @@ interface TelegramMessage {
   text: string;
   userId: number;
   messageId: number;
+  actorUserId: string;
 }
 
 export class TelegramBotService {
   private config: TelegramConfig | null = null;
   private baseUrl = 'https://api.telegram.org/bot';
+  private linkedUsers = new Map<number, string>();
 
-  constructor(private db: Database) {}
+  constructor(private db: Database, private approvalService?: ApprovalService) {}
 
   /**
    * Configure the Telegram bot.
    */
   configure(config: TelegramConfig): void {
     this.config = config;
+    this.linkedUsers.clear();
+    for (const [telegramId, userRef] of Object.entries(config.userMap || {})) {
+      const user = this.db.prepare('SELECT id FROM users WHERE id = ? OR email = ?').get(userRef, userRef) as { id: string } | undefined;
+      if (user) this.linkedUsers.set(Number(telegramId), user.id);
+    }
   }
 
   /**
@@ -68,12 +77,18 @@ export class TelegramBotService {
       await this.sendMessage(chat.id, '⛔ You are not authorized to use this bot.');
       return;
     }
+    const actorUserId = this.linkedUsers.get(from.id);
+    if (!actorUserId) {
+      await this.sendMessage(chat.id, '⛔ Telegram identity is not linked to a DjimFlo user.');
+      return;
+    }
 
     const message: TelegramMessage = {
       chatId: chat.id,
       text: text.trim(),
       userId: from.id,
       messageId: message_id,
+      actorUserId,
     };
 
     await this.processCommand(message);
@@ -116,11 +131,11 @@ export class TelegramBotService {
         break;
 
       case '/approve':
-        await this.handleApprove(chatId, args);
+        await this.handleApprove(chatId, args, message.actorUserId);
         break;
 
       case '/reject':
-        await this.handleReject(chatId, args);
+        await this.handleReject(chatId, args, message.actorUserId);
         break;
 
       case '/mission':
@@ -319,44 +334,42 @@ export class TelegramBotService {
     `).run(DENNIS_AGENT_ID, JSON.stringify(['telegram-bridge', 'paperclip-dry-run']), now, now, now);
   }
 
-  private async handleApprove(chatId: number, args: string[]): Promise<void> {
+  private async handleApprove(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
       await this.sendMessage(chatId, 'Usage: /approve <approval_id>');
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'approved', approved_at = ?, approved_by = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, String(chatId), now, String(chatId), now, approvalId);
-    const approval = this.db.prepare('SELECT id FROM approvals WHERE id = ?').get(approvalId);
-    if (!approval) {
-      await this.sendMessage(chatId, `Approval not found: ${approvalId}`);
-      return;
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, true, actorUserId);
+      const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, actorUserId);
+      await this.sendMessage(chatId, materialized.status === 'materialized'
+        ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
+        : `✅ Approved: ${approvalId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.sendMessage(chatId, message.startsWith('SELF_APPROVAL_FORBIDDEN')
+        ? '⛔ Je kunt je eigen aanvraag niet goedkeuren.'
+        : `Fout: ${message}`);
     }
-    const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, String(chatId));
-    await this.sendMessage(chatId, materialized.status === 'materialized'
-      ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
-      : `✅ Approved: ${approvalId}${result.changes === 0 ? ' \\(already processed\\)' : ''}`);
   }
 
-  private async handleReject(chatId: number, args: string[]): Promise<void> {
+  private async handleReject(chatId: number, args: string[], actorUserId: string): Promise<void> {
     const approvalId = args[0];
     if (!approvalId) {
       await this.sendMessage(chatId, 'Usage: /reject <approval_id>');
       return;
     }
 
-    const now = new Date().toISOString();
-    const result = this.db.prepare(`
-      UPDATE approvals
-      SET status = 'denied', denied_at = ?, decided_at = ?, decided_by = ?, updated_at = ?
-      WHERE id = ? AND status = 'pending'
-    `).run(now, now, String(chatId), now, approvalId);
-    await this.sendMessage(chatId, result.changes > 0 ? `❌ Rejected: ${approvalId}` : `Approval not pending: ${approvalId}`);
+    try {
+      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
+      this.approvalService.decideApproval(approvalId, false, actorUserId);
+      await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
+    } catch (error) {
+      await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async sendHelp(chatId: number): Promise<void> {

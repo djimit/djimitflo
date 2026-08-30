@@ -20,7 +20,6 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
       status: 'healthy',
       name: 'djimitflo',
       version: getAppVersion(),
-      database: getDatabaseProvenance(db),
       timestamp: new Date().toISOString(),
     });
   });

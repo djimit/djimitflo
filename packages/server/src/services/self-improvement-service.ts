@@ -1,5 +1,8 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { SpecialistPanelService } from './specialist-panel-service';
+
+export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
 
 export interface ImprovementProposal {
   id: string;
@@ -8,147 +11,191 @@ export interface ImprovementProposal {
   description: string;
   rationale: string;
   source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
-  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  status: ImprovementStatus;
   priority: number;
+  evidenceRefs: string[];
+  panelId: string | null;
+  approvedBy: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 interface ImprovementRow {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  rationale: string;
-  source: string;
-  status: string;
-  priority: number;
-  created_at: string;
+  id: string; type: string; title: string; description: string; rationale: string;
+  source: string; status: string; priority: number; evidence_refs_json?: string;
+  panel_id?: string | null; approved_by?: string | null; created_at: string; updated_at?: string | null;
 }
 
+type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' | 'rationale' | 'source' | 'priority'> & {
+  evidenceRefs?: string[];
+};
+
 export class SelfImprovementService {
+  private panels: SpecialistPanelService;
+
   constructor(private db: Database) {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS self_improvements (
-        id TEXT PRIMARY KEY,
-        type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        description TEXT NOT NULL,
-        rationale TEXT NOT NULL,
-        source TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'proposed',
-        priority REAL NOT NULL DEFAULT 0.5,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      )
-    `);
-    this.db.exec('CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status)');
-    this.db.exec('CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC)');
+    this.panels = new SpecialistPanelService(db);
   }
 
-  generateFromReflection(reflection: { whatFailed: string[]; lessonsLearned: string[]; proposedImprovements: string[] }): ImprovementProposal[] {
-    const proposals: ImprovementProposal[] = [];
-
-    for (const improvement of reflection.proposedImprovements) {
-      const id = randomUUID();
-      const type = this.classifyImprovement(improvement);
-      const proposal: ImprovementProposal = {
-        id,
+  generateFromReflection(reflection: {
+    whatFailed: string[];
+    lessonsLearned: string[];
+    proposedImprovements: string[];
+    loopRunId?: string;
+    reflectionId?: string;
+  }): ImprovementProposal[] {
+    const evidenceRefs = [
+      reflection.loopRunId && `loop:${reflection.loopRunId}`,
+      reflection.reflectionId && `reflection:${reflection.reflectionId}`,
+    ].filter((ref): ref is string => Boolean(ref));
+    return reflection.proposedImprovements.flatMap((description) => {
+      const type = this.classifyImprovement(description);
+      const proposal = this.createProposal({
         type,
-        title: improvement.slice(0, 80),
-        description: improvement,
+        title: description.slice(0, 80),
+        description,
         rationale: reflection.lessonsLearned.join('; ') || 'Generated from reflection',
         source: 'reflection',
-        status: 'proposed',
         priority: type === 'bug_fix' ? 0.9 : type === 'security' ? 0.95 : 0.6,
-        createdAt: new Date().toISOString(),
-      };
-
-      this.db.prepare(`
-        INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority)
-        VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?)
-      `).run(id, type, proposal.title, proposal.description, proposal.rationale, 'reflection', proposal.priority);
-
-      proposals.push(proposal);
-    }
-
-    return proposals;
+        evidenceRefs,
+      });
+      return proposal ? [proposal] : [];
+    });
   }
 
   generateFromGaps(gaps: Array<{ domain: string; description: string }>): ImprovementProposal[] {
-    const proposals: ImprovementProposal[] = [];
-
-    for (const gap of gaps) {
-      const id = randomUUID();
-      const proposal: ImprovementProposal = {
-        id,
+    return gaps.flatMap((gap) => {
+      const proposal = this.createProposal({
         type: 'feature',
         title: `Address knowledge gap: ${gap.domain}`,
         description: gap.description,
         rationale: `Knowledge gap identified in domain '${gap.domain}'`,
         source: 'gap_analysis',
-        status: 'proposed',
         priority: 0.7,
-        createdAt: new Date().toISOString(),
-      };
-
-      this.db.prepare(`
-        INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority)
-        VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?)
-      `).run(id, 'feature', proposal.title, proposal.description, proposal.rationale, 'gap_analysis', 0.7);
-
-      proposals.push(proposal);
-    }
-
-    return proposals;
+        evidenceRefs: [`knowledge-gap:${gap.domain}`],
+      });
+      return proposal ? [proposal] : [];
+    });
   }
 
   generateFromBuildErrors(errors: string[]): ImprovementProposal[] {
-    const proposals: ImprovementProposal[] = [];
-
-    for (const error of errors.slice(0, 5)) {
-      const id = randomUUID();
-      const proposal: ImprovementProposal = {
-        id,
+    return errors.slice(0, 5).flatMap((error) => {
+      const proposal = this.createProposal({
         type: 'bug_fix',
         title: `Fix: ${error.slice(0, 60)}`,
         description: error,
         rationale: 'Build/test failure detected',
         source: 'feedback',
-        status: 'proposed',
         priority: 0.95,
-        createdAt: new Date().toISOString(),
-      };
+        evidenceRefs: ['build:test-failure'],
+      });
+      return proposal ? [proposal] : [];
+    });
+  }
 
-      this.db.prepare(`
-        INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority)
-        VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?)
-      `).run(id, 'bug_fix', proposal.title, proposal.description, proposal.rationale, 'feedback', 0.95);
+  listImprovements(status?: ImprovementStatus, limit = 100): ImprovementProposal[] {
+    const normalizedLimit = Math.max(1, Math.min(Number(limit || 100), 500));
+    const rows = status
+      ? this.db.prepare('SELECT * FROM self_improvements WHERE status = ? ORDER BY priority DESC, created_at DESC LIMIT ?').all(status, normalizedLimit)
+      : this.db.prepare('SELECT * FROM self_improvements ORDER BY created_at DESC LIMIT ?').all(normalizedLimit);
+    return (rows as ImprovementRow[]).map((row) => this.rowToProposal(row));
+  }
 
-      proposals.push(proposal);
-    }
-
-    return proposals;
+  getImprovement(id: string): ImprovementProposal {
+    const row = this.db.prepare('SELECT * FROM self_improvements WHERE id = ?').get(id) as ImprovementRow | undefined;
+    if (!row) throw new Error('SELF_IMPROVEMENT_NOT_FOUND');
+    return this.rowToProposal(row);
   }
 
   getProposedImprovements(): ImprovementProposal[] {
-    const rows = this.db.prepare("SELECT * FROM self_improvements WHERE status = 'proposed' ORDER BY priority DESC").all() as ImprovementRow[];
-    return rows.map(this.rowToProposal);
+    return this.listImprovements('proposed');
   }
 
-  getImprovementHistory(limit: number = 20): ImprovementProposal[] {
-    const rows = this.db.prepare('SELECT * FROM self_improvements ORDER BY created_at DESC LIMIT ?').all(limit) as ImprovementRow[];
-    return rows.map(this.rowToProposal);
+  getImprovementHistory(limit = 20): ImprovementProposal[] {
+    return this.listImprovements(undefined, limit);
   }
 
-  approveImprovement(id: string): void {
-    this.db.prepare("UPDATE self_improvements SET status = 'scheduled' WHERE id = ?").run(id);
+  approveImprovement(id: string, approvedBy: string): ImprovementProposal {
+    if (!approvedBy.trim()) throw new Error('SELF_IMPROVEMENT_OPERATOR_REQUIRED');
+    const proposal = this.getImprovement(id);
+    if (proposal.status !== 'proposed') throw new Error('SELF_IMPROVEMENT_NOT_PROPOSED');
+    if (!proposal.panelId) throw new Error('SELF_IMPROVEMENT_PANEL_REQUIRED');
+    const panel = this.panels.getPanel(proposal.panelId);
+    if (panel.status !== 'consensus_ready' || panel.consensus.decision !== 'goal') {
+      throw new Error('SELF_IMPROVEMENT_CONSENSUS_REQUIRED');
+    }
+    const reviewerActors = (this.db.prepare('SELECT reviewer_actor FROM specialist_reviews WHERE panel_id = ?').all(panel.id) as Array<{ reviewer_actor?: string }>)
+      .map((review) => review.reviewer_actor)
+      .filter(Boolean);
+    if (reviewerActors.includes(approvedBy)) throw new Error('SELF_IMPROVEMENT_OPERATOR_SEPARATION_REQUIRED');
+    const now = new Date().toISOString();
+    this.db.prepare("UPDATE self_improvements SET status = 'scheduled', approved_by = ?, updated_at = ? WHERE id = ?")
+      .run(approvedBy, now, id);
+    this.db.prepare("UPDATE specialist_panels SET status = 'goal_created', updated_at = ? WHERE id = ?")
+      .run(now, panel.id);
+    return this.getImprovement(id);
   }
 
   completeImprovement(id: string): void {
-    this.db.prepare("UPDATE self_improvements SET status = 'applied' WHERE id = ?").run(id);
+    if (this.getImprovement(id).status !== 'evaluating') throw new Error('SELF_IMPROVEMENT_NOT_EVALUATING');
+    this.transition(id, 'applied');
   }
 
-  rejectImprovement(id: string): void {
-    this.db.prepare("UPDATE self_improvements SET status = 'rejected' WHERE id = ?").run(id);
+  rejectImprovement(id: string): ImprovementProposal {
+    const proposal = this.getImprovement(id);
+    if (!['proposed', 'scheduled'].includes(proposal.status)) throw new Error('SELF_IMPROVEMENT_CLOSED');
+    this.db.transaction(() => {
+      this.transition(id, 'rejected');
+      if (proposal.panelId) {
+        this.db.prepare("UPDATE specialist_panels SET status = 'cancelled', updated_at = ? WHERE id = ?")
+          .run(new Date().toISOString(), proposal.panelId);
+      }
+    })();
+    return this.getImprovement(id);
+  }
+
+  private createProposal(input: ProposalInput): ImprovementProposal | null {
+    const fingerprint = createHash('sha256')
+      .update(`${input.source}\0${input.title.trim().toLowerCase()}\0${input.description.trim().toLowerCase()}`)
+      .digest('hex');
+    const duplicate = this.db.prepare(
+      "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating') LIMIT 1"
+    ).get(fingerprint) as { id: string } | undefined;
+    if (duplicate) return null;
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const evidenceRefs = Array.from(new Set(input.evidenceRefs || []));
+    const riskClass = input.type === 'security' ? 'high' : 'low';
+    const specialistIds = input.type === 'security'
+      ? ['systems_architect', 'security_reviewer']
+      : ['systems_architect', 'runtime_engineer'];
+
+    const create = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO self_improvements (
+          id, type, title, description, rationale, source, status, priority,
+          fingerprint, evidence_refs_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)
+      `).run(id, input.type, input.title, input.description, input.rationale, input.source, input.priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
+      const panel = this.panels.createPanel({
+        topic: input.title,
+        question: `Should self-improvement proposal ${id} be authorized as a goal?`,
+        risk_class: riskClass,
+        specialist_ids: specialistIds,
+        context: { proposal_id: id, description: input.description, rationale: input.rationale, evidence_refs: evidenceRefs },
+        metadata: { self_improvement_id: id },
+      });
+      this.db.prepare('UPDATE self_improvements SET panel_id = ? WHERE id = ?').run(panel.id, id);
+    });
+    create();
+    return this.getImprovement(id);
+  }
+
+  private transition(id: string, status: ImprovementStatus): void {
+    const result = this.db.prepare('UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ?')
+      .run(status, new Date().toISOString(), id);
+    if (result.changes === 0) throw new Error('SELF_IMPROVEMENT_NOT_FOUND');
   }
 
   private classifyImprovement(text: string): ImprovementProposal['type'] {
@@ -168,9 +215,13 @@ export class SelfImprovementService {
       description: row.description,
       rationale: row.rationale,
       source: row.source as ImprovementProposal['source'],
-      status: row.status as ImprovementProposal['status'],
+      status: row.status as ImprovementStatus,
       priority: row.priority,
+      evidenceRefs: JSON.parse(row.evidence_refs_json || '[]'),
+      panelId: row.panel_id || null,
+      approvedBy: row.approved_by || null,
       createdAt: row.created_at,
+      updatedAt: row.updated_at || row.created_at,
     };
   }
 }

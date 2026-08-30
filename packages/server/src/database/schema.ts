@@ -205,6 +205,7 @@ CREATE INDEX IF NOT EXISTS idx_sandbox_policies_priority ON sandbox_policies(pri
 -- Approval policies table
 CREATE TABLE IF NOT EXISTS approval_policies (
   id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL DEFAULT 1,
   name TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,

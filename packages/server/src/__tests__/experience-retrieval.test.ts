@@ -45,7 +45,7 @@ describe('G36: Experience Retrieval', () => {
     insertGoal('goal-1', 'Fix TypeScript null guards in auth module');
     insertLoopRun('run-1', 'goal-1', 'completed');
     insertMakerLease('run-1', 'codex', 'ts-fix');
-    await experience.indexRun('run-1');
+    await experience.indexRun('run-1', { certified: true });
     const row = db.prepare('SELECT * FROM experience_embeddings WHERE run_id = ?').get('run-1') as any;
     expect(row).toBeDefined();
     expect(row.objective).toBe('Fix TypeScript null guards in auth module');
@@ -56,12 +56,12 @@ describe('G36: Experience Retrieval', () => {
     insertGoal('goal-1', 'Fix TypeScript null guards in auth module');
     insertLoopRun('run-1', 'goal-1', 'completed');
     insertMakerLease('run-1', 'codex', 'ts-fix');
-    await experience.indexRun('run-1');
+    await experience.indexRun('run-1', { certified: true });
 
     insertGoal('goal-2', 'Fix Python type hints in data pipeline');
     insertLoopRun('run-2', 'goal-2', 'completed');
     insertMakerLease('run-2', 'opencode', 'py-fix');
-    await experience.indexRun('run-2');
+    await experience.indexRun('run-2', { certified: true });
 
     const results = await experience.retrieveRelevantRuns('TypeScript null guards', 5);
     expect(results.length).toBeGreaterThanOrEqual(1);
@@ -72,7 +72,7 @@ describe('G36: Experience Retrieval', () => {
     insertGoal('goal-1', 'Fix auth module');
     insertLoopRun('run-1', 'goal-1', 'completed');
     insertMakerLease('run-1', 'codex', 'ts-fix');
-    await experience.indexRun('run-1');
+    await experience.indexRun('run-1', { certified: true });
 
     const results = await experience.retrieveRelevantRuns('auth module', 5);
     const context = experience.formatExperienceContext(results);
@@ -104,7 +104,7 @@ describe('G36: Experience Retrieval', () => {
     insertGoal('goal-s', 'Fix TypeScript imports');
     insertLoopRun('run-s', 'goal-s', 'completed');
     insertMakerLease('run-s', 'codex', 'ts-fix');
-    await experience.indexRun('run-s');
+    await experience.indexRun('run-s', { certified: true });
 
     insertGoal('goal-f', 'Fix TypeScript exports');
     insertLoopRun('run-f', 'goal-f', 'failed');
@@ -119,7 +119,7 @@ describe('G36: Experience Retrieval', () => {
     insertGoal('goal-old', 'Old task');
     insertLoopRun('run-old', 'goal-old', 'completed');
     insertMakerLease('run-old', 'codex', 'ts-fix');
-    await experience.indexRun('run-old');
+    await experience.indexRun('run-old', { certified: true });
 
     db.prepare("UPDATE experience_embeddings SET created_at = datetime('now', '-100 days') WHERE run_id = 'run-old'").run();
     const purged = await experience.purgeOld(90);
@@ -136,12 +136,36 @@ describe('G36: Experience Retrieval', () => {
     expect(results).toEqual([]);
   });
 
+  it('does not learn from a merely completed but uncertified run', async () => {
+    insertGoal('goal-unproven', 'Unproven completion');
+    insertLoopRun('run-unproven', 'goal-unproven', 'completed');
+    insertMakerLease('run-unproven', 'codex', 'ts-fix');
+
+    await experience.indexRun('run-unproven');
+
+    expect(db.prepare('SELECT * FROM experience_embeddings WHERE run_id = ?').get('run-unproven')).toBeUndefined();
+  });
+
+  it('persists checker lessons for certified retrieval', async () => {
+    insertGoal('goal-lessons', 'Fix an authentication regression');
+    insertLoopRun('run-lessons', 'goal-lessons', 'completed');
+    insertMakerLease('run-lessons', 'codex', 'auth-fix');
+
+    await experience.indexRun('run-lessons', {
+      certified: true,
+      lessons: ['Independent checker accepted the regression test.'],
+    });
+
+    const row = db.prepare('SELECT lessons FROM experience_embeddings WHERE run_id = ?').get('run-lessons') as { lessons: string };
+    expect(JSON.parse(row.lessons)).toEqual(['Independent checker accepted the regression test.']);
+  });
+
   it('retrieves with limit', async () => {
     for (let i = 0; i < 5; i++) {
       insertGoal(`goal-${i}`, `Fix TypeScript issue ${i}`);
       insertLoopRun(`run-${i}`, `goal-${i}`, 'completed');
       insertMakerLease(`run-${i}`, 'codex', 'ts-fix');
-      await experience.indexRun(`run-${i}`);
+      await experience.indexRun(`run-${i}`, { certified: true });
     }
     const results = await experience.retrieveRelevantRuns('TypeScript', 3);
     expect(results.length).toBeLessThanOrEqual(3);

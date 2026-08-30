@@ -37,6 +37,50 @@ describe('DockerSandboxExecutor', () => {
     expect(sandbox.canExecute(task)).toBe(false);
     expect(inner.canExecute).toHaveBeenCalledWith(task);
   });
+
+  it('passes the real inner task command to Docker from start()', async () => {
+    const inner = {
+      kind: 'opencode',
+      canExecute: () => true,
+      start: vi.fn(),
+      buildCommand: vi.fn().mockReturnValue({
+        command: 'opencode',
+        args: ['run', '--format', 'json', '--dir', '/workspace', 'implement the task'],
+      }),
+    } as unknown as TaskExecutor;
+    const sandbox = new DockerSandboxExecutor(inner) as any;
+    vi.spyOn(sandbox, 'ensureDockerAvailable').mockResolvedValue(undefined);
+    vi.spyOn(sandbox, 'ensureImageIntegrity').mockResolvedValue(undefined);
+    const spawn = vi.spyOn(sandbox, 'spawnDockerProcess').mockResolvedValue(0);
+    vi.spyOn(sandbox, 'cleanupContainer').mockResolvedValue(undefined);
+
+    const session = await sandbox.start(
+      { id: 'task-1', description: 'implement the task' } as Task,
+      { workingDirectory: '/host/work' },
+    );
+    await session.result;
+
+    expect(inner.buildCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'task-1' }),
+      expect.objectContaining({ workingDirectory: '/workspace' }),
+    );
+    const dockerArgs = spawn.mock.calls[0][1] as string[];
+    expect(dockerArgs.slice(dockerArgs.indexOf(DEFAULT_SANDBOX_CONFIG.image) + 1)).toEqual([
+      'opencode', 'run', '--format', 'json', '--dir', '/workspace', 'implement the task',
+    ]);
+    expect(dockerArgs).not.toContain('--version');
+  });
+
+  it('fails closed when an inner executor cannot build its command', async () => {
+    const inner = { kind: 'custom', canExecute: () => true, start: vi.fn() } as unknown as TaskExecutor;
+    const sandbox = new DockerSandboxExecutor(inner) as any;
+    vi.spyOn(sandbox, 'ensureDockerAvailable').mockResolvedValue(undefined);
+    vi.spyOn(sandbox, 'ensureImageIntegrity').mockResolvedValue(undefined);
+
+    await expect(sandbox.start({ id: 'task-1' } as Task)).rejects.toThrow(
+      'DOCKER_SANDBOX_INNER_COMMAND_UNAVAILABLE',
+    );
+  });
 });
 
 describe('DockerSandboxExecutor.buildDockerArgs', () => {

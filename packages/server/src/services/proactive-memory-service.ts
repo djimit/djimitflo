@@ -10,6 +10,8 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import type { EmbeddingProvider } from '@djimitflo/shared';
+import { OllamaEmbeddingProvider } from './ollama-embedding-provider';
 
 interface MemoryEntry {
   id: string;
@@ -48,7 +50,7 @@ const ARCHIVAL_THRESHOLD = 0.2;
 // const DECAY_THRESHOLD = 0.1;  // Reserved for future use
 
 export class ProactiveMemoryService {
-  constructor(private db: Database) {
+  constructor(private db: Database, private embeddingProvider: EmbeddingProvider = new OllamaEmbeddingProvider()) {
     this.ensureTables();
   }
 
@@ -222,10 +224,32 @@ export class ProactiveMemoryService {
     return (this.db.prepare(query).all(...params) as any[]).map((r) => this.parseMemory(r));
   }
 
-  /**
-   * Search memories by content similarity (simple keyword match for v1).
-   */
-  searchMemories(query: string, limit = 10): MemoryEntry[] {
+  /** Search active memories semantically, falling back to keyword retrieval if the provider is unavailable. */
+  async searchMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
+    const memories = this.db.prepare(`
+      SELECT * FROM proactive_memories WHERE status = 'active'
+      ORDER BY relevance_score DESC LIMIT 500
+    `).all() as any[];
+    if (memories.length === 0 || !query.trim()) return [];
+
+    try {
+      const queryEmbedding = await this.embeddingProvider.embed(query);
+      // ponytail: bounded O(n) API fan-out; persist vectors when 500 active memories becomes a measured bottleneck.
+      const scored = await Promise.all(memories.map(async (row) => ({
+        row,
+        score: this.cosineSimilarity(queryEmbedding, await this.embeddingProvider.embed(row.content)) * 0.8
+          + Number(row.relevance_score) * 0.2,
+      })));
+      return scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map(({ row }) => this.parseMemory(row));
+    } catch {
+      return this.searchMemoriesByKeyword(query, limit);
+    }
+  }
+
+  private searchMemoriesByKeyword(query: string, limit: number): MemoryEntry[] {
     const keywords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
     if (keywords.length === 0) return [];
 
@@ -345,6 +369,20 @@ export class ProactiveMemoryService {
     const intersection = new Set([...tokensA].filter((t) => tokensB.has(t)));
     const union = new Set([...tokensA, ...tokensB]);
     return intersection.size / union.size;
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length === 0 || a.length !== b.length) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let index = 0; index < a.length; index++) {
+      dot += a[index] * b[index];
+      normA += a[index] ** 2;
+      normB += b[index] ** 2;
+    }
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+    return denominator === 0 ? 0 : dot / denominator;
   }
 
   private calculateRelevance(memory: MemoryEntry): number {

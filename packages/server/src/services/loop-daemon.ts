@@ -106,6 +106,7 @@ export class LoopDaemon {
    */
   async tick(): Promise<void> {
     // Allow tick to run even when not started (for testing)
+    this.pruneWorktrees();
 
     try {
       const queue = this.loadQueue();
@@ -317,6 +318,15 @@ export class LoopDaemon {
       // G19: remove from active goals when done (success or failure).
       this.activeGoals.delete(goal.id);
       this.persistActiveGoals();
+      this.pruneWorktrees();
+    }
+  }
+
+  private pruneWorktrees(): void {
+    try {
+      this.loops.pruneOrphanedWorktrees();
+    } catch (error) {
+      console.error('[LoopDaemon] worktree cleanup error:', error instanceof Error ? error.message : String(error));
     }
   }
 

@@ -35,19 +35,11 @@ import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
 import { LoopDaemon } from './services/loop-daemon';
 import { ExplainerFleetWorker } from './services/explainer-fleet-worker';
-import { NegotiationCoordinator } from './services/negotiation-coordinator';
-import { CapabilityAcquisitionService } from './services/capability-acquisition';
-import { MetaEvolutionService } from './services/meta-evolution-service';
-import { NestedSpawnService } from './services/nested-spawn-service';
-import { SwarmIntelligenceService } from './services/swarm-intelligence-service';
 import { SelfModelService } from './services/self-model-service';
-import { AutonomousGoalGenerator } from './services/autonomous-goal-generator';
-import { ExpertSwarmOrchestrator } from './services/expert-swarm-orchestrator';
-import { WorkerPool } from './services/worker-pool';
-import { OkfKnowledgeUpdater } from './services/okf-knowledge-updater';
-import { ServiceRefactoringAnalyzer } from './services/service-refactoring-analyzer';
-import { EmergentSpecializationService } from './services/emergent-specialization-service';
-import { RsiSafetyGuard } from './services/rsi-safety-guard';
+import { RuntimeGovernanceService } from './services/runtime-governance-service';
+import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
+import { initOperatorServices } from './bootstrap/operator-services';
+import { initAutonomousServices } from './bootstrap/autonomous-services';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -72,6 +64,10 @@ if (!process.env.DJIMITFLO_CONTROL_URL) {
 
 async function main() {
   console.log('🚀 Starting Djimitflo Server...');
+  const runtimeProfile = resolveRuntimeProfile();
+  const operatorRuntime = runtimeProfileEnablesOperator(runtimeProfile);
+  const autonomousRuntime = runtimeProfileEnablesAutonomy(runtimeProfile);
+  console.log(`🧭 Runtime profile: ${runtimeProfile}`);
   
   // Initialize database
   console.log('📦 Initializing database...');
@@ -94,78 +90,17 @@ async function main() {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
-  // G20+G23: start the negotiation coordinator + capability acquisition service.
-  const intelligence = new SwarmIntelligenceService(db);
-  const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
-  try {
-    const coordinator = new NegotiationCoordinator(recoverySvc, nestedSpawns, intelligence);
-    coordinator.start();
-    console.log('🤝 Negotiation coordinator started (inter-agent help_request protocol).');
-  } catch (error) {
-    console.warn('⚠️  Negotiation coordinator failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-  try {
-    const acquisition = new CapabilityAcquisitionService(db, intelligence);
-    acquisition.start();
-    console.log('🧠 Capability acquisition service started (autonomous capability growth).');
-  } catch (error) {
-    console.warn('⚠️  Capability acquisition failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G32: start the meta-evolution service (periodic self-evaluation + pruning).
-  try {
-    const metaEvolution = new MetaEvolutionService(db, intelligence);
-    metaEvolution.start();
-    console.log('🔄 Meta-evolution service started (periodic self-evaluation + capability pruning).');
-  } catch (error) {
-    console.warn('⚠️  Meta-evolution failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G92: start the autonomous goal generator (self-improvement → goals → loop-daemon).
-  try {
-    const autonomousGoals = new AutonomousGoalGenerator(db);
-    const generated = autonomousGoals.generateAll();
-    if (generated.total > 0) {
-      console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+  if (operatorRuntime) initOperatorServices(db);
+  if (autonomousRuntime) {
+    initAutonomousServices(db, recoverySvc);
+    // Share the same LoopService instance so daemon and API share runtime leases.
+    try {
+      const daemon = new LoopDaemon(db, recoverySvc);
+      daemon.start();
+      console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
+    } catch (error) {
+      console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
     }
-  } catch (error) {
-    console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G93: initialize expert swarm orchestrator (knowledge acquisition + judging).
-  // G103-G106: RSI Engine services
-  try {
-    const safetyGuard = new RsiSafetyGuard(db);
-    const refactoringAnalyzer = new ServiceRefactoringAnalyzer(db);
-    const emergentSpec = new EmergentSpecializationService(db);
-    void safetyGuard;
-    void refactoringAnalyzer;
-    void emergentSpec;
-    console.log('🧬 RSI Engine ready (Refactor + Safety + Specialization).');
-  } catch (error) {
-    console.warn('⚠️  RSI Engine initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  try {
-    const workerPool = new WorkerPool({ concurrency: 10 });
-    const okfUpdater = new OkfKnowledgeUpdater(db);
-    void workerPool;
-    void okfUpdater;
-    new ExpertSwarmOrchestrator(db);
-    console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
-  } catch (error) {
-    console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
-  }
-
-  // G16: start the continuous operation daemon (goal queue with priority scheduling).
-  // Share the same LoopService instance (recoverySvc) so the daemon and the server
-  // share in-memory state (runtimeSemaphore, runtimeLeases, etc.).
-  try {
-    const daemon = new LoopDaemon(db, recoverySvc);
-    daemon.start();
-    console.log(`🚀 Loop daemon started (continuous goal queue, poll=${process.env.GOAL_QUEUE_POLL_MS || '5000'}ms).`);
-  } catch (error) {
-    console.warn('⚠️  Loop daemon failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
   // Initialize auth
   const authService = new AuthService(db);
@@ -197,15 +132,30 @@ async function main() {
   const httpServer = createServer(app);
   
   // Create WebSocket server
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // handleProtocols echoes back the "bearer.<token>" subprotocol the dashboard
+  // client offers (see packages/dashboard/src/hooks/useWebSocket.ts) so the
+  // handshake response names the negotiated protocol per RFC 6455 §4.2.2.
+  const wss = new WebSocketServer({
+    server: httpServer,
+    path: '/ws',
+    handleProtocols: (protocols: Set<string>) => {
+      for (const protocol of protocols) {
+        if (protocol.startsWith('bearer.')) return protocol;
+      }
+      const [first] = protocols;
+      return first ?? false;
+    },
+  });
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
   
   // Prometheus exposition — default-off, armed by METRICS_TOKEN (see routes/metrics.ts)
   app.get('/metrics', metricsRateLimiter, createMetricsHandler(db, () => wsService.getClientCount()));
 
-  // Create execution engine
-  const executionEngine = new ExecutionEngine(db, wsService);
+  // One persistent runtime-governance authority shared by dispatch and API routes.
+  const runtimeGovernance = new RuntimeGovernanceService(db);
+  runtimeGovernance.start();
+  const executionEngine = new ExecutionEngine(db, wsService, undefined, runtimeGovernance);
   console.log('⚙️  Execution engine initialized');
 
   const memorySync = new MemorySyncService(db);
@@ -223,12 +173,12 @@ async function main() {
   executionEngine.setTrajectoryStore(trajectoryStore);
 
   // Retention service — centralized data lifecycle management
-  const retention = new RetentionService(db);
-  retention.start();
-
-  // Cognitive loop closure — learns from loop execution outcomes
-  const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
-  cognitiveLoopClosure.start();
+  if (operatorRuntime) {
+    const retention = new RetentionService(db);
+    retention.start();
+    const cognitiveLoopClosure = new CognitiveLoopClosureService(db);
+    cognitiveLoopClosure.start();
+  }
 
   // Multi-model intelligence — capability-aware model routing
   const multiModelIntelligence = new MultiModelIntelligence(db);
@@ -239,15 +189,14 @@ async function main() {
   }
 
   // Meta-orchestration — self-driving optimization layer (connects all learning subsystems)
-  const metaOrchestration = new MetaOrchestrationService(db);
-  metaOrchestration.start();
-  executionEngine.setMetaOrchestration(metaOrchestration);
-  recoverySvc.setMetaOrchestration(metaOrchestration);
-
-  // Self-modification pipeline — autonomous code improvement (analyze on startup)
-  const selfModification = new SelfModificationPipeline(db);
-  // Run initial analysis to detect improvement opportunities
-  selfModification.analyze();
+  let metaOrchestration: MetaOrchestrationService | undefined;
+  if (autonomousRuntime) {
+    metaOrchestration = new MetaOrchestrationService(db);
+    metaOrchestration.start();
+    executionEngine.setMetaOrchestration(metaOrchestration);
+    recoverySvc.setMetaOrchestration(metaOrchestration);
+    new SelfModificationPipeline(db).analyze();
+  }
 
   // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)
   // Compliance audit — immutable evidence chain and compliance reporting (Vector 7)
@@ -256,12 +205,12 @@ async function main() {
   new ComplianceAuditService(db);
 
   // OpenMythos nightly eval — fills the governance leaderboard (default-off, see service header)
-  if (new OpenMythosNightlyService(db).start()) {
+  if (autonomousRuntime && new OpenMythosNightlyService(db).start()) {
     console.log('🌙 OpenMythos nightly eval scheduler armed');
   }
 
   // API routes
-  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
+  app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, operatorRuntime, runtimeGovernance));
 
   // Public explore pages (unauthenticated, rate-limited)
   app.use('/explore', createExplorePublicRoutes(db));
@@ -281,7 +230,7 @@ async function main() {
     console.warn('⚠️  Explainer fleet worker failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
-  try {
+  if (operatorRuntime) try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
     if (raw) {
       const configs = JSON.parse(raw) as TelegramBotConfig[];

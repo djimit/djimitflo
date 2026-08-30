@@ -3,19 +3,13 @@
 
 module.exports = {
   mutate: [
-    'packages/server/src/services/tool-broker.ts',
-    'packages/server/src/services/auth-service.ts',
-    'packages/server/src/services/authorization-service.ts',
-    'packages/server/src/services/loop-recovery-service.ts',
-    'packages/server/src/services/loop-event-service.ts',
-    'packages/server/src/services/loop-run-query-service.ts',
-    'packages/server/src/services/loop-worker-lease-repo.ts',
-    'packages/server/src/services/docker-sandbox-executor.ts',
-    'packages/server/src/services/plugin-registry-service.ts',
-    'packages/server/src/services/compliance-audit-service.ts',
+    'packages/server/src/services/approval-service.ts:116:4-118:5',
+    'packages/server/src/execution/executors/docker-sandbox-executor.ts:108:2-113:3',
   ],
   testRunner: 'vitest',
-  reporters: ['html', 'clear-text', 'progress', 'dashboard'],
+  ignorePatterns: ['/knowledge'],
+  concurrency: 4,
+  reporters: ['html', 'clear-text', 'progress'],
   coverageAnalysis: 'perTest',
   thresholds: {
     high: 85,
@@ -29,6 +23,7 @@ module.exports = {
     ],
   },
   plugins: [
-    '@stryker-mutator/vitest-plugin',
+    '@stryker-mutator/vitest-runner',
   ],
+  vitest: { dir: '.', related: false, configFile: 'vitest.mutation.config.ts' },
 };

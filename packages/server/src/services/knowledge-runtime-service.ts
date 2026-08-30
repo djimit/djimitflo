@@ -191,24 +191,49 @@ export class KnowledgeRuntimeService {
   }
 
   closeLoop(input: { loop_run_id?: string; work_item_id?: string; promote_memory?: boolean } = {}): LoopLearningClosureResult {
+    return this.db.transaction(() => this.closeLoopInTransaction(input))();
+  }
+
+  private closeLoopInTransaction(input: { loop_run_id?: string; work_item_id?: string; promote_memory?: boolean } = {}): LoopLearningClosureResult {
     const loopRunId = input.loop_run_id?.trim();
     if (!loopRunId) throw new Error('KNOWLEDGE_RUNTIME_LOOP_RUN_REQUIRED');
     const loops = new LoopService(this.db);
     const bundle = loops.getReviewBundle(loopRunId);
+    const closure = this.db.prepare('SELECT * FROM loop_learning_closures WHERE loop_run_id = ?').get(loopRunId) as {
+      eval_run_id: string; reflection_id: string; memory_candidate_id: string; previous_score: number | null; score_delta: number | null;
+    } | undefined;
+    if (closure) {
+      return {
+        action: 'closed_loop_learning',
+        loop_run_id: loopRunId,
+        status: 'closed',
+        blocked_reasons: [],
+        eval_run: this.assurance.getEval(closure.eval_run_id),
+        previous_score: closure.previous_score,
+        score_delta: closure.score_delta,
+        reflection: this.assurance.getReflection(closure.reflection_id),
+        memory_candidate: this.memory.get(closure.memory_candidate_id),
+        follow_up_work_item: null,
+        skill_improvement_work_item: null,
+      };
+    }
     const leases = bundle.leases;
-    const maker = leases.find((lease) => lease.role === 'maker');
-    const checker = leases.find((lease) => lease.role === 'checker');
+    const maker = leases.find((lease) => lease.role === 'maker' && !lease.metadata.superseded_by_maker_lease_id);
+    const checker = leases.find((lease) => lease.role === 'checker' && lease.metadata.maker_lease_id === maker?.id);
     const blockedReasons: string[] = [];
     if (!maker || maker.status !== 'completed') blockedReasons.push('maker_not_completed');
     if (!checker || checker.status !== 'completed' || checker.metadata.verdict !== 'accepted') blockedReasons.push('checker_not_accepted');
-    if (bundle.run.gates.some((gate) => gate.status === 'fail')) blockedReasons.push('failed_gate');
+    if (bundle.run.gates.length === 0) blockedReasons.push('gates_missing');
+    if (bundle.run.gates.some((gate) => gate.status === 'fail')) blockedReasons.push('gate_not_passed');
 
     const evidenceCounts = {
       trace_spans: this.count('SELECT COUNT(*) as count FROM agent_trace_spans WHERE loop_run_id = ?', [loopRunId]),
       checkpoints: this.count('SELECT COUNT(*) as count FROM loop_checkpoints WHERE loop_run_id = ?', [loopRunId]),
       runner_manifests: this.count('SELECT COUNT(*) as count FROM swarm_runner_manifests WHERE loop_run_id = ?', [loopRunId]),
     };
-    if (Object.values(evidenceCounts).every((count) => count === 0)) blockedReasons.push('runtime_evidence_missing');
+    for (const [kind, count] of Object.entries(evidenceCounts)) {
+      if (count === 0) blockedReasons.push(`${kind}_missing`);
+    }
 
     if (blockedReasons.length > 0) {
       return this.emptyClosure(loopRunId, blockedReasons);
@@ -272,6 +297,12 @@ export class KnowledgeRuntimeService {
       recommended_loop: 'skill-quality-loop',
       metadata: { loop_run_id: loopRunId, eval_run_id: evalRun.id, reflection_id: reflection.id },
     }).work_item : null;
+
+    this.db.prepare(`
+      INSERT INTO loop_learning_closures (
+        loop_run_id, eval_run_id, reflection_id, memory_candidate_id, previous_score, score_delta
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(loopRunId, evalRun.id, reflection.id, memoryCandidate.id, previousScore, scoreDelta);
 
     return {
       action: 'closed_loop_learning',
@@ -436,6 +467,10 @@ export class KnowledgeRuntimeService {
         okf_folder: file.folder,
         title: fm.title || file.slug,
         source: 'okf',
+        agent_skill_id: fm.agent_skill_id || null,
+        agent_skill_version: fm.agent_skill_version || null,
+        agent_skill_content_hash: fm.agent_skill_content_hash || null,
+        agent_skill_manifest_hash: fm.agent_skill_manifest_hash || null,
         blocked_reasons: blockedReasons,
         body_excerpt: file.body.slice(0, 240),
       },
@@ -532,11 +567,18 @@ export class KnowledgeRuntimeService {
 
   private latestEval(suiteName: string, targetType: string, targetRef: string): { id: string; score: number } | null {
     const row = this.db.prepare(`
-      SELECT id, score FROM agent_eval_runs
-      WHERE suite_name = ? AND target_type = ? AND target_ref = ?
-      ORDER BY created_at DESC
+      SELECT eval.id, eval.score
+      FROM agent_eval_runs eval
+      LEFT JOIN loop_runs current_run ON current_run.id = ?
+      LEFT JOIN loop_runs previous_run ON previous_run.id = eval.target_ref
+      WHERE eval.suite_name = ? AND eval.target_type = ?
+        AND eval.target_ref != ?
+        AND current_run.loop_name IS NOT NULL
+        AND previous_run.loop_name = current_run.loop_name
+        AND COALESCE(previous_run.repository_path, '') = COALESCE(current_run.repository_path, '')
+      ORDER BY eval.created_at DESC
       LIMIT 1
-    `).get(suiteName, targetType, targetRef) as { id: string; score: number } | undefined;
+    `).get(targetRef, suiteName, targetType, targetRef) as { id: string; score: number } | undefined;
     return row || null;
   }
 

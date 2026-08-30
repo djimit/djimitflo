@@ -7,10 +7,13 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 
-export function createCognitiveRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createCognitiveRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  service = new CognitiveLoopClosureService(db),
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const service = new CognitiveLoopClosureService(db);
   service.start();
 
   // GET /api/cognitive/stats — cognitive loop statistics

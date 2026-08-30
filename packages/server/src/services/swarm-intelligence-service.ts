@@ -49,6 +49,21 @@ export interface SwarmCapabilityRecord {
   updated_at: string;
 }
 
+export interface SkillEvolutionReadiness {
+  capability_id: string;
+  skill_id: string;
+  skill_version: string;
+  candidate_hash: string;
+  status: CapabilityStatus;
+  assigned_agents: number;
+  candidate_runs: number;
+  baseline_hashes: string[];
+  openmythos_run_id: string | null;
+  evidence_ready: boolean;
+  blocked_reasons: string[];
+  promotion_input: Record<string, unknown> | null;
+}
+
 export interface ClaimLedgerRecord {
   id: string;
   claim: string;
@@ -149,6 +164,7 @@ export class SwarmIntelligenceService {
         routable: capabilities.filter((capability) => capability.live_route_allowed).length,
         blocked: capabilities.filter((capability) => capability.blocked_reasons.length > 0).length,
       },
+      skill_evolution: this.skillEvolutionReadiness(capabilities),
       claim_health: {
         total: claims.length,
         proposed: claims.filter((claim) => claim.status === 'proposed').length,
@@ -285,6 +301,7 @@ export class SwarmIntelligenceService {
     eval_score?: number;
     eval_scorecard_ref?: string;
     evidence_refs?: string[];
+    baseline_skill_content_hash?: string;
     security_checker_ref?: string;
     human_approval_ref?: string;
     validation_report?: string;
@@ -314,6 +331,7 @@ export class SwarmIntelligenceService {
     }
 
     this.rejectSecretLike(input);
+    const skillComparison = this.assertSkillPromotionEvidence(capability, input);
     const skillTrainingGate = this.skillTrainingGate.assertPass(capability);
     const now = new Date().toISOString();
     const metadata = {
@@ -323,6 +341,7 @@ export class SwarmIntelligenceService {
       promotion_security_checker_ref: input.security_checker_ref || null,
       promotion_human_approval_ref: input.human_approval_ref || null,
       promotion_skill_training_gate_ref: skillTrainingGate.evidenceRef,
+      promotion_skill_comparison: skillComparison,
       promoted_at: now,
     };
 
@@ -333,6 +352,175 @@ export class SwarmIntelligenceService {
     `).run(evalScore, input.validation_report || null, JSON.stringify(metadata), now, id);
 
     return this.getCapability(id);
+  }
+
+  skillEvolutionReadiness(capabilities = this.listCapabilities(100)): SkillEvolutionReadiness[] {
+    const hasAssignments = Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'agent_skills'").get());
+    return capabilities
+      .filter((capability) => capability.kind === 'skill' || capability.kind === 'openai_skill')
+      .map((capability) => {
+        const skillId = String(capability.metadata.agent_skill_id || '').trim();
+        const skillVersion = String(capability.metadata.agent_skill_version || '').trim();
+        const candidateHash = String(capability.metadata.agent_skill_content_hash || '').trim();
+        const assignedAgents = skillId && hasAssignments
+          ? Number((this.db.prepare('SELECT COUNT(*) AS count FROM agent_skills WHERE skill_id = ? AND enabled = 1').get(skillId) as { count?: number })?.count || 0)
+          : 0;
+        const outcomeRows = skillId && candidateHash
+          ? this.db.prepare(`
+              SELECT skill_content_hash AS hash, COUNT(*) AS count
+              FROM skill_outcomes WHERE skill_id = ? AND skill_content_hash IS NOT NULL
+              GROUP BY skill_content_hash ORDER BY MAX(created_at) DESC
+            `).all(skillId) as Array<{ hash: string; count: number }>
+          : [];
+        const candidateRuns = Number(outcomeRows.find((row) => row.hash === candidateHash)?.count || 0);
+        const baselineHashes = outcomeRows.filter((row) => row.hash !== candidateHash).map((row) => row.hash);
+        const evalRefs = skillId
+          ? (this.db.prepare("SELECT id FROM openmythos_eval_runs WHERE agent_id = ? AND status = 'completed'").all(skillId) as Array<{ id: string }>)
+            .map((row) => `openmythos:${row.id}`)
+          : [];
+        const blockedReasons: string[] = [];
+        let comparison: Record<string, unknown> | null = null;
+
+        if (!skillId || !skillVersion || !candidateHash) blockedReasons.push('CAPABILITY_PROMOTION_SKILL_ATTRIBUTION_REQUIRED');
+        else if (capability.status !== 'candidate') blockedReasons.push(`CAPABILITY_NOT_CANDIDATE:${capability.status}`);
+        else if (baselineHashes.length === 0) blockedReasons.push('CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED');
+        else {
+          for (const baselineHash of baselineHashes) {
+            try {
+              comparison = this.assertSkillPromotionEvidence(capability, {
+                baseline_skill_content_hash: baselineHash,
+                evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, ...evalRefs],
+              });
+              if (comparison) break;
+            } catch (error) {
+              const reason = error instanceof Error ? error.message : String(error);
+              if (!blockedReasons.includes(reason)) blockedReasons.push(reason);
+            }
+          }
+        }
+
+        const openmythosRunId = comparison ? String(comparison.openmythos_run_id) : null;
+        const score = openmythosRunId
+          ? Number((this.db.prepare('SELECT overall_score FROM openmythos_eval_runs WHERE id = ?').get(openmythosRunId) as { overall_score?: number })?.overall_score || 0) / 5
+          : 0;
+        const baselineHash = comparison ? String(comparison.baseline_hash) : null;
+        const evidenceRefs = openmythosRunId
+          ? [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:${openmythosRunId}`]
+          : [];
+
+        return {
+          capability_id: capability.id,
+          skill_id: skillId,
+          skill_version: skillVersion,
+          candidate_hash: candidateHash,
+          status: capability.status,
+          assigned_agents: assignedAgents,
+          candidate_runs: candidateRuns,
+          baseline_hashes: baselineHashes,
+          openmythos_run_id: openmythosRunId,
+          evidence_ready: comparison !== null,
+          blocked_reasons: comparison ? [] : blockedReasons,
+          promotion_input: comparison ? {
+            eval_score: score,
+            eval_scorecard_ref: `openmythos:${openmythosRunId}`,
+            evidence_refs: evidenceRefs,
+            baseline_skill_content_hash: baselineHash,
+          } : null,
+        };
+      });
+  }
+
+  private assertSkillPromotionEvidence(
+    capability: SwarmCapabilityRecord,
+    input: { evidence_refs?: string[]; baseline_skill_content_hash?: string },
+  ): Record<string, unknown> | null {
+    if (capability.kind !== 'skill' && capability.kind !== 'openai_skill') return null;
+
+    const skillId = String(capability.metadata.agent_skill_id || '').trim();
+    const candidateHash = String(capability.metadata.agent_skill_content_hash || '').trim();
+    const skillVersion = String(capability.metadata.agent_skill_version || '').trim();
+    const baselineHash = input.baseline_skill_content_hash?.trim();
+    if (!skillId || !skillVersion || !candidateHash) {
+      throw new Error('CAPABILITY_PROMOTION_SKILL_ATTRIBUTION_REQUIRED');
+    }
+    if (!baselineHash || baselineHash === candidateHash) throw new Error('CAPABILITY_PROMOTION_SKILL_BASELINE_REQUIRED');
+    if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skill_outcomes'").get()) {
+      throw new Error('CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=0:baseline=0:minimum=30');
+    }
+
+    type OutcomeRow = { id: string; success: number; tokens_used: number; duration_ms: number };
+    const outcomes = (hash: string) => this.db.prepare(`
+      SELECT id, success, tokens_used, duration_ms FROM skill_outcomes
+      WHERE skill_id = ? AND skill_content_hash = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(skillId, hash) as OutcomeRow[];
+    const candidate = outcomes(candidateHash);
+    const baseline = outcomes(baselineHash);
+    const minimum = 30;
+    if (candidate.length < minimum || baseline.length < minimum) {
+      throw new Error(`CAPABILITY_PROMOTION_SKILL_OUTCOMES_REQUIRED:candidate=${candidate.length}:baseline=${baseline.length}:minimum=${minimum}`);
+    }
+
+    const successRate = (rows: OutcomeRow[]) => rows.filter((row) => row.success === 1).length / rows.length;
+    const median = (rows: OutcomeRow[], field: 'tokens_used' | 'duration_ms') => {
+      const values = rows.map((row) => Number(row[field]) || 0).sort((a, b) => a - b);
+      const middle = Math.floor(values.length / 2);
+      return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
+    };
+    const baselineSuccess = successRate(baseline);
+    const candidateSuccess = successRate(candidate);
+    const baselineTokens = median(baseline, 'tokens_used');
+    const candidateTokens = median(candidate, 'tokens_used');
+    const baselineDuration = median(baseline, 'duration_ms');
+    const candidateDuration = median(candidate, 'duration_ms');
+    const improved = candidateSuccess >= baselineSuccess + 0.1
+      || (candidateSuccess >= baselineSuccess && (
+        (baselineTokens > 0 && candidateTokens <= baselineTokens * 0.85)
+        || (baselineDuration > 0 && candidateDuration <= baselineDuration * 0.85)
+      ));
+    if (!improved) throw new Error('CAPABILITY_PROMOTION_SKILL_NO_MEASURABLE_IMPROVEMENT');
+
+    const evalRows = this.db.prepare(`
+      SELECT id, overall_score, metadata FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'completed' AND completed_cases = total_cases
+      ORDER BY finished_at DESC, created_at DESC
+    `).all(skillId) as Array<{ id: string; overall_score: number; metadata: string }>;
+    const evalRun = evalRows.find((row) => {
+      let metadata: Record<string, unknown> = {};
+      try { metadata = JSON.parse(row.metadata || '{}') as Record<string, unknown>; } catch { return false; }
+      return metadata.evaluation_mode === 'skill_conditioned_prompt'
+        && metadata.skill_id === skillId
+        && metadata.skill_version === skillVersion
+        && metadata.skill_content_hash === candidateHash
+        && metadata.certification_eligible === true
+        && metadata.score_valid === true
+        && row.overall_score / 5 >= capability.eval_threshold;
+    });
+    if (!evalRun) throw new Error('CAPABILITY_PROMOTION_SKILL_OPENMYTHOS_REQUIRED');
+
+    const requiredRefs = [
+      `skill_outcomes:${skillId}:${candidateHash}`,
+      `openmythos:${evalRun.id}`,
+    ];
+    if (!requiredRefs.every((ref) => input.evidence_refs?.includes(ref))) {
+      throw new Error('CAPABILITY_PROMOTION_SKILL_EVIDENCE_REFS_REQUIRED');
+    }
+
+    return {
+      skill_id: skillId,
+      skill_version: skillVersion,
+      candidate_hash: candidateHash,
+      baseline_hash: baselineHash,
+      candidate_runs: candidate.length,
+      baseline_runs: baseline.length,
+      candidate_success_rate: candidateSuccess,
+      baseline_success_rate: baselineSuccess,
+      candidate_median_tokens: candidateTokens,
+      baseline_median_tokens: baselineTokens,
+      candidate_median_duration_ms: candidateDuration,
+      baseline_median_duration_ms: baselineDuration,
+      openmythos_run_id: evalRun.id,
+    };
   }
 
   listCapabilities(limit = 100): SwarmCapabilityRecord[] {
@@ -492,7 +680,7 @@ export class SwarmIntelligenceService {
     return result;
   }
 
-  // G1: Evidence-based auto-promotion — a candidate skill is promoted to validated only
+  // G1: Evidence-based auto-promotion — a candidate capability is promoted to validated only
   // after >=minSuccesses completed leases with evidence AND success_rate >= minSuccessRate
   // AND eval_score >= threshold. This is "skills promoted from evidence, not hand-authored."
   autoPromoteFromEvidence(capabilityId: string, opts: { minSuccesses?: number; minSuccessRate?: number } = {}): {
@@ -505,6 +693,9 @@ export class SwarmIntelligenceService {
     const cap = this.getCapability(capabilityId);
     const c = this.measureCompetence(capabilityId);
     const competence = { n_runs: c.n_runs, n_completed: c.n_completed, success_rate: c.success_rate, p50_cost: c.p50_cost, p95_cost: c.p95_cost };
+    if (cap.kind === 'skill' || cap.kind === 'openai_skill') {
+      return { promoted: false, competence, reason: 'skill promotion requires an explicit baseline and exact OpenMythos evidence' };
+    }
     if (cap.status !== 'candidate') {
       return { promoted: false, competence, reason: `capability not candidate (status=${cap.status})` };
     }

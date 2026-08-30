@@ -40,6 +40,7 @@ import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import { captureExecutorOutput } from '../executor-output';
 
 // ── Structured Pi JSON event shapes (subset; the rest pass through as LOG) ────
 
@@ -115,6 +116,10 @@ export class PiExecutor implements TaskExecutor {
 
   canExecute(_task: Task): boolean {
     return true;
+  }
+
+  buildCommand(task: Task, options?: ExecutorOptions): { command: string; args: string[] } {
+    return { command: this.piPath, args: this.buildPiArgs(task, options) };
   }
 
   async start(task: Task, options?: ExecutorOptions): Promise<ExecutionSession> {
@@ -571,7 +576,9 @@ export class PiExecutor implements TaskExecutor {
     emitter: EventEmitter,
     metrics: { tokenUsage: number; toolCalls: number; approvalsRequested: number },
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

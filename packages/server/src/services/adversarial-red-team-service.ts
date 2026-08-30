@@ -15,6 +15,9 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { CommandRiskClassifier } from './command-risk-classifier';
+import { redactSecrets } from './secret-patterns';
+import { RuntimeGovernanceService } from './runtime-governance-service';
 
 interface AttackVector {
   id: string;
@@ -149,7 +152,11 @@ const ATTACK_VECTORS: AttackVector[] = [
 ];
 
 export class AdversarialRedTeamService {
-  constructor(private db: Database) {
+  constructor(
+    private db: Database,
+    private governance = new RuntimeGovernanceService(db),
+    private riskClassifier = new CommandRiskClassifier(),
+  ) {
     this.ensureTables();
   }
 
@@ -204,13 +211,14 @@ export class AdversarialRedTeamService {
    * Execute a single attack vector and check if it was blocked.
    */
   private async executeAttack(vector: AttackVector): Promise<AttackResult> {
+    const agentId = `red-team-${vector.category}`;
     // Check if the attack would be blocked by existing defenses
-    const blocked = this.checkDefense(vector);
+    const blocked = this.checkDefense(vector, agentId);
 
     return {
       id: randomUUID(),
       vectorId: vector.id,
-      agentId: `red-team-${vector.category}`,
+      agentId,
       timestamp: new Date().toISOString(),
       blocked: blocked.blocked,
       detectionMethod: blocked.method,
@@ -223,86 +231,54 @@ export class AdversarialRedTeamService {
   /**
    * Check if existing defenses would block an attack.
    */
-  private checkDefense(vector: AttackVector): {
+  private checkDefense(vector: AttackVector, agentId: string): {
     blocked: boolean;
     method: string;
     response: string;
     severity: 'critical' | 'high';
     recommendation: string;
   } {
-    switch (vector.category) {
-      case 'injection':
-        return {
-          blocked: true,
-          method: 'input_sanitization',
-          response: 'Input flagged as potential injection attempt',
-          severity: 'high',
-          recommendation: 'Strengthen prompt injection detection with LLM-based classifier',
-        };
+    const risk = this.riskClassifier.classify(vector.payload);
+    const secretCount = redactSecrets(vector.payload).count;
+    const governanceAllowed = this.governance.isAllowed(agentId);
 
-      case 'scope_escape':
-        return {
-          blocked: true,
-          method: 'runtime_governance',
-          response: 'Tool usage blocked by runtime governance service',
-          severity: 'critical',
-          recommendation: 'Add tool-scope enforcement at executor level',
-        };
-
-      case 'privilege':
-        return {
-          blocked: true,
-          method: 'permission_boundary',
-          response: 'Permission escalation blocked by role-based access control',
-          severity: 'critical',
-          recommendation: 'Implement multi-factor authorization for privilege changes',
-        };
-
-      case 'exfiltration':
-        return {
-          blocked: true,
-          method: 'secret_detection',
-          response: 'Secret access detected and blocked by error-handler middleware',
-          severity: 'critical',
-          recommendation: 'Add DLP (Data Loss Prevention) layer for outbound content',
-        };
-
-      case 'ransomware':
-        return {
-          blocked: true,
-          method: 'ransomware_pattern_detection',
-          response: 'Ransomware pattern detected and blocked by command risk classifier',
-          severity: 'critical',
-          recommendation: 'Enable ransomware module in enforce mode',
-        };
-
-      case 'resource':
-        return {
-          blocked: true,
-          method: 'wall_clock_budget',
-          response: 'Execution terminated by wall-clock budget enforcement',
-          severity: 'high',
-          recommendation: 'Add CPU/memory quotas per agent',
-        };
-
-      case 'bypass':
-        return {
-          blocked: true,
-          method: 'mandatory_governance_gate',
-          response: 'Deployment blocked — governance certification required',
-          severity: 'critical',
-          recommendation: 'Make governance gate cryptographically verifiable',
-        };
-
-      default:
-        return {
-          blocked: false,
-          method: 'none',
-          response: 'No defense detected for this attack vector',
-          severity: 'high',
-          recommendation: 'Implement defense for this attack category',
-        };
+    if (!governanceAllowed) {
+      return {
+        blocked: true,
+        method: 'runtime_governance',
+        response: `Agent ${agentId} is blocked by runtime governance`,
+        severity: 'critical',
+        recommendation: 'Review the persistent quarantine evidence before release',
+      };
     }
+    if (secretCount > 0) {
+      return {
+        blocked: true,
+        method: 'secret_scanner',
+        response: `Secret scanner detected ${secretCount} credential pattern(s)`,
+        severity: 'critical',
+        recommendation: 'Remove or redact the detected credential material',
+      };
+    }
+    if (risk.recommended_decision !== 'allow') {
+      return {
+        blocked: true,
+        method: 'command_risk_classifier',
+        response: risk.explanation,
+        severity: risk.risk_level === 'critical' ? 'critical' : 'high',
+        recommendation: risk.recommended_decision === 'deny'
+          ? 'Keep the matching command-risk rule enforced'
+          : 'Require explicit approval before executing this payload',
+      };
+    }
+
+    return {
+      blocked: false,
+      method: 'none',
+      response: 'No active defense blocked this payload',
+      severity: 'high',
+      recommendation: `Add an enforceable defense for ${vector.category}`,
+    };
   }
 
   /**

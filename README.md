@@ -2,7 +2,7 @@
 
 **Research-grade agentic governance laboratory for AI-assisted engineering**
 
-[![Tests](https://img.shields.io/badge/tests-344%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-CI%20gated-brightgreen)]()
 [![Version](https://img.shields.io/badge/version-0.5.8-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178c6)]()
@@ -31,15 +31,14 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 | Metric | Value |
 |--------|-------|
 | **Version** | 0.5.8 (all packages) |
-| **Tests** | 344+ passing |
-| **Route Modules** | 67 |
-| **API Endpoints** | ~556 |
+| **Tests** | Full workspace suite + targeted mutation gate |
+| **API Contract** | Generated from the live Express route inventory |
 | **Database Tables** | 72+ |
 | **Agent Runtimes** | 7 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock) |
-| **Packages** | 8 workspaces |
-| **Node** | >= 22 |
+| **Packages** | 7 npm workspaces + knowledge runtime directory |
+| **Node** | >= 20 and < 25 |
 | **TypeScript** | 6.x strict mode |
-| **Last Updated** | 2026-07-22 |
+| **Last Updated** | 2026-08-27 |
 
 ---
 
@@ -66,7 +65,7 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 - SBOM generation (CycloneDX 1.6)
 
 ### Multi-Channel
-- **REST API** — 556 endpoints across 67 route modules
+- **REST API** — generated OpenAPI metadata from the registered Express routes
 - **WebSocket** — Real-time event streaming to dashboard (token via subprotocol, not URL)
 - **MCP Server** — Tools for Claude Code / Cursor / VS Code integration
 - **Telegram Bot** — Mobile task creation and approval
@@ -152,9 +151,9 @@ See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 - [ ] PostgreSQL for production (SQLite is dev/demo only)
 - [ ] External audit anchoring (Merkle root → WORM/SIEM)
 - [ ] Step-up authentication for critical actions
-- [ ] Container image scanning in CI
-- [ ] GitHub Actions SHA pinning
-- [ ] OpenAPI contract tests in CI
+- [x] Container image scanning in CI
+- [x] GitHub Actions SHA pinning
+- [x] OpenAPI contract tests in CI
 - [ ] Breaking-change detection for API
 - [ ] DPIA for relevant use cases
 - [ ] Backup encryption at rest
@@ -164,7 +163,7 @@ See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 22
+- Node.js >= 20 and < 25
 - npm >= 9
 - Docker (for sandboxed execution)
 

@@ -29,6 +29,7 @@ const approvalColumns: ColumnSpec[] = [
 ];
 
 const approvalPolicyColumns: ColumnSpec[] = [
+  { name: 'version', definition: "INTEGER NOT NULL DEFAULT 1" },
   { name: 'action_type', definition: "TEXT" },
   { name: 'decision', definition: "TEXT NOT NULL DEFAULT 'require_approval'" },
   { name: 'match_pattern', definition: "TEXT" },
@@ -51,6 +52,22 @@ const openMythosCaseResultColumns: ColumnSpec[] = [
   { name: 'scoring_source', definition: "TEXT NOT NULL DEFAULT 'judge'" },
   { name: 'oracle_type', definition: 'TEXT' },
   { name: 'oracle_pass', definition: 'INTEGER' },
+];
+
+const selfImprovementColumns: ColumnSpec[] = [
+  { name: 'fingerprint', definition: 'TEXT' },
+  { name: 'evidence_refs_json', definition: "TEXT NOT NULL DEFAULT '[]'" },
+  { name: 'panel_id', definition: 'TEXT' },
+  { name: 'approved_by', definition: 'TEXT' },
+  { name: 'updated_at', definition: "TEXT NOT NULL DEFAULT ''" },
+];
+
+const specialistReviewActorColumns: ColumnSpec[] = [
+  { name: 'reviewer_actor', definition: 'TEXT' },
+];
+
+const goalImprovementColumns: ColumnSpec[] = [
+  { name: 'improvement_id', definition: 'TEXT' },
 ];
 
 const externalEventColumns: ColumnSpec[] = [
@@ -776,6 +793,17 @@ function createAgenticLoopTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_memory_candidates_source_ref ON memory_candidates(source_ref);
     CREATE INDEX IF NOT EXISTS idx_memory_candidates_created_at ON memory_candidates(created_at);
 
+    CREATE TABLE IF NOT EXISTS memory_access_log (
+      id TEXT PRIMARY KEY,
+      candidate_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      accessed_at TEXT NOT NULL,
+      FOREIGN KEY (candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_memory_access_candidate ON memory_access_log(candidate_id);
+    CREATE INDEX IF NOT EXISTS idx_memory_access_agent ON memory_access_log(agent_id);
+
     CREATE TABLE IF NOT EXISTS specialist_panels (
       id TEXT PRIMARY KEY,
       topic TEXT NOT NULL,
@@ -1100,6 +1128,48 @@ function createSwarmIntelligenceTables(db: BetterSqlite3Database) {
     CREATE INDEX IF NOT EXISTS idx_swarm_hypotheses_projection ON swarm_hypotheses(projection_state);
     CREATE INDEX IF NOT EXISTS idx_swarm_hypotheses_panel ON swarm_hypotheses(panel_id);
   `);
+}
+
+function createSelfImprovementTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS self_improvements (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      source TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'proposed',
+      priority REAL NOT NULL DEFAULT 0.5,
+      fingerprint TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      panel_id TEXT,
+      approved_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS loop_learning_closures (
+      loop_run_id TEXT PRIMARY KEY,
+      eval_run_id TEXT NOT NULL,
+      reflection_id TEXT NOT NULL,
+      memory_candidate_id TEXT NOT NULL,
+      previous_score REAL,
+      score_delta REAL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  // Add missing columns BEFORE creating indexes that reference them — a stale
+  // pre-existing self_improvements table (no fingerprint) otherwise breaks
+  // CREATE INDEX idx_self_improve_fingerprint with "no such column".
+  addMissingColumns(db, 'self_improvements', selfImprovementColumns);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status);
+    CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC);
+    CREATE INDEX IF NOT EXISTS idx_self_improve_fingerprint ON self_improvements(fingerprint);
+  `);
+  addMissingColumns(db, 'specialist_reviews', specialistReviewActorColumns);
+  addMissingColumns(db, 'goals', goalImprovementColumns);
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_improvement_id ON goals(improvement_id) WHERE improvement_id IS NOT NULL');
 }
 
 function createRuntimeContractProbeTables(db: BetterSqlite3Database) {
@@ -1518,6 +1588,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
   createAgenticLoopTables(db);
   createSwarmIntelligenceTables(db);
+  createSelfImprovementTables(db);
   createNestedSpawnTables(db);
   createRuntimeContractProbeTables(db);
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);

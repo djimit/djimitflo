@@ -26,8 +26,9 @@ export class WorktreeManager {
   /**
    * Create a git worktree for a finding, with retry on lock contention.
    */
-  createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string): string {
+  createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
     const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const sourceHead = this.git(repositoryPath, ['rev-parse', 'HEAD']).trim();
     const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
     const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);
@@ -40,21 +41,23 @@ export class WorktreeManager {
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       try {
-        this.git(repositoryRoot, ['worktree', 'add', '-b', branchName, worktreePath, 'HEAD']);
-        this.applySourceWorkingTreeDiff(repositoryRoot, worktreePath);
-        const sourceNodeModules = path.join(repositoryRoot, 'node_modules');
-        const worktreeNodeModules = path.join(worktreePath, 'node_modules');
-        if (existsSync(sourceNodeModules) && !existsSync(worktreeNodeModules)) {
-          symlinkSync(sourceNodeModules, worktreeNodeModules, 'dir');
-        }
-        const sourcePackages = path.join(repositoryRoot, 'packages');
-        if (existsSync(sourcePackages)) {
-          for (const workspace of readdirSync(sourcePackages)) {
-            const sourceWorkspaceModules = path.join(sourcePackages, workspace, 'node_modules');
-            const worktreeWorkspaceModules = path.join(worktreePath, 'packages', workspace, 'node_modules');
-            if (existsSync(sourceWorkspaceModules) && !existsSync(worktreeWorkspaceModules)) {
-              mkdirSync(path.dirname(worktreeWorkspaceModules), { recursive: true });
-              symlinkSync(sourceWorkspaceModules, worktreeWorkspaceModules, 'dir');
+        this.git(repositoryRoot, ['worktree', 'add', '-b', branchName, worktreePath, sourceHead]);
+        this.applySourceWorkingTreeDiff(repositoryPath, worktreePath);
+        if (linkDependencies) {
+          const sourceNodeModules = path.join(repositoryRoot, 'node_modules');
+          const worktreeNodeModules = path.join(worktreePath, 'node_modules');
+          if (existsSync(sourceNodeModules) && !existsSync(worktreeNodeModules)) {
+            symlinkSync(sourceNodeModules, worktreeNodeModules, 'dir');
+          }
+          const sourcePackages = path.join(repositoryRoot, 'packages');
+          if (existsSync(sourcePackages)) {
+            for (const workspace of readdirSync(sourcePackages)) {
+              const sourceWorkspaceModules = path.join(sourcePackages, workspace, 'node_modules');
+              const worktreeWorkspaceModules = path.join(worktreePath, 'packages', workspace, 'node_modules');
+              if (existsSync(sourceWorkspaceModules) && !existsSync(worktreeWorkspaceModules)) {
+                mkdirSync(path.dirname(worktreeWorkspaceModules), { recursive: true });
+                symlinkSync(sourceWorkspaceModules, worktreeWorkspaceModules, 'dir');
+              }
             }
           }
         }

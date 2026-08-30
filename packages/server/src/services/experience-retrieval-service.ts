@@ -73,7 +73,7 @@ export class ExperienceRetrievalService {
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_exp_created ON experience_embeddings(created_at)');
   }
 
-  async indexRun(loopRunId: string): Promise<void> {
+  async indexRun(loopRunId: string, options: { certified?: boolean; lessons?: string[] } = {}): Promise<void> {
     const run = this.db.prepare('SELECT id, goal_id, status, created_at FROM loop_runs WHERE id = ?').get(loopRunId) as LoopRunRow | undefined;
     if (!run) return;
 
@@ -89,7 +89,9 @@ export class ExperienceRetrievalService {
     const runtime = primaryMaker?.runtime || 'unknown';
     const capabilityId = primaryMaker?.capability_id || '';
     const retries = Math.max(0, makers.length - 1);
-    const outcome: 'success' | 'failure' = (run.status === 'completed' || run.status === 'certified') ? 'success' : 'failure';
+    const terminalFailure = ['failed', 'cancelled', 'escalated', 'interrupted'].includes(run.status);
+    if (!options.certified && !terminalFailure) return;
+    const outcome: 'success' | 'failure' = options.certified ? 'success' : 'failure';
 
     let totalTokens = 0;
     for (const lease of leases) {
@@ -102,7 +104,7 @@ export class ExperienceRetrievalService {
 
     this.db.prepare(
       'INSERT OR REPLACE INTO experience_embeddings (run_id, objective, outcome, retries, runtime, capability_id, lessons, total_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(loopRunId, objective, outcome, retries, runtime, capabilityId, '[]', totalTokens, run.created_at);
+    ).run(loopRunId, objective, outcome, retries, runtime, capabilityId, JSON.stringify(options.lessons || []), totalTokens, run.created_at);
 
     try {
       await this.upsertToQdrant(loopRunId, objective, outcome);

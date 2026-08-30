@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { ProactiveMemoryService } from '../services/proactive-memory-service';
+import { TestEmbeddingProvider } from './helpers/test-embedding-provider';
 
 describe('ProactiveMemoryService', () => {
   let db: Database.Database;
@@ -9,7 +10,7 @@ describe('ProactiveMemoryService', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
-    service = new ProactiveMemoryService(db);
+    service = new ProactiveMemoryService(db, new TestEmbeddingProvider());
   });
 
   it('stores a memory entry', () => {
@@ -84,7 +85,7 @@ describe('ProactiveMemoryService', () => {
     expect(related[0].id).toBe(b.id);
   });
 
-  it('searches memories by content', () => {
+  it('searches memories by content', async () => {
     const a = service.storeMemory({ content: 'Security vulnerability found in auth module', type: 'observation' });
     service.storeMemory({ content: 'Performance optimization applied', type: 'observation' });
 
@@ -94,8 +95,22 @@ describe('ProactiveMemoryService', () => {
     }
     service.runMaintenanceCycle();
 
-    const results = service.searchMemories('security vulnerability');
+    const results = await service.searchMemories('security vulnerability');
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  it('falls back to keyword search when embeddings are unavailable', async () => {
+    const entry = service.storeMemory({ content: 'Security vulnerability in authentication', type: 'observation' });
+    for (let i = 0; i < 25; i++) service.accessMemory(entry.id);
+    service.runMaintenanceCycle();
+    const unavailable = new ProactiveMemoryService(db, {
+      name: 'unavailable',
+      embed: async () => { throw new Error('offline'); },
+    });
+
+    const results = await unavailable.searchMemories('security vulnerability');
+
+    expect(results.map((result) => result.id)).toContain(entry.id);
   });
 
   it('provides memory statistics', () => {

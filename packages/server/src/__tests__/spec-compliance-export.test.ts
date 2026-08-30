@@ -71,7 +71,7 @@ SC-001: Response in <2s.
     it('produces valid CSV with headers', () => {
       const csv = exportReportAsCsv(sampleReport);
       const lines = csv.split('\n');
-      expect(lines[0]).toBe('spec_name,lifecycle_state,score,L1,L2,L3,L4,L5,L6,L7');
+      expect(lines[0]).toBe('spec_name,source,path,lifecycle_state,assurance_status,score,next_safe_action,L1,L2,L3,L4,L5,L6,L7');
     });
 
     it('includes all specs', () => {

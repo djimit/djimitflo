@@ -11,6 +11,8 @@ export class ConfidenceScorer {
     }
 
     let score = this.scorePatterns(patternMatches);
+    if (score === 0 && behavioralSignals.length > 0) score = 0.55;
+    if (score === 0 && selfNarrationMatches.length > 0) score = 0.5;
     score = this.adjustForBehavioral(score, behavioralSignals);
     score = this.adjustForSelfNarration(score, selfNarrationMatches);
 
@@ -31,14 +33,14 @@ export class ConfidenceScorer {
   }
 
   private adjustForBehavioral(baseScore: number, signals: BehavioralSignal[]): number {
-    if (signals.length === 0 || baseScore === 0) return baseScore;
+    if (signals.length === 0) return baseScore;
 
     const boost = Math.min(signals.length * 0.05, 0.15);
     return Math.min(baseScore + boost, 0.99);
   }
 
   private adjustForSelfNarration(baseScore: number, matches: SelfNarrationMatch[]): number {
-    if (matches.length === 0 || baseScore === 0) return baseScore;
+    if (matches.length === 0) return baseScore;
 
     const hasEphemeralKey = matches.some(m => m.category === 'ephemeral_key');
     const hasRoiCommentary = matches.some(m => m.category === 'roi_commentary');

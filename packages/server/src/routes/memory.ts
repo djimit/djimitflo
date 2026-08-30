@@ -36,14 +36,18 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/memory/search — search memories by content
-  router.get('/search', requirePermission('read:evidence'), (req, res) => {
+  router.get('/search', requirePermission('read:evidence'), async (req, res, next) => {
     const q = req.query.q as string;
     if (!q?.trim()) {
       res.status(400).json({ error: { message: 'q parameter is required', code: 'VALIDATION_ERROR' } });
       return;
     }
     const limit = req.query.limit ? Number(req.query.limit) : 10;
-    res.json({ memories: service.searchMemories(q, limit) });
+    try {
+      res.json({ memories: await service.searchMemories(q, limit) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   // GET /api/memory/:id — get a memory and update usage

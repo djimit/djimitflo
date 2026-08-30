@@ -22,6 +22,13 @@ import { registerMissionControlTools } from './tools/mission-control.js';
 import { registerOrchestrationTools } from './tools/orchestration.js';
 import { registerOkfTools } from './tools/okf.js';
 import { registerOpenMythosTools } from './tools/openmythos.js';
+import { registerGovernanceTools } from './tools/governance.js';
+import { registerNotebookTools } from './tools/notebooks.js';
+import { registerExplainerTools } from './tools/explainer.js';
+import { runWithMcpAuth } from './auth-context.js';
+import { UserRole } from '@djimitflo/shared';
+import type { DbHandle } from './db.js';
+import { pathToFileURL } from 'url';
 
 interface ServerOptions {
   transport: 'stdio' | 'http';
@@ -47,17 +54,21 @@ async function main() {
     version: '0.1.0',
   });
 
-  registerLoopTools(server, db);
-  registerGoalTools(server, db);
-  registerAgentTools(server, db);
-  registerMissionControlTools(server, db);
-  registerOrchestrationTools(server, db);
-  registerOkfTools(server);
-  registerOpenMythosTools(server, db);
+  registerTools(server, db);
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
-    await server.connect(transport);
+    const now = Math.floor(Date.now() / 1000);
+    await runWithMcpAuth({
+      payload: {
+        sub: process.env.DJIMITFLO_MCP_STDIO_PRINCIPAL || `stdio:${process.getuid?.() ?? 'local'}`,
+        email: 'stdio@localhost',
+        role: UserRole.VIEWER,
+        iat: now,
+        exp: now + 24 * 60 * 60,
+      },
+      token: process.env.DJIMITFLO_MCP_TOKEN || '',
+    }, () => server.connect(transport));
     console.error('DjimFlo MCP Server running on stdio');
   } else {
     const { startHttpServer } = await import('./transports/http.js');
@@ -66,7 +77,22 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error('Fatal error starting DjimFlo MCP Server:', error);
-  process.exit(1);
-});
+export function registerTools(server: McpServer, db: DbHandle): void {
+  registerLoopTools(server, db);
+  registerGoalTools(server, db);
+  registerAgentTools(server, db);
+  registerMissionControlTools(server, db);
+  registerOrchestrationTools(server, db);
+  registerOkfTools(server);
+  registerOpenMythosTools(server, db);
+  registerGovernanceTools(server, db);
+  registerNotebookTools(server);
+  registerExplainerTools(server, db.db);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error('Fatal error starting DjimFlo MCP Server:', error);
+    process.exit(1);
+  });
+}

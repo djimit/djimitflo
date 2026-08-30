@@ -43,6 +43,7 @@ export enum ExecutionEventType {
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
   ARTIFACT_CREATED = 'artifact.created',
+  STREAM_TRUNCATED = 'stream.truncated',
   ERROR = 'error',
   LOG = 'log',
 }

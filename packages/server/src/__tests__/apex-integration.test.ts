@@ -6,6 +6,7 @@ import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
+import { TestEmbeddingProvider } from './helpers/test-embedding-provider';
 
 function createTestDb(): Database.Database {
   const db = new Database(':memory:');
@@ -149,11 +150,11 @@ describe('Apex Integration Tests', () => {
 
     beforeEach(() => {
       db = createTestDb();
-      service = new VectorMemoryService(db);
+      service = new VectorMemoryService(db, new TestEmbeddingProvider());
     });
 
-    it('stores and retrieves memories', () => {
-      const mem = service.storeMemory({ content: 'Test memory about TypeScript', metadata: { source: 'test' } });
+    it('stores and retrieves memories', async () => {
+      const mem = await service.storeMemory({ content: 'Test memory about TypeScript', metadata: { source: 'test' } });
       expect(mem.id).toBeDefined();
       expect(mem.content).toBe('Test memory about TypeScript');
 
@@ -162,33 +163,50 @@ describe('Apex Integration Tests', () => {
       expect(retrieved?.content).toBe('Test memory about TypeScript');
     });
 
-    it('searches memories semantically', () => {
-      service.storeMemory({ content: 'TypeScript is a typed superset of JavaScript' });
-      service.storeMemory({ content: 'Python is a dynamically typed language' });
-      service.storeMemory({ content: 'JavaScript runs in the browser' });
+    it('searches memories semantically', async () => {
+      await service.storeMemory({ content: 'TypeScript is a typed superset of JavaScript' });
+      await service.storeMemory({ content: 'Python is a dynamically typed language' });
+      await service.storeMemory({ content: 'JavaScript runs in the browser' });
 
-      const results = service.search('TypeScript', 5, 0.1);
+      const results = await service.search('TypeScript', 5, 0.1);
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].content).toContain('TypeScript');
     });
 
-    it('clusters related memories', () => {
-      service.storeMemory({ content: 'TypeScript types' });
-      service.storeMemory({ content: 'TypeScript interfaces' });
-      service.storeMemory({ content: 'TypeScript generics' });
+    it('re-embeds legacy hash rows with the active provider', async () => {
+      db.prepare(`
+        INSERT INTO vector_memories
+          (id, content, embedding_json, metadata_json, created_at, last_accessed)
+        VALUES ('legacy-memory', 'TypeScript legacy memory', '[0.1,0.2]', '{}', datetime('now'), datetime('now'))
+      `).run();
 
-      const clusters = service.getClusters(0.3);
+      const results = await service.search('TypeScript', 5, 0.1);
+      const migrated = db.prepare(`
+        SELECT embedding_provider, embedding_json FROM vector_memories WHERE id = 'legacy-memory'
+      `).get() as any;
+
+      expect(results.map((result) => result.id)).toContain('legacy-memory');
+      expect(migrated.embedding_provider).toBe('test:semantic');
+      expect(JSON.parse(migrated.embedding_json)).toHaveLength(8);
+    });
+
+    it('clusters related memories', async () => {
+      await service.storeMemory({ content: 'TypeScript types' });
+      await service.storeMemory({ content: 'TypeScript interfaces' });
+      await service.storeMemory({ content: 'TypeScript generics' });
+
+      const clusters = await service.getClusters(0.3);
       expect(clusters.length).toBeGreaterThanOrEqual(0);
     });
 
-    it('deletes memories', () => {
-      const mem = service.storeMemory({ content: 'To be deleted' });
+    it('deletes memories', async () => {
+      const mem = await service.storeMemory({ content: 'To be deleted' });
       expect(service.deleteMemory(mem.id)).toBe(true);
       expect(service.getMemory(mem.id)).toBeNull();
     });
 
-    it('provides stats', () => {
-      service.storeMemory({ content: 'Test' });
+    it('provides stats', async () => {
+      await service.storeMemory({ content: 'Test' });
       const stats = service.getStats();
       expect(stats.totalMemories).toBe(1);
     });

@@ -3,21 +3,31 @@
  * and autonomous improvement.
  *
  * Architecture:
- *   OpenMythos (detect failure) → ToolBroker (authorize fix) → LoopService (execute fix) → Metrics (verify improvement)
+ *   OpenMythos (detect failure) → PolicyDecisionService (authorize fix) → ApprovalService (escalate when required)
  *
  * The service:
  * 1. Analyzes OpenMythos eval results to identify failing categories
  * 2. Creates improvement proposals for governance failures
- * 3. Uses ToolBroker to authorize the improvement actions
- * 4. Dispatches LoopService to execute fixes in isolated worktrees
- * 5. Re-runs OpenMythos to verify improvement
- * 6. Records the full feedback loop in governance_feedback_loops table
+ * 3. Uses the canonical policy and approval services to authorize improvement actions
+ * 4. Leaves authorized proposals pending until a real dispatcher is implemented
+ * 5. Compares eval scores when verification data is available
+ * 6. Records the feedback loop in governance_feedback_loops
  */
 
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
-import type { ToolCallDecision, ToolCallRequest } from './tool-broker';
-import { RiskLevel, type AuthTokenPayload } from '@djimitflo/shared';
+import {
+  ApprovalRequestType,
+  ExecutionMode,
+  RiskLevel,
+  TaskPriority,
+  TaskStatus,
+  type AuthTokenPayload,
+  type RiskAssessment,
+  type Task,
+} from '@djimitflo/shared';
+import { ApprovalService } from './approval-service';
+import { PolicyDecisionService, type PolicyEvaluationResult } from './policy-decision-service';
 
 export interface GovernanceFailure {
   category: string;
@@ -81,12 +91,15 @@ export interface DormantCapability {
 
 export class GovernanceFeedbackLoopService {
   private config: FeedbackLoopConfig;
+  private policyDecisionService: PolicyDecisionService;
 
   constructor(
     private db: Database,
     config: Partial<FeedbackLoopConfig> = {},
+    private approvalService?: ApprovalService,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.policyDecisionService = new PolicyDecisionService(db);
     this.ensureTables();
   }
 
@@ -176,39 +189,41 @@ export class GovernanceFeedbackLoopService {
   }
 
   /**
-   * Authorize proposals via ToolBroker.
+   * Authorize proposals through the canonical policy path.
    */
   authorizeProposals(
     proposals: ImprovementProposal[],
     principal: AuthTokenPayload,
-  ): Array<{ proposal: ImprovementProposal; decision: ToolCallDecision | null }> {
-    const results: Array<{ proposal: ImprovementProposal; decision: ToolCallDecision | null }> = [];
+  ): Array<{ proposal: ImprovementProposal; decision: PolicyEvaluationResult }> {
+    const results: Array<{ proposal: ImprovementProposal; decision: PolicyEvaluationResult }> = [];
 
     for (const proposal of proposals) {
-      const request: ToolCallRequest = {
-        principal,
-        task_id: proposal.id,
-        tool: `governance_${proposal.proposed_action}`,
-        category: this.mapActionToCategory(proposal.proposed_action),
-        args: {
+      const assessment: RiskAssessment = {
+        action_type: 'task_execution',
+        risk_level: proposal.risk_level,
+        matched_rules: [],
+        explanation: `Governance improvement proposal: ${proposal.proposed_action}`,
+        recommended_decision: proposal.risk_level === RiskLevel.LOW ? 'allow' : 'require_approval',
+        metadata: {
           proposal_id: proposal.id,
           category: proposal.category,
           target_findings: proposal.target_finding_ids,
+          principal_id: principal.sub,
+          principal_role: principal.role,
         },
-        target_resource: `governance:${proposal.category}`,
-        data_classification: this.mapRiskToClassification(proposal.risk_level),
-        session_id: `feedback-loop-${proposal.id}`,
       };
 
-      const decision = this.evaluateViaPolicy(request);
+      const decision = this.policyDecisionService.evaluate(assessment);
 
       if (decision.decision === 'allow') {
         proposal.status = 'authorized';
-        proposal.decision_id = decision.decision_id;
+        proposal.decision_id = decision.matchingPolicies[0]?.id || null;
       } else if (decision.decision === 'deny') {
         proposal.status = 'rejected';
+        proposal.decision_id = decision.matchingPolicies[0]?.id || null;
+      } else {
+        proposal.decision_id = this.createApproval(proposal, assessment, decision, principal);
       }
-      // require_approval stays as 'proposed'
 
       this.persistProposal(proposal);
       results.push({ proposal, decision });
@@ -249,9 +264,10 @@ export class GovernanceFeedbackLoopService {
     let executed = 0;
     for (const { proposal } of autoExecutable) {
       try {
-        this.dispatchImprovement(proposal);
-        proposal.status = 'executing';
-        executed++;
+        if (this.dispatchImprovement(proposal)) {
+          proposal.status = 'executing';
+          executed++;
+        }
       } catch {
         proposal.status = 'failed';
       }
@@ -354,45 +370,6 @@ export class GovernanceFeedbackLoopService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
-  private evaluateViaPolicy(request: ToolCallRequest): ToolCallDecision {
-    const decision_id = `dec-${randomUUID()}`;
-    let decision: 'allow' | 'deny' | 'require_approval' = 'allow';
-    let reason = 'Within authorized risk threshold';
-
-    if (request.data_classification === 'restricted') {
-      decision = 'require_approval';
-      reason = 'Restricted data classification requires approval';
-    } else if (request.principal.role === 'viewer') {
-      decision = 'deny';
-      reason = 'Viewers cannot authorize improvements';
-    } else if (request.data_classification === 'confidential' && request.principal.role !== 'admin') {
-      decision = 'require_approval';
-      reason = 'Confidential data requires admin approval';
-    }
-
-    return {
-      decision_id,
-      decision,
-      tool: request.tool,
-      principal_id: request.principal.sub,
-      task_id: request.task_id,
-      capability_token: decision === 'allow' ? {
-        token_id: `cap-${randomUUID()}`,
-        scope: `${request.category}:${request.tool}`,
-        tool: request.tool,
-        task_id: request.task_id,
-        principal_id: request.principal.sub,
-        issued_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 900_000).toISOString(),
-        constraints: request.args || {},
-      } : undefined,
-      reason,
-      matched_policies: ['governance_feedback_loop'],
-      risk_level: this.classificationToRisk(request.data_classification),
-      expires_at: new Date(Date.now() + 900_000).toISOString(),
-    };
-  }
-
   private mapFailureToAction(failure: GovernanceFailure): ImprovementProposal['proposed_action'] {
     if (failure.category.includes('policy') || failure.category.includes('governance')) {
       return 'policy_update';
@@ -404,33 +381,6 @@ export class GovernanceFeedbackLoopService {
       return 'config_change';
     }
     return 'code_fix';
-  }
-
-  private mapActionToCategory(action: ImprovementProposal['proposed_action']): ToolCallRequest['category'] {
-    switch (action) {
-      case 'code_fix': return 'filesystem';
-      case 'policy_update': return 'database';
-      case 'skill_update': return 'filesystem';
-      case 'config_change': return 'database';
-    }
-  }
-
-  private mapRiskToClassification(risk: RiskLevel): ToolCallRequest['data_classification'] {
-    switch (risk) {
-      case RiskLevel.CRITICAL: return 'restricted';
-      case RiskLevel.HIGH: return 'confidential';
-      case RiskLevel.MEDIUM: return 'internal';
-      case RiskLevel.LOW: return 'public';
-    }
-  }
-
-  private classificationToRisk(classification: string): RiskLevel {
-    switch (classification) {
-      case 'restricted': return RiskLevel.CRITICAL;
-      case 'confidential': return RiskLevel.HIGH;
-      case 'internal': return RiskLevel.MEDIUM;
-      default: return RiskLevel.LOW;
-    }
   }
 
   private inferFailureMode(cases: Array<{ judge_rationale: string | null }>): string {
@@ -447,8 +397,63 @@ export class GovernanceFeedbackLoopService {
       `Consider updating policies, skills, or agent instructions to prevent recurrence.`;
   }
 
-  private dispatchImprovement(proposal: ImprovementProposal): void {
+  private createApproval(
+    proposal: ImprovementProposal,
+    assessment: RiskAssessment,
+    decision: PolicyEvaluationResult,
+    principal: AuthTokenPayload,
+  ): string {
+    if (!this.approvalService) throw new Error('APPROVAL_SERVICE_REQUIRED');
+
+    const now = new Date().toISOString();
+    const task: Task = {
+      id: proposal.id,
+      title: proposal.title,
+      description: proposal.description,
+      status: TaskStatus.AWAITING_APPROVAL,
+      priority: proposal.risk_level === RiskLevel.CRITICAL ? TaskPriority.CRITICAL : TaskPriority.HIGH,
+      risk_level: proposal.risk_level,
+      execution_mode: ExecutionMode.REVIEW_ONLY,
+      agent_id: null,
+      parent_task_id: null,
+      repository_id: null,
+      instruction_profile_id: null,
+      started_at: null,
+      completed_at: null,
+      failed_at: null,
+      execution_time_ms: null,
+      token_usage: null,
+      created_by: principal.sub,
+      owner_user_id: principal.sub,
+      updated_by: principal.sub,
+      tags: ['governance-feedback'],
+      metadata: { proposal_id: proposal.id, category: proposal.category },
+      created_at: now,
+      updated_at: now,
+    };
+
+    this.db.prepare(`
+      INSERT OR IGNORE INTO tasks
+        (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, task.status, task.priority, task.risk_level,
+      task.execution_mode, JSON.stringify(task.tags), JSON.stringify(task.metadata), now, now);
+
+    return this.approvalService.createApproval({
+      task,
+      assessment,
+      requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+      title: 'Approval required for governance improvement',
+      description: decision.explanation,
+      policyId: decision.matchingPolicies[0]?.id,
+      metadata: { proposal_id: proposal.id, proposed_action: proposal.proposed_action },
+      requestedBy: principal.sub,
+    }).id;
+  }
+
+  private dispatchImprovement(proposal: ImprovementProposal): boolean {
     void proposal;
+    return false;
   }
 
   private persistProposal(proposal: ImprovementProposal): void {

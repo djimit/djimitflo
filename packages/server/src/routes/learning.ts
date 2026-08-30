@@ -3,6 +3,7 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { randomUUID } from 'crypto';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 
 const VALID_CATEGORIES = ['pattern', 'anti_pattern', 'optimization', 'security', 'workflow', 'tool_usage', 'communication'];
 
@@ -26,7 +27,11 @@ function ensureTable(db: Database): void {
   `);
 }
 
-export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createLearningRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  cognitiveLoop = new CognitiveLoopClosureService(db),
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
@@ -101,8 +106,9 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
         now,
       );
 
+      const patterns = cognitiveLoop.extractPatterns();
       const row = db.prepare('SELECT * FROM swarm_learning WHERE id = ?').get(learningId);
-      res.status(201).json({ learning: row });
+      res.status(201).json({ learning: row, patterns });
     } catch (err) {
       next(err);
     }

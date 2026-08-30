@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
 
@@ -163,6 +167,158 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('denies dispatch for an agent blocked by runtime governance', async () => {
+    const governance = new RuntimeGovernanceService(db);
+    governance.registerBaseline('blocked-agent', {
+      overallScore: 4.5,
+      categoryScores: {},
+      certifiedAt: new Date().toISOString(),
+    });
+    db.prepare(`
+      UPDATE runtime_governance_agents SET circuit_breaker_tripped = 1 WHERE agent_id = 'blocked-agent'
+    `).run();
+    const governedEngine = new ExecutionEngine(db, createMockWsService(), undefined, governance);
+    const task = createTask({ id: 'governance-blocked', agent_id: 'blocked-agent' });
+    db.prepare("INSERT INTO agents (id, name) VALUES ('blocked-agent', 'Blocked Agent')").run();
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, 'pending', 'medium', 'low', 'local', task.agent_id);
+
+    const result = await governedEngine.executeTask(task.id, 'mock');
+
+    expect(result).toMatchObject({ status: 'denied', reason: expect.stringContaining('blocked-agent') });
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
+  });
+
+  it('queues execution when the shared runtime concurrency cap is full', async () => {
+    const previousLimit = process.env.RUNTIME_MAX_CONCURRENCY;
+    process.env.RUNTIME_MAX_CONCURRENCY = '1';
+    const starts: string[] = [];
+    const finish = new Map<string, (result: any) => void>();
+    engine.registerExecutor({
+      kind: 'mock',
+      canExecute: () => true,
+      start: async (task: Task) => ({
+        id: `session-${task.id}`,
+        taskId: task.id,
+        executorKind: 'mock',
+        status: 'running',
+        startedAt: new Date(),
+        events: (async function* () {})(),
+        result: new Promise((resolve) => {
+          starts.push(task.id);
+          finish.set(task.id, resolve);
+        }),
+        cancel: async () => {},
+      }),
+    } as any);
+    const first = createTask({ id: 'concurrency-first' });
+    const second = createTask({ id: 'concurrency-second' });
+    for (const task of [first, second]) {
+      db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+      );
+    }
+
+    try {
+      const firstExecution = await engine.executeTask(first.id, 'mock');
+      const secondExecutionPromise = engine.executeTask(second.id, 'mock');
+      await Promise.resolve();
+      expect(starts).toEqual([first.id]);
+      await expect(engine.executeTask(second.id, 'mock')).rejects.toThrow('Task is already running');
+
+      finish.get(first.id)!({ status: 'completed', message: 'done', metrics: { executionTimeMs: 1 } });
+      await firstExecution.completion;
+      const secondExecution = await secondExecutionPromise;
+      expect(starts).toEqual([first.id, second.id]);
+
+      finish.get(second.id)!({ status: 'completed', message: 'done', metrics: { executionTimeMs: 1 } });
+      await secondExecution.completion;
+    } finally {
+      if (previousLimit === undefined) delete process.env.RUNTIME_MAX_CONCURRENCY;
+      else process.env.RUNTIME_MAX_CONCURRENCY = previousLimit;
+    }
+  });
+
+  it('persists a stream-truncated event when the event deadline is reached', async () => {
+    const previousTimeout = process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
+    process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = '-1';
+    const session = {
+      taskId: 'stream-timeout-task',
+      executorKind: 'mock',
+      events: (async function* () {
+        yield { task_id: 'stream-timeout-task', event_type: 'log', message: 'too late', level: 'info' };
+      })(),
+    };
+
+    try {
+      await (engine as any).processEventStream(session);
+      const events = db.prepare('SELECT event_type, message, metadata FROM execution_events WHERE task_id = ?').all(session.taskId) as any[];
+      expect(events).toHaveLength(1);
+      expect(events[0].event_type).toBe('stream.truncated');
+      expect(events[0].message).toContain('truncated');
+      expect(JSON.parse(events[0].metadata)).toMatchObject({ stream_timeout_ms: -1, executor_kind: 'mock' });
+    } finally {
+      if (previousTimeout === undefined) delete process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS;
+      else process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS = previousTimeout;
+    }
+  });
+
+  it('attributes a completed task to the exact admitted manifest skill version and hash', async () => {
+    const skillsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-attribution-'));
+    try {
+      const skillDir = path.join(skillsDir, 'running-tests');
+      fs.mkdirSync(skillDir);
+      fs.writeFileSync(path.join(skillDir, 'SKILL.md'), [
+        '---', 'name: running-tests', 'description: Run bounded tests.', '---',
+        'Plan the scoped test, execute it, verify output, and stop.', '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(skillDir, 'skill.manifest.yaml'), [
+        'skill_id: .opencode.skills.running-tests',
+        'version: 0.1.0',
+        'owner: djimit',
+        'allowed_tools: [Read, Grep, Glob, Bash]',
+        'disallowed_tools: [ProductionWrite]',
+        '',
+      ].join('\n'));
+
+      const attributedEngine = new ExecutionEngine(db, createMockWsService(), skillsDir);
+      attributedEngine.registerExecutor({
+        kind: 'mock',
+        canExecute: () => true,
+        start: async (task: Task) => ({
+          id: 'immediate-session', taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+          events: (async function* () {})(),
+          result: Promise.resolve({ status: 'completed', message: 'ok', stdout: 'worker output', stderr: '', metrics: { executionTimeMs: 1, tokenUsage: 100, toolCalls: 0 } }),
+          cancel: async () => {},
+        }),
+      } as any);
+      db.prepare("INSERT INTO agents (id, name) VALUES ('agent-skill', 'Skill Agent')").run();
+      db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES ('agent-skill', '.opencode.skills.running-tests')").run();
+      db.prepare(`
+        INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
+        VALUES ('task-skill', 'Run tests', 'Run the bounded test', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)
+      `).run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+
+      const execution = await attributedEngine.executeTask('task-skill', 'mock');
+      await expect(execution.completion).resolves.toMatchObject({ status: 'completed', stdout: 'worker output' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const row = db.prepare(`
+        SELECT skill_id, skill_version, skill_content_hash, task_id, agent_id, success, tokens_used
+        FROM skill_outcomes WHERE task_id = 'task-skill'
+      `).get() as any;
+      expect(row).toMatchObject({
+        skill_id: '.opencode.skills.running-tests', skill_version: '0.1.0', task_id: 'task-skill',
+        agent_id: 'agent-skill', success: 1, tokens_used: 100,
+      });
+      expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      fs.rmSync(skillsDir, { recursive: true, force: true });
+    }
   });
 
   it('throws when task not found', async () => {

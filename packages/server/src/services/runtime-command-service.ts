@@ -7,16 +7,15 @@
  */
 
 import { spawn, spawnSync } from 'child_process';
+import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
-
-const DEFAULT_MAX_CONCURRENCY = 4;
+import { runtimeConcurrencySemaphore } from './concurrency-semaphore';
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
-  private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }> } = { active: new Set(), queue: [] };
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
@@ -146,10 +145,10 @@ export class RuntimeCommandService {
 
   getRuntimeContract(runtime: string): RuntimeContract {
     if (runtime === 'manual') {
-      return { runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] };
+      return this.withConformance({ runtime: 'manual', available: true, command: null, version: 'manual', status: 'ok', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: ['manual runtime requires human execution'] });
     }
     if (runtime === 'mock') {
-      return { runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] };
+      return this.withConformance({ runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] });
     }
     const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string }> = {
       codex: { binEnv: 'CODEX_BIN_PATH', defaultBin: 'codex', helpArgs: ['exec', '--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '--cd', headlessFlag: '--json' },
@@ -161,7 +160,7 @@ export class RuntimeCommandService {
     };
     const probe = PROBES[runtime];
     if (!probe) {
-      return { runtime: 'manual', available: false, command: null, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: [], reason: 'unsupported runtime' };
+      return this.withConformance({ runtime: 'manual', available: false, command: null, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: false, evidence: [], reason: 'unsupported runtime' });
     }
     const typedRuntime = runtime as RuntimeContract['runtime'];
     const command = process.env[probe.binEnv] || probe.defaultBin;
@@ -175,13 +174,13 @@ export class RuntimeCommandService {
         if (entry.expiresAt <= now) this.runtimeContractCache.delete(key);
       }
     }
-    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS ?? 1_000), 5_000));
+    const timeoutMs = Math.max(100, Math.min(Number(process.env.LOOP_RUNTIME_PROBE_TIMEOUT_MS ?? 2_000), 5_000));
     const result = spawnSync(command, ['--version'], { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 512 * 1024 });
     if (result.error) {
-      return { runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.error.message };
+      return this.withConformance({ runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.error.message });
     }
     if (result.status !== 0) {
-      return { runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.stderr || `exit ${result.status}` };
+      return this.withConformance({ runtime: typedRuntime, available: false, command, status: 'unavailable', supports_json_events: false, supports_usage_parsing: false, supports_timeout_kill: true, evidence: [], reason: result.stderr || `exit ${result.status}` });
     }
     const helpResult = spawnSync(command, probe.helpArgs, { encoding: 'utf8', timeout: timeoutMs, maxBuffer: 512 * 1024 });
     const help = `${helpResult.stdout || ''}\n${helpResult.stderr || ''}`;
@@ -191,7 +190,7 @@ export class RuntimeCommandService {
     const hasCwdFlag = probe.cwdFlag ? lowerHelp.includes(probe.cwdFlag) : true;
     const hasHeadlessFlag = lowerHelp.includes(probe.headlessFlag.toLowerCase());
     const drifted = !hasJsonFlag || !hasCwdFlag || !hasHeadlessFlag;
-    const contract: RuntimeContract = {
+    const contract = this.withConformance({
       runtime: typedRuntime, available: !drifted, command,
       version: (result.stdout || result.stderr || '').trim() || 'unknown',
       status: drifted ? 'drifted' : 'ok',
@@ -199,12 +198,39 @@ export class RuntimeCommandService {
       json_flag: probe.jsonFlag === '--format' ? ['--format', 'json'] : probe.jsonFlag,
       supports_json_events: !drifted, supports_usage_parsing: !drifted, supports_timeout_kill: true, evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
-    };
+    });
     const probedAt = new Date().toISOString();
     contract.probed_at = probedAt;
     this.db.prepare(`INSERT INTO runtime_contract_probes (runtime, command, status, available, contract_json, probed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(runtime) DO UPDATE SET command = excluded.command, status = excluded.status, available = excluded.available, contract_json = excluded.contract_json, probed_at = excluded.probed_at, updated_at = excluded.updated_at`).run(contract.runtime, contract.command, contract.status, contract.available ? 1 : 0, JSON.stringify(contract), probedAt, probedAt);
     this.runtimeContractCache.set(cacheKey, { expiresAt: Date.now() + this.runtimeContractCacheMs, contract });
     return contract;
+  }
+
+  private withConformance(contract: RuntimeContract): RuntimeContract {
+    const checks = [
+      { name: 'runtime_available', passed: contract.available, evidence: contract.available ? 'Runtime binary is available.' : contract.reason || 'Runtime binary is unavailable.' },
+      { name: 'contract_not_drifted', passed: contract.status === 'ok', evidence: `Runtime contract status is ${contract.status}.` },
+      { name: 'structured_events', passed: contract.supports_json_events, evidence: contract.json_flag ? `Structured output flag: ${JSON.stringify(contract.json_flag)}.` : 'No structured output flag.' },
+      { name: 'usage_accounting', passed: contract.supports_usage_parsing, evidence: contract.supports_usage_parsing ? 'Runtime output supports usage parsing.' : 'Usage parsing is not supported.' },
+      { name: 'bounded_lifecycle', passed: contract.supports_timeout_kill, evidence: contract.supports_timeout_kill ? 'Timeout and kill are supported.' : 'Runtime requires manual lifecycle control.' },
+    ];
+    const canonical = JSON.stringify({
+      runtime: contract.runtime,
+      command: contract.command,
+      version: contract.version || null,
+      cwd_flag: contract.cwd_flag || null,
+      json_flag: contract.json_flag || null,
+      checks: checks.map(({ name, passed }) => ({ name, passed })),
+    });
+    return {
+      ...contract,
+      conformance: {
+        status: contract.runtime === 'manual' ? 'manual' : checks.every((check) => check.passed) ? 'pass' : 'fail',
+        proof_class: contract.runtime === 'manual' || contract.runtime === 'mock' ? 'static' : 'runtime_probe',
+        contract_hash: createHash('sha256').update(canonical).digest('hex'),
+        checks,
+      },
+    };
   }
 
   // ─── Process Execution ────────────────────────────────────────────────
@@ -327,40 +353,20 @@ export class RuntimeCommandService {
     return { total_tokens: runtimeUsage.total_tokens, diff_lines: diffLines, tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null, tokens_per_successful_worker: runtimeUsage.total_tokens };
   }
 
-  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.active.size; }
+  runtimeConcurrencyInUse(): number { return runtimeConcurrencySemaphore.activeCount; }
 
   // ─── Semaphore ────────────────────────────────────────────────────────
 
-  private runtimeSemaphoreLimit(): number {
-    const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    if (raw === undefined || raw === null || raw.trim() === '') return DEFAULT_MAX_CONCURRENCY;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : DEFAULT_MAX_CONCURRENCY;
-  }
-
   private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) { sem.active.add(leaseId); return Promise.resolve(); }
-    return new Promise<void>((resolve, reject) => { sem.queue.push({ leaseId, resolve, reject }); });
+    return runtimeConcurrencySemaphore.acquire(`runtime:${leaseId}`);
   }
 
   private releaseRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) { sem.active.add(next.leaseId); next.resolve(); }
-    } else {
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
+    runtimeConcurrencySemaphore.release(`runtime:${leaseId}`);
   }
 
   private cancelRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) { const [waiter] = sem.queue.splice(idx, 1); waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED')); }
+    runtimeConcurrencySemaphore.cancel(`runtime:${leaseId}`);
   }
 
   private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): void {

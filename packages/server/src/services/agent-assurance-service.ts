@@ -235,7 +235,7 @@ export class AgentAssuranceService {
     if (!input.target_type || !TARGET_TYPES.includes(input.target_type)) throw new Error('ASSURANCE_EVAL_TARGET_INVALID');
     this.rejectSecretLike(input.target_ref, input.metadata);
 
-    const { score, scorecard, findings } = this.scoreEval(input.suite_name, input.target_type);
+    const { score, scorecard, findings } = this.scoreEval(input.suite_name, input.target_type, input.target_ref || null);
     const status: EvalStatus = score >= 0.75 ? 'passed' : score >= 0.5 ? 'needs_review' : 'failed';
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -261,6 +261,11 @@ export class AgentAssuranceService {
     );
 
     return this.parseEvalRun(this.db.prepare('SELECT * FROM agent_eval_runs WHERE id = ?').get(id));
+  }
+
+  getEval(id: string): EvalRunRecord | null {
+    const row = this.db.prepare('SELECT * FROM agent_eval_runs WHERE id = ?').get(id);
+    return row ? this.parseEvalRun(row) : null;
   }
 
   issueCapabilityToken(input: {
@@ -364,6 +369,11 @@ export class AgentAssuranceService {
   listReflections(limit = 50): ReflectionCandidateRecord[] {
     return (this.db.prepare('SELECT * FROM reflection_candidates ORDER BY created_at DESC LIMIT ?').all(Math.max(1, Math.min(limit, 200))) as any[])
       .map((row) => this.parseReflection(row));
+  }
+
+  getReflection(id: string): ReflectionCandidateRecord | null {
+    const row = this.db.prepare('SELECT * FROM reflection_candidates WHERE id = ?').get(id);
+    return row ? this.parseReflection(row) : null;
   }
 
   summary(): Record<string, unknown> {
@@ -516,7 +526,69 @@ export class AgentAssuranceService {
     };
   }
 
-  private scoreEval(suiteName: string, targetType: TargetType): { score: number; scorecard: Record<string, unknown>; findings: string[] } {
+  private scoreEval(suiteName: string, targetType: TargetType, targetRef: string | null): { score: number; scorecard: Record<string, unknown>; findings: string[] } {
+    if (suiteName === 'loop-learning' && targetType === 'loop') {
+      const run = targetRef
+        ? this.db.prepare('SELECT status, gates_json FROM loop_runs WHERE id = ?').get(targetRef) as { status: string; gates_json: string } | undefined
+        : undefined;
+      if (!run || !targetRef) {
+        return { score: 0, scorecard: { deterministic: true, target_found: false }, findings: ['Loop run was not found.'] };
+      }
+      const leases = (this.db.prepare('SELECT id, role, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(targetRef) as Array<{ id: string; role: string; status: string; metadata: string }>).map((lease) => ({
+        ...lease,
+        parsedMetadata: this.safeJson<Record<string, unknown>>(lease.metadata, {}),
+      }));
+      const maker = leases.find((lease) => lease.role === 'maker' && lease.status === 'completed' && !lease.parsedMetadata.superseded_by_maker_lease_id);
+      const makerCompleted = Boolean(maker);
+      const checkerAccepted = leases.some((lease) => (
+        lease.role === 'checker' &&
+        lease.status === 'completed' &&
+        lease.parsedMetadata.maker_lease_id === maker?.id &&
+        lease.parsedMetadata.verdict === 'accepted'
+      ));
+      const retryCount = leases.filter((lease) => lease.role === 'maker' && lease.parsedMetadata.superseded_by_maker_lease_id).length;
+      const gates = this.safeJson(run.gates_json, []) as Array<{ status?: string }>;
+      const applicableGates = gates.filter((gate) => gate.status !== 'skipped');
+      const gatePassRatio = applicableGates.length ? applicableGates.filter((gate) => gate.status === 'pass').length / applicableGates.length : 0;
+      const evidence = {
+        trace_spans: this.count('SELECT COUNT(*) as count FROM agent_trace_spans WHERE loop_run_id = ?', [targetRef]),
+        checkpoints: this.count('SELECT COUNT(*) as count FROM loop_checkpoints WHERE loop_run_id = ?', [targetRef]),
+        runner_manifests: this.count('SELECT COUNT(*) as count FROM swarm_runner_manifests WHERE loop_run_id = ?', [targetRef]),
+      };
+      const evidenceCoverage = Object.values(evidence).filter((count) => count > 0).length / 3;
+      const terminal = ['completed', 'ready_for_human_merge', 'closed'].includes(run.status);
+      const rawScore = (
+        (makerCompleted ? 0.25 : 0) +
+        (checkerAccepted ? 0.25 : 0) +
+        gatePassRatio * 0.2 +
+        evidenceCoverage * 0.2 +
+        (terminal ? 0.1 : 0)
+      );
+      const requiredEvidenceComplete = evidenceCoverage === 1;
+      const requiredGatesComplete = applicableGates.length > 0 && gatePassRatio === 1;
+      const requiredComplete = makerCompleted && checkerAccepted && terminal && requiredEvidenceComplete && requiredGatesComplete;
+      const score = Number((requiredComplete ? Math.max(0, rawScore - Math.min(retryCount * 0.05, 0.2)) : Math.min(rawScore, 0.74)).toFixed(4));
+      return {
+        score,
+        scorecard: {
+          maker_completed: makerCompleted,
+          checker_accepted: checkerAccepted,
+          maker_retry_count: retryCount,
+          gate_pass_ratio: Number(gatePassRatio.toFixed(4)),
+          evidence_coverage: Number(evidenceCoverage.toFixed(4)),
+          evidence_counts: evidence,
+          terminal_status: terminal,
+          required_evidence_complete: requiredEvidenceComplete,
+          required_gates_complete: requiredGatesComplete,
+          required_complete: requiredComplete,
+          deterministic: true,
+        },
+        findings: score >= 0.75
+          ? ['Maker/checker separation, gates and runtime evidence meet the loop-learning threshold.']
+          : ['Loop-learning evidence is incomplete; inspect the scorecard before promotion.'],
+      };
+    }
+
     if (suiteName === 'memory-quality' && targetType === 'memory') {
       const promoted = this.count("SELECT COUNT(*) as count FROM memory_candidates WHERE status = 'promoted'");
       const reviewRequired = this.count("SELECT COUNT(*) as count FROM memory_candidates WHERE status = 'review_required'");

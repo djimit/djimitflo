@@ -59,17 +59,28 @@ export class WebSocketService {
     });
   }
 
-  authenticateConnection(req: any, ws?: WebSocket): AuthenticatedClient | null {
-    const url = req?.url || '';
-    let token: string | null = null;
+  private extractToken(req: any): string | null {
+    const protocolHeader = req?.headers?.['sec-websocket-protocol'];
+    if (typeof protocolHeader === 'string' && protocolHeader.length > 0) {
+      const protocols = protocolHeader.split(',').map((p: string) => p.trim());
+      const bearerProtocol = protocols.find((p: string) => p.startsWith('bearer.'));
+      if (bearerProtocol) {
+        return bearerProtocol.slice('bearer.'.length);
+      }
+    }
 
     try {
+      const url = req?.url || '';
       const queryString = url.split('?')[1] || '';
       const params = new URLSearchParams(queryString);
-      token = params.get('token');
+      return params.get('token');
     } catch {
-      token = null;
+      return null;
     }
+  }
+
+  authenticateConnection(req: any, ws?: WebSocket): AuthenticatedClient | null {
+    const token = this.extractToken(req);
 
     if (!token) {
       this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_REQUIRED);
@@ -129,6 +140,8 @@ export class WebSocketService {
   broadcastFiltered(message: WebSocketMessage, filterFn: ClientFilter) {
     const data = JSON.stringify(message);
     const now = Date.now() / 1000;
+    const configuredLimit = Number(process.env.WS_MAX_BUFFERED_AMOUNT_BYTES ?? 1_048_576);
+    const maxBufferedAmount = Number.isFinite(configuredLimit) && configuredLimit >= 0 ? configuredLimit : 1_048_576;
     this.clients.forEach((clientInfo, ws) => {
       if (ws.readyState !== WebSocket.OPEN) return;
       if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
@@ -137,6 +150,7 @@ export class WebSocketService {
         return;
       }
       if (filterFn(clientInfo)) {
+        if (ws.bufferedAmount > maxBufferedAmount) return;
         ws.send(data);
       }
     });

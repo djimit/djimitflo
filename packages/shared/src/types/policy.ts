@@ -38,6 +38,7 @@ export interface SandboxPolicy extends Timestamps {
 
 export interface ApprovalPolicy extends Timestamps {
   id: ID;
+  version: number;
   name: string;
   description: string;
   enabled: boolean;
@@ -100,6 +101,7 @@ export interface Approval extends Timestamps {
 
 export interface ExecutionPolicy extends Timestamps {
   id: ID;
+  version: number;
   name: string;
   description: string;
   enabled: boolean;
