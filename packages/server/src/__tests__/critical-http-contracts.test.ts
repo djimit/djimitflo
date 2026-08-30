@@ -19,6 +19,8 @@ import { createExportRoutes } from '../routes/exports';
 import { createOpenMythosRoutes } from '../routes/openmythos';
 import { createRuntimeGovernanceRoutes } from '../routes/runtime-governance';
 import { createSpawnRoutes } from '../routes/spawns';
+import { createMCPRoutes } from '../routes/mcp';
+import { createSwarmRoutes } from '../routes/swarms';
 
 describe('critical HTTP contracts', () => {
   const envKeys = ['DB_PATH', 'BACKUP_DIR', 'JWT_SECRET', 'AUTH_BOOTSTRAP_ADMIN_EMAIL', 'AUTH_BOOTSTRAP_ADMIN_PASSWORD'] as const;
@@ -60,7 +62,9 @@ describe('critical HTTP contracts', () => {
     app.use('/exports', createExportRoutes(db, passAuth));
     app.use('/openmythos', createOpenMythosRoutes(db, passAuth));
     app.use('/runtime-governance', createRuntimeGovernanceRoutes(db, passAuth));
+    app.use('/mcp', createMCPRoutes(db, passAuth));
     app.use('/swarms/spawns', createSpawnRoutes(db, passAuth));
+    app.use('/swarms', createSwarmRoutes(db, passAuth));
     app.use(errorHandler);
     server = await new Promise(resolve => {
       const listening = app.listen(0, () => resolve(listening));
@@ -120,6 +124,10 @@ describe('critical HTTP contracts', () => {
     expect((await request('/openmythos/trend/agent')).status).toBe(200);
     expect((await request('/openmythos/guard/check/skill', { method: 'POST', body: '{}' })).status).toBe(404);
     expect((await request('/openmythos/guard/certified/skill')).status).toBe(200);
+    expect((await request('/openmythos/runs')).status).toBe(200);
+    expect((await request('/openmythos/leaderboard')).status).toBe(200);
+    expect((await request('/openmythos/apex/reports')).status).toBe(200);
+    expect((await request('/openmythos/apex/reports/-1')).status).toBe(400);
   });
 
   it('exercises every runtime-governance and spawn control contract', async () => {
@@ -133,5 +141,61 @@ describe('critical HTTP contracts', () => {
     expect((await request('/swarms/spawns/root', { method: 'POST', body: '{}' })).status).toBe(400);
     expect((await request('/swarms/spawns', { method: 'POST', body: '{}' })).status).toBe(400);
     expect((await request('/swarms/spawns/missing/status')).status).toBe(404);
+  });
+
+  it('exercises MCP and swarm intelligence contracts without external execution', async () => {
+    expect((await request('/mcp/tools')).status).toBe(200);
+    expect((await request('/mcp/permissions/missing', { method: 'PATCH', body: '{}' })).status).toBe(404);
+    expect((await request('/swarms/specialist-panels')).status).toBe(200);
+    expect((await request('/swarms/opencode/health')).status).toBe(200);
+
+    const hypothesis = await request('/swarms/intelligence/hypotheses', {
+      method: 'POST', body: JSON.stringify({ question: 'Is the contract reachable?' }),
+    });
+    expect(hypothesis.status).toBe(201);
+    const hypothesisId = (await hypothesis.json() as any).id;
+    expect((await request('/swarms/intelligence/hypotheses')).status).toBe(200);
+    expect((await request(`/swarms/intelligence/hypotheses/${hypothesisId}/transition`, {
+      method: 'POST', body: JSON.stringify({ state: 'testing', evidence_refs: [] }),
+    })).status).toBe(200);
+
+    const mission = await request('/swarms/intelligence/missions', {
+      method: 'POST', body: JSON.stringify({ title: 'Contract mission' }),
+    });
+    expect(mission.status).toBe(201);
+    const missionId = (await mission.json() as any).id;
+    expect((await request('/swarms/intelligence/missions')).status).toBe(200);
+    expect((await request(`/swarms/intelligence/missions/${missionId}`)).status).toBe(200);
+    expect((await request(`/swarms/intelligence/missions/${missionId}/transition`, {
+      method: 'POST', body: JSON.stringify({ status: 'hypothesized' }),
+    })).status).toBe(200);
+    expect((await request(`/swarms/intelligence/missions/${missionId}/tasks`)).status).toBe(200);
+    const task = await request(`/swarms/intelligence/missions/${missionId}/tasks`, {
+      method: 'POST', body: JSON.stringify({ title: 'Contract task' }),
+    });
+    expect(task.status).toBe(201);
+    const taskId = (await task.json() as any).id;
+    expect((await request(`/swarms/intelligence/tasks/${taskId}/transition`, {
+      method: 'POST', body: JSON.stringify({ status: 'hypothesized' }),
+    })).status).toBe(200);
+    expect((await request(`/swarms/intelligence/missions/${missionId}/decisions`)).status).toBe(200);
+    expect((await request('/swarms/intelligence/decisions', {
+      method: 'POST', body: JSON.stringify({ mission_id: missionId, decision_type: 'route', decision: 'contract' }),
+    })).status).toBe(201);
+
+    expect((await request('/swarms/intelligence/circuit-breaker/contract')).status).toBe(200);
+    expect((await request('/swarms/intelligence/circuit-breaker/contract/failure', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await request('/swarms/intelligence/circuit-breaker/contract/reset', { method: 'POST', body: '{}' })).status).toBe(200);
+
+    for (const path of [
+      '/swarms/expert/history', '/swarms/expert/sources', '/swarms/expert/updates',
+      '/swarms/rsi/proposals', '/swarms/rsi/specializations', '/swarms/rsi/safety',
+      '/swarms/learning/history', '/swarms/learning/last', '/swarms/learning-curve',
+      '/swarms/economy', '/swarms/fix/history',
+    ]) expect((await request(path)).status, path).toBe(200);
+    expect((await request('/swarms/rsi/safety/toggle', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await request('/swarms/rsi/analyze', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await request('/swarms/learning/cycle', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await request('/swarms/fix/batch', { method: 'POST', body: JSON.stringify({ requests: [] }) })).status).toBe(200);
   });
 });
