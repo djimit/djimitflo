@@ -176,6 +176,12 @@ export type RuntimeContract = {
   evidence: string[];
   reason?: string;
   probed_at?: string;
+  conformance?: {
+    status: 'pass' | 'fail' | 'manual';
+    proof_class: 'static' | 'runtime_probe';
+    contract_hash: string;
+    checks: Array<{ name: string; passed: boolean; evidence: string }>;
+  };
 };
 
 export type WorkerLeaseRecord = {
@@ -462,6 +468,7 @@ export type SpecialistReviewRecord = {
   recommendations: string[];
   evidence_refs: string[];
   limitations: string | null;
+  reviewer_actor: string | null;
   status: 'draft' | 'submitted' | 'rejected';
   created_at: string;
   updated_at: string;
@@ -495,6 +502,22 @@ export type SpecialistPanelRecord = {
   updated_at: string;
   completed_at: string | null;
   reviews?: SpecialistReviewRecord[];
+};
+
+export type ImprovementProposal = {
+  id: string;
+  type: 'bug_fix' | 'feature' | 'refactor' | 'performance' | 'security';
+  title: string;
+  description: string;
+  rationale: string;
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  priority: number;
+  evidenceRefs: string[];
+  panelId: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AgentEvalRunRecord = {
@@ -641,6 +664,20 @@ export type SwarmMissionControl = {
     routable: number;
     blocked: number;
   };
+  skill_evolution?: Array<{
+    capability_id: string;
+    skill_id: string;
+    skill_version: string;
+    candidate_hash: string;
+    status: SwarmCapabilityRecord['status'];
+    assigned_agents: number;
+    candidate_runs: number;
+    baseline_hashes: string[];
+    openmythos_run_id: string | null;
+    evidence_ready: boolean;
+    blocked_reasons: string[];
+    promotion_input: Record<string, unknown> | null;
+  }>;
   claim_health: {
     total: number;
     proposed: number;
@@ -1029,7 +1066,9 @@ class ApiClient {
     return this.request('/authority/stats');
   }
 
-  async getAuthorityEvents(decision?: string): Promise<{ events: Array<Record<string, unknown>>; total: number }> {
+  async getAuthorityEvents(
+    decision?: string,
+  ): Promise<{ events: Array<Record<string, unknown>>; total: number }> {
     const q = decision ? `?decision=${decision}` : '';
     return this.request(`/authority/events${q}`);
   }
@@ -1202,7 +1241,10 @@ class ApiClient {
   }
 
   async completeLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[] }> {
-    return this.request(`/loops/runs/${runId}/complete`, { method: 'POST' });
+    return this.request(`/loops/runs/${runId}/complete`, {
+      method: 'POST',
+      body: JSON.stringify({ human_approval_ref: 'dashboard-confirmation' }),
+    });
   }
 
   async stopLoopRun(runId: string): Promise<{ run: LoopRunRecord; events: LoopEventRecord[] }> {
@@ -1298,7 +1340,7 @@ class ApiClient {
   async promoteMemoryCandidate(id: string): Promise<{ candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> }> {
     return this.request(`/swarms/memory/candidates/${id}/promote`, {
       method: 'POST',
-      body: JSON.stringify({ sinks: ['okf'], approved_by: 'dashboard' }),
+      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),
     });
   }
 
@@ -1341,6 +1383,19 @@ class ApiClient {
 
   async projectSpecialistPanelToBacklog(panelId: string): Promise<{ panel: SpecialistPanelRecord; work_item: WorkItemRecord; created: boolean }> {
     return this.request(`/swarms/specialist-panels/${panelId}/backlog`, { method: 'POST' });
+  }
+
+  async getImprovementProposals(status?: ImprovementProposal['status']): Promise<{ proposals: ImprovementProposal[] }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request(`/self-improve/proposals${query}`);
+  }
+
+  async approveImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal; goalCreated: boolean }> {
+    return this.request(`/self-improve/proposals/${id}/approve`, { method: 'POST' });
+  }
+
+  async rejectImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal }> {
+    return this.request(`/self-improve/proposals/${id}/reject`, { method: 'POST' });
   }
 
   async getAssuranceSummary(): Promise<AgentAssuranceSummary> {
