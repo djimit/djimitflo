@@ -1060,23 +1060,6 @@ class ApiClient {
   }
 
   // Observability
-
-  // Authority Ledger (2026-08-30)
-  async getAuthorityStats(): Promise<Record<string, unknown>> {
-    return this.request('/authority/stats');
-  }
-
-  async getAuthorityEvents(
-    decision?: string,
-  ): Promise<{ events: Array<Record<string, unknown>>; total: number }> {
-    const q = decision ? `?decision=${decision}` : '';
-    return this.request(`/authority/events${q}`);
-  }
-
-  async getAuthorityTrace(correlationId: string): Promise<Record<string, unknown>> {
-    return this.request(`/authority/trace/${encodeURIComponent(correlationId)}`);
-  }
-
   async getObservabilityMetrics(): Promise<ObservabilityMetrics> {
     return this.request('/observability/metrics');
   }
