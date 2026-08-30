@@ -34,6 +34,7 @@ import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-s
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
 import { LoopDaemon } from './services/loop-daemon';
+import { ExplainerFleetWorker } from './services/explainer-fleet-worker';
 import { NegotiationCoordinator } from './services/negotiation-coordinator';
 import { CapabilityAcquisitionService } from './services/capability-acquisition';
 import { MetaEvolutionService } from './services/meta-evolution-service';
@@ -264,6 +265,21 @@ async function main() {
 
   // Public explore pages (unauthenticated, rate-limited)
   app.use('/explore', createExplorePublicRoutes(db));
+
+  // Explainer fleet worker — runs in EVERY runtime profile (Codex P1 fix: the
+  // earlier bootstrap-only mount made explainer jobs idle in api/operator mode).
+  // Opt out with DJIMITFLO_EXPLAINER_AUTONOMY=false; kill-switch still pauses it.
+  try {
+    if (process.env.DJIMITFLO_EXPLAINER_AUTONOMY === 'false') {
+      console.log('ℹ️  Explainer fleet worker disabled via DJIMITFLO_EXPLAINER_AUTONOMY=false');
+    } else {
+      const fleetWorker = ExplainerFleetWorker.create(db);
+      fleetWorker.start();
+      console.log('📖 Explainer fleet worker started (production entry point, honors kill-switch).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Explainer fleet worker failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
