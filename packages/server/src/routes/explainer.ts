@@ -23,6 +23,9 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // Public read rate limit for fleet status and published bundle listings.
   const publicReadLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
+  // Strikter limiter voor mutaties en zware DB-reads (CodeQL js/missing-rate-limiting).
+  const mutationLimiter = rateLimit({ windowMs: 60_000, limit: 20, standardHeaders: "draft-8", legacyHeaders: false });
+  const heavyReadLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false });
 
   // GET /api/explainer/tasks — list tasks
   router.get("/tasks", requirePermission("read:repository"), (req, res) => {
@@ -167,7 +170,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   });
 
   // POST /api/explainer/fleet/regenerate — enqueue regeneration for one repo (auth mutation)
-  router.post("/fleet/regenerate", requirePermission("write:governance"), async (req, res) => {
+  router.post("/fleet/regenerate", mutationLimiter, requirePermission("write:governance"), async (req, res) => {
     try {
       const { full_name: fullName } = req.body || {};
       if (typeof fullName !== "string" || !fullName.includes("/")) {
@@ -197,7 +200,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   const knowledge = new ExplainerKnowledgeService(db);
 
   // POST /api/explainer/knowledge/sync — chunk + embed published bundles (auth mutation)
-  router.post("/knowledge/sync", requirePermission("write:governance"), async (_req, res) => {
+  router.post("/knowledge/sync", mutationLimiter, requirePermission("write:governance"), async (_req, res) => {
     try {
       const bundles = db.prepare("SELECT id FROM explainer_bundles WHERE status = 'published' ORDER BY created_at DESC LIMIT 100").all() as any[];
       let embedded = 0;
@@ -304,7 +307,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   // ─── Operations & governance (FR-015/FR-019/FR-020) ───────────────────────
 
   // POST /api/explainer/bundles/:id/unpublish — EC-005: pull misleading content fast
-  router.post("/bundles/:id/unpublish", requirePermission("write:governance"), (req, res) => {
+  router.post("/bundles/:id/unpublish", mutationLimiter, requirePermission("write:governance"), (req, res) => {
     const bundleId = req.params.id;
     const row = db.prepare("SELECT id, status FROM explainer_bundles WHERE id = ?").get(bundleId) as any;
     if (!row) {
@@ -331,7 +334,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   });
 
   // POST /api/explainer/fleet/kill-switch — halt all scheduling + pause workers
-  router.post("/fleet/kill-switch", requirePermission("write:governance"), (req, res) => {
+  router.post("/fleet/kill-switch", mutationLimiter, requirePermission("write:governance"), (req, res) => {
     scheduler.setPaused(true);
     db.prepare("UPDATE explainer_jobs SET status = 'cancelled', updated_at = ? WHERE status IN ('pending', 'queued')").run(
       new Date().toISOString(),
@@ -352,7 +355,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   });
 
   // GET /api/explainer/audit — recent audit log entries (auth read)
-  router.get("/audit", requirePermission("read:repository"), (req, res) => {
+  router.get("/audit", heavyReadLimiter, requirePermission("read:repository"), (req, res) => {
     const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
     const rows = db.prepare(
       "SELECT * FROM explainer_audit_log ORDER BY created_at DESC LIMIT ?",
@@ -510,7 +513,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   });
 
   // POST /api/explainer/review-queue/:id/resolve — approve/reject with reason
-  router.post("/review-queue/:id/resolve", requirePermission("write:governance"), (req, res) => {
+  router.post("/review-queue/:id/resolve", mutationLimiter, requirePermission("write:governance"), (req, res) => {
     const id = req.params.id;
     const resolution = req.body?.resolution;
     if (!["approved", "rejected"].includes(resolution)) {

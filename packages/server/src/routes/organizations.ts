@@ -1,14 +1,16 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 
 export function createOrganizationRoutes(db: Database, requireAuthMiddleware: any, authService: any, auditService?: any): Router {
   const router = Router();
+  const orgLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
   /**
    * GET /api/organizations
    * Lijst van organisaties (gefilterd op req.user.organization_id).
    */
-  router.get('/', requireAuthMiddleware, (req, res) => {
+  router.get('/', orgLimiter, requireAuthMiddleware, (req, res) => {
     const userOrgId = (req as any).user?.organization_id || 'default';
     const organizations = db.prepare(
       'SELECT * FROM organizations WHERE id = ? OR id = ?'
@@ -20,7 +22,7 @@ export function createOrganizationRoutes(db: Database, requireAuthMiddleware: an
    * POST /api/organizations/switch
    * Switch organisatie (genereert nieuwe JWT token).
    */
-  router.post('/switch', requireAuthMiddleware, async (req, res) => {
+  router.post('/switch', orgLimiter, requireAuthMiddleware, async (req, res) => {
     const { organization_id } = req.body;
     const userId = (req as any).user?.sub || (req as any).user?.id;
     if (!userId) {
