@@ -20,6 +20,7 @@ const SCHEMA = `
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
     is_active INTEGER NOT NULL DEFAULT 1,
+    organization_id TEXT NOT NULL DEFAULT 'default',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );

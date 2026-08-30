@@ -10,5 +10,8 @@ export default defineConfig({
     // + multiple runtime spawns + deterministic checks) legitimately exceed the 5s default.
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    env: {
+      NODE_ENV: 'test',
+    },
   },
 });

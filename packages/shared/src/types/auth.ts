@@ -105,6 +105,7 @@ export interface AuthTokenPayload {
   sub: string;
   email: string;
   role: UserRole;
+  organization_id?: string;
   iat: number;
   exp: number;
 }

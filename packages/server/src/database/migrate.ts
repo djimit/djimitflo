@@ -493,6 +493,11 @@ function createPhase44Tables(db: BetterSqlite3Database) {
 }
 
 function createPhase52Tables(db: BetterSqlite3Database) {
+  const userColumns: ColumnSpec[] = [
+    { name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" },
+  ];
+  addMissingColumns(db, 'users', userColumns);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -500,6 +505,7 @@ function createPhase52Tables(db: BetterSqlite3Database) {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
       is_active INTEGER NOT NULL DEFAULT 1,
+      organization_id TEXT NOT NULL DEFAULT 'default',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

@@ -16,6 +16,7 @@ import { requestLogger } from './middleware/request-logger';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
+import { createExplorePublicRoutes } from './routes/explore-public';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
@@ -260,6 +261,9 @@ async function main() {
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration));
+
+  // Public explore pages (unauthenticated, rate-limited)
+  app.use('/explore', createExplorePublicRoutes(db));
 
   try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;

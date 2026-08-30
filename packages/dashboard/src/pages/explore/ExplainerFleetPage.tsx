@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, RefreshCw, Play, Pause, RotateCcw, Globe } from 'lucide-react';
+import { BookOpen, RefreshCw, Play, Pause, RotateCcw, Globe, ShieldCheck } from 'lucide-react';
 import { api } from '../../lib/api';
 
 export interface FleetRepository {
@@ -13,6 +13,13 @@ export interface FleetRepository {
   last_commit_at: string | null;
   last_commit_sha: string | null;
   is_active: number;
+  last_generated?: string | null;
+  age_days?: number | null;
+  openmythos_score?: number | null;
+  task_status?: string | null;
+  task_id?: string | null;
+  health_score?: number | null;
+  fresh?: boolean;
 }
 
 export interface FleetStatus {
@@ -36,6 +43,9 @@ export interface FleetStatus {
 export function ExplainerFleetPage() {
   const [status, setStatus] = useState<FleetStatus | null>(null);
   const [repos, setRepos] = useState<FleetRepository[]>([]);
+  const [driftCount, setDriftCount] = useState<number | null>(null);
+  const [driftTypes, setDriftTypes] = useState<Record<string, number>>({});
+  const [reviewCount, setReviewCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,12 +53,19 @@ export function ExplainerFleetPage() {
     setLoading(true);
     setError(null);
     try {
-      const [fleetStatus, repoList] = await Promise.all([
+      const [fleetStatus, overviewRes, driftRes, reviewRes] = await Promise.all([
         api.get<FleetStatus>('/explainer/fleet/status'),
-        api.get<{ repositories: FleetRepository[] }>('/explainer/fleet/repos'),
+        api.get<{ repositories: FleetRepository[] }>('/explainer/fleet/overview'),
+        api.get<{ drift_count: number; drift: Array<{ drift_type: string }> }>('/explainer/fleet/health-drift'),
+        api.get<{ count: number }>('/explainer/review-queue'),
       ]);
       setStatus(fleetStatus);
-      setRepos(repoList.repositories ?? []);
+      setRepos(overviewRes.repositories ?? []);
+      setDriftCount(driftRes.drift_count ?? 0);
+      const byType: Record<string, number> = {};
+      for (const d of driftRes.drift ?? []) byType[d.drift_type] = (byType[d.drift_type] ?? 0) + 1;
+      setDriftTypes(byType);
+      setReviewCount(reviewRes.count ?? 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -72,6 +89,18 @@ export function ExplainerFleetPage() {
     }
   }
 
+  async function regenerate(fullName: string) {
+    setLoading(true);
+    try {
+      await api.post('/explainer/fleet/regenerate', { full_name: fullName });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -86,6 +115,32 @@ export function ExplainerFleetPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {driftCount !== null && driftCount > 0 && (
+            <button
+              onClick={() => mutate('refresh-stale', { owner: 'djimit' })}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-500 ring-1 ring-amber-500/20 hover:bg-amber-500/20 disabled:opacity-50"
+              title={Object.entries(driftTypes).map(([t, n]) => `${t}: ${n}`).join(', ')}
+              aria-label={`${driftCount} knowledge drift detected`}
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+              </span>
+              {driftCount} drift
+            </button>
+          )}
+          {reviewCount !== null && reviewCount > 0 && (
+            <a
+              href="#review-queue"
+              className="inline-flex items-center gap-2 rounded-full bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-500 ring-1 ring-sky-500/20 hover:bg-sky-500/20"
+              aria-label={`${reviewCount} bundles awaiting human review`}
+              title="Bundles below quality threshold awaiting human review — resolve via /explainer/review-queue"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {reviewCount} review
+            </a>
+          )}
           <button
             onClick={() => mutate('sync', { owner: 'djimit' })}
             disabled={loading}
@@ -161,9 +216,10 @@ export function ExplainerFleetPage() {
                 <th className="px-4 py-2">Repository</th>
                 <th className="px-4 py-2">Tier</th>
                 <th className="px-4 py-2">Language</th>
-                <th className="px-4 py-2">Stars</th>
-                <th className="px-4 py-2">Last Commit</th>
-                <th className="px-4 py-2">Status</th>
+                <th className="px-4 py-2">OpenMythos</th>
+                <th className="px-4 py-2">Health</th>
+                <th className="px-4 py-2">Last Generated</th>
+                <th className="px-4 py-2">Freshness</th>
                 <th className="px-4 py-2">Actions</th>
               </tr>
             </thead>
@@ -182,29 +238,57 @@ export function ExplainerFleetPage() {
                   </td>
                   <td className="px-4 py-3">{repo.priority_tier}</td>
                   <td className="px-4 py-3">{repo.language ?? '-'}</td>
-                  <td className="px-4 py-3">{repo.stargazers_count}</td>
-                  <td className="px-4 py-3 text-foreground-secondary">
-                    {repo.last_commit_at ? new Date(repo.last_commit_at).toLocaleDateString() : '-'}
-                  </td>
                   <td className="px-4 py-3">
-                    {repo.is_active ? (
-                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">
-                        Active
+                    {repo.openmythos_score !== null && repo.openmythos_score !== undefined ? (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${repo.openmythos_score >= 85 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                        {Math.round(repo.openmythos_score)}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-500">
-                        Inactive
-                      </span>
+                      <span className="text-foreground-secondary">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <a
-                      href={`/explore/${repo.full_name}`}
-                      className="inline-flex items-center gap-1 text-accent hover:underline"
-                    >
-                      <Globe className="h-3 w-3" />
-                      Explore
-                    </a>
+                    {repo.health_score !== null && repo.health_score !== undefined ? (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${repo.health_score >= 70 ? 'bg-emerald-500/10 text-emerald-500' : repo.health_score >= 40 ? 'bg-amber-500/10 text-amber-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                        {repo.health_score}
+                      </span>
+                    ) : (
+                      <span className="text-foreground-secondary">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-foreground-secondary">
+                    {repo.last_generated ? new Date(repo.last_generated).toLocaleDateString() : 'Never'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {repo.last_generated ? (
+                      repo.fresh ? (
+                        <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-500">Fresh</span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-500">Stale ({repo.age_days}d)</span>
+                      )
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-zinc-500/10 px-2 py-0.5 text-xs font-medium text-foreground-secondary">Pending</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={`/explore/${repo.full_name}`}
+                        className="inline-flex items-center gap-1 text-accent hover:underline"
+                      >
+                        <Globe className="h-3 w-3" />
+                        Explore
+                      </a>
+                      <button
+                        onClick={() => regenerate(repo.full_name)}
+                        disabled={loading}
+                        className="inline-flex items-center gap-1 text-foreground-secondary hover:text-accent disabled:opacity-50"
+                        aria-label={`Regenerate explainer for ${repo.full_name}`}
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        Regenerate
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
