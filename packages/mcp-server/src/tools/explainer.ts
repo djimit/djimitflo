@@ -13,7 +13,13 @@ function createTask(db: DbLike, input: any): any {
   const now = new Date().toISOString();
   db.prepare("INSERT INTO explainer_tasks (id, title, description, provider, remote_url, local_path, status, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(id, input.title || "Untitled", input.description || "", "local", input.remote_url || input.repository_url || null, input.local_path || null, "pending", "{}", now, now);
-  return { id, title: input.title, status: "created" };
+  // Enqueue a pending explainer_jobs row so the ExplainerFleetWorker actually
+  // claims and processes this task (review fix: queued-forever without a job row).
+  const jobId = "job-" + id;
+  db.prepare(
+    "INSERT INTO explainer_jobs (id, task_id, scheduled_at, status, priority_score, scheduled_reason, created_at, updated_at) VALUES (?, ?, ?, 'pending', 0, 'mcp_createTask', ?, ?)",
+  ).run(jobId, id, now, now, now);
+  return { id, job_id: jobId, title: input.title, status: "created", queued: true };
 }
 
 function getTask(db: DbLike, id: string): any {
@@ -23,14 +29,28 @@ function getTask(db: DbLike, id: string): any {
 /**
  * Runs the real explainer pipeline by delegating to the djimitflo server API
  * (POST /api/explainer/tasks/:id/run) when EXPLAINER_SERVER_URL is set;
- * otherwise reports the task as queued without a mock bundle path.
+ * otherwise reports the task as queued (with a guaranteed explainer_jobs row)
+ * so the ExplainerFleetWorker picks it up.
  */
 async function runPipeline(db: DbLike, id: string): Promise<any> {
   const task = getTask(db, id);
   if (!task) throw new Error("Task not found: " + id);
   const serverUrl = process.env.EXPLAINER_SERVER_URL;
   if (!serverUrl) {
-    return { task_id: id, status: "queued", note: "EXPLAINER_SERVER_URL not configured; pipeline runs on the djimitflo server worker." };
+    // Ensure a pending job row exists — without it the fleet worker never
+    // claims the task and it stays pending forever (review fix).
+    const existing = db.prepare(
+      "SELECT id FROM explainer_jobs WHERE task_id = ? AND status IN ('pending', 'queued', 'running') LIMIT 1",
+    ).get(id) as any;
+    if (!existing) {
+      const now = new Date().toISOString();
+      const jobId = "job-" + id + "-" + Math.random().toString(36).slice(2, 6);
+      db.prepare(
+        "INSERT INTO explainer_jobs (id, task_id, scheduled_at, status, priority_score, scheduled_reason, created_at, updated_at) VALUES (?, ?, ?, 'pending', 0, 'mcp_reenqueue', ?, ?)",
+      ).run(jobId, id, now, now, now);
+      return { task_id: id, job_id: jobId, status: "queued", note: "EXPLAINER_SERVER_URL not configured; explainer_jobs row created for the server worker." };
+    }
+    return { task_id: id, job_id: existing.id, status: "queued", note: "Task already queued; pipeline runs on the djimitflo server worker." };
   }
   const res = await fetch(`${serverUrl}/api/explainer/tasks/${encodeURIComponent(id)}/run`, {
     method: "POST",
@@ -51,6 +71,7 @@ interface KnowledgeChunkPayload {
   repo_full_name: string;
   chunk_type: string;
   section: string | null;
+  fact_id: string | null;
   text: string;
   citation: string | null;
   file_path: string | null;
@@ -87,7 +108,10 @@ function chunkBundle(db: DbLike, bundleId: string): KnowledgeChunkPayload[] {
      WHERE t.id = ?`,
   ).get(row.task_id) as any;
   const repo = task?.full_name ?? row.task_id;
-  const validUntil = new Date(Date.now() + 7 * 86400000).toISOString();
+  // Review fix: anchor expiry to the bundle's creation time (+7d) — recomputing
+  // from "now" on every call resurrects stale bundles on old published bundles.
+  const createdMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+  const validUntil = new Date(createdMs + 7 * 86400000).toISOString();
   const chunks: KnowledgeChunkPayload[] = [];
 
   if (row.facts_path && existsSync(row.facts_path)) {
@@ -98,6 +122,7 @@ function chunkBundle(db: DbLike, bundleId: string): KnowledgeChunkPayload[] {
           repo_full_name: repo,
           chunk_type: "fact",
           section: null,
+          fact_id: fact.id ?? null,
           text: String(fact.claim ?? ""),
           citation: fact.source_ref ?? null,
           file_path: fact.file_path ?? null,
@@ -118,6 +143,7 @@ function chunkBundle(db: DbLike, bundleId: string): KnowledgeChunkPayload[] {
           repo_full_name: repo,
           chunk_type: "section",
           section: file.replace(/\.md$/, ""),
+          fact_id: null,
           text: text.slice(0, 900),
           citation: null,
           file_path: null,
@@ -135,6 +161,7 @@ function chunkBundle(db: DbLike, bundleId: string): KnowledgeChunkPayload[] {
         repo_full_name: repo,
         chunk_type: "section",
         section: "explainer",
+        fact_id: null,
         text: readFileSync(row.markdown_path, "utf8").slice(0, 900),
         citation: null,
         file_path: null,
@@ -325,7 +352,9 @@ export function registerExplainerTools(server: McpServer, db: DbLike): void {
       const repos = args?.repo ? [args.repo] : latestPublishedRepos(db);
       for (const repo of repos) {
         for (const chunk of chunkLatestBundles(db, repo, 3)) {
-          if (chunk.chunk_type === "fact" && (chunk.citation?.endsWith(`:${factId}`) || chunk.text.includes(factId))) {
+          // Match on the carried fact_id (review fix: earlier heuristics missed
+          // normal generated ids like "fact-1" that don't appear in the text).
+          if (chunk.chunk_type === "fact" && chunk.fact_id === factId) {
             return { content: [{ type: "text" as const, text: JSON.stringify(chunk, null, 2) }] };
           }
         }

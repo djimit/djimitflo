@@ -41,7 +41,10 @@ export function createOrganizationRoutes(db: Database, requireAuthMiddleware: an
       return;
     }
 
-    const token = authService.generateToken(user);
+    // Review fix: sign the REQUESTED organization into the replacement token —
+    // without it the JWT keeps the original org and all scoped calls stay there.
+    const targetUser = { ...user, organization_id: organization_id ?? user.organization_id ?? 'default' };
+    const token = authService.generateToken(targetUser);
     if (auditService && typeof auditService.record === 'function') {
       auditService.record({
         event_type: 'organization.switch' as any,
