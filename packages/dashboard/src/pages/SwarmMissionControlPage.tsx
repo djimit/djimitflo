@@ -231,7 +231,7 @@ export function SwarmMissionControlPage() {
   const fairShareOrder = asArray<string>(capacity?.fair_share_order);
   const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
   const nextSafeActions = asArray<string>(mission?.next_safe_actions);
-  const skillEvolution = asArray<NonNullable<SwarmMissionControl['skill_evolution']>[number]>(mission?.skill_evolution);
+  const skillEvolution = Array.isArray(mission?.skill_evolution) ? mission.skill_evolution : [];
 
   return (
     <div className="p-8 space-y-6">
