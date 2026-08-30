@@ -462,6 +462,7 @@ export type SpecialistReviewRecord = {
   recommendations: string[];
   evidence_refs: string[];
   limitations: string | null;
+  reviewer_actor: string | null;
   status: 'draft' | 'submitted' | 'rejected';
   created_at: string;
   updated_at: string;
@@ -665,6 +666,10 @@ export type SwarmMissionControl = {
   latest_runner_manifests: RunnerManifestRecord[];
   latest_proof_run: ProofRunSummary | null;
   next_safe_actions: string[];
+  skill_evolution?: {
+    readiness: number;
+    recent_changes: Array<Record<string, unknown>>;
+  } | null;
 };
 
 export type RuntimeReadinessResult = {
@@ -1020,6 +1025,19 @@ class ApiClient {
 
   async getOpenMythosTrend(agentId: string): Promise<{ agentId: string; trend: Array<{ date: string; score: number }> }> {
     return this.request(`/openmythos/trend/${encodeURIComponent(agentId)}`);
+  }
+
+  async getImprovementProposals(status?: ImprovementProposal['status']): Promise<{ proposals: ImprovementProposal[] }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request(`/self-improve/proposals${query}`);
+  }
+
+  async approveImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal; goalCreated: boolean }> {
+    return this.request(`/self-improve/proposals/${id}/approve`, { method: 'POST' });
+  }
+
+  async rejectImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal }> {
+    return this.request(`/self-improve/proposals/${id}/reject`, { method: 'POST' });
   }
 
   // Observability
@@ -1626,5 +1644,21 @@ class ApiClient {
   }
 
 }
+
+export type ImprovementProposal = {
+  id: string;
+  type: 'bug_fix' | 'feature' | 'refactor' | 'performance' | 'security';
+  title: string;
+  description: string;
+  rationale: string;
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  priority: number;
+  evidenceRefs: string[];
+  panelId: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export const api = new ApiClient();
