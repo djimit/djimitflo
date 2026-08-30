@@ -60,7 +60,10 @@ export class ExplainerKnowledgeService {
     ).get(row.task_id) as any;
     const repoFullName = task?.full_name ?? row.task_id;
     const bundleVersion = row.id;
-    const validUntil = new Date(Date.now() + 7 * 86_400_000).toISOString();
+    // Freshness anchored to bundle creation (review fix): validity = created_at + 7d.
+    // Recomputing from "now" here would resurrect stale bundles on every re-chunk.
+    const createdMs = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+    const validUntil = new Date(createdMs + 7 * 86_400_000).toISOString();
     const chunks: ExplainerChunk[] = [];
     const meta = JSON.parse(row.metadata || '{}') as Record<string, unknown>;
 
@@ -164,9 +167,16 @@ export class ExplainerKnowledgeService {
       // Batch-embed all chunk texts via Ollama (single semantic check for the batch)
       const texts = chunks.map((c) => c.text);
       const vectors = await embedBatch(texts);
+      // Never mix vector spaces: lexical fallback vectors (semantic: false) must not
+      // enter the semantic collection — they would corrupt ranking even after the
+      // real model recovers. The file-bundle keyword fallback covers search instead.
+      if (!vectors.semantic) {
+        console.warn("⚠️  Knowledge embed skipped: embedding model unavailable; file-bundle keyword search remains the fallback (no lexical vectors written).");
+        return { embedded: 0, qdrant_available: true, semantic: false };
+      }
       const points = chunks.map((chunk, index) => ({
         id: hashId(chunk.id),
-        payload: { ...chunk, point_index: index, embedding_model: vectors.semantic ? OLLAMA_EMBED_MODEL : 'lexical-placeholder' },
+        payload: { ...chunk, point_index: index, embedding_model: OLLAMA_EMBED_MODEL },
         vector: vectors.vectors[index],
       }));
       const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points`, {
@@ -190,8 +200,13 @@ export class ExplainerKnowledgeService {
       return { results: [], degraded: true };
     }
     const limit = options.limit ?? 10;
-    // Try Qdrant semantic search first (query embedded with the same model as the chunks)
+    // Try Qdrant semantic search first (query embedded with the same model as the chunks).
+    // When the embedding model is unavailable (semantic: false), do NOT query with a
+    // lexical placeholder vector — that would rank real semantic points arbitrarily.
     const queryEmbed = await embedVector(query);
+    if (!queryEmbed.semantic) {
+      return { results: this.fileBundleSearch(query, options.repo, limit), degraded: true };
+    }
     try {
       const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points/search`, {
         method: 'POST',
@@ -221,15 +236,22 @@ export class ExplainerKnowledgeService {
       // fall through to file-bundle search
     }
 
-    // EC-006 graceful degradation: file-bundle keyword search over chunks
+    return { results: this.fileBundleSearch(query, options.repo, limit), degraded: true };
+  }
+
+  /**
+   * EC-006 graceful degradation: file-bundle keyword search over chunks of
+   * published bundles. Zero external calls — always works from disk + SQLite.
+   */
+  private fileBundleSearch(query: string, repo: string | undefined, limit: number): SearchResult[] {
     const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
     const results: SearchResult[] = [];
-    const bundles = options.repo
+    const bundles = repo
       ? this.db.prepare(
           `SELECT b.id FROM explainer_bundles b JOIN explainer_tasks t ON t.id = b.task_id
            LEFT JOIN discovered_repositories dr ON dr.id = t.discovered_repository_id
            WHERE b.status = 'published' AND dr.full_name = ? ORDER BY b.created_at DESC LIMIT 3`,
-        ).all(options.repo) as any[]
+        ).all(repo) as any[]
       : this.db.prepare(
           `SELECT id FROM explainer_bundles WHERE status = 'published' ORDER BY created_at DESC LIMIT 10`,
         ).all() as any[];
@@ -244,7 +266,34 @@ export class ExplainerKnowledgeService {
       }
     }
     results.sort((a, b) => b.score - a.score);
-    return { results: results.slice(0, limit), degraded: true };
+    return results.slice(0, limit);
+  }
+
+  /**
+   * EC-005 hardening: remove a bundle's points from Qdrant so unpublishing
+   * genuinely pulls the content from knowledge search and grounded Q&A.
+   * Best-effort; returns true when the purge succeeded.
+   */
+  async deleteBundleChunks(bundleId: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points/delete?wait=true`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        body: JSON.stringify({ filter: { must: [{ key: "bundle_version", match: { value: bundleId } }] } }),
+      });
+      if (!res.ok) return false;
+      // points/delete gives no count — confirm via scroll (0 remaining = purged)
+      const countRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points/scroll`, {
+        method: "POST",
+        headers: qdrantHeaders(),
+        body: JSON.stringify({ filter: { must: [{ key: "bundle_version", match: { value: bundleId } }] }, limit: 1, with_payload: false }),
+      });
+      if (!countRes.ok) return false;
+      const data = (await countRes.json()) as { result?: { points?: unknown[] } };
+      return (data.result?.points?.length ?? 0) === 0;
+    } catch {
+      return false;
+    }
   }
 
   /** Get one fact by id across published bundles. */

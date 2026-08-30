@@ -168,13 +168,16 @@ export class ExplainerFleetWorker {
         const fullName = String(task?.remote_url ?? "").replace("https://github.com/", "").replace(/\.git$/, "");
         void publishExplainerMemory(bundleId, fullName, bundleRow?.openmythos_score ?? null);
       }
-      // Auto knowledge-sync: chunk + embed the fresh bundle
-      try {
-        const chunks = this.knowledge.chunkBundle(bundleId);
-        const { embedded } = await this.knowledge.embedChunks(chunks);
-        if (embedded > 0) console.log(`📖 Knowledge synced post-publish: ${embedded} chunks for bundle ${bundleId}`);
-      } catch (error) {
-        console.warn("Post-publish knowledge sync failed (non-fatal):", error instanceof Error ? error.message : String(error));
+      // Auto knowledge-sync: chunk + embed ONLY when the bundle actually published —
+      // human_review content must stay unsearchable until approved (Codex P1).
+      if (published) {
+        try {
+          const chunks = this.knowledge.chunkBundle(bundleId);
+          const { embedded, semantic } = await this.knowledge.embedChunks(chunks);
+          if (embedded > 0) console.log(`📖 Knowledge synced post-publish: ${embedded} chunks (semantic: ${semantic}) for bundle ${bundleId}`);
+        } catch (error) {
+          console.warn("Post-publish knowledge sync failed (non-fatal):", error instanceof Error ? error.message : String(error));
+        }
       }
     } catch (error) {
       this.scheduler.completeJob(job.job_id, "failed", error instanceof Error ? error.message : String(error));

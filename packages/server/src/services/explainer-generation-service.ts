@@ -220,11 +220,16 @@ export class ExplainerGenerationService {
           new Date().toISOString(),
           candidate.bundleId,
         );
-        if (!criticResult.passed && !preflight.passed) {
+        // Governance: EVERY non-published bundle must be resolvable via the review
+        // queue — preflight-only or critic-only failure included (Codex P1 fix).
+        if (!preflight.passed || !criticResult.passed) {
+          const failedPrefix = preflight.blocking_checks && preflight.blocking_checks.length > 0 ? `preflight: ${preflight.blocking_checks.join(', ')}` : 'preflight: none';
+          const criticalDims = criticResult.dimensions.filter((d) => d.score < 50).map((d) => `${d.name}(${Math.round(d.score)})`);
+          const dimText = criticalDims.length > 0 ? `critical dims: ${criticalDims.join(', ')}` : `critic dims ok (score ${criticResult.overall_score})`;
           this.db.prepare('INSERT INTO human_review_queue (id, bundle_id, reason, created_at) VALUES (?, ?, ?, ?)').run(
             randomUUID(),
             candidate.bundleId,
-            `Score ${criticResult.overall_score} below threshold after ${attempt + 1} attempt(s); hints: ${criticResult.retry_hints.slice(0, 3).join(' | ')}; preflight failed`,
+            `Not published after ${attempt + 1} attempt(s): ${failedPrefix}; ${dimText}; hints: ${criticResult.retry_hints.slice(0, 3).join(' | ') || 'none'}`,
             new Date().toISOString(),
           );
         }

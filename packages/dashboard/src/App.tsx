@@ -27,6 +27,7 @@ const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then(
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
 const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
 const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })));
+const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const AuditLogViewer = lazy(() => import('./pages/AuditLogViewer').then((module) => ({ default: module.AuditLogViewer })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
 const RepositoryDetailPage = lazy(() => import('./pages/RepositoryDetailPage').then((module) => ({ default: module.RepositoryDetailPage })));
@@ -100,6 +101,7 @@ export function App() {
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
           <Route path="audit" element={<AuditPage />} />
+          <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="audit/logs" element={<AuditLogViewer />} />
           <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />

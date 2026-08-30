@@ -307,7 +307,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   // ─── Operations & governance (FR-015/FR-019/FR-020) ───────────────────────
 
   // POST /api/explainer/bundles/:id/unpublish — EC-005: pull misleading content fast
-  router.post("/bundles/:id/unpublish", mutationLimiter, requirePermission("write:governance"), (req, res) => {
+  router.post("/bundles/:id/unpublish", mutationLimiter, requirePermission("write:governance"), async (req, res) => {
     const bundleId = req.params.id;
     const row = db.prepare("SELECT id, status FROM explainer_bundles WHERE id = ?").get(bundleId) as any;
     if (!row) {
@@ -318,6 +318,14 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       new Date().toISOString(),
       bundleId,
     );
+    // EC-005 hardening: also purge the bundle's knowledge-pack points so the
+    // content disappears from semantic search and grounded Q&A, not just SQLite.
+    let qdrantPurged = false;
+    try {
+      qdrantPurged = await knowledge.deleteBundleChunks(bundleId);
+    } catch {
+      // best-effort; warn below when not purged
+    }
     db.prepare(
       "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
@@ -330,7 +338,10 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       typeof req.body?.reason === "string" ? req.body.reason.slice(0, 500) : null,
       new Date().toISOString(),
     );
-    res.json({ id: bundleId, status: "unpublished" });
+    if (!qdrantPurged) {
+      console.warn(`⚠️  Unpublished bundle ${bundleId}: Qdrant points NOT purged (unavailable?) — semantic search may still serve cached chunks.`);
+    }
+    res.json({ id: bundleId, status: "unpublished", qdrant_purged: qdrantPurged });
   });
 
   // POST /api/explainer/fleet/kill-switch — halt all scheduling + pause workers

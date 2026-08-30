@@ -1453,6 +1453,54 @@ function createExplainRepoTables(db: BetterSqlite3Database) {
   db.exec(`DROP TABLE IF EXISTS __explainer_bundles_columns_tmp;`);
 }
 
+function applyMultiTenancyMigration(db: BetterSqlite3Database) {
+  // Multi-tenancy + audit trail (20260823): organization scoping column on the
+  // tables the new tenant routes query, plus the org-partitioned audit envelope.
+  // Idempotent via addMissingColumns + IF NOT EXISTS. Indexes are created only
+  // when the target table exists (test DBs may use minimal schemas).
+  addMissingColumns(db, 'agents', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'loops', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'loop_runs', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'approvals', [...(approvalColumns.some((c) => c.name === 'organization_id')
+    ? []
+    : [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }])]);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      action TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('default', 'Default Organization');
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('org-a', 'Organization A');
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('org-b', 'Organization B');
+  `);
+
+  const tableExists = (name: string): boolean => {
+    const row = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+    return Boolean(row);
+  };
+  for (const table of ['users', 'agents', 'loops', 'loop_runs', 'approvals']) {
+    if (tableExists(table)) {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_organization ON ${table}(organization_id)`);
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON audit_logs(organization_id)');
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -1464,6 +1512,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createPhase55Tables(db);
   createPhase56Tables(db);
   createMessageTables(db);
+  applyMultiTenancyMigration(db);
   seedMCPServers(db);
   // Ensure agents table has telegram/machine/okf columns
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
