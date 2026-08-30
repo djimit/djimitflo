@@ -12,6 +12,7 @@ export interface GoalBatchPreviewItem {
   target_ref: string | null;
   acceptance_criteria: string[];
   blocked_reasons: string[];
+  depends_on: string[];
 }
 
 export interface GoalBatchPreviewResult {
@@ -96,6 +97,7 @@ export class GoalBatchService {
               change: preview.change,
               target_ref: item.target_ref,
             },
+            depends_on_goal_keys: item.depends_on,
             imported_without_worker_start: true,
             execution_source: 'goal_batch_import',
             executor_runtime: null,
@@ -146,6 +148,7 @@ export class GoalBatchService {
       target_ref: targetRef,
       acceptance_criteria: acceptance,
       blocked_reasons: blockedReasons,
+      depends_on: Array.isArray(goal?.depends_on) ? goal.depends_on.map(String).filter(Boolean) : [],
     };
   }
 

@@ -43,7 +43,7 @@ const STEP_KEYWORDS: Array<{ keywords: string[]; step: string; role: string }> =
 
 export class GoalDecomposer {
   constructor(
-    private db: Database,
+    _db: Database,
     private loops: LoopService,
     private intelligence: SwarmIntelligenceService,
   ) {}
@@ -100,13 +100,10 @@ export class GoalDecomposer {
 
     // 4. Store the DAG in the goal's metadata.
     const meta = typeof goal.metadata === 'object' ? goal.metadata : {};
-    this.db.prepare('UPDATE goals SET metadata = ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(
-        JSON.stringify({ ...meta, dag: nodes, decomposed_at: new Date().toISOString() }),
-        'decomposed',
-        new Date().toISOString(),
-        goalId,
-      );
+    this.loops.updateGoal(goalId, {
+      status: 'decomposed',
+      metadata: { ...meta, dag: nodes, decomposed_at: new Date().toISOString() },
+    });
 
     swarmEventBus.emit('convergence', {
       decomposition: 'dag_created',
