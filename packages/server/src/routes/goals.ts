@@ -16,6 +16,7 @@ function mapLoopServiceError(error: unknown): never {
   }
   if (message === 'GOAL_RISK_CLASS_INVALID') throw createError(400, 'risk_class is invalid', 'GOAL_RISK_CLASS_INVALID');
   if (message === 'GOAL_STATUS_INVALID') throw createError(400, 'status is invalid', 'GOAL_STATUS_INVALID');
+  if (message.startsWith('GOAL_DEPENDENCY_')) throw createError(409, message, message.split(':')[0]);
   if (message === 'GOAL_BATCH_INVALID') throw createError(400, 'goal batch contains invalid items', 'GOAL_BATCH_INVALID');
   if (message === 'GOAL_BATCH_NOT_FOUND') throw createError(404, 'goal batch not found', 'GOAL_BATCH_NOT_FOUND');
   if (message === 'GOAL_BATCH_JSON_INVALID') throw createError(400, 'goal batch JSON is invalid', 'GOAL_BATCH_JSON_INVALID');

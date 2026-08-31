@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCheck, Split, Square, Target, Timer, Workflow, XCircle } from 'lucide-react';
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 
 const DEFAULT_REPOSITORY_PATH = '/Users/dlandman/djimitflo';
 
 export function GoalsLoopsPage() {
+  const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [runs, setRuns] = useState<LoopRunRecord[]>([]);
   const [catalog, setCatalog] = useState<LoopCatalogItem[]>([]);
@@ -363,14 +365,16 @@ export function GoalsLoopsPage() {
                       <CheckCircle2 className="h-4 w-4" />
                       Verify
                     </button>
-                    <button
-                      onClick={() => void runAction(`complete-${selectedRun.id}`, () => api.completeLoopRun(selectedRun.id))}
-                      disabled={actionId !== null || selectedRun.status === 'completed'}
-                      className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                      Complete
-                    </button>
+                    {canApprove && (
+                      <button
+                        onClick={() => void runAction(`complete-${selectedRun.id}`, () => api.completeLoopRun(selectedRun.id))}
+                        disabled={actionId !== null || selectedRun.status === 'completed'}
+                        className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Complete
+                      </button>
+                    )}
                     <button
                       onClick={() => void runAction(`stop-${selectedRun.id}`, () => api.stopLoopRun(selectedRun.id))}
                       disabled={actionId !== null || ['completed', 'cancelled'].includes(selectedRun.status)}

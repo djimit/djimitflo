@@ -26,7 +26,10 @@ let previousRuntimeEnvPassthrough: string | undefined;
 const JWT_SECRET_ENV = ['JWT', 'SECRET'].join('_');
 
 const auth = {
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (req: any, _res: any, next: any) => {
+    req.user = { sub: 'test-approver', email: 'approver@example.test', role: 'approver' };
+    next();
+  },
 } as any;
 
 async function startApp() {
@@ -631,7 +634,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const completed = await completeResponse.json() as any;
     expect(completed.run.status).toBe('completed');
     expect(completed.run.completed_at).toEqual(expect.any(String));
-    expect(completed.run.metadata.human_approval_ref).toBe('approval:small-docs-fix');
+    expect(completed.run.metadata.human_approval_ref).toBe('operator:test-approver');
     const learned = db.prepare('SELECT outcome, lessons FROM experience_embeddings WHERE run_id = ?').get(run.id) as { outcome: string; lessons: string };
     expect(learned.outcome).toBe('success');
     expect(JSON.parse(learned.lessons)).toContain('Small docs fix accepted.');

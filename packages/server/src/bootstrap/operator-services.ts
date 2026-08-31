@@ -4,6 +4,7 @@
  * Extracted from index.ts for separation of concerns.
  */
 import { lifecycleManager } from '../services/lifecycle-manager';
+import { ExternalEventIngestService } from '../services/external-event-ingest-service';
 import { PromptIntelService } from '../services/prompt-intel-service';
 
 export function initOperatorServices(db: any): void {
@@ -18,4 +19,10 @@ export function initOperatorServices(db: any): void {
   } catch (error) {
     console.warn('⚠️  PromptIntel ingestion failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
+}
+
+export function initExternalEventIngest(db: any): void {
+  const externalEventIngest = new ExternalEventIngestService(db);
+  externalEventIngest.start();
+  lifecycleManager.register(externalEventIngest);
 }
