@@ -22,6 +22,25 @@ afterEach(() => {
 });
 
 describe('G71: Self Improvement', () => {
+  it('requires evidence-bound distinct actors for high-risk panels', () => {
+    const panels = new SpecialistPanelService(db);
+    const panel = panels.createPanel({
+      topic: 'DAPS acceptance',
+      question: 'May the next governed wave start?',
+      risk_class: 'high',
+      specialist_ids: ['systems_architect', 'security_reviewer'],
+    });
+    const review = { stance: 'support' as const, confidence: 0.8, evidence_refs: ['test:1'] };
+
+    expect(() => panels.submitReview(panel.id, { ...review, specialist_id: 'systems_architect' }))
+      .toThrow('SPECIALIST_REVIEW_ACTOR_REQUIRED');
+    panels.submitReview(panel.id, { ...review, specialist_id: 'systems_architect' }, 'reviewer-a');
+    expect(() => panels.submitReview(panel.id, { ...review, specialist_id: 'security_reviewer' }, 'reviewer-a'))
+      .toThrow('SPECIALIST_INDEPENDENT_REVIEW_REQUIRED');
+    expect(panels.submitReview(panel.id, { ...review, specialist_id: 'security_reviewer' }, 'reviewer-b').status)
+      .toBe('consensus_ready');
+  });
+
   it('generates from reflection', () => {
     const proposals = improvement.generateFromReflection({
       whatFailed: ['test failed'],

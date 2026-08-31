@@ -361,11 +361,12 @@ export class SpecialistPanelService {
       throw new Error('SPECIALIST_REVIEWER_NOT_IN_PANEL');
     }
     const actor = reviewerActor?.trim() || null;
-    if (panel.metadata.self_improvement_id && !actor) throw new Error('SPECIALIST_REVIEW_ACTOR_REQUIRED');
-    if (panel.metadata.self_improvement_id && this.stringArray(input.evidence_refs).length === 0) {
+    const independent = Boolean(panel.metadata.self_improvement_id || panel.metadata.independent_review_required || ['high', 'critical'].includes(panel.risk_class));
+    if (independent && !actor) throw new Error('SPECIALIST_REVIEW_ACTOR_REQUIRED');
+    if (independent && this.stringArray(input.evidence_refs).length === 0) {
       throw new Error('SPECIALIST_REVIEW_EVIDENCE_REQUIRED');
     }
-    if (actor && panel.metadata.self_improvement_id) {
+    if (actor && independent) {
       const occupied = this.db.prepare(
         'SELECT specialist_id FROM specialist_reviews WHERE panel_id = ? AND reviewer_actor = ? AND specialist_id != ? LIMIT 1'
       ).get(panel.id, actor, profile.id);
@@ -376,7 +377,7 @@ export class SpecialistPanelService {
     const existing = this.db.prepare(
       'SELECT id, reviewer_actor FROM specialist_reviews WHERE panel_id = ? AND specialist_id = ?'
     ).get(panel.id, profile.id) as { id: string; reviewer_actor: string | null } | undefined;
-    if (panel.metadata.self_improvement_id && existing && existing.reviewer_actor !== actor) {
+    if (independent && existing && existing.reviewer_actor !== actor) {
       throw new Error('SPECIALIST_REVIEW_ACTOR_MISMATCH');
     }
     const id = existing?.id || randomUUID();
