@@ -1212,6 +1212,22 @@ CREATE TABLE IF NOT EXISTS human_review_queue (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Governance-calibration loop (B3): matches migrate.ts createCalibrationTables
+CREATE TABLE IF NOT EXISTS calibration_ratings (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 100),
+  factual_acc INTEGER CHECK(factual_acc BETWEEN 0 AND 100),
+  clarity INTEGER CHECK(clarity BETWEEN 0 AND 100),
+  rated_by TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard', 'csv_import', 'api')),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_bundle ON calibration_ratings(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_created ON calibration_ratings(created_at);
+
 CREATE TABLE IF NOT EXISTS explainer_audit_log (
   id TEXT PRIMARY KEY,
   actor TEXT NOT NULL DEFAULT 'system',

@@ -459,6 +459,89 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
     res.json({ sample, count: sample.length, note: "Human ratings vs OpenMythos threshold 85 — export as CSV for calibration analysis." });
   });
 
+  // POST /api/explainer/fleet/calibration-rate — record a human rating for a
+  // published bundle (governance-calibration dataflow; closes the review loop).
+  router.post("/fleet/calibration-rate", mutationLimiter, requirePermission("write:governance"), (req, res) => {
+    const { bundle_id, rating, factual_acc, clarity, rated_by, notes } = req.body || {};
+    if (typeof bundle_id !== "string" || !bundle_id) {
+      res.status(400).json({ error: { message: "bundle_id required", code: "VALIDATION_ERROR" } });
+      return;
+    }
+    const rateNum = Number(rating);
+    if (!Number.isFinite(rateNum) || rateNum < 0 || rateNum > 100) {
+      res.status(400).json({ error: { message: "rating must be 0-100", code: "VALIDATION_ERROR" } });
+      return;
+    }
+    const bundle = db.prepare("SELECT id, openmythos_score FROM explainer_bundles WHERE id = ?").get(bundle_id) as any;
+    if (!bundle) {
+      res.status(404).json({ error: { message: "Bundle not found", code: "NOT_FOUND" } });
+      return;
+    }
+    const clamp = (v: unknown) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+    };
+    db.prepare(
+      "INSERT INTO calibration_ratings (id, bundle_id, rating, factual_acc, clarity, rated_by, source, notes) VALUES (?, ?, ?, ?, ?, ?, 'dashboard', ?)",
+    ).run(
+      randomUUID(),
+      bundle_id,
+      Math.round(rateNum),
+      clamp(factual_acc),
+      clamp(clarity),
+      typeof rated_by === "string" && rated_by ? rated_by.slice(0, 100) : ((req as any).user?.sub ?? "operator"),
+      typeof notes === "string" ? notes.slice(0, 500) : null,
+    );
+    db.prepare(
+      "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      randomUUID(),
+      (req as any).user?.sub ?? "operator",
+      "calibration_rating",
+      "explainer_bundle",
+      bundle_id,
+      "success",
+      `human=${Math.round(rateNum)} vs system=${bundle.openmythos_score ?? "n/a"}`,
+      new Date().toISOString(),
+    );
+    res.json({ bundle_id, rating: Math.round(rateNum), system_score: bundle.openmythos_score ?? null });
+  });
+
+  // GET /api/explainer/fleet/calibration-stats — threshold calibration analytics
+  router.get("/fleet/calibration-stats", heavyReadLimiter, requirePermission("read:repository"), (_req, res) => {
+    const rows = db.prepare(
+      `SELECT r.rating AS human, b.openmythos_score AS system
+       FROM calibration_ratings r
+       JOIN explainer_bundles b ON b.id = r.bundle_id
+       WHERE b.openmythos_score IS NOT NULL`,
+    ).all() as Array<{ human: number; openmythos_score: number; system?: number }>;
+    const pairs = rows.map((r) => ({ human: r.human, system: r.system ?? (r as any).openmythos_score }));
+    const n = pairs.length;
+    if (n === 0) {
+      res.json({ ratings: 0, note: "No calibration ratings yet — record human ratings via POST /fleet/calibration-rate." });
+      return;
+    }
+    const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const humanScores = pairs.map((p) => p.human);
+    const sysScores = pairs.map((p) => p.system);
+    const mh = mean(humanScores);
+    // Pearson correlation + mean absolute error
+    const cov = pairs.reduce((s, p) => s + (p.human - mh) * (p.system - mean(sysScores)), 0);
+    const varH = pairs.reduce((s, p) => s + (p.human - mh) ** 2, 0);
+    const varS = pairs.reduce((s, p) => s + (p.system - mean(sysScores)) ** 2, 0);
+    const corr = varH && varS ? cov / Math.sqrt(varH * varS) : null;
+    const mae = mean(pairs.map((p) => Math.abs(p.human - p.system)));
+    res.json({
+      ratings: n,
+      human_mean: Math.round(mh * 10) / 10,
+      system_mean: Math.round(mean(sysScores) * 10) / 10,
+      mean_abs_error: Math.round(mae * 10) / 10,
+      correlation: corr === null ? null : Math.round(corr * 1000) / 1000,
+      suggested_threshold: Math.round(Math.min(100, Math.max(0, mh))),
+      note: "Threshold calibration: compare human_mean/system_mean and MAE — if MAE < 10 the 85-threshold is well-grounded.",
+    });
+  });
+
   // ─── Grounded Q&A over de knowledge pack (ExplainerAskService) ────────────
 
   const askService = new ExplainerAskService(db, knowledge);
@@ -548,6 +631,20 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       db.prepare("UPDATE explainer_bundles SET status = 'published', updated_at = ? WHERE id = ?").run(now, item.bundle_id);
     } else {
       db.prepare("UPDATE explainer_bundles SET status = 'unpublished', updated_at = ? WHERE id = ?").run(now, item.bundle_id);
+    }
+    // Governance-calibration dataflow: an optional human rating flows into
+    // calibration_ratings so the 85-threshold gets data-driven (closes loop B).
+    const ratingNum = Number(req.body?.calibration_rating);
+    if (Number.isFinite(ratingNum) && ratingNum >= 0 && ratingNum <= 100) {
+      db.prepare(
+        "INSERT INTO calibration_ratings (id, bundle_id, rating, rated_by, source, notes) VALUES (?, ?, ?, ?, 'dashboard', ?)",
+      ).run(
+        randomUUID(),
+        item.bundle_id,
+        Math.round(ratingNum),
+        (req as any).user?.sub ?? "operator",
+        `review-resolution: ${resolution}`,
+      );
     }
     db.prepare(
       "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
