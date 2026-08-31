@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
+import { mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { OpenCodeExecutor } from '../execution/executors/opencode-executor';
 import type { Task } from '@djimitflo/shared';
 import type { ExecutorOptions } from '../execution/types';
@@ -81,6 +84,19 @@ describe('OpenCodeExecutor', () => {
       const task = makeTask({ description: 'fix the bug' });
       const args = (executor as any).buildOpenCodeArgs(task, {});
       expect(args[args.length - 1]).toBe('fix the bug');
+    });
+
+    it('attaches the repository AGENTS.md when it exists', () => {
+      const task = makeTask({ description: 'test prompt' });
+      const directory = mkdtempSync(join(tmpdir(), 'djimit-opencode-'));
+      try {
+        writeFileSync(join(directory, 'AGENTS.md'), '# test instructions\n');
+        const args = (executor as any).buildOpenCodeArgs(task, { workingDirectory: directory });
+        expect(args).toContain('--file');
+        expect(args[args.indexOf('--file') + 1]).toBe(join(directory, 'AGENTS.md'));
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
     });
   });
 

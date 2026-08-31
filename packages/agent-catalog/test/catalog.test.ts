@@ -110,6 +110,13 @@ describe('compile', () => {
     expect(cx.files['agent.toml']).toContain('[agent]');
     expect(cx.files['agent.toml']).toContain('Secure Coder');
   });
+  it('OpenCode produces a real AGENTS.md artifact', () => {
+    const prof = normalizeAgent(parseAgentMarkdown(FIX('secure-coder.md'), { sourceRepo: 'r', sourcePath: 'engineering/a.md' }));
+    const artifact = compile(prof, 'opencode');
+    expect(artifact.stub).toBeUndefined();
+    expect(artifact.files['AGENTS.md']).toContain('Secure Coder');
+    expect(artifact.files['AGENTS.md']).toContain('## Critical Rules');
+  });
   it('stub targets flagged', () => {
     const prof = normalizeAgent(parseAgentMarkdown(FIX('secure-coder.md'), { sourceRepo: 'r', sourcePath: 'engineering/a.md' }));
     for (const t of ['claude-code', 'cursor', 'gemini-cli'] as const) expect(compile(prof, t).stub).toBe(true);

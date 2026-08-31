@@ -27,6 +27,8 @@ import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { captureExecutorOutput } from '../executor-output';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 
 // ── Structured OpenCode JSON event types ────────────────────────────────────
 
@@ -236,9 +238,11 @@ export class OpenCodeExecutor implements TaskExecutor {
       args.push('--format', 'json');
     }
 
-    if (options?.workingDirectory) {
-      args.push('--dir', options.workingDirectory);
-    }
+    const workingDirectory = options?.workingDirectory || process.cwd();
+    if (options?.workingDirectory) args.push('--dir', options.workingDirectory);
+
+    const agentsPath = resolve(workingDirectory, 'AGENTS.md');
+    if (existsSync(agentsPath)) args.push('--file', agentsPath);
 
     if (options?.model) {
       args.push('--model', options.model);

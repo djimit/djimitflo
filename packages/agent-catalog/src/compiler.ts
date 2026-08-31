@@ -1,7 +1,7 @@
 import type { Profile } from './db';
 
-export type Target = 'openclaw' | 'codex' | 'claude-code' | 'cursor' | 'gemini-cli' | 'djimit-native';
-export const TARGETS: Target[] = ['openclaw', 'codex', 'claude-code', 'cursor', 'gemini-cli', 'djimit-native'];
+export type Target = 'openclaw' | 'opencode' | 'codex' | 'claude-code' | 'cursor' | 'gemini-cli' | 'djimit-native';
+export const TARGETS: Target[] = ['openclaw', 'opencode', 'codex', 'claude-code', 'cursor', 'gemini-cli', 'djimit-native'];
 export interface CompiledArtifact { target: Target; files: Record<string, string>; stub?: boolean }
 
 function clamp(s?: string): string { return String(s ?? '').trim(); }
@@ -9,6 +9,7 @@ function clamp(s?: string): string { return String(s ?? '').trim(); }
 export function compile(profile: Profile, target: Target): CompiledArtifact {
   switch (target) {
     case 'openclaw': return compileOpenClaw(profile);
+    case 'opencode': return { target, files: { 'AGENTS.md': renderAgents(profile) } };
     case 'codex': return compileCodex(profile);
     case 'claude-code': return { target, files: { [`${profile.id}.md`]: stub(profile, 'Claude Code .md agent') }, stub: true };
     case 'cursor': return { target, files: { [`${profile.id}.mdc`]: stub(profile, 'Cursor .mdc rule') }, stub: true };
@@ -19,7 +20,12 @@ export function compile(profile: Profile, target: Target): CompiledArtifact {
 
 function compileOpenClaw(p: Profile): CompiledArtifact {
   const soul = `# SOUL — ${p.name}\n\n${clamp(p.persona) || 'Persona not specified.'}\n\n## Mission\n${clamp(p.mission)}\n`;
-  const agents = [
+  const identity = `# IDENTITY — ${p.name}\n\nid: ${p.id}\nname: ${p.name}\ndivision: ${p.division}\nruntime_targets: ${p.runtime_targets.join(', ') || '(none)'}\n`;
+  return { target: 'openclaw', files: { 'SOUL.md': soul, 'AGENTS.md': renderAgents(p), 'IDENTITY.md': identity } };
+}
+
+function renderAgents(p: Profile): string {
+  return [
     `# AGENTS — ${p.name}`, '', `Division: ${p.division}`, `Source: ${p.source_repo}/${p.source_path}`, '',
     '## Mission', clamp(p.mission), '',
     '## Critical Rules', ...(p.rules.length ? p.rules.map(r => `- ${r}`) : ['- (none)']), '',
@@ -29,8 +35,6 @@ function compileOpenClaw(p: Profile): CompiledArtifact {
     '## Memory Policy', clamp(p.memory_policy) || '(default — retain task-relevant context only)', '',
     '## Tools Required', ...(p.tools_required.length ? p.tools_required.map(t => `- ${t}`) : ['- (none)']), '',
   ].join('\n');
-  const identity = `# IDENTITY — ${p.name}\n\nid: ${p.id}\nname: ${p.name}\ndivision: ${p.division}\nruntime_targets: ${p.runtime_targets.join(', ') || '(none)'}\n`;
-  return { target: 'openclaw', files: { 'SOUL.md': soul, 'AGENTS.md': agents, 'IDENTITY.md': identity } };
 }
 
 function compileCodex(p: Profile): CompiledArtifact {

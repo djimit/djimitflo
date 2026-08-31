@@ -2,7 +2,7 @@
 
 ## Classification
 
-**Status: Partially verified** — CLI flags and JSON output format verified against OpenCode 1.15.4 (live binary, 2026-05-18). Non-interactive execution with Djimitflo policy engine not yet verified end-to-end.
+**Status: Partially verified** — CLI flags and JSON output format verified against OpenCode 1.18.25 (live binary, 2026-09-01). Djimitflo now attaches the repository `AGENTS.md` when present; non-interactive execution with the Djimitflo policy engine is not yet verified end-to-end.
 
 ## CLI Contract
 
@@ -14,11 +14,11 @@ Verified flags for `opencode run`:
 | `--format json\|default` | string | `default` | Verified |
 | `--model <provider/model>` | string | — | Verified |
 | `--agent <name>` | string | — | Verified |
-| `--dangerously-skip-permissions` | boolean | `false` | Verified |
+| `--auto` | boolean | `false` | Verified; bypasses non-explicitly denied permissions |
 | `--continue` | boolean | — | Not yet supported |
 | `--session <id>` | string | — | Not yet supported |
 | `--variant <level>` | string | — | Not yet supported |
-| `--file <path>` | array | — | Not yet supported |
+| `--file <path>` | array | — | Verified; used for repository `AGENTS.md` |
 | `--share` | boolean | — | Not yet supported |
 | `--fork` | boolean | — | Not yet supported |
 
@@ -99,7 +99,7 @@ If `--format json` output contains non-JSON lines, the executor automatically:
 
 - No session continuity (`--continue`, `--session` not yet supported)
 - No MCP integration during execution
-- No AGENTS.md injection into execution context
+- AGENTS.md attachment is implemented; model adherence and policy integration remain unverified end-to-end
 - No worktree management
 - Long-running task execution with policy engine not yet verified end-to-end
 - Agent kind is passed through but not validated against known OpenCode agents

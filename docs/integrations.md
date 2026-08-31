@@ -8,7 +8,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 
 | Integration | Status | CLI Verified | JSON Output | Structured Events | Permission Bypass |
 |-------------|--------|-------------|-------------|-------------------|-------------------|
-| **OpenCode** | Partially verified | Yes (1.15.4) | Yes (NDJSON) | Yes | Yes (`--dangerously-skip-permissions`) |
+| **OpenCode** | Partially verified | Yes (1.18.25) | Yes (NDJSON) | Yes | Yes (`--auto`) |
 | **Codex** | Implemented | No (contract anticipated) | Yes (NDJSON, same format as OpenCode) | Yes (step-start/tool/text/step-finish) | Yes (`CODEX_SKIP_PERMISSIONS` env var) |
 | **Pi** | Implemented (contract verified) | Yes (0.79.8, `--mode json`) | Yes (NDJSON) | Yes (session/agent_*/turn_*/message_*/tool_execution_*) | N/A — Pi has no permission popups; djimitflo is the sole boundary; restrict via `--tools` |
 | **Ruflo** | Conceptually mapped | N/A | N/A | N/A | N/A |
@@ -19,6 +19,7 @@ Djimitflo integrates with external AI agent execution backends. This document su
 - Structured JSON output (`--format json`) produces NDJSON event stream
 - Permission bypass (`--dangerously-skip-permissions`) available with safety guardrails
 - Working directory (`--dir`), model selection (`--model`), and agent selection (`--agent`) all verified
+- Repository `AGENTS.md` is attached with `--file` when present; policy-engine integration remains unverified end-to-end
 - See [docs/opencode.md](./opencode.md) for full details
 
 **Not yet verified**: Long-running task execution with Djimitflo policy engine end-to-end
