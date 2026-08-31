@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import express, { type Express } from "express";
+import { rateLimit } from "express-rate-limit";
 import Database from "better-sqlite3";
 import { createTestDb } from "./helpers/test-db";
 import { AuthService } from "../services/auth-service";
@@ -27,6 +28,7 @@ describe("governance calibration loop", () => {
     const auth = createAuthMiddleware(authService);
     const app: Express = express();
     app.use(express.json());
+    app.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: "draft-8", legacyHeaders: false }));
     // Same mount contract as routes/index.ts: requireAuth runs BEFORE the router,
     // so requirePermission sees req.user on every explainer route.
     app.use("/api/explainer", auth.requireAuth, createExplainerRoutes(db, auth));
