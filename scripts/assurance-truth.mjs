@@ -45,7 +45,16 @@ function source(command, args) {
   catch { return null; }
 }
 
+function sourceState() {
+  const status = source('git', ['status', '--porcelain=v1']) || '';
+  const hash = createHash('sha256').update(execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: root }));
+  const untracked = (source('git', ['ls-files', '--others', '--exclude-standard']) || '').split('\n').filter(Boolean);
+  for (const path of untracked) hash.update(path).update('\0').update(readFileSync(resolve(root, path)));
+  return { commit: source('git', ['rev-parse', 'HEAD']), dirty: Boolean(status), dirty_state_sha256: hash.digest('hex') };
+}
+
 function main() {
+  const initialSource = sourceState();
   const major = Number(process.versions.node.split('.')[0]);
   gates.push({
   id: 'supported_node',
@@ -77,9 +86,7 @@ function main() {
   status,
   generated_at: now,
   source: {
-    commit: source('git', ['rev-parse', 'HEAD']),
-    dirty: Boolean(source('git', ['status', '--porcelain'])),
-    dirty_state_sha256: createHash('sha256').update(source('git', ['status', '--porcelain=v1']) || '').digest('hex'),
+    ...initialSource,
     package_lock_sha256: hashFile('package-lock.json'),
   },
   environment: { node: process.version, npm: source('npm', ['--version']) },

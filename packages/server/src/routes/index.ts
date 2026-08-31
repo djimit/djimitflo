@@ -28,6 +28,7 @@ import { securityHeaders } from '../middleware/security-headers';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
 import { createAuditRoutes } from './audit';
+import { createAuthorityRoutes } from './authority';
 import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from './discussions';
 import { createExportRoutes } from './exports';
@@ -184,6 +185,7 @@ export function createRoutes(
     { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
     { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
     { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
+    { prefix: '/authority', middleware: [requireAuth], router: createAuthorityRoutes(db, auth) },
     { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
     { prefix: '/usage', middleware: [requireAuth], router: createUsageRoutes(db, auth) },
     { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
