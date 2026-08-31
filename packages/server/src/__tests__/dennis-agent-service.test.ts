@@ -17,9 +17,14 @@ describe('DennisAgentService', () => {
     db.exec(schema);
     runMigrations(db);
     okfBase = fs.mkdtempSync(path.join(os.tmpdir(), 'dennis-agent-okf-'));
+    // Isolate from the real ~/.djimit/roborev/pending.jsonl — heartbeat()
+    // auto-imports Paperclip findings, so point it at an empty/nonexistent
+    // scratch file; tests pass their own explicit path to importPaperclipPending.
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = path.join(okfBase, 'heartbeat-sentinel.jsonl');
   });
 
   afterEach(() => {
+    delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
     db.close();
     fs.rmSync(okfBase, { recursive: true, force: true });
   });
@@ -153,6 +158,8 @@ describe('DennisAgentService', () => {
     ].join('\n'));
 
     const service = new DennisAgentService(db, { okfBase });
+    // Heartbeat registers the Dennis agent row (FK target for tasks) — with the
+    // empty env-scoped pending path so no production entries leak in.
     service.heartbeat();
     const first = service.importPaperclipPending(pending);
     const second = service.importPaperclipPending(pending);
@@ -182,6 +189,7 @@ describe('DennisAgentService', () => {
     }));
 
     const service = new DennisAgentService(db, { okfBase });
+    // Heartbeat registers the Dennis agent row (FK target for task inserts).
     service.heartbeat();
     service.importPaperclipPending(pending);
 
