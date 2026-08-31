@@ -176,12 +176,6 @@ export type RuntimeContract = {
   evidence: string[];
   reason?: string;
   probed_at?: string;
-  conformance?: {
-    status: 'pass' | 'fail' | 'manual';
-    proof_class: 'static' | 'runtime_probe';
-    contract_hash: string;
-    checks: Array<{ name: string; passed: boolean; evidence: string }>;
-  };
 };
 
 export type WorkerLeaseRecord = {
@@ -468,6 +462,7 @@ export type SpecialistReviewRecord = {
   recommendations: string[];
   evidence_refs: string[];
   limitations: string | null;
+  reviewer_actor: string | null;
   status: 'draft' | 'submitted' | 'rejected';
   created_at: string;
   updated_at: string;
@@ -647,20 +642,6 @@ export type SwarmMissionControl = {
     routable: number;
     blocked: number;
   };
-  skill_evolution?: Array<{
-    capability_id: string;
-    skill_id: string;
-    skill_version: string;
-    candidate_hash: string;
-    status: SwarmCapabilityRecord['status'];
-    assigned_agents: number;
-    candidate_runs: number;
-    baseline_hashes: string[];
-    openmythos_run_id: string | null;
-    evidence_ready: boolean;
-    blocked_reasons: string[];
-    promotion_input: Record<string, unknown> | null;
-  }>;
   claim_health: {
     total: number;
     proposed: number;
@@ -685,6 +666,10 @@ export type SwarmMissionControl = {
   latest_runner_manifests: RunnerManifestRecord[];
   latest_proof_run: ProofRunSummary | null;
   next_safe_actions: string[];
+  skill_evolution?: {
+    readiness: number;
+    recent_changes: Array<Record<string, unknown>>;
+  } | null;
 };
 
 export type RuntimeReadinessResult = {
@@ -1042,7 +1027,35 @@ class ApiClient {
     return this.request(`/openmythos/trend/${encodeURIComponent(agentId)}`);
   }
 
+  async getImprovementProposals(status?: ImprovementProposal['status']): Promise<{ proposals: ImprovementProposal[] }> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : '';
+    return this.request(`/self-improve/proposals${query}`);
+  }
+
+  async approveImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal; goalCreated: boolean }> {
+    return this.request(`/self-improve/proposals/${id}/approve`, { method: 'POST' });
+  }
+
+  async rejectImprovementProposal(id: string): Promise<{ proposal: ImprovementProposal }> {
+    return this.request(`/self-improve/proposals/${id}/reject`, { method: 'POST' });
+  }
+
   // Observability
+
+  // Authority Ledger (2026-08-30)
+  async getAuthorityStats(): Promise<Record<string, unknown>> {
+    return this.request('/authority/stats');
+  }
+
+  async getAuthorityEvents(decision?: string): Promise<{ events: Array<Record<string, unknown>>; total: number }> {
+    const q = decision ? `?decision=${decision}` : '';
+    return this.request(`/authority/events${q}`);
+  }
+
+  async getAuthorityTrace(correlationId: string): Promise<Record<string, unknown>> {
+    return this.request(`/authority/trace/${encodeURIComponent(correlationId)}`);
+  }
+
   async getObservabilityMetrics(): Promise<ObservabilityMetrics> {
     return this.request('/observability/metrics');
   }
@@ -1631,5 +1644,21 @@ class ApiClient {
   }
 
 }
+
+export type ImprovementProposal = {
+  id: string;
+  type: 'bug_fix' | 'feature' | 'refactor' | 'performance' | 'security';
+  title: string;
+  description: string;
+  rationale: string;
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  priority: number;
+  evidenceRefs: string[];
+  panelId: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export const api = new ApiClient();

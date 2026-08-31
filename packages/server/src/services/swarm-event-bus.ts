@@ -23,6 +23,8 @@ export type SwarmEventType =
   | 'governance:guard:blocked'
   | 'governance:guard:warning'
   | 'governance:guard:approved'
+  | 'authority_deny'
+  | 'authority_gate'
   | 'governance:improvement:triggered'
   | 'agent_action'
   | 'loop_completed'

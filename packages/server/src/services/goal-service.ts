@@ -144,6 +144,9 @@ export class GoalService {
   updateGoal(id: string, input: GoalUpdateInput): GoalRecord {
     const existing = this.getGoalById(id);
     const metadata = { ...existing.metadata, ...(input.metadata || {}) };
+    if (Array.isArray(existing.metadata.depends_on_goal_keys)) {
+      metadata.depends_on_goal_keys = existing.metadata.depends_on_goal_keys;
+    }
     const next: GoalCreateInput = {
       objective: input.objective ?? existing.objective,
       constraints: input.constraints ?? existing.constraints,
@@ -164,6 +167,9 @@ export class GoalService {
       if (!Array.isArray(evidence) || evidence.length === 0) {
         throw new Error('GOAL_COMPLETION_EVIDENCE_REQUIRED');
       }
+    }
+    if (status === 'decomposed' || status === 'running') {
+      this.assertDependenciesSatisfied(id, metadata);
     }
 
     this.db.prepare(`
@@ -192,8 +198,24 @@ export class GoalService {
     return this.getGoalById(id);
   }
 
+  assertDependenciesSatisfied(id: string, metadata = this.getGoalById(id).metadata): void {
+    const keys = metadata.depends_on_goal_keys;
+    if (!Array.isArray(keys)) return;
+    for (const key of keys) {
+      const row = this.db.prepare('SELECT * FROM goals WHERE json_extract(metadata, ?) = ?')
+        .get('$.goal_batch.id', String(key)) as Record<string, unknown> | undefined;
+      if (!row) throw new Error(`GOAL_DEPENDENCY_NOT_FOUND:${key}`);
+      const predecessor = parseGoal(row);
+      const evidence = predecessor.metadata.acceptance_evidence;
+      if (predecessor.status !== 'completed' || !Array.isArray(evidence) || evidence.length === 0) {
+        throw new Error(`GOAL_DEPENDENCY_UNSATISFIED:${key}`);
+      }
+    }
+  }
+
   decomposeGoal(id: string, contracts: Array<{ name: string; mode: string; description: string; verification: string[] }>, primaryLoopName: string): { goal: GoalRecord; candidates: DecomposedLoopCandidate[] } {
     const goal = this.getGoalById(id);
+    this.assertDependenciesSatisfied(id, goal.metadata);
     const candidates: DecomposedLoopCandidate[] = contracts.map((contract) => ({
       loop_name: contract.name,
       mode: contract.mode,

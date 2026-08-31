@@ -3,6 +3,8 @@ import Database from 'better-sqlite3';
 import { SelfImprovementService } from '../services/self-improvement-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import { SpecialistPanelService } from '../services/specialist-panel-service';
+import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 
 let db: Database.Database;
 let improvement: SelfImprovementService;
@@ -20,6 +22,25 @@ afterEach(() => {
 });
 
 describe('G71: Self Improvement', () => {
+  it('requires evidence-bound distinct actors for high-risk panels', () => {
+    const panels = new SpecialistPanelService(db);
+    const panel = panels.createPanel({
+      topic: 'DAPS acceptance',
+      question: 'May the next governed wave start?',
+      risk_class: 'high',
+      specialist_ids: ['systems_architect', 'security_reviewer'],
+    });
+    const review = { stance: 'support' as const, confidence: 0.8, evidence_refs: ['test:1'] };
+
+    expect(() => panels.submitReview(panel.id, { ...review, specialist_id: 'systems_architect' }))
+      .toThrow('SPECIALIST_REVIEW_ACTOR_REQUIRED');
+    panels.submitReview(panel.id, { ...review, specialist_id: 'systems_architect' }, 'reviewer-a');
+    expect(() => panels.submitReview(panel.id, { ...review, specialist_id: 'security_reviewer' }, 'reviewer-a'))
+      .toThrow('SPECIALIST_INDEPENDENT_REVIEW_REQUIRED');
+    expect(panels.submitReview(panel.id, { ...review, specialist_id: 'security_reviewer' }, 'reviewer-b').status)
+      .toBe('consensus_ready');
+  });
+
   it('generates from reflection', () => {
     const proposals = improvement.generateFromReflection({
       whatFailed: ['test failed'],
@@ -54,16 +75,60 @@ describe('G71: Self Improvement', () => {
     expect(proposed.length).toBe(1);
   });
 
-  it('approves improvement', () => {
+  it('requires specialist consensus and operator approval before creating one goal', () => {
     const proposals = improvement.generateFromReflection({
       whatFailed: [],
       lessonsLearned: [],
       proposedImprovements: ['Fix Y'],
+      loopRunId: 'verified-run',
+      reflectionId: 'reflection-1',
     });
-    improvement.approveImprovement(proposals[0].id);
-    const proposed = improvement.getProposedImprovements();
-    expect(proposed.length).toBe(0);
-    expect(improvement.getImprovementHistory(1)[0].status).toBe('scheduled');
+    expect(improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix Y'] })).toHaveLength(0);
+    const goals = new AutonomousGoalGenerator(db);
+    expect(goals.generateFromSelfImprovements()).toBe(0);
+    expect(() => improvement.approveImprovement(proposals[0].id, 'admin-1')).toThrow('SELF_IMPROVEMENT_CONSENSUS_REQUIRED');
+
+    const panels = new SpecialistPanelService(db);
+    const panel = panels.getPanel(proposals[0].panelId!);
+    for (const specialist of panel.panel) {
+      panels.submitReview(panel.id, {
+        specialist_id: specialist.id,
+        stance: 'support',
+        confidence: 0.9,
+        findings: ['Evidence is sufficient'],
+        evidence_refs: proposals[0].evidenceRefs,
+      }, `reviewer-${specialist.id}`);
+    }
+    expect(() => panels.submitReview(panel.id, {
+      specialist_id: panel.panel[0].id,
+      stance: 'support',
+      confidence: 0.8,
+    }, `reviewer-${panel.panel[0].id}`)).toThrow('SPECIALIST_REVIEW_EVIDENCE_REQUIRED');
+    expect(() => panels.submitReview(panel.id, {
+      specialist_id: panel.panel[0].id,
+      stance: 'oppose',
+      confidence: 0.8,
+      evidence_refs: proposals[0].evidenceRefs,
+    }, 'different-reviewer')).toThrow('SPECIALIST_REVIEW_ACTOR_MISMATCH');
+    expect(() => panels.submitReview(panel.id, {
+      specialist_id: panel.panel[1].id,
+      stance: 'support',
+      confidence: 0.8,
+      evidence_refs: proposals[0].evidenceRefs,
+    }, `reviewer-${panel.panel[0].id}`)).toThrow('SPECIALIST_INDEPENDENT_REVIEW_REQUIRED');
+    expect(() => improvement.approveImprovement(proposals[0].id, `reviewer-${panel.panel[0].id}`)).toThrow('SELF_IMPROVEMENT_OPERATOR_SEPARATION_REQUIRED');
+
+    expect(improvement.approveImprovement(proposals[0].id, 'admin-1')).toMatchObject({ status: 'scheduled', approvedBy: 'admin-1' });
+    expect(() => panels.submitReview(panel.id, {
+      specialist_id: panel.panel[0].id,
+      stance: 'oppose',
+      confidence: 0.9,
+      evidence_refs: proposals[0].evidenceRefs,
+    }, `reviewer-${panel.panel[0].id}`)).toThrow('SPECIALIST_PANEL_CLOSED');
+    expect(goals.generateImprovement(proposals[0].id)).toBe(1);
+    expect(goals.generateImprovement(proposals[0].id)).toBe(0);
+    expect(improvement.getImprovement(proposals[0].id).status).toBe('executing');
+    expect((db.prepare('SELECT COUNT(*) AS count FROM goals WHERE improvement_id = ?').get(proposals[0].id) as { count: number }).count).toBe(1);
   });
 
   it('completes improvement', () => {
@@ -72,9 +137,30 @@ describe('G71: Self Improvement', () => {
       lessonsLearned: [],
       proposedImprovements: ['Add Z'],
     });
+    expect(() => improvement.completeImprovement(proposals[0].id)).toThrow('SELF_IMPROVEMENT_NOT_EVALUATING');
+    db.prepare("UPDATE self_improvements SET status = 'evaluating' WHERE id = ?").run(proposals[0].id);
     improvement.completeImprovement(proposals[0].id);
     const history = improvement.getImprovementHistory(10);
     expect(history[0].status).toBe('applied');
+  });
+
+  it('allows a recurring regression after the previous proposal is terminal', () => {
+    const reflection = { whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix recurring fault'], loopRunId: 'run-1' };
+    const [first] = improvement.generateFromReflection(reflection);
+    db.prepare("UPDATE self_improvements SET status = 'regressed' WHERE id = ?").run(first.id);
+    expect(improvement.generateFromReflection({ ...reflection, loopRunId: 'run-2' })).toHaveLength(1);
+  });
+
+  it('adopts a legacy goal without creating a duplicate', () => {
+    const [proposal] = improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Keep legacy goal'] });
+    db.prepare("UPDATE self_improvements SET status = 'scheduled' WHERE id = ?").run(proposal.id);
+    db.prepare(`
+      INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
+      VALUES ('legacy-goal', 'Legacy', 'created', 'low', '[]', '{}', ?, datetime('now'), datetime('now'))
+    `).run(JSON.stringify({ source: 'self-improvement', improvement_id: proposal.id }));
+    expect(new AutonomousGoalGenerator(db).generateImprovement(proposal.id)).toBe(0);
+    expect(db.prepare("SELECT improvement_id FROM goals WHERE id = 'legacy-goal'").get()).toMatchObject({ improvement_id: proposal.id });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM goals').get() as { count: number }).count).toBe(1);
   });
 
   it('classifies security improvements', () => {

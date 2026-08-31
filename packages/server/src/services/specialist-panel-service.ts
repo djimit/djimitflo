@@ -48,6 +48,7 @@ export interface SpecialistReviewRecord {
   recommendations: string[];
   evidence_refs: string[];
   limitations: string | null;
+  reviewer_actor: string | null;
   status: ReviewStatus;
   created_at: string;
   updated_at: string;
@@ -340,7 +341,7 @@ export class SpecialistPanelService {
     return this.getPanel(id);
   }
 
-  submitReview(panelId: string, input: SpecialistReviewInput): SpecialistPanelRecord {
+  submitReview(panelId: string, input: SpecialistReviewInput, reviewerActor?: string): SpecialistPanelRecord {
     const panel = this.getPanel(panelId);
     if (panel.status === 'cancelled' || panel.status === 'backlog_created' || panel.status === 'goal_created') {
       throw new Error('SPECIALIST_PANEL_CLOSED');
@@ -359,23 +360,40 @@ export class SpecialistPanelService {
     if (!profile) {
       throw new Error('SPECIALIST_REVIEWER_NOT_IN_PANEL');
     }
+    const actor = reviewerActor?.trim() || null;
+    const independent = Boolean(panel.metadata.self_improvement_id || panel.metadata.independent_review_required || ['high', 'critical'].includes(panel.risk_class));
+    if (independent && !actor) throw new Error('SPECIALIST_REVIEW_ACTOR_REQUIRED');
+    if (independent && this.stringArray(input.evidence_refs).length === 0) {
+      throw new Error('SPECIALIST_REVIEW_EVIDENCE_REQUIRED');
+    }
+    if (actor && independent) {
+      const occupied = this.db.prepare(
+        'SELECT specialist_id FROM specialist_reviews WHERE panel_id = ? AND reviewer_actor = ? AND specialist_id != ? LIMIT 1'
+      ).get(panel.id, actor, profile.id);
+      if (occupied) throw new Error('SPECIALIST_INDEPENDENT_REVIEW_REQUIRED');
+    }
 
     const now = new Date().toISOString();
-    const existing = this.db.prepare('SELECT id FROM specialist_reviews WHERE panel_id = ? AND specialist_id = ?').get(panel.id, profile.id) as any;
+    const existing = this.db.prepare(
+      'SELECT id, reviewer_actor FROM specialist_reviews WHERE panel_id = ? AND specialist_id = ?'
+    ).get(panel.id, profile.id) as { id: string; reviewer_actor: string | null } | undefined;
+    if (independent && existing && existing.reviewer_actor !== actor) {
+      throw new Error('SPECIALIST_REVIEW_ACTOR_MISMATCH');
+    }
     const id = existing?.id || randomUUID();
     const run = existing
       ? this.db.prepare(`
           UPDATE specialist_reviews
           SET specialist_title = ?, stance = ?, confidence = ?, findings_json = ?,
               recommendations_json = ?, evidence_refs_json = ?, limitations = ?,
-              status = ?, updated_at = ?
+              status = ?, reviewer_actor = ?, updated_at = ?
           WHERE id = ?
         `)
       : this.db.prepare(`
           INSERT INTO specialist_reviews (
             specialist_title, stance, confidence, findings_json, recommendations_json,
-            evidence_refs_json, limitations, status, updated_at, id, panel_id, specialist_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            evidence_refs_json, limitations, status, reviewer_actor, updated_at, id, panel_id, specialist_id, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
     const args = [
@@ -387,6 +405,7 @@ export class SpecialistPanelService {
       JSON.stringify(this.stringArray(input.evidence_refs)),
       input.limitations?.trim() || null,
       'submitted',
+      actor,
       now,
       id,
     ];
@@ -621,6 +640,7 @@ export class SpecialistPanelService {
       recommendations: JSON.parse(row.recommendations_json || '[]'),
       evidence_refs: JSON.parse(row.evidence_refs_json || '[]'),
       limitations: row.limitations || null,
+      reviewer_actor: row.reviewer_actor || null,
       status: row.status,
       created_at: row.created_at,
       updated_at: row.updated_at,

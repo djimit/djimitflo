@@ -60,6 +60,23 @@ export class ExplorePublicPageService {
     }
   }
 
+  listPublishedRepositories(): string[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT COALESCE(dr.full_name, REPLACE(REPLACE(t.remote_url, 'https://github.com/', ''), '.git', '')) AS full_name
+        FROM explainer_bundles b
+        JOIN explainer_tasks t ON t.id = b.task_id
+        LEFT JOIN discovered_repositories dr ON dr.id = t.discovered_repository_id
+        WHERE b.status = 'published' AND full_name IS NOT NULL
+        GROUP BY full_name
+        ORDER BY full_name
+      `
+      )
+      .all() as Array<{ full_name: string }>;
+    return rows.map((r) => r.full_name);
+  }
+
   render({ owner, repo, bundleContent, baseUrl }: RenderPageInput): RenderPageResult {
     const manifest = bundleContent.manifest;
     const graph = bundleContent.graph_summary;

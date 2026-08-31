@@ -274,9 +274,13 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/complete', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/complete', requirePermission('approve:task'), (req, res, next) => {
     try {
-      res.json(loopService.completeLoopRun(req.params.id, req.body || {}));
+      const actor = req.user?.sub || req.user?.email;
+      const requestedRef = typeof req.body?.human_approval_ref === 'string' ? req.body.human_approval_ref.trim() : '';
+      res.json(loopService.completeLoopRun(req.params.id, {
+        human_approval_ref: actor && requestedRef ? `operator:${actor}` : undefined,
+      }));
     } catch (error) {
       try {
         mapLoopServiceError(error);

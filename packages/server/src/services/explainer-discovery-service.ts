@@ -25,6 +25,7 @@ export interface GitHubRepo {
   open_issues_count: number;
   pushed_at: string | null;
   updated_at: string | null;
+  size: number | null;
 }
 
 export interface DiscoverySyncResult {
@@ -78,8 +79,14 @@ function chooseCategory(repo: GitHubRepo): DiscoveredRepositoryRow["repo_categor
 }
 
 function choosePriorityTier(repo: GitHubRepo): number {
-  if (repo.stargazers_count >= 50 || repo.name.toLowerCase().includes("core")) return 1;
-  if (repo.stargazers_count >= 10 || repo.language === "TypeScript") return 2;
+  const name = repo.name.toLowerCase();
+  // Tier 1: high-anchored value signals — platform core, high activity, or high star volume.
+  // ponytail: stars remain a proxy; upgrade path = push/commit-frequency signal from the GraphQL API.
+  const coreSignal = name.includes("core") || name.includes("platform") || name.includes("server") || name.includes("agent");
+  const activeSignal = repo.pushed_at ? (Date.now() - new Date(repo.pushed_at ?? repo.updated_at).getTime() < 30 * 86_400_000) : false;
+  const agentsSignal = (repo.size ?? 0) > 0; // repo has content at all
+  if (repo.stargazers_count >= 50 || coreSignal || (activeSignal && agentsSignal && repo.open_issues_count > 0)) return 1;
+  if (repo.stargazers_count >= 10 || repo.language === "TypeScript" || activeSignal) return 2;
   return 3;
 }
 
