@@ -36,7 +36,7 @@ describe("ExplainerFleetWorker", () => {
       db.prepare("UPDATE explainer_bundles SET status = 'published' WHERE id = ?").run(built.bundleId);
       return built.bundleId;
     } };
-    const worker = new ExplainerFleetWorker(scheduler, generation as any, 60_000);
+    const worker = new ExplainerFleetWorker(scheduler, generation as any, db, 60_000);
 
     try {
       expect(await worker.tick()).toBe(true);

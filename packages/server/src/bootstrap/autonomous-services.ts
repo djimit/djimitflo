@@ -17,8 +17,17 @@ import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
+import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
+import { ExplainerFleetWorker } from '../services/explainer-fleet-worker';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
+  const learningLoop = new ContinuousLearningLoop(db);
+  learningLoop.start();
+  lifecycleManager.register({ serviceName: 'ContinuousLearningLoop', stop: () => learningLoop.stop() });
+  void learningLoop.runCycle().catch((error) => {
+    console.warn('⚠️  Initial continuous learning cycle failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  });
+
   const intelligence = new SwarmIntelligenceService(db);
   const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
 
@@ -80,5 +89,20 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     console.log('🎓 Expert Swarm Orchestrator + WorkerPool + OKF Updater ready.');
   } catch (error) {
     console.warn('⚠️  Expert Swarm initialization failed (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // ExplainerFleetWorker — autonomous repo-explainer pipeline tick (SC-007 auto-refresh).
+  // Default ON; disable with DJIMITFLO_EXPLAINER_AUTONOMY=false. Respects scheduler pause (kill-switch).
+  try {
+    if (process.env.DJIMITFLO_EXPLAINER_AUTONOMY === 'false') {
+      console.log('ℹ️  Explainer fleet autonomy disabled via DJIMITFLO_EXPLAINER_AUTONOMY=false');
+    } else {
+      const fleetWorker = ExplainerFleetWorker.create(db);
+      fleetWorker.start();
+      lifecycleManager.register({ serviceName: 'ExplainerFleetWorker', stop: () => fleetWorker.stop() });
+      console.log('📖 Explainer fleet worker started (30s tick, honors kill-switch).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Explainer fleet worker failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 }

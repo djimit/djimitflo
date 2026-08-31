@@ -3,13 +3,6 @@ import type { Database } from 'better-sqlite3';
 
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {
-    this.db.exec(`CREATE TABLE IF NOT EXISTS self_improvements (
-      id TEXT PRIMARY KEY, type TEXT NOT NULL DEFAULT 'bug_fix',
-      title TEXT NOT NULL, description TEXT NOT NULL, rationale TEXT NOT NULL DEFAULT '',
-      source TEXT NOT NULL DEFAULT 'reflection', status TEXT NOT NULL DEFAULT 'proposed',
-      priority REAL NOT NULL DEFAULT 0.5,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
     this.db.exec(`CREATE TABLE IF NOT EXISTS security_scans (
       id TEXT PRIMARY KEY, target TEXT NOT NULL, scan_type TEXT NOT NULL DEFAULT 'code',
       findings_json TEXT NOT NULL DEFAULT '[]', summary_json TEXT NOT NULL DEFAULT '{}',
@@ -26,29 +19,48 @@ export class AutonomousGoalGenerator {
     let improvements: Array<{ id: string; title: string; description: string; type: string; priority: number; source: string }> = [];
     try {
       improvements = this.db.prepare(
-        "SELECT * FROM self_improvements WHERE status = 'proposed' ORDER BY priority DESC LIMIT 5"
+        "SELECT * FROM self_improvements WHERE status = 'scheduled' ORDER BY priority DESC LIMIT 5"
       ).all() as Array<{ id: string; title: string; description: string; type: string; priority: number; source: string }>;
     } catch { return 0; }
 
     let created = 0;
-    for (const imp of improvements) {
-      const goalId = randomUUID();
-      this.db.prepare(`
-        INSERT OR IGNORE INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
-        VALUES (?, ?, 'created', ?, ?, '{}', ?, datetime('now'), datetime('now'))
-      `).run(
-        goalId,
-        imp.title,
-        imp.priority > 0.9 ? 'high' : imp.priority > 0.7 ? 'medium' : 'low',
-        JSON.stringify(['Tests pass', 'No regressions']),
-        JSON.stringify({ source: 'self-improvement', improvement_id: imp.id, type: imp.type, autonomous: true })
-      );
-
-      this.db.prepare("UPDATE self_improvements SET status = 'scheduled' WHERE id = ?").run(imp.id);
-      created++;
-    }
+    for (const improvement of improvements) created += this.generateImprovement(improvement.id);
 
     return created;
+  }
+
+  generateImprovement(id: string): number {
+    return this.db.transaction(() => this.generateImprovementInTransaction(id))();
+  }
+
+  private generateImprovementInTransaction(id: string): number {
+    const improvement = this.db.prepare(
+      "SELECT * FROM self_improvements WHERE id = ? AND status = 'scheduled'"
+    ).get(id) as { id: string; title: string; type: string; priority: number } | undefined;
+    if (!improvement) return 0;
+
+    const existing = this.db.prepare(
+      "SELECT id, improvement_id FROM goals WHERE improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ? LIMIT 1"
+    ).get(id, id) as { id: string; improvement_id: string | null } | undefined;
+    if (existing) {
+      if (!existing.improvement_id) this.db.prepare('UPDATE goals SET improvement_id = ? WHERE id = ?').run(id, existing.id);
+      this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+      return 0;
+    }
+
+    this.db.prepare(`
+      INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at)
+      VALUES (?, ?, 'created', ?, ?, '{}', ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      randomUUID(),
+      improvement.title,
+      improvement.priority > 0.9 ? 'high' : improvement.priority > 0.7 ? 'medium' : 'low',
+      JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
+      improvement.id,
+      JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
+    );
+    this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+    return 1;
   }
 
   generateFromSecurityFindings(): number {
@@ -67,8 +79,8 @@ export class AutonomousGoalGenerator {
     const highFindings = scanFindings.filter(f => f.severity === 'high' || f.severity === 'critical');
     if (highFindings.length === 0) return 0;
 
-    const goalId = randomUUID();
-    this.db.prepare(`
+    const goalId = `security-scan:${latestScan.id}`;
+    const result = this.db.prepare(`
       INSERT OR IGNORE INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
       VALUES (?, ?, 'created', ?, ?, '{}', ?, datetime('now'), datetime('now'))
     `).run(
@@ -79,7 +91,7 @@ export class AutonomousGoalGenerator {
       JSON.stringify({ source: 'security-scan', scan_id: latestScan.id, findings_count: highFindings.length, autonomous: true })
     );
 
-    return 1;
+    return result.changes;
   }
 
   generateFromCuriosityGaps(): number {

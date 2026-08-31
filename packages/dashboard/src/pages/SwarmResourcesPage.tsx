@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bot, BrainCircuit, CheckCircle2, Database, Network, Play, RefreshCw, ServerCog, ShieldCheck, Workflow } from 'lucide-react';
 import { api, type AgentAssuranceSummary, type MemoryCandidateRecord, type SchedulerTickResult, type SpecialistPanelRecord, type SpecialistProfile, type SwarmRealityStatus, type WorkItemRecord, type WorkerPoolDrainResult, type WorkerPoolPlanResult, type WorkerPoolStartResult } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 
 type ReviewDraft = {
   specialist_id: string;
@@ -13,6 +14,7 @@ type ReviewDraft = {
 };
 
 export function SwarmResourcesPage() {
+  const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
   const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemRecord[]>([]);
   const [memoryCandidates, setMemoryCandidates] = useState<MemoryCandidateRecord[]>([]);
@@ -43,7 +45,7 @@ export function SwarmResourcesPage() {
         api.getWorkItems({ limit: 50 }),
         api.getMemoryCandidates(25),
         api.getSpecialistCatalog(),
-        api.getSpecialistPanels(25),
+        api.getSpecialistPanels(100),
         api.getAssuranceSummary(),
       ]);
       setStatus(swarmStatus);
@@ -436,7 +438,7 @@ export function SwarmResourcesPage() {
                 <span>{candidate.sensitivity}</span>
                 {candidate.human_required && <span>human required</span>}
               </div>
-              {candidate.promotion_status === 'proposed' && (
+              {candidate.promotion_status === 'proposed' && canApprove && (
                 <div className="mt-3">
                   <button
                     onClick={() => void runAction(`promote-memory-${candidate.id}`, () => api.promoteMemoryCandidate(candidate.id))}
@@ -602,7 +604,7 @@ function SpecialistPanelCard({
   const canBacklog = panel.status === 'consensus_ready' && panel.consensus.decision !== 'blocked';
 
   return (
-    <div className="rounded border border-border bg-background p-4 space-y-3">
+    <div id={`panel-${panel.id}`} className="rounded border border-border bg-background p-4 space-y-3 scroll-mt-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">{panel.topic}</div>
@@ -629,6 +631,20 @@ function SpecialistPanelCard({
       {panel.consensus.dissent.length > 0 && (
         <div className="rounded border border-status-paused/20 bg-status-paused/10 p-3 text-xs text-status-paused">
           Dissent: {panel.consensus.dissent.map((item) => `${item.specialist_title} ${item.stance}`).join(', ')}
+        </div>
+      )}
+
+      {(panel.reviews || []).length > 0 && (
+        <div className="space-y-2">
+          {(panel.reviews || []).map((review) => (
+            <div key={review.id} className="rounded border border-border bg-background-secondary p-2 text-xs text-foreground-secondary">
+              <div className="font-medium text-foreground">{review.specialist_title} · {review.stance} · {Math.round(review.confidence * 100)}%</div>
+              {review.findings.length > 0 && <div>Findings: {review.findings.join('; ')}</div>}
+              {review.recommendations.length > 0 && <div>Recommendations: {review.recommendations.join('; ')}</div>}
+              {review.evidence_refs.length > 0 && <div className="font-mono">Evidence: {review.evidence_refs.join(', ')}</div>}
+              <div>Reviewer: {review.reviewer_actor || 'legacy/unverified'}</div>
+            </div>
+          ))}
         </div>
       )}
 

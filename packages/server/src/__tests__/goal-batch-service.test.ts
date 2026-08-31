@@ -4,6 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { GoalBatchService } from '../services/goal-batch-service';
 import { GoalService } from '../services/goal-service';
+import { LoopService } from '../services/loop-service';
 
 function makeDb() {
   const database = new Database(':memory:');
@@ -40,6 +41,34 @@ describe('goal batch service', () => {
           acceptance_evidence: [{ kind: 'test', ref: 'test-1' }],
         },
       }).status).toBe('completed');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('persists ordered dependencies and fails closed until predecessor evidence exists', () => {
+    const db = makeDb();
+    try {
+      const batch = {
+        goals: [
+          { id: 'DAPS-01', title: 'Provenance', acceptance: ['Accepted'] },
+          { id: 'DAPS-02', title: 'Enforcement', acceptance: ['Accepted'], depends_on: ['DAPS-01'] },
+        ],
+      };
+      const applied = new GoalBatchService(db).apply({ batch });
+      const first = applied.created_goals.find((goal) => goal.metadata.goal_batch && (goal.metadata.goal_batch as any).id === 'DAPS-01')!;
+      const second = applied.created_goals.find((goal) => goal.metadata.goal_batch && (goal.metadata.goal_batch as any).id === 'DAPS-02')!;
+      const goals = new GoalService(db);
+
+      expect(second.metadata.depends_on_goal_keys).toEqual(['DAPS-01']);
+      expect(() => goals.updateGoal(second.id, { status: 'running', metadata: { depends_on_goal_keys: [] } }))
+        .toThrow('GOAL_DEPENDENCY_UNSATISFIED:DAPS-01');
+      expect(() => goals.updateGoal(second.id, { status: 'running' })).toThrow('GOAL_DEPENDENCY_UNSATISFIED:DAPS-01');
+      expect(() => new LoopService(db).startLoop({ goal_id: second.id, repository_path: process.cwd() }))
+        .toThrow('GOAL_DEPENDENCY_UNSATISFIED:DAPS-01');
+      expect(counts(db).loop_runs).toBe(0);
+      goals.updateGoal(first.id, { status: 'completed', metadata: { acceptance_evidence: [{ ref: 'review-1' }] } });
+      expect(goals.updateGoal(second.id, { status: 'running' }).status).toBe('running');
     } finally {
       db.close();
     }

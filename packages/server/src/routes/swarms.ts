@@ -133,7 +133,13 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     }
   });
   router.post('/specialist-panels/:id/reviews', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(specialistPanels.submitReview(req.params.id, req.body)); } catch (error) { next(error); }
+    try { res.json(specialistPanels.submitReview(req.params.id, req.body, req.user?.sub || req.user?.email)); } catch (error: any) {
+      if (error.message?.startsWith('SPECIALIST_')) {
+        next(createError(409, error.message, error.message));
+      } else {
+        next(error);
+      }
+    }
   });
   router.post('/specialist-panels/:id/backlog', requirePermission('write:swarm_action'), (req, res, next) => {
     try { res.status(201).json(specialistPanels.projectPanelToBacklog(req.params.id)); } catch (error) { next(error); }
