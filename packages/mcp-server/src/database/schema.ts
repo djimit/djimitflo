@@ -732,6 +732,30 @@ CREATE TABLE IF NOT EXISTS explainer_sections (
 
 CREATE INDEX IF NOT EXISTS idx_explainer_sections_bundle_id ON explainer_sections(bundle_id);
 
+-- Explainer jobs queue (claimed by ExplainerFleetWorker)
+CREATE TABLE IF NOT EXISTS explainer_jobs (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES explainer_tasks(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at TEXT,
+  finished_at TEXT,
+  worker_id TEXT,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'completed', 'failed', 'cancelled')),
+  priority_score INTEGER NOT NULL DEFAULT 0,
+  scheduled_reason TEXT NOT NULL DEFAULT 'manual',
+  dedupe_key TEXT,
+  estimated_llm_calls INTEGER NOT NULL DEFAULT 0,
+  estimated_github_api_calls INTEGER NOT NULL DEFAULT 0,
+  estimated_git_ops INTEGER NOT NULL DEFAULT 0,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_task_id ON explainer_jobs(task_id);
+CREATE INDEX IF NOT EXISTS idx_explainer_jobs_status ON explainer_jobs(status);
+
 -- Repository scan artifacts table
 CREATE TABLE IF NOT EXISTS repository_scan_artifacts (
   id TEXT PRIMARY KEY,

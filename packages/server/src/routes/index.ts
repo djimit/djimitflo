@@ -82,6 +82,8 @@ import { createSegmlL3Routes } from './segml-l3';
 import { createSegmlL4Routes } from './segml-l4';
 import { createSegmlL5Routes } from './segml-l5';
 import { createSegmlProductionRoutes } from './segml-production';
+import { createOrganizationRoutes } from './organizations';
+import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
@@ -232,6 +234,8 @@ export function createRoutes(
     { prefix: '/segml/l4', middleware: [requireAuth], router: createSegmlL4Routes(db, auth) },
     { prefix: '/segml/l5', middleware: [requireAuth], router: createSegmlL5Routes(db, auth) },
     { prefix: '/segml/production', middleware: [requireAuth], router: createSegmlProductionRoutes(db, auth) },
+    { prefix: '/organizations', middleware: [requireAuth], router: createOrganizationRoutes(db, requireAuth, authService, auditService) },
+    { prefix: '/audit-logs', middleware: [requireAuth], router: createAuditLogRoutes(db, requireAuth) },
   );
 
   for (const mount of mounts) {

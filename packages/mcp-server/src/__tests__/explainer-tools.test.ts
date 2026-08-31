@@ -49,6 +49,8 @@ describe("Explainer MCP tools", () => {
     const res = await run({ id });
     expect(res.isError).toBeFalsy();
     const body = JSON.parse(res.content[0].text);
-    expect(body.bundle_path).toBeDefined();
+    // Without EXPLAINER_SERVER_URL the tool queues the task for the server worker.
+    expect(body.task_id).toBe(id);
+    expect(body.status).toBe("queued");
   });
 });

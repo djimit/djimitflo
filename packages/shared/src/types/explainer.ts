@@ -83,6 +83,7 @@ export interface ExplainerCreateInput {
   remote_url?: string;
   local_path?: string;
   branch?: string;
+  discovered_repository_id?: string;
   metadata?: Record<string, unknown>;
 }
 

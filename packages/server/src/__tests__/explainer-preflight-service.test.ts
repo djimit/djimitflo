@@ -149,11 +149,10 @@ describe("ExplainerPreflightService", () => {
     expect(result.blocking_checks).toContain("license_footer_present");
   });
 
-  it("blocks a bundle with architecture content but no accessibility labels", () => {
+  it("blocks a bundle with architecture content but no textual equivalents", () => {
     const service = new ExplainerPreflightService();
-    const bundle = makeBundle(dir, {
-      sections: { architecture: "architecture without aria labels" },
-    });
+    // Architecture section present but whitespace-only (diagram without textual equivalent)
+    const bundle = makeBundle(dir, { sections: { architecture: "   " } });
     const result = service.check(bundle, makeCritic(92), []);
     expect(result.passed).toBe(false);
     expect(result.blocking_checks).toContain("accessibility_labels_present");

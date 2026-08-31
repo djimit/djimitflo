@@ -9,6 +9,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { ExplainerClaimVerifier } from './explainer-claim-verifier';
 import type {
   ExplainerBundleContent,
   ExplainerCorpusCase,
@@ -22,6 +23,7 @@ const DEFAULT_THRESHOLD = 85;
 export class ExplainerCriticService {
   private cases: ExplainerCorpusCase[] | null = null;
   private corpusPath: string;
+  private claimVerifier = new ExplainerClaimVerifier();
 
   constructor(corpusPath: string = DEFAULT_CORPUS_PATH) {
     this.corpusPath = corpusPath;
@@ -75,7 +77,7 @@ export class ExplainerCriticService {
     }
     results.push({ name: 'factuality', score: Math.max(0, factScore), rationale: 'Verifies identity, citations, and graph-community claims.', findings: factFindings });
 
-    // Hallucination dimension
+    // Hallucination dimension — oracle cases + claim-level grounding verification
     const hallCases = cases.filter((c) => c.category === 'hallucination');
     const hallFindings: string[] = [];
     let hallScore = 100;
@@ -86,7 +88,19 @@ export class ExplainerCriticService {
         hallScore -= 20 / Math.max(1, hallCases.length);
       }
     }
-    results.push({ name: 'hallucination', score: Math.max(0, hallScore), rationale: 'Detects invented APIs, modules, or security claims.', findings: hallFindings });
+    // Claim grounding: citations must resolve against bundle facts (P1 upgrade)
+    const grounding = this.claimVerifier.verify(bundle.sections, bundle.facts);
+    if (grounding.checked > 0) {
+      for (const u of grounding.unresolved.slice(0, 5)) {
+        hallFindings.push(`Unresolved citation ${u.claim}: ${u.reason}`);
+      }
+      const groundingPenalty = (1 - grounding.grounding_ratio) * 40;
+      hallScore -= groundingPenalty;
+    }
+    const groundingNote = grounding.checked > 0
+      ? ` ${grounding.resolved}/${grounding.checked} citations grounded (${Math.round(grounding.grounding_ratio * 100)}%).`
+      : '';
+    results.push({ name: 'hallucination', score: Math.max(0, hallScore), rationale: `Detects invented APIs, modules, or security claims via oracle cases and claim-level source resolution.${groundingNote}`, findings: hallFindings });
 
     // Security dimension
     const secCases = cases.filter((c) => c.category === 'security');
