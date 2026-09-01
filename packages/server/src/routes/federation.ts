@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { swarmEventBus } from '../services/swarm-event-bus';
@@ -21,6 +22,9 @@ interface PeerRecord {
 
 export function createFederationRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: every handler performs DB access.
+  const fedLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
+  router.use(fedLimiter);
   const requireAuth = auth.requireAuth;
   const loops = new LoopService(db);
 

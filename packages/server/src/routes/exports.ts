@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { ExportFormat } from '@djimitflo/shared';
 import type { AuthTokenPayload, ExportRequest } from '@djimitflo/shared';
@@ -8,6 +9,8 @@ import { once } from 'events';
 
 export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: handlers perform unbounded DB queries/streams.
+  router.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }));
   const exportService = new ExportService(db);
   const requireAuth = auth.requireAuth;
 

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { IntegrationInboxService } from '../services/integration-inbox-service';
 import { LoopService } from '../services/loop-service';
@@ -18,6 +19,8 @@ function validSignature(rawBody: Buffer, signature: string | undefined): boolean
 
 export function createGitHubWebhookRoutes(db: Database): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: handler performs DB writes.
+  router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
   const inbox = new IntegrationInboxService(db);
   const loops = new LoopService(db);
   db.exec("CREATE TABLE IF NOT EXISTS github_webhook_deliveries (id TEXT PRIMARY KEY, event TEXT NOT NULL, source_ref TEXT, result_json TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
