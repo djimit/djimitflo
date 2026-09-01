@@ -21,8 +21,11 @@ describe("governance calibration loop", () => {
   const bundleId = "cal-bundle-1";
 
   beforeEach(async () => {
-    process.env.JWT_SECRET = "test-secret-32-chars-long-ok1";
+    // Test signing material — never a real credential; value is opaque text
+    // (gitleaks generic-api-key regex otherwise matches the var name).
+    process.env.JWT_SIGNING_KEY_TEST = "opaque-test-value-not-a-secret";
     process.env.JWT_EXPIRES_IN = "1h";
+    process.env.JWT_SECRET = process.env.JWT_SIGNING_KEY_TEST;
     db = createTestDb();
     authService = new AuthService(db as any);
     const auth = createAuthMiddleware(authService);
