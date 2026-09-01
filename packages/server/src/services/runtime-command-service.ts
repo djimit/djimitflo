@@ -279,7 +279,39 @@ export class RuntimeCommandService {
         settled = true;
         this.clearRuntimeLease(leaseId);
         this.releaseRuntimePermit(leaseId);
-        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined });
+        const runtimeEvents: import('@djimitflo/shared').ExecutionEventCreateInput[] = [];
+        // Parse structured runtime JSON lines into typed events (tool calls/results).
+        // Best-effort: unparseable stdout stays a plain result without events.
+        for (const line of safeTrim(stdout).split('\n')) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('{')) continue;
+          try {
+            const parsed = JSON.parse(trimmed);
+            const kind = String(parsed?.part?.type ?? parsed?.type ?? '');
+            if (kind === 'tool' || kind === 'tool_use') {
+              runtimeEvents.push({
+                task_id: leaseId,
+                event_type: 'tool.call' as any,
+                message: `Tool call: ${parsed?.part?.tool ?? parsed?.tool ?? 'tool'}`,
+                level: 'info' as any,
+                tool_name: String(parsed?.part?.tool ?? parsed?.tool ?? 'tool'),
+                tool_input: parsed?.part?.input ?? parsed?.input,
+              });
+            } else if (kind === 'tool_result' || kind === 'tool_response') {
+              runtimeEvents.push({
+                task_id: leaseId,
+                event_type: 'tool.result' as any,
+                message: `Tool result: ${parsed?.part?.tool ?? parsed?.tool ?? 'tool'}`,
+                level: 'info' as any,
+                tool_name: String(parsed?.part?.tool ?? parsed?.tool ?? 'tool'),
+                tool_output: parsed?.part?.output ?? parsed?.output,
+              } as any);
+            }
+          } catch {
+            // not JSON — skip
+          }
+        }
+        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined, events: runtimeEvents.length > 0 ? runtimeEvents : undefined });
       };
       child.stdout?.setEncoding('utf8');
       child.stderr?.setEncoding('utf8');

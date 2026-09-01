@@ -7,13 +7,17 @@ describe('AdversarialRedTeamService', () => {
     const db = new Database(':memory:');
     try {
       const report = await new AdversarialRedTeamService(db).runAssessment();
+      // injection-001 is blocked by the command-risk classifier (unknown
+      // instruction-override payload defaults to require_approval → blocked).
       expect(report.findings.find(finding => finding.vectorId === 'injection-001')).toMatchObject({
         blocked: true,
-        detectionMethod: 'ignore_instructions',
+        detectionMethod: 'command_risk_classifier',
       });
+      // ransomware-002 is blocked via the command-risk classifier's CRITICAL
+      // pattern match (DROP DATABASE → deny), reported under the defense name.
       expect(report.findings.find(finding => finding.vectorId === 'ransomware-002')).toMatchObject({
         blocked: true,
-        detectionMethod: 'critical-pattern',
+        detectionMethod: 'command_risk_classifier',
       });
     } finally {
       db.close();

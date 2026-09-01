@@ -15,6 +15,7 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -178,6 +179,14 @@ export class ClaudeExecutor implements TaskExecutor {
     if (stream === 'stdout') {
       try {
         const parsed = JSON.parse(trimmed);
+        // Structured tool blocks (tool_use/tool_result) become typed events;
+        // everything else stays a LOG with the JSON raw payload attached.
+        const block = Array.isArray(parsed?.message?.content)
+          ? parsed.message.content.find((part: any) => ['tool_use', 'tool_result', 'text'].includes(part?.type))
+          : undefined;
+        if (block && block.type !== 'text') {
+          return structuredRuntimeEvent('claude', taskId, parsed);
+        }
         const summary = typeof parsed === 'string'
           ? parsed
           : (parsed?.result ?? parsed?.text ?? parsed?.message ?? `JSON event: ${parsed?.type ?? 'object'}`);
