@@ -412,6 +412,7 @@ export class LoopService {
   startLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
     const contract = this.getLoopContract(input.loop_name || LOOP_NAME);
     const goal = input.goal_id ? this.getGoal(input.goal_id) : null;
+    if (goal) this.goals.assertDependenciesSatisfied(goal.id, goal.metadata);
     const repositoryPath = this.resolveRepositoryPath(input.repository_path || process.cwd());
     const runRiskClass: RiskClass = (goal?.risk_class === 'high' || goal?.risk_class === 'critical' || goal?.risk_class === 'medium' || goal?.risk_class === 'low')
       ? goal.risk_class

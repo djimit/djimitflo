@@ -16,6 +16,7 @@ import { requestLogger } from './middleware/request-logger';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
+import { createExplorePublicRoutes } from './routes/explore-public';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
@@ -33,10 +34,11 @@ import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-s
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
 import { LoopService } from './services/loop-service';
 import { LoopDaemon } from './services/loop-daemon';
+import { ExplainerFleetWorker } from './services/explainer-fleet-worker';
 import { SelfModelService } from './services/self-model-service';
 import { RuntimeGovernanceService } from './services/runtime-governance-service';
 import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
-import { initOperatorServices } from './bootstrap/operator-services';
+import { initExternalEventIngest, initOperatorServices } from './bootstrap/operator-services';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
 
@@ -89,6 +91,7 @@ async function main() {
     console.warn('⚠️  Loop recovery failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
+  initExternalEventIngest(db);
   if (operatorRuntime) initOperatorServices(db);
   if (autonomousRuntime) {
     initAutonomousServices(db, recoverySvc);
@@ -225,6 +228,24 @@ async function main() {
 
   // API routes
   app.use('/api', createRoutes(db, executionEngine, authService, auth, wsService, metaOrchestration, operatorRuntime, runtimeGovernance));
+
+  // Public explore pages (unauthenticated, rate-limited)
+  app.use('/explore', createExplorePublicRoutes(db));
+
+  // Explainer fleet worker — runs in EVERY runtime profile (Codex P1 fix: the
+  // earlier bootstrap-only mount made explainer jobs idle in api/operator mode).
+  // Opt out with DJIMITFLO_EXPLAINER_AUTONOMY=false; kill-switch still pauses it.
+  try {
+    if (process.env.DJIMITFLO_EXPLAINER_AUTONOMY === 'false') {
+      console.log('ℹ️  Explainer fleet worker disabled via DJIMITFLO_EXPLAINER_AUTONOMY=false');
+    } else {
+      const fleetWorker = ExplainerFleetWorker.create(db);
+      fleetWorker.start();
+      console.log('📖 Explainer fleet worker started (production entry point, honors kill-switch).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Explainer fleet worker failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
 
   if (operatorRuntime) try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;

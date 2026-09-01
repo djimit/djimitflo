@@ -510,6 +510,11 @@ function createPhase44Tables(db: BetterSqlite3Database) {
 }
 
 function createPhase52Tables(db: BetterSqlite3Database) {
+  const userColumns: ColumnSpec[] = [
+    { name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" },
+  ];
+  addMissingColumns(db, 'users', userColumns);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -517,6 +522,7 @@ function createPhase52Tables(db: BetterSqlite3Database) {
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
       is_active INTEGER NOT NULL DEFAULT 1,
+      organization_id TEXT NOT NULL DEFAULT 'default',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -1142,11 +1148,6 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT ''
     );
-
-    CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status);
-    CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC);
-    CREATE INDEX IF NOT EXISTS idx_self_improve_fingerprint ON self_improvements(fingerprint);
-
     CREATE TABLE IF NOT EXISTS loop_learning_closures (
       loop_run_id TEXT PRIMARY KEY,
       eval_run_id TEXT NOT NULL,
@@ -1157,7 +1158,15 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+  // Add missing columns BEFORE creating indexes that reference them — a stale
+  // pre-existing self_improvements table (no fingerprint) otherwise breaks
+  // CREATE INDEX idx_self_improve_fingerprint with "no such column".
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status);
+    CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC);
+    CREATE INDEX IF NOT EXISTS idx_self_improve_fingerprint ON self_improvements(fingerprint);
+  `);
   addMissingColumns(db, 'specialist_reviews', specialistReviewActorColumns);
   addMissingColumns(db, 'goals', goalImprovementColumns);
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_improvement_id ON goals(improvement_id) WHERE improvement_id IS NOT NULL');
@@ -1371,6 +1380,27 @@ export function runPreSchemaMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'external_events', externalEventColumns);
 }
 
+function createCalibrationTables(db: BetterSqlite3Database) {
+  // Governance-calibration loop (B3): human ratings of published explainer
+  // bundles feed the MCR-Bench-style calibration of the OpenMythos threshold.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS calibration_ratings (
+      id TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 100),
+      factual_acc INTEGER CHECK(factual_acc BETWEEN 0 AND 100),
+      clarity INTEGER CHECK(clarity BETWEEN 0 AND 100),
+      rated_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard', 'csv_import', 'api')),
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calibration_ratings_bundle ON calibration_ratings(bundle_id);
+    CREATE INDEX IF NOT EXISTS idx_calibration_ratings_created ON calibration_ratings(created_at);
+  `);
+}
+
 function createExplainRepoTables(db: BetterSqlite3Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS discovered_repositories (
@@ -1514,6 +1544,54 @@ function createExplainRepoTables(db: BetterSqlite3Database) {
   db.exec(`DROP TABLE IF EXISTS __explainer_bundles_columns_tmp;`);
 }
 
+function applyMultiTenancyMigration(db: BetterSqlite3Database) {
+  // Multi-tenancy + audit trail (20260823): organization scoping column on the
+  // tables the new tenant routes query, plus the org-partitioned audit envelope.
+  // Idempotent via addMissingColumns + IF NOT EXISTS. Indexes are created only
+  // when the target table exists (test DBs may use minimal schemas).
+  addMissingColumns(db, 'agents', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'loops', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'loop_runs', [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }]);
+  addMissingColumns(db, 'approvals', [...(approvalColumns.some((c) => c.name === 'organization_id')
+    ? []
+    : [{ name: 'organization_id', definition: "TEXT NOT NULL DEFAULT 'default'" }])]);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      action TEXT NOT NULL,
+      metadata TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('default', 'Default Organization');
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('org-a', 'Organization A');
+    INSERT OR IGNORE INTO organizations (id, name) VALUES ('org-b', 'Organization B');
+  `);
+
+  const tableExists = (name: string): boolean => {
+    const row = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(name);
+    return Boolean(row);
+  };
+  for (const table of ['users', 'agents', 'loops', 'loop_runs', 'approvals']) {
+    if (tableExists(table)) {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_organization ON ${table}(organization_id)`);
+    }
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_audit_logs_org ON audit_logs(organization_id)');
+}
+
 export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'approvals', approvalColumns);
   addMissingColumns(db, 'approval_policies', approvalPolicyColumns);
@@ -1525,6 +1603,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createPhase55Tables(db);
   createPhase56Tables(db);
   createMessageTables(db);
+  applyMultiTenancyMigration(db);
   seedMCPServers(db);
   // Ensure agents table has telegram/machine/okf columns
   addMissingColumns(db, 'agents', agentColumnsTelegramSwarm);
@@ -1543,6 +1622,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createSubAgentContextTables(db);
   createLazyServiceTables(db);
   createExplainRepoTables(db);
+  createCalibrationTables(db);
   createPerformanceIndexes(db);
 }
 

@@ -20,6 +20,7 @@ const SCHEMA = `
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
     is_active INTEGER NOT NULL DEFAULT 1,
+    organization_id TEXT NOT NULL DEFAULT 'default',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -1196,6 +1197,48 @@ CREATE TABLE IF NOT EXISTS explainer_bundles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_explainer_bundles_task_id ON explainer_bundles(task_id);
+
+CREATE TABLE IF NOT EXISTS human_review_queue (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  openmythos_score REAL,
+  assigned_to TEXT,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  resolution TEXT CHECK(resolution IN ('approved', 'rejected', 'pending')),
+  resolved_at TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Governance-calibration loop (B3): matches migrate.ts createCalibrationTables
+CREATE TABLE IF NOT EXISTS calibration_ratings (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 100),
+  factual_acc INTEGER CHECK(factual_acc BETWEEN 0 AND 100),
+  clarity INTEGER CHECK(clarity BETWEEN 0 AND 100),
+  rated_by TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard', 'csv_import', 'api')),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_bundle ON calibration_ratings(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_created ON calibration_ratings(created_at);
+
+CREATE TABLE IF NOT EXISTS explainer_audit_log (
+  id TEXT PRIMARY KEY,
+  actor TEXT NOT NULL DEFAULT 'system',
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK(outcome IN ('success', 'failure', 'blocked', 'pending')),
+  reason TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE TABLE IF NOT EXISTS explainer_sections (
   id TEXT PRIMARY KEY,

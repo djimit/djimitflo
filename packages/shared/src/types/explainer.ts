@@ -83,6 +83,7 @@ export interface ExplainerCreateInput {
   remote_url?: string;
   local_path?: string;
   branch?: string;
+  discovered_repository_id?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -255,7 +256,7 @@ export interface ExplainerCorpusCase {
 }
 
 export interface ExplainerCriticDimension {
-  name: 'factuality' | 'hallucination' | 'quality' | 'security' | 'license' | 'coverage';
+  name: 'factuality' | 'hallucination' | 'quality' | 'security' | 'license' | 'coverage' | 'consistency';
   score: number;
   rationale: string;
   findings: string[];
