@@ -1380,6 +1380,27 @@ export function runPreSchemaMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'external_events', externalEventColumns);
 }
 
+function createCalibrationTables(db: BetterSqlite3Database) {
+  // Governance-calibration loop (B3): human ratings of published explainer
+  // bundles feed the MCR-Bench-style calibration of the OpenMythos threshold.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS calibration_ratings (
+      id TEXT PRIMARY KEY,
+      bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 100),
+      factual_acc INTEGER CHECK(factual_acc BETWEEN 0 AND 100),
+      clarity INTEGER CHECK(clarity BETWEEN 0 AND 100),
+      rated_by TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard', 'csv_import', 'api')),
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_calibration_ratings_bundle ON calibration_ratings(bundle_id);
+    CREATE INDEX IF NOT EXISTS idx_calibration_ratings_created ON calibration_ratings(created_at);
+  `);
+}
+
 function createExplainRepoTables(db: BetterSqlite3Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS discovered_repositories (
@@ -1601,6 +1622,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createSubAgentContextTables(db);
   createLazyServiceTables(db);
   createExplainRepoTables(db);
+  createCalibrationTables(db);
   createPerformanceIndexes(db);
 }
 
