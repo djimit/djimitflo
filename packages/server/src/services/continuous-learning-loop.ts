@@ -5,12 +5,13 @@ import { ReflectionEngine } from './reflection-engine';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { TrajectoryStore } from './trajectory-store';
 import { SelfEvolvingGovernanceLoop } from './self-evolving-governance-loop';
+import { SelfImprovementService } from './self-improvement-service';
 import { config as envConfig } from '../config/env';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
   reflectionsGenerated: number; patternsDetected: number;
-  goalsGenerated: number; durationMs: number;
+  proposalsGenerated: number; goalsGenerated: number; durationMs: number;
   producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
@@ -18,6 +19,7 @@ export class ContinuousLearningLoop {
   private curator: MemoryCurator;
   private reflections: ReflectionEngine;
   private goals: AutonomousGoalGenerator;
+  private improvements: SelfImprovementService;
   private _trajectories?: TrajectoryStore;
   private segml?: SelfEvolvingGovernanceLoop;
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
@@ -32,6 +34,7 @@ export class ContinuousLearningLoop {
     this.curator = new MemoryCurator(db);
     this.reflections = new ReflectionEngine(db);
     this.goals = new AutonomousGoalGenerator(db);
+    this.improvements = new SelfImprovementService(db);
     this.intervalMs = options.intervalMs ?? 3600_000;
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
@@ -58,16 +61,25 @@ export class ContinuousLearningLoop {
     for (const episode of pendingEpisodes) { this.curator.curate(episode); episodesIngested++; }
     const recentRuns = this.getUnlearnedCompletedRuns(10);
     let reflectionsGenerated = 0;
-    for (const run of recentRuns) { this.reflections.reflectOnRun(run.id); reflectionsGenerated++; }
+    let proposalsGenerated = 0;
+    for (const run of recentRuns) {
+      const reflection = this.reflections.reflectOnRun(run.id);
+      reflectionsGenerated++;
+      proposalsGenerated += this.improvements.generateFromReflection({
+        ...reflection,
+        reflectionId: reflection.id,
+      }).length;
+    }
     const patternReport = this.reflections.analyzeReflectionPatterns(50);
-    const generatedGoals = this.goals.generateAll();
+    const goalsGenerated = this.goals.generateFromSelfImprovements();
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
       episodesIngested,
       reflectionsGenerated,
       patternsDetected: patternReport.recurringPatterns.length,
-      goalsGenerated: generatedGoals.total,
+      proposalsGenerated,
+      goalsGenerated,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,

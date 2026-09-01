@@ -2,21 +2,24 @@
  * LoopWorkerExecutorService — handles maker and checker worker execution.
  *
  * Extracted from LoopService to reduce its 4535 LOC. This service owns the
- * runtime command building, process spawning, gate evaluation, and result
- * persistence for both maker and checker roles.
+ * worker orchestration, gate evaluation, and result persistence for maker and
+ * checker roles. Real runtimes dispatch through ExecutionEngine.
  */
 
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
+import { ExecutionEngine } from '../execution/execution-engine';
+import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
 import type {
   LoopRunRecord,
   WorkerLeaseRecord,
   LoopGate,
   RuntimeContract,
+  RuntimeExecutionResult,
   RuntimeUsage,
 } from './loop-types';
-import { OpenMythosEvalService } from './openmythos-eval-service';
 
 export interface ExecuteMakerInput {
   lease_id?: string;
@@ -47,6 +50,7 @@ export class LoopWorkerExecutorService {
   constructor(
     private db: any,
     private loopService: LoopService,
+    private executionEngine?: ExecutionEngine,
   ) {}
 
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
@@ -119,21 +123,14 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = this.loopService.buildRuntimeCommand(makerLease.runtime, makerLease.worktree_path!, prompt, skipPermissions);
-    const result = await this.executeRuntimeSafely(makerLease.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(makerLease.id, command, args, {
-      cwd: makerLease.worktree_path!,
-      timeoutMs,
-      enforceCwdBoundary: makerLease.runtime !== 'mock',
-      maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(makerLease) ?? undefined,
-      runtime: makerLease.runtime,
-    }));
+    const result = makerLease.runtime === 'mock'
+      ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
+      : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
-    const activeTuning = this.loopService.metaOrchestration?.getActiveLoopTuning(run.loop_name);
-    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || activeTuning?.recommendedGateThresholds.diffMaxLines || 200, 2_000));
+    const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
@@ -149,28 +146,6 @@ export class LoopWorkerExecutorService {
       { name: 'no_automatic_merge', status: 'pass', evidence: 'Maker execution did not merge, push, or deploy.' },
     ];
 
-    if (makerLease.runtime !== 'mock' && process.env.OPENMYTHOS_LOOP_GATE_ENABLED !== 'false' && process.env.NODE_ENV !== 'test'
-      && gates.every(gate => gate.status === 'pass')) {
-      const threshold = Math.max(1, Math.min(Number(process.env.OPENMYTHOS_LOOP_MIN_SCORE || 3.5), 5));
-      try {
-        const evaluation = await new OpenMythosEvalService(this.db).evaluateArtifact({
-          task: `${run.loop_name}: ${prompt}`,
-          artifact: `${result.stdout || ''}\n\n${diff}`,
-        });
-        gates.push({
-          name: 'openmythos_quality',
-          status: evaluation.score >= threshold ? 'pass' : 'fail',
-          evidence: `score=${evaluation.score.toFixed(2)}, threshold=${threshold.toFixed(2)}: ${evaluation.rationale}`,
-        });
-      } catch (error) {
-        gates.push({
-          name: 'openmythos_quality',
-          status: 'fail',
-          evidence: `evaluation unavailable: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
-    }
-
     const failed = gates.some((gate) => gate.status === 'fail');
     const completionStatus = failed ? 'failed' : 'completed';
     const wasCancelled = this.loopService.isWorkerLeaseCancelled(makerLease.id);
@@ -182,7 +157,6 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      runtime_events: result.events || [],
     };
 
     if (wasCancelled) {
@@ -207,17 +181,6 @@ export class LoopWorkerExecutorService {
       JSON.stringify(failed ? ['Inspect maker output and revise or retry'] : ['Run checker review', 'Run verify gates before completion']),
       new Date().toISOString(), run.id,
     );
-
-    if (!wasCancelled && gates.some(gate => gate.name === 'openmythos_quality' && gate.status === 'fail')) {
-      try {
-        this.loopService.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
-      } catch (error) {
-        this.loopService.recordLoopEvent(run.id, 'openmythos_retry_unavailable', 'warning', 'OpenMythos rejected maker output but no automatic retry could be prepared.', {
-          maker_lease_id: makerLease.id,
-          reason: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
 
     return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
   }
@@ -263,6 +226,17 @@ export class LoopWorkerExecutorService {
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
+    const checkerFindingId = `${maker.finding_id || maker.id}-checker-${checker.id.slice(0, 8)}`;
+    const checkerBranch = this.loopService.branchNameFor(run.id, checkerFindingId);
+    const checkerWorktree = checker.worktree_path || this.loopService.createWorktree(
+      maker.worktree_path,
+      run.id,
+      checkerFindingId,
+      checkerBranch,
+      false,
+    );
+    this.loopService.updateWorkerLeaseWorktree(checker.id, checkerWorktree, checkerBranch);
+
     const traceId = `loop-${run.id}-checker-${checker.id}`;
     const checkpointBefore = this.loopService.assurance.createCheckpoint({ loop_run_id: run.id, label: `before checker ${checker.id}`, metadata: { worker_lease_id: checker.id, maker_lease_id: maker.id, worker_role: checker.role, worker_runtime: runtime, phase: 'before_checker_execution' } });
     this.loopService.patchWorkerLeaseMetadata(checker.id, { checkpoint_before_id: checkpointBefore.id, trace_id: traceId, runtime_adapter: runtime });
@@ -272,14 +246,9 @@ export class LoopWorkerExecutorService {
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = this.loopService.buildCheckerPrompt(run, maker, checker);
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
-    const { command, args } = runtime === 'mock'
-      ? this.loopService.buildMockCheckerCommand(maker.worktree_path!, prompt)
-      : this.loopService.buildRuntimeCommand(runtime, maker.worktree_path!, prompt, skipPermissions);
-    const result = await this.executeRuntimeSafely(checker.id, () => this.loopService.runtimeCommand.executeRuntimeCommand(checker.id, command, args, {
-      cwd: maker.worktree_path!, timeoutMs, enforceCwdBoundary: runtime !== 'mock', maxBuffer: 5 * 1024 * 1024,
-      env: this.loopService.buildNestedSpawnEnv(checker) ?? undefined,
-      runtime,
-    }));
+    const result = runtime === 'mock'
+      ? await this.executeMockChecker(checker, checkerWorktree, prompt, timeoutMs)
+      : await this.executeViaEngine(run, checker, runtime, prompt, checkerWorktree, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     const exitStatus = result.exitCode;
@@ -287,6 +256,9 @@ export class LoopWorkerExecutorService {
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
+    const checkerStatus = this.loopService.git(checkerWorktree, ['status', '--porcelain=v1', '--untracked-files=all']);
+    const checkerDiffStat = this.loopService.git(checkerWorktree, ['diff', '--stat', 'HEAD', '--', '.']);
+    const checkerReadOnly = checkerStatus.length === 0;
 
     this.loopService.updateWorkerLeaseStatus(checker.id, exitStatus === 0 && !timedOut ? 'completed' : 'failed', {
       verdict, notes: this.loopService.extractCheckerNotes(result.stdout || '') || `Checker runtime ${exitStatus === 0 && !timedOut ? 'completed' : 'failed'}.`,
@@ -294,13 +266,12 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
-      runtime_events: result.events || [],
     });
 
     const gates: LoopGate[] = [
       { name: 'checker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
       { name: 'checker_verdict', status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `checker verdict=${verdict}` },
-      { name: 'checker_read_only_contract', status: 'pass', evidence: 'Checker prompt forbids file mutation, merge, push, deploy, secret and policy edits.' },
+      { name: 'checker_read_only_contract', status: checkerReadOnly ? 'pass' : 'fail', evidence: checkerReadOnly ? 'Checker worktree remained clean.' : (checkerDiffStat || checkerStatus).slice(0, 1_000) },
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');
@@ -337,15 +308,96 @@ export class LoopWorkerExecutorService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private async executeRuntimeSafely<T>(leaseId: string, execute: () => Promise<T>): Promise<T> {
-    let completed = false;
-    try {
-      const result = await execute();
-      completed = true;
-      return result;
-    } finally {
-      if (!completed) this.loopService.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
+  private async executeMockWorker(
+    lease: WorkerLeaseRecord,
+    prompt: string,
+    timeoutMs: number,
+    skipPermissions: boolean,
+  ): Promise<RuntimeExecutionResult> {
+    const { command, args } = this.loopService.buildRuntimeCommand('mock', lease.worktree_path!, prompt, skipPermissions);
+    return this.loopService.runtimeCommand.executeRuntimeCommand(lease.id, command, args, {
+      cwd: lease.worktree_path!, timeoutMs, maxBuffer: 5 * 1024 * 1024,
+      env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
+    });
+  }
+
+  private async executeMockChecker(
+    lease: WorkerLeaseRecord,
+    cwd: string,
+    prompt: string,
+    timeoutMs: number,
+  ): Promise<RuntimeExecutionResult> {
+    const { command, args } = this.loopService.buildMockCheckerCommand(cwd, prompt);
+    return this.loopService.runtimeCommand.executeRuntimeCommand(lease.id, command, args, {
+      cwd, timeoutMs, maxBuffer: 5 * 1024 * 1024,
+      env: this.loopService.buildNestedSpawnEnv(lease) ?? undefined,
+    });
+  }
+
+  private async executeViaEngine(
+    run: LoopRunRecord,
+    lease: WorkerLeaseRecord,
+    runtime: string,
+    prompt: string,
+    cwd: string,
+    timeoutMs: number,
+    skipPermissions: boolean,
+  ): Promise<RuntimeExecutionResult> {
+    const previousTaskId = lease.metadata.execution_task_id as string | undefined;
+    if (previousTaskId) {
+      const previousTask = this.db.prepare('SELECT status, metadata FROM tasks WHERE id = ?').get(previousTaskId) as { status: string; metadata: string } | undefined;
+      const previousResult = previousTask ? JSON.parse(previousTask.metadata || '{}').executionResult as ExecutionResult | undefined : undefined;
+      if (previousResult && ['completed', 'failed', 'cancelled'].includes(previousTask!.status)) {
+        return this.toRuntimeResult(previousResult);
+      }
+      if (previousTask?.status === 'awaiting_approval') throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      if (previousTask?.status === 'running' || previousTask?.status === 'queued') throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
     }
+
+    const taskId = `loop-worker-${lease.id}-${randomUUID().slice(0, 8)}`;
+    const now = new Date().toISOString();
+    const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    this.db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?)
+    `).run(
+      taskId,
+      `${lease.role} worker for ${run.loop_name}`,
+      prompt,
+      this.loopService.isHighRiskRun(run) ? 'high' : 'medium',
+      this.loopService.isHighRiskRun(run) ? 'high' : 'low',
+      JSON.stringify(['loop-worker', lease.role, runtime]),
+      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment }),
+      now,
+      now,
+    );
+    this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId });
+
+    const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(taskId, runtime as ExecutorKind);
+    if (execution.status === 'awaiting_approval') {
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', { execution_task_id: taskId, approval_id: execution.approvalId });
+      throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+    }
+    if (execution.status === 'denied' || !execution.completion) {
+      this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', { execution_task_id: taskId, execution_denied_reason: execution.reason });
+      throw new Error('LOOP_WORKER_EXECUTION_DENIED');
+    }
+
+    const completed = await execution.completion;
+    return this.toRuntimeResult(completed);
+  }
+
+  private toRuntimeResult(completed: ExecutionResult): RuntimeExecutionResult {
+    const timedOut = /timed out/i.test(`${completed.message}\n${completed.error || ''}`);
+    return {
+      exitCode: completed.status === 'completed' ? 0 : 1,
+      signal: null,
+      timedOut,
+      ...(timedOut ? { timedOutAt: new Date().toISOString() } : {}),
+      stdout: completed.stdout || '',
+      stderr: completed.stderr || completed.error || '',
+    };
   }
 
   private updateRunAndRecord(

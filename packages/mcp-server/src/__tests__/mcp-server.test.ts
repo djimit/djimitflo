@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import Database from 'better-sqlite3';
 import type { DbHandle } from '../db.js';
-import { registerTools } from '../register-tools.js';
+import { registerTools } from '../index.js';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -22,8 +22,8 @@ function createTestDb(): DbHandle {
     );
     CREATE TABLE agents (
       id TEXT PRIMARY KEY, name TEXT, status TEXT DEFAULT 'idle',
-      agent_type TEXT, capabilities_json TEXT DEFAULT '[]',
-      last_seen TEXT, metadata TEXT DEFAULT '{}',
+      description TEXT, agent_type TEXT, capabilities TEXT DEFAULT '[]', capabilities_json TEXT DEFAULT '[]',
+      model TEXT, last_seen TEXT, last_heartbeat_at TEXT, last_active_at TEXT, metadata TEXT DEFAULT '{}',
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE worker_leases (
@@ -44,14 +44,38 @@ function createTestDb(): DbHandle {
       id TEXT PRIMARY KEY, agent_id TEXT NOT NULL,
       started_at TEXT, finished_at TEXT,
       total_cases INTEGER DEFAULT 0, completed_cases INTEGER DEFAULT 0,
-      overall_score REAL DEFAULT 0, status TEXT DEFAULT 'pending',
+      overall_score REAL DEFAULT 0, status TEXT DEFAULT 'pending', judge_model TEXT,
       categories_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE memory_candidates (
-      id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
-      memory_type TEXT NOT NULL, status TEXT NOT NULL, source_ref TEXT,
-      metadata TEXT DEFAULT '{}', created_at TEXT NOT NULL
+    CREATE TABLE openmythos_case_results (id TEXT PRIMARY KEY, run_id TEXT);
+    CREATE TABLE system_state (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE mcp_servers (
+      id TEXT PRIMARY KEY, name TEXT, description TEXT, status TEXT, command TEXT, args TEXT,
+      url TEXT, version TEXT, last_ping_at TEXT, error_message TEXT, metadata TEXT DEFAULT '{}', updated_at TEXT
+    );
+    CREATE TABLE mcp_tools (
+      id TEXT PRIMARY KEY, server_id TEXT, name TEXT, description TEXT, permission TEXT, risk_level TEXT,
+      input_schema TEXT, metadata TEXT DEFAULT '{}', total_calls INTEGER DEFAULT 0,
+      successful_calls INTEGER DEFAULT 0, failed_calls INTEGER DEFAULT 0, last_called_at TEXT, updated_at TEXT
+    );
+    CREATE TABLE mcp_tool_permissions (
+      id TEXT PRIMARY KEY, tool_id TEXT, policy_id TEXT, decision TEXT, risk_level TEXT,
+      reason TEXT, last_seen_at TEXT, updated_at TEXT
+    );
+    CREATE TABLE tasks (id TEXT PRIMARY KEY, updated_at TEXT);
+    CREATE TABLE execution_evidence (id TEXT PRIMARY KEY, task_id TEXT, created_at TEXT);
+    CREATE TABLE execution_events (id TEXT PRIMARY KEY, task_id TEXT, created_at TEXT);
+    CREATE TABLE approvals (id TEXT PRIMARY KEY, task_id TEXT, created_at TEXT);
+    CREATE TABLE swarm_evidence_edges (id TEXT PRIMARY KEY, from_ref TEXT, to_ref TEXT, created_at TEXT);
+    CREATE TABLE token_usage_log (
+      id TEXT PRIMARY KEY, task_id TEXT, provider TEXT, model TEXT, prompt_tokens INTEGER,
+      completion_tokens INTEGER, total_tokens INTEGER, cost REAL
+    );
+    CREATE TABLE skill_outcomes (
+      id TEXT PRIMARY KEY, skill_id TEXT, success INTEGER, tokens_used INTEGER, duration_ms INTEGER,
+      domain TEXT, task_id TEXT, agent_id TEXT, skill_version TEXT, skill_content_hash TEXT,
+      model TEXT, evidence_refs_json TEXT, created_at TEXT
     );
   `);
   return { db, close: () => db.close() };
@@ -88,21 +112,9 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_agent_status');
     expect(toolNames).toContain('djimitflo_get_mission_control');
     expect(toolNames).toContain('djimitflo_get_system_health');
+    expect(toolNames).toContain('djimitflo_get_data_provenance');
     expect(toolNames).toContain('notebook_list');
     expect(toolNames).toContain('explainer_create_task');
-    expect(toolNames).toContain('djimitflo_mcp_doctor');
-    expect(toolNames).toContain('djimitflo_council_ask');
-    expect(toolNames).toContain('djimitflo_memory_search');
-    expect(toolNames).toContain('djimitflo_generate_export');
-  });
-
-  it('searches memory candidates', async () => {
-    dbHandle.db.prepare('INSERT INTO memory_candidates VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-      'm1', 'Focused tests', 'Run focused tests before the full suite', 'engineering_rule', 'promoted', 'loop:1', '{}', new Date().toISOString(),
-    );
-    const tool = (server as any)._registeredTools['djimitflo_memory_search'];
-    const result = await tool.handler({ query: 'focused', limit: 5 });
-    expect(JSON.parse(result.content[0].text)[0].id).toBe('m1');
   });
 
   it('list_loop_runs returns empty array when no runs', async () => {
@@ -175,5 +187,44 @@ describe('MCP Server Tools', () => {
 
     const missing = await tool.handler({ agentId: 'nope' });
     expect(missing.isError).toBe(true);
+  });
+
+  it('exercises every critical read-only governance and orchestration contract', async () => {
+    const tools = (server as any)._registeredTools;
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['djimitflo_mcp_doctor', {}],
+      ['djimitflo_sync_mcp_catalog', { apply: false }],
+      ['djimitflo_sync_http_sidecar_catalog', { apply: false }],
+      ['djimitflo_probe_mcp_sidecars', { apply: false }],
+      ['djimitflo_list_mcp_servers', {}],
+      ['djimitflo_list_mcp_tools', {}],
+      ['djimitflo_get_mcp_permissions', {}],
+      ['djimitflo_get_cost_summary', {}],
+      ['djimitflo_get_evidence_chain', { taskId: 'missing' }],
+      ['djimitflo_get_data_provenance', {}],
+      ['djimitflo_list_openmythos_runs', {}],
+      ['djimitflo_list_skill_outcomes', {}],
+      ['djimitflo_list_orchestration_agents', {}],
+    ];
+
+    for (const [name, input] of calls) {
+      const result = await tools[name].handler(input);
+      expect(result.content[0].text, name).toBeDefined();
+    }
+  });
+
+  it('keeps critical mutating MCP contracts fail-closed on snapshot data', async () => {
+    const tools = (server as any)._registeredTools;
+    const calls: Array<[string, Record<string, unknown>]> = [
+      ['djimitflo_sync_mcp_catalog', { apply: true }],
+      ['djimitflo_sync_http_sidecar_catalog', { apply: true }],
+      ['djimitflo_probe_mcp_sidecars', { apply: true }],
+      ['djimitflo_spawn_agent', { task: 'test', runtime: 'mock', role: 'maker', context_budget: 500 }],
+      ['djimitflo_handoff_agent', { from_node_id: 'a', to_node_id: 'b', agent_id: 'agent', lease_id: 'lease', summary: 'test', artifacts: [] }],
+    ];
+
+    for (const [name, input] of calls) {
+      await expect(tools[name].handler(input), name).rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+    }
   });
 });

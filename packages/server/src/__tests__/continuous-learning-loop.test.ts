@@ -65,6 +65,7 @@ describe('G127: Continuous Learning Loop', () => {
     const first = await loop.runCycle();
     expect(first.episodesIngested).toBe(1);
     expect(first.reflectionsGenerated).toBe(1);
+    expect(first.proposalsGenerated).toBe(0);
 
     loop.stop();
     loop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
@@ -73,6 +74,32 @@ describe('G127: Continuous Learning Loop', () => {
     expect(second.reflectionsGenerated).toBe(0);
     expect((db.prepare("SELECT COUNT(*) AS count FROM reflections WHERE loop_run_id = 'verified-run'").get() as { count: number }).count).toBe(1);
     expect((db.prepare("SELECT COUNT(*) AS count FROM reflections WHERE loop_run_id = 'discovery-only-run'").get() as { count: number }).count).toBe(0);
+  });
+
+  it('turns a failed checked run into one inert, deduplicated proposal', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO loop_runs (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at, completed_at)
+      VALUES ('failed-check-run', 'repo-maintenance-loop', 'closed', 'completed', '[]', '{}', '[]', '[]', '{}', ?, ?, ?)
+    `).run(now, now, now);
+    const insertLease = db.prepare(`
+      INSERT INTO worker_leases (id, loop_run_id, role, runtime, capability_id, status, budget_json, metadata, created_at, updated_at)
+      VALUES (?, 'failed-check-run', ?, 'mock', ?, ?, '{}', '{}', ?, ?)
+    `);
+    insertLease.run('failed-maker', 'maker', 'repo-edit', 'completed', now, now);
+    insertLease.run('failed-checker', 'checker', 'test-validation', 'failed', now, now);
+
+    const first = await loop.runCycle();
+    expect(first.proposalsGenerated).toBe(1);
+    expect(first.goalsGenerated).toBe(0);
+    const proposal = db.prepare('SELECT status, panel_id, evidence_refs_json FROM self_improvements').get() as any;
+    expect(proposal.status).toBe('proposed');
+    expect(proposal.panel_id).toBeTruthy();
+    expect(JSON.parse(proposal.evidence_refs_json)).toContain('loop:failed-check-run');
+
+    const second = await loop.runCycle();
+    expect(second.proposalsGenerated).toBe(0);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM self_improvements').get() as { count: number }).count).toBe(1);
   });
 
   it('start/stop timer', () => {

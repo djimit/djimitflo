@@ -18,12 +18,12 @@ function makeDb() {
   return database;
 }
 
-function seedRun(db: Database.Database, id: string, checkerAccepted = true) {
+function seedRun(db: Database.Database, id: string, checkerAccepted = true, repositoryPath = '/repo/default') {
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, findings_json, plan_json, next_actions_json, metadata, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, 'repo-maintenance-loop', 'closed', 'ready_for_human_merge', JSON.stringify([{ name: 'checker_verdict', status: 'pass', evidence: 'accepted' }]), '[]', '{}', '[]', '{}', now, now);
+    INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, gates_json, findings_json, plan_json, next_actions_json, metadata, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, 'repo-maintenance-loop', 'closed', 'ready_for_human_merge', repositoryPath, JSON.stringify([{ name: 'checker_verdict', status: 'pass', evidence: 'accepted' }]), '[]', '{}', '[]', '{}', now, now);
   db.prepare(`
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -31,8 +31,11 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true) {
   db.prepare(`
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(`${id}-checker`, id, 'checker', 'mock', checkerAccepted ? 'completed' : 'prepared', checkerAccepted ? '{"verdict":"accepted"}' : '{}', now, now);
-  new AgentAssuranceService(db).createTraceSpan({
+  `).run(`${id}-checker`, id, 'checker', 'mock', checkerAccepted ? 'completed' : 'prepared', checkerAccepted
+    ? JSON.stringify({ verdict: 'accepted', maker_lease_id: `${id}-maker` })
+    : JSON.stringify({ maker_lease_id: `${id}-maker` }), now, now);
+  const assurance = new AgentAssuranceService(db);
+  assurance.createTraceSpan({
     trace_id: `trace-${id}`,
     loop_run_id: id,
     span_type: 'worker',
@@ -40,6 +43,13 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true) {
     status: 'ok',
     evidence_ref: `loop:${id}`,
   });
+  assurance.createCheckpoint({ loop_run_id: id, label: 'verified' });
+  db.prepare(`
+    INSERT INTO swarm_runner_manifests (
+      id, decision_id, loop_run_id, action, policy_version, runtime_contract_json,
+      capacity_snapshot_json, budget_snapshot_json, gate_refs_json, blocked_reasons_json, metadata, created_at
+    ) VALUES (?, ?, ?, 'complete', 'test-v1', '{}', '{}', '{}', '["checker_verdict"]', '[]', '{}', ?)
+  `).run(`manifest-${id}`, `decision-${id}`, id, now);
 }
 
 describe('loop learning closure', () => {
@@ -59,11 +69,17 @@ describe('loop learning closure', () => {
   it('creates eval, reflection, memory candidate and regression follow-up', () => {
     const db = makeDb();
     try {
+      seedRun(db, 'loop-regression-baseline', true);
       seedRun(db, 'loop-regression', true);
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+        VALUES (?, ?, 'maker', 'mock', 'completed', ?, ?, ?)
+      `).run('loop-regression-retried-maker', 'loop-regression', JSON.stringify({ superseded_by_maker_lease_id: 'loop-regression-maker' }), now, now);
       db.prepare(`
         INSERT INTO agent_eval_runs (id, suite_name, target_type, target_ref, status, score, scorecard_json, findings_json, metadata, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run('previous-eval', 'loop-learning', 'loop', 'loop-regression', 'passed', 0.95, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
+      `).run('previous-eval', 'loop-learning', 'loop', 'loop-regression-baseline', 'passed', 1, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
 
       const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-regression' });
       expect(result.status).toBe('closed');
@@ -80,11 +96,12 @@ describe('loop learning closure', () => {
   it('creates skill improvement work when score improves', () => {
     const db = makeDb();
     try {
+      seedRun(db, 'loop-improved-baseline', true);
       seedRun(db, 'loop-improved', true);
       db.prepare(`
         INSERT INTO agent_eval_runs (id, suite_name, target_type, target_ref, status, score, scorecard_json, findings_json, metadata, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run('previous-low-eval', 'loop-learning', 'loop', 'loop-improved', 'failed', 0.35, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
+      `).run('previous-low-eval', 'loop-learning', 'loop', 'loop-improved-baseline', 'failed', 0.35, '{}', '[]', '{}', new Date(Date.now() - 1000).toISOString());
 
       const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-improved' });
       expect(result.status).toBe('closed');
@@ -94,6 +111,65 @@ describe('loop learning closure', () => {
         recommended_loop: 'skill-quality-loop',
       });
       expect(result.follow_up_work_item).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('compares a new run with the latest run of the same loop', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'loop-baseline', true);
+      const baseline = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-baseline' });
+      seedRun(db, 'loop-next', true);
+      const next = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-next' });
+      expect(next.previous_score).toBe(baseline.eval_run?.score);
+      expect(next.score_delta).toBe(0);
+      expect(next.eval_run?.scorecard).toMatchObject({ maker_completed: true, checker_accepted: true, deterministic: true });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not compare runs from another repository', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'repo-a-loop', true, '/repo/a');
+      new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'repo-a-loop' });
+      seedRun(db, 'repo-b-loop', true, '/repo/b');
+      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'repo-b-loop' });
+      expect(result.previous_score).toBeNull();
+      expect(result.score_delta).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it('is idempotent for the same loop run', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'loop-idempotent');
+      const knowledge = new KnowledgeRuntimeService(db);
+      const first = knowledge.closeLoop({ loop_run_id: 'loop-idempotent' });
+      const second = knowledge.closeLoop({ loop_run_id: 'loop-idempotent' });
+      expect(second.eval_run?.id).toBe(first.eval_run?.id);
+      expect(db.prepare("SELECT COUNT(*) AS count FROM agent_eval_runs WHERE target_ref = 'loop-idempotent'").get()).toMatchObject({ count: 1 });
+      expect(db.prepare("SELECT COUNT(*) AS count FROM reflection_candidates WHERE source_ref = 'loop-idempotent'").get()).toMatchObject({ count: 1 });
+      expect(db.prepare("SELECT COUNT(*) AS count FROM memory_candidates WHERE source_ref = 'loop:loop-idempotent'").get()).toMatchObject({ count: 1 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('blocks closure when a required evidence type is missing', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'loop-missing-manifest');
+      db.prepare("DELETE FROM swarm_runner_manifests WHERE loop_run_id = 'loop-missing-manifest'").run();
+      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-missing-manifest' });
+      expect(result.status).toBe('blocked');
+      expect(result.blocked_reasons).toContain('runner_manifests_missing');
+      expect(db.prepare('SELECT COUNT(*) AS count FROM agent_eval_runs').get()).toMatchObject({ count: 0 });
     } finally {
       db.close();
     }

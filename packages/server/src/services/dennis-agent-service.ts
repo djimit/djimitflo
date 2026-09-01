@@ -5,6 +5,10 @@ import SQLite, { type Database } from 'better-sqlite3';
 import { AgentRegistryService } from './agent-registry-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { WorkItemService } from './work-item-service';
+import { ApprovalService } from './approval-service';
+import { AuditService } from './audit-service';
+import type { WebSocketService } from './websocket-service';
+import { ApprovalRequestType, RiskLevel, type Task } from '@djimitflo/shared';
 
 export const DENNIS_AGENT_ID = 'dennis-agent';
 
@@ -117,7 +121,21 @@ interface PaperclipEvent {
 }
 
 export class DennisAgentService {
-  constructor(private db: Database, private options: { okfBase?: string } = {}) {}
+  private approvalService: ApprovalService;
+
+  constructor(
+    private db: Database,
+    private options: {
+      okfBase?: string;
+      wsService?: Pick<WebSocketService, 'broadcastTaskEventById'>;
+    } = {},
+  ) {
+    this.approvalService = new ApprovalService(
+      db,
+      options.wsService || { broadcastTaskEventById: () => undefined },
+      new AuditService(db),
+    );
+  }
 
   heartbeat(metadata: Record<string, unknown> = {}): DennisHeartbeatResult {
     const now = new Date().toISOString();
@@ -197,7 +215,7 @@ export class DennisAgentService {
     }
 
     const paperclipImport = this.importPaperclipPending();
-    const dryRunProcessing = this.processDryRunTasks();
+    const dryRunProcessing = { processed: 0, skipped: 0, work_items_blocked: 0 };
     const traceSpanId = this.recordTrace(now, {
       okf_concept_path: okfConceptPath,
       capabilities: CAPABILITIES,
@@ -354,6 +372,11 @@ export class DennisAgentService {
     return result;
   }
 
+  processGovernedQueue(): DennisDryRunProcessingResult {
+    this.reconcileDryRunApprovals(new Date().toISOString());
+    return this.processDryRunTasks();
+  }
+
   materializeApprovedDryRun(approvalId: string, approvedBy = 'system'): DennisApprovedDryRunResult {
     const approval = this.db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as { id: string; task_id: string; status: string } | undefined;
     if (!approval) {
@@ -379,39 +402,61 @@ export class DennisAgentService {
       return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'missing_dry_run_plan' };
     }
     if (metadata.approved_materialized_at) {
+      if (typeof metadata.approved_execution_event_id === 'string') {
+        this.markWorkItemsDone(task.id, approvalId, metadata.approved_execution_event_id, new Date().toISOString());
+      }
       return { status: 'skipped', approval_id: approvalId, task_id: task.id, event_id: null, reason: 'already_materialized' };
     }
 
     const now = new Date().toISOString();
     const eventId = randomUUID();
-    this.db.prepare(`
-      INSERT INTO execution_events (
-        id, task_id, event_type, message, level, tool_name, tool_input, tool_output, approval_id, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'dennis_approved_dry_run_materialized', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?, ?)
-    `).run(
-      eventId,
-      task.id,
-      `Dennis approved dry-run materialized for ${task.title}`,
-      JSON.stringify({ task_id: task.id, approval_id: approvalId, approved_by: approvedBy }),
-      JSON.stringify({
-        mode: 'evidence_only',
-        executed_mutations: [],
-        plan: metadata.dry_run_plan,
-        gates: ['approval_present', 'no_shell', 'no_file_write', 'no_network_write'],
-      }),
-      approvalId,
-      JSON.stringify({ source: 'dennis-agent', approved_by: approvedBy }),
-      now,
-      now,
-    );
-
-    this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?').run(
-      JSON.stringify({ ...metadata, approved_materialized_at: now, approved_by: approvedBy, approved_execution_event_id: eventId, approval_id: approvalId }),
-      now,
-      task.id,
-    );
-    this.markWorkItemsDone(task.id, approvalId, eventId, now);
+    this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO execution_events (
+          id, task_id, event_type, message, level, tool_name, tool_input, tool_output, approval_id, metadata, created_at, updated_at
+        ) VALUES (?, ?, 'dennis_approved_dry_run_materialized', ?, 'info', 'dennis-agent', ?, ?, ?, ?, ?, ?)
+      `).run(
+        eventId,
+        task.id,
+        `Dennis approved dry-run materialized for ${task.title}`,
+        JSON.stringify({ task_id: task.id, approval_id: approvalId, approved_by: approvedBy }),
+        JSON.stringify({
+          mode: 'evidence_only',
+          executed_mutations: [],
+          plan: metadata.dry_run_plan,
+          gates: ['approval_present', 'no_shell', 'no_file_write', 'no_network_write'],
+        }),
+        approvalId,
+        JSON.stringify({ source: 'dennis-agent', approved_by: approvedBy }),
+        now,
+        now,
+      );
+      this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = ? WHERE id = ?').run(
+        JSON.stringify({ ...metadata, approved_materialized_at: now, approved_by: approvedBy, approved_execution_event_id: eventId, approval_id: approvalId }),
+        now,
+        task.id,
+      );
+      this.markWorkItemsDone(task.id, approvalId, eventId, now);
+    })();
     return { status: 'materialized', approval_id: approvalId, task_id: task.id, event_id: eventId };
+  }
+
+  finalizeDeniedDryRun(approvalId: string, deniedBy = 'system'): number {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND status = 'blocked'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string | null }>;
+    let finalized = 0;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (metadata.approval_id !== approvalId) continue;
+      this.db.prepare('UPDATE work_items SET status = ?, metadata = ?, updated_at = ? WHERE id = ?').run(
+        'discarded', JSON.stringify({ ...metadata, denied_approval_id: approvalId, denied_by: deniedBy, denied_at: now }), now, row.id,
+      );
+      finalized++;
+    }
+    return finalized;
   }
 
   readinessSnapshot(maxHeartbeatAgeMs = 120_000): DennisReadinessSnapshot {
@@ -532,26 +577,56 @@ export class DennisAgentService {
   }
 
   private ensureDryRunApproval(taskId: string, plan: ReturnType<DennisAgentService['dryRunPlan']>, now: string): string {
-    const existing = (this.db.prepare('SELECT id, metadata FROM approvals WHERE task_id = ?').all(taskId) as Array<{ id: string; metadata: string | null }>)
-      .find((row) => this.safeJson(row.metadata || '{}').dennis_action === 'materialize_dry_run');
+    const existing = (this.db.prepare('SELECT id, status, expires_at, metadata FROM approvals WHERE task_id = ?').all(taskId) as Array<{ id: string; status: string; expires_at: string | null; metadata: string | null }>)
+      .find((row) => this.safeJson(row.metadata || '{}').dennis_action === 'materialize_dry_run'
+        && (row.status === 'approved' || (row.status === 'pending' && !!row.expires_at && new Date(row.expires_at).getTime() > new Date(now).getTime())));
     if (existing) return existing.id;
 
-    const id = `dennis-approval-${randomUUID()}`;
-    this.db.prepare(`
-      INSERT INTO approvals (
-        id, task_id, status, risk_level, request_type, request_message, request_data, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'pending', ?, 'high_risk_action', ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      taskId,
-      plan.risk_level,
-      `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
-      JSON.stringify({ action: 'materialize_dry_run', task_id: taskId, plan }),
-      JSON.stringify({ source: 'dennis-agent', dennis_action: 'materialize_dry_run' }),
-      now,
-      now,
-    );
-    return id;
+    const task = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as Task | undefined;
+    if (!task) throw new Error(`Dennis task not found: ${taskId}`);
+    return this.approvalService.createApproval({
+      task,
+      assessment: {
+        action_type: 'task_execution',
+        risk_level: plan.risk_level as RiskLevel,
+        matched_rules: ['dennis_dry_run_materialization'],
+        explanation: 'Human approval is required before Dennis materializes dry-run evidence.',
+        recommended_decision: 'require_approval',
+        metadata: { plan },
+      },
+      requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+      title: 'Approve Dennis dry-run materialization',
+      description: `Approve Dennis to materialize dry-run evidence for task ${taskId}`,
+      metadata: { source: 'dennis-agent', dennis_action: 'materialize_dry_run' },
+      requestedBy: DENNIS_AGENT_ID,
+    }).id;
+  }
+
+  private reconcileDryRunApprovals(now: string): void {
+    if (!this.hasTable('work_items')) return;
+    const rows = this.db.prepare(`
+      SELECT id, metadata FROM work_items
+      WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl' AND status = 'blocked'
+    `).all(DENNIS_AGENT_ID) as Array<{ id: string; metadata: string | null }>;
+    for (const row of rows) {
+      const metadata = this.safeJson(row.metadata || '{}');
+      if (typeof metadata.approval_id !== 'string' || typeof metadata.task_id !== 'string' || !metadata.dry_run_plan) continue;
+      const approval = this.db.prepare('SELECT status, expires_at, decided_by, approved_by FROM approvals WHERE id = ?').get(metadata.approval_id) as { status: string; expires_at: string | null; decided_by: string | null; approved_by: string | null } | undefined;
+      if (approval?.status === 'approved') {
+        this.materializeApprovedDryRun(metadata.approval_id, approval.decided_by || approval.approved_by || 'dennis-reconciler');
+        continue;
+      }
+      if (approval?.status === 'denied') {
+        this.finalizeDeniedDryRun(metadata.approval_id, approval.decided_by || 'dennis-reconciler');
+        continue;
+      }
+      if (!approval || (approval.status !== 'expired' && !(approval.status === 'pending' && (!approval.expires_at || new Date(approval.expires_at).getTime() <= new Date(now).getTime())))) continue;
+      this.approvalService.getLatestPendingForTask(metadata.task_id);
+      const approvalId = this.ensureDryRunApproval(metadata.task_id, metadata.dry_run_plan as ReturnType<DennisAgentService['dryRunPlan']>, now);
+      this.db.prepare('UPDATE work_items SET metadata = ?, updated_at = ? WHERE id = ?').run(
+        JSON.stringify({ ...metadata, approval_id: approvalId, blocked_at: now }), now, row.id,
+      );
+    }
   }
 
   private markWorkItemsDone(taskId: string, approvalId: string, eventId: string, now: string): void {

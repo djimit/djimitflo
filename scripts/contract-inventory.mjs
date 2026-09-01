@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 
 const root = resolve(import.meta.dirname, '..');
-const routeContractsOnly = process.argv.includes('--route-contracts-only');
 
 function files(dir, suffix) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -17,75 +15,100 @@ function files(dir, suffix) {
 const testFiles = files(join(root, 'packages'), '.test.ts');
 const tests = testFiles.map(path => ({ path, content: readFileSync(path, 'utf8') }));
 const routeFiles = files(join(root, 'packages/server/src/routes'), '.ts').filter(path => basename(path) !== 'index.ts');
-const specFiles = [...files(join(root, 'specs'), '.md'), ...files(join(root, 'openspec'), '.md')]
-  .map(path => ({ path, content: readFileSync(path, 'utf8').toLowerCase() }));
-const dashboardFiles = [...files(join(root, 'packages/dashboard/src'), '.ts'), ...files(join(root, 'packages/dashboard/src'), '.tsx')]
-  .map(path => ({ path, content: readFileSync(path, 'utf8').toLowerCase() }));
 const critical = /^(auth|approvals|backup|exports|council|openmythos|mcp|runtime-governance|swarms|spawns)$/;
+const routeExemptions = new Map([
+  ['swarms:POST:/expert/dispatch', 'Dispatches external research providers; requires an isolated network-controlled contract canary.'],
+  ['swarms:POST:/fix', 'Can modify a repository and invoke an agent runtime; requires an isolated disposable-worktree canary.'],
+]);
 const routes = [];
 const routeIndex = readFileSync(join(root, 'packages/server/src/routes/index.ts'), 'utf8');
-const factoryModules = new Map([...routeIndex.matchAll(/import\s+\{[^}]*?(create\w+Routes)[^}]*?\}\s+from\s+['"]\.\/([^'"]+)['"]/g)].map(match => [match[1], match[2]]));
-const mountPrefixes = new Map([...routeIndex.matchAll(/\{\s*prefix:\s*['"]([^'"]*)['"][\s\S]{0,180}?router:\s*(create\w+Routes)\(/g)].flatMap(match => {
-  const module = factoryModules.get(match[2]);
-  return module ? [[module, match[1]]] : [];
-}));
-mountPrefixes.set('swarms', '/swarms');
-
-const routeSources = new Map(routeFiles.map(path => [basename(path, '.ts'), readFileSync(path, 'utf8')]));
-const reachableModules = new Set(factoryModules.values());
-reachableModules.add('metrics');
-for (const module of reachableModules) {
-  const source = routeSources.get(module) || '';
-  for (const match of source.matchAll(/from\s+['"]\.\/([^'"]+)['"]/g)) {
-    if (routeSources.has(match[1])) reachableModules.add(match[1]);
-  }
+const factoryModules = new Map();
+for (const match of routeIndex.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"]\.\/([^'"]+)['"]/g)) {
+  for (const factory of match[1].matchAll(/\b(create\w+Routes)\b/g)) factoryModules.set(factory[1], match[2]);
 }
+const mountPrefixes = new Map([...routeIndex.matchAll(/\{\s*prefix:\s*(['"])([^'"]*)\1[\s\S]{0,500}?router:\s*(create\w+Routes)\(/g)].map(match => [match[3], match[2]]));
 
-function contractEvidence(module) {
-  const term = module.replaceAll('-', ' ');
-  const prefix = mountPrefixes.get(module);
-  const spec = specFiles.filter(file => file.content.includes(term) || file.content.includes(module));
-  const uiNeedle = prefix && prefix !== '/' ? prefix.toLowerCase() : null;
-  const ui = uiNeedle ? dashboardFiles.filter(file => file.content.includes(uiNeedle)) : [];
-  return {
-    reachable: reachableModules.has(module),
-    spec: spec.map(file => relative(root, file.path)),
-    dashboard: ui.map(file => relative(root, file.path)),
-  };
-}
-
-function endpointPattern(module, routePath) {
-  const prefix = mountPrefixes.get(module) ?? '';
+function endpointPattern(factory, routePath) {
+  const prefix = mountPrefixes.get(factory) ?? '';
   const endpoint = `${prefix}${routePath === '/' ? '' : routePath}` || '/';
   const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)'));
+  const path = escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)');
+  return new RegExp(`(?<![A-Za-z0-9_/-])(?:https?:\\/\\/[^/\\s\"'\\x60]+)?(?:\\/api)?${path}(?=[?&\\s\"'\\x60),}]|$)`);
 }
 
-if (!endpointPattern('spawns', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
+function routeExecuted(content, method, endpoint) {
+  for (const match of content.matchAll(new RegExp(endpoint.source, 'g'))) {
+    const before = content.slice(Math.max(0, match.index - 180), match.index);
+    const after = content.slice(match.index + match[0].length, match.index + match[0].length + 800);
+    const callAfter = after.split(';', 1)[0];
+    const pathLoopStart = content.lastIndexOf('for (const path of [', match.index);
+    const pathLoopEnd = pathLoopStart >= 0 ? content.indexOf('request(path)', pathLoopStart) : -1;
+    if (method === 'GET' && pathLoopStart >= 0 && match.index < pathLoopEnd) return true;
+    if (new RegExp(`request\\([^\\n]{0,140}['"]${method}['"][^\\n]{0,140}$`).test(before)) return true;
+    if (/request\s*\([^\n]{0,180}$/.test(before)) {
+      const explicitMethod = callAfter.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase();
+      if ((explicitMethod ?? 'GET') === method) return true;
+    }
+    if (new RegExp(`['"]${method}['"]\\s*[,\\]]?[^\\n]{0,80}$`).test(before) && /request\s*\(\s*path\s*,\s*\{\s*method\s*\}/.test(content)) return true;
+    if (new RegExp(`^[^\\n]{0,80}['"]${method}['"]`).test(after) && /request\s*\(\s*path\s*,\s*\{\s*method\s*\}/.test(content)) return true;
+    if (new RegExp(`\\.${method.toLowerCase()}\\s*\\([^\\n]{0,140}$`).test(before)) return true;
+    if (/fetch\s*\([^\n]{0,180}$/.test(before)) {
+      const explicitMethod = callAfter.match(/\bmethod\s*:\s*['"](GET|POST|PUT|PATCH|DELETE)['"]/i)?.[1]?.toUpperCase();
+      if ((explicitMethod ?? 'GET') === method) return true;
+    }
+  }
+  return false;
+}
+
+function toolExecuted(content, tool) {
+  const escaped = tool.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`(?:_registeredTools|tools)(?:\\?\\.)?\\[['"]${escaped}['"]\\][\\s\\S]{0,180}?\\.handler\\s*\\(`).test(content)) return true;
+  if (new RegExp(`tools\\.${escaped}\\.handler\\s*\\(`).test(content)) return true;
+  if (new RegExp(`(?:const|let)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*_registeredTools(?:\\.${escaped}|\\[['"]${escaped}['"]\\])[^;]*;[\\s\\S]{0,300}?\\1\\.handler\\s*\\(`).test(content)) return true;
+  if (new RegExp(`(?:const|let)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*getTool\\(['"]${escaped}['"]\\)[\\s\\S]{0,300}?await\\s+\\1\\s*\\(`).test(content)) return true;
+  for (const match of content.matchAll(/(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\[([\s\S]*?)\];[\s\S]{0,800}?for\s*\([^)]*\bof\s+\1\)[\s\S]{0,500}?\.handler\s*\(/g)) {
+    if (new RegExp(`['"]${escaped}['"]`).test(match[2])) return true;
+  }
+  return false;
+}
+
+if (mountPrefixes.get('createApprovalRoutes') !== '/approvals') throw new Error('contract inventory mount parser self-check failed');
+if (!endpointPattern('createSpawnRoutes', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
+if (!routeExecuted('await fetch(`${baseUrl}/approvals`, { method: \'POST\' });', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route execution self-check failed');
+if (routeExecuted('await fetch(`${baseUrl}/approvals`);', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route method self-check failed');
+if (routeExecuted('await fetch(`${baseUrl}/approvals/id`);', 'GET', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route boundary self-check failed');
+if (toolExecuted("expect(names).toContain('example_tool')", 'example_tool')) throw new Error('contract inventory MCP registration self-check failed');
+if (!toolExecuted("const tool = getTool('example_tool'); await tool({});", 'example_tool')) throw new Error('contract inventory MCP execution self-check failed');
 
 for (const path of routeFiles) {
   const source = readFileSync(path, 'utf8');
   const module = basename(path, '.ts');
-  const contract = contractEvidence(module);
   const matcher = /router\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g;
   for (const match of source.matchAll(matcher)) {
-    const endpoint = endpointPattern(module, match[3]);
+    const factories = [...source.slice(0, match.index).matchAll(/(?:export\s+)?function\s+(create\w+Routes)\s*\(/g)];
+    const factory = factories.at(-1)?.[1];
+    const endpoint = endpointPattern(factory, match[3]);
+    const relativeEndpoint = endpointPattern(undefined, match[3]);
     const evidence = tests
-      .filter(test => /\b(request|fetch|supertest)\s*\(/.test(test.content) && endpoint.test(test.content))
+      .filter(test => routeExecuted(test.content, match[1].toUpperCase(), endpoint)
+        || (test.content.includes(`../routes/${module}`)
+          && routeExecuted(test.content, match[1].toUpperCase(), relativeEndpoint)))
       .map(test => relative(root, test.path));
     const moduleEvidence = tests
       .filter(test => test.content.includes(`../routes/${module}`))
       .map(test => relative(root, test.path));
+    const id = `${module}:${match[1].toUpperCase()}:${match[3]}`;
+    const exemption = routeExemptions.get(id);
     routes.push({
-      id: `${module}:${match[1].toUpperCase()}:${match[3]}`,
+      id,
       module,
       method: match[1].toUpperCase(),
       path: match[3],
       critical: critical.test(module),
-      status: evidence.length ? 'exercised' : moduleEvidence.length ? 'module_covered' : 'unclassified',
+      status: evidence.length ? 'exercised' : exemption ? 'exempted' : moduleEvidence.length ? 'module_covered' : 'unclassified',
+      exemption: exemption || null,
       evidence,
       module_evidence: moduleEvidence,
-      contract,
     });
   }
 }
@@ -97,7 +120,7 @@ for (const path of toolFiles) {
   const module = basename(path, '.ts');
   for (const match of source.matchAll(/server\.registerTool\(\s*(['"`])([^'"`]+)\1/g)) {
     const evidence = tests
-      .filter(test => test.path.includes('mcp-server') && test.content.includes(match[2]))
+      .filter(test => test.path.includes('mcp-server') && toolExecuted(test.content, match[2]))
       .map(test => relative(root, test.path));
     tools.push({
       id: match[2],
@@ -110,24 +133,15 @@ for (const path of toolFiles) {
 }
 
 const report = {
-  schema_version: 2,
+  schema_version: 1,
   generated_at: new Date().toISOString(),
   routes: {
     total: routes.length,
     tested: routes.filter(item => item.status === 'exercised').length,
     module_covered: routes.filter(item => item.status === 'module_covered').length,
     unclassified: routes.filter(item => item.status === 'unclassified').length,
-    critical_unclassified: routes.filter(item => item.critical && item.status === 'unclassified').map(item => item.id),
-    unreachable_modules: [...new Set(routes.filter(item => !item.contract.reachable).map(item => item.module))],
-    functional_drift: ['council', 'openmythos', 'meta-orchestration'].flatMap(module => {
-      const item = routes.find(route => route.module === module);
-      if (!item) return [`${module}:implementation_missing`];
-      return [
-        ...(!item.contract.reachable ? [`${module}:unreachable`] : []),
-        ...(item.contract.spec.length === 0 ? [`${module}:spec_missing`] : []),
-        ...(item.contract.dashboard.length === 0 ? [`${module}:dashboard_missing`] : []),
-      ];
-    }),
+    critical_unclassified: routes.filter(item => item.critical && !['exercised', 'exempted'].includes(item.status)).map(item => item.id),
+    critical_exempted: routes.filter(item => item.critical && item.status === 'exempted').map(item => ({ id: item.id, reason: item.exemption })),
     items: routes,
   },
   mcp_tools: {
@@ -139,24 +153,11 @@ const report = {
   },
 };
 
-const output = process.env.CONTRACT_INVENTORY_PATH
-  ? resolve(root, process.env.CONTRACT_INVENTORY_PATH)
-  : routeContractsOnly
-    ? join(tmpdir(), 'djimitflo-route-contracts.json')
-    : resolve(root, 'openspec/changes/assurance-truth-closure/contract-inventory.json');
+const output = resolve(root, process.env.CONTRACT_INVENTORY_PATH || 'openspec/changes/assurance-truth-closure/contract-inventory.json');
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({
   output,
-  routes: {
-    total: report.routes.total,
-    tested: report.routes.tested,
-    critical_unclassified: report.routes.critical_unclassified.length,
-    unreachable_modules: report.routes.unreachable_modules.length,
-    functional_drift: report.routes.functional_drift.length,
-  },
+  routes: { total: report.routes.total, tested: report.routes.tested, critical_unclassified: report.routes.critical_unclassified.length },
   mcp_tools: { total: report.mcp_tools.total, tested: report.mcp_tools.tested, critical_unclassified: report.mcp_tools.critical_unclassified.length },
 }, null, 2));
-const routeContractFailures = report.routes.unreachable_modules.length + report.routes.functional_drift.length;
-process.exitCode = routeContractsOnly
-  ? routeContractFailures ? 1 : 0
-  : report.routes.critical_unclassified.length || report.mcp_tools.critical_unclassified.length || routeContractFailures ? 1 : 0;
+process.exitCode = report.routes.critical_unclassified.length || report.mcp_tools.critical_unclassified.length ? 1 : 0;

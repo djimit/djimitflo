@@ -28,6 +28,7 @@ import { securityHeaders } from '../middleware/security-headers';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createBackupRoutes } from './backup';
 import { createAuditRoutes } from './audit';
+import { createAuthorityRoutes } from './authority';
 import { createUsageRoutes } from './usage';
 import { createDiscussionRoutes } from './discussions';
 import { createExportRoutes } from './exports';
@@ -81,11 +82,13 @@ import { createSegmlL3Routes } from './segml-l3';
 import { createSegmlL4Routes } from './segml-l4';
 import { createSegmlL5Routes } from './segml-l5';
 import { createSegmlProductionRoutes } from './segml-production';
+import { createOrganizationRoutes } from './organizations';
+import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
 import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
-import { createExplorePublicRoutes } from './explore-public';
-import { createGitHubWebhookRoutes } from './github-webhooks';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
 export function createRoutes(
   db: Database,
@@ -95,6 +98,7 @@ export function createRoutes(
   wsService?: WebSocketService,
   metaOrchestration?: import('../services/meta-orchestration-service').MetaOrchestrationService,
   operatorRuntime?: boolean,
+  runtimeGovernance = new RuntimeGovernanceService(db),
 ): Router {
   const router = Router();
 
@@ -114,6 +118,7 @@ export function createRoutes(
   // the router, so a token-only child cannot create roots.
   const requireAuthOrSpawnToken = auth.requireAuthOrSpawnToken;
   const auditService = new AuditService(db);
+  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // Security headers
   router.use(securityHeaders);
@@ -133,8 +138,6 @@ export function createRoutes(
   const mounts: RouteMount[] = [
     // Auth routes (public + protected)
     { prefix: '/auth', middleware: [], router: createAuthRoutes(authService!, auth!, auditService) },
-    { prefix: '/explore', middleware: [], router: createExplorePublicRoutes(db) },
-    { prefix: '/github/webhook', middleware: [], router: createGitHubWebhookRoutes(db) },
     // Protected routes
     { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth) },
     { prefix: '/agents', middleware: [requireAuth], router: createAgentRoutes(db, auth) },
@@ -173,7 +176,7 @@ export function createRoutes(
   mounts.push(
     { prefix: '/intervention', middleware: [requireAuth], router: createInterventionRoutes(db, auth!) },
     { prefix: '/goals', middleware: [requireAuth], router: createGoalRoutes(db, auth) },
-    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth) },
+    { prefix: '/loops', middleware: [requireAuth], router: createLoopRoutes(db, auth, undefined, executionEngine) },
     { prefix: '/work-items', middleware: [requireAuth], router: createWorkItemRoutes(db, auth) },
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.
@@ -182,9 +185,10 @@ export function createRoutes(
     { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
     { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
     { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
+    { prefix: '/authority', middleware: [requireAuth], router: createAuthorityRoutes(db, auth) },
     { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
     { prefix: '/usage', middleware: [requireAuth], router: createUsageRoutes(db, auth) },
-    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth) },
+    { prefix: '/learning', middleware: [requireAuth], router: createLearningRoutes(db, auth, cognitiveLoop) },
     { prefix: '/backups', middleware: [requireAuth], router: createBackupRoutes(db, auth!) },
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
@@ -193,21 +197,21 @@ export function createRoutes(
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
-    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth) },
-    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth) },
+    { prefix: '/runtime-governance', middleware: [requireAuth], router: createRuntimeGovernanceRoutes(db, auth, runtimeGovernance) },
+    { prefix: '/cognitive', middleware: [requireAuth], router: createCognitiveRoutes(db, auth, cognitiveLoop) },
     { prefix: '/self-modification', middleware: [requireAuth], router: createSelfModificationRoutes(db, auth) },
     { prefix: '/fleet', middleware: [requireAuth], router: createFleetRoutes(db, auth) },
     { prefix: '/models', middleware: [requireAuth], router: createMultiModelRoutes(db, auth) },
     { prefix: '/compliance', middleware: [requireAuth], router: createComplianceRoutes(db, auth) },
     { prefix: '/retirement', middleware: [requireAuth], router: createRetirementRoutes(db, auth) },
-    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth) },
-    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth) },
+    { prefix: '/red-team', middleware: [requireAuth], router: createRedTeamRoutes(db, auth, runtimeGovernance) },
+    { prefix: '/platform', middleware: [requireAuth], router: createPlatformRoutes(db, auth, runtimeGovernance) },
     { prefix: '/advanced', middleware: [requireAuth], router: createAdvancedRoutes(db, auth) },
     { prefix: '/health', middleware: [], router: createHealthRoutes(db, auth) },
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
-    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
@@ -217,7 +221,7 @@ export function createRoutes(
     { prefix: '/meta', middleware: [requireAuth], router: createMetaOrchestrationRoutes(db, auth, metaOrchestration) },
     { prefix: '/traceability', middleware: [rateLimit({ windowMs: 60_000, limit: 30 }), requireAuth], router: createTraceabilityRoutes() },
     { prefix: '/sbom', middleware: [requireAuth], router: createSBOMRoutes(db, auth) },
-    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth) },
+    { prefix: '/governance-feedback', middleware: [requireAuth], router: createGovernanceFeedbackRoutes(db, auth, wsService) },
     { prefix: '/repo-index', middleware: [requireAuth], router: createRepositoryIndexRoutes(db, auth) },
     { prefix: '/explainer', middleware: [requireAuth], router: createExplainerRoutes(db, auth) },
     { prefix: '/console', middleware: [requireAuth], router: createConsoleRoutes(db, auth) },
@@ -230,6 +234,8 @@ export function createRoutes(
     { prefix: '/segml/l4', middleware: [requireAuth], router: createSegmlL4Routes(db, auth) },
     { prefix: '/segml/l5', middleware: [requireAuth], router: createSegmlL5Routes(db, auth) },
     { prefix: '/segml/production', middleware: [requireAuth], router: createSegmlProductionRoutes(db, auth) },
+    { prefix: '/organizations', middleware: [requireAuth], router: createOrganizationRoutes(db, requireAuth, authService, auditService) },
+    { prefix: '/audit-logs', middleware: [requireAuth], router: createAuditLogRoutes(db, requireAuth) },
   );
 
   for (const mount of mounts) {

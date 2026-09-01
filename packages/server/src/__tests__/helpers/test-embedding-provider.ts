@@ -1,19 +1,13 @@
-import type { EmbeddingProvider } from '../../services/embedding-provider';
+import type { EmbeddingProvider } from '@djimitflo/shared';
 
-const concepts = [
-  ['security', 'vulnerability', 'auth', 'authentication'],
-  ['database', 'connection', 'pool', 'postgres'],
-  ['performance', 'optimization', 'cache', 'caching'],
-  ['typescript', 'javascript', 'typed', 'types', 'interfaces', 'generics'],
-  ['python', 'dynamic'],
-  ['memory', 'learning', 'feedback'],
-];
+export class TestEmbeddingProvider implements EmbeddingProvider {
+  readonly name = 'test:semantic';
 
-export const testEmbeddingProvider: EmbeddingProvider = {
-  id: 'test:concepts',
-  async embed(text: string) {
-    const words = new Set(text.toLowerCase().split(/\W+/));
-    const vector: number[] = concepts.map((concept) => concept.filter((word) => words.has(word)).length);
-    return [...vector, vector.some((value) => value > 0) ? 0 : 1];
-  },
-};
+  async embed(text: string): Promise<number[]> {
+    const value = text.toLowerCase();
+    const terms = ['typescript', 'javascript', 'python', 'security', 'vulnerability', 'performance', 'memory'];
+    const vector: number[] = terms.map((term) => value.includes(term) ? 1 : 0);
+    vector.push(Math.max(1, value.split(/\s+/).length) / 10);
+    return vector;
+  }
+}

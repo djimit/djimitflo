@@ -12,7 +12,6 @@ import {
   Task,
   TaskStatus,
   WebSocketEventType,
-  type WebSocketMessage,
 } from '@djimitflo/shared';
 import {
   TaskExecutor,
@@ -29,6 +28,7 @@ import { ClaudeExecutor } from './executors/claude-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
+import { DeepAgentExecutor } from './executors/deep-agent-executor';
 import { DockerSandboxExecutor, DEFAULT_SANDBOX_CONFIG } from './executors/docker-sandbox-executor';
 import { CircuitBreakerService } from '../services/circuit-breaker-service';
 import { FallbackChainService, ExecutionMode } from '../services/fallback-chain-service';
@@ -39,6 +39,7 @@ import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ToolBroker } from '../services/tool-broker';
 import { ApprovalService } from '../services/approval-service';
+import { GovernanceGateService } from '../services/governance-gate-service';
 import { AuditService } from '../services/audit-service';
 import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
@@ -48,13 +49,17 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
-import { MultiModelIntelligence } from '../services/multi-model-intelligence';
+import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
+import { DennisAgentService } from '../services/dennis-agent-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
   approvalId?: string;
   reason?: string;
+  completion?: Promise<ExecutionResult>;
 }
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
@@ -64,14 +69,14 @@ export class ExecutionEngine {
   private wsService: WebSocketService;
   private executors: Map<ExecutorKind, TaskExecutor>;
   private activeSessions: Map<string, ExecutionSession>; // taskId -> session
-  private executionPermits = new Set<string>();
-  private executionQueue: Array<{ taskId: string; resolve: () => void }> = [];
+  private pendingExecutions = new Set<string>();
   private diffContexts: Map<string, { repositoryId: string; repositoryPath: string; preSnapshotId: string | null }>; // taskId -> diff context
   private riskClassifier: CommandRiskClassifier;
   private policyDecisionService: PolicyDecisionService;
   private auditService: AuditService;
   private approvalService: ApprovalService;
   private evidenceService: EvidenceService;
+  private governanceGate: GovernanceGateService;
   private diffCaptureService: DiffCaptureService;
   private memorySyncService?: MemorySyncService;
   private reasoningBankService?: ReasoningBankService;
@@ -83,7 +88,8 @@ export class ExecutionEngine {
   private skillEvolution: SkillEvolutionEngine;
   private skillLoader: SkillLoaderService;
   private toolBroker: ToolBroker;
-  private modelRouter: MultiModelIntelligence;
+  private runtimeGovernance: RuntimeGovernanceService;
+  private deepAgentIssuer?: DeepAgentContractIssuer;
 
   setMemorySyncService(service: MemorySyncService): void {
     this.memorySyncService = service;
@@ -105,25 +111,34 @@ export class ExecutionEngine {
     return this.toolBroker;
   }
 
-  constructor(db: Database, wsService: WebSocketService, skillsDir?: string) {
+  constructor(
+    db: Database,
+    wsService?: WebSocketService,
+    skillsDir?: string,
+    runtimeGovernance = new RuntimeGovernanceService(db),
+  ) {
     this.db = db;
-    this.wsService = wsService;
+    this.wsService = wsService || ({
+      broadcastTaskEvent: () => {},
+      broadcastTaskEventById: () => {},
+    } as unknown as WebSocketService);
     this.executors = new Map();
     this.circuitBreaker = new CircuitBreakerService();
     this.fallbackChain = new FallbackChainService();
     this.executionModePolicy = new ExecutionModePolicyService();
     this.skillEvolution = new SkillEvolutionEngine(db);
     this.skillLoader = new SkillLoaderService(db, skillsDir);
-    this.modelRouter = new MultiModelIntelligence(db);
     this.activeSessions = new Map();
     this.diffContexts = new Map();
     this.riskClassifier = new CommandRiskClassifier();
     this.policyDecisionService = new PolicyDecisionService(db);
     this.toolBroker = new ToolBroker(db);
     this.auditService = new AuditService(db);
-    this.approvalService = new ApprovalService(db, wsService, this.auditService);
+    this.approvalService = new ApprovalService(db, this.wsService, this.auditService);
     this.evidenceService = new EvidenceService(db);
+    this.governanceGate = new GovernanceGateService(db);
     this.diffCaptureService = new DiffCaptureService(db);
+    this.runtimeGovernance = runtimeGovernance;
     
     // Register default executors
     this.registerExecutor(new MockExecutor());
@@ -133,6 +148,10 @@ export class ExecutionEngine {
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
+    if (process.env.DJIMIT_DEEP_ENABLED === 'true') {
+      this.deepAgentIssuer = new DeepAgentContractIssuer();
+      this.registerExecutor(new DeepAgentExecutor());
+    }
   }
   
   /**
@@ -153,9 +172,9 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, requestedExecutorKind?: ExecutorKind): Promise<ExecuteTaskResult> {
+  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode', dispatcherId?: string): Promise<ExecuteTaskResult> {
     // Check if task is already running
-    if (this.activeSessions.has(taskId) || this.executionPermits.has(taskId) || this.executionQueue.some(item => item.taskId === taskId)) {
+    if (this.activeSessions.has(taskId) || this.pendingExecutions.has(taskId)) {
       throw new Error('Task is already running');
     }
     
@@ -171,22 +190,27 @@ export class ExecutionEngine {
       tags: JSON.parse(task.tags || '[]'),
       metadata: JSON.parse(task.metadata || '{}'),
     };
-    const route = requestedExecutorKind ? null : this.modelRouter.routeWithCascade({ taskType: parsedTask.execution_mode || 'coding' });
-    const executorKind = requestedExecutorKind || this.modelRouter.resolveExecutorForModel(route!.selectedModel);
-    if (route) {
-      parsedTask.metadata = {
-        ...parsedTask.metadata,
-        routed_model: route.selectedModel,
-        routing_decision_id: route.id,
-        routing_max_escalations: route.maxEscalations,
-      };
-      this.db.prepare('UPDATE tasks SET metadata = ?, updated_at = datetime(\'now\') WHERE id = ?')
-        .run(JSON.stringify(parsedTask.metadata), taskId);
+
+    if (parsedTask.metadata.deep_agent_assurance_hold === true) {
+      throw new Error('DEEP_AGENT_ASSURANCE_HOLD: Independent EVE-V assurance is required before redispatch.');
     }
 
     const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
+    }
+
+    if (parsedTask.agent_id && !this.runtimeGovernance.isAllowed(parsedTask.agent_id)) {
+      const reason = `Agent ${parsedTask.agent_id} is blocked by runtime governance`;
+      this.updateTaskStatus(taskId, TaskStatus.CANCELLED);
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.ERROR,
+        message: reason,
+        level: LogLevel.ERROR,
+        metadata: { agentId: parsedTask.agent_id, source: 'runtime-governance' },
+      });
+      return { status: 'denied', reason };
     }
 
     const attributionBlockReason = this.blockInvalidSkillAttribution(parsedTask);
@@ -199,17 +223,19 @@ export class ExecutionEngine {
     if (!executor) {
       throw new Error(`Executor not found: ${executorKind}`);
     }
-    
-    if (!executor.canExecute(parsedTask)) {
+
+    if (executorKind !== 'deep-agent' && !executor.canExecute(parsedTask)) {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
 
     const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
-    const evaluation = this.policyDecisionService.evaluate(assessment, { task: parsedTask, executorKind });
+    let evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
-    if (evaluation.governance?.action === 'require_approval') {
-      const gateVerdict = evaluation.governance;
+    // Governance gate: benchmark evidence can only TIGHTEN the policy decision.
+    const gateVerdict = this.governanceGate.assess(parsedTask, executorKind);
+    if (gateVerdict.action === 'require_approval' && evaluation.decision === 'allow') {
+      evaluation = { ...evaluation, decision: 'require_approval', explanation: gateVerdict.reason };
       this.evidenceService.captureEvidence({
         task_id: taskId,
         evidence_type: EvidenceType.POLICY_DECISION,
@@ -263,7 +289,7 @@ export class ExecutionEngine {
       return { status: 'denied', reason: evaluation.explanation };
     }
 
-    if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId)) {
+    if (evaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId, executorKind)) {
       this.evidenceService.captureEvidence({
         task_id: taskId,
         evidence_type: EvidenceType.RISK_ASSESSMENT,
@@ -281,6 +307,7 @@ export class ExecutionEngine {
         description: evaluation.explanation,
         policyId: evaluation.matchingPolicies[0]?.id,
         metadata: { executorKind },
+        requestedBy: dispatcherId,
       });
       this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
       this.persistEvent({
@@ -310,7 +337,6 @@ export class ExecutionEngine {
     
     // Update task status to queued
     this.updateTaskStatus(taskId, TaskStatus.QUEUED);
-    await this.acquireExecutionPermit(taskId);
 
     this.evidenceService.captureEvidence({
       task_id: taskId,
@@ -350,17 +376,26 @@ export class ExecutionEngine {
       }
     }
 
+    this.pendingExecutions.add(taskId);
     try {
+      await runtimeConcurrencySemaphore.acquire(`execution:${taskId}`);
+    } finally {
+      this.pendingExecutions.delete(taskId);
+    }
+    try {
+      if (executorKind === 'deep-agent') {
+        if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
+        parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask, dispatcherId || '');
+        this.db.prepare("UPDATE tasks SET metadata = json_remove(COALESCE(metadata, '{}'), '$.deep_agent_contract') WHERE id = ?").run(taskId);
+        if (!executor.canExecute(parsedTask)) throw new Error('Executor deep-agent cannot execute this task');
+      }
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
-      const maxRetries = Math.max(
-        this.executionModePolicy.getConfig(mode).maxRetries,
-        Number(parsedTask.metadata?.routing_max_escalations || 0),
-      );
-      await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
-      return { status: 'started' };
+      const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
+      const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
+      return { status: 'started', completion: session.result };
     } catch (error) {
-      this.releaseExecutionPermit(taskId);
+      runtimeConcurrencySemaphore.release(`execution:${taskId}`);
       this.updateTaskStatus(taskId, TaskStatus.FAILED, {
         failed_at: new Date().toISOString(),
       });
@@ -381,6 +416,7 @@ export class ExecutionEngine {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
     if (!this.circuitBreaker.canExecute(executorKind)) {
+      if (executorKind === 'deep-agent') throw new Error('Deep Agent circuit breaker is open; fallback is forbidden');
       const fallback = this.fallbackChain.getNextAvailable(executorKind, mode, this.circuitBreaker);
       if (!fallback || attempt >= maxRetries) throw new Error(`No fallback available for ${executorKind}`);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
@@ -390,6 +426,9 @@ export class ExecutionEngine {
     }
 
     const sandboxMeta = (task.metadata?.sandbox ?? {}) as Record<string, unknown>;
+    if (executorKind === 'deep-agent' && sandboxMeta.enabled === true) {
+      throw new Error('Deep Agent sandboxing is controlled by the sovereign runtime');
+    }
     const activeExecutor = sandboxMeta.enabled === true
       ? new DockerSandboxExecutor(executor, {
           ...DEFAULT_SANDBOX_CONFIG,
@@ -402,11 +441,13 @@ export class ExecutionEngine {
       : executor;
 
     try {
-      const options = {
+      const executionMetadata = task.metadata as Record<string, unknown>;
+      const session = await activeExecutor.start(task, {
         ...(workingDirectory ? { workingDirectory } : {}),
-        ...(typeof task.metadata?.routed_model === 'string' ? { model: task.metadata.routed_model } : {}),
-      };
-      const session = await activeExecutor.start(task, options);
+        ...(executionMetadata.environment ? { environment: executionMetadata.environment as Record<string, string> } : {}),
+        ...(executionMetadata.timeoutMs ? { timeout: Number(executionMetadata.timeoutMs) } : {}),
+        ...(executionMetadata.skipPermissions === true ? { skipPermissions: true } : {}),
+      });
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
@@ -438,7 +479,7 @@ export class ExecutionEngine {
     } catch (error) {
       this.circuitBreaker.recordFailure(executorKind);
       const failure = this.normalizeFailure(error, false, executorKind);
-      const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
+      const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
       if (!fallback) throw new ExecutionFailureError(failure);
       this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, failure);
       return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
@@ -454,8 +495,8 @@ export class ExecutionEngine {
     maxRetries: number,
     workingDirectory?: string,
   ): Promise<void> {
+    if (session.status === 'cancelled') return;
     if (result.status === 'completed') {
-      this.recordRoutedModelOutcome(task, true, result);
       this.circuitBreaker.recordSuccess(session.executorKind);
       if (this.trajectoryStore) {
         this.trajectoryStore.recordStep({
@@ -496,7 +537,7 @@ export class ExecutionEngine {
   ): Promise<void> {
     this.activeSessions.delete(task.id);
     this.circuitBreaker.recordFailure(session.executorKind);
-    const fallback = this.nextRoutedModel(task, failure) || this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
+    const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
     if (fallback) {
       this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, failure);
       try {
@@ -517,41 +558,11 @@ export class ExecutionEngine {
     maxRetries: number,
     failure: ExecutionFailure,
   ): ExecutorKind | null {
+    if (current === 'deep-agent') return null;
     if (attempt >= maxRetries || !failure.retryable || failure.sideEffectsPossible) {
       return null;
     }
     return this.fallbackChain.getNextAvailable(current, mode, this.circuitBreaker);
-  }
-
-  private nextRoutedModel(task: Task, failure: ExecutionFailure): ExecutorKind | null {
-    const decisionId = task.metadata?.routing_decision_id;
-    const modelId = task.metadata?.routed_model;
-    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return null;
-    if (!failure.retryable || failure.sideEffectsPossible) {
-      this.modelRouter.recordOutcome({
-        modelId,
-        taskType: task.execution_mode || 'coding',
-        success: false,
-      });
-      return null;
-    }
-    const next = this.modelRouter.recordCascadeOutcome({ decisionId, modelId, success: false });
-    if (!next) return null;
-    task.metadata = { ...task.metadata, routed_model: next.selectedModel, routing_decision_id: next.id };
-    return this.modelRouter.resolveExecutorForModel(next.selectedModel);
-  }
-
-  private recordRoutedModelOutcome(task: Task, success: boolean, result: ExecutionResult): void {
-    const decisionId = task.metadata?.routing_decision_id;
-    const modelId = task.metadata?.routed_model;
-    if (typeof decisionId !== 'string' || typeof modelId !== 'string') return;
-    this.modelRouter.recordCascadeOutcome({
-      decisionId,
-      modelId,
-      success,
-      latencyMs: result.metrics?.executionTimeMs,
-      costDollars: result.metrics?.costDollars,
-    });
   }
 
   private normalizeFailure(
@@ -572,10 +583,10 @@ export class ExecutionEngine {
 
   private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
     const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
-    const evaluation = this.policyDecisionService.evaluate(assessment, { task, executorKind });
+    const evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
     if (evaluation.decision === 'deny') return false;
-    return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id);
+    return evaluation.decision !== 'require_approval' || this.hasApprovedStart(task.id, executorKind);
   }
 
   private persistFallbackEvent(taskId: string, from: ExecutorKind, to: ExecutorKind, attempt: number, failure: ExecutionFailure): void {
@@ -600,6 +611,9 @@ export class ExecutionEngine {
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
     const approval = this.approvalService.decideApproval(approvalId, approved, decidedBy || 'system', reason);
     if (!approved) {
+      if (approval.metadata?.dennis_action === 'materialize_dry_run') {
+        new DennisAgentService(this.db).finalizeDeniedDryRun(approvalId, decidedBy);
+      }
       this.evidenceService.captureEvidence({
         task_id: approval.task_id,
         approval_id: approvalId,
@@ -618,6 +632,11 @@ export class ExecutionEngine {
         approval_id: approvalId,
       });
       return { status: 'denied', reason: reason || 'Approval denied' };
+    }
+
+    if (approval.metadata?.dennis_action === 'materialize_dry_run') {
+      new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, decidedBy);
+      return null;
     }
 
     this.evidenceService.captureEvidence({
@@ -651,7 +670,7 @@ export class ExecutionEngine {
       metadata: { approvalId },
     });
     const executorKind = (approval.metadata?.executorKind as ExecutorKind | undefined) || 'opencode';
-    return this.executeTask(approval.task_id, executorKind);
+    return this.executeTask(approval.task_id, executorKind, decidedBy);
   }
   
   /**
@@ -665,7 +684,7 @@ export class ExecutionEngine {
     
     await session.cancel();
     this.activeSessions.delete(taskId);
-    this.releaseExecutionPermit(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.diffContexts.delete(taskId);
     
     // Update task status
@@ -698,60 +717,28 @@ export class ExecutionEngine {
    */
   private async processEventStream(session: ExecutionSession): Promise<void> {
     const streamTimeoutMs = Number(process.env.EXECUTION_EVENT_STREAM_TIMEOUT_MS || "300000");
-    const pending: WebSocketMessage[] = [];
-    let flushTimer: NodeJS.Timeout | undefined;
-    let tokenUsage = 0;
-    let costDollars = 0;
-    const flush = () => {
-      if (flushTimer) clearTimeout(flushTimer);
-      flushTimer = undefined;
-      if (!pending.length) return;
-      this.wsService.broadcastTaskEventById(session.taskId, {
-        type: WebSocketEventType.EXECUTION_BATCH,
-        payload: { events: pending.splice(0), metrics: { tokenUsage, costDollars } },
-        timestamp: new Date().toISOString(),
-      });
-    };
     try {
       const streamDeadline = Date.now() + streamTimeoutMs;
-      const iterator = session.events[Symbol.asyncIterator]();
-      while (true) {
-        const remaining = streamDeadline - Date.now();
-        const timedOut = Symbol('timed-out');
-        let timeoutHandle: NodeJS.Timeout | undefined;
-        const next = await Promise.race([
-          iterator.next(),
-          new Promise<typeof timedOut>(resolve => { timeoutHandle = setTimeout(() => resolve(timedOut), Math.max(0, remaining)); }),
-        ]);
-        if (timeoutHandle) clearTimeout(timeoutHandle);
-        if (next === timedOut) {
-          await iterator.return?.();
-          flush();
-          this.wsService.broadcastTaskEventById(session.taskId, {
-            type: WebSocketEventType.STREAM_TRUNCATED,
-            payload: { task_id: session.taskId, reason: 'event_stream_timeout', timeout_ms: streamTimeoutMs },
-            timestamp: new Date().toISOString(),
-          });
+      for await (const event of session.events) {
+        if (Date.now() > streamDeadline) {
+          const truncatedEvent: ExecutionEventCreateInput = {
+            task_id: session.taskId,
+            event_type: ExecutionEventType.STREAM_TRUNCATED,
+            message: `Execution event stream truncated after ${streamTimeoutMs}ms`,
+            level: LogLevel.WARNING,
+            metadata: { stream_timeout_ms: streamTimeoutMs, executor_kind: session.executorKind },
+          };
+          const truncatedEventId = this.persistEvent(truncatedEvent);
+          this.broadcastExecutionEvent(session.taskId, truncatedEventId, truncatedEvent);
           break;
         }
-        if (next.done) break;
-        const event = next.value;
         // Persist event to database
         const eventId = this.persistEvent(event);
-        const usage = (event.metadata as any)?.usage;
-        tokenUsage = Math.max(tokenUsage, Number(usage?.total_tokens || usage?.totalTokens || 0));
-        costDollars = Math.max(costDollars, Number(usage?.cost_usd || usage?.cost || 0));
-        pending.push({
-          type: WebSocketEventType.EXECUTION_EVENT,
-          payload: { event: { id: eventId, ...event, created_at: new Date().toISOString(), updated_at: new Date().toISOString() } },
-          timestamp: new Date().toISOString(),
-        });
-        if (pending.length >= 25) flush();
-        else if (!flushTimer) flushTimer = setTimeout(flush, 25);
+        
+        // Broadcast via WebSocket
+        this.broadcastExecutionEvent(session.taskId, eventId, event);
       }
-      flush();
     } catch (error) {
-      flush();
       console.error(`Error in event stream for task ${session.taskId}:`, error);
       throw error;
     }
@@ -792,6 +779,28 @@ export class ExecutionEngine {
   }
   
   /**
+   * Broadcast execution event via WebSocket
+   */
+  private broadcastExecutionEvent(
+    taskId: string,
+    eventId: string,
+    event: ExecutionEventCreateInput
+  ): void {
+    this.wsService.broadcastTaskEventById(taskId, {
+      type: WebSocketEventType.EXECUTION_EVENT,
+      payload: {
+        event: {
+          id: eventId,
+          ...event,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+  
+  /**
    * Handle execution completion
    */
   private handleExecutionComplete(
@@ -800,11 +809,41 @@ export class ExecutionEngine {
     result: any
   ): void {
     this.activeSessions.delete(taskId);
-    this.releaseExecutionPermit(taskId);
-    
-    // Capture post-execution diff if task has a repository
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
+    this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
+      .run(JSON.stringify(result), taskId);
+
+    // Capture repository changes before any terminal status or assurance hold.
     this.capturePostExecutionDiff(taskId);
 
+    if (session.executorKind === 'deep-agent' && result.status === 'completed') {
+      this.db.prepare(`
+        UPDATE tasks SET metadata = json_set(
+          COALESCE(metadata, '{}'),
+          '$.deep_agent_assurance_hold', json('true'),
+          '$.deep_agent_assurance_reason', 'EVE_V_ADAPTER_REQUIRED'
+        ) WHERE id = ?
+      `).run(taskId);
+      this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.POLICY_DECISION,
+        severity: EvidenceSeverity.WARNING,
+        title: 'Deep Agent completion held for independent assurance',
+        summary: 'Executor success is not promotion authority; the authenticated EVE-V adapter is not installed.',
+        details: { executorKind: session.executorKind },
+        source: 'system',
+      });
+      this.persistEvent({
+        task_id: taskId,
+        event_type: ExecutionEventType.LOG,
+        message: 'Deep Agent execution completed but authoritative task completion is on HOLD.',
+        level: LogLevel.WARNING,
+        metadata: { executor: session.executorKind, reason: 'EVE_V_ADAPTER_REQUIRED' },
+      });
+      return;
+    }
+    
     const completedAt = new Date().toISOString();
     const executionTimeMs = Date.now() - session.startedAt.getTime();
     
@@ -893,7 +932,7 @@ export class ExecutionEngine {
    */
   private handleExecutionError(taskId: string, error: Error): void {
     this.activeSessions.delete(taskId);
-    this.releaseExecutionPermit(taskId);
+    runtimeConcurrencySemaphore.release(`execution:${taskId}`);
 
     // Capture post-execution diff even on error (changes may have been made)
     this.capturePostExecutionDiff(taskId);
@@ -920,25 +959,6 @@ export class ExecutionEngine {
     const task = this.getTask(taskId);
     const startedAt = task.started_at ? new Date(task.started_at).getTime() : Date.now();
     this.recordSkillOutcome(taskId, undefined, false, Math.max(0, Date.now() - startedAt), task.token_usage || 0);
-  }
-
-  private acquireExecutionPermit(taskId: string): Promise<void> {
-    const configured = Number(process.env.EXECUTION_MAX_CONCURRENCY || 4);
-    const limit = Number.isFinite(configured) && configured >= 1 ? Math.trunc(configured) : 4;
-    if (this.executionPermits.size < limit) {
-      this.executionPermits.add(taskId);
-      return Promise.resolve();
-    }
-    return new Promise(resolve => this.executionQueue.push({ taskId, resolve }));
-  }
-
-  private releaseExecutionPermit(taskId: string): void {
-    if (!this.executionPermits.delete(taskId)) return;
-    const next = this.executionQueue.shift();
-    if (next) {
-      this.executionPermits.add(next.taskId);
-      next.resolve();
-    }
   }
   
   /**
@@ -1177,13 +1197,15 @@ export class ExecutionEngine {
     return id;
   }
 
-  private hasApprovedStart(taskId: string): boolean {
+  private hasApprovedStart(taskId: string, executorKind: ExecutorKind): boolean {
     const approval = this.db.prepare(`
       SELECT * FROM approvals
       WHERE task_id = ? AND status = 'approved'
+        AND json_valid(COALESCE(metadata, '{}')) = 1
+        AND json_extract(COALESCE(metadata, '{}'), '$.executorKind') = ?
       ORDER BY updated_at DESC
       LIMIT 1
-    `).get(taskId) as any;
+    `).get(taskId, executorKind) as any;
     return Boolean(approval);
   }
 

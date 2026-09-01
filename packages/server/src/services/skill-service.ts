@@ -124,12 +124,10 @@ export class SkillService {
   }
 
   private validateDocker(skillPath: string, _fullPath: string): SkillValidateResult {
-    // Docker validation placeholder — requires Docker daemon
-    // For now, mark as validated with a note
-    this.updateTrustLevel(skillPath, 'validated');
-    const report = `Docker validation not yet implemented — marking as validated (process sandbox passed)`;
+    this.updateTrustLevel(skillPath, 'failed');
+    const report = 'Docker validation is unavailable — skill remains unvalidated';
     fs.writeFileSync(path.join(this.reportsDir, `${skillPath.replace(/\//g, '_')}_docker_${Date.now()}.md`), report, 'utf8');
-    return { skillId: skillPath, status: 'validated', report };
+    return { skillId: skillPath, status: 'failed', report };
   }
 
   private updateTrustLevel(skillPath: string, trustLevel: string): void {

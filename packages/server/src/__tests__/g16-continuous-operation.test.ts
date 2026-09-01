@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
@@ -98,6 +98,24 @@ describe('G16: Continuous operation mode', () => {
 
     const queue = (daemon as any).loadQueue();
     expect(queue.length).toBe(0);
+  });
+
+  it('prunes stale worktrees on every tick', async () => {
+    const prune = vi.spyOn(loops, 'pruneOrphanedWorktrees').mockReturnValue(0);
+
+    await daemon.tick();
+
+    expect(prune).toHaveBeenCalledOnce();
+  });
+
+  it('prunes stale worktrees after failed goal execution', async () => {
+    const prune = vi.spyOn(loops, 'pruneOrphanedWorktrees').mockReturnValue(0);
+
+    await (daemon as any).executeGoal({
+      id: 'missing-goal', objective: 'fail safely', risk_class: 'low', metadata: {}, created_at: new Date().toISOString(),
+    });
+
+    expect(prune).toHaveBeenCalledOnce();
   });
 
   it('marks a goal as failed if execution throws', async () => {

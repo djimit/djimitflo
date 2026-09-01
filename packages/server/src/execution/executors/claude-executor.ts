@@ -16,9 +16,9 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { structuredRuntimeEvent } from './structured-runtime-event';
-import { startRuntimeProcess, type RuntimeProcess } from './runtime-process';
+import { captureExecutorOutput } from '../executor-output';
 
 interface ParsedOutput {
   type: 'log' | 'error' | 'thinking' | 'unknown';
@@ -55,20 +55,50 @@ export class ClaudeExecutor implements TaskExecutor {
     const args = this.buildClaudeArgs(task, options);
 
     const emitter = new EventEmitter();
-    let runtime: RuntimeProcess | null = null;
+    let childProcess: ChildProcess | null = null;
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
+      const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      runtime = startRuntimeProcess({
-        command: this.claudePath, args, cwd, env, timeoutMs: options?.timeout ?? this.executionTimeoutMs,
-        onOutput: (text, stream) => emitter.emit('output', text, stream),
-        onExit: code => emitter.emit('exit', code),
-        onError: error => emitter.emit('error', error),
-        onTimeout: () => emitter.emit('error', new Error(`Claude execution timed out after ${options?.timeout ?? this.executionTimeoutMs}ms`)),
+      const child = spawn(this.claudePath, args, {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      childProcess = child;
+
+      const timeoutHandle = setTimeout(() => {
+        if (child && !child.killed) {
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (child && !child.killed) {
+              child.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+        emitter.emit('error', new Error(`Claude execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      child.stdout?.on('data', (data) => {
+        emitter.emit('output', data.toString(), 'stdout');
+      });
+
+      child.stderr?.on('data', (data) => {
+        emitter.emit('output', data.toString(), 'stderr');
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timeoutHandle);
+        emitter.emit('exit', code);
+      });
+
+      child.on('error', (error) => {
+        emitter.emit('error', error);
       });
     };
 
@@ -84,7 +114,14 @@ export class ClaudeExecutor implements TaskExecutor {
       events,
       result,
       cancel: async () => {
-        runtime?.stop();
+        if (childProcess && !childProcess.killed) {
+          childProcess.kill('SIGTERM');
+          setTimeout(() => {
+            if (childProcess && !childProcess.killed) {
+              childProcess.kill('SIGKILL');
+            }
+          }, 5000);
+        }
         session.status = 'cancelled';
         session.completedAt = new Date();
       },
@@ -141,7 +178,16 @@ export class ClaudeExecutor implements TaskExecutor {
     if (stream === 'stdout') {
       try {
         const parsed = JSON.parse(trimmed);
-        return structuredRuntimeEvent('claude', taskId, parsed);
+        const summary = typeof parsed === 'string'
+          ? parsed
+          : (parsed?.result ?? parsed?.text ?? parsed?.message ?? `JSON event: ${parsed?.type ?? 'object'}`);
+        return {
+          task_id: taskId,
+          event_type: ExecutionEventType.LOG,
+          message: typeof summary === 'string' ? summary : JSON.stringify(summary),
+          level: LogLevel.INFO,
+          metadata: { executor: 'claude', parsing_mode: 'json', raw: parsed },
+        };
       } catch {
         // not JSON — fall through to heuristic
       }
@@ -280,7 +326,9 @@ export class ClaudeExecutor implements TaskExecutor {
     _task: Task,
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

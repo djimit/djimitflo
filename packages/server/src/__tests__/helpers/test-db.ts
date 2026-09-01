@@ -20,6 +20,7 @@ const SCHEMA = `
     password_hash TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'viewer' CHECK(role IN ('admin', 'platform_admin', 'approver', 'maker', 'checker', 'auditor', 'viewer')),
     is_active INTEGER NOT NULL DEFAULT 1,
+    organization_id TEXT NOT NULL DEFAULT 'default',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -33,10 +34,13 @@ const SCHEMA = `
     acceptance_criteria_json TEXT NOT NULL DEFAULT '[]',
     risk_class TEXT NOT NULL DEFAULT 'low' CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
     owner_user_id TEXT,
+    improvement_id TEXT,
     metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_goals_improvement_id ON goals(improvement_id) WHERE improvement_id IS NOT NULL;
 
   CREATE TABLE IF NOT EXISTS loop_runs (
     id TEXT PRIMARY KEY,
@@ -563,6 +567,14 @@ const SCHEMA = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS memory_access_log (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    accessed_at TEXT NOT NULL,
+    FOREIGN KEY (candidate_id) REFERENCES memory_candidates(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS repositories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -761,11 +773,39 @@ const SCHEMA = `
     recommendations_json TEXT NOT NULL DEFAULT '[]',
     evidence_refs_json TEXT NOT NULL DEFAULT '[]',
     limitations TEXT,
+    reviewer_actor TEXT,
     status TEXT NOT NULL CHECK(status IN ('draft', 'submitted', 'rejected')),
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (panel_id) REFERENCES specialist_panels(id) ON DELETE CASCADE,
     UNIQUE(panel_id, specialist_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS self_improvements (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    rationale TEXT NOT NULL,
+    source TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'proposed',
+    priority REAL NOT NULL DEFAULT 0.5,
+    fingerprint TEXT,
+    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+    panel_id TEXT,
+    approved_by TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS loop_learning_closures (
+    loop_run_id TEXT PRIMARY KEY,
+    eval_run_id TEXT NOT NULL,
+    reflection_id TEXT NOT NULL,
+    memory_candidate_id TEXT NOT NULL,
+    previous_score REAL,
+    score_delta REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS sub_agent_spawns (
@@ -1157,6 +1197,48 @@ CREATE TABLE IF NOT EXISTS explainer_bundles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_explainer_bundles_task_id ON explainer_bundles(task_id);
+
+CREATE TABLE IF NOT EXISTS human_review_queue (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  openmythos_score REAL,
+  assigned_to TEXT,
+  resolved INTEGER NOT NULL DEFAULT 0,
+  resolution TEXT CHECK(resolution IN ('approved', 'rejected', 'pending')),
+  resolved_at TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Governance-calibration loop (B3): matches migrate.ts createCalibrationTables
+CREATE TABLE IF NOT EXISTS calibration_ratings (
+  id TEXT PRIMARY KEY,
+  bundle_id TEXT NOT NULL REFERENCES explainer_bundles(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 100),
+  factual_acc INTEGER CHECK(factual_acc BETWEEN 0 AND 100),
+  clarity INTEGER CHECK(clarity BETWEEN 0 AND 100),
+  rated_by TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'dashboard' CHECK(source IN ('dashboard', 'csv_import', 'api')),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_bundle ON calibration_ratings(bundle_id);
+CREATE INDEX IF NOT EXISTS idx_calibration_ratings_created ON calibration_ratings(created_at);
+
+CREATE TABLE IF NOT EXISTS explainer_audit_log (
+  id TEXT PRIMARY KEY,
+  actor TEXT NOT NULL DEFAULT 'system',
+  action TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  resource_id TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK(outcome IN ('success', 'failure', 'blocked', 'pending')),
+  reason TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 CREATE TABLE IF NOT EXISTS explainer_sections (
   id TEXT PRIMARY KEY,

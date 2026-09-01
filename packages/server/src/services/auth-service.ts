@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { UserRole, ROLE_PERMISSIONS, type User, type AuthTokenPayload } from '@djimitflo/shared';
+import { verifyHs256Jwt } from '@djimitflo/shared/jwt';
 
 const BCRYPT_ROUNDS = 12;
 const DEFAULT_JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
@@ -59,21 +60,18 @@ export class AuthService {
     return bcrypt.compareSync(plain, hash);
   }
 
-  generateToken(user: User): string {
+  generateToken(user: User & { organization_id?: string }): string {
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      organization_id: (user as any).organization_id ?? 'default',
     };
     return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiresIn as any });
   }
 
   verifyToken(token: string): AuthTokenPayload | null {
-    try {
-      return jwt.verify(token, this.jwtSecret) as AuthTokenPayload;
-    } catch {
-      return null;
-    }
+    return verifyHs256Jwt(token, this.jwtSecret);
   }
 
   sanitizeUser(row: Record<string, unknown>): User {
@@ -84,18 +82,18 @@ export class AuthService {
       isActive: Boolean(row.is_active),
       createdAt: row.created_at as string,
       updatedAt: row.updated_at as string,
-    };
+      organization_id: (row as any).organization_id as string | undefined,
+    } as User;
   }
-
-  createUser(email: string, password: string, role: UserRole = UserRole.MAKER): User {
+  createUser(email: string, password: string, role: UserRole = UserRole.MAKER, organizationId?: string): User {
     const id = randomUUID();
     const passwordHash = this.hashPassword(password);
     const now = new Date().toISOString();
 
     this.db.prepare(`
-      INSERT INTO users (id, email, password_hash, role, is_active, created_at, updated_at)
-      VALUES (?, ?, ?, ?, 1, ?, ?)
-    `).run(id, email.toLowerCase().trim(), passwordHash, role, now, now);
+      INSERT INTO users (id, email, password_hash, role, is_active, organization_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, ?, ?, ?)
+    `).run(id, email.toLowerCase().trim(), passwordHash, role, organizationId ?? 'default', now, now);
 
     return this.findUserById(id)!;
   }

@@ -9,6 +9,8 @@ function makeMounts(): RouteMount[] {
   tasks.get('/:id', (_req, res) => { res.end(); });
   const auth = Router();
   auth.post('/login', (_req, res) => { res.end(); });
+  const nestedAuth = Object.assign(((_req: unknown, _res: unknown, next: () => void) => next()) as never, { requiresAuth: true });
+  auth.get('/me', nestedAuth, (_req, res) => { res.end(); });
   const noop = ((_req: unknown, _res: unknown, next: () => void) => next()) as never;
   return [
     { prefix: '/tasks', middleware: [noop], router: tasks },
@@ -22,6 +24,7 @@ describe('collectRoutes', () => {
 
     expect(entries).toEqual([
       { method: 'POST', path: '/api/auth/login', authenticated: false },
+      { method: 'GET', path: '/api/auth/me', authenticated: true },
       { method: 'GET', path: '/api/tasks', authenticated: true },
       { method: 'POST', path: '/api/tasks', authenticated: true },
       { method: 'GET', path: '/api/tasks/:id', authenticated: true },
@@ -36,6 +39,7 @@ describe('buildOpenApiSpec', () => {
     expect(spec.openapi).toBe('3.1.0');
     expect(spec.paths['/api/tasks/{id}'].get.security).toEqual([{ bearerAuth: [] }]);
     expect(spec.paths['/api/auth/login'].post.security).toBeUndefined();
+    expect(spec.paths['/api/auth/me'].get.security).toEqual([{ bearerAuth: [] }]);
     expect(spec.components.securitySchemes.bearerAuth.scheme).toBe('bearer');
   });
 });

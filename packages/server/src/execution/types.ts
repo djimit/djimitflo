@@ -7,7 +7,7 @@ import { Task, ExecutionEventCreateInput } from '@djimitflo/shared';
 /**
  * Executor kinds supported by the system
  */
-export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'claude' | 'gemini' | 'editor' | 'pi' | 'docker' | 'custom';
+export type ExecutorKind = 'mock' | 'opencode' | 'codex' | 'claude' | 'gemini' | 'editor' | 'pi' | 'docker' | 'deep-agent' | 'custom';
 
 /**
  * Execution session status
@@ -42,6 +42,8 @@ export class ExecutionFailureError extends Error {
 export interface ExecutionResult {
   status: 'completed' | 'failed' | 'cancelled';
   message: string;
+  stdout?: string;
+  stderr?: string;
   error?: string;
   failure?: ExecutionFailure;
   artifacts?: ExecutionArtifact[];
@@ -126,10 +128,7 @@ export interface TaskExecutor {
    */
   canExecute(task: Task): boolean;
 
-  /**
-   * Build the exact CLI invocation used by this executor.
-   * DockerSandboxExecutor reuses this instead of maintaining a second copy.
-   */
+  /** Build the exact CLI invocation used by this executor. */
   buildCommand?(task: Task, options?: ExecutorOptions): { command: string; args: string[] };
 }
 

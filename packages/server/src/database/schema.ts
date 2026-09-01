@@ -209,6 +209,7 @@ CREATE INDEX IF NOT EXISTS idx_sandbox_policies_priority ON sandbox_policies(pri
 -- Approval policies table
 CREATE TABLE IF NOT EXISTS approval_policies (
   id TEXT PRIMARY KEY,
+  version INTEGER NOT NULL DEFAULT 1,
   name TEXT NOT NULL UNIQUE,
   description TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
@@ -680,7 +681,7 @@ CREATE TABLE IF NOT EXISTS agents_md_files (
 
 CREATE INDEX IF NOT EXISTS idx_agents_md_files_repository_id ON agents_md_files(repository_id);
 
--- External events table (Paperclip event bus ingest)
+-- External causal events table (Paperclip and outcome ingest)
 CREATE TABLE IF NOT EXISTS external_events (
   id TEXT PRIMARY KEY,
   event_type TEXT NOT NULL,
@@ -703,6 +704,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_dedupe_key
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
   ON external_events(source, aggregate_id, aggregate_version)
   WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS system_state (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 `;
 

@@ -163,7 +163,6 @@ export class AgiGoalReasoningEngine {
 
   /**
    * Plan a multi-step strategy to achieve a goal.
-   * Uses LLM when available, falls back to templates.
    */
   planStrategy(goalId: string): StrategyNode[] {
     const goal = this.db.prepare('SELECT * FROM goal_hypotheses WHERE id = ?').get(goalId) as any;

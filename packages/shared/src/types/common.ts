@@ -43,6 +43,7 @@ export enum ExecutionEventType {
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
   ARTIFACT_CREATED = 'artifact.created',
+  STREAM_TRUNCATED = 'stream.truncated',
   ERROR = 'error',
   LOG = 'log',
 }
@@ -123,6 +124,7 @@ export enum AuditEventType {
   APPROVAL_REQUESTED = 'approval.requested',
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
+  APPROVAL_EXPIRED = 'approval.expired',
   FILE_MODIFIED = 'file.modified',
   SHELL_EXECUTED = 'shell.executed',
   EXECUTION_PAUSED = 'execution.paused',

@@ -27,12 +27,15 @@ function ensureTable(db: Database): void {
   `);
 }
 
-export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createLearningRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  cognitiveLoop = new CognitiveLoopClosureService(db),
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   ensureTable(db);
-  const cognitiveLoop = new CognitiveLoopClosureService(db);
 
   // GET / — List learnings (auth-only, no extra permission)
   router.get('/', (_req, res, next) => {
@@ -83,7 +86,6 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
       const learningDesc = description || lesson_learned || title;
       const learningLesson = lesson_learned || description || title;
 
-      const parsedMetadata = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
       db.prepare(`
         INSERT INTO swarm_learning (id, category, title, description, lesson_learned,
           source_task_id, source_discussion_id, effectiveness, times_applied,
@@ -99,22 +101,14 @@ export function createLearningRoutes(db: Database, auth?: AuthMiddleware): Route
         source_discussion_id,
         effectiveness,
         times_applied,
-        JSON.stringify({ ...parsedMetadata, cognitive_pattern_id: learningId }),
+        typeof metadata === 'string' ? metadata : JSON.stringify(metadata),
         created_at || now,
         now,
       );
 
-      const cognitive = cognitiveLoop.ingestLearning({
-        id: learningId,
-        category: mappedCategory,
-        lesson: learningLesson,
-        effectiveness,
-        timesApplied: times_applied,
-        goalType: parsedMetadata?.goal_type,
-        strategy: parsedMetadata?.strategy,
-      });
+      const patterns = cognitiveLoop.extractPatterns();
       const row = db.prepare('SELECT * FROM swarm_learning WHERE id = ?').get(learningId);
-      res.status(201).json({ learning: row, cognitive });
+      res.status(201).json({ learning: row, patterns });
     } catch (err) {
       next(err);
     }

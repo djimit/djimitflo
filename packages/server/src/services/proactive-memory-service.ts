@@ -10,7 +10,8 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { cosineSimilarity, createEmbeddingProvider, type EmbeddingProvider } from './embedding-provider';
+import type { EmbeddingProvider } from '@djimitflo/shared';
+import { OllamaEmbeddingProvider } from './ollama-embedding-provider';
 
 interface MemoryEntry {
   id: string;
@@ -49,24 +50,23 @@ const ARCHIVAL_THRESHOLD = 0.2;
 // const DECAY_THRESHOLD = 0.1;  // Reserved for future use
 
 export class ProactiveMemoryService {
-  constructor(private db: Database, private readonly embeddings: EmbeddingProvider = createEmbeddingProvider()) {
+  constructor(private db: Database, private embeddingProvider: EmbeddingProvider = new OllamaEmbeddingProvider()) {
     this.ensureTables();
   }
 
   /**
    * Store a new memory entry with initial relevance scoring.
    */
-  async storeMemory(input: {
+  storeMemory(input: {
     content: string;
     type: string;
     metadata?: Record<string, unknown>;
     ttlDays?: number;
-  }): Promise<MemoryEntry> {
+  }): MemoryEntry {
     const id = randomUUID();
     const now = new Date().toISOString();
     const ttlDays = input.ttlDays || DEFAULT_TTL_DAYS;
     const expiresAt = new Date(Date.now() + ttlDays * 86400000).toISOString();
-    const embedding = await this.embeddings.embed(input.content);
 
     const entry: MemoryEntry = {
       id,
@@ -84,13 +84,12 @@ export class ProactiveMemoryService {
     this.db.prepare(`
       INSERT INTO proactive_memories (
         id, content, type, status, relevance_score, usage_count,
-        last_accessed_at, created_at, expires_at, metadata_json, embedding_json, embedding_provider
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        last_accessed_at, created_at, expires_at, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       entry.id, entry.content, entry.type, entry.status,
       entry.relevanceScore, entry.usageCount, entry.lastAccessedAt,
       entry.createdAt, entry.expiresAt, JSON.stringify(entry.metadata),
-      JSON.stringify(embedding), this.embeddings.id,
     );
 
     return entry;
@@ -128,7 +127,7 @@ export class ProactiveMemoryService {
    * Run the proactive memory maintenance cycle.
    * Evaluates all memories and promotes/archives/decays based on relevance.
    */
-  async runMaintenanceCycle(): Promise<MemoryPromotionResult> {
+  runMaintenanceCycle(): MemoryPromotionResult {
     const memories = this.db.prepare(`
       SELECT * FROM proactive_memories WHERE status IN ('candidate', 'active')
     `).all() as any[];
@@ -164,10 +163,10 @@ export class ProactiveMemoryService {
     }
 
     // Auto-discover relations between similar memories
-    const relations = await this.autoDiscoverRelations();
+    const relations = this.autoDiscoverRelations();
 
     // Consolidate near-duplicate memories
-    const consolidated = await this.consolidateMemories();
+    const consolidated = this.consolidateMemories();
 
     return { promoted, archived, decayed, evaluated: memories.length, relationsDiscovered: relations.discovered, merged: consolidated.merged };
   }
@@ -225,40 +224,51 @@ export class ProactiveMemoryService {
     return (this.db.prepare(query).all(...params) as any[]).map((r) => this.parseMemory(r));
   }
 
-  /**
-   * Search active memories by semantic similarity.
-   */
+  /** Search active memories semantically, falling back to keyword retrieval if the provider is unavailable. */
   async searchMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
-    const rows = this.db.prepare("SELECT * FROM proactive_memories WHERE status = 'active'").all() as any[];
-    if (rows.length === 0) return [];
+    const memories = this.db.prepare(`
+      SELECT * FROM proactive_memories WHERE status = 'active'
+      ORDER BY relevance_score DESC LIMIT 500
+    `).all() as any[];
+    if (memories.length === 0 || !query.trim()) return [];
+
     try {
-      const queryEmbedding = await this.embeddings.embed(query);
-      const scored = await Promise.all(rows.map(async (row) => ({
+      const queryEmbedding = await this.embeddingProvider.embed(query);
+      // ponytail: bounded O(n) API fan-out; persist vectors when 500 active memories becomes a measured bottleneck.
+      const scored = await Promise.all(memories.map(async (row) => ({
         row,
-        score: cosineSimilarity(queryEmbedding, await this.embeddingForRow(row)),
+        score: this.cosineSimilarity(queryEmbedding, await this.embeddingProvider.embed(row.content)) * 0.8
+          + Number(row.relevance_score) * 0.2,
       })));
       return scored
-        .filter(({ score }) => score > 0)
-        .sort((a, b) => (b.score + b.row.relevance_score * 0.1) - (a.score + a.row.relevance_score * 0.1))
+        .sort((a, b) => b.score - a.score)
         .slice(0, limit)
         .map(({ row }) => this.parseMemory(row));
     } catch {
-      const terms = query.toLowerCase().split(/\s+/).filter((term) => term.length > 2);
-      return rows
-        .filter((row) => terms.some((term) => row.content.toLowerCase().includes(term)))
-        .sort((a, b) => b.relevance_score - a.relevance_score)
-        .slice(0, limit)
-        .map((row) => this.parseMemory(row));
+      return this.searchMemoriesByKeyword(query, limit);
     }
+  }
+
+  private searchMemoriesByKeyword(query: string, limit: number): MemoryEntry[] {
+    const keywords = query.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    if (keywords.length === 0) return [];
+
+    const conditions = keywords.map(() => 'content LIKE ?').join(' OR ');
+    const params = keywords.map((k) => `%${k}%`);
+
+    return (this.db.prepare(`
+      SELECT * FROM proactive_memories
+      WHERE status = 'active' AND (${conditions})
+      ORDER BY relevance_score DESC LIMIT ?
+    `).all(...params, limit) as any[]).map((r) => this.parseMemory(r));
   }
 
   /**
    * Auto-discover relations between memories based on content similarity.
-   * Creates relations for semantically similar memories.
+   * Creates relations for memories that share significant keyword overlap.
    */
-  async autoDiscoverRelations(minStrength = 0.3): Promise<{ discovered: number; relations: MemoryRelation[] }> {
+  autoDiscoverRelations(minStrength = 0.3): { discovered: number; relations: MemoryRelation[] } {
     const memories = this.db.prepare("SELECT * FROM proactive_memories WHERE status IN ('candidate', 'active')").all() as any[];
-    const vectors = await Promise.all(memories.map((memory) => this.embeddingForRow(memory)));
     const relations: MemoryRelation[] = [];
     let discovered = 0;
 
@@ -266,7 +276,7 @@ export class ProactiveMemoryService {
       for (let j = i + 1; j < memories.length; j++) {
         const a = memories[i];
         const b = memories[j];
-        const similarity = cosineSimilarity(vectors[i], vectors[j]);
+        const similarity = this.calculateSimilarity(a.content, b.content);
         if (similarity >= minStrength) {
           // Check if relation already exists
           const existing = this.db.prepare(`
@@ -289,9 +299,8 @@ export class ProactiveMemoryService {
    * Consolidate duplicate or near-duplicate memories.
    * Merges memories with >80% content similarity into a single entry.
    */
-  async consolidateMemories(): Promise<{ merged: number; removed: string[] }> {
+  consolidateMemories(): { merged: number; removed: string[] } {
     const memories = this.db.prepare("SELECT * FROM proactive_memories WHERE status IN ('candidate', 'active')").all() as any[];
-    const vectors = await Promise.all(memories.map((memory) => this.embeddingForRow(memory)));
     const removed: string[] = [];
     let merged = 0;
 
@@ -299,7 +308,7 @@ export class ProactiveMemoryService {
       if (removed.includes(memories[i].id)) continue;
       for (let j = i + 1; j < memories.length; j++) {
         if (removed.includes(memories[j].id)) continue;
-        const similarity = cosineSimilarity(vectors[i], vectors[j]);
+        const similarity = this.calculateSimilarity(memories[i].content, memories[j].content);
         if (similarity > 0.8) {
           // Merge: keep the one with higher relevance, transfer relations
           const keep = memories[i].relevance_score >= memories[j].relevance_score ? memories[i] : memories[j];
@@ -350,16 +359,30 @@ export class ProactiveMemoryService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private async embeddingForRow(row: any): Promise<number[]> {
-    if (row.embedding_provider === this.embeddings.id) {
-      const stored = JSON.parse(row.embedding_json || '[]') as number[];
-      if (stored.length > 0) return stored;
+  /**
+   * Calculate content similarity between two strings using Jaccard coefficient.
+   */
+  private calculateSimilarity(a: string, b: string): number {
+    const tokensA = new Set(a.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+    const tokensB = new Set(b.toLowerCase().split(/\s+/).filter((w) => w.length > 2));
+    if (tokensA.size === 0 || tokensB.size === 0) return 0;
+    const intersection = new Set([...tokensA].filter((t) => tokensB.has(t)));
+    const union = new Set([...tokensA, ...tokensB]);
+    return intersection.size / union.size;
+  }
+
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length === 0 || a.length !== b.length) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let index = 0; index < a.length; index++) {
+      dot += a[index] * b[index];
+      normA += a[index] ** 2;
+      normB += b[index] ** 2;
     }
-    const embedding = await this.embeddings.embed(row.content);
-    this.db.prepare(`
-      UPDATE proactive_memories SET embedding_json = ?, embedding_provider = ? WHERE id = ?
-    `).run(JSON.stringify(embedding), this.embeddings.id, row.id);
-    return embedding;
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+    return denominator === 0 ? 0 : dot / denominator;
   }
 
   private calculateRelevance(memory: MemoryEntry): number {
@@ -396,9 +419,7 @@ export class ProactiveMemoryService {
         last_accessed_at TEXT NOT NULL DEFAULT (datetime('now')),
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         expires_at TEXT,
-        metadata_json TEXT NOT NULL DEFAULT '{}',
-        embedding_json TEXT NOT NULL DEFAULT '[]',
-        embedding_provider TEXT NOT NULL DEFAULT 'legacy'
+        metadata_json TEXT NOT NULL DEFAULT '{}'
       );
 
       CREATE INDEX IF NOT EXISTS idx_proactive_memories_status ON proactive_memories(status);
@@ -420,12 +441,5 @@ export class ProactiveMemoryService {
       CREATE INDEX IF NOT EXISTS idx_proactive_memory_relations_source ON proactive_memory_relations(source_id);
       CREATE INDEX IF NOT EXISTS idx_proactive_memory_relations_target ON proactive_memory_relations(target_id);
     `);
-    const columns = this.db.prepare('PRAGMA table_info(proactive_memories)').all() as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === 'embedding_json')) {
-      this.db.exec("ALTER TABLE proactive_memories ADD COLUMN embedding_json TEXT NOT NULL DEFAULT '[]'");
-    }
-    if (!columns.some((column) => column.name === 'embedding_provider')) {
-      this.db.exec("ALTER TABLE proactive_memories ADD COLUMN embedding_provider TEXT NOT NULL DEFAULT 'legacy'");
-    }
   }
 }

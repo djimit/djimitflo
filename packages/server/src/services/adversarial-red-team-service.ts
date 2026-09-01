@@ -16,7 +16,8 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { CommandRiskClassifier } from './command-risk-classifier';
-import { ContextSanitizer } from './context-sanitizer';
+import { redactSecrets } from './secret-patterns';
+import { RuntimeGovernanceService } from './runtime-governance-service';
 
 interface AttackVector {
   id: string;
@@ -151,10 +152,11 @@ const ATTACK_VECTORS: AttackVector[] = [
 ];
 
 export class AdversarialRedTeamService {
-  private commandClassifier = new CommandRiskClassifier();
-  private contextSanitizer = new ContextSanitizer();
-
-  constructor(private db: Database) {
+  constructor(
+    private db: Database,
+    private governance = new RuntimeGovernanceService(db),
+    private riskClassifier = new CommandRiskClassifier(),
+  ) {
     this.ensureTables();
   }
 
@@ -209,12 +211,14 @@ export class AdversarialRedTeamService {
    * Execute a single attack vector and check if it was blocked.
    */
   private async executeAttack(vector: AttackVector): Promise<AttackResult> {
-    const blocked = this.checkDefense(vector);
+    const agentId = `red-team-${vector.category}`;
+    // Check if the attack would be blocked by existing defenses
+    const blocked = this.checkDefense(vector, agentId);
 
     return {
       id: randomUUID(),
       vectorId: vector.id,
-      agentId: `red-team-${vector.category}`,
+      agentId,
       timestamp: new Date().toISOString(),
       blocked: blocked.blocked,
       detectionMethod: blocked.method,
@@ -227,32 +231,53 @@ export class AdversarialRedTeamService {
   /**
    * Check if existing defenses would block an attack.
    */
-  private checkDefense(vector: AttackVector): {
+  private checkDefense(vector: AttackVector, agentId: string): {
     blocked: boolean;
     method: string;
     response: string;
     severity: 'critical' | 'high';
     recommendation: string;
   } {
-    if (vector.category === 'injection') {
-      const result = this.contextSanitizer.sanitize(vector.payload);
+    const risk = this.riskClassifier.classify(vector.payload);
+    const secretCount = redactSecrets(vector.payload).count;
+    const governanceAllowed = this.governance.isAllowed(agentId);
+
+    if (!governanceAllowed) {
       return {
-        blocked: result.was_sanitized,
-        method: result.detected_patterns.join(',') || 'context_sanitizer:none',
-        response: result.sanitized,
-        severity: 'high',
-        recommendation: result.was_sanitized ? 'Regression defense passed' : 'Add this payload to ContextSanitizer coverage',
+        blocked: true,
+        method: 'runtime_governance',
+        response: `Agent ${agentId} is blocked by runtime governance`,
+        severity: 'critical',
+        recommendation: 'Review the persistent quarantine evidence before release',
+      };
+    }
+    if (secretCount > 0) {
+      return {
+        blocked: true,
+        method: 'secret_scanner',
+        response: `Secret scanner detected ${secretCount} credential pattern(s)`,
+        severity: 'critical',
+        recommendation: 'Remove or redact the detected credential material',
+      };
+    }
+    if (risk.recommended_decision !== 'allow') {
+      return {
+        blocked: true,
+        method: 'command_risk_classifier',
+        response: risk.explanation,
+        severity: risk.risk_level === 'critical' ? 'critical' : 'high',
+        recommendation: risk.recommended_decision === 'deny'
+          ? 'Keep the matching command-risk rule enforced'
+          : 'Require explicit approval before executing this payload',
       };
     }
 
-    const assessment = this.commandClassifier.classify(vector.payload, { workspacePath: process.cwd() });
-    const blocked = assessment.recommended_decision !== 'allow';
     return {
-      blocked,
-      method: assessment.matched_rules.join(',') || 'command_classifier:none',
-      response: assessment.explanation,
-      severity: assessment.risk_level === 'critical' ? 'critical' : 'high',
-      recommendation: blocked ? 'Regression defense passed' : `Add classifier coverage for ${vector.id}`,
+      blocked: false,
+      method: 'none',
+      response: 'No active defense blocked this payload',
+      severity: 'high',
+      recommendation: `Add an enforceable defense for ${vector.category}`,
     };
   }
 

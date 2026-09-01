@@ -6,21 +6,16 @@
  * 170 LOC + executeRuntimeCommand 120 LOC + semaphore management).
  */
 
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import type { ChildProcess } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
-import { startRuntimeProcess, type RuntimeProcess } from '../execution/executors/runtime-process';
-import { structuredRuntimeEvent } from '../execution/executors/structured-runtime-event';
-import type { ExecutionEventCreateInput } from '@djimitflo/shared';
-
-const DEFAULT_MAX_CONCURRENCY = 4;
+import { runtimeConcurrencySemaphore } from './concurrency-semaphore';
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
-  private static readonly runtimeSemaphore: { active: Set<string>; queue: Array<{ leaseId: string; resolve: () => void; reject: (err: Error) => void }> } = { active: new Set(), queue: [] };
   private runtimeContractCache = new Map<string, { expiresAt: number; contract: RuntimeContract }>();
   private readonly runtimeContractCacheMs = Math.max(500, Math.min(Number(process.env.LOOP_RUNTIME_CONTRACT_CACHE_MS ?? 5_000), 60_000));
 
@@ -242,7 +237,7 @@ export class RuntimeCommandService {
 
   async executeRuntimeCommand(
     leaseId: string, command: string, args: string[],
-    options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; maxBuffer?: number; enforceCwdBoundary?: boolean; runtime?: string } = {}
+    options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; maxBuffer?: number; enforceCwdBoundary?: boolean } = {}
   ): Promise<RuntimeExecutionResult> {
     const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
     const timeoutMs = options.timeoutMs || 120_000;
@@ -258,54 +253,40 @@ export class RuntimeCommandService {
       let timedOutHandled = false;
       let exitCode: number | null = null;
       let signal: string | null = null;
-      const events: ExecutionEventCreateInput[] = [];
-      let eventBuffer = '';
       let settled = false;
       const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
+      let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
-      let runtime: RuntimeProcess;
-      const finalize = () => {
-        if (settled) return;
-        settled = true;
-        this.clearRuntimeLease(leaseId);
-        this.releaseRuntimePermit(leaseId);
-        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined, events });
-      };
       try {
-        runtime = startRuntimeProcess({
-          command, args, cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), timeoutMs,
-          onOutput: (text, stream) => {
-            if (stream === 'stdout') {
-              stdout = safeTrim(stdout + text);
-              if (options.runtime && ['claude', 'gemini', 'editor', 'codex', 'opencode', 'pi'].includes(options.runtime)) {
-                eventBuffer += text;
-                const lines = eventBuffer.split(/\r?\n/);
-                eventBuffer = lines.pop() || '';
-                for (const line of lines) {
-                  try { if (events.length < 500) events.push(structuredRuntimeEvent(options.runtime as any, leaseId, JSON.parse(line))); }
-                  catch { /* raw non-JSON output remains in stdout */ }
-                }
-              }
-            } else stderr = safeTrim(stderr + text);
-          },
-          onExit: (code, childSignal) => {
-            if (eventBuffer.trim() && options.runtime) {
-              try { if (events.length < 500) events.push(structuredRuntimeEvent(options.runtime as any, leaseId, JSON.parse(eventBuffer))); }
-              catch { /* raw non-JSON output remains in stdout */ }
-            }
-            exitCode = code; signal = childSignal; finalize();
-          },
-          onError: error => { this.clearRuntimeLease(leaseId); this.releaseRuntimePermit(leaseId); if (!settled) { settled = true; reject(error); } },
-          onTimeout: () => { if (!timedOutHandled) { timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true; } },
-        });
-        child = runtime.child;
+        child = spawn(command, args, { cwd: options.cwd, env: options.env || this.loopService.buildRuntimeEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
       } catch (error) {
         this.releaseRuntimePermit(leaseId);
         reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
       if (!child.pid) { this.releaseRuntimePermit(leaseId); reject(new Error('RUNTIME_PROCESS_START_FAILED')); return; }
-      this.registerRuntimeLease(leaseId, runtime, command, args);
+      if (timeoutMs > 0) {
+        timeoutHandle = setTimeout(() => {
+          if (!timedOutHandled) {
+            timedOut = true; timedOutAt = new Date().toISOString(); timedOutHandled = true;
+            try { child.kill('SIGKILL'); } catch { /* best effort */ }
+          }
+        }, timeoutMs);
+      }
+      this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
+      const finalize = () => {
+        if (settled) return;
+        settled = true;
+        this.clearRuntimeLease(leaseId);
+        this.releaseRuntimePermit(leaseId);
+        resolve({ exitCode, signal, timedOut, timedOutAt, stdout: safeTrim(stdout), stderr: safeTrim(stderr), runtimePid: child.pid || undefined });
+      };
+      child.stdout?.setEncoding('utf8');
+      child.stderr?.setEncoding('utf8');
+      child.stdout?.on('data', (chunk: string) => { stdout += chunk; if (stdout.length > maxBuffer) stdout = stdout.slice(-maxBuffer); });
+      child.stderr?.on('data', (chunk: string) => { stderr += chunk; if (stderr.length > maxBuffer) stderr = stderr.slice(-maxBuffer); });
+      child.on('error', (error) => { this.clearRuntimeLease(leaseId); this.releaseRuntimePermit(leaseId); if (!settled) { settled = true; reject(error); } });
+      child.on('close', (code, childSignal) => { exitCode = code === null ? exitCode : code; signal = childSignal || null; if (timedOut && typeof code === 'number' && code === 0) timedOut = true; finalize(); });
     });
   }
 
@@ -315,14 +296,16 @@ export class RuntimeCommandService {
       this.cancelRuntimePermit(leaseId);
       return { stopMode: 'best_effort_no_process_handle', killAttempted: false };
     }
+    const child = runtimeLease.child;
     let killAttempted = false;
     try {
-      runtimeLease.stop?.();
+      if (!child.killed) child.kill('SIGTERM');
       killAttempted = true;
       this.loopService.patchWorkerLeaseMetadata(leaseId, { runtime_stop_requested_at: new Date().toISOString(), runtime_stop_attempted: true, runtime_stop_mode: 'stop' });
     } catch { killAttempted = false; }
-    this.clearRuntimeLease(leaseId);
-    return { stopMode: 'stop', killAttempted };
+    if (child.killed) { this.clearRuntimeLease(leaseId); return { stopMode: 'stop', killAttempted }; }
+    try { child.kill('SIGKILL'); killAttempted = killAttempted || true; this.clearRuntimeLease(leaseId); return { stopMode: 'kill', killAttempted }; }
+    catch { return { stopMode: 'best_effort_no_process_handle', killAttempted }; }
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
@@ -370,44 +353,24 @@ export class RuntimeCommandService {
     return { total_tokens: runtimeUsage.total_tokens, diff_lines: diffLines, tokens_per_diff_line: diffLines > 0 ? runtimeUsage.total_tokens / diffLines : null, tokens_per_successful_worker: runtimeUsage.total_tokens };
   }
 
-  runtimeConcurrencyInUse(): number { return RuntimeCommandService.runtimeSemaphore.active.size; }
+  runtimeConcurrencyInUse(): number { return runtimeConcurrencySemaphore.activeCount; }
 
   // ─── Semaphore ────────────────────────────────────────────────────────
 
-  private runtimeSemaphoreLimit(): number {
-    const raw = process.env.RUNTIME_MAX_CONCURRENCY;
-    if (raw === undefined || raw === null || raw.trim() === '') return DEFAULT_MAX_CONCURRENCY;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : DEFAULT_MAX_CONCURRENCY;
-  }
-
   private acquireRuntimePermit(leaseId: string): Promise<void> {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) return Promise.resolve();
-    if (sem.active.size < this.runtimeSemaphoreLimit()) { sem.active.add(leaseId); return Promise.resolve(); }
-    return new Promise<void>((resolve, reject) => { sem.queue.push({ leaseId, resolve, reject }); });
+    return runtimeConcurrencySemaphore.acquire(`runtime:${leaseId}`);
   }
 
   private releaseRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    if (sem.active.has(leaseId)) {
-      sem.active.delete(leaseId);
-      const next = sem.queue.shift();
-      if (next) { sem.active.add(next.leaseId); next.resolve(); }
-    } else {
-      const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-      if (idx >= 0) sem.queue.splice(idx, 1);
-    }
+    runtimeConcurrencySemaphore.release(`runtime:${leaseId}`);
   }
 
   private cancelRuntimePermit(leaseId: string): void {
-    const sem = RuntimeCommandService.runtimeSemaphore;
-    const idx = sem.queue.findIndex((w) => w.leaseId === leaseId);
-    if (idx >= 0) { const [waiter] = sem.queue.splice(idx, 1); waiter.reject(new Error('RUNTIME_PERMIT_CANCELLED')); }
+    runtimeConcurrencySemaphore.cancel(`runtime:${leaseId}`);
   }
 
-  private registerRuntimeLease(leaseId: string, runtime: RuntimeProcess, command: string, args: string[]): void {
-    RuntimeCommandService.runtimeLeases.set(leaseId, { child: runtime.child, stop: runtime.stop, leaseId, command, args, startedAt: new Date().toISOString() });
+  private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): void {
+    RuntimeCommandService.runtimeLeases.set(leaseId, { child, leaseId, command, args, startedAt: new Date().toISOString(), timeoutHandle });
   }
 
   private clearRuntimeLease(leaseId: string): void {

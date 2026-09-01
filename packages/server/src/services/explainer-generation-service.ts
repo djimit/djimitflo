@@ -6,7 +6,10 @@ import { RemoteGitService } from "./remote-git-service";
 import { RepoGraphBuilder } from "./repo-graph-builder";
 import { BundleBuilder } from "./bundle-builder";
 import { ExplainerCriticService } from "./explainer-critic-service";
+import { JudgeService } from "./judge-service";
 import { ExplainerPreflightService } from "./explainer-preflight-service";
+import { buildRepoEvidencePacket } from "./repo-evidence-packet";
+import { ExplainerAuthorService, type AuthoredSection } from "./explainer-author-service";
 import type { Database } from "better-sqlite3";
 import { ExplainerProvider, ExplainerStatus, ExplainerBundleStatus } from "@djimitflo/shared";
 import type { ExplainerTask, ExplainerBundle, ExplainerCreateInput, GraphSummary, OpenMythosScores, ExplainerFact } from "@djimitflo/shared";
@@ -40,7 +43,7 @@ export class ExplainerGenerationService {
     this.remoteGit = options.remoteGitService ?? new RemoteGitService(options.cacheRoot);
     this.graphBuilder = options.repoGraphBuilder ?? new RepoGraphBuilder(db);
     this.bundleBuilder = options.bundleBuilder ?? new BundleBuilder(db);
-    this.critic = options.criticService ?? new ExplainerCriticService(options.corpusPath);
+    this.critic = options.criticService ?? new ExplainerCriticService(options.corpusPath, new JudgeService(db));
     this.preflight = options.preflightService ?? new ExplainerPreflightService();
     this.scratchDir = options.scratchDir || process.env.DJIMITFLO_EXPLAINER_SCRATCH || "/tmp/djimitflo-explainer";
   }
@@ -52,8 +55,8 @@ export class ExplainerGenerationService {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO explainer_tasks (id, title, description, provider, remote_url, local_path, status, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO explainer_tasks (id, title, description, provider, remote_url, local_path, discovered_repository_id, status, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.title,
@@ -61,6 +64,7 @@ export class ExplainerGenerationService {
       input.provider || (input.remote_url ? ExplainerProvider.GITHUB : ExplainerProvider.LOCAL),
       input.remote_url || null,
       input.local_path || null,
+      input.discovered_repository_id || null,
       ExplainerStatus.PENDING,
       JSON.stringify(input.metadata || {}),
       now,
@@ -171,114 +175,114 @@ export class ExplainerGenerationService {
     ingest: { localPath: string; repositoryUrl: string | null; repositoryFullName: string },
     scan: any,
     graph: GraphSummary,
-  ): Promise<{ bundleId: string; content: any; preflight: any; score: number | null }> {
-    const sections: Record<string, string> = {
-      overview: this.renderOverview(ingest, scan, graph),
-      architecture: this.renderArchitecture(graph),
-      health: this.renderHealth(scan),
-      dependencies: this.renderDependencies(scan),
-    };
-
-    const facts: ExplainerFact[] = this.extractFacts(scan, graph);
-
-    const result = this.bundleBuilder.build({
-      taskId: task.id,
+  ): Promise<{ bundleId: string; content: any; preflight: any; score: number | null; retries_used: number }> {
+    // FR-006/FR-008: evidence packet → author → critic grade-loop (max 3 attempts)
+    const start = Date.now();
+    const packet = buildRepoEvidencePacket({
       repositoryFullName: ingest.repositoryFullName,
-      repositoryUrl: ingest.repositoryUrl ?? 'https://github.com/' + ingest.repositoryFullName,
-      sourceCommit: scan?.gitStatus?.headCommit || 'unknown',
-      bundleRoot: this.scratchDir,
-      graphSummary: graph,
-      scanSummary: scan?.scanSummary ?? {},
-      sections,
-      facts,
-      openmythosScore: null,
+      localPath: ingest.localPath,
+      scan,
+      graph,
     });
+    const author = new ExplainerAuthorService();
 
-    const content = this.bundleBuilder.loadBundleContent(result.bundleId);
-    const criticResult = this.critic.evaluate(content);
-    const preflight = this.preflight.check(content, criticResult, scan?.scanSummary?.secretScan?.findings ?? []);
+    let sections: AuthoredSection[] = [];
+    let retries_used = 0;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const authored = await author.author(packet, retries_used ? this.lastRetryHints : []);
+      sections = authored.sections;
 
-    // Update bundle record with critic score and status
-    const status = preflight.passed && criticResult.passed ? ExplainerBundleStatus.PUBLISHED : ExplainerBundleStatus.HUMAN_REVIEW;
-    this.db.prepare('UPDATE explainer_bundles SET status = ?, openmythos_score = ?, openmythos_rationale = ?, updated_at = ? WHERE id = ?').run(
-      status,
-      criticResult.overall_score,
-      criticResult.dimensions.map((d) => `${d.name}: ${d.score}`).join('; '),
-      new Date().toISOString(),
-      result.bundleId,
-    );
-
-    return { bundleId: result.bundleId, content, preflight, score: criticResult.overall_score };
-  }
-
-  private renderOverview(ingest: { localPath: string; repositoryUrl: string | null; repositoryFullName: string }, scan: any, graph: GraphSummary): string {
-    const lines = [
-      `# ${ingest.repositoryFullName}`,
-      '',
-      `Repository: ${ingest.repositoryFullName}`,
-      `Files: ${graph.total_files}`,
-      `Health score: ${scan?.health?.score ?? 0}`,
-      `License: ${scan?.scanSummary?.license?.license ?? 'unknown'}`,
-      '',
-      '## Stack',
-      (scan?.stack?.detectedStacks || []).map((s: string) => `- ${s}`).join('\n') || '- unknown',
-    ];
-    return lines.join('\n');
-  }
-
-  private renderArchitecture(graph: GraphSummary): string {
-    const lines = ['# Architecture', ''];
-    lines.push(`Nodes: ${graph.total_nodes}, Edges: ${graph.total_edges}, Files: ${graph.total_files}`);
-    lines.push('', '## Communities');
-    for (const c of graph.communities || []) {
-      lines.push(`- ${c.name} (${c.language}, size ${c.size}, cohesion ${c.cohesion.toFixed(2)})`);
-    }
-    return lines.join('\n');
-  }
-
-  private renderHealth(scan: any): string {
-    const lines = ['# Health', '', `Overall score: ${scan?.health?.score ?? 0}`, '', '## Drivers'];
-    for (const d of scan?.health?.drivers || []) {
-      lines.push(`- ${d.factor}: ${d.impact > 0 ? '+' : ''}${d.impact} — ${d.description}`);
-    }
-    lines.push('', '## Findings');
-    for (const f of scan?.healthFindings || []) {
-      lines.push(`- [${f.severity}] ${f.title}: ${f.description}`);
-    }
-    return lines.join('\n');
-  }
-
-  private renderDependencies(scan: any): string {
-    const manifest = scan?.scanSummary?.dependencyManifest;
-    const lines = ['# Dependencies', '', `Package manager: ${manifest?.packageManager ?? 'unknown'}`, '', '## Packages'];
-    for (const pkg of manifest?.packages || []) {
-      lines.push(`- ${pkg.name}@${pkg.version || 'unspecified'} (${pkg.type})`);
-    }
-    return lines.join('\n');
-  }
-
-  private extractFacts(scan: any, graph: GraphSummary): ExplainerFact[] {
-    const facts: ExplainerFact[] = [];
-    if (scan?.gitStatus?.headCommit) {
-      facts.push({
-        id: `fact-head-${scan.gitStatus.headCommit.slice(0, 7)}`,
-        claim: `Latest commit is ${scan.gitStatus.headCommit.slice(0, 7)}`,
-        source_ref: scan.gitStatus.headCommit,
-        source_type: 'readme_heading',
-        confidence: 1.0,
+      // Build candidate sections map for critic evaluation
+      const candidateSections: Record<string, string> = {};
+      for (const s of sections) candidateSections[s.section_type] = s.content;
+      const candidateFacts = this.sectionsToFacts(ingest, scan, graph, sections);
+      const candidate = this.bundleBuilder.build({
+        taskId: task.id,
+        repositoryFullName: ingest.repositoryFullName,
+        repositoryUrl: ingest.repositoryUrl ?? 'https://github.com/' + ingest.repositoryFullName,
+        sourceCommit: scan?.gitStatus?.headCommit || 'unknown',
+        bundleRoot: this.scratchDir,
+        graphSummary: graph,
+        scanSummary: scan?.scanSummary ?? {},
+        sections: candidateSections,
+        facts: candidateFacts,
+        openmythosScore: null,
       });
+      const candidateContent = this.bundleBuilder.loadBundleContent(candidate.bundleId);
+      const criticResult = this.critic.evaluate(candidateContent);
+      this.lastRetryHints = criticResult.retry_hints;
+      // FR-015 lineage: persist the critic run as an OpenMythos eval run row so
+      // bundle scoring is queryable alongside agent/skill evals (agent_id =
+      // "explainer-critic", dimensions as categories_json).
+      try {
+        this.db.prepare(
+          "INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, categories_json, judge_model, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)",
+        ).run(
+          `explcrit-${candidate.bundleId}-${attempt}`,
+          'explainer-critic',
+          new Date(start).toISOString(),
+          new Date().toISOString(),
+          criticResult.dimensions.length,
+          criticResult.dimensions.length,
+          criticResult.overall_score,
+          JSON.stringify(criticResult.dimensions.map((d) => ({ name: d.name, score: d.score }))),
+          'judge-service-4factor',
+          JSON.stringify({ bundle_id: candidate.bundleId, passed: criticResult.passed, threshold: criticResult.threshold }),
+        );
+      } catch {
+        // eval-persistering is lineage, never a pipeline breaker
+      }
+
+      if (criticResult.passed || attempt === 2) {
+        const preflight = this.preflight.check(candidateContent, criticResult, scan?.scanSummary?.secretScan?.findings ?? []);
+        const status = preflight.passed && criticResult.passed ? ExplainerBundleStatus.PUBLISHED : ExplainerBundleStatus.HUMAN_REVIEW;
+        this.db.prepare('UPDATE explainer_bundles SET status = ?, openmythos_score = ?, openmythos_rationale = ?, updated_at = ? WHERE id = ?').run(
+          status,
+          criticResult.overall_score,
+          criticResult.dimensions.map((d) => `${d.name}: ${d.score}`).join('; '),
+          new Date().toISOString(),
+          candidate.bundleId,
+        );
+        // Governance: EVERY non-published bundle must be resolvable via the review
+        // queue — preflight-only or critic-only failure included (Codex P1 fix).
+        if (!preflight.passed || !criticResult.passed) {
+          const failedPrefix = preflight.blocking_checks && preflight.blocking_checks.length > 0 ? `preflight: ${preflight.blocking_checks.join(', ')}` : 'preflight: none';
+          const criticalDims = criticResult.dimensions.filter((d) => d.score < 50).map((d) => `${d.name}(${Math.round(d.score)})`);
+          const dimText = criticalDims.length > 0 ? `critical dims: ${criticalDims.join(', ')}` : `critic dims ok (score ${criticResult.overall_score})`;
+          this.db.prepare('INSERT INTO human_review_queue (id, bundle_id, reason, created_at) VALUES (?, ?, ?, ?)').run(
+            randomUUID(),
+            candidate.bundleId,
+            `Not published after ${attempt + 1} attempt(s): ${failedPrefix}; ${dimText}; hints: ${criticResult.retry_hints.slice(0, 3).join(' | ') || 'none'}`,
+            new Date().toISOString(),
+          );
+        }
+        return { bundleId: candidate.bundleId, content: candidateContent, preflight, score: criticResult.overall_score, retries_used };
+      }
+      retries_used = attempt + 1;
     }
-    if (graph.total_files > 0) {
-      facts.push({
-        id: 'fact-file-count',
-        claim: `Repository contains ${graph.total_files} files`,
-        source_ref: 'graph_summary',
-        source_type: 'graph_node',
-        confidence: 0.9,
-      });
-    }
-    return facts;
+    throw new Error('Grade-loop exited without bundle');
   }
+
+  private lastRetryHints: string[] = [];
+
+  private sectionsToFacts(
+    ingest: { repositoryFullName: string },
+    scan: any,
+    graph: GraphSummary,
+    sections: AuthoredSection[],
+  ): ExplainerFact[] {
+    // Merge evidence-backed facts with authored section provenance
+    const packet = buildRepoEvidencePacket({
+      repositoryFullName: ingest.repositoryFullName,
+      localPath: '',
+      scan,
+      graph,
+      tokenBudget: 1000,
+    });
+    void sections;
+    return packet.facts;
+  }
+
 
   evaluateBundle(bundle: any): OpenMythosScores {
     const content = typeof bundle === 'string' ? bundle : bundle?.explainer_md || '';
@@ -328,13 +332,15 @@ export class ExplainerGenerationService {
     const task = this.getTask(taskId);
     if (!task) throw new Error("Task not found: " + taskId);
     this.db.prepare("UPDATE explainer_tasks SET status = ? WHERE id = ?").run(ExplainerStatus.RUNNING, taskId);
+    this.auditLog(taskId, task.id, 'pipeline_run', 'pending', null);
     try {
       const ingest = await this.ingestRepository(task);
       const scan = await this.scanRepository(ingest.localPath);
       const graph = options.skipGraph
         ? { total_nodes: 0, total_edges: 0, total_files: this.countFiles(ingest.localPath), risk_score: null, communities: [], top_flows: [], hub_nodes: [], bridge_nodes: [] }
         : await this.buildGraph(scan.repository?.id || 'unknown', ingest.localPath, scan.scanId || null, scan.gitStatus?.headCommit || null);
-      const { bundleId } = await this.generateBundle(task, ingest, scan, graph);
+      const { bundleId, retries_used } = await this.generateBundle(task, ingest, scan, graph);
+      this.auditLog(bundleId, taskId, 'pipeline_run', 'success', `grade-loop retries: ${retries_used}`);
       if (options.dryRun) return bundleId;
       this.db.prepare("UPDATE explainer_tasks SET status = ?, scan_id = ?, repository_id = ?, updated_at = ? WHERE id = ?").run(
         ExplainerStatus.COMPLETED,
@@ -351,8 +357,20 @@ export class ExplainerGenerationService {
         new Date().toISOString(),
         taskId,
       );
+      this.auditLog(taskId, taskId, 'pipeline_run', 'failure', error instanceof Error ? error.message : String(error));
       throw error;
     }
+  }
+
+  private auditLog(resourceId: string, taskId: string, action: string, outcome: 'success' | 'failure' | 'blocked' | 'pending', reason: string | null): void {
+    try {
+      this.db.prepare(
+        'INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      ).run(randomUUID(), 'system', action, 'explainer_task', resourceId, outcome, reason, new Date().toISOString());
+    } catch {
+      // audit must never break the pipeline
+    }
+    void taskId;
   }
 
   listBundles(taskId?: string): ExplainerBundle[] {

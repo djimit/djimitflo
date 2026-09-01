@@ -62,7 +62,7 @@ StartRun(run_id) ==
 
 InterruptRun(run_id) ==
     /\ run_id \in Runs
-    /\ run_states[run_id] = RUNING
+    /\ run_states[run_id] = RUNNING
     /\ run_states' = [run_states EXCEPT ![run_id] = INTERRUPTED]
     /\ live_leases' = live_leases \ {run_id}
     /\ UNCHANGED resume_attempts

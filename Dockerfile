@@ -78,7 +78,14 @@ COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
 
 # Install production dependencies only
-RUN npm install --omit=dev
+RUN npm install --omit=dev && \
+    node -e "new (require('better-sqlite3'))(':memory:').close()"
+
+RUN npm install --global npm@12.0.2 && \
+    npm install --global --prefix /tmp/npm-patches \
+      brace-expansion@5.0.9 ip-address@10.3.1 tar@7.5.21 undici@7.29.0 && \
+    cp -a /tmp/npm-patches/lib/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ && \
+    rm -rf /tmp/npm-patches
 
 # Copy built artifacts from builder stage
 COPY --from=builder /build/packages/shared/dist packages/shared/dist

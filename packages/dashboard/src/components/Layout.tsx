@@ -1,7 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, MessageSquare } from 'lucide-react';
+import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, ClipboardCheck } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
+import { OrganizationSelector } from './OrganizationSelector';
 
 export function Layout() {
   const location = useLocation();
@@ -28,15 +29,20 @@ export function Layout() {
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-background-secondary transition-transform md:static md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo */}
         <div className="flex items-start justify-between border-b border-border p-6">
-          <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <Activity className="w-6 h-6 text-accent" />
-            Djimitflo
-          </h1>
-          <p className="text-sm text-foreground-tertiary mt-1">
-            Agent Control Plane
-          </p>
-          </div>
+           <div className="flex items-center justify-between w-full">
+             <div>
+               <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+                 <Activity className="w-6 h-6 text-accent" />
+                 Djimitflo
+               </h1>
+               <p className="text-sm text-foreground-tertiary mt-1">
+                 Agent Control Plane
+               </p>
+             </div>
+             <div className="hidden md:block">
+               <OrganizationSelector />
+             </div>
+           </div>
           <button type="button" aria-label="Close navigation" className="p-1 text-foreground-secondary md:hidden" onClick={() => setMobileNavOpen(false)}>
             <X className="h-5 w-5" />
           </button>
@@ -91,6 +97,12 @@ export function Layout() {
             icon={<ShieldCheck className="w-5 h-5" />}
             label="Governance"
             active={isActive('/governance')}
+          />
+          <NavLink
+            to="/compliance"
+            icon={<ClipboardCheck className="w-5 h-5" />}
+            label="Assurance & SDD"
+            active={isActive('/compliance')}
           />
           <NavLink
             to="/mcp-permissions"
@@ -175,12 +187,6 @@ export function Layout() {
             icon={<Activity className="w-5 h-5" />}
             label="Self-Driving"
             active={isActive('/self-driving')}
-          />
-          <NavLink
-            to="/consensus-debates"
-            icon={<MessageSquare className="w-5 h-5" />}
-            label="Model Council"
-            active={isActive('/consensus-debates')}
           />
         </nav>
         

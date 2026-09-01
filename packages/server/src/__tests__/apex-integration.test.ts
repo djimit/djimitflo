@@ -6,7 +6,7 @@ import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
-import { testEmbeddingProvider } from './helpers/test-embedding-provider';
+import { TestEmbeddingProvider } from './helpers/test-embedding-provider';
 
 function createTestDb(): Database.Database {
   const db = new Database(':memory:');
@@ -150,7 +150,7 @@ describe('Apex Integration Tests', () => {
 
     beforeEach(() => {
       db = createTestDb();
-      service = new VectorMemoryService(db, testEmbeddingProvider);
+      service = new VectorMemoryService(db, new TestEmbeddingProvider());
     });
 
     it('stores and retrieves memories', async () => {
@@ -173,12 +173,29 @@ describe('Apex Integration Tests', () => {
       expect(results[0].content).toContain('TypeScript');
     });
 
+    it('re-embeds legacy hash rows with the active provider', async () => {
+      db.prepare(`
+        INSERT INTO vector_memories
+          (id, content, embedding_json, metadata_json, created_at, last_accessed)
+        VALUES ('legacy-memory', 'TypeScript legacy memory', '[0.1,0.2]', '{}', datetime('now'), datetime('now'))
+      `).run();
+
+      const results = await service.search('TypeScript', 5, 0.1);
+      const migrated = db.prepare(`
+        SELECT embedding_provider, embedding_json FROM vector_memories WHERE id = 'legacy-memory'
+      `).get() as any;
+
+      expect(results.map((result) => result.id)).toContain('legacy-memory');
+      expect(migrated.embedding_provider).toBe('test:semantic');
+      expect(JSON.parse(migrated.embedding_json)).toHaveLength(8);
+    });
+
     it('clusters related memories', async () => {
       await service.storeMemory({ content: 'TypeScript types' });
       await service.storeMemory({ content: 'TypeScript interfaces' });
       await service.storeMemory({ content: 'TypeScript generics' });
 
-      const clusters = service.getClusters(0.3);
+      const clusters = await service.getClusters(0.3);
       expect(clusters.length).toBeGreaterThanOrEqual(0);
     });
 

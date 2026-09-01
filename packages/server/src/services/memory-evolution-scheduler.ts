@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { MemoryEvolutionService } from './memory-evolution-service';
 
 export interface LoopConfig {
   consolidation_interval_ms: number; decay_interval_ms: number; eval_interval_ms: number;
@@ -97,20 +98,12 @@ export class MemoryEvolutionScheduler {
     const started = new Date().toISOString(); const errors: string[] = []; let processed = 0;
     try {
       const candidates = this.db.prepare("SELECT id FROM memory_candidates WHERE status='candidate' AND promotion_status='proposed'").all() as any[];
+      const evolution = new MemoryEvolutionService(this.db);
       for (const { id } of candidates) {
-        const c = this.db.prepare('SELECT * FROM memory_candidates WHERE id=?').get(id) as any;
-        if (!c) continue;
-        const meta = JSON.parse(c.metadata || '{}');
-        const daysOld = (Date.now() - new Date(c.created_at).getTime()) / 86400000;
-        const disc = c.status === 'promoted' ? 0.9 : 0.5;
-        const stab = meta.promoted_at ? 0.8 : 0.4;
-        const nov = Math.max(0, 1 - daysOld / 30);
-        const cons = meta.distilled ? 0.7 : 0.5;
-        const decay = c.memory_type === 'policy_rule' ? 0.9 : 0.6;
-        const composite = 0.25*disc + 0.20*stab + 0.15*nov + 0.15*cons + 0.15*decay + 0.10*0.5;
-        if (composite >= 0.7 && disc >= 0.6) {
+        const quality = evolution.computeQualityScore(id);
+        if (quality.promotionEligible) {
           this.db.prepare("UPDATE memory_candidates SET promotion_status='promoted',status='promoted',metadata=json_set(COALESCE(metadata,'{}'),'$.promoted_at',?,'$.promotion_reason','weekly_eval'),updated_at=? WHERE id=?").run(new Date().toISOString(), new Date().toISOString(), id);
-        } else if (composite < 0.3) {
+        } else if (quality.composite < 0.3) {
           this.db.prepare("UPDATE memory_candidates SET promotion_status='rejected',status='rejected',metadata=json_set(COALESCE(metadata,'{}'),'$.rejection_reason','below_threshold'),updated_at=? WHERE id=?").run(new Date().toISOString(), id);
         }
         processed++;

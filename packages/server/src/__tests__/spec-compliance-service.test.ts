@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateSpecCompliance, generateComplianceReport } from '../services/spec-compliance-service';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { evaluateSpecCompliance, generateComplianceReport, scanSpecsDirectory } from '../services/spec-compliance-service';
 
 describe('SpecComplianceService', () => {
   const fullSpec = `---
@@ -91,5 +94,19 @@ SC-001: Fast response.
       expect(report.totalSpecs).toBe(0);
       expect(report.generatedAt).toBeDefined();
     });
+  });
+
+  it('includes OpenSpec change evidence in the scan', () => {
+    const root = mkdtempSync(join(tmpdir(), 'djimitflo-spec-scan-'));
+    const change = join(root, 'openspec', 'changes', 'proof-change');
+    mkdirSync(change, { recursive: true });
+    writeFileSync(join(change, 'proposal.md'), '# Proof change\n\nFR-001 SHALL prove behavior.');
+    writeFileSync(join(change, 'tasks.md'), '- [x] Implement proof\n');
+
+    const specs = scanSpecsDirectory(root);
+    expect(specs).toEqual([
+      expect.objectContaining({ name: 'openspec/proof-change', source: 'openspec' }),
+    ]);
+    expect(generateComplianceReport(specs).specs[0]).toMatchObject({ lifecycleState: 'implemented' });
   });
 });

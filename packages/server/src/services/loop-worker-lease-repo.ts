@@ -92,6 +92,11 @@ export class WorkerLeaseRepo {
       .run(runtime, new Date().toISOString(), id);
   }
 
+  updateWorktree(id: string, worktreePath: string, branchName: string): void {
+    this.db.prepare('UPDATE worker_leases SET worktree_path = ?, branch_name = ?, updated_at = ? WHERE id = ?')
+      .run(worktreePath, branchName, new Date().toISOString(), id);
+  }
+
   /**
    * Patch lease metadata (merge with existing).
    */

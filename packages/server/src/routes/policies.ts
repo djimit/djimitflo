@@ -3,6 +3,8 @@ import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
+import { AuditEventType, RiskLevel } from '@djimitflo/shared';
+import { AuditService } from '../services/audit-service';
 
 function parsePolicy(row: any) {
   const riskLevels = JSON.parse(row.risk_levels || '[]');
@@ -25,6 +27,7 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
   const router = Router();
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const auditService = new AuditService(db);
 
   router.get('/', requireAuth, requirePermission('read:evidence'), (_req, res, next) => {
     try {
@@ -96,36 +99,49 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
         throw createError(404, 'Policy not found', 'POLICY_NOT_FOUND');
       }
       const input = req.body;
-      db.prepare(`
-        UPDATE approval_policies SET
-          name = ?, description = ?, enabled = ?, priority = ?, action_type = ?, decision = ?,
-          risk_levels = ?, tool_patterns = ?, file_patterns = ?, requires_approval = ?, auto_approve = ?,
-          approval_timeout_ms = ?, match_pattern = ?, protected_paths = ?, allowed_tools = ?,
-          blocked_tools = ?, require_reason = ?, metadata = ?, updated_at = ?
-        WHERE id = ?
-      `).run(
-        input.name ?? existing.name,
-        input.description ?? existing.description,
-        input.enabled === undefined ? existing.enabled : (input.enabled ? 1 : 0),
-        input.priority ?? existing.priority,
-        input.action_type ?? existing.action_type,
-        input.decision ?? existing.decision,
-        JSON.stringify(input.risk_levels ?? JSON.parse(existing.risk_levels || '[]')),
-        JSON.stringify(input.tool_patterns ?? JSON.parse(existing.tool_patterns || '[]')),
-        JSON.stringify(input.file_patterns ?? JSON.parse(existing.file_patterns || '[]')),
-        input.requires_approval === undefined ? existing.requires_approval : (input.requires_approval ? 1 : 0),
-        input.auto_approve === undefined ? existing.auto_approve : (input.auto_approve ? 1 : 0),
-        input.approval_timeout_ms ?? existing.approval_timeout_ms,
-        input.match_pattern ?? existing.match_pattern,
-        JSON.stringify(input.protected_paths ?? JSON.parse(existing.protected_paths || '[]')),
-        JSON.stringify(input.allowed_tools ?? JSON.parse(existing.allowed_tools || '[]')),
-        JSON.stringify(input.blocked_tools ?? JSON.parse(existing.blocked_tools || '[]')),
-        input.require_reason === undefined ? existing.require_reason : (input.require_reason ? 1 : 0),
-        JSON.stringify(input.metadata ?? JSON.parse(existing.metadata || '{}')),
-        new Date().toISOString(),
-        req.params.id
-      );
-      const updated = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
+      const updated = db.transaction(() => {
+        db.prepare(`
+          UPDATE approval_policies SET
+            name = ?, description = ?, enabled = ?, priority = ?, action_type = ?, decision = ?,
+            risk_levels = ?, tool_patterns = ?, file_patterns = ?, requires_approval = ?, auto_approve = ?,
+            approval_timeout_ms = ?, match_pattern = ?, protected_paths = ?, allowed_tools = ?,
+            blocked_tools = ?, require_reason = ?, metadata = ?, version = version + 1, updated_at = ?
+          WHERE id = ?
+        `).run(
+          input.name ?? existing.name,
+          input.description ?? existing.description,
+          input.enabled === undefined ? existing.enabled : (input.enabled ? 1 : 0),
+          input.priority ?? existing.priority,
+          input.action_type ?? existing.action_type,
+          input.decision ?? existing.decision,
+          JSON.stringify(input.risk_levels ?? JSON.parse(existing.risk_levels || '[]')),
+          JSON.stringify(input.tool_patterns ?? JSON.parse(existing.tool_patterns || '[]')),
+          JSON.stringify(input.file_patterns ?? JSON.parse(existing.file_patterns || '[]')),
+          input.requires_approval === undefined ? existing.requires_approval : (input.requires_approval ? 1 : 0),
+          input.auto_approve === undefined ? existing.auto_approve : (input.auto_approve ? 1 : 0),
+          input.approval_timeout_ms ?? existing.approval_timeout_ms,
+          input.match_pattern ?? existing.match_pattern,
+          JSON.stringify(input.protected_paths ?? JSON.parse(existing.protected_paths || '[]')),
+          JSON.stringify(input.allowed_tools ?? JSON.parse(existing.allowed_tools || '[]')),
+          JSON.stringify(input.blocked_tools ?? JSON.parse(existing.blocked_tools || '[]')),
+          input.require_reason === undefined ? existing.require_reason : (input.require_reason ? 1 : 0),
+          JSON.stringify(input.metadata ?? JSON.parse(existing.metadata || '{}')),
+          new Date().toISOString(),
+          req.params.id
+        );
+        const nextPolicy = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
+        auditService.record({
+          event_type: AuditEventType.POLICY_UPDATED,
+          user_id: req.user?.sub,
+          action: 'approval_policy.updated',
+          resource_type: 'approval_policy',
+          resource_id: req.params.id,
+          risk_level: RiskLevel.HIGH,
+          before: parsePolicy(existing),
+          after: parsePolicy(nextPolicy),
+        });
+        return nextPolicy;
+      })();
       res.json(parsePolicy(updated));
     } catch (error) {
       next(error);
@@ -134,10 +150,23 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
 
   router.delete('/:id', requirePermission('manage:config'), (req, res, next) => {
     try {
-      const result = db.prepare('DELETE FROM approval_policies WHERE id = ?').run(req.params.id);
-      if (result.changes === 0) {
+      const existing = db.prepare('SELECT * FROM approval_policies WHERE id = ?').get(req.params.id) as any;
+      if (!existing) {
         throw createError(404, 'Policy not found', 'POLICY_NOT_FOUND');
       }
+      db.transaction(() => {
+        db.prepare('DELETE FROM approval_policies WHERE id = ?').run(req.params.id);
+        auditService.record({
+          event_type: AuditEventType.POLICY_UPDATED,
+          user_id: req.user?.sub,
+          action: 'approval_policy.deleted',
+          resource_type: 'approval_policy',
+          resource_id: req.params.id,
+          risk_level: RiskLevel.HIGH,
+          before: parsePolicy(existing),
+          after: { deleted: true },
+        });
+      })();
       res.status(204).send();
     } catch (error) {
       next(error);

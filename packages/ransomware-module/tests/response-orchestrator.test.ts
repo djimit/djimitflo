@@ -55,6 +55,13 @@ describe('ResponseOrchestrator', () => {
     expect(killed).toBe(true);
   });
 
+  it('requests backup restore after kill', () => {
+    let requested = false;
+    emitter.on('backup:restore_requested', () => { requested = true; });
+    orchestrator.executeResponse(makeResult());
+    expect(requested).toBe(true);
+  });
+
   it('emits agent:quarantined for quarantine action', () => {
     let quarantined = false;
     emitter.on('agent:quarantined', () => { quarantined = true; });
@@ -90,6 +97,15 @@ describe('ResponseOrchestrator', () => {
       for (let i = 0; i < 5; i++) orchestrator.recordViolation('agent-1');
       const { state } = orchestrator.checkCircuitBreaker('agent-1');
       expect(state.quarantined).toBe(true);
+    });
+
+    it('enforces circuit-breaker state during response execution', () => {
+      const approvalResult = makeResult({ confidence: 0.65, riskLevel: 'HIGH', recommendedAction: 'log_only' });
+      expect(orchestrator.executeResponse(approvalResult)).toBe('log_only');
+      expect(orchestrator.executeResponse(approvalResult)).toBe('log_only');
+      expect(orchestrator.executeResponse(approvalResult)).toBe('require_approval');
+      expect(orchestrator.executeResponse(approvalResult)).toBe('require_approval');
+      expect(orchestrator.executeResponse(approvalResult)).toBe('quarantine');
     });
 
     it('releases from quarantine with reason', () => {

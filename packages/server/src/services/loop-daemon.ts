@@ -5,6 +5,7 @@ import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { authorityGateForGoal } from './authority-gate';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -106,6 +107,7 @@ export class LoopDaemon {
    */
   async tick(): Promise<void> {
     // Allow tick to run even when not started (for testing)
+    this.pruneWorktrees();
 
     try {
       const queue = this.loadQueue();
@@ -119,6 +121,30 @@ export class LoopDaemon {
       const toStart = queue.slice(0, slots);
 
       for (const goal of toStart) {
+        // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
+        const authorityGateResult =
+          authorityGateForGoal(this.db, goal);
+        if (!authorityGateResult.allowed) {
+          console.error(
+            '[LoopDaemon] goal geweigerd door authority-gate:',
+            goal.id, '-', authorityGateResult.reason,
+          );
+          swarmEventBus.emit('authority_deny', {
+            goal_id: goal.id,
+            reason: authorityGateResult.reason,
+            mode: authorityGateResult.mode,
+          });
+          continue;
+        }
+        if (authorityGateResult.mode !== 'off') {
+          swarmEventBus.emit('authority_gate', {
+            goal_id: goal.id,
+            reason: authorityGateResult.reason,
+            mode: authorityGateResult.mode,
+          });
+        }
+        // originele loop-body volgt hieronder
+
         // Mark goal as active + start it asynchronously.
         this.activeGoals.add(goal.id);
         this.persistActiveGoals();
@@ -317,6 +343,15 @@ export class LoopDaemon {
       // G19: remove from active goals when done (success or failure).
       this.activeGoals.delete(goal.id);
       this.persistActiveGoals();
+      this.pruneWorktrees();
+    }
+  }
+
+  private pruneWorktrees(): void {
+    try {
+      this.loops.pruneOrphanedWorktrees();
+    } catch (error) {
+      console.error('[LoopDaemon] worktree cleanup error:', error instanceof Error ? error.message : String(error));
     }
   }
 

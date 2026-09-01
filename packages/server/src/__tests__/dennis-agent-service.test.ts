@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -17,9 +17,14 @@ describe('DennisAgentService', () => {
     db.exec(schema);
     runMigrations(db);
     okfBase = fs.mkdtempSync(path.join(os.tmpdir(), 'dennis-agent-okf-'));
+    // Isolate from the real ~/.djimit/roborev/pending.jsonl — heartbeat()
+    // auto-imports Paperclip findings, so point it at an empty/nonexistent
+    // scratch file; tests pass their own explicit path to importPaperclipPending.
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = path.join(okfBase, 'heartbeat-sentinel.jsonl');
   });
 
   afterEach(() => {
+    delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
     db.close();
     fs.rmSync(okfBase, { recursive: true, force: true });
   });
@@ -153,6 +158,8 @@ describe('DennisAgentService', () => {
     ].join('\n'));
 
     const service = new DennisAgentService(db, { okfBase });
+    // Heartbeat registers the Dennis agent row (FK target for tasks) — with the
+    // empty env-scoped pending path so no production entries leak in.
     service.heartbeat();
     const first = service.importPaperclipPending(pending);
     const second = service.importPaperclipPending(pending);
@@ -181,11 +188,15 @@ describe('DennisAgentService', () => {
       affected_files: ['src/a.ts'],
     }));
 
-    const service = new DennisAgentService(db, { okfBase });
+    const broadcastTaskEventById = vi.fn();
+    const service = new DennisAgentService(db, { okfBase, wsService: { broadcastTaskEventById } });
+    // Heartbeat registers the Dennis agent row (FK target for task inserts).
     service.heartbeat();
     service.importPaperclipPending(pending);
+    expect((db.prepare("SELECT status FROM tasks WHERE agent_id = ? AND execution_mode = 'dry_run'").get(DENNIS_AGENT_ID) as any).status).toBe('pending');
+    expect(broadcastTaskEventById).not.toHaveBeenCalled();
 
-    const result = service.processDryRunTasks();
+    const result = service.processGovernedQueue();
 
     expect(result.processed).toBe(1);
     expect(result.work_items_blocked).toBe(1);
@@ -199,10 +210,13 @@ describe('DennisAgentService', () => {
     const workItem = db.prepare("SELECT * FROM work_items WHERE assigned_agent_id = ? AND source = 'paperclip_pending_jsonl'").get(DENNIS_AGENT_ID) as any;
     expect(workItem.status).toBe('blocked');
     expect(JSON.parse(workItem.metadata).blocked_reason).toBe('human_approval_required_before_execution');
-    const approvalId = JSON.parse(workItem.metadata).approval_id;
+    let approvalId = JSON.parse(workItem.metadata).approval_id;
     const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(approvalId) as any;
     expect(approval.status).toBe('pending');
+    expect(new Date(approval.expires_at).getTime()).toBeGreaterThan(Date.now());
     expect(JSON.parse(approval.metadata).dennis_action).toBe('materialize_dry_run');
+    expect(broadcastTaskEventById).toHaveBeenCalledTimes(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.requested'").get(task.id) as any).count).toBe(1);
     const snapshot = service.readinessSnapshot();
     expect(snapshot.counts.dry_run_pending_tasks).toBe(0);
     expect(snapshot.counts.paperclip_blocked_work_items).toBe(1);
@@ -219,13 +233,31 @@ describe('DennisAgentService', () => {
       risk_level: 'high',
     });
 
+    db.prepare('UPDATE approvals SET expires_at = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', approvalId);
+    service.processGovernedQueue();
+    const renewedWorkItem = db.prepare('SELECT metadata FROM work_items WHERE id = ?').get(workItem.id) as any;
+    const renewedApprovalId = JSON.parse(renewedWorkItem.metadata).approval_id;
+    expect(renewedApprovalId).not.toBe(approvalId);
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('expired');
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(renewedApprovalId) as any).status).toBe('pending');
+    expect(broadcastTaskEventById).toHaveBeenCalledTimes(3);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.expired'").get(task.id) as any).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = ? AND event_type = 'approval.requested'").get(task.id) as any).count).toBe(2);
+    approvalId = renewedApprovalId;
+
     db.prepare("UPDATE approvals SET status = 'approved', approved_at = ? WHERE id = ?").run(new Date().toISOString(), approvalId);
-    const materialized = service.materializeApprovedDryRun(approvalId, 'test-user');
-    expect(materialized.status).toBe('materialized');
-    expect(materialized.event_id).toBeTruthy();
-    const materializedEvent = db.prepare("SELECT * FROM execution_events WHERE id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(materialized.event_id) as any;
+    service.processGovernedQueue();
+    const materializedEvent = db.prepare("SELECT * FROM execution_events WHERE approval_id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(approvalId) as any;
     expect(JSON.parse(materializedEvent.tool_output).executed_mutations).toEqual([]);
     const doneWorkItem = db.prepare('SELECT * FROM work_items WHERE id = ?').get(workItem.id) as any;
     expect(doneWorkItem.status).toBe('done');
+
+    db.prepare(`INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, metadata)
+      VALUES ('dennis-denied-recovery', ?, 'denied', 'high', 'high_risk_action', 'Denied', '{}', '{}')`).run(task.id);
+    db.prepare(`INSERT INTO work_items (id, title, description, source, risk_class, status, assigned_agent_id, metadata)
+      VALUES ('dennis-denied-recovery-work', 'Denied', '', 'paperclip_pending_jsonl', 'high', 'blocked', ?, ?)`)
+      .run(DENNIS_AGENT_ID, JSON.stringify({ task_id: task.id, approval_id: 'dennis-denied-recovery', dry_run_plan: metadata.dry_run_plan }));
+    service.processGovernedQueue();
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-denied-recovery-work'").get() as any).status).toBe('discarded');
   });
 });

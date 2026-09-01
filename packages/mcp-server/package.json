@@ -21,11 +21,13 @@
   "dependencies": {
     "@djimitflo/shared": "*",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^12.11.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
     "@types/node": "^26.1.1",
-    "tsx": "^4.7.0",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   }

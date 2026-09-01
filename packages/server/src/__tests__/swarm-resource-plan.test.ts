@@ -22,7 +22,10 @@ let previousOkfBase: string | undefined;
 let tempOkfBase: string;
 
 const auth = {
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (req: any, _res: any, next: any) => {
+    req.user = { sub: 'test-approver', email: 'approver@example.test', role: 'approver' };
+    next();
+  },
 } as any;
 
 async function startApp() {
@@ -544,7 +547,7 @@ describe('workstation swarm resource plan', () => {
     const promoteResponse = await fetch(`${baseUrl}/swarms/memory/candidates/${candidate.id}/promote`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ sinks: ['okf'], approved_by: 'test-operator' }),
+      body: JSON.stringify({ sinks: ['okf'], human_approved: true }),
     });
     expect(promoteResponse.status).toBe(200);
     const promoted = await promoteResponse.json() as any;

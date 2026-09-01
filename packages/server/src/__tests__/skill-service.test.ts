@@ -86,6 +86,23 @@ title: "Missing Type"
     expect(result.status).toBe('failed');
   });
 
+  it('fails closed when Docker validation is unavailable', () => {
+    const skillPath = 'docker-skill';
+    fs.writeFileSync(path.join(TEST_OKF_BASE, 'skills', `${skillPath}.md`), `---
+type: Skill
+title: "Docker Skill"
+trust_level: agent_generated
+status: draft
+---
+`, 'utf8');
+
+    const result = service.validate(skillPath, 'docker');
+
+    expect(result.status).toBe('failed');
+    expect(result.report).toContain('remains unvalidated');
+    expect(fs.readFileSync(path.join(TEST_OKF_BASE, 'skills', `${skillPath}.md`), 'utf8')).toContain('status: draft');
+  });
+
 it('push rejects non-validated skills', async () => {
     const skillPath = 'draft-skill';
     fs.mkdirSync(path.join(TEST_OKF_BASE, 'skills'), { recursive: true });

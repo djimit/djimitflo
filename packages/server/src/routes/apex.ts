@@ -79,8 +79,12 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
     }
   });
 
-  router.get('/memory/clusters', requirePermission('read:evidence'), (_req, res) => {
-    res.json({ clusters: memory.getClusters() });
+  router.get('/memory/clusters', requirePermission('read:evidence'), async (_req, res, next) => {
+    try {
+      res.json({ clusters: await memory.getClusters() });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get('/memory/stats', requirePermission('read:evidence'), (_req, res) => {

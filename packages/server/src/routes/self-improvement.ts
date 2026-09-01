@@ -7,6 +7,9 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { AutonomousDocsService } from '../services/autonomous-docs-service';
 import { ReconciliationService } from '../services/reconciliation-service';
+import { SelfImprovementService, type ImprovementStatus } from '../services/self-improvement-service';
+import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
+import { createError } from '../middleware/error-handler';
 
 export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -14,6 +17,41 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
 
   const docs = new AutonomousDocsService(db);
   const reconciler = new ReconciliationService(db);
+  const improvements = new SelfImprovementService(db);
+  const goals = new AutonomousGoalGenerator(db);
+
+  router.get('/proposals', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      const status = typeof req.query.status === 'string' ? req.query.status as ImprovementStatus : undefined;
+      if (status && !VALID_IMPROVEMENT_STATUSES.has(status)) throw createError(400, 'Invalid improvement status', 'VALIDATION_ERROR');
+      res.json({ proposals: improvements.listImprovements(status, Number(req.query.limit) || 100) });
+    } catch (error) { next(error); }
+  });
+
+  router.get('/proposals/:id', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(improvements.getImprovement(req.params.id)); }
+    catch (error) { next(mapImprovementError(error)); }
+  });
+
+  router.post('/proposals/:id/approve', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = req.user?.sub || req.user?.email;
+      if (!actor) throw createError(401, 'Authentication required', 'AUTH_REQUIRED');
+      const result = db.transaction(() => {
+        improvements.approveImprovement(req.params.id, actor);
+        return {
+          goalCreated: goals.generateImprovement(req.params.id) === 1,
+          proposal: improvements.getImprovement(req.params.id),
+        };
+      })();
+      res.json(result);
+    } catch (error) { next(mapImprovementError(error)); }
+  });
+
+  router.post('/proposals/:id/reject', requirePermission('write:governance'), (req, res, next) => {
+    try { res.json({ proposal: improvements.rejectImprovement(req.params.id) }); }
+    catch (error) { next(mapImprovementError(error)); }
+  });
 
   // POST /api/self-improve/reconcile — re-verify generated claims against source.
   // Body: { claims?: [{title, issueNumber?}], github?: boolean, apply?: boolean }
@@ -61,4 +99,15 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
   });
 
   return router;
+}
+
+const VALID_IMPROVEMENT_STATUSES = new Set<ImprovementStatus>([
+  'proposed', 'scheduled', 'executing', 'verified', 'evaluating', 'applied', 'rejected', 'no_change', 'regressed',
+]);
+
+function mapImprovementError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === 'SELF_IMPROVEMENT_NOT_FOUND') return createError(404, message, message);
+  if (message.startsWith('SELF_IMPROVEMENT_')) return createError(409, message, message);
+  return error instanceof Error ? error : new Error(message);
 }

@@ -24,8 +24,9 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { startRuntimeProcess, type RuntimeProcess } from './runtime-process';
+import { captureExecutorOutput } from '../executor-output';
 
 // ── Structured OpenCode JSON event types ────────────────────────────────────
 
@@ -140,29 +141,58 @@ export class OpenCodeExecutor implements TaskExecutor {
     const metrics: OpenCodeRunMetrics = { tokenUsage: 0, costDollars: 0 };
     const outcome: OpenCodeRunOutcome = { verificationFailures: [] };
     let metricsBuffer = '';
-    let runtime: RuntimeProcess | null = null;
+    let childProcess: ChildProcess | null = null;
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
+      const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
 
-      runtime = startRuntimeProcess({
-        command: this.opencodePath, args, cwd, env, timeoutMs: options?.timeout ?? this.executionTimeoutMs,
-        onOutput: (text, stream) => {
+      const child = spawn(this.opencodePath, args, {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      childProcess = child;
+
+      const timeoutHandle = setTimeout(() => {
+        if (child && !child.killed) {
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (child && !child.killed) {
+              child.kill('SIGKILL');
+            }
+          }, 5000);
+        }
+        emitter.emit('error', new Error(`OpenCode execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+
+      child.stdout?.on('data', (data) => {
+        const text = data.toString();
         metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
-          emitter.emit('output', text, stream);
-        },
-        onExit: code => {
+        emitter.emit('output', text, 'stdout');
+      });
+
+      child.stderr?.on('data', (data) => {
+        const text = data.toString();
+        metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
+        emitter.emit('output', text, 'stderr');
+      });
+
+      child.on('close', (code) => {
+        clearTimeout(timeoutHandle);
         if (metricsBuffer.trim()) {
           this.collectMetricsFromLine(metricsBuffer, metrics, outcome);
           metricsBuffer = '';
         }
         emitter.emit('exit', code);
-        },
-        onError: error => emitter.emit('error', error),
-        onTimeout: () => emitter.emit('error', new Error(`OpenCode execution timed out after ${options?.timeout ?? this.executionTimeoutMs}ms`)),
+      });
+
+      child.on('error', (error) => {
+        emitter.emit('error', error);
       });
     };
 
@@ -178,7 +208,14 @@ export class OpenCodeExecutor implements TaskExecutor {
       events,
       result,
       cancel: async () => {
-        runtime?.stop();
+        if (childProcess && !childProcess.killed) {
+          childProcess.kill('SIGTERM');
+          setTimeout(() => {
+            if (childProcess && !childProcess.killed) {
+              childProcess.kill('SIGKILL');
+            }
+          }, 5000);
+        }
         session.status = 'cancelled';
         session.completedAt = new Date();
       },
@@ -266,7 +303,7 @@ export class OpenCodeExecutor implements TaskExecutor {
 
     if (event.type !== 'step_finish') return;
 
-    const part = event.part as OpenCodeStepFinish;
+    const part = (event.part || event) as OpenCodeStepFinish;
     const total = part.tokens?.total;
     if (typeof total === 'number') {
       metrics.tokenUsage = Math.max(metrics.tokenUsage, total);
@@ -583,7 +620,9 @@ export class OpenCodeExecutor implements TaskExecutor {
     metrics: OpenCodeRunMetrics,
     outcome: OpenCodeRunOutcome,
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           if (outcome.verificationFailures.length > 0) {

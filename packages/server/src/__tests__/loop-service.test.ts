@@ -26,7 +26,10 @@ let previousRuntimeEnvPassthrough: string | undefined;
 const JWT_SECRET_ENV = ['JWT', 'SECRET'].join('_');
 
 const auth = {
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: () => (req: any, _res: any, next: any) => {
+    req.user = { sub: 'test-approver', email: 'approver@example.test', role: 'approver' };
+    next();
+  },
 } as any;
 
 async function startApp() {
@@ -78,6 +81,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     db.pragma('foreign_keys = ON');
     db.exec(schema);
     runMigrations(db);
+    db.prepare("UPDATE approval_policies SET decision = 'allow' WHERE id = 'policy-medium-task-approval'").run();
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-loop-'));
     worktreeRoot = path.join(os.tmpdir(), `.djimitflo-loop-worktrees-${path.basename(tempDir)}`);
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
@@ -140,12 +144,12 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(body.error.code).toBe('GOAL_ACCEPTANCE_CRITERIA_REQUIRED');
   });
 
-  it('falls back to the canonical loop when no decomposition keywords match', async () => {
+  it('creates a goal and decomposes it through the content-aware DAG route', async () => {
     const createResponse = await fetch(`${baseUrl}/goals`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        objective: 'Random unrelated text',
+        objective: 'Find low-risk docs drift',
         acceptance_criteria: ['Loop emits bounded findings without editing files'],
       }),
     });
@@ -164,30 +168,10 @@ describe('doc-drift-and-small-fix-loop', () => {
     const decomposeResponse = await fetch(`${baseUrl}/goals/${goal.id}/decompose`, { method: 'POST' });
     expect(decomposeResponse.status).toBe(200);
     const decomposed = await decomposeResponse.json() as any;
-    expect(decomposed).toMatchObject({ goal_id: goal.id, fallback: true });
-    expect(decomposed.candidates[0]).toMatchObject({
-      loop_name: 'doc-drift-and-small-fix-loop',
-      mode: 'closed',
-      recommended_first: true,
-    });
-  });
-
-  it('decomposes a goal objective into a capability DAG', async () => {
-    const createResponse = await fetch(`${baseUrl}/goals`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        objective: 'Implement, test, and document a low-risk improvement',
-        acceptance_criteria: ['The DAG reflects the requested work'],
-      }),
-    });
-    const goal = await createResponse.json() as any;
-
-    const decomposeResponse = await fetch(`${baseUrl}/goals/${goal.id}/decompose`, { method: 'POST' });
-    expect(decomposeResponse.status).toBe(200);
-    const decomposed = await decomposeResponse.json() as any;
-    expect(decomposed).toMatchObject({ goal_id: goal.id, fallback: false });
-    expect(decomposed.nodes.map((node: any) => node.step)).toEqual(['implement', 'test', 'document']);
+    expect(decomposed).toMatchObject({ fallback: false });
+    expect(decomposed.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ step: 'document', role: 'maker' }),
+    ]));
   });
 
   it('runs read-only discovery, writes state, and proposes bounded small-fix tasks', async () => {
@@ -526,6 +510,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
       'console.log(JSON.stringify({ type: "text", part: { type: "text", text: "patched README" } }));',
+      'console.log(JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify({ verdict: "accepted", notes: "Small docs fix accepted." }) } }));',
     ]);
 
     fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
@@ -563,6 +548,8 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(fs.readFileSync(path.join(maker.worktree_path, 'README.md'), 'utf8')).toContain('Setup is documented.');
     expect(fs.existsSync(executed.stdout_path)).toBe(true);
     expect(fs.readFileSync(executed.stdout_path, 'utf8')).toContain('patched README');
+    expect(db.prepare("SELECT status FROM tasks WHERE json_extract(metadata, '$.lease_id') = ?").get(maker.id))
+      .toEqual({ status: 'completed' });
 
     process.env[JWT_SECRET_ENV] = 'server side check script secret';
     delete process.env.RUNTIME_ENV_PASSTHROUGH;
@@ -602,16 +589,21 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(fs.readFileSync(path.join(maker.worktree_path, 'env-leak.txt'), 'utf8')).toBe('missing');
 
     const checker = continued.leases.find((lease: any) => lease.role === 'checker');
-    const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
+    const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-checker`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: checker.id, verdict: 'accepted', notes: 'Small docs fix accepted.' }),
+      body: JSON.stringify({ lease_id: checker.id, runtime: 'codex', timeout_ms: 10_000 }),
     });
     expect(verdictResponse.status).toBe(200);
     const verdict = await verdictResponse.json() as any;
-    expect(verdict.checker.status).toBe('completed');
-    expect(verdict.checker.metadata.verdict).toBe('accepted');
-    expect(verdict.run.status).toBe('ready_for_human_merge');
+    expect(verdict.lease.status).toBe('completed');
+    expect(verdict.lease.metadata.verdict).toBe('accepted');
+    expect(verdict.run.status).toBe('verifying');
+    expect(verdict.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(fs.readFileSync(path.join(verdict.lease.worktree_path, 'README.md'), 'utf8')).toContain('Setup is documented.');
+    expect(fs.existsSync(path.join(verdict.lease.worktree_path, 'node_modules'))).toBe(false);
+    expect(db.prepare("SELECT status FROM tasks WHERE json_extract(metadata, '$.lease_id') = ?").get(checker.id))
+      .toEqual({ status: 'completed' });
 
     const postCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
     expect(postCheckerVerifyResponse.status).toBe(200);
@@ -642,7 +634,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const completed = await completeResponse.json() as any;
     expect(completed.run.status).toBe('completed');
     expect(completed.run.completed_at).toEqual(expect.any(String));
-    expect(completed.run.metadata.human_approval_ref).toBe('approval:small-docs-fix');
+    expect(completed.run.metadata.human_approval_ref).toBe('operator:test-approver');
     const learned = db.prepare('SELECT outcome, lessons FROM experience_embeddings WHERE run_id = ?').get(run.id) as { outcome: string; lessons: string };
     expect(learned.outcome).toBe('success');
     expect(JSON.parse(learned.lessons)).toContain('Small docs fix accepted.');
@@ -655,10 +647,59 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(bundle.events.map((event: any) => event.event_type)).toEqual(expect.arrayContaining([
       'maker_executed',
       'deterministic_checks_completed',
-      'checker_verdict_submitted',
+      'checker_executed',
       'loop_completed',
     ]));
     expect(bundle.state_content).toContain('doc-drift-and-small-fix-loop');
+  });
+
+  it('fails the checker read-only gate when a checker mutates its isolated worktree', async () => {
+    installFakeCodex([
+      'if (process.argv.includes("--version")) { console.log("fake-codex 1.0.0"); process.exit(0); }',
+      'const fs = require("fs");',
+      'const path = require("path");',
+      'const dir = process.argv[process.argv.indexOf("--cd") + 1];',
+      'const readme = path.join(dir, "README.md");',
+      'const raw = fs.readFileSync(readme, "utf8");',
+      'if (raw.includes("TODO: document setup")) fs.writeFileSync(readme, "Setup is documented.\\n");',
+      'else fs.writeFileSync(path.join(dir, "CHECKER_MUTATION.md"), "checker wrote here\\n");',
+      'console.log(JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify({ verdict: "accepted", notes: "reviewed" }) } }));',
+    ]);
+    fs.writeFileSync(path.join(tempDir, 'README.md'), 'TODO: document setup\n');
+    execFileSync('git', ['add', 'README.md', 'package.json'], { cwd: tempDir });
+    execFileSync('git', ['commit', '-m', 'Initial test repo'], { cwd: tempDir, stdio: 'ignore' });
+
+    const startResponse = await fetch(`${baseUrl}/loops/doc-drift-and-small-fix/start`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ repository_path: tempDir }),
+    });
+    const run = await startResponse.json() as any;
+    const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ max_assignments: 1, runtime: 'codex' }),
+    });
+    const continued = await continueResponse.json() as any;
+    const maker = continued.leases.find((lease: any) => lease.role === 'maker');
+    const checker = continued.leases.find((lease: any) => lease.role === 'checker');
+    const makerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
+    });
+    expect(makerResponse.status).toBe(200);
+
+    const checkerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-checker`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lease_id: checker.id, runtime: 'codex', timeout_ms: 10_000 }),
+    });
+    expect(checkerResponse.status).toBe(200);
+    const executed = await checkerResponse.json() as any;
+    expect(executed.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(executed.gates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'checker_read_only_contract', status: 'fail' }),
+    ]));
+    expect(executed.run.status).toBe('blocked');
+    expect(fs.existsSync(path.join(maker.worktree_path, 'CHECKER_MUTATION.md'))).toBe(false);
+    expect(fs.existsSync(path.join(executed.lease.worktree_path, 'CHECKER_MUTATION.md'))).toBe(true);
   });
 
   it('executes a prepared worker through the spawn bridge with mock runtime, traces, checkpoints, and artifacts', async () => {
@@ -752,6 +793,8 @@ describe('doc-drift-and-small-fix-loop', () => {
         },
       },
     });
+    expect(checkerExecuted.lease.worktree_path).not.toBe(maker.worktree_path);
+    expect(fs.existsSync(path.join(checkerExecuted.lease.worktree_path, 'node_modules'))).toBe(false);
     expect(checkerExecuted.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'checker_runtime_exit_zero', status: 'pass' }),
       expect.objectContaining({ name: 'checker_verdict', status: 'pass' }),

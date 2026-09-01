@@ -38,8 +38,9 @@ import { buildPiArgs, type PiExecutorOptions } from './pi-shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
 import { randomUUID } from 'crypto';
+import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
-import { startRuntimeProcess, type RuntimeProcess } from './runtime-process';
+import { captureExecutorOutput } from '../executor-output';
 
 // ── Structured Pi JSON event shapes (subset; the rest pass through as LOG) ────
 
@@ -127,7 +128,7 @@ export class PiExecutor implements TaskExecutor {
     const args = this.buildPiArgs(task, options);
 
     const emitter = new EventEmitter();
-    let runtime: RuntimeProcess | null = null;
+    let childProcess: ChildProcess | null = null;
 
     // Shared metrics accumulator: the event stream writes, the result promise reads.
     const metrics = { tokenUsage: 0, toolCalls: 0, approvalsRequested: 0 };
@@ -136,13 +137,30 @@ export class PiExecutor implements TaskExecutor {
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
 
-      runtime = startRuntimeProcess({
-        command: this.piPath, args, cwd, env, timeoutMs: options?.timeout ?? this.executionTimeoutMs,
-        onOutput: (text, stream) => emitter.emit('output', text, stream),
-        onExit: code => emitter.emit('exit', code),
-        onError: error => emitter.emit('error', error),
-        onTimeout: () => emitter.emit('error', new Error(`Pi execution timed out after ${options?.timeout ?? this.executionTimeoutMs}ms`)),
+      const child = spawn(this.piPath, args, {
+        cwd,
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
+      childProcess = child;
+
+      const timeoutHandle = setTimeout(() => {
+        if (child && !child.killed) {
+          child.kill('SIGTERM');
+          setTimeout(() => {
+            if (child && !child.killed) child.kill('SIGKILL');
+          }, 5000);
+        }
+        emitter.emit('error', new Error(`Pi execution timed out after ${this.executionTimeoutMs}ms`));
+      }, options?.timeout ?? this.executionTimeoutMs);
+
+      child.stdout?.on('data', (data) => emitter.emit('output', data.toString(), 'stdout'));
+      child.stderr?.on('data', (data) => emitter.emit('output', data.toString(), 'stderr'));
+      child.on('close', (code) => {
+        clearTimeout(timeoutHandle);
+        emitter.emit('exit', code);
+      });
+      child.on('error', (error) => emitter.emit('error', error));
     };
 
     const events = this.createEventStream(task, emitter, spawnProcess, metrics);
@@ -157,7 +175,12 @@ export class PiExecutor implements TaskExecutor {
       events,
       result,
       cancel: async () => {
-        runtime?.stop();
+        if (childProcess && !childProcess.killed) {
+          childProcess.kill('SIGTERM');
+          setTimeout(() => {
+            if (childProcess && !childProcess.killed) childProcess.kill('SIGKILL');
+          }, 5000);
+        }
         session.status = 'cancelled';
         session.completedAt = new Date();
       },
@@ -553,7 +576,9 @@ export class PiExecutor implements TaskExecutor {
     emitter: EventEmitter,
     metrics: { tokenUsage: number; toolCalls: number; approvalsRequested: number },
   ): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
+    const output = captureExecutorOutput(emitter);
+    return new Promise((resolveResult) => {
+      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

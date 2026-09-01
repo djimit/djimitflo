@@ -96,12 +96,14 @@ export function TaskDetailPage() {
     const unsubRequested = subscribe(WebSocketEventType.APPROVAL_REQUESTED, handleApprovalEvent);
     const unsubApproved = subscribe(WebSocketEventType.APPROVAL_GRANTED, handleApprovalEvent);
     const unsubDenied = subscribe(WebSocketEventType.APPROVAL_DENIED, handleApprovalEvent);
+    const unsubExpired = subscribe(WebSocketEventType.APPROVAL_EXPIRED, handleApprovalEvent);
 
     return () => {
       unsubExecution();
       unsubRequested();
       unsubApproved();
       unsubDenied();
+      unsubExpired();
     };
   }, [subscribe, taskId]);
 

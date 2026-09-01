@@ -24,7 +24,12 @@ export class ResponseOrchestrator {
       return 'log_only';
     }
 
-    switch (result.recommendedAction) {
+    const state = result.confidence > 0 ? this.recordViolation(result.agentId) : undefined;
+    let action = result.recommendedAction;
+    if (state?.quarantined) action = 'quarantine';
+    else if (state?.tripped && action !== 'kill') action = 'require_approval';
+
+    switch (action) {
       case 'kill':
         this.executeKill(result);
         break;
@@ -41,7 +46,7 @@ export class ResponseOrchestrator {
         break;
     }
 
-    return result.recommendedAction;
+    return action;
   }
 
   private executeKill(result: DetectionResult): void {
@@ -57,6 +62,17 @@ export class ResponseOrchestrator {
       timestamp: new Date()
     };
     this.eventEmitter.emit(event.type, event);
+    if (this.config.backupTrigger.enabled) {
+      this.eventEmitter.emit(this.config.backupTrigger.eventBusTopic, {
+        type: 'backup:restore_requested',
+        payload: {
+          agentId: result.agentId,
+          targetDb: this.config.backupTrigger.targetDb,
+          restorePoint: result.timestamp
+        },
+        timestamp: new Date()
+      } satisfies RansomwareEvent);
+    }
     this.emitForensicCapture(result);
   }
 
@@ -181,6 +197,12 @@ export class ResponseOrchestrator {
       this.circuitBreakers.set(agentId, state);
     }
 
+    if (!state.quarantined && now - state.firstViolationAt.getTime() > this.config.circuitBreaker.windowMs) {
+      state.violationCount = 0;
+      state.tripped = false;
+      state.firstViolationAt = new Date(now);
+    }
+
     state.violationCount++;
     state.lastViolationAt = new Date(now);
 
@@ -204,7 +226,4 @@ export class ResponseOrchestrator {
     return true;
   }
 
-  private emitShadowLog_renamed(result: DetectionResult): void {
-    this.executeLogOnly(result);
-  }
 }

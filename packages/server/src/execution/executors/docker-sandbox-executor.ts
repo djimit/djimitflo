@@ -109,10 +109,7 @@ export class DockerSandboxExecutor implements TaskExecutor {
     if (!this.inner.buildCommand) {
       throw new Error('DOCKER_SANDBOX_INNER_COMMAND_UNAVAILABLE');
     }
-    return this.inner.buildCommand(task, {
-      ...options,
-      workingDirectory: '/workspace',
-    });
+    return this.inner.buildCommand(task, { ...options, workingDirectory: '/workspace' });
   }
 
   private spawnDockerProcess(containerName: string, dockerArgs: string[]): Promise<number> {

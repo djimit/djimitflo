@@ -7,11 +7,13 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
-export function createRuntimeGovernanceRoutes(db: Database, auth?: AuthMiddleware): Router {
+export function createRuntimeGovernanceRoutes(
+  db: Database,
+  auth?: AuthMiddleware,
+  service = new RuntimeGovernanceService(db),
+): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const service = new RuntimeGovernanceService(db);
-
   // Start monitoring on first request
   service.start();
 

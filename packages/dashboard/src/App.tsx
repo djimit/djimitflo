@@ -27,6 +27,8 @@ const MCPPermissionsPage = lazy(() => import('./pages/MCPPermissionsPage').then(
 const ObservabilityPage = lazy(() => import('./pages/ObservabilityPage').then((module) => ({ default: module.ObservabilityPage })));
 const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
 const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })));
+const AuditLogViewer = lazy(() => import('./pages/AuditLogViewer').then((module) => ({ default: module.AuditLogViewer })));
+const AuthorityTracePage = lazy(() => import('./pages/AuthorityTracePage').then((module) => ({ default: module.AuthorityTracePage })));
 const RepositoriesPage = lazy(() => import('./pages/RepositoriesPage').then((module) => ({ default: module.RepositoriesPage })));
 const RepositoryDetailPage = lazy(() => import('./pages/RepositoryDetailPage').then((module) => ({ default: module.RepositoryDetailPage })));
 const GoalsLoopsPage = lazy(() => import('./pages/GoalsLoopsPage').then((module) => ({ default: module.GoalsLoopsPage })));
@@ -40,6 +42,8 @@ const EconomyPage = lazy(() => import('./pages/EconomyPage').then((module) => ({
 const PipelineBuilderPage = lazy(() => import('./pages/PipelineBuilderPage').then((module) => ({ default: module.PipelineBuilderPage })));
 const FederationPage = lazy(() => import('./pages/FederationPage').then((module) => ({ default: module.FederationPage })));
 const GovernanceScorecardPage = lazy(() => import('./pages/GovernanceScorecardPage').then((module) => ({ default: module.GovernanceScorecardPage })));
+const ExplainerFleetPage = lazy(() => import('./pages/explore/ExplainerFleetPage').then((module) => ({ default: module.ExplainerFleetPage })));
+const CompliancePage = lazy(() => import('./pages/CompliancePage').then((module) => ({ default: module.CompliancePage })));
 
 function DataLoader({ children }: { children: React.ReactNode }) {
   const { setTasks, setAgents } = useStore();
@@ -94,10 +98,13 @@ export function App() {
           <Route path="approvals" element={<ApprovalQueuePage />} />
           <Route path="policies" element={<PolicyCenterPage />} />
           <Route path="governance" element={<GovernanceScorecardPage />} />
+          <Route path="compliance" element={<CompliancePage />} />
           <Route path="mcp-permissions" element={<MCPPermissionsPage />} />
           <Route path="observability" element={<ObservabilityPage />} />
           <Route path="tasks/:taskId/review" element={<ReviewPage />} />
           <Route path="audit" element={<AuditPage />} />
+          <Route path="audit/logs" element={<AuditLogViewer />} />
+          <Route path="authority" element={<AuthorityTracePage />} />
           <Route path="usage" element={<UsagePage />} />
           <Route path="repositories" element={<RepositoriesPage />} />
           <Route path="repositories/:id" element={<RepositoryDetailPage />} />
@@ -116,6 +123,7 @@ export function App() {
           <Route path="self-healing" element={<SelfHealingPage />} />
           <Route path="cognitive" element={<CognitiveRuntimePage />} />
           <Route path="self-driving" element={<SelfDrivingDashboard />} />
+          <Route path="explainers" element={<ExplainerFleetPage />} />
         </Route>
       </Routes>
       </Suspense>

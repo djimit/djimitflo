@@ -1,7 +1,5 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
-import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
-import { MemoryEvolutionScheduler, type LoopResult } from './memory-evolution-scheduler';
 
 export type EvolutionLeaseRole = 'memory_evaluator' | 'memory_consolidator' | 'memory_pruner';
 export type EvolutionLeaseStatus = 'prepared' | 'running' | 'completed' | 'failed';
@@ -39,29 +37,49 @@ export interface GoalTemplate {
   status: string; metadata: Record<string, unknown>; created_at: string;
 }
 
+export interface MemoryCandidate {
+  id: string; title: string; content: string; memory_type: string; status: string;
+  promotion_status: string; metadata: Record<string, unknown>; created_at: string; updated_at: string;
+}
+
 export class MemoryEvolutionService {
   private readonly WEIGHTS = { w1: 0.25, w2: 0.20, w3: 0.15, w4: 0.15, w5: 0.15, w6: 0.10 };
   constructor(private db: Database) { this.ensureTables(); }
 
   private ensureTables(): void {
-    this.db.exec("CREATE TABLE IF NOT EXISTS memory_evolution_leases (id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('memory_evaluator','memory_consolidator','memory_pruner')), runtime TEXT NOT NULL DEFAULT 'local', status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared','running','completed','failed')), memory_candidate_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_mel_loop_run ON memory_evolution_leases(loop_run_id);CREATE INDEX IF NOT EXISTS idx_mel_role ON memory_evolution_leases(role);CREATE INDEX IF NOT EXISTS idx_mel_candidate ON memory_evolution_leases(memory_candidate_id);CREATE TABLE IF NOT EXISTS memory_access_log (id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, accessing_agent_id TEXT NOT NULL, owner_agent_id TEXT, created_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_memory_access_candidate ON memory_access_log(candidate_id);CREATE INDEX IF NOT EXISTS idx_memory_access_agent ON memory_access_log(accessing_agent_id);");
+    this.db.exec("CREATE TABLE IF NOT EXISTS memory_evolution_leases (id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('memory_evaluator','memory_consolidator','memory_pruner')), runtime TEXT NOT NULL DEFAULT 'local', status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared','running','completed','failed')), memory_candidate_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_mel_loop_run ON memory_evolution_leases(loop_run_id);CREATE INDEX IF NOT EXISTS idx_mel_role ON memory_evolution_leases(role);CREATE INDEX IF NOT EXISTS idx_mel_candidate ON memory_evolution_leases(memory_candidate_id);CREATE TABLE IF NOT EXISTS memory_access_log (id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, agent_id TEXT NOT NULL, accessed_at TEXT NOT NULL);CREATE INDEX IF NOT EXISTS idx_memory_access_candidate ON memory_access_log(candidate_id);CREATE INDEX IF NOT EXISTS idx_memory_access_agent ON memory_access_log(agent_id);");
   }
 
-  ingest(input: { agentId: string; title?: string; content: string; memoryType?: 'operational_memory' | 'engineering_rule' | 'policy_rule'; metadata?: Record<string, unknown> }): MemoryCandidateRecord {
-    return new MemoryCandidateService(this.db).create({
-      title: input.title || `Trace from ${input.agentId}`,
-      content: input.content,
-      memory_type: input.memoryType,
-      source_ref: `agent:${input.agentId}`,
-      metadata: { ...(input.metadata || {}), agent_id: input.agentId, source_agent: input.agentId },
+  ingestTrace(input: { agentId: string; content: string; memoryType?: string; metadata?: Record<string, unknown> }): MemoryCandidate {
+    const memoryType = ['operational_memory', 'engineering_rule', 'policy_rule'].includes(input.memoryType || '')
+      ? input.memoryType!
+      : 'operational_memory';
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const metadata: Record<string, unknown> = { ...(input.metadata || {}), agent_id: input.agentId };
+    this.db.prepare(`
+      INSERT INTO memory_candidates (
+        id, title, content, memory_type, source_ref, status, promotion_status,
+        human_required, sensitivity, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'candidate', 'proposed', 0, 'normal', ?, ?, ?)
+    `).run(id, String(metadata.title || `Trace from ${input.agentId}`), input.content, memoryType, `agent:${input.agentId}`, JSON.stringify(metadata), now, now);
+    return this.getCandidate(id);
+  }
+
+  scheduleEvolution(action: 'consolidate' | 'prune' | 'evaluate', candidateIds: string[]): GoalTemplate[] {
+    if (action === 'consolidate') return [this.createConsolidationGoal(candidateIds)];
+    if (action === 'prune') return [this.createPruningGoal(candidateIds)];
+    return candidateIds.map((candidateId) => this.createEvaluationGoal(candidateId));
+  }
+
+  retrieveCandidates(agentId: string, scope = 'all', limit = 20): string[] {
+    const candidateIds = this.getCandidatesByScope(agentId, scope).slice(0, limit);
+    const recordAccess = this.db.transaction((ids: string[]) => {
+      const insert = this.db.prepare('INSERT INTO memory_access_log (id, candidate_id, agent_id, accessed_at) VALUES (?, ?, ?, ?)');
+      for (const candidateId of ids) insert.run(randomUUID(), candidateId, agentId, new Date().toISOString());
     });
-  }
-
-  async evolve(action: 'consolidate' | 'prune' | 'evaluate'): Promise<LoopResult> {
-    const scheduler = new MemoryEvolutionScheduler(this.db);
-    if (action === 'consolidate') return scheduler.runConsolidationLoop();
-    if (action === 'prune') return scheduler.runDecayLoop();
-    return scheduler.runEvalGateLoop();
+    recordAccess(candidateIds);
+    return candidateIds;
   }
 
   createLease(i: { loopRunId: string; role: EvolutionLeaseRole; memory_candidate_id?: string | null; metadata?: Record<string, unknown> }): MemoryEvolutionLease {
@@ -145,7 +163,7 @@ export class MemoryEvolutionService {
       const stab=meta.promoted_at?0.8:0.4; const nov=Math.max(0,1-daysOld/30);
       const cons=meta.consolidated_into?0.1:meta.distilled?0.7:0.5;
       const decay=c.memory_type==='policy_rule'?0.9:c.memory_type==='engineering_rule'?0.7:0.5;
-      const cross=this.crossAgentUsage(c.id); const{w1,w2,w3,w4,w5,w6}=this.WEIGHTS;
+      const cross=this.crossAgentUsage(c.id, meta.agent_id); const{w1,w2,w3,w4,w5,w6}=this.WEIGHTS;
       const comp=w1*disc+w2*stab+w3*nov+w4*cons+w5*decay+w6*cross;
       const action: PruningResult['action'] = comp>=0.7?'keep':comp>=0.3?'archive':'delete';
       this.updateLeaseStatus(lid,'completed',{compositeScore:comp,action});
@@ -167,7 +185,7 @@ export class MemoryEvolutionService {
     const novelty = Math.max(0,1-daysOld/30);
     const consolidation = meta.consolidated_into?0.1:meta.distilled?0.7:0.5;
     const decayResistance = c.memory_type==='policy_rule'?0.9:c.memory_type==='engineering_rule'?0.7:0.5;
-    const crossAgentUsage = this.crossAgentUsage(c.id);
+    const crossAgentUsage = this.crossAgentUsage(c.id, meta.agent_id);
     const {w1,w2,w3,w4,w5,w6} = this.WEIGHTS;
     const composite = w1*discrimination+w2*stability+w3*novelty+w4*consolidation+w5*decayResistance+w6*crossAgentUsage;
     return {candidateId:c.id,discrimination,stability,novelty,consolidation,decayResistance,crossAgentUsage,composite,promotionEligible:composite>=0.7&&discrimination>=0.6};
@@ -223,11 +241,11 @@ export class MemoryEvolutionService {
   }
 
   getCandidatesByScope(agentId: string, scope = 'all'): string[] {
-    const shared = scope === 'all' || scope === 'shared';
-    const rows = this.db.prepare("SELECT id, json_extract(metadata,'$.agent_id') AS owner FROM memory_candidates WHERE json_extract(metadata,'$.agent_id')=? OR json_extract(metadata,'$.source_agent')=? OR source_ref LIKE ? OR (? = 1 AND json_extract(metadata,'$.shared')=1)").all(agentId, agentId, `agent:${agentId}%`, shared ? 1 : 0) as Array<{ id: string; owner?: string }>;
-    const insert = this.db.prepare('INSERT INTO memory_access_log (id,candidate_id,accessing_agent_id,owner_agent_id,created_at) VALUES (?,?,?,?,?)');
-    const now = new Date().toISOString();
-    for (const row of rows) insert.run(randomUUID(), row.id, agentId, row.owner || null, now);
+    const own = "json_extract(metadata,'$.agent_id')=? OR json_extract(metadata,'$.source_agent')=? OR source_ref IN (?, ?)";
+    const shared = "COALESCE(json_extract(metadata,'$.shared'), 0)=1";
+    const where = scope === 'own' ? own : scope === 'shared' ? shared : `(${own}) OR ${shared}`;
+    const params = scope === 'shared' ? [] : [agentId, agentId, agentId, `agent:${agentId}`];
+    const rows = this.db.prepare(`SELECT id FROM memory_candidates WHERE ${where} ORDER BY created_at DESC`).all(...params) as any[];
     return rows.map(r => r.id);
   }
 
@@ -235,9 +253,20 @@ export class MemoryEvolutionService {
     this.db.prepare("UPDATE memory_candidates SET metadata=json_set(COALESCE(metadata,'{}'),'$.agent_id',?,'$.shared',?) WHERE id=?").run(agentId, shared?1:0, candidateId);
   }
 
-  private crossAgentUsage(candidateId: string): number {
-    const row = this.db.prepare('SELECT COUNT(DISTINCT accessing_agent_id) AS count FROM memory_access_log WHERE candidate_id=? AND (owner_agent_id IS NULL OR accessing_agent_id != owner_agent_id)').get(candidateId) as { count: number };
-    return Math.min(1, row.count / 5);
+  private getCandidate(id: string): MemoryCandidate {
+    const row = this.db.prepare('SELECT * FROM memory_candidates WHERE id = ?').get(id) as any;
+    if (!row) throw new Error('CANDIDATE_NOT_FOUND');
+    return { ...row, metadata: JSON.parse(row.metadata || '{}') };
+  }
+
+  private crossAgentUsage(candidateId: string, sourceAgent?: unknown): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(DISTINCT agent_id) AS count
+      FROM memory_access_log
+      WHERE candidate_id = ? AND (? IS NULL OR agent_id != ?)
+    `).get(candidateId, typeof sourceAgent === 'string' ? sourceAgent : null, typeof sourceAgent === 'string' ? sourceAgent : null) as { count: number };
+    // ponytail: two independent consumers saturate the score; normalize by fleet size if promotion data needs finer resolution.
+    return Math.min(1, row.count / 2);
   }
 
 }
