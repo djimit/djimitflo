@@ -256,7 +256,7 @@ export interface ExplainerCorpusCase {
 }
 
 export interface ExplainerCriticDimension {
-  name: 'factuality' | 'hallucination' | 'quality' | 'security' | 'license' | 'coverage';
+  name: 'factuality' | 'hallucination' | 'quality' | 'security' | 'license' | 'coverage' | 'consistency';
   score: number;
   rationale: string;
   findings: string[];

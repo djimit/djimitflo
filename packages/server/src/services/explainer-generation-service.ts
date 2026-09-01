@@ -6,6 +6,7 @@ import { RemoteGitService } from "./remote-git-service";
 import { RepoGraphBuilder } from "./repo-graph-builder";
 import { BundleBuilder } from "./bundle-builder";
 import { ExplainerCriticService } from "./explainer-critic-service";
+import { JudgeService } from "./judge-service";
 import { ExplainerPreflightService } from "./explainer-preflight-service";
 import { buildRepoEvidencePacket } from "./repo-evidence-packet";
 import { ExplainerAuthorService, type AuthoredSection } from "./explainer-author-service";
@@ -42,7 +43,7 @@ export class ExplainerGenerationService {
     this.remoteGit = options.remoteGitService ?? new RemoteGitService(options.cacheRoot);
     this.graphBuilder = options.repoGraphBuilder ?? new RepoGraphBuilder(db);
     this.bundleBuilder = options.bundleBuilder ?? new BundleBuilder(db);
-    this.critic = options.criticService ?? new ExplainerCriticService(options.corpusPath);
+    this.critic = options.criticService ?? new ExplainerCriticService(options.corpusPath, new JudgeService(db));
     this.preflight = options.preflightService ?? new ExplainerPreflightService();
     this.scratchDir = options.scratchDir || process.env.DJIMITFLO_EXPLAINER_SCRATCH || "/tmp/djimitflo-explainer";
   }
@@ -176,6 +177,7 @@ export class ExplainerGenerationService {
     graph: GraphSummary,
   ): Promise<{ bundleId: string; content: any; preflight: any; score: number | null; retries_used: number }> {
     // FR-006/FR-008: evidence packet → author → critic grade-loop (max 3 attempts)
+    const start = Date.now();
     const packet = buildRepoEvidencePacket({
       repositoryFullName: ingest.repositoryFullName,
       localPath: ingest.localPath,
@@ -209,6 +211,27 @@ export class ExplainerGenerationService {
       const candidateContent = this.bundleBuilder.loadBundleContent(candidate.bundleId);
       const criticResult = this.critic.evaluate(candidateContent);
       this.lastRetryHints = criticResult.retry_hints;
+      // FR-015 lineage: persist the critic run as an OpenMythos eval run row so
+      // bundle scoring is queryable alongside agent/skill evals (agent_id =
+      // "explainer-critic", dimensions as categories_json).
+      try {
+        this.db.prepare(
+          "INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, categories_json, judge_model, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)",
+        ).run(
+          `explcrit-${candidate.bundleId}-${attempt}`,
+          'explainer-critic',
+          new Date(start).toISOString(),
+          new Date().toISOString(),
+          criticResult.dimensions.length,
+          criticResult.dimensions.length,
+          criticResult.overall_score,
+          JSON.stringify(criticResult.dimensions.map((d) => ({ name: d.name, score: d.score }))),
+          'judge-service-4factor',
+          JSON.stringify({ bundle_id: candidate.bundleId, passed: criticResult.passed, threshold: criticResult.threshold }),
+        );
+      } catch {
+        // eval-persistering is lineage, never a pipeline breaker
+      }
 
       if (criticResult.passed || attempt === 2) {
         const preflight = this.preflight.check(candidateContent, criticResult, scan?.scanSummary?.secretScan?.findings ?? []);
