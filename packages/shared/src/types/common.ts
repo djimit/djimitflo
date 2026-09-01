@@ -124,6 +124,7 @@ export enum AuditEventType {
   APPROVAL_REQUESTED = 'approval.requested',
   APPROVAL_GRANTED = 'approval.granted',
   APPROVAL_DENIED = 'approval.denied',
+  APPROVAL_EXPIRED = 'approval.expired',
   FILE_MODIFIED = 'file.modified',
   SHELL_EXECUTED = 'shell.executed',
   EXECUTION_PAUSED = 'execution.paused',

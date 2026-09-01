@@ -49,6 +49,7 @@ export function ApprovalQueuePage() {
       subscribe(WebSocketEventType.APPROVAL_REQUESTED, refresh),
       subscribe(WebSocketEventType.APPROVAL_GRANTED, refresh),
       subscribe(WebSocketEventType.APPROVAL_DENIED, refresh),
+      subscribe(WebSocketEventType.APPROVAL_EXPIRED, refresh),
     ];
     return () => unsubs.forEach(u => u());
   }, [subscribe, tab]);

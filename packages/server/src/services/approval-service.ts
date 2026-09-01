@@ -21,7 +21,7 @@ export interface CreateApprovalInput {
 export class ApprovalService {
   constructor(
     private db: Database,
-    private wsService: WebSocketService,
+    private wsService: Pick<WebSocketService, 'broadcastTaskEventById'>,
     private auditService: AuditService
   ) {}
 
@@ -38,6 +38,13 @@ export class ApprovalService {
   }
 
   getLatestPendingForTask(taskId: string): ApprovalRequest | null {
+    const now = new Date().toISOString();
+    const expired = this.db.prepare(`
+      SELECT * FROM approvals
+      WHERE task_id = ? AND status = 'pending'
+        AND (expires_at IS NULL OR julianday(expires_at) <= julianday(?))
+    `).all(taskId, now) as any[];
+    expired.forEach((row) => this.expireApproval(this.mapApproval(row)));
     const row = this.db.prepare("SELECT * FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(taskId) as any;
     return row ? this.mapApproval(row) : null;
   }
@@ -106,17 +113,22 @@ export class ApprovalService {
     if (!approval) {
       throw new Error('Approval not found');
     }
+    if (approval.status === ApprovalStatus.EXPIRED) {
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    }
     if (approval.status !== ApprovalStatus.PENDING) {
       throw new Error('Approval already processed');
     }
-
+    if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
+      this.expireApproval(approval);
+      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+    }
     // SECURITY INVARIANT: Self-approval prevention.
     // The maker (requested_by) cannot be the approver (decided_by).
     // This enforces separation of duties at the data layer.
     if (approval.requested_by && decidedBy === approval.requested_by) {
       throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
     }
-
     const now = new Date().toISOString();
     const status = approved ? ApprovalStatus.APPROVED : ApprovalStatus.DENIED;
 
@@ -162,6 +174,27 @@ export class ApprovalService {
     });
 
     return updated;
+  }
+
+  private expireApproval(approval: ApprovalRequest): void {
+    const now = new Date().toISOString();
+    const result = this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, approval.id);
+    if (!result.changes) return;
+
+    const expired = this.getApproval(approval.id)!;
+    this.auditService.record({
+      event_type: AuditEventType.APPROVAL_EXPIRED,
+      action: 'approval_expired',
+      resource_type: 'approval',
+      resource_id: expired.id,
+      task_id: expired.task_id,
+      risk_level: expired.risk_level,
+    });
+    this.wsService.broadcastTaskEventById(expired.task_id, {
+      type: WebSocketEventType.APPROVAL_EXPIRED,
+      payload: { approval: expired },
+      timestamp: now,
+    });
   }
 
   private mapApproval(row: any): ApprovalRequest {

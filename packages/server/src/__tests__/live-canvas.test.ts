@@ -162,6 +162,7 @@ describe('TelegramBotService', () => {
   it('materializes approved Dennis dry-run evidence from Telegram approval', async () => {
     const replies: string[] = [];
     const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
     const taskId = 'dennis-task-approval-test';
     const approvalId = 'dennis-approval-test';
     service.configure({ botToken: 'mock-token', allowedUsers: [123], userMap: { '123': 'user-1' } });
@@ -185,13 +186,14 @@ describe('TelegramBotService', () => {
     );
     db.prepare(`
       INSERT INTO approvals (
-        id, task_id, status, risk_level, request_type, request_message, request_data, metadata, created_at, updated_at
-      ) VALUES (?, ?, 'pending', 'medium', 'high_risk_action', 'Approve Dennis dry-run', ?, ?, ?, ?)
+        id, task_id, status, risk_level, request_type, request_message, request_data, metadata, expires_at, created_at, updated_at
+      ) VALUES (?, ?, 'pending', 'medium', 'high_risk_action', 'Approve Dennis dry-run', ?, ?, ?, ?, ?)
     `).run(
       approvalId,
       taskId,
       JSON.stringify({ action: 'materialize_dry_run', task_id: taskId }),
       JSON.stringify({ source: 'dennis-agent', dennis_action: 'materialize_dry_run' }),
+      expiresAt,
       now,
       now,
     );
@@ -211,8 +213,9 @@ describe('TelegramBotService', () => {
     service.sendMessage = async (_chatId: number, text: string) => { replies.push(text); };
     db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,tags,metadata,created_at,updated_at)
       VALUES ('self-task','Self','Self','awaiting_approval','medium','medium','review_only','[]','{}',?,?)`).run(now, now);
-    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,created_at,updated_at)
-      VALUES ('self-approval','self-task','pending','medium','high_risk_action','Self','{}','user-1',?,?)`).run(now, now);
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,created_at,updated_at)
+      VALUES ('self-approval','self-task','pending','medium','high_risk_action','Self','{}','user-1',?,?,?)`)
+      .run(new Date(Date.now() + 60_000).toISOString(), now, now);
 
     await service.handleWebhook({ message: { chat: { id: 123 }, from: { id: 123 }, text: '/approve self-approval', message_id: 2 } });
 

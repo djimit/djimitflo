@@ -1,12 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { generateKeyPairSync } from 'crypto';
 import { createTestDb } from './helpers/test-db';
 import { ExecutionEngine } from '../execution/execution-engine';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
+import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -49,6 +53,7 @@ describe('ExecutionEngine', () => {
 
   beforeEach(() => {
     db = createTestDb();
+    db.exec('ALTER TABLE tasks ADD COLUMN created_by TEXT; ALTER TABLE tasks ADD COLUMN owner_user_id TEXT;');
     // Tables not in test-db helper but needed by ExecutionEngine services
     db.exec(`
       CREATE TABLE IF NOT EXISTS execution_events (
@@ -159,6 +164,138 @@ describe('ExecutionEngine', () => {
     expect(engine.getExecutor('custom')).toBe(custom);
   });
 
+  it('holds Deep Agent executor success until independent assurance is present', async () => {
+    const task = createTask({ id: 'deep-agent-hold', metadata: { deep_agent_contract: {} } });
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(task.id, task.title, task.description, 'running', 'low', 'low', 'local', JSON.stringify(task.metadata));
+    const capturePostExecutionDiff = vi.spyOn((engine as any).diffCaptureService, 'capturePostExecutionDiff')
+      .mockReturnValue({ files: [], summary: { redactedSecrets: 0 } });
+    (engine as any).diffContexts.set(task.id, { repositoryId: 'repo-1', repositoryPath: '/tmp/repo', preSnapshotId: 'snapshot-1' });
+
+    (engine as any).handleExecutionComplete(task.id, {
+      taskId: task.id,
+      executorKind: 'deep-agent',
+      startedAt: new Date(),
+    }, { status: 'completed', message: 'executor-only success', metrics: { toolCalls: 0 } });
+
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('awaiting_approval');
+    expect(capturePostExecutionDiff).toHaveBeenCalledWith('/tmp/repo', 'repo-1', task.id, 'snapshot-1');
+    expect((engine as any).diffContexts.has(task.id)).toBe(false);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = ? AND source = 'system'").get(task.id) as any).count).toBe(1);
+    expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get(task.id) as any).metadata).deep_agent_assurance_hold).toBe(true);
+    await expect(engine.executeTask(task.id, 'opencode')).rejects.toThrow('DEEP_AGENT_ASSURANCE_HOLD');
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('awaiting_approval');
+  });
+
+  it('never retries a Deep Agent execution through a generic fallback', () => {
+    expect((engine as any).nextRetryExecutor('deep-agent', 'standard', 0, 3, {
+      code: 'RUNTIME_UNAVAILABLE',
+      message: 'runtime unavailable',
+      retryable: true,
+      sideEffectsPossible: false,
+      failureDomain: 'deep-agent',
+    })).toBeNull();
+  });
+
+  it('rejects task-supplied sandbox wrapping for Deep Agent executions', async () => {
+    engine.registerExecutor({ kind: 'deep-agent', canExecute: () => true } as any);
+    const task = createTask({ metadata: { deep_agent_contract: {}, sandbox: { enabled: true } } });
+    await expect((engine as any).startExecutionAttempt(task, 'deep-agent', 'standard', 0, 0)).rejects.toThrow(
+      'sandboxing is controlled by the sovereign runtime',
+    );
+  });
+
+  it('rejects an expired approval before it can resume execution', () => {
+    const task = createTask({ id: 'expired-approval' });
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'low', 'local');
+    db.prepare(`
+      INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, requested_by, expires_at, metadata)
+      VALUES (?, ?, 'pending', 'low', 'high_risk_action', 'expired', '{}', 'maker-1', ?, '{}')
+    `).run('approval-expired', task.id, new Date(Date.now() - 1_000).toISOString());
+
+    const broadcastTaskEventById = vi.fn();
+    const approvalService = new ApprovalService(db, { broadcastTaskEventById }, new AuditService(db));
+    expect(() => approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
+    expect(approvalService.getLatestPendingForTask(task.id)).toBeNull();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(1);
+    expect(broadcastTaskEventById).toHaveBeenCalledWith(task.id, expect.objectContaining({ type: 'approval.expired' }));
+  });
+
+  it('materializes Dennis approvals without starting a generic executor', async () => {
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    db.prepare("INSERT INTO agents (id, name) VALUES ('dennis-agent', 'Dennis Agent')").run();
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id,metadata)
+      VALUES ('dennis-task','Dennis','Evidence only','completed','medium','high','dry_run','dennis-agent',?)`)
+      .run(JSON.stringify({ dry_run_plan: { gates: ['dry_run_only'] } }));
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('dennis-approval','dennis-task','pending','high','high_risk_action','Materialize','{}','dennis-agent',?,?)`)
+      .run(expiresAt, JSON.stringify({ dennis_action: 'materialize_dry_run' }));
+    db.prepare(`INSERT INTO work_items (id,title,description,source,risk_class,status,assigned_agent_id,metadata)
+      VALUES ('dennis-work','Dennis','Evidence only','paperclip_pending_jsonl','high','blocked','dennis-agent',?)`)
+      .run(JSON.stringify({ task_id: 'dennis-task', approval_id: 'dennis-approval' }));
+    const executeTask = vi.spyOn(engine, 'executeTask');
+
+    expect(await engine.handleApprovalDecision('dennis-approval', true, 'checker')).toBeNull();
+    expect(executeTask).not.toHaveBeenCalled();
+    expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'dennis_approved_dry_run_materialized'").get() as any).count).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM execution_events WHERE task_id = 'dennis-task' AND event_type = 'approval.granted'").get() as any).count).toBe(0);
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE task_id = 'dennis-task' AND event_type = 'execution.resumed'").get() as any).count).toBe(0);
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-work'").get() as any).status).toBe('done');
+    expect((engine as any).hasApprovedStart('dennis-task', 'opencode')).toBe(false);
+
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('dennis-denied','dennis-task','pending','high','high_risk_action','Materialize','{}','dennis-agent',?,?)`)
+      .run(expiresAt, JSON.stringify({ dennis_action: 'materialize_dry_run' }));
+    db.prepare(`INSERT INTO work_items (id,title,description,source,risk_class,status,assigned_agent_id,metadata)
+      VALUES ('dennis-denied-work','Dennis','Evidence only','paperclip_pending_jsonl','high','blocked','dennis-agent',?)`)
+      .run(JSON.stringify({ task_id: 'dennis-task', approval_id: 'dennis-denied' }));
+    expect((await engine.handleApprovalDecision('dennis-denied', false, 'checker'))?.status).toBe('denied');
+    expect((db.prepare("SELECT status FROM work_items WHERE id = 'dennis-denied-work'").get() as any).status).toBe('discarded');
+  });
+
+  it('scopes execution approval to its selected executor', () => {
+    const task = createTask({ id: 'scoped-approval' });
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode)
+      VALUES (?,?,?,?,?,?,?)`).run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'high', 'local');
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,metadata)
+      VALUES ('scoped','scoped-approval','approved','high','high_risk_action','Run','{}','maker',?)`)
+      .run(JSON.stringify({ executorKind: 'deep-agent' }));
+
+    expect((engine as any).hasApprovedStart(task.id, 'deep-agent')).toBe(true);
+    expect((engine as any).hasApprovedStart(task.id, 'opencode')).toBe(false);
+  });
+
+  it('replaces task-supplied Deep Agent authority with a Federation contract', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-deep-engine-'));
+    const keyFile = path.join(root, 'federation.pem');
+    const { privateKey } = generateKeyPairSync('ed25519');
+    fs.writeFileSync(keyFile, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
+    (engine as any).deepAgentIssuer = new DeepAgentContractIssuer(keyFile, 'engine-key', 'server-tenant');
+    let dispatched: any;
+    engine.registerExecutor({
+      kind: 'deep-agent',
+      canExecute: (task: Task) => { dispatched = task.metadata.deep_agent_contract; return false; },
+      start: async () => { throw new Error('must not start'); },
+    } as any);
+    const metadata = { tenant_id: 'tenant-1', workload_id: 'workload-1', deep_agent_contract: { attacker: true } };
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_by, metadata)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('federation-overwrite', 'Canary', 'No-tool canary', 'pending', 'low', 'low', 'local', 'operator-1', JSON.stringify(metadata));
+
+    await expect(engine.executeTask('federation-overwrite', 'deep-agent', 'dispatcher-1')).rejects.toThrow('cannot execute');
+
+    expect(dispatched.attacker).toBeUndefined();
+    expect(dispatched.identity).toMatchObject({ task_id: 'federation-overwrite', issuer: 'djimitflo-federation', tenant_id: 'server-tenant', actor_id: 'dispatcher-1' });
+    expect(dispatched.signature).toMatchObject({ algorithm: 'Ed25519', key_id: 'engine-key' });
+    expect(JSON.parse((db.prepare('SELECT metadata FROM tasks WHERE id = ?').get('federation-overwrite') as any).metadata).deep_agent_contract).toBeUndefined();
+    fs.rmSync(root, { recursive: true });
+  });
+
   it('executes a low-risk task with mock executor', async () => {
     const task = createTask();
     db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
@@ -167,6 +304,35 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('does not let a late executor result overwrite cancellation', async () => {
+    let finish!: (result: any) => void;
+    engine.registerExecutor({
+      kind: 'mock',
+      canExecute: () => true,
+      start: async (task: Task) => {
+        const session: any = {
+          id: `session-${task.id}`, taskId: task.id, executorKind: 'mock', status: 'running', startedAt: new Date(),
+          events: (async function* () {})(),
+          result: new Promise((resolve) => { finish = resolve; }),
+        };
+        session.cancel = async () => { session.status = 'cancelled'; };
+        return session;
+      },
+    } as any);
+    const task = createTask({ id: 'cancel-race' });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+    );
+    const execution = await engine.executeTask(task.id, 'mock');
+
+    await engine.cancelTask(task.id);
+    finish({ status: 'failed', message: 'late child exit', metrics: {} });
+    if (execution.status === 'started') await execution.completion;
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
   });
 
   it('denies dispatch for an agent blocked by runtime governance', async () => {
@@ -400,10 +566,12 @@ describe('ExecutionEngine', () => {
         task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
       );
 
-      const result = await engine.executeTask(task.id, 'mock');
+      const result = await engine.executeTask(task.id, 'mock', 'dispatch-admin');
 
       expect(result.status).toBe('awaiting_approval');
       expect(result.reason).toContain('Governance gate');
+      expect((db.prepare('SELECT requested_by FROM approvals WHERE id = ?').get(result.approvalId) as any).requested_by).toBe('dispatch-admin');
+      await expect(engine.handleApprovalDecision(result.approvalId!, true, 'dispatch-admin')).rejects.toThrow('SELF_APPROVAL_FORBIDDEN');
 
       const evidence = db.prepare("SELECT * FROM execution_evidence WHERE task_id = ? AND source = 'governance-gate'").all(task.id);
       expect(evidence.length).toBe(1);

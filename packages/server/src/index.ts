@@ -40,6 +40,7 @@ import { RuntimeGovernanceService } from './services/runtime-governance-service'
 import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEnablesOperator } from './config/runtime-profile';
 import { initExternalEventIngest, initOperatorServices } from './bootstrap/operator-services';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
+import { DennisAgentService } from './services/dennis-agent-service';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -149,6 +150,21 @@ async function main() {
   });
   const wsService = new WebSocketService(wss, authService, db);
   console.log('🔌 WebSocket server initialized (authenticated)');
+
+  let dennisQueueTimer: NodeJS.Timeout | undefined;
+  if (operatorRuntime) {
+    const dennisAgent = new DennisAgentService(db, { wsService });
+    const processDennisQueue = () => {
+      try {
+        dennisAgent.processGovernedQueue();
+      } catch (error) {
+        console.warn('⚠️ Dennis governed queue failed:', error instanceof Error ? error.message : String(error));
+      }
+    };
+    processDennisQueue();
+    dennisQueueTimer = setInterval(processDennisQueue, 60_000);
+    dennisQueueTimer.unref();
+  }
   
   // Prometheus exposition — default-off, armed by METRICS_TOKEN (see routes/metrics.ts)
   app.get('/metrics', metricsRateLimiter, createMetricsHandler(db, () => wsService.getClientCount()));
@@ -307,6 +323,7 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
+    if (dennisQueueTimer) clearInterval(dennisQueueTimer);
     httpServer.close(() => {
       console.log('👋 Server closed');
       db.close();
