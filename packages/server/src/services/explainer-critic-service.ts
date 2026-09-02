@@ -216,18 +216,29 @@ export class ExplainerCriticService {
    * Contradictions and low-verdict scores land in retry hints via findings.
    */
   private scoreConsistencyViaJudge(bundle: ExplainerBundleContent): ExplainerCriticDimension {
+    // Token-overlap matching: template-authored sections don't cite [fact-N] ids,
+    // so evidence is matched on claim keywords (≥5 chars) appearing in the section.
+    const tokenMatch = (section: string, claim: string): boolean => {
+      const sec = section.toLowerCase();
+      const tokens = claim.toLowerCase().split(/\s+/).filter((w) => w.length > 4);
+      const hits = tokens.filter((w) => sec.includes(w)).length;
+      return tokens.length > 0 && hits / tokens.length >= 0.34;
+    };
     const answers: ExpertAnswer[] = Object.entries(bundle.sections).map(([section, content]) => ({
       domain: section,
       content,
       source: `bundle:${bundle.manifest?.task_id ?? 'unknown'}:${section}`,
       confidence: 0.85,
       evidence_refs: bundle.facts
-        .filter((f) => content.includes(f.id) || content.includes(f.claim.slice(0, 40)))
+        .filter((f) => content.includes(f.id) || tokenMatch(content, f.claim))
         .slice(0, 10)
         .map((f) => `${f.source_ref}`),
     }));
 
-    const verdict = this.judge!.evaluate(answers);
+    const verdict = this.judge!.evaluate(
+      answers,
+      bundle.facts.map((f) => ({ source_ref: f.source_ref, source_type: f.source_type, confidence: f.confidence })),
+    );
     const findings: string[] = [...verdict.contradictions.slice(0, 5)];
     if (verdict.score < 70) {
       findings.push(`Judge consistency ${Math.round(verdict.score)}/100 below 70: ${verdict.reasoning.slice(0, 160)}`);

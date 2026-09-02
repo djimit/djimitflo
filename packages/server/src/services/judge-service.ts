@@ -61,11 +61,14 @@ export class JudgeService {
     `);
   }
 
-  evaluate(answers: ExpertAnswer[]): JudgeVerdict {
+  evaluate(answers: ExpertAnswer[], bundleFacts?: Array<{ source_ref: string; source_type: string; confidence: number }>): JudgeVerdict {
     if (answers.length === 0) return this.emptyVerdict();
 
+    const facts = new Map((bundleFacts ?? []).map((f) => [f.source_ref, { source_type: f.source_type, confidence: f.confidence }]));
     const evidenceScore = this.scoreEvidence(answers);
-    const sourceScore = this.scoreSources(answers);
+    const sourceScore = facts.size > 0
+      ? this.scoreBundleSources(answers, facts)
+      : this.scoreSources(answers);
     const consistencyScore = this.scoreConsistency(answers);
     const uncertaintyPenalty = this.scoreUncertainty(answers);
 
@@ -174,6 +177,26 @@ export class JudgeService {
     let total = 0;
     for (const answer of answers) {
       total += weights[answer.source] ?? 0.4;
+    }
+    return total / answers.length;
+  }
+
+  /** Bundle-source scoring: cited facts carry their own source_type confidence. */
+  private scoreBundleSources(answers: ExpertAnswer[], facts: Map<string, { source_type: string; confidence: number }>): number {
+    let total = 0;
+    for (const answer of answers) {
+      const refs = answer.evidence_refs ?? [];
+      if (refs.length === 0) {
+        total += 0.3;
+        continue;
+      }
+      const typeWeights: Record<string, number> = { file_line: 1, graph_node: 0.9, scan_finding: 0.9, readme_heading: 0.75 };
+      const confidenceSum = refs.reduce((sum, ref) => {
+        const fact = facts.get(ref);
+        if (!fact) return sum + 0.5;
+        return sum + (typeWeights[fact.source_type] ?? 0.6) * fact.confidence;
+      }, 0);
+      total += Math.min(1, confidenceSum / refs.length);
     }
     return total / answers.length;
   }
