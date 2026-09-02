@@ -231,7 +231,7 @@ export class BundleBuilder {
       // Freshness header (self-analysis finding): readers must be able to tell
       // stale content from current content at a glance — commit + generation
       // date up top, age computed against the bundle mtime.
-      `> ⏱ Generated: ${manifest.generated_at} · Commit: \`${input.sourceCommit.slice(0, 10)}\` · Freshness: see \`generated_at\` vs today`,
+      `> ⏱ Last generated: ${manifest.generated_at} · Commit: \`${input.sourceCommit.slice(0, 10)}\` · Fresh if regenerated within 7 days; refresh via the fleet regenerate action`,
       '',
       '## Sections',
       '',
@@ -252,7 +252,7 @@ export class BundleBuilder {
       `# ${input.repositoryFullName}`,
       `Source: ${input.repositoryUrl}`,
       `Commit: ${input.sourceCommit}`,
-      `Generated: ${input.generatedAt ?? new Date().toISOString()}`,
+      `Last generated: ${input.generatedAt ?? new Date().toISOString()}`,
       '',
       '## tl;dr',
       input.sections.overview || 'No overview available.',
