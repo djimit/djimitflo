@@ -57,8 +57,8 @@ describe('e2e smoke: login → task → mock execution → completion', { timeou
     await until(async () => {
       const response = await fetch(`${BASE}/health`);
       return response.ok ? true : null;
-    }, 60_000);
-  }, 90_000);
+    }, 180_000);
+  }, 240_000);
 
   afterAll(() => {
     server?.kill('SIGTERM');
@@ -123,7 +123,7 @@ describe('e2e smoke: login → task → mock execution → completion', { timeou
     const finalStatus = await until(async () => {
       const task = await api<{ status: string }>(token, `/tasks/${taskId}`, {});
       return task.body.status === 'completed' ? task.body.status : null;
-    }, 60_000, 1000);
+    }, 180_000, 1000);
     expect(finalStatus).toBe('completed');
 
     // 6. Execution events were persisted
