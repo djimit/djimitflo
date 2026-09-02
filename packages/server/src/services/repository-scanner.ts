@@ -471,7 +471,11 @@ export class RepositoryScanner {
           continue;
         }
         const matched = SECRET_FILE_PATTERNS.find(p => p.test(entry.name));
-        if (matched) {
+        // .example/.sample/template variants are documentation placeholders, not
+        // real credential material — flagging them buries genuine findings and
+        // poisons the explainer health section with false criticals.
+        const isPlaceholder = /\.(example|sample|template)$/i.test(entry.name);
+        if (matched && !isPlaceholder) {
           findings.push({ file: relative(repoPath, full), pattern: matched.source, severity: 'critical' });
         }
       }

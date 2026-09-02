@@ -39,11 +39,15 @@ describe("RepositoryScanner extended scan summary", () => {
 
   it("emits secret scan, dependency manifest, license, and tags", () => {
     const repoPath = createFakeRepo();
+    // .example placeholder must NOT trigger the sensitive-file finding
+    writeFileSync(join(repoPath, ".env.example"), "# JWT_SECRET=[placeholder]\n");
     const result = scanner.scan(repoPath);
 
     expect(result.scanSummary).toBeDefined();
     expect(result.scanSummary.secretScan.clean).toBe(false);
     expect(result.scanSummary.secretScan.findings.some((f) => f.file.includes(".env"))).toBe(true);
+    // the .example placeholder is documentation, not credential material
+    expect(result.scanSummary.secretScan.findings.some((f) => f.file.endsWith(".env.example"))).toBe(false);
 
     expect(result.scanSummary.dependencyManifest.packageManager).toBe("npm");
     expect(result.scanSummary.dependencyManifest.packages.some((p) => p.name === "express")).toBe(true);
