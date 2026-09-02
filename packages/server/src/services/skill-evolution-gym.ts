@@ -77,7 +77,7 @@ export class SkillEvolutionGym {
     passed: boolean;
     categoryScores: Record<string, number>;
   }> {
-    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service.js');
     const evalService = new OpenMythosEvalService(this.db);
     const result = await evalService.runEval(skillId, categories, model);
 

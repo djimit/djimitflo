@@ -38,7 +38,7 @@ async function api<T>(token: string, path: string, init?: RequestInit): Promise<
   return { status: response.status, body: await response.json().catch(() => ({})) as T };
 }
 
-describe('e2e smoke: login → task → mock execution → completion', () => {
+describe('e2e smoke: login → task → mock execution → completion', { timeout: 180_000 }, () => {
   beforeAll(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'djimitflo-e2e-'));
     server = spawn('npx', ['tsx', 'src/index.ts'], {

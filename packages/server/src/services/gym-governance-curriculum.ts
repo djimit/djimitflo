@@ -103,7 +103,7 @@ export class GymGovernanceCurriculum {
       throw new Error(`GOVERNANCE_PHASE_INVALID: ${phase}`);
     }
 
-    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service.js');
     const evalService = new OpenMythosEvalService(this.db);
     const result = await evalService.runEval(skillId, phaseConfig.categories, model);
 
