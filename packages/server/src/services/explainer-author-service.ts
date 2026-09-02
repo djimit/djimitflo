@@ -12,6 +12,9 @@
 
 import type { RepoEvidencePacket } from './repo-evidence-packet';
 import { ExplainerMermaidService } from './explainer-mermaid-service';
+import type { ExplainerFact } from '@djimitflo/shared';
+
+const fileCountCite = (f: { id: string } | undefined): string => (f ? ` [${f.id}]` : '');
 
 export interface AuthoredSection {
   section_type: string;
@@ -112,22 +115,32 @@ export class ExplainerAuthorService {
   }
 
   authorFromTemplate(packet: RepoEvidencePacket): AuthoredSection[] {
-    const citedIds = new Set<string>();
+    // Citation coverage (self-analysis finding): the template must cite fact ids
+    // in every section so the judge's token-overlap matcher has real evidence
+    // and the claim→source chain is visible to human readers.
+    const factByPattern = (re: RegExp): ExplainerFact | undefined =>
+      packet.facts.find((f) => re.test(f.source_ref));
+    const stackFact = factByPattern(/detected_stacks/);
+    const licenseFact = factByPattern(/scan:license/);
+    const pkgFact = factByPattern(/dependency_manifest/);
+    const graphFacts = packet.facts.filter((f) => f.source_type === 'graph_node');
+    const healthFacts = packet.facts.filter((f) => f.source_ref.startsWith('scan:health:'));
+    const fileCountFact = factByPattern(/graph_summary|total_files/);
 
     const stackBadge = packet.stack.length ? packet.stack.join(', ') : 'not yet detected';
-    const overviewFacts = packet.facts.slice(0, 3).map((f) => f.id);
+    const stackCite = stackFact ? ` [${stackFact.id}]` : '';
+    const licenseCite = licenseFact ? ` [${licenseFact.id}]` : '';
     const overview = [
       `# ${packet.repository_full_name}`,
       '',
       `${packet.repository_full_name} is a ${packet.stack[0] ?? 'software'} repository under active development.`,
       '',
-      `Detected stack: ${stackBadge}. ${packet.license ? `Licensed under ${packet.license}.` : 'No license detected.'} [fact-2] [fact-3]`,
+      `Detected stack: ${stackBadge}${stackCite}. ${packet.license ? `Licensed under ${packet.license}${licenseCite}.` : 'No license detected.'}`,
       '',
       packet.readme_fragments.length
         ? `From the README: ${packet.readme_fragments[0].excerpt} [${packet.readme_fragments[0].source_ref}]`
         : '',
     ].filter(Boolean).join('\n');
-    citedIds.add(overviewFacts[0] ?? 'fact-1');
 
     const communities = packet.graph.communities ?? [];
     const mermaid = new ExplainerMermaidService();
@@ -138,24 +151,28 @@ export class ExplainerAuthorService {
     const architecture = [
       '# Architecture',
       '',
-      `Structural analysis found ${packet.graph.total_nodes} nodes, ${packet.graph.total_edges} edges across ${packet.graph.total_files} files.`,
+      `Structural analysis found ${packet.graph.total_nodes} nodes, ${packet.graph.total_edges} edges across ${packet.graph.total_files} files.${fileCountCite(fileCountFact)}`,
       '',
       ...diagramBlock,
       communities.length
-        ? `Key communities: ${communities.slice(0, 3).map((c) => `${c.name} (${c.language})`).join(', ')}.`
+        ? `Key communities: ${communities.slice(0, 3).map((c) => `${c.name} (${c.language})`).join(', ')}.${graphFacts[0] ? ` [${graphFacts[0].id}]` : ''}`
         : 'No distinct communities detected yet.',
       '',
       (packet.graph.hub_nodes ?? []).length
-        ? `Hub nodes concentrate complexity: ${(packet.graph.hub_nodes ?? []).slice(0, 3).map((h) => `"${h.name}" (${h.file})`).join(', ')}.`
+        ? `Hub nodes concentrate complexity: ${(packet.graph.hub_nodes ?? []).slice(0, 3).map((h) => `"${h.name}" (${h.file})`).join(', ')}.${graphFacts[1] ? ` [${graphFacts[1].id}]` : ''}`
         : '',
     ].filter(Boolean).join('\n');
 
     const drivers = packet.health.drivers.slice(0, 4).map((d) => `- ${d.factor}: ${d.impact > 0 ? '+' : ''}${d.impact} — ${d.description}`);
-    const topFindings = packet.health.findings.slice(0, 5).map((f) => `- [${f.severity}] ${f.title}: ${f.description}`);
+    const topFindings = packet.health.findings.slice(0, 5).map((f) => {
+      const match = packet.facts.find((fact) => fact.source_ref === `scan:health:${f.title}` || fact.claim.includes(f.title));
+      return `- [${f.severity}] ${f.title}: ${f.description}${match ? ` [${match.id}]` : ''}`;
+    });
+    const healthCite = healthFacts[0] ? ` [${healthFacts[0].id}]` : '';
     const health = [
       '# Health',
       '',
-      `Overall health score: ${packet.health.score ?? 'unknown'}.`,
+      `Overall health score: ${packet.health.score ?? 'unknown'}.${healthCite}`,
       '',
       drivers.length ? `Drivers:\n${drivers.join('\n')}` : '',
       '',
@@ -166,18 +183,20 @@ export class ExplainerAuthorService {
     const dependencies = [
       '# Dependencies',
       '',
-      `Package manager: ${packet.package_manager ?? 'unknown'}. Stack: ${stackBadge}.`,
+      `Package manager: ${packet.package_manager ?? 'unknown'}${pkgFact ? ` [${pkgFact.id}]` : ''}. Stack: ${stackBadge}.`,
       '',
-      secrets ? `${secrets.claim} [fact-${secrets.id.split('-')[1]}]` : 'Secret scan: clean.',
+      secrets ? `${secrets.claim} [${secrets.id}]` : 'Secret scan: clean.',
       '',
       'No security guarantees are claimed beyond what the scanners report.',
     ].join('\n');
 
+    const citations = (ids: (string | undefined)[]): string[] => ids.filter((i): i is string => Boolean(i));
+
     return [
-      { section_type: 'overview', title: 'Overview', content: overview, citations: [...citedIds] },
-      { section_type: 'architecture', title: 'Architecture', content: architecture, citations: [] },
-      { section_type: 'health', title: 'Health', content: health, citations: [] },
-      { section_type: 'dependencies', title: 'Dependencies', content: dependencies, citations: secrets ? [secrets.id] : [] },
+      { section_type: 'overview', title: 'Overview', content: overview, citations: citations([stackFact?.id, licenseFact?.id, packet.facts[0]?.id]) },
+      { section_type: 'architecture', title: 'Architecture', content: architecture, citations: citations([graphFacts[0]?.id, graphFacts[1]?.id, fileCountFact?.id]) },
+      { section_type: 'health', title: 'Health', content: health, citations: citations([healthFacts[0]?.id, healthFacts[1]?.id]) },
+      { section_type: 'dependencies', title: 'Dependencies', content: dependencies, citations: citations([pkgFact?.id, secrets?.id]) },
     ];
   }
 
