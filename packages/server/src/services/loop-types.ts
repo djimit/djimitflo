@@ -156,6 +156,7 @@ export interface RuntimeExecutionResult {
   stdout: string;
   stderr: string;
   runtimePid?: number;
+  events?: import('@djimitflo/shared').ExecutionEventCreateInput[];
 }
 
 export interface RuntimeStopResult {
@@ -170,6 +171,7 @@ export interface RuntimeProcessHandle {
   args: string[];
   startedAt: string;
   timeoutHandle?: NodeJS.Timeout;
+  stop?: () => void;
 }
 
 export type RuntimeManifestAction = 'plan' | 'start' | 'skip' | 'fail' | 'stop' | 'kill' | 'complete';

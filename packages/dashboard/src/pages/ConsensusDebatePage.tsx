@@ -2,36 +2,50 @@
  * Consensus Debate Page — real-time multi-agent consensus visualization.
  */
 
-import { useState, useCallback } from 'react';
-import { MessageSquare, ThumbsUp, ThumbsDown, Trophy, Plus } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { MessageSquare, Trophy, Plus, Play } from 'lucide-react';
+import { api } from '../lib/api';
 
-interface Debate {
+interface CouncilSession {
   id: string;
-  topic: string;
+  task_description: string;
   status: string;
-  proposals: Array<{ id: string; agentId: string; content: string; score: number }>;
+  final_output: string | null;
+  final_confidence: number | null;
+  cost_dollars: number;
+  token_usage: number;
 }
 
 export function ConsensusDebatePage() {
-  const [debates, setDebates] = useState<Debate[]>([]);
-  const [selectedDebate, setSelectedDebate] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<CouncilSession[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
   const [topic, setTopic] = useState('');
+  const [independentJudge, setIndependentJudge] = useState(false);
+  const [judgeModel, setJudgeModel] = useState('');
+
+  const refresh = useCallback(async () => {
+    setSessions(await api.get<CouncilSession[]>('/council/sessions'));
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
 
   const createDebate = useCallback(async () => {
     if (!topic.trim()) return;
-    const response = await fetch('/api/agi/consensus/debates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ topic, context: 'Dashboard-created debate' }),
+    const session = await api.post<CouncilSession>('/council/sessions', {
+      task_description: topic, mode: 'council', independent_judge: independentJudge,
+      ...(judgeModel.trim() ? { judge_model: judgeModel.trim() } : {}),
     });
-    if (response.ok) {
-      const debate = await response.json();
-      setDebates((prev) => [...prev, { ...debate, proposals: [] }]);
-      setTopic('');
-    }
-  }, [topic]);
+    setSessions((current) => [session, ...current]);
+    setSelected(session.id);
+    setTopic('');
+  }, [topic, independentJudge, judgeModel]);
 
-  const activeDebate = debates.find((d) => d.id === selectedDebate);
+  const execute = useCallback(async (id: string) => {
+    await api.post(`/council/sessions/${id}/execute`);
+    await refresh();
+  }, [refresh]);
+
+  const activeDebate = sessions.find((session) => session.id === selected);
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -52,25 +66,29 @@ export function ConsensusDebatePage() {
           <Plus size={14} /> Create
         </button>
       </div>
+      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', margin: '-12px 0 24px' }}>
+        <label><input type="checkbox" checked={independentJudge} onChange={event => setIndependentJudge(event.target.checked)} /> Independent judge</label>
+        {independentJudge && <input value={judgeModel} onChange={event => setJudgeModel(event.target.value)} placeholder="Optional judge model" style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px' }} />}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>
         {/* Debate List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {debates.map((debate) => (
+          {sessions.map((debate) => (
             <div
               key={debate.id}
-              onClick={() => setSelectedDebate(debate.id)}
+              onClick={() => setSelected(debate.id)}
               style={{
                 padding: '12px', borderRadius: '6px', cursor: 'pointer',
-                background: selectedDebate === debate.id ? '#eef2ff' : '#f8fafc',
-                border: `1px solid ${selectedDebate === debate.id ? '#6366f1' : '#e2e8f0'}`,
+                background: selected === debate.id ? '#eef2ff' : '#f8fafc',
+                border: `1px solid ${selected === debate.id ? '#6366f1' : '#e2e8f0'}`,
               }}
             >
-              <div style={{ fontWeight: 500, fontSize: '14px' }}>{debate.topic.slice(0, 40)}</div>
+              <div style={{ fontWeight: 500, fontSize: '14px' }}>{debate.task_description.slice(0, 40)}</div>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{debate.status}</div>
             </div>
           ))}
-          {debates.length === 0 && (
+          {sessions.length === 0 && (
             <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
               No debates yet. Create one above.
             </div>
@@ -81,33 +99,20 @@ export function ConsensusDebatePage() {
         <div>
           {activeDebate ? (
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>{activeDebate.topic}</h2>
-              {activeDebate.proposals.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8' }}>
-                  No proposals yet. Agents will submit proposals.
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {activeDebate.proposals.map((proposal) => (
-                    <div key={proposal.id} style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontWeight: 500, fontSize: '13px' }}>{proposal.agentId}</span>
-                        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Trophy size={14} color="#f59e0b" />
-                          <span style={{ fontWeight: 600 }}>{(proposal.score * 100).toFixed(0)}%</span>
-                        </span>
-                      </div>
-                      <p style={{ margin: 0, fontSize: '14px', color: '#374151' }}>{proposal.content}</p>
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        <button style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 12px', background: '#dcfce7', border: '1px solid #bbf7d0', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
-                          <ThumbsUp size={12} /> Agree
-                        </button>
-                        <button style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
-                          <ThumbsDown size={12} /> Disagree
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>{activeDebate.task_description}</h2>
+              {!activeDebate.final_output && (
+                <button onClick={() => void execute(activeDebate.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                  <Play size={14} /> Run council
+                </button>
+              )}
+              {activeDebate.final_output && (
+                <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                    <Trophy size={14} color="#f59e0b" />
+                    <strong>{Math.round((activeDebate.final_confidence || 0) * 100)}% confidence</strong>
+                    <span style={{ marginLeft: 'auto' }}>{activeDebate.token_usage} tokens · ${activeDebate.cost_dollars.toFixed(4)}</span>
+                  </div>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>{activeDebate.final_output}</p>
                 </div>
               )}
             </div>

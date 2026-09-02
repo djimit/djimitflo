@@ -25,14 +25,18 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // POST /api/memory/store — store a new memory
-  router.post('/store', requirePermission('write:claim'), (req, res) => {
+  router.post('/store', requirePermission('write:claim'), async (req, res, next) => {
     const { content, type, metadata, ttlDays } = req.body;
     if (!content?.trim()) {
       res.status(400).json({ error: { message: 'content is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const entry = service.storeMemory({ content, type: type || 'observation', metadata, ttlDays });
-    res.status(201).json(entry);
+    try {
+      const entry = await service.storeMemory({ content, type: type || 'observation', metadata, ttlDays });
+      res.status(201).json(entry);
+    } catch (error) {
+      next(error);
+    }
   });
 
   // GET /api/memory/search — search memories by content
@@ -77,22 +81,31 @@ export function createMemoryRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // POST /api/memory/maintenance — run maintenance cycle
-  router.post('/maintenance', requirePermission('write:governance'), (__req, res) => {
-    const result = service.runMaintenanceCycle();
-    res.json(result);
+  router.post('/maintenance', requirePermission('write:governance'), async (__req, res, next) => {
+    try {
+      res.json(await service.runMaintenanceCycle());
+    } catch (error) {
+      next(error);
+    }
   });
 
   // POST /api/memory/discover-relations — auto-discover relations between similar memories
-  router.post('/discover-relations', requirePermission('write:governance'), (req, res) => {
+  router.post('/discover-relations', requirePermission('write:governance'), async (req, res, next) => {
     const minStrength = req.body?.minStrength ?? 0.3;
-    const result = service.autoDiscoverRelations(minStrength);
-    res.json(result);
+    try {
+      res.json(await service.autoDiscoverRelations(minStrength));
+    } catch (error) {
+      next(error);
+    }
   });
 
   // POST /api/memory/consolidate — merge near-duplicate memories
-  router.post('/consolidate', requirePermission('write:governance'), (__req, res) => {
-    const result = service.consolidateMemories();
-    res.json(result);
+  router.post('/consolidate', requirePermission('write:governance'), async (__req, res, next) => {
+    try {
+      res.json(await service.consolidateMemories());
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

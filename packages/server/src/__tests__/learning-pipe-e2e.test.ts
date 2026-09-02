@@ -4,6 +4,7 @@ import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { ProactiveMemoryService } from '../services/proactive-memory-service';
 import { swarmEventBus } from '../services/swarm-event-bus';
+import { testEmbeddingProvider } from './helpers/test-embedding-provider';
 
 /**
  * End-to-end integration tests for the self-driving learning pipe.
@@ -27,7 +28,7 @@ describe('Learning Pipe E2E', () => {
     cognitive = new CognitiveLoopClosureService(db);
     cognitive.start();
     meta = new MetaOrchestrationService(db);
-    memory = new ProactiveMemoryService(db);
+    memory = new ProactiveMemoryService(db, testEmbeddingProvider);
   });
 
   afterEach(() => {
@@ -171,8 +172,8 @@ describe('Learning Pipe E2E', () => {
   });
 
   describe('Proactive Memory', () => {
-    it('stores and retrieves memories with relevance scoring', () => {
-      const entry = memory.storeMemory({
+    it('stores and retrieves memories with relevance scoring', async () => {
+      const entry = await memory.storeMemory({
         content: 'Database connection pool should be configured for max 10 connections',
         type: 'observation',
         ttlDays: 30,
@@ -188,27 +189,27 @@ describe('Learning Pipe E2E', () => {
       expect(accessed!.usageCount).toBe(1);
     });
 
-    it('auto-discovers relations between similar memories', () => {
-      memory.storeMemory({ content: 'Use connection pooling for database access', type: 'pattern' });
-      memory.storeMemory({ content: 'Database connection pool improves performance', type: 'pattern' });
-      memory.storeMemory({ content: 'Use caching for frequently accessed data', type: 'pattern' });
+    it('auto-discovers relations between similar memories', async () => {
+      await memory.storeMemory({ content: 'Use connection pooling for database access', type: 'pattern' });
+      await memory.storeMemory({ content: 'Database connection pool improves performance', type: 'pattern' });
+      await memory.storeMemory({ content: 'Use caching for frequently accessed data', type: 'pattern' });
 
-      const result = memory.autoDiscoverRelations(0.2);
+      const result = await memory.autoDiscoverRelations(0.2);
       expect(result.discovered).toBeGreaterThan(0);
     });
 
-    it('consolidates near-duplicate memories', () => {
-      memory.storeMemory({ content: 'Use connection pooling for database', type: 'pattern' });
-      memory.storeMemory({ content: 'Use connection pooling for database', type: 'pattern' });
+    it('consolidates near-duplicate memories', async () => {
+      await memory.storeMemory({ content: 'Use connection pooling for database', type: 'pattern' });
+      await memory.storeMemory({ content: 'Use connection pooling for database', type: 'pattern' });
 
-      const result = memory.consolidateMemories();
+      const result = await memory.consolidateMemories();
       expect(result.merged).toBeGreaterThan(0);
     });
 
-    it('runs full maintenance cycle', () => {
+    it('runs full maintenance cycle', async () => {
       // Store some memories
       for (let i = 0; i < 5; i++) {
-        const entry = memory.storeMemory({
+        const entry = await memory.storeMemory({
           content: `Memory ${i}: database optimization technique`,
           type: 'observation',
         });
@@ -216,7 +217,7 @@ describe('Learning Pipe E2E', () => {
         if (i < 2) memory.accessMemory(entry.id);
       }
 
-      const result = memory.runMaintenanceCycle();
+      const result = await memory.runMaintenanceCycle();
       expect(result.evaluated).toBe(5);
       expect(result).toHaveProperty('relationsDiscovered');
       expect(result).toHaveProperty('merged');
@@ -224,7 +225,7 @@ describe('Learning Pipe E2E', () => {
   });
 
   describe('Full Pipe Integration', () => {
-    it('processes loop outcome through entire learning pipe', () => {
+    it('processes loop outcome through entire learning pipe', async () => {
       // 1. Loop completes → cognitive episode
       swarmEventBus.emit('loop_completed', {
         loopRunId: 'e2e-loop-1',
@@ -250,7 +251,7 @@ describe('Learning Pipe E2E', () => {
       expect(routing.recommendedModel).toBeDefined();
 
       // 4. Proactive memory stores the learning
-      const mem = memory.storeMemory({
+      const mem = await memory.storeMemory({
         content: 'Loop doc-drift completed successfully with maker-checker-v1 strategy',
         type: 'learning',
       });

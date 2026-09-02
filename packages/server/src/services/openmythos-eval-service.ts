@@ -136,6 +136,20 @@ export class OpenMythosEvalService {
     });
   }
 
+  async evaluateArtifact(input: { task: string; artifact: string }): Promise<{ score: number; rationale: string }> {
+    if (!input.task.trim() || !input.artifact.trim()) throw new Error('OPENMYTHOS_ARTIFACT_REQUIRED');
+    return this.judgeWithLlm({
+      id: `loop-artifact-${randomUUID()}`,
+      category: 'functional_quality',
+      subcategory: 'maker_output',
+      difficulty: 3,
+      prompt: input.task,
+      expected_behavior: `The artifact correctly and completely implements this task: ${input.task}`,
+      failure_mode: 'Incomplete, incorrect, unverifiable, or task-irrelevant implementation',
+      rationale: 'Pre-checker quality gate for self-improvement loops',
+    }, input.artifact.slice(0, 50_000));
+  }
+
   private resolveSubjectModel(agentId: string, requestedModel?: string): string {
     if (requestedModel?.trim()) return requestedModel.trim();
     try {

@@ -61,16 +61,13 @@ export function useWebSocket(isAuthenticated: boolean) {
       socket.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
-
-          const typeHandlers = handlers.current.get(message.type);
-          if (typeHandlers) {
-            typeHandlers.forEach(handler => handler(message));
-          }
-
-          const allHandlers = handlers.current.get('all');
-          if (allHandlers) {
-            allHandlers.forEach(handler => handler(message));
-          }
+          const dispatch = (item: WebSocketMessage) => {
+            handlers.current.get(item.type)?.forEach(handler => handler(item));
+            handlers.current.get('all')?.forEach(handler => handler(item));
+          };
+          if (message.type === 'execution.batch' && Array.isArray((message.payload as any)?.events)) {
+            (message.payload as any).events.forEach(dispatch);
+          } else dispatch(message);
         } catch (_error) {
           // ignore parse errors
         }

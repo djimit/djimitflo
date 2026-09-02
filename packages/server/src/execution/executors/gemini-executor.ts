@@ -14,6 +14,7 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -173,6 +174,11 @@ export class GeminiExecutor implements TaskExecutor {
     if (stream === 'stdout') {
       try {
         const parsed = JSON.parse(trimmed);
+        // Gemini tool_response/tool_use blocks become typed events; other JSON is a LOG.
+        const isToolBlock = ['tool_response', 'tool_use', 'tool_result', 'tool'].includes(String(parsed?.type ?? ''));
+        if (isToolBlock) {
+          return structuredRuntimeEvent('gemini', taskId, parsed);
+        }
         const summary = typeof parsed === 'string'
           ? parsed
           : (parsed?.result ?? parsed?.text ?? parsed?.message ?? `JSON event: ${parsed?.type ?? 'object'}`);

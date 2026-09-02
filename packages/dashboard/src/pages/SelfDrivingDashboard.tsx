@@ -32,6 +32,7 @@ interface DashboardStats {
 export function SelfDrivingDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tuningResult, setTuningResult] = useState<string>('');
 
   useEffect(() => {
     Promise.all([
@@ -75,6 +76,19 @@ export function SelfDrivingDashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Panel title="Meta Orchestration" icon={<Activity className="w-5 h-5 text-purple-600" />}>
+              <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+                <Metric label="Decisions" value={stats.meta.totalDecisions} />
+                <Metric label="Predicted failures" value={stats.meta.failuresPredicted} />
+                <Metric label="Cost savings" value={`$${stats.meta.costSavingsDollars.toFixed(2)}`} />
+              </div>
+              <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white" onClick={async () => {
+                const result = await api.post<{ evaluated: number; applied: number }>('/meta/tuning/run');
+                setTuningResult(`${result.applied}/${result.evaluated} recommendations applied`);
+              }}>Run bounded tuning</button>
+              {tuningResult && <p className="mt-2 text-xs text-foreground-secondary">{tuningResult}</p>}
+            </Panel>
+
             <Panel title="Proactive Memory" icon={<Database className="w-5 h-5 text-blue-600" />}>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <Metric label="Total Memories" value={stats.memory.total} />

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { ConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { createTestDb } from './helpers/test-db';
 
 /**
  * Deterministic proof for the shared runtime concurrency primitive.
@@ -59,5 +60,15 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     const semaphore = new ConcurrencySemaphore(() => 4);
     expect(() => semaphore.release('never-acquired')).not.toThrow();
     expect(semaphore.activeCount).toBe(0);
+  });
+
+  it('returns typed runtime events to loop workers', async () => {
+    const db = createTestDb();
+    const { LoopService } = await import('../services/loop-service');
+    const { RuntimeCommandService } = await import('../services/runtime-command-service');
+    const loopService = new LoopService(db);
+    const runtimeCommand = new RuntimeCommandService(db, loopService);
+    const result = await runtimeCommand.executeRuntimeCommand('lease-events', process.execPath, ['-e', "console.log(JSON.stringify({part:{type:'tool',tool:'read',input:{path:'a.ts'}}}))"], { runtime: 'opencode' });
+    expect(result.events).toEqual([expect.objectContaining({ event_type: 'tool.call', tool_name: 'read' })]);
   });
 });

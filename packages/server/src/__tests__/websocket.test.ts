@@ -268,6 +268,14 @@ describe('WebSocketService', () => {
       expect(ws1.send).toHaveBeenCalled();
       expect(ws2.send).toHaveBeenCalled();
     });
+
+    it('does not add data when a client is backpressured', () => {
+      const ws = createMockWs();
+      ws.bufferedAmount = 2 * 1024 * 1024;
+      wsService['clients'].set(ws, makeClient(UserRole.ADMIN, 'user-1'));
+      wsService.broadcastToAuthenticated({ type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() });
+      expect(ws.send).not.toHaveBeenCalled();
+    });
   });
 
   describe('getClientCount', () => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Task } from '@djimitflo/shared';
 import type { ExecutorOptions } from '../execution/types';
 import { GeminiExecutor } from '../execution/executors/gemini-executor';
+import { ExecutionEventType } from '@djimitflo/shared';
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -90,5 +91,10 @@ describe('GeminiExecutor', () => {
     const task = makeTask({ description: 'test prompt' });
     const args = (executor as any).buildGeminiArgs(task, { format: 'default' });
     expect(args).not.toContain('-o');
+  });
+
+  it('maps Gemini tool responses to typed events', () => {
+    const event = (executor as any).lineToExecutionEvent('task', JSON.stringify({ type: 'tool_response', tool: 'shell', output: 'ok' }), 'stdout');
+    expect(event).toMatchObject({ event_type: ExecutionEventType.TOOL_RESULT, tool_name: 'shell' });
   });
 });

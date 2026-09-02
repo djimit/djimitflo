@@ -125,6 +125,8 @@ export class WebSocketService {
   broadcastToAuthenticated(message: WebSocketMessage) {
     const data = JSON.stringify(message);
     const now = Date.now() / 1000;
+    const configuredLimit = Number(process.env.WS_MAX_BUFFERED_AMOUNT_BYTES ?? 1_048_576);
+    const maxBufferedAmount = Number.isFinite(configuredLimit) && configuredLimit >= 0 ? configuredLimit : 1_048_576;
     this.clients.forEach((clientInfo, ws) => {
       if (ws.readyState === WebSocket.OPEN) {
         if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
@@ -132,6 +134,7 @@ export class WebSocketService {
           this.clients.delete(ws);
           return;
         }
+        if (ws.bufferedAmount > maxBufferedAmount) return;
         ws.send(data);
       }
     });

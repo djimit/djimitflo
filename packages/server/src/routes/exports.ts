@@ -1,12 +1,16 @@
 import { Router, Request, Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { ExportFormat } from '@djimitflo/shared';
 import type { AuthTokenPayload, ExportRequest } from '@djimitflo/shared';
 import { ExportService, ExportError } from '../services/export-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { once } from 'events';
 
 export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: handlers perform unbounded DB queries/streams.
+  router.use(rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }));
   const exportService = new ExportService(db);
   const requireAuth = auth.requireAuth;
 
@@ -103,7 +107,7 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
   });
 
   // GET /exports/training — leakage-free JSONL training dataset
-  router.get('/training', requireAuth, (req: Request, res: Response): void => {
+  router.get('/training', requireAuth, async (req: Request, res: Response): Promise<void> => {
     try {
       const user = getUser(req);
       if (user.role !== 'admin') {
@@ -124,14 +128,16 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
         ) ap ON t.id = ap.task_id AND ap.rn = 1
         WHERE t.status IN ('completed', 'failed') OR ap.status IS NOT NULL
         ORDER BY t.created_at DESC
-      `).all() as any[];
+      `).iterate() as Iterable<any>;
 
-      const lines = tasks.map((t: any) => {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Content-Disposition', 'attachment; filename="training-export.jsonl"');
+      for (const t of tasks) {
         const outcome = t.approval_status === 'approved' ? 'approved'
           : t.approval_status === 'denied' ? 'denied'
           : t.status === 'completed' ? 'auto_completed' : 'unknown';
 
-        return JSON.stringify({
+        const line = JSON.stringify({
           task_id: t.id,
           title: t.title,
           machine_id: t.created_by || 'unknown',
@@ -143,16 +149,33 @@ export function createExportRoutes(db: Database, auth: AuthMiddleware): Router {
           completed_at: t.completed_at || undefined,
           created_at: t.created_at,
         });
-      });
-
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Content-Disposition', 'attachment; filename="training-export.jsonl"');
-      res.send(lines.join('\n'));
+        if (!res.write(`${line}\n`)) await once(res, 'drain');
+      }
+      res.end();
       return;
     } catch (error) {
       handleError(res, error);
       return;
     }
+  });
+
+  router.get('/stream/audit', requireAuth, async (req: Request, res: Response): Promise<void> => {
+    const user = getUser(req);
+    if (user.role !== 'admin' && user.role !== 'platform_admin') {
+      res.status(403).json({ error: { message: 'Admin required', code: 'FORBIDDEN' } });
+      return;
+    }
+    let query = 'SELECT * FROM audit_events WHERE 1=1';
+    const params: string[] = [];
+    if (typeof req.query.dateFrom === 'string') { query += ' AND timestamp >= ?'; params.push(req.query.dateFrom); }
+    if (typeof req.query.dateTo === 'string') { query += ' AND timestamp <= ?'; params.push(req.query.dateTo); }
+    query += ' ORDER BY timestamp ASC';
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-export.ndjson"');
+    for (const row of db.prepare(query).iterate(...params) as Iterable<Record<string, unknown>>) {
+      if (!res.write(`${JSON.stringify(row)}\n`)) await once(res, 'drain');
+    }
+    res.end();
   });
 
   return router;

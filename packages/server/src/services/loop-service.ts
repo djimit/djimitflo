@@ -1261,8 +1261,12 @@ export class LoopService {
     return finding.metadata?.status === 'split';
   }
 
-  public getMakerLeaseBudget(run: LoopRunRecord, input: ContinueLoopInput): { maxMakerWorkers: number; source: 'goal' | 'request' | 'default' } {
-    return this.budget.getMakerLeaseBudget(run, input.max_maker_workers);
+  public getMakerLeaseBudget(run: LoopRunRecord, input: ContinueLoopInput): { maxMakerWorkers: number; source: 'goal' | 'request' | 'meta' | 'default' } {
+    const configured = this.budget.getMakerLeaseBudget(run, input.max_maker_workers);
+    const tuning = this.metaOrchestration?.getActiveLoopTuning(run.loop_name);
+    return configured.source === 'default' && tuning
+      ? { maxMakerWorkers: tuning.recommendedConcurrency, source: 'meta' }
+      : configured;
   }
 
   public getRetryBudget(run: LoopRunRecord, maker: WorkerLeaseRecord, input: RetryLoopInput): { maxRetries: number; source: 'goal' | 'request' | 'lease' | 'default' } {
@@ -1273,12 +1277,20 @@ export class LoopService {
     return this.budget.getFailureThreshold(run);
   }
 
-  public getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'none' } {
-    return this.budget.getTokenBudget(run);
+  public getTokenBudget(run: LoopRunRecord): { maxTokens?: number; maxTokensPerWorker?: number; maxTokensPerDiffLine?: number; source: 'goal' | 'meta' | 'none' } {
+    const configured = this.budget.getTokenBudget(run);
+    const tuning = this.metaOrchestration?.getActiveLoopTuning(run.loop_name);
+    return configured.source === 'none' && tuning
+      ? { maxTokens: tuning.recommendedBudget.maxTokens, source: 'meta' }
+      : configured;
   }
 
-  private getWallClockBudget(run: LoopRunRecord): { maxRuntimeMs?: number; source: 'goal' | 'none' } {
-    return this.budget.getWallClockBudget(run);
+  private getWallClockBudget(run: LoopRunRecord): { maxRuntimeMs?: number; source: 'goal' | 'meta' | 'none' } {
+    const configured = this.budget.getWallClockBudget(run);
+    const tuning = this.metaOrchestration?.getActiveLoopTuning(run.loop_name);
+    return configured.source === 'none' && tuning
+      ? { maxRuntimeMs: tuning.recommendedBudget.maxRuntimeMs, source: 'meta' }
+      : configured;
   }
 
   public evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {

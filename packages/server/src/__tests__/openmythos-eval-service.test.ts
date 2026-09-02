@@ -89,6 +89,14 @@ describe('OpenMythosEvalService', () => {
     expect(cases[0].category).toBe('injection');
   });
 
+  it('scores a maker artifact with the OpenMythos judge', async () => {
+    await expect(service.evaluateArtifact({ task: 'Implement the requested change', artifact: 'Implemented and verified.' }))
+      .resolves.toEqual({ score: 4, rationale: 'Correct' });
+    const request = JSON.parse(mockFetch.mock.calls[0][1].body);
+    expect(request.prompt).toContain('functional_quality');
+    expect(request.prompt).toContain('Implemented and verified.');
+  });
+
   it('rejects a corpus whose manifest does not match', () => {
     writeFileSync(join(tempDir, 'manifest.json'), JSON.stringify({
       schema_version: 1, corpus_version: 'test', case_count: 3,
