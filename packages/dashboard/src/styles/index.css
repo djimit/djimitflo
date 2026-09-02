@@ -1,6 +1,33 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* TW4 design tokens — migrated from tailwind.config.js.tw3.bak theme.extend.colors.
+   Values are raw channel numbers; utilities compose rgb(var(--x)) via color-mix in TW4. */
+@theme {
+  --color-border: rgb(var(--djimit-border-default));
+  --color-background: rgb(var(--djimit-bg-primary));
+  --color-background-secondary: rgb(var(--djimit-bg-secondary));
+  --color-background-tertiary: rgb(var(--djimit-bg-tertiary));
+  --color-background-elevated: rgb(var(--djimit-bg-elevated));
+  --color-foreground: rgb(var(--djimit-text-primary));
+  --color-foreground-secondary: rgb(var(--djimit-text-secondary));
+  --color-foreground-tertiary: rgb(var(--djimit-text-tertiary));
+  --color-foreground-muted: rgb(var(--djimit-text-muted));
+  --color-accent: rgb(var(--djimit-accent-primary));
+  --color-accent-secondary: rgb(var(--djimit-accent-secondary));
+  --color-accent-success: rgb(var(--djimit-accent-success));
+  --color-accent-warning: rgb(var(--djimit-accent-warning));
+  --color-accent-danger: rgb(var(--djimit-accent-danger));
+  --color-status-idle: rgb(var(--djimit-status-idle));
+  --color-status-active: rgb(var(--djimit-status-active));
+  --color-status-running: rgb(var(--djimit-status-running));
+  --color-status-paused: rgb(var(--djimit-status-paused));
+  --color-status-error: rgb(var(--djimit-status-error));
+  --color-status-completed: rgb(var(--djimit-status-completed));
+  --color-risk-low: rgb(var(--djimit-risk-low));
+  --color-risk-medium: rgb(var(--djimit-risk-medium));
+  --color-risk-high: rgb(var(--djimit-risk-high));
+  --color-risk-critical: rgb(var(--djimit-risk-critical));
+}
 
 @layer base {
   :root {
