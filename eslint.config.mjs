@@ -5,6 +5,12 @@
 // catch. Tighten incrementally once the baseline is green in CI.
 import tseslint from 'typescript-eslint';
 
+// TS 7 note: typescript-eslint 8.x parses with the TS 6 API and refuses TS 7.0.
+// The rules used here are all type-agnostic (no type-information required), so
+// we disable typed linting and let ESLint run with its own lightweight TS
+// parser surface until typescript-eslint ships TS 7.1+ support (issue #10940).
+process.env.TYPESCRIPT_ESLINT_TSCONFIG_SKIP = '1';
+
 export default tseslint.config(
   {
     ignores: [
