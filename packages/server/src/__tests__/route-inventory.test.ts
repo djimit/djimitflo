@@ -46,7 +46,7 @@ describe('buildOpenApiSpec', () => {
 
 describe('full aggregator inventory', () => {
   it('createRoutes exposes the platform surface through /openapi.json', async () => {
-    const { createTestDb } = await import('./helpers/test-db');
+    const { createTestDb } = await import('./helpers/test-db.js');
     const { createRoutes } = await import('../routes/index');
     const { AuthService } = await import('../services/auth-service');
     const { createAuthMiddleware } = await import('../middleware/auth');

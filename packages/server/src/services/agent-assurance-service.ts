@@ -406,7 +406,7 @@ export class AgentAssuranceService {
     categoryScores: Record<string, number>;
     status: 'passed' | 'failed' | 'needs_review';
   }> {
-    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service.js');
     const evalService = new OpenMythosEvalService(this.db);
     const result = await evalService.runEval(agentId, categories, model);
 
@@ -506,7 +506,7 @@ export class AgentAssuranceService {
     recommendations: string[];
     lastEvalAt: string;
   }> {
-    const { OpenMythosEvalService } = await import('./openmythos-eval-service');
+    const { OpenMythosEvalService } = await import('./openmythos-eval-service.js');
     const evalService = new OpenMythosEvalService(this.db);
     const report = evalService.generateReport(agentId);
 
