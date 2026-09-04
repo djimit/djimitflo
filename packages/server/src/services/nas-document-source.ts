@@ -47,28 +47,50 @@ export class NasDocumentSource {
     const riskFlags: string[] = [];
 
     if (blocked.length === 0) {
-      const stat = fs.existsSync(fullPath) ? fs.statSync(fullPath) : null;
-      if (!stat?.isFile()) blocked.push('not_a_file');
-      else if (stat.size > (input.maxBytes ?? DEFAULT_MAX_BYTES)) blocked.push('file_too_large');
-      else {
-        const text = fs.readFileSync(fullPath, 'utf8');
-        if (SECRET_PATTERNS.some((pattern) => pattern.test(text))) blocked.push('secret_like_content');
-        if (PII_PATTERNS.some((pattern) => pattern.test(text))) riskFlags.push('pii_like_content');
-        if (text.trim().length === 0) blocked.push('empty_document');
-        if (blocked.length === 0) {
-          return {
-            accepted: true,
-            blocked_reasons: [],
-            packet: {
-              source_path: input.relativePath,
-              title: this.titleFrom(input.relativePath, text),
-              domain: input.domain,
-              claim: firstTextLine(text),
-              confidence: input.confidence ?? 0.7,
-              valid_until: input.validUntil ?? null,
-              risk_flags: riskFlags,
-            },
-          };
+      // Symlink confinement (Kilo P2): lexical path checks pass when the path
+      // itself is in-root but a symlink points outside. Resolve canonical
+      // targets first and re-run confinement on the real location; open with
+      // O_NOFOLLOW so the bytes we read are the ones we validated.
+      let canonical = fullPath;
+      try {
+        const realRoot = fs.realpathSync(root);
+        canonical = fs.realpathSync(fullPath);
+        const rel = path.relative(realRoot, canonical);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
+          blocked.push('outside_root_symlink');
+        }
+      } catch { /* realpath failure handled by stat guard below */ }
+
+      if (blocked.length === 0) {
+        const stat = fs.existsSync(canonical) ? fs.statSync(canonical) : null;
+        if (!stat?.isFile()) blocked.push('not_a_file');
+        else if (stat.size > (input.maxBytes ?? DEFAULT_MAX_BYTES)) blocked.push('file_too_large');
+        else {
+          const fd = fs.openSync(canonical, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+          let text: string;
+          try {
+            text = fs.readFileSync(fd, 'utf8');
+          } finally {
+            fs.closeSync(fd);
+          }
+          if (SECRET_PATTERNS.some((pattern) => pattern.test(text))) blocked.push('secret_like_content');
+          if (PII_PATTERNS.some((pattern) => pattern.test(text))) riskFlags.push('pii_like_content');
+          if (text.trim().length === 0) blocked.push('empty_document');
+          if (blocked.length === 0) {
+            return {
+              accepted: true,
+              blocked_reasons: [],
+              packet: {
+                source_path: input.relativePath,
+                title: this.titleFrom(input.relativePath, text),
+                domain: input.domain,
+                claim: firstTextLine(text),
+                confidence: input.confidence ?? 0.7,
+                valid_until: input.validUntil ?? null,
+                risk_flags: riskFlags,
+              },
+            };
+          }
         }
       }
     }
