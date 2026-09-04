@@ -7,6 +7,7 @@ import { rateLimit } from "express-rate-limit";
 import type { Database } from "better-sqlite3";
 import { ExplorePublicPageService } from "../services/explore-public-page-service";
 import { ExploreOpenGraphService } from "../services/explore-opengraph-service";
+import { OpenMythosEvalService } from "../services/openmythos-eval-service";
 import { securityHeaders } from "../middleware/security-headers";
 
 const OWNER_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -113,6 +114,28 @@ export function createExplorePublicRoutes(db: Database): Router {
     res.setHeader("Content-Type", "image/svg+xml");
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(svg);
+  });
+
+  // GET /explore/leaderboard — public governance-eval scores (scores only:
+  // agent id, score, case counts — no case content, no prompts).
+  // Off unless OPENMYTHOS_LEADERBOARD_PUBLIC=true.
+  router.get("/leaderboard", publicPageLimiter, (_req, res) => {
+    if (process.env.OPENMYTHOS_LEADERBOARD_PUBLIC !== "true") {
+      res.status(404).type("text/plain").send("Leaderboard is not published.");
+      return;
+    }
+    const rows = new OpenMythosEvalService(db).getLeaderboard();
+    res.setHeader("Cache-Control", "public, max-age=600");
+    res.json({
+      generated_at: new Date().toISOString(),
+      leaderboard: rows.map((r) => ({
+        agent_id: r.agentId,
+        overall_score: r.overallScore,
+        total_cases: r.totalCases,
+        last_eval_at: r.lastEvalAt,
+        trend: r.trend,
+      })),
+    });
   });
 
   return router;
