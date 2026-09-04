@@ -104,14 +104,15 @@ export class NasDocumentSource {
           if (PII_PATTERNS.some((pattern) => pattern.test(text))) riskFlags.push('pii_like_content');
           if (text.trim().length === 0) blocked.push('empty_document');
           if (blocked.length === 0) {
+            const title = this.titleFrom(input.relativePath, text);
             return {
               accepted: true,
               blocked_reasons: [],
               packet: {
                 source_path: input.relativePath,
-                title: this.titleFrom(input.relativePath, text),
+                title,
                 domain: input.domain,
-                claim: firstTextLine(text),
+                claim: path.extname(input.relativePath).toLowerCase() === '.html' ? title : firstTextLine(text, title),
                 confidence: input.confidence ?? 0.7,
                 valid_until: input.validUntil ?? null,
                 risk_flags: riskFlags,
@@ -140,6 +141,9 @@ export class NasDocumentSource {
   }
 }
 
-function firstTextLine(text: string): string {
-  return text.split(/\r?\n/).map((line) => line.replace(/^#+\s*/, '').trim()).find(Boolean) || '';
+function firstTextLine(text: string, fallback: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').trim())
+    .find((line) => line && !line.startsWith('<')) || fallback;
 }

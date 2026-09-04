@@ -76,4 +76,17 @@ describe('NasDocumentSource', () => {
     expect(result.packets).toHaveLength(1);
     expect(result.results[1].blocked_reasons).toContain('secret_like_content');
   });
+
+  it('uses the title as the claim for html documents', () => {
+    const root = fixture({ 'roadmap.html': '<!DOCTYPE html>\n<style>:root { color: red; }</style>\n<h1>Ignored HTML</h1>' });
+
+    const result = new NasDocumentSource().preflight({
+      root,
+      relativePath: 'roadmap.html',
+      domain: 'sovereign-ai',
+    });
+
+    expect(result.packet?.title).toBe('roadmap');
+    expect(result.packet?.claim).toBe('roadmap');
+  });
 });
