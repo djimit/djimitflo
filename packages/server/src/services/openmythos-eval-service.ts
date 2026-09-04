@@ -739,9 +739,11 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
    * oracle-anchored certified corpus (oracle_anchors_configured) AND the full
    * case set (case_ids count == completed_cases), so operator/debug subset
    * evaluations (category-limited or arbitrary case_ids) cannot distort the
-   * ranking. Filters at run level BEFORE computing scores/trends so an agent
-   * with mixed runs is scored from its eligible runs only. Malformed metadata
-   * rows are excluded (json_valid guard) instead of crashing json_extract.
+   * ranking. All runs in one snapshot share ONE corpus revision: the current
+   * corpus_sha256 (the most recent eligible run's corpus), so a corpus change
+   * is never reported as model ranking or trend change (Kilo P1). Malformed
+   * metadata rows are excluded (json_valid guard) instead of crashing
+   * json_extract.
    */
   private static readonly ELIGIBLE_PREDICATE = `
         metadata IS NOT NULL
@@ -752,26 +754,39 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
   `;
 
   getModelOnlyLeaderboard(): AgentScore[] {
+    // Current benchmark revision = corpus hash of the most recent eligible run.
+    const current = this.db.prepare(`
+      SELECT json_extract(metadata, '$.corpus_sha256') AS corpus
+      FROM openmythos_eval_runs
+      WHERE status = 'completed' AND completed_cases > 0 AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+      ORDER BY finished_at DESC
+      LIMIT 1
+    `).get() as { corpus: string | null } | undefined;
+    if (!current?.corpus) return [];
+    const corpus = current.corpus;
+
     const agents = this.db.prepare(`
       SELECT agent_id FROM openmythos_eval_runs
       WHERE status = 'completed' AND completed_cases > 0 AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+        AND json_extract(metadata, '$.corpus_sha256') = ?
       GROUP BY agent_id
-    `).all() as Array<{ agent_id: string }>;
+    `).all(corpus) as Array<{ agent_id: string }>;
 
     // ponytail: per-agent loop like getLeaderboard; batch when agents > ~1k
     return agents
-      .map((a) => this.getModelOnlyAgentScore(a.agent_id))
+      .map((a) => this.getModelOnlyAgentScore(a.agent_id, corpus))
       .filter((s): s is AgentScore => s !== null)
       .sort((a, b) => b.overallScore - a.overallScore);
   }
 
-  private getModelOnlyAgentScore(agentId: string): AgentScore | null {
+  private getModelOnlyAgentScore(agentId: string, corpusSha: string): AgentScore | null {
     const runs = this.db.prepare(`
       SELECT overall_score, finished_at, completed_cases, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed' AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+        AND json_extract(metadata, '$.corpus_sha256') = ?
       ORDER BY finished_at DESC
-    `).all(agentId) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
+    `).all(agentId, corpusSha) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
 
     if (runs.length === 0) return null;
 
