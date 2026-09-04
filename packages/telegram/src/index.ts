@@ -75,7 +75,17 @@ export class TelegramGatewayService {
         // Expired lease takeover: a lease whose heartbeat is older than TTL
         // is stale regardless of host or readability (Kilo P2: a truncated
         // lease from a crashed writer must not disable polling forever).
-        const stat = fs.statSync(leasePath);
+        // ENOENT race (Kilo P1): the owner may release between EEXIST and
+        // statSync — treat a vanished lease as a retry signal.
+        let stat: fs.Stats;
+        try {
+          stat = fs.statSync(leasePath);
+        } catch (e2: any) {
+          if (e2?.code === 'ENOENT') {
+            return this.acquireLease(cfg);
+          }
+          throw e2;
+        }
         if (Date.now() - stat.mtimeMs > this.leaseTtlMs) {
           fs.unlinkSync(leasePath);
           return this.acquireLease(cfg);
