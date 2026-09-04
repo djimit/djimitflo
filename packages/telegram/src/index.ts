@@ -40,9 +40,24 @@ export class TelegramGatewayService {
       this.leases.push(leasePath);
       return leasePath;
     } catch (e: any) {
-      if (e?.code === 'EEXIST') return null;
+      if (e?.code === 'EEXIST') {
+        // Stale-owner recovery: a lease from an abnormal exit (SIGKILL, crash)
+        // survives on the lease dir. If the recorded pid is gone, take over.
+        try {
+          const owner = JSON.parse(fs.readFileSync(leasePath, 'utf8')) as { pid?: number };
+          if (owner.pid && owner.pid !== process.pid && !this.pidAlive(owner.pid)) {
+            fs.unlinkSync(leasePath);
+            return this.acquireLease(cfg);
+          }
+        } catch { /* unreadable lease stays locked */ }
+        return null;
+      }
       throw e;
     }
+  }
+
+  private pidAlive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; } catch { return false; }
   }
 
   private releaseLeases(): void {

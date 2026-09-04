@@ -152,6 +152,7 @@ async function main() {
   console.log('🔌 WebSocket server initialized (authenticated)');
 
   let dennisQueueTimer: NodeJS.Timeout | undefined;
+  let telegramGateway: { stopAll: () => Promise<void> } | null = null;
   if (operatorRuntime) {
     const dennisAgent = new DennisAgentService(db, { wsService });
     const processDennisQueue = () => {
@@ -267,6 +268,9 @@ async function main() {
         },
       });
       tg.startAll().catch((e: any) => console.warn('⚠️ Telegram startAll fout:', e?.message || e));
+      // Retain for graceful shutdown: SIGTERM must call stopAll() so leases are
+      // released (otherwise a restart sees EEXIST and skips polling forever).
+      telegramGateway = tg;
     } else {
       console.log('ℹ️ TELEGRAM_BOTS_CONFIG niet gezet — Telegram gateway is uitgeschakeld');
     }
@@ -324,6 +328,9 @@ async function main() {
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
     if (dennisQueueTimer) clearInterval(dennisQueueTimer);
+    if (telegramGateway) {
+      void telegramGateway.stopAll().catch((e: unknown) => console.warn('⚠️ Telegram stopAll fout:', e));
+    }
     httpServer.close(() => {
       console.log('👋 Server closed');
       db.close();
