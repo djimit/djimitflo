@@ -1,3 +1,8 @@
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 export type AgentType = 'hermes' | 'openclaw' | 'deerflow' | 'overwatch' | 'djimitnl';
 
 export type TelegramBotConfig = {
@@ -15,17 +20,48 @@ export class TelegramGatewayService {
     getStatus: (machineId: string) => Promise<string>;
   };
   private bots: any[] = [];
+  private leases: string[] = [];
+  private leaseDir: string;
 
-  constructor(configs: TelegramBotConfig[], ops: TelegramGatewayService['ops']) {
+  constructor(configs: TelegramBotConfig[], ops: TelegramGatewayService['ops'], options: { leaseDir?: string } = {}) {
     this.configs = configs;
     this.ops = ops;
+    this.leaseDir = options.leaseDir || process.env.DJIMIT_TELEGRAM_LEASE_DIR || path.join(os.tmpdir(), 'djimit-telegram-leases');
+  }
+
+  private acquireLease(cfg: TelegramBotConfig): string | null {
+    fs.mkdirSync(this.leaseDir, { recursive: true });
+    const tokenHash = crypto.createHash('sha256').update(cfg.token).digest('hex').slice(0, 16);
+    const leasePath = path.join(this.leaseDir, `${tokenHash}.lock`);
+    try {
+      const fd = fs.openSync(leasePath, 'wx');
+      fs.writeFileSync(fd, JSON.stringify({ machineId: cfg.machineId, name: cfg.name, pid: process.pid, startedAt: new Date().toISOString() }));
+      fs.closeSync(fd);
+      this.leases.push(leasePath);
+      return leasePath;
+    } catch (e: any) {
+      if (e?.code === 'EEXIST') return null;
+      throw e;
+    }
+  }
+
+  private releaseLeases(): void {
+    for (const lease of this.leases.splice(0)) {
+      try { fs.unlinkSync(lease); } catch {}
+    }
   }
 
   async startAll(): Promise<void> {
     const { Bot } = await import('grammy');
 
     for (const cfg of this.configs) {
+      let leasePath: string | null = null;
       try {
+        leasePath = this.acquireLease(cfg);
+        if (!leasePath) {
+          console.warn(`Bot ${cfg.name}: lease bestaat al, skip polling`);
+          continue;
+        }
         const bot = new Bot(cfg.token);
 
         bot.command('start', (ctx: any) => ctx.reply(`Bot ${cfg.name} actief voor ${cfg.machineId} (${cfg.agentType}). Gebruik /task, /status.`));
@@ -72,6 +108,10 @@ export class TelegramGatewayService {
         });
         this.bots.push(bot);
       } catch (e: any) {
+        if (leasePath) {
+          try { fs.unlinkSync(leasePath); } catch {}
+          this.leases = this.leases.filter((lease) => lease !== leasePath);
+        }
         const msg = e?.description || e?.message || String(e);
         console.error(`❌ Bot ${cfg.name} init fout:`, msg);
       }
@@ -81,6 +121,6 @@ export class TelegramGatewayService {
   async stopAll(): Promise<void> {
     await Promise.allSettled(this.bots.map(b => b.stop()));
     this.bots = [];
+    this.releaseLeases();
   }
 }
-

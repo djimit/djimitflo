@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // Since grammy uses dynamic import which vitest 4 can't mock easily,
 // we test the service logic by mocking the module under test itself
@@ -63,6 +66,20 @@ describe('TelegramGatewayService', () => {
     it('handles empty configs', () => {
       const empty = new TelegramGatewayService([], mockOps);
       expect(empty).toBeDefined();
+    });
+  });
+
+  describe('polling lease', () => {
+    it('skips duplicate pollers for the same bot token', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const first = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+
+      expect((first as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+      expect((second as any).acquireLease(mockConfigs[0])).toBeNull();
+
+      await first.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
     });
   });
 });
