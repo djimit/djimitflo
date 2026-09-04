@@ -734,6 +734,84 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
   }
 
   /**
+   * Public leaderboard restricted to comparable full-corpus model-only runs.
+   * Eligibility requires nightly provenance (Kilo P1): model-only mode AND the
+   * oracle-anchored certified corpus (oracle_anchors_configured) AND the full
+   * case set (case_ids count == completed_cases), so operator/debug subset
+   * evaluations (category-limited or arbitrary case_ids) cannot distort the
+   * ranking. All runs in one snapshot share ONE corpus revision: the current
+   * corpus_sha256 (the most recent eligible run's corpus), so a corpus change
+   * is never reported as model ranking or trend change (Kilo P1). Malformed
+   * metadata rows are excluded (json_valid guard) instead of crashing
+   * json_extract.
+   */
+  private static readonly ELIGIBLE_PREDICATE = `
+        metadata IS NOT NULL
+        AND json_valid(metadata)
+        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+        AND json_extract(metadata, '$.oracle_anchors_configured') = 1
+        AND json_array_length(json_extract(metadata, '$.case_ids')) = completed_cases
+  `;
+
+  getModelOnlyLeaderboard(): AgentScore[] {
+    // Current benchmark revision = corpus hash of the most recent eligible run.
+    const current = this.db.prepare(`
+      SELECT json_extract(metadata, '$.corpus_sha256') AS corpus
+      FROM openmythos_eval_runs
+      WHERE status = 'completed' AND completed_cases > 0 AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+      ORDER BY finished_at DESC
+      LIMIT 1
+    `).get() as { corpus: string | null } | undefined;
+    if (!current?.corpus) return [];
+    const corpus = current.corpus;
+
+    const agents = this.db.prepare(`
+      SELECT agent_id FROM openmythos_eval_runs
+      WHERE status = 'completed' AND completed_cases > 0 AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+        AND json_extract(metadata, '$.corpus_sha256') = ?
+      GROUP BY agent_id
+    `).all(corpus) as Array<{ agent_id: string }>;
+
+    // ponytail: per-agent loop like getLeaderboard; batch when agents > ~1k
+    return agents
+      .map((a) => this.getModelOnlyAgentScore(a.agent_id, corpus))
+      .filter((s): s is AgentScore => s !== null)
+      .sort((a, b) => b.overallScore - a.overallScore);
+  }
+
+  private getModelOnlyAgentScore(agentId: string, corpusSha: string): AgentScore | null {
+    const runs = this.db.prepare(`
+      SELECT overall_score, finished_at, completed_cases, metadata
+      FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'completed' AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
+        AND json_extract(metadata, '$.corpus_sha256') = ?
+      ORDER BY finished_at DESC
+    `).all(agentId, corpusSha) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
+
+    if (runs.length === 0) return null;
+
+    const [latest, prev] = runs;
+    let trend: 'improving' | 'stable' | 'declining' = 'stable';
+    if (prev) {
+      const diff = latest.overall_score - prev.overall_score;
+      if (diff > 0.1) trend = 'improving';
+      else if (diff < -0.1) trend = 'declining';
+    }
+
+    let metadata: { category_scores?: Record<string, number> } = {};
+    try { metadata = JSON.parse(latest.metadata || '{}'); } catch { /* malformed must not sink the score */ }
+
+    return {
+      agentId,
+      overallScore: latest.overall_score,
+      categoryScores: metadata.category_scores || {},
+      totalCases: latest.completed_cases,
+      lastEvalAt: latest.finished_at,
+      trend,
+    };
+  }
+
+  /**
    * Filter cases based on discrimination power.
    * Excludes cases where all models got the same score (spread=0) over last N runs.
    * Wave 2: Data-driven corpus quality gate.

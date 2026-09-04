@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 // Since grammy uses dynamic import which vitest 4 can't mock easily,
 // we test the service logic by mocking the module under test itself
@@ -63,6 +66,99 @@ describe('TelegramGatewayService', () => {
     it('handles empty configs', () => {
       const empty = new TelegramGatewayService([], mockOps);
       expect(empty).toBeDefined();
+    });
+  });
+
+  describe('polling lease', () => {
+    it('skips duplicate pollers for the same bot token', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const first = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+
+      expect((first as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+      expect((second as any).acquireLease(mockConfigs[0])).toBeNull();
+
+      await first.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('takes over a lease from a dead same-host owner', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const owner = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      const lease = (owner as any).acquireLease(mockConfigs[0]) as string;
+      // simuleer dode owner: herschrijf de lease met een niet-bestaande pid
+      const leaseFile = fs.readFileSync(lease, 'utf8');
+      const payload = JSON.parse(leaseFile);
+      payload.pid = 999_999_999; // bijna zeker niet in gebruik
+      fs.writeFileSync(lease, JSON.stringify(payload));
+      (owner as any).leases = [];
+
+      const taker = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((taker as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+
+      await taker.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('does not take over a live lease (pid alive)', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const first = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      (first as any).acquireLease(mockConfigs[0]);
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      // owner pid leeft; host-qualified check mag niet overnemen
+      expect((second as any).acquireLease(mockConfigs[0])).toBeNull();
+      await first.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('takes over an expired lease regardless of host', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const first = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      const lease = (first as any).acquireLease(mockConfigs[0]) as string;
+      // simuleer verlopen heartbeat: mtime ver naar verleden
+      const old = new Date(Date.now() - 5 * 60_000);
+      fs.utimesSync(lease, old, old);
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((second as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+      await second.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('keeps lease heartbeat fresh while running', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const svc = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      const lease = (svc as any).acquireLease(mockConfigs[0]) as string;
+      const before = fs.statSync(lease).mtimeMs;
+      // forceer heartbeat-cycle korter door direct utimes te roepen is niet
+      // nodig: verify startHeartbeat interval is armed
+      expect((svc as any).heartbeatTimer).toBeNull(); // nog niet gestart (pas na startAll)
+      (svc as any).startHeartbeat();
+      expect((svc as any).heartbeatTimer).not.toBeNull();
+      void before;
+      await svc.stopAll();
+      expect((svc as any).heartbeatTimer).toBeNull();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('takes over an unreadable (truncated) lease after TTL', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const lease = path.join(leaseDir, '2ef1ad06c1ae800b.lock');
+      fs.writeFileSync(lease, '{"machineId":"machine-1","pid":1'); // truncated JSON
+      const old = new Date(Date.now() - 5 * 60_000);
+      fs.utimesSync(lease, old, old);
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((second as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+      await second.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('does not take over a fresh unreadable lease (writer may still be alive)', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const lease = path.join(leaseDir, '2ef1ad06c1ae800b.lock');
+      fs.writeFileSync(lease, '{"machineId":"machine-1","pid":1'); // truncated maar vers
+      const svc = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((svc as any).acquireLease(mockConfigs[0])).toBeNull();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
     });
   });
 });

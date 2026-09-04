@@ -1,0 +1,1 @@
+Security: add a NAS document source preflight that blocks raw import of secrets, export folders, unsupported files, and paths outside the mounted root before producing Djimitflo evidence packets. Manifest batches now return accepted packets and blocked entries for auditability.
