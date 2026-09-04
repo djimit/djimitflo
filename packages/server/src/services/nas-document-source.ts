@@ -89,36 +89,52 @@ export class NasDocumentSource {
       } catch { /* realpath failure handled by stat guard below */ }
 
       if (blocked.length === 0) {
-        const stat = fs.existsSync(canonical) ? fs.statSync(canonical) : null;
-        if (!stat?.isFile()) blocked.push('not_a_file');
-        else if (stat.size > (input.maxBytes ?? DEFAULT_MAX_BYTES)) blocked.push('file_too_large');
-        else {
-          const fd = fs.openSync(canonical, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
-          let text: string;
-          try {
-            text = fs.readFileSync(fd, 'utf8');
-          } finally {
-            fs.closeSync(fd);
+        const maxBytes = input.maxBytes ?? DEFAULT_MAX_BYTES;
+        // Bounded read (Kilo P2): validate the open descriptor with fstatSync
+        // and cap the bytes actually consumed — statSync/readFileSync leaves a
+        // TOCTOU window where the file grows past maxBytes between check and
+        // read.
+        let fd: number;
+        try {
+          fd = fs.openSync(canonical, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0));
+        } catch {
+          fd = fs.openSync(canonical, fs.constants.O_RDONLY); // O_NOFOLLOW unsupported (e.g. older libuv on some fs)
+        }
+        let text: string;
+        try {
+          const fstat = fs.fstatSync(fd);
+          if (!fstat.isFile()) { blocked.push('not_a_file'); text = ''; }
+          else if (fstat.size > maxBytes) { blocked.push('file_too_large'); text = ''; }
+          else {
+            // read at most maxBytes+1 so growth past the limit is detected
+            const buf = Buffer.alloc(maxBytes + 1);
+            const bytesRead = fs.readSync(fd, buf, 0, maxBytes + 1, 0);
+            if (bytesRead > maxBytes) { blocked.push('file_too_large'); text = ''; }
+            else text = buf.subarray(0, bytesRead).toString('utf8');
           }
+        } finally {
+          fs.closeSync(fd);
+        }
+        if (text) {
           if (SECRET_PATTERNS.some((pattern) => pattern.test(text))) blocked.push('secret_like_content');
           if (PII_PATTERNS.some((pattern) => pattern.test(text))) riskFlags.push('pii_like_content');
           if (text.trim().length === 0) blocked.push('empty_document');
-          if (blocked.length === 0) {
-            const title = this.titleFrom(input.relativePath, text);
-            return {
-              accepted: true,
-              blocked_reasons: [],
-              packet: {
-                source_path: input.relativePath,
-                title,
-                domain: input.domain,
-                claim: path.extname(input.relativePath).toLowerCase() === '.html' ? title : firstTextLine(text, title),
-                confidence: input.confidence ?? 0.7,
-                valid_until: input.validUntil ?? null,
-                risk_flags: riskFlags,
-              },
-            };
-          }
+        }
+        if (blocked.length === 0 && text) {
+          const title = this.titleFrom(input.relativePath, text);
+          return {
+            accepted: true,
+            blocked_reasons: [],
+            packet: {
+              source_path: input.relativePath,
+              title,
+              domain: input.domain,
+              claim: path.extname(input.relativePath).toLowerCase() === '.html' ? title : firstTextLine(text, title),
+              confidence: input.confidence ?? 0.7,
+              valid_until: input.validUntil ?? null,
+              risk_flags: riskFlags,
+            },
+          };
         }
       }
     }
