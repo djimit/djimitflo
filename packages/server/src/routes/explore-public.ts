@@ -118,20 +118,16 @@ export function createExplorePublicRoutes(db: Database): Router {
 
   // GET /explore/leaderboard — public governance-eval scores (scores only:
   // agent id, score, case counts — no case content, no prompts).
-  // Restricted to model-only governance runs (metadata.evaluation_mode =
-  // 'model_only'): excludes explainer-critic rows (0-100 scale) and skill-id
-  // runs so the public ranking stays comparable (1-5 scale). Kilo P1.
+  // Restricted to model-only governance runs via getModelOnlyLeaderboard()
+  // (filter at run level, 1-5 scale only; excludes explainer-critic rows and
+  // skill-id runs — Kilo P1; json_valid guard for malformed metadata — Kilo P2).
   // Off unless OPENMYTHOS_LEADERBOARD_PUBLIC=true.
   router.get("/leaderboard", publicPageLimiter, (_req, res) => {
     if (process.env.OPENMYTHOS_LEADERBOARD_PUBLIC !== "true") {
       res.status(404).type("text/plain").send("Leaderboard is not published.");
       return;
     }
-    const all = new OpenMythosEvalService(db).getLeaderboard();
-    const modeStmt = db.prepare(
-      "SELECT CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.evaluation_mode') END AS m FROM openmythos_eval_runs WHERE agent_id = ? AND status='completed' LIMIT 1",
-    );
-    const rows = all.filter((r) => (modeStmt.get(r.agentId) as { m: string | null } | undefined)?.m === "model_only");
+    const rows = new OpenMythosEvalService(db).getModelOnlyLeaderboard();
     res.setHeader("Cache-Control", "public, max-age=600");
     res.json({
       generated_at: new Date().toISOString(),

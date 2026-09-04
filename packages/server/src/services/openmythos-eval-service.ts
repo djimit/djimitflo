@@ -734,6 +734,63 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
   }
 
   /**
+   * Public leaderboard restricted to model-only governance runs (1-5 scale).
+   * Filters at run level BEFORE computing scores/trends, so an agent with mixed
+   * model-only and skill-conditioned runs is scored from its model-only runs
+   * only (Kilo P1). Malformed metadata rows are excluded (json_valid guard,
+   * Kilo P2) instead of crashing json_extract.
+   */
+  getModelOnlyLeaderboard(): AgentScore[] {
+    const agents = this.db.prepare(`
+      SELECT agent_id FROM openmythos_eval_runs
+      WHERE status = 'completed'
+        AND metadata IS NOT NULL
+        AND json_valid(metadata)
+        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+      GROUP BY agent_id
+    `).all() as Array<{ agent_id: string }>;
+
+    // ponytail: per-agent loop like getLeaderboard; batch when agents > ~1k
+    return agents
+      .map((a) => this.getModelOnlyAgentScore(a.agent_id))
+      .filter((s): s is AgentScore => s !== null)
+      .sort((a, b) => b.overallScore - a.overallScore);
+  }
+
+  private getModelOnlyAgentScore(agentId: string): AgentScore | null {
+    const runs = this.db.prepare(`
+      SELECT overall_score, finished_at, completed_cases, metadata
+      FROM openmythos_eval_runs
+      WHERE agent_id = ? AND status = 'completed'
+        AND metadata IS NOT NULL AND json_valid(metadata)
+        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+      ORDER BY finished_at DESC
+    `).all(agentId) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
+
+    if (runs.length === 0) return null;
+
+    const [latest, prev] = runs;
+    let trend: 'improving' | 'stable' | 'declining' = 'stable';
+    if (prev) {
+      const diff = latest.overall_score - prev.overall_score;
+      if (diff > 0.1) trend = 'improving';
+      else if (diff < -0.1) trend = 'declining';
+    }
+
+    let metadata: { category_scores?: Record<string, number> } = {};
+    try { metadata = JSON.parse(latest.metadata || '{}'); } catch { /* malformed must not sink the score */ }
+
+    return {
+      agentId,
+      overallScore: latest.overall_score,
+      categoryScores: metadata.category_scores || {},
+      totalCases: latest.completed_cases,
+      lastEvalAt: latest.finished_at,
+      trend,
+    };
+  }
+
+  /**
    * Filter cases based on discrimination power.
    * Excludes cases where all models got the same score (spread=0) over last N runs.
    * Wave 2: Data-driven corpus quality gate.
