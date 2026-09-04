@@ -1,0 +1,1 @@
+Feature: add read-only NAS evidence summary and dry-run work-item import preview endpoints under `/work-items/nas-evidence/*`. The feature reads curated artifact JSONL paths only and does not read raw NAS files or write to Qdrant/OKF.

@@ -4,6 +4,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { WorkItemService } from '../services/work-item-service';
 import { IntegrationInboxService } from '../services/integration-inbox-service';
+import { NasEvidenceService } from '../services/nas-evidence-service';
 
 function mapWorkItemError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -26,6 +27,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const service = new WorkItemService(db);
   const integrationInbox = new IntegrationInboxService(db);
+  const nasEvidence = new NasEvidenceService(db);
 
   router.get('/', requirePermission('read:evidence'), (req, res, next) => {
     try {
@@ -78,6 +80,22 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
       } catch (mapped) {
         next(mapped);
       }
+    }
+  });
+
+  router.get('/nas-evidence/summary', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(nasEvidence.summary());
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/nas-evidence/import-preview', requirePermission('read:evidence'), (_req, res, next) => {
+    try {
+      res.json(nasEvidence.importPreview());
+    } catch (error) {
+      next(error);
     }
   });
 
