@@ -39,7 +39,34 @@ export interface NasDocumentPreflightResult {
   packet: NasDocumentEvidencePacket | null;
 }
 
+export interface NasDocumentManifestEntry {
+  relativePath: string;
+  domain: string;
+  confidence?: number;
+  validUntil?: string | null;
+}
+
+export interface NasDocumentManifestResult {
+  accepted: number;
+  blocked: number;
+  packets: NasDocumentEvidencePacket[];
+  results: Array<NasDocumentManifestEntry & NasDocumentPreflightResult>;
+}
+
 export class NasDocumentSource {
+  preflightManifest(root: string, entries: NasDocumentManifestEntry[], maxBytes?: number): NasDocumentManifestResult {
+    const results = entries.map((entry) => ({
+      ...entry,
+      ...this.preflight({ ...entry, root, maxBytes }),
+    }));
+    return {
+      accepted: results.filter((result) => result.accepted).length,
+      blocked: results.filter((result) => !result.accepted).length,
+      packets: results.flatMap((result) => result.packet ? [result.packet] : []),
+      results,
+    };
+  }
+
   preflight(input: NasDocumentSourceInput): NasDocumentPreflightResult {
     const root = path.resolve(input.root);
     const fullPath = path.resolve(root, input.relativePath);

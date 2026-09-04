@@ -59,4 +59,21 @@ describe('NasDocumentSource', () => {
     expect(source.preflight({ root, relativePath: 'ChatGPT export/a.md', domain: 'private' }).blocked_reasons).toContain('blocked_path_segment');
     expect(source.preflight({ root, relativePath: '../outside.md', domain: 'private' }).blocked_reasons).toContain('outside_root');
   });
+
+  it('preflights a manifest without dropping blocked evidence', () => {
+    const root = fixture({
+      'safe.md': '# Safe source',
+      'deploy.md': 'secret=blocked',
+    });
+
+    const result = new NasDocumentSource().preflightManifest(root, [
+      { relativePath: 'safe.md', domain: 'sovereign-ai' },
+      { relativePath: 'deploy.md', domain: 'security' },
+    ]);
+
+    expect(result.accepted).toBe(1);
+    expect(result.blocked).toBe(1);
+    expect(result.packets).toHaveLength(1);
+    expect(result.results[1].blocked_reasons).toContain('secret_like_content');
+  });
 });
