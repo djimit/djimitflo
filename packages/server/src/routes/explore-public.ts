@@ -128,12 +128,10 @@ export function createExplorePublicRoutes(db: Database): Router {
       return;
     }
     const all = new OpenMythosEvalService(db).getLeaderboard();
-    const rows = all.filter((r) => {
-      const row = db
-        .prepare("SELECT json_extract(metadata,'$.evaluation_mode') AS m FROM openmythos_eval_runs WHERE agent_id = ? AND status='completed' LIMIT 1")
-        .get(r.agentId) as { m: string | null } | undefined;
-      return row?.m === "model_only";
-    });
+    const modeStmt = db.prepare(
+      "SELECT CASE WHEN json_valid(metadata) THEN json_extract(metadata,'$.evaluation_mode') END AS m FROM openmythos_eval_runs WHERE agent_id = ? AND status='completed' LIMIT 1",
+    );
+    const rows = all.filter((r) => (modeStmt.get(r.agentId) as { m: string | null } | undefined)?.m === "model_only");
     res.setHeader("Cache-Control", "public, max-age=600");
     res.json({
       generated_at: new Date().toISOString(),
