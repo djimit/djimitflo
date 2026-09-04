@@ -101,7 +101,10 @@ export class TelegramGatewayService {
   }
 
   private pidAlive(pid: number): boolean {
-    try { process.kill(pid, 0); return true; } catch { return false; }
+    // ESRCH = no such process (dead). EPERM = process exists but we lack
+    // signal rights — still alive (Kilo P2: shared lease dir, different
+    // Unix users on the same host). Everything else: assume alive.
+    try { process.kill(pid, 0); return true; } catch (e: any) { return e?.code !== 'ESRCH'; }
   }
 
   private releaseLeases(): void {
