@@ -22,6 +22,8 @@ export class TelegramGatewayService {
   private bots: any[] = [];
   private leases: string[] = [];
   private leaseDir: string;
+  private leaseTtlMs = 120_000; // 2 min; heartbeat ververs mtime elke 30s
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(configs: TelegramBotConfig[], ops: TelegramGatewayService['ops'], options: { leaseDir?: string } = {}) {
     this.configs = configs;
@@ -29,23 +31,50 @@ export class TelegramGatewayService {
     this.leaseDir = options.leaseDir || process.env.DJIMIT_TELEGRAM_LEASE_DIR || path.join(os.tmpdir(), 'djimit-telegram-leases');
   }
 
+  /** Refresh lease mtimes so a live owner never looks expired. */
+  private startHeartbeat(): void {
+    this.heartbeatTimer = setInterval(() => {
+      for (const lease of this.leases) {
+        try { const now = new Date(); fs.utimesSync(lease, now, now); } catch {}
+      }
+    }, 30_000);
+    this.heartbeatTimer.unref();
+  }
+
   private acquireLease(cfg: TelegramBotConfig): string | null {
     fs.mkdirSync(this.leaseDir, { recursive: true });
     const tokenHash = crypto.createHash('sha256').update(cfg.token).digest('hex').slice(0, 16);
     const leasePath = path.join(this.leaseDir, `${tokenHash}.lock`);
+    const leasePayload = JSON.stringify({
+      machineId: cfg.machineId,
+      name: cfg.name,
+      hostId: this.hostId(),
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    });
     try {
       const fd = fs.openSync(leasePath, 'wx');
-      fs.writeFileSync(fd, JSON.stringify({ machineId: cfg.machineId, name: cfg.name, pid: process.pid, startedAt: new Date().toISOString() }));
+      fs.writeFileSync(fd, leasePayload);
       fs.closeSync(fd);
       this.leases.push(leasePath);
       return leasePath;
     } catch (e: any) {
       if (e?.code === 'EEXIST') {
-        // Stale-owner recovery: a lease from an abnormal exit (SIGKILL, crash)
-        // survives on the lease dir. If the recorded pid is gone, take over.
+        // Stale-owner recovery: a lease from an abnormal exit survives on the
+        // lease dir. Host-qualified ownership: only a dead owner on THIS host
+        // can be taken over by pid-probe (Kilo P1: pid namespaces differ across
+        // hosts, so a pid we cannot see says nothing about a remote owner).
         try {
-          const owner = JSON.parse(fs.readFileSync(leasePath, 'utf8')) as { pid?: number };
-          if (owner.pid && owner.pid !== process.pid && !this.pidAlive(owner.pid)) {
+          const owner = JSON.parse(fs.readFileSync(leasePath, 'utf8')) as { pid?: number; hostId?: string };
+          const sameHost = !owner.hostId || owner.hostId === this.hostId();
+          if (sameHost && owner.pid && owner.pid !== process.pid && !this.pidAlive(owner.pid)) {
+            fs.unlinkSync(leasePath);
+            return this.acquireLease(cfg);
+          }
+          // Expired lease takeover: a lease whose heartbeat is older than
+          // TTL is stale regardless of host (Kilo P1: shared lease dirs).
+          const stat = fs.statSync(leasePath);
+          if (Date.now() - stat.mtimeMs > this.leaseTtlMs) {
             fs.unlinkSync(leasePath);
             return this.acquireLease(cfg);
           }
@@ -54,6 +83,10 @@ export class TelegramGatewayService {
       }
       throw e;
     }
+  }
+
+  private hostId(): string {
+    return crypto.createHash('sha256').update(os.hostname()).digest('hex').slice(0, 12);
   }
 
   private pidAlive(pid: number): boolean {
@@ -74,7 +107,19 @@ export class TelegramGatewayService {
       try {
         leasePath = this.acquireLease(cfg);
         if (!leasePath) {
-          console.warn(`Bot ${cfg.name}: lease bestaat al, skip polling`);
+          // Overlapping restart (Kilo P1): a live owner may release its lease
+          // shortly after. Retry with backoff instead of skipping forever.
+          for (const delayMs of [2_000, 5_000, 15_000, 30_000, 60_000]) {
+            await new Promise((r) => setTimeout(r, delayMs));
+            leasePath = this.acquireLease(cfg);
+            if (leasePath) {
+              console.log(`Bot ${cfg.name}: lease overgenomen na retry (${delayMs / 1000}s)`);
+              break;
+            }
+          }
+        }
+        if (!leasePath) {
+          console.warn(`Bot ${cfg.name}: lease bestaat al na retries — skip polling`);
           continue;
         }
         const bot = new Bot(cfg.token);
@@ -131,9 +176,11 @@ export class TelegramGatewayService {
         console.error(`❌ Bot ${cfg.name} init fout:`, msg);
       }
     }
+    if (this.leases.length > 0) this.startHeartbeat();
   }
 
   async stopAll(): Promise<void> {
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
     await Promise.allSettled(this.bots.map(b => b.stop()));
     this.bots = [];
     this.releaseLeases();
