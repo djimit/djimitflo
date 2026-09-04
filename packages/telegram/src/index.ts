@@ -71,14 +71,15 @@ export class TelegramGatewayService {
             fs.unlinkSync(leasePath);
             return this.acquireLease(cfg);
           }
-          // Expired lease takeover: a lease whose heartbeat is older than
-          // TTL is stale regardless of host (Kilo P1: shared lease dirs).
-          const stat = fs.statSync(leasePath);
-          if (Date.now() - stat.mtimeMs > this.leaseTtlMs) {
-            fs.unlinkSync(leasePath);
-            return this.acquireLease(cfg);
-          }
-        } catch { /* unreadable lease stays locked */ }
+        } catch { /* unreadable JSON: fall through to mtime expiry below */ }
+        // Expired lease takeover: a lease whose heartbeat is older than TTL
+        // is stale regardless of host or readability (Kilo P2: a truncated
+        // lease from a crashed writer must not disable polling forever).
+        const stat = fs.statSync(leasePath);
+        if (Date.now() - stat.mtimeMs > this.leaseTtlMs) {
+          fs.unlinkSync(leasePath);
+          return this.acquireLease(cfg);
+        }
         return null;
       }
       throw e;

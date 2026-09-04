@@ -139,5 +139,26 @@ describe('TelegramGatewayService', () => {
       expect((svc as any).heartbeatTimer).toBeNull();
       fs.rmSync(leaseDir, { recursive: true, force: true });
     });
+
+    it('takes over an unreadable (truncated) lease after TTL', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const lease = path.join(leaseDir, '2ef1ad06c1ae800b.lock');
+      fs.writeFileSync(lease, '{"machineId":"machine-1","pid":1'); // truncated JSON
+      const old = new Date(Date.now() - 5 * 60_000);
+      fs.utimesSync(lease, old, old);
+      const second = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((second as any).acquireLease(mockConfigs[0])).toMatch(/\.lock$/);
+      await second.stopAll();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
+
+    it('does not take over a fresh unreadable lease (writer may still be alive)', async () => {
+      const leaseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimit-telegram-test-'));
+      const lease = path.join(leaseDir, '2ef1ad06c1ae800b.lock');
+      fs.writeFileSync(lease, '{"machineId":"machine-1","pid":1'); // truncated maar vers
+      const svc = new TelegramGatewayService([mockConfigs[0]], mockOps, { leaseDir });
+      expect((svc as any).acquireLease(mockConfigs[0])).toBeNull();
+      fs.rmSync(leaseDir, { recursive: true, force: true });
+    });
   });
 });
