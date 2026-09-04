@@ -734,19 +734,27 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
   }
 
   /**
-   * Public leaderboard restricted to model-only governance runs (1-5 scale).
-   * Filters at run level BEFORE computing scores/trends, so an agent with mixed
-   * model-only and skill-conditioned runs is scored from its model-only runs
-   * only (Kilo P1). Malformed metadata rows are excluded (json_valid guard,
-   * Kilo P2) instead of crashing json_extract.
+   * Public leaderboard restricted to comparable full-corpus model-only runs.
+   * Eligibility requires nightly provenance (Kilo P1): model-only mode AND the
+   * oracle-anchored certified corpus (oracle_anchors_configured) AND the full
+   * case set (case_ids count == completed_cases), so operator/debug subset
+   * evaluations (category-limited or arbitrary case_ids) cannot distort the
+   * ranking. Filters at run level BEFORE computing scores/trends so an agent
+   * with mixed runs is scored from its eligible runs only. Malformed metadata
+   * rows are excluded (json_valid guard) instead of crashing json_extract.
    */
+  private static readonly ELIGIBLE_PREDICATE = `
+        metadata IS NOT NULL
+        AND json_valid(metadata)
+        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+        AND json_extract(metadata, '$.oracle_anchors_configured') = 1
+        AND json_array_length(json_extract(metadata, '$.case_ids')) = completed_cases
+  `;
+
   getModelOnlyLeaderboard(): AgentScore[] {
     const agents = this.db.prepare(`
       SELECT agent_id FROM openmythos_eval_runs
-      WHERE status = 'completed'
-        AND metadata IS NOT NULL
-        AND json_valid(metadata)
-        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+      WHERE status = 'completed' AND completed_cases > 0 AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
       GROUP BY agent_id
     `).all() as Array<{ agent_id: string }>;
 
@@ -761,9 +769,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     const runs = this.db.prepare(`
       SELECT overall_score, finished_at, completed_cases, metadata
       FROM openmythos_eval_runs
-      WHERE agent_id = ? AND status = 'completed'
-        AND metadata IS NOT NULL AND json_valid(metadata)
-        AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
+      WHERE agent_id = ? AND status = 'completed' AND ${OpenMythosEvalService.ELIGIBLE_PREDICATE}
       ORDER BY finished_at DESC
     `).all(agentId) as Array<{ overall_score: number; finished_at: string; completed_cases: number; metadata: string }>;
 
