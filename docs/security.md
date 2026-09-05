@@ -62,6 +62,20 @@ All API responses include the following security headers:
 - Background/system actions use `user_id = 'system'`
 - Audit events are immutable — no update or delete operations
 
+## Security Finding Lifecycle
+
+External scanners submit normalized findings through `POST /api/work-items/integrations/preview` or `/import` with `source: security_finding`. The `metadata.security` contract requires:
+
+- exact target and source identity;
+- scanner/tool, rule, and location;
+- severity and CIA impact;
+- threat statement and attack path;
+- immutable evidence references.
+
+Djimitflo derives a stable fingerprint from target/tool/rule/location, derives risk from scanner severity, and routes the item only to `security-regression-loop`. Caller-supplied risk and loop overrides are ignored.
+
+A finding can become `done` only when its remediation, rescan, and regression references point to a completed closed security loop for the finding's own goal. That loop must contain passed maker/checker and deterministic gates; high/critical findings additionally require a passed security-checker gate, loop approval, and an authenticated `approve:task` actor. Terminal findings reopen only through a recurrent scanner import, which preserves the prior resolution history.
+
 ## WebSocket Authentication
 
 - WebSocket connections require a valid JWT token delivered via query string (`?token=<JWT>`)

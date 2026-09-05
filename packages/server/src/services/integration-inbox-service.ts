@@ -1,10 +1,18 @@
 import type { Database } from 'better-sqlite3';
-import { WorkItemService, type RiskClass, type WorkItemCreateInput, type WorkItemRecord } from './work-item-service';
+import {
+  parseSecurityFindingContract,
+  SECURITY_FINDING_SOURCE,
+  securityFindingFingerprint,
+  WorkItemService,
+  type RiskClass,
+  type WorkItemCreateInput,
+  type WorkItemRecord,
+} from './work-item-service';
 import type { LoopName } from './loop-service';
 
-type IntegrationSource = 'github_issue' | 'telegram_command' | 'mcp_drift' | 'okf_drift' | 'dashboard_action';
+type IntegrationSource = 'github_issue' | 'telegram_command' | 'mcp_drift' | 'okf_drift' | 'dashboard_action' | typeof SECURITY_FINDING_SOURCE;
 
-const VALID_SOURCES: IntegrationSource[] = ['github_issue', 'telegram_command', 'mcp_drift', 'okf_drift', 'dashboard_action'];
+const VALID_SOURCES: IntegrationSource[] = ['github_issue', 'telegram_command', 'mcp_drift', 'okf_drift', 'dashboard_action', SECURITY_FINDING_SOURCE];
 const VALID_RISKS: RiskClass[] = ['low', 'medium', 'high', 'critical'];
 const VALID_LOOPS: LoopName[] = [
   'doc-drift-and-small-fix-loop',
@@ -85,6 +93,10 @@ export class IntegrationInboxService {
     if (input.risk_class && !VALID_RISKS.includes(input.risk_class)) throw new Error('INTEGRATION_RISK_INVALID');
     if (input.recommended_loop && !VALID_LOOPS.includes(input.recommended_loop)) throw new Error('INTEGRATION_LOOP_INVALID');
 
+    if (input.source === SECURITY_FINDING_SOURCE) {
+      return this.normalizeSecurityFinding(input);
+    }
+
     const sourceRef = input.source_ref?.trim() || this.fallbackSourceRef(input);
     return {
       title: input.title.trim(),
@@ -101,6 +113,40 @@ export class IntegrationInboxService {
         integration: {
           source: input.source,
           source_ref: sourceRef,
+          received_at: new Date().toISOString(),
+          ...(this.objectMetadata(input.metadata?.integration) || {}),
+        },
+      },
+    };
+  }
+
+  private normalizeSecurityFinding(input: IntegrationInboxInput): WorkItemCreateInput {
+    const finding = parseSecurityFindingContract(input.metadata);
+    const sourceRef = securityFindingFingerprint(finding);
+    const scannerFinding = { ...finding };
+    delete scannerFinding.closure;
+    delete scannerFinding.disposition;
+    delete scannerFinding.resolution_history;
+    return {
+      title: input.title.trim(),
+      description: input.description.trim(),
+      source: SECURITY_FINDING_SOURCE,
+      source_ref: sourceRef,
+      risk_class: finding.severity,
+      value_score: input.value_score ?? 95,
+      confidence: input.confidence ?? 0.9,
+      status: 'candidate',
+      recommended_loop: 'security-regression-loop',
+      metadata: {
+        ...(input.metadata || {}),
+        security: {
+          ...scannerFinding,
+          fingerprint: sourceRef,
+        },
+        integration: {
+          source: SECURITY_FINDING_SOURCE,
+          source_ref: sourceRef,
+          upstream_source_ref: input.source_ref?.trim() || null,
           received_at: new Date().toISOString(),
           ...(this.objectMetadata(input.metadata?.integration) || {}),
         },
