@@ -123,6 +123,10 @@ export class IntegrationInboxService {
   private normalizeSecurityFinding(input: IntegrationInboxInput): WorkItemCreateInput {
     const finding = parseSecurityFindingContract(input.metadata);
     const sourceRef = securityFindingFingerprint(finding);
+    const scannerFinding = { ...finding };
+    delete scannerFinding.closure;
+    delete scannerFinding.disposition;
+    delete scannerFinding.resolution_history;
     return {
       title: input.title.trim(),
       description: input.description.trim(),
@@ -136,7 +140,7 @@ export class IntegrationInboxService {
       metadata: {
         ...(input.metadata || {}),
         security: {
-          ...finding,
+          ...scannerFinding,
           fingerprint: sourceRef,
         },
         integration: {

@@ -136,8 +136,8 @@ export function securityFindingFingerprint(finding: SecurityFindingContract): st
 export class WorkItemService {
   constructor(private db: Database) {}
 
-  create(input: WorkItemCreateInput): WorkItemRecord {
-    this.validateCreate(input);
+  create(input: WorkItemCreateInput, options: { allowSecurityImport?: boolean } = {}): WorkItemRecord {
+    this.validateCreate(input, options);
     const now = new Date().toISOString();
     const id = randomUUID();
     const riskClass = input.risk_class || 'low';
@@ -189,13 +189,31 @@ export class WorkItemService {
     }
     const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(input.source, input.source_ref);
     if (!existing) {
-      return { work_item: this.create(input), created: true };
+      return {
+        work_item: this.create(input, { allowSecurityImport: input.source === SECURITY_FINDING_SOURCE }),
+        created: true,
+      };
     }
     const existingItem = this.parse(existing);
-    const metadata = existingItem.source === SECURITY_FINDING_SOURCE
-      && (existingItem.status === 'done' || existingItem.status === 'discarded')
-      ? this.appendSecurityResolution(existingItem, input.metadata || {})
-      : input.metadata;
+    const securityImport = existingItem.source === SECURITY_FINDING_SOURCE;
+    let metadata = input.metadata;
+    let status = input.status;
+    let assignedAgentId = input.assigned_agent_id;
+    let assignedRuntime = input.assigned_runtime;
+    let parentGoalId = input.parent_goal_id;
+    if (securityImport) {
+      const delivery = this.compareSecurityDelivery(existingItem, input);
+      if (delivery === 'same') return { work_item: existingItem, created: false };
+      if (delivery === 'conflict') throw new Error('SECURITY_FINDING_REPLAY_CONFLICT');
+      const terminal = existingItem.status === 'done' || existingItem.status === 'discarded';
+      metadata = terminal
+        ? this.appendSecurityResolution(existingItem, input.metadata || {})
+        : this.mergeSecurityImport(existingItem, input.metadata || {});
+      status = terminal ? 'candidate' : existingItem.status;
+      assignedAgentId = terminal ? null : existingItem.assigned_agent_id;
+      assignedRuntime = terminal ? null : existingItem.assigned_runtime;
+      parentGoalId = terminal ? null : existingItem.parent_goal_id;
+    }
     return {
       work_item: this.update(existingItem.id, {
         title: input.title,
@@ -203,13 +221,13 @@ export class WorkItemService {
         risk_class: input.risk_class,
         value_score: input.value_score,
         confidence: input.confidence,
-        status: input.status,
+        status,
         recommended_loop: input.recommended_loop,
-        assigned_agent_id: input.assigned_agent_id,
-        assigned_runtime: input.assigned_runtime,
-        parent_goal_id: input.parent_goal_id,
+        assigned_agent_id: assignedAgentId,
+        assigned_runtime: assignedRuntime,
+        parent_goal_id: parentGoalId,
         metadata,
-      }, { allowSecurityReopen: true }),
+      }, { allowSecurityImport: securityImport }),
       created: false,
     };
   }
@@ -235,7 +253,7 @@ export class WorkItemService {
     return this.parse(row);
   }
 
-  update(id: string, input: WorkItemUpdateInput, options: { allowSecurityReopen?: boolean } = {}): WorkItemRecord {
+  update(id: string, input: WorkItemUpdateInput, options: { allowSecurityImport?: boolean } = {}): WorkItemRecord {
     const existing = this.get(id);
     const next = {
       title: input.title ?? existing.title,
@@ -244,18 +262,21 @@ export class WorkItemService {
       value_score: input.value_score ?? existing.value_score,
       confidence: input.confidence ?? existing.confidence,
       status: input.status ?? existing.status,
-      recommended_loop: input.recommended_loop ?? existing.recommended_loop,
-      assigned_agent_id: input.assigned_agent_id ?? existing.assigned_agent_id,
-      assigned_runtime: input.assigned_runtime ?? existing.assigned_runtime,
-      parent_goal_id: input.parent_goal_id ?? existing.parent_goal_id,
+      recommended_loop: input.recommended_loop === undefined ? existing.recommended_loop : input.recommended_loop,
+      assigned_agent_id: input.assigned_agent_id === undefined ? existing.assigned_agent_id : input.assigned_agent_id,
+      assigned_runtime: input.assigned_runtime === undefined ? existing.assigned_runtime : input.assigned_runtime,
+      parent_goal_id: input.parent_goal_id === undefined ? existing.parent_goal_id : input.parent_goal_id,
       metadata: input.metadata ?? existing.metadata,
     };
     this.validateUpdate(next);
     if (existing.source === SECURITY_FINDING_SOURCE) {
       const existingTerminal = existing.status === 'done' || existing.status === 'discarded';
       const nextTerminal = next.status === 'done' || next.status === 'discarded';
-      if (existingTerminal && !nextTerminal && !options.allowSecurityReopen) {
+      if (existingTerminal && !nextTerminal && !options.allowSecurityImport) {
         throw new Error('SECURITY_FINDING_REOPEN_IMPORT_REQUIRED');
+      }
+      if (existingTerminal && nextTerminal && existing.status !== next.status && !options.allowSecurityImport) {
+        throw new Error('SECURITY_FINDING_TERMINAL_STATE_IMMUTABLE');
       }
       if (RISK_RANK[next.risk_class] < RISK_RANK[existing.risk_class]) {
         throw new Error('SECURITY_FINDING_RISK_DOWNGRADE_FORBIDDEN');
@@ -271,6 +292,18 @@ export class WorkItemService {
       );
       if (['target', 'tool', 'rule_id', 'location'].some((field) => previousFinding[field] !== nextFinding[field])) {
         throw new Error('SECURITY_FINDING_IDENTITY_INVALID');
+      }
+      if (!options.allowSecurityImport
+        && (previousFinding.source_identity !== nextFinding.source_identity
+          || previousFinding.severity !== nextFinding.severity
+          || !this.sameStringList(previousFinding.evidence_refs, nextFinding.evidence_refs))) {
+        throw new Error('SECURITY_FINDING_PROVENANCE_IMMUTABLE');
+      }
+      if (existingTerminal && !options.allowSecurityImport) {
+        const resolutionKey = existing.status === 'done' ? 'closure' : 'disposition';
+        if (JSON.stringify(previousFinding[resolutionKey]) !== JSON.stringify(nextFinding[resolutionKey])) {
+          throw new Error('SECURITY_FINDING_RESOLUTION_IMMUTABLE');
+        }
       }
       const previousHistory = Array.isArray(previousFinding.resolution_history) ? previousFinding.resolution_history : [];
       const nextHistory = Array.isArray(nextFinding.resolution_history) ? nextFinding.resolution_history : [];
@@ -335,7 +368,7 @@ export class WorkItemService {
     return { work_item: updated, goal_id: goalId };
   }
 
-  private validateCreate(input: WorkItemCreateInput): void {
+  private validateCreate(input: WorkItemCreateInput, options: { allowSecurityImport?: boolean } = {}): void {
     if (!input.title?.trim()) {
       throw new Error('WORK_ITEM_TITLE_REQUIRED');
     }
@@ -351,6 +384,8 @@ export class WorkItemService {
       status: input.status || 'candidate',
     });
     if ((input.source || 'manual').trim() === SECURITY_FINDING_SOURCE) {
+      if (!options.allowSecurityImport) throw new Error('SECURITY_FINDING_IMPORT_REQUIRED');
+      if ((input.status || 'candidate') !== 'candidate') throw new Error('SECURITY_FINDING_TERMINAL_CREATE_FORBIDDEN');
       this.validateSecurityFindingState(
         input.source_ref || null,
         input.risk_class || 'low',
@@ -440,6 +475,38 @@ export class WorkItemService {
     };
   }
 
+  private mergeSecurityImport(existing: WorkItemRecord, metadata: Record<string, unknown>): Record<string, unknown> {
+    const previous = parseSecurityFindingContract(existing.metadata);
+    const incoming = parseSecurityFindingContract(metadata);
+    return {
+      ...existing.metadata,
+      ...metadata,
+      security: { ...previous, ...incoming },
+      integration: {
+        ...(objectValue(existing.metadata.integration) || {}),
+        ...(objectValue(metadata.integration) || {}),
+      },
+    };
+  }
+
+  private compareSecurityDelivery(existing: WorkItemRecord, input: WorkItemCreateInput): 'same' | 'new' | 'conflict' {
+    const previous = parseSecurityFindingContract(existing.metadata);
+    const incoming = parseSecurityFindingContract(input.metadata || {});
+    const previousIntegration = objectValue(existing.metadata.integration);
+    const incomingIntegration = objectValue(input.metadata?.integration);
+    const sameIdentity = previous.source_identity === incoming.source_identity
+      && (previousIntegration?.upstream_source_ref || null) === (incomingIntegration?.upstream_source_ref || null);
+    if (!sameIdentity) return 'new';
+    const samePayload = existing.title === input.title.trim()
+      && existing.description === input.description.trim()
+      && previous.severity === incoming.severity
+      && previous.threat === incoming.threat
+      && this.sameStringList(previous.cia_impact, incoming.cia_impact)
+      && this.sameStringList(previous.attack_path, incoming.attack_path)
+      && this.sameStringList(previous.evidence_refs, incoming.evidence_refs);
+    return samePayload ? 'same' : 'conflict';
+  }
+
   private validateSecurityFindingDisposition(finding: SecurityFindingContract, riskClass: RiskClass): void {
     const disposition = objectValue(finding.disposition);
     const validTypes = ['false_positive', 'duplicate', 'out_of_scope', 'risk_accepted'];
@@ -503,6 +570,10 @@ export class WorkItemService {
   private safeJsonArray(value: unknown): unknown[] {
     const parsed = this.safeJson(value, []);
     return Array.isArray(parsed) ? parsed : [];
+  }
+
+  private sameStringList(left: string[], right: string[]): boolean {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
   }
 
   private parse(row: any): WorkItemRecord {

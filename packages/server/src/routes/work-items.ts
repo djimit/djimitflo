@@ -26,8 +26,14 @@ function mapWorkItemError(error: unknown): never {
   if (message === 'SECURITY_FINDING_IDENTITY_INVALID') throw createError(400, 'security finding identity is invalid', message);
   if (message === 'SECURITY_FINDING_RISK_MISMATCH') throw createError(400, 'risk_class must match security severity', message);
   if (message === 'SECURITY_FINDING_LOOP_REQUIRED') throw createError(400, 'security-regression-loop is required', message);
-  if (message === 'SECURITY_FINDING_RISK_DOWNGRADE_FORBIDDEN') throw createError(409, 'security finding risk cannot be downgraded without disposition evidence', message);
+  if (message === 'SECURITY_FINDING_IMPORT_REQUIRED') throw createError(400, 'security findings must use the integration import boundary', message);
+  if (message === 'SECURITY_FINDING_TERMINAL_CREATE_FORBIDDEN') throw createError(409, 'security findings cannot be created in a terminal state', message);
+  if (message === 'SECURITY_FINDING_RISK_DOWNGRADE_FORBIDDEN') throw createError(409, 'security finding risk cannot be downgraded in place', message);
   if (message === 'SECURITY_FINDING_REOPEN_IMPORT_REQUIRED') throw createError(409, 'terminal security findings can only reopen through recurrent scanner import', message);
+  if (message === 'SECURITY_FINDING_REPLAY_CONFLICT') throw createError(409, 'scanner replay identity conflicts with its prior payload', message);
+  if (message === 'SECURITY_FINDING_PROVENANCE_IMMUTABLE') throw createError(409, 'scanner provenance can only change through scanner import', message);
+  if (message === 'SECURITY_FINDING_TERMINAL_STATE_IMMUTABLE') throw createError(409, 'terminal security finding state is immutable', message);
+  if (message === 'SECURITY_FINDING_RESOLUTION_IMMUTABLE') throw createError(409, 'terminal security finding resolution is immutable', message);
   if (message === 'SECURITY_FINDING_HISTORY_IMMUTABLE') throw createError(409, 'security finding resolution history is immutable', message);
   if (message === 'SECURITY_FINDING_CLOSURE_EVIDENCE_REQUIRED') throw createError(409, 'security finding closure evidence is required', message);
   if (message === 'SECURITY_FINDING_LOOP_EVIDENCE_REQUIRED') throw createError(409, 'a completed, gated security-regression-loop for this finding is required', message);
@@ -112,8 +118,9 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
       const item = service.get(req.params.id);
+      const effectiveRisk = req.body?.risk_class ?? item.risk_class;
       const terminalHighRiskSecurityFinding = item.source === SECURITY_FINDING_SOURCE
-        && (item.risk_class === 'high' || item.risk_class === 'critical')
+        && (effectiveRisk === 'high' || effectiveRisk === 'critical')
         && (req.body?.status === 'done' || req.body?.status === 'discarded');
       if (terminalHighRiskSecurityFinding) {
         requirePermission('approve:task')(req, res, next);
@@ -131,8 +138,9 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
     try {
       const existing = service.get(req.params.id);
       let input = req.body || {};
+      const effectiveRisk = input.risk_class ?? existing.risk_class;
       if (existing.source === SECURITY_FINDING_SOURCE
-        && (existing.risk_class === 'high' || existing.risk_class === 'critical')
+        && (effectiveRisk === 'high' || effectiveRisk === 'critical')
         && (input.status === 'done' || input.status === 'discarded')) {
         const actor = req.user?.sub || req.user?.email;
         if (!actor) throw new Error('SECURITY_FINDING_APPROVER_IDENTITY_REQUIRED');

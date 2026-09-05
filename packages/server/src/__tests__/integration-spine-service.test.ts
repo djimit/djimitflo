@@ -9,9 +9,14 @@ import { errorHandler } from '../middleware/error-handler';
 import { createWorkItemRoutes } from '../routes/work-items';
 
 let requestedPermissions: string[] = [];
+let denyApproval = false;
 const auth = {
-  requirePermission: (permission: string) => (req: any, _res: any, next: any) => {
+  requirePermission: (permission: string) => (req: any, res: any, next: any) => {
     requestedPermissions.push(permission);
+    if (permission === 'approve:task' && denyApproval) {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Forbidden' } });
+      return;
+    }
     req.user = { sub: 'integration-test-operator' };
     next();
   },
@@ -47,7 +52,7 @@ function insertCapability(id: string, status: 'candidate' | 'validated', risk = 
   `).run(id, status, risk, score, threshold);
 }
 
-function securityFindingPayload(sourceIdentity = 'git:sha256:abc123') {
+function securityFindingPayload(sourceIdentity = 'git:sha256:abc123', severity: 'low' | 'medium' | 'high' | 'critical' = 'high') {
   return {
     source: 'security_finding',
     source_ref: 'codeql:upstream-alert-42',
@@ -62,7 +67,7 @@ function securityFindingPayload(sourceIdentity = 'git:sha256:abc123') {
         tool: 'CodeQL',
         rule_id: 'js/missing-authorization',
         location: 'packages/server/src/routes/admin.ts:42',
-        severity: 'high',
+        severity,
         cia_impact: ['confidentiality', 'integrity'],
         threat: 'An authenticated tenant user can modify another tenant.',
         attack_path: ['HTTP route parameter', 'admin update handler'],
@@ -76,6 +81,7 @@ function securityFindingPayload(sourceIdentity = 'git:sha256:abc123') {
 describe('agentic OS integration inbox', () => {
   beforeEach(async () => {
     requestedPermissions = [];
+    denyApproval = false;
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -260,6 +266,126 @@ describe('agentic OS integration inbox', () => {
     expect(workItemCount()).toBe(0);
   });
 
+  it('rejects direct security creation and authorizes terminal changes against resulting risk', async () => {
+    const preview = await fetch(`${baseUrl}/work-items/integrations/preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    const terminalInput = (await preview.json() as any).work_item_input;
+    const direct = await fetch(`${baseUrl}/work-items`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...terminalInput,
+        status: 'discarded',
+        metadata: {
+          ...terminalInput.metadata,
+          security: {
+            ...terminalInput.metadata.security,
+            disposition: {
+              type: 'false_positive',
+              reason: 'Direct terminal creation must not be authoritative.',
+              evidence_refs: ['review:direct-create'],
+              security_checker_ref: 'review:security-checker',
+              human_approval_ref: 'caller:forged',
+            },
+          },
+        },
+      }),
+    });
+    expect(direct.status).toBe(400);
+    expect((await direct.json() as any).error.code).toBe('SECURITY_FINDING_IMPORT_REQUIRED');
+
+    const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload('git:sha256:low123', 'low')),
+    });
+    const lowItem = (await imported.json() as any).work_item;
+    requestedPermissions = [];
+    denyApproval = true;
+    const escalation = await fetch(`${baseUrl}/work-items/${lowItem.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        risk_class: 'high',
+        status: 'discarded',
+        metadata: {
+          ...lowItem.metadata,
+          security: {
+            ...lowItem.metadata.security,
+            severity: 'high',
+            disposition: {
+              type: 'false_positive',
+              reason: 'Attempted combined escalation and closure.',
+              evidence_refs: ['review:escalation'],
+              security_checker_ref: 'review:security-checker',
+              human_approval_ref: 'caller:forged',
+            },
+          },
+        },
+      }),
+    });
+    expect(escalation.status).toBe(403);
+    expect(requestedPermissions).toContain('approve:task');
+    expect(db.prepare('SELECT status, risk_class FROM work_items WHERE id = ?').get(lowItem.id)).toMatchObject({
+      status: 'candidate',
+      risk_class: 'low',
+    });
+  });
+
+  it('keeps scanner provenance immutable outside the import boundary', async () => {
+    const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    const item = (await imported.json() as any).work_item;
+
+    const response = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        metadata: {
+          ...item.metadata,
+          security: {
+            ...item.metadata.security,
+            source_identity: 'git:sha256:forged',
+            evidence_refs: ['artifact:forged'],
+          },
+        },
+      }),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json() as any).error.code).toBe('SECURITY_FINDING_PROVENANCE_IMMUTABLE');
+  });
+
+  it('preserves active workflow state and server metadata across a new scanner delivery', async () => {
+    const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    const item = (await imported.json() as any).work_item;
+    const converted = await fetch(`${baseUrl}/work-items/${item.id}/convert-to-goal`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
+    const planned = (await converted.json() as any).work_item;
+
+    const repeated = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload('git:sha256:next-active')),
+    });
+    const updated = (await repeated.json() as any).work_item;
+    expect(updated.status).toBe('planned');
+    expect(updated.parent_goal_id).toBe(planned.parent_goal_id);
+    expect(updated.metadata.converted_to_goal_at).toBe(planned.metadata.converted_to_goal_at);
+    expect(updated.metadata.security.source_identity).toBe('git:sha256:next-active');
+  });
+
   it('fails closed on security risk downgrade and evidence-free closure', async () => {
     const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
       method: 'POST',
@@ -355,6 +481,31 @@ describe('agentic OS integration inbox', () => {
     expect(closedItem.metadata.security.closure.human_approval_ref).toBe('operator:integration-test-operator');
     expect(requestedPermissions).toContain('approve:task');
 
+    const exactReplay = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    const replayedItem = (await exactReplay.json() as any).work_item;
+    expect(replayedItem.status).toBe('done');
+    expect(replayedItem.metadata.security.resolution_history).toBeUndefined();
+
+    const rewriteClosure = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        metadata: {
+          ...closedItem.metadata,
+          security: {
+            ...closedItem.metadata.security,
+            closure: { ...closedItem.metadata.security.closure, rescan_ref: 'artifact:forged' },
+          },
+        },
+      }),
+    });
+    expect(rewriteClosure.status).toBe(409);
+    expect((await rewriteClosure.json() as any).error.code).toBe('SECURITY_FINDING_RESOLUTION_IMMUTABLE');
+
     const manualReopen = await fetch(`${baseUrl}/work-items/${item.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
@@ -372,6 +523,7 @@ describe('agentic OS integration inbox', () => {
     const recurrentItem = (await recurrent.json() as any).work_item;
     expect(recurrentItem.id).toBe(item.id);
     expect(recurrentItem.status).toBe('candidate');
+    expect(recurrentItem.parent_goal_id).toBeNull();
     expect(recurrentItem.metadata.security.source_identity).toBe('git:sha256:new456');
     expect(recurrentItem.metadata.security.resolution_history[0]).toMatchObject({
       status: 'done',
