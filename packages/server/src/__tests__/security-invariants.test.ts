@@ -98,6 +98,20 @@ describe('Security Invariant: ToolBroker', () => {
     expect(broker.validateCapabilityToken('invalid-token', 'read_file', 'task-1')).toBe(false);
   });
 
+  it('reloads capability tokens from durable storage after broker restart', () => {
+    db.prepare(`
+      INSERT INTO approval_policies (id, name, action_type, risk_levels, decision, priority, enabled, created_at)
+      VALUES ('policy-1', 'allow-reads', 'tool_call', '["medium"]', 'allow', 100, 1, datetime('now'))
+    `).run();
+
+    const decision = broker.evaluateToolCall(makeRequest({ tool: 'read_file', data_classification: 'internal' }));
+    const token = decision.capability_token!;
+    const restartedBroker = new ToolBroker(db);
+
+    expect(restartedBroker.validateCapabilityToken(token.token_id, 'read_file', 'task-1')).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) as c FROM tool_broker_capability_tokens WHERE token_id = ?').get(token.token_id)).toEqual({ c: 1 });
+  });
+
   it('audits all decisions to the database', () => {
     broker.evaluateToolCall(makeRequest({ tool: 'test_audit' }));
     const row = db.prepare('SELECT COUNT(*) as c FROM tool_broker_decisions WHERE tool = ?').get('test_audit') as any;
