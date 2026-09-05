@@ -20,6 +20,8 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
       status: 'healthy',
       name: 'djimitflo',
       version: getAppVersion(),
+      // Non-secret build identity makes public liveness checks attributable.
+      commit: process.env.DJIMITFLO_COMMIT_SHA || null,
       timestamp: new Date().toISOString(),
     });
   });
