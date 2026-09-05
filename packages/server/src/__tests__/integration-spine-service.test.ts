@@ -8,8 +8,13 @@ import { runMigrations } from '../database/migrate';
 import { errorHandler } from '../middleware/error-handler';
 import { createWorkItemRoutes } from '../routes/work-items';
 
+let requestedPermissions: string[] = [];
 const auth = {
-  requirePermission: () => (_req: any, _res: any, next: any) => next(),
+  requirePermission: (permission: string) => (req: any, _res: any, next: any) => {
+    requestedPermissions.push(permission);
+    req.user = { sub: 'integration-test-operator' };
+    next();
+  },
 } as any;
 
 let db: Database.Database;
@@ -42,8 +47,35 @@ function insertCapability(id: string, status: 'candidate' | 'validated', risk = 
   `).run(id, status, risk, score, threshold);
 }
 
+function securityFindingPayload(sourceIdentity = 'git:sha256:abc123') {
+  return {
+    source: 'security_finding',
+    source_ref: 'codeql:upstream-alert-42',
+    title: 'Authorization bypass in admin route',
+    description: 'A user-controlled identifier reaches an administrative operation without an ownership check.',
+    risk_class: 'low',
+    recommended_loop: 'repo-maintenance-loop',
+    metadata: {
+      security: {
+        target: 'packages/server/src/routes/admin.ts',
+        source_identity: sourceIdentity,
+        tool: 'CodeQL',
+        rule_id: 'js/missing-authorization',
+        location: 'packages/server/src/routes/admin.ts:42',
+        severity: 'high',
+        cia_impact: ['confidentiality', 'integrity'],
+        threat: 'An authenticated tenant user can modify another tenant.',
+        attack_path: ['HTTP route parameter', 'admin update handler'],
+        evidence_refs: ['artifact:codeql-sarif:run-42'],
+        standard_refs: ['OWASP:A01'],
+      },
+    },
+  };
+}
+
 describe('agentic OS integration inbox', () => {
   beforeEach(async () => {
+    requestedPermissions = [];
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
@@ -180,5 +212,185 @@ describe('agentic OS integration inbox', () => {
     expect(allowedBody.blocked_reasons).toEqual([]);
     expect(allowedBody.work_item_input.status).toBe('triaged');
     expect(workItemCount()).toBe(0);
+  });
+
+  it('rejects incomplete security findings at the integration boundary', async () => {
+    const response = await fetch(`${baseUrl}/work-items/integrations/preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: 'security_finding',
+        title: 'Unproven finding',
+        description: 'No scanner identity or evidence was supplied.',
+        metadata: { security: { severity: 'high' } },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json() as any).error.code).toBe('SECURITY_FINDING_CONTRACT_INCOMPLETE');
+    expect(workItemCount()).toBe(0);
+  });
+
+  it('normalizes security severity, identity, and loop without trusting caller overrides', async () => {
+    const response = await fetch(`${baseUrl}/work-items/integrations/preview`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as any;
+    expect(body.work_item_input).toMatchObject({
+      source: 'security_finding',
+      risk_class: 'high',
+      status: 'candidate',
+      recommended_loop: 'security-regression-loop',
+      metadata: {
+        security: {
+          source_identity: 'git:sha256:abc123',
+          severity: 'high',
+        },
+        integration: {
+          upstream_source_ref: 'codeql:upstream-alert-42',
+        },
+      },
+    });
+    expect(body.work_item_input.source_ref).toMatch(/^security:sha256:[a-f0-9]{64}$/);
+    expect(body.work_item_input.metadata.security.fingerprint).toBe(body.work_item_input.source_ref);
+    expect(workItemCount()).toBe(0);
+  });
+
+  it('fails closed on security risk downgrade and evidence-free closure', async () => {
+    const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    expect(imported.status).toBe(201);
+    const item = (await imported.json() as any).work_item;
+
+    const downgrade = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ risk_class: 'low' }),
+    });
+    expect(downgrade.status).toBe(409);
+    expect((await downgrade.json() as any).error.code).toBe('SECURITY_FINDING_RISK_DOWNGRADE_FORBIDDEN');
+
+    const close = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    expect(close.status).toBe(409);
+    expect((await close.json() as any).error.code).toBe('SECURITY_FINDING_CLOSURE_EVIDENCE_REQUIRED');
+    expect(db.prepare('SELECT status FROM work_items WHERE id = ?').get(item.id)).toMatchObject({ status: 'candidate' });
+  });
+
+  it('requires the finding\'s completed governed loop and preserves closure evidence on recurrence', async () => {
+    const imported = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload()),
+    });
+    const item = (await imported.json() as any).work_item;
+    const convertedResponse = await fetch(`${baseUrl}/work-items/${item.id}/convert-to-goal`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(convertedResponse.status).toBe(201);
+    const converted = await convertedResponse.json() as any;
+    const baseClosure = {
+      remediation_ref: 'git:commit:def456',
+      rescan_ref: 'artifact:codeql-sarif:run-43',
+      loop_ref: 'loop:security-loop-43',
+      regression_refs: ['test:authorization-boundary'],
+    };
+
+    const ungoverned = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        status: 'done',
+        metadata: { ...item.metadata, security: { ...item.metadata.security, closure: baseClosure } },
+      }),
+    });
+    expect(ungoverned.status).toBe(409);
+    expect((await ungoverned.json() as any).error.code).toBe('SECURITY_FINDING_LOOP_EVIDENCE_REQUIRED');
+
+    db.prepare(`
+      INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, gates_json, metadata, completed_at)
+      VALUES (?, ?, 'security-regression-loop', 'closed', 'completed', ?, ?, datetime('now'))
+    `).run(
+      'security-loop-43',
+      converted.goal_id,
+      JSON.stringify([
+        { name: 'maker_checker_separation', status: 'pass' },
+        { name: 'checker_verdict', status: 'pass' },
+        { name: 'tests_lint_typecheck', status: 'pass' },
+        { name: 'security_checker_verdict', status: 'pass' },
+      ]),
+      JSON.stringify({ human_approval_ref: 'operator:loop-approver' })
+    );
+
+    const closed = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        status: 'done',
+        metadata: {
+          ...item.metadata,
+          security: {
+            ...item.metadata.security,
+            closure: {
+              ...baseClosure,
+            },
+          },
+        },
+      }),
+    });
+    expect(closed.status).toBe(200);
+    const closedItem = await closed.json() as any;
+    expect(closedItem.status).toBe('done');
+    expect(closedItem.metadata.security.closure.human_approval_ref).toBe('operator:integration-test-operator');
+    expect(requestedPermissions).toContain('approve:task');
+
+    const manualReopen = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'candidate' }),
+    });
+    expect(manualReopen.status).toBe(409);
+    expect((await manualReopen.json() as any).error.code).toBe('SECURITY_FINDING_REOPEN_IMPORT_REQUIRED');
+
+    const recurrent = await fetch(`${baseUrl}/work-items/integrations/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(securityFindingPayload('git:sha256:new456')),
+    });
+    expect(recurrent.status).toBe(200);
+    const recurrentItem = (await recurrent.json() as any).work_item;
+    expect(recurrentItem.id).toBe(item.id);
+    expect(recurrentItem.status).toBe('candidate');
+    expect(recurrentItem.metadata.security.source_identity).toBe('git:sha256:new456');
+    expect(recurrentItem.metadata.security.resolution_history[0]).toMatchObject({
+      status: 'done',
+      source_identity: 'git:sha256:abc123',
+      evidence: { loop_ref: 'loop:security-loop-43' },
+    });
+    expect(workItemCount()).toBe(1);
+
+    const eraseHistory = await fetch(`${baseUrl}/work-items/${item.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        metadata: {
+          ...recurrentItem.metadata,
+          security: { ...recurrentItem.metadata.security, resolution_history: [] },
+        },
+      }),
+    });
+    expect(eraseHistory.status).toBe(409);
+    expect((await eraseHistory.json() as any).error.code).toBe('SECURITY_FINDING_HISTORY_IMMUTABLE');
   });
 });

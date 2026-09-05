@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
 export type RiskClass = 'low' | 'medium' | 'high' | 'critical';
@@ -55,6 +55,83 @@ export interface WorkItemUpdateInput {
 
 const VALID_RISKS: RiskClass[] = ['low', 'medium', 'high', 'critical'];
 const VALID_STATUSES: WorkItemStatus[] = ['candidate', 'triaged', 'planned', 'leased', 'blocked', 'done', 'discarded'];
+const RISK_RANK: Record<RiskClass, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+const VALID_CIA_IMPACTS = ['confidentiality', 'integrity', 'availability'] as const;
+
+export const SECURITY_FINDING_SOURCE = 'security_finding';
+
+export interface SecurityFindingContract extends Record<string, unknown> {
+  target: string;
+  source_identity: string;
+  tool: string;
+  rule_id: string;
+  location: string;
+  severity: RiskClass;
+  cia_impact: Array<typeof VALID_CIA_IMPACTS[number]>;
+  threat: string;
+  attack_path: string[];
+  evidence_refs: string[];
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function nonEmptyStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim())
+    : [];
+}
+
+export function parseSecurityFindingContract(metadata: unknown): SecurityFindingContract {
+  const security = objectValue(objectValue(metadata)?.security);
+  const requiredStrings = ['target', 'source_identity', 'tool', 'rule_id', 'location', 'threat'] as const;
+  const missing = requiredStrings.filter((field) => !nonEmptyString(security?.[field]));
+  if (!security || missing.length) {
+    throw new Error(`SECURITY_FINDING_CONTRACT_INCOMPLETE:${missing.length ? missing.join(',') : 'security'}`);
+  }
+
+  const severity = nonEmptyString(security.severity);
+  if (!severity || !VALID_RISKS.includes(severity as RiskClass)) {
+    throw new Error('SECURITY_FINDING_SEVERITY_INVALID');
+  }
+  const ciaImpact = nonEmptyStringList(security.cia_impact);
+  if (!ciaImpact.length || ciaImpact.some((impact) => !VALID_CIA_IMPACTS.includes(impact as typeof VALID_CIA_IMPACTS[number]))) {
+    throw new Error('SECURITY_FINDING_CIA_IMPACT_INVALID');
+  }
+  const attackPath = nonEmptyStringList(security.attack_path);
+  const evidenceRefs = nonEmptyStringList(security.evidence_refs);
+  const missingLists = [
+    ...(!attackPath.length ? ['attack_path'] : []),
+    ...(!evidenceRefs.length ? ['evidence_refs'] : []),
+  ];
+  if (missingLists.length) {
+    throw new Error(`SECURITY_FINDING_CONTRACT_INCOMPLETE:${missingLists.join(',')}`);
+  }
+
+  return {
+    ...security,
+    target: nonEmptyString(security.target)!,
+    source_identity: nonEmptyString(security.source_identity)!,
+    tool: nonEmptyString(security.tool)!,
+    rule_id: nonEmptyString(security.rule_id)!,
+    location: nonEmptyString(security.location)!,
+    severity: severity as RiskClass,
+    cia_impact: [...new Set(ciaImpact)] as SecurityFindingContract['cia_impact'],
+    threat: nonEmptyString(security.threat)!,
+    attack_path: attackPath,
+    evidence_refs: evidenceRefs,
+  };
+}
+
+export function securityFindingFingerprint(finding: SecurityFindingContract): string {
+  const identity = [finding.target, finding.tool.toLowerCase(), finding.rule_id, finding.location].join('\0');
+  return `security:sha256:${createHash('sha256').update(identity).digest('hex')}`;
+}
 
 export class WorkItemService {
   constructor(private db: Database) {}
@@ -114,8 +191,13 @@ export class WorkItemService {
     if (!existing) {
       return { work_item: this.create(input), created: true };
     }
+    const existingItem = this.parse(existing);
+    const metadata = existingItem.source === SECURITY_FINDING_SOURCE
+      && (existingItem.status === 'done' || existingItem.status === 'discarded')
+      ? this.appendSecurityResolution(existingItem, input.metadata || {})
+      : input.metadata;
     return {
-      work_item: this.update(this.parse(existing).id, {
+      work_item: this.update(existingItem.id, {
         title: input.title,
         description: input.description,
         risk_class: input.risk_class,
@@ -126,8 +208,8 @@ export class WorkItemService {
         assigned_agent_id: input.assigned_agent_id,
         assigned_runtime: input.assigned_runtime,
         parent_goal_id: input.parent_goal_id,
-        metadata: input.metadata,
-      }),
+        metadata,
+      }, { allowSecurityReopen: true }),
       created: false,
     };
   }
@@ -153,7 +235,7 @@ export class WorkItemService {
     return this.parse(row);
   }
 
-  update(id: string, input: WorkItemUpdateInput): WorkItemRecord {
+  update(id: string, input: WorkItemUpdateInput, options: { allowSecurityReopen?: boolean } = {}): WorkItemRecord {
     const existing = this.get(id);
     const next = {
       title: input.title ?? existing.title,
@@ -169,6 +251,34 @@ export class WorkItemService {
       metadata: input.metadata ?? existing.metadata,
     };
     this.validateUpdate(next);
+    if (existing.source === SECURITY_FINDING_SOURCE) {
+      const existingTerminal = existing.status === 'done' || existing.status === 'discarded';
+      const nextTerminal = next.status === 'done' || next.status === 'discarded';
+      if (existingTerminal && !nextTerminal && !options.allowSecurityReopen) {
+        throw new Error('SECURITY_FINDING_REOPEN_IMPORT_REQUIRED');
+      }
+      if (RISK_RANK[next.risk_class] < RISK_RANK[existing.risk_class]) {
+        throw new Error('SECURITY_FINDING_RISK_DOWNGRADE_FORBIDDEN');
+      }
+      const previousFinding = parseSecurityFindingContract(existing.metadata);
+      const nextFinding = this.validateSecurityFindingState(
+        existing.source_ref,
+        next.risk_class,
+        next.status,
+        next.recommended_loop,
+        next.parent_goal_id,
+        next.metadata
+      );
+      if (['target', 'tool', 'rule_id', 'location'].some((field) => previousFinding[field] !== nextFinding[field])) {
+        throw new Error('SECURITY_FINDING_IDENTITY_INVALID');
+      }
+      const previousHistory = Array.isArray(previousFinding.resolution_history) ? previousFinding.resolution_history : [];
+      const nextHistory = Array.isArray(nextFinding.resolution_history) ? nextFinding.resolution_history : [];
+      if (nextHistory.length < previousHistory.length
+        || previousHistory.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(nextHistory[index]))) {
+        throw new Error('SECURITY_FINDING_HISTORY_IMMUTABLE');
+      }
+    }
 
     this.db.prepare(`
       UPDATE work_items
@@ -240,6 +350,109 @@ export class WorkItemService {
       confidence: input.confidence ?? 0.5,
       status: input.status || 'candidate',
     });
+    if ((input.source || 'manual').trim() === SECURITY_FINDING_SOURCE) {
+      this.validateSecurityFindingState(
+        input.source_ref || null,
+        input.risk_class || 'low',
+        input.status || 'candidate',
+        input.recommended_loop || null,
+        input.parent_goal_id || null,
+        input.metadata || {}
+      );
+    }
+  }
+
+  private validateSecurityFindingState(
+    sourceRef: string | null,
+    riskClass: RiskClass,
+    status: WorkItemStatus,
+    recommendedLoop: string | null,
+    parentGoalId: string | null,
+    metadata: Record<string, unknown>
+  ): SecurityFindingContract {
+    const finding = parseSecurityFindingContract(metadata);
+    const fingerprint = securityFindingFingerprint(finding);
+    if (sourceRef !== fingerprint || finding.fingerprint !== fingerprint) {
+      throw new Error('SECURITY_FINDING_IDENTITY_INVALID');
+    }
+    if (riskClass !== finding.severity) {
+      throw new Error('SECURITY_FINDING_RISK_MISMATCH');
+    }
+    if (recommendedLoop !== 'security-regression-loop') {
+      throw new Error('SECURITY_FINDING_LOOP_REQUIRED');
+    }
+    if (status === 'done') {
+      this.validateSecurityFindingClosure(finding, riskClass, parentGoalId);
+    }
+    if (status === 'discarded') {
+      this.validateSecurityFindingDisposition(finding, riskClass);
+    }
+    return finding;
+  }
+
+  private validateSecurityFindingClosure(finding: SecurityFindingContract, riskClass: RiskClass, parentGoalId: string | null): void {
+    const closure = objectValue(finding.closure);
+    const required = ['remediation_ref', 'rescan_ref', 'loop_ref'] as const;
+    if (!closure || required.some((field) => !nonEmptyString(closure[field])) || !nonEmptyStringList(closure.regression_refs).length) {
+      throw new Error('SECURITY_FINDING_CLOSURE_EVIDENCE_REQUIRED');
+    }
+    const loopRef = nonEmptyString(closure.loop_ref)!;
+    const loopId = loopRef.startsWith('loop:') ? loopRef.slice('loop:'.length) : '';
+    const loop = loopId ? this.db.prepare(`
+      SELECT goal_id, loop_name, mode, status, gates_json, metadata
+      FROM loop_runs WHERE id = ?
+    `).get(loopId) as any | undefined : undefined;
+    const gates = loop ? this.safeJsonArray(loop.gates_json) : [];
+    const requiredGates = ['maker_checker_separation', 'checker_verdict', 'tests_lint_typecheck'];
+    if (RISK_RANK[riskClass] >= RISK_RANK.high) requiredGates.push('security_checker_verdict');
+    const allGatesPassed = requiredGates.every((name) => gates.some((gate) => objectValue(gate)?.name === name && objectValue(gate)?.status === 'pass'));
+    const loopMetadata = loop ? objectValue(this.safeJson(loop.metadata, {})) : null;
+    if (!loop
+      || loop.goal_id !== parentGoalId
+      || loop.loop_name !== 'security-regression-loop'
+      || loop.mode !== 'closed'
+      || loop.status !== 'completed'
+      || !allGatesPassed
+      || (RISK_RANK[riskClass] >= RISK_RANK.high && !nonEmptyString(loopMetadata?.human_approval_ref))) {
+      throw new Error('SECURITY_FINDING_LOOP_EVIDENCE_REQUIRED');
+    }
+  }
+
+  private appendSecurityResolution(existing: WorkItemRecord, metadata: Record<string, unknown>): Record<string, unknown> {
+    const previous = parseSecurityFindingContract(existing.metadata);
+    const incoming = parseSecurityFindingContract(metadata);
+    const history = Array.isArray(previous.resolution_history) ? previous.resolution_history : [];
+    const resolution = existing.status === 'done' ? previous.closure : previous.disposition;
+    return {
+      ...metadata,
+      security: {
+        ...incoming,
+        resolution_history: [
+          ...history,
+          {
+            status: existing.status,
+            source_identity: previous.source_identity,
+            resolved_at: existing.updated_at,
+            evidence: resolution,
+          },
+        ],
+      },
+    };
+  }
+
+  private validateSecurityFindingDisposition(finding: SecurityFindingContract, riskClass: RiskClass): void {
+    const disposition = objectValue(finding.disposition);
+    const validTypes = ['false_positive', 'duplicate', 'out_of_scope', 'risk_accepted'];
+    if (!disposition
+      || !validTypes.includes(nonEmptyString(disposition.type) || '')
+      || !nonEmptyString(disposition.reason)
+      || !nonEmptyStringList(disposition.evidence_refs).length) {
+      throw new Error('SECURITY_FINDING_DISPOSITION_EVIDENCE_REQUIRED');
+    }
+    if (RISK_RANK[riskClass] >= RISK_RANK.high
+      && (!nonEmptyString(disposition.security_checker_ref) || !nonEmptyString(disposition.human_approval_ref))) {
+      throw new Error('SECURITY_FINDING_INDEPENDENT_REVIEW_REQUIRED');
+    }
   }
 
   private validateUpdate(input: WorkItemUpdateInput): void {
@@ -277,6 +490,19 @@ export class WorkItemService {
       throw new Error('WORK_ITEM_NUMERIC_RANGE_INVALID');
     }
     return value;
+  }
+
+  private safeJson(value: unknown, fallback: unknown): unknown {
+    try {
+      return typeof value === 'string' ? JSON.parse(value) : value;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private safeJsonArray(value: unknown): unknown[] {
+    const parsed = this.safeJson(value, []);
+    return Array.isArray(parsed) ? parsed : [];
   }
 
   private parse(row: any): WorkItemRecord {
