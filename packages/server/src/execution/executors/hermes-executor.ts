@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from 'crypto';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } from '@djimitflo/shared';
 import { captureExecutorOutput } from '../executor-output';
@@ -18,10 +18,14 @@ export class HermesExecutor implements TaskExecutor {
   readonly kind: ExecutorKind = 'hermes';
   private readonly hermesPath: string;
   private readonly executionTimeoutMs: number;
+  private readonly runtimeIdentity: string;
 
   constructor(hermesPath?: string) {
     this.hermesPath = hermesPath || process.env.HERMES_BIN_PATH || 'hermes';
     this.executionTimeoutMs = Number(process.env.HERMES_EXECUTION_TIMEOUT_MS || 600_000);
+    const probe = spawnSync(this.hermesPath, ['--version'], { encoding: 'utf8', timeout: 5_000 });
+    const version = (probe.stdout || '').trim().split(/\r?\n/)[0];
+    this.runtimeIdentity = version ? `${this.hermesPath}@${version}` : this.hermesPath;
   }
 
   canExecute(_task: Task): boolean { return true; }
@@ -91,7 +95,14 @@ export class HermesExecutor implements TaskExecutor {
       event_type: ExecutionEventType.TASK_STARTED,
       message: 'Hermes execution started',
       level: LogLevel.INFO,
-      metadata: { executor: 'hermes', skip_permissions: skipPermissions, output_mode: 'plain' },
+      metadata: {
+        executor: 'hermes',
+        runtime_identity: this.runtimeIdentity,
+        skip_permissions: skipPermissions,
+        output_mode: 'plain',
+        usage_source: 'unavailable',
+        provenance_status: 'partial',
+      },
     };
 
     const queue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
@@ -128,7 +139,13 @@ export class HermesExecutor implements TaskExecutor {
       event_type: exitCode === 0 ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
       message: exitCode === 0 ? 'Hermes execution completed successfully' : `Hermes execution failed with exit code ${exitCode}`,
       level: exitCode === 0 ? LogLevel.INFO : LogLevel.ERROR,
-      metadata: { executor: 'hermes', exit_code: exitCode },
+      metadata: {
+        executor: 'hermes',
+        runtime_identity: this.runtimeIdentity,
+        exit_code: exitCode,
+        usage_source: 'unavailable',
+        provenance_status: 'partial',
+      },
     };
   }
 

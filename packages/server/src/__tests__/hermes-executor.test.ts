@@ -40,7 +40,7 @@ describe('HermesExecutor', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-hermes-'));
     tempDirs.push(dir);
     const bin = path.join(dir, 'hermes');
-    fs.writeFileSync(bin, '#!/bin/sh\nprintf "answer\\n"\n');
+    fs.writeFileSync(bin, '#!/bin/sh\nif [ "$1" = "--version" ]; then printf "hermes-test 1.0\\n"; else printf "answer\\n"; fi\n');
     fs.chmodSync(bin, 0o755);
     const session = await new HermesExecutor(bin).start(task(), { workingDirectory: dir, timeout: 5_000 });
     const events = [];
@@ -48,6 +48,12 @@ describe('HermesExecutor', () => {
     const result = await session.result;
     expect(result.status).toBe('completed');
     expect(result.stdout).toContain('answer');
+    const start = events.find(event => event.message === 'Hermes execution started');
+    expect(start?.metadata).toMatchObject({
+      runtime_identity: `${bin}@hermes-test 1.0`,
+      provenance_status: 'partial',
+      usage_source: 'unavailable',
+    });
     expect(events.some(event => event.message === 'answer')).toBe(true);
   });
 });
