@@ -2,6 +2,10 @@ import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 
 const nonBlank = z.string().trim().min(1);
+const decodeField = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return value; }
+};
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -89,7 +93,8 @@ export class ExternalEventIngestService {
         if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
-          const parsed = outcomeObservedSchema.safeParse(event);
+          const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
+          const parsed = outcomeObservedSchema.safeParse(candidate);
           if (!parsed.success) continue;
           normalizedEvent = { ...event, ...parsed.data };
         }
