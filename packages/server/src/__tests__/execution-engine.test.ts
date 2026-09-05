@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { generateKeyPairSync } from 'crypto';
 import { createTestDb } from './helpers/test-db';
-import { ExecutionEngine } from '../execution/execution-engine';
+import { ExecutionEngine, resolveExecutorSkipPermissions } from '../execution/execution-engine';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { MockExecutor } from '../execution/executors/mock-executor';
 import type { Task } from '@djimitflo/shared';
@@ -50,6 +50,19 @@ function createMockWsService() {
 describe('ExecutionEngine', () => {
   let db: ReturnType<typeof createTestDb>;
   let engine: ExecutionEngine;
+
+  it('requires the operator gate before honoring task permission bypass metadata', () => {
+    const original = process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS;
+    delete process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS;
+    expect(resolveExecutorSkipPermissions(true)).toBe(false);
+    process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS = 'false';
+    expect(resolveExecutorSkipPermissions(true)).toBe(false);
+    process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS = 'true';
+    expect(resolveExecutorSkipPermissions(true)).toBe(true);
+    expect(resolveExecutorSkipPermissions(false)).toBe(false);
+    if (original === undefined) delete process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS;
+    else process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS = original;
+  });
 
   beforeEach(() => {
     db = createTestDb();
