@@ -25,6 +25,7 @@ import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
 import { ClaudeExecutor } from './executors/claude-executor';
+import { HermesExecutor } from './executors/hermes-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
@@ -154,6 +155,7 @@ export class ExecutionEngine {
     this.registerExecutor(new OpenCodeExecutor());
     this.registerExecutor(new CodexExecutor());
     this.registerExecutor(new ClaudeExecutor());
+    this.registerExecutor(new HermesExecutor());
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
