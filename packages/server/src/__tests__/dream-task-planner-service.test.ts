@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { DreamCycleService } from '../services/dream-cycle-service';
 import { DreamTaskPlannerService } from '../services/dream-task-planner-service';
 import { createTestDb } from './helpers/test-db';
@@ -12,6 +15,9 @@ describe('DreamTaskPlannerService', () => {
     dreams.runCycle();
     const planner = new DreamTaskPlannerService(db);
     const first = planner.plan();
+    const pending = join(mkdtempSync(join(tmpdir(), 'dream-plan-')), 'pending.jsonl');
+    expect(planner.exportPending(pending)).toBe(1);
+    expect(readFileSync(pending, 'utf8')).toContain('dream.opportunity');
     const second = planner.plan();
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({ event: 'dream.opportunity', task_type: 'triage', status: 'backlog' });

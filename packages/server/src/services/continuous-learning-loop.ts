@@ -81,7 +81,7 @@ export class ContinuousLearningLoop {
     const patternReport = this.reflections.analyzeReflectionPatterns(50);
     const goalsGenerated = this.goals.generateFromSelfImprovements();
     const dreamOpportunitiesGenerated = this.dreams.runCycle().length;
-    const dreamTasksPlanned = this.dreamTasks.plan().length;
+    const dreamTasksPlanned = this.dreamTasks.exportPending();
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
