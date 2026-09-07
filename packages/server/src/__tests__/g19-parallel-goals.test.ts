@@ -108,8 +108,8 @@ describe('G19: Parallel goal execution', () => {
     expect(activeIds.length).toBeGreaterThanOrEqual(0); // may be 0 if goal completed fast
   });
 
-  it('restores active goals on restart', () => {
-    // Simulate a restart: save active goals to system_state, then create a new daemon.
+  it('clears stale in-memory active goals on restart', () => {
+    // A restarted process has no surviving execution promises; the database queue is authoritative.
     db.prepare('INSERT OR REPLACE INTO system_state (key, value, updated_at) VALUES (?, ?, ?)')
       .run('daemon_active_goals', JSON.stringify(['goal-restored']), new Date().toISOString());
 
@@ -118,9 +118,10 @@ describe('G19: Parallel goal execution', () => {
     db.prepare('UPDATE goals SET id = ?, status = ? WHERE id = ?').run('goal-restored', 'running', goalId);
 
     const newDaemon = new LoopDaemon(db, loops, { pollMs: 100 });
-    newDaemon.restoreActiveGoals();
+    newDaemon.start();
 
-    expect(newDaemon.getActiveGoalCount()).toBe(1);
+    expect(newDaemon.getActiveGoalCount()).toBe(0);
+    expect(JSON.parse((db.prepare('SELECT value FROM system_state WHERE key = ?').get('daemon_active_goals') as { value: string }).value)).toEqual([]);
     newDaemon.stop();
   });
 

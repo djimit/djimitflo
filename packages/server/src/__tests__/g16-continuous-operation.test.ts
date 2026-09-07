@@ -245,6 +245,16 @@ describe('G16: Continuous operation mode', () => {
     expect(prune).toHaveBeenCalledOnce();
   });
 
+  it('does not start the same goal again while it is already active', async () => {
+    const goalId = insertGoal('Keep one in-flight execution per goal', 'medium');
+    (daemon as any).activeGoals.add(goalId);
+    const execute = vi.spyOn(daemon as any, 'executeGoal');
+
+    await daemon.tick();
+
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('prunes stale worktrees after failed goal execution', async () => {
     const prune = vi.spyOn(loops, 'pruneOrphanedWorktrees').mockReturnValue(0);
 

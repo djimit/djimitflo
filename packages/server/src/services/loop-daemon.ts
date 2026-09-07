@@ -76,8 +76,9 @@ export class LoopDaemon {
   start(): void {
     if (this.running) return;
     this.running = true;
-    // G19: restore active goals from system_state on restart.
-    this.restoreActiveGoals();
+    // Promises do not survive a process restart; queued database goals do.
+    this.activeGoals.clear();
+    this.persistActiveGoals();
     swarmEventBus.emit('recovery', { daemon: 'started', poll_ms: this.pollMs, max_concurrent: this.maxConcurrentGoals });
     this.tick();
   }
@@ -130,7 +131,7 @@ export class LoopDaemon {
 
       // G19: start as many goals as fit in the available slots.
       const slots = this.getAvailableSlots();
-      const toStart = queue.slice(0, slots);
+      const toStart = queue.filter((goal) => !this.activeGoals.has(goal.id)).slice(0, slots);
 
       for (const goal of toStart) {
         // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
@@ -501,24 +502,4 @@ export class LoopDaemon {
     } catch { /* table might not exist — non-fatal */ }
   }
 
-  /**
-   * G19: Restore active goals from system_state on restart.
-   * The goals themselves are recovered by G10 resumeInterruptedRuns; this just
-   * restores the daemon's tracking set so it doesn't double-start them.
-   */
-  private restoreActiveGoals(): void {
-    try {
-      const row = this.db.prepare('SELECT value FROM system_state WHERE key = ?').get('daemon_active_goals') as { value?: string } | undefined;
-      if (row?.value) {
-        const ids = JSON.parse(row.value) as string[];
-        // Check which goals are still active in the DB (not completed/failed).
-        for (const id of ids) {
-          const goal = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(id) as { status: string } | undefined;
-          if (goal && !['completed', 'failed', 'cancelled'].includes(goal.status)) {
-            this.activeGoals.add(id);
-          }
-        }
-      }
-    } catch { /* non-fatal */ }
-  }
 }
