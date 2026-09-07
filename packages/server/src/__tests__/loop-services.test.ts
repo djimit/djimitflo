@@ -49,9 +49,15 @@ describe('Extracted Loop Services', () => {
     });
 
     it('builds opencode runtime command', () => {
-      const result = loops.runtimeCommand.buildRuntimeCommand('opencode', '/tmp/test', 'fix bug', false);
-      expect(result.command).toBe('opencode');
-      expect(result.args).toContain('run');
+      const configuredPath = process.env.OPENCODE_BIN_PATH;
+      delete process.env.OPENCODE_BIN_PATH;
+      try {
+        const result = loops.runtimeCommand.buildRuntimeCommand('opencode', '/tmp/test', 'fix bug', false);
+        expect(result.command).toBe('opencode');
+        expect(result.args).toContain('run');
+      } finally {
+        if (configuredPath) process.env.OPENCODE_BIN_PATH = configuredPath;
+      }
     });
 
     it('builds the existing Hermes executor contract without permission bypass', () => {
