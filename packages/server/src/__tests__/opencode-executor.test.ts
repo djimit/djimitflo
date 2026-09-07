@@ -403,6 +403,13 @@ describe('OpenCodeExecutor', () => {
       expect(result).not.toBeNull();
       expect(result.event_type).toBe('task.failed');
     });
+
+    it('keeps an intermediate tool-call step informational', () => {
+      const event = { type: 'step_finish', sessionID: 'ses_123', timestamp: 1234, part: { type: 'step-finish', reason: 'tool-calls', id: 'prt_4', messageID: 'msg_1', sessionID: 'ses_123' } };
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', event);
+      expect(result.event_type).toBe('log');
+      expect(result.level).toBe('info');
+    });
   });
 
   describe('mapJsonEventToExecutionEvent — unknown event type', () => {

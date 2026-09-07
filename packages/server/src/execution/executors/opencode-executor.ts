@@ -402,11 +402,14 @@ export class OpenCodeExecutor implements TaskExecutor {
       case 'step_finish': {
         const finishPart = part as OpenCodeStepFinish;
         const isSuccess = finishPart.reason === 'stop' || finishPart.reason === 'complete';
+        const isContinuation = finishPart.reason === 'tool-calls';
         return {
           task_id: taskId,
-          event_type: isSuccess ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
+          event_type: isContinuation
+            ? ExecutionEventType.LOG
+            : isSuccess ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
           message: `OpenCode step finished: ${finishPart.reason}`,
-          level: isSuccess ? LogLevel.INFO : LogLevel.ERROR,
+          level: isSuccess || isContinuation ? LogLevel.INFO : LogLevel.ERROR,
           metadata: {
             executor: 'opencode',
             sessionID: event.sessionID,

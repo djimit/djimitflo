@@ -75,9 +75,12 @@ COPY packages/telegram/package.json packages/telegram/
 COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
 
-# Install production dependencies only
-RUN npm install --omit=dev && \
-    node -e "new (require('better-sqlite3'))(':memory:').close()"
+# The runtime also executes the repository's deterministic promotion checks.
+RUN npm install && \
+    node -e "new (require('better-sqlite3'))(':memory:').close()" && \
+    test -x node_modules/.bin/tsc && \
+    test -x node_modules/.bin/eslint && \
+    test -x node_modules/.bin/vitest
 
 RUN npm install --global npm@12.0.2 && \
     npm install --global --prefix /tmp/npm-patches \
