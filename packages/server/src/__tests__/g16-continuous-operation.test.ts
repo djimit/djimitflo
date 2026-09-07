@@ -100,6 +100,21 @@ describe('G16: Continuous operation mode', () => {
     expect(queue.length).toBe(0);
   });
 
+  it('blocks an empty discovery instead of claiming goal completion', async () => {
+    const goalId = insertGoal('Investigate an unproven gap', 'low');
+    db.prepare("UPDATE goals SET status = 'decomposed' WHERE id = ?").run(goalId);
+    vi.spyOn(loops, 'startDocDriftAndSmallFixLoop').mockReturnValue({ id: 'empty-run', findings: [] } as any);
+    const events: any[] = [];
+    swarmEventBus.subscribe((event) => events.push(event));
+
+    await (daemon as any).executeGoal({ id: goalId, objective: 'Investigate an unproven gap', risk_class: 'low', metadata: {}, created_at: new Date().toISOString() });
+
+    const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(goalId) as { status: string; metadata: string };
+    expect(goal.status).toBe('blocked');
+    expect(JSON.parse(goal.metadata)).toMatchObject({ completion_evidence_status: 'UNDETERMINED', blocked_reason: 'no_findings' });
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ data: expect.objectContaining({ daemon: 'goal_blocked', goal_id: goalId }) })]));
+  });
+
   it('prunes stale worktrees on every tick', async () => {
     const prune = vi.spyOn(loops, 'pruneOrphanedWorktrees').mockReturnValue(0);
 

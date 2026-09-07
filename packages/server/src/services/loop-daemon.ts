@@ -233,13 +233,16 @@ export class LoopDaemon {
 
       // 3. Skip execution if no findings were discovered.
       if (run.findings.length === 0) {
-        this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
-          .run('completed', new Date().toISOString(), goal.id);
+        this.db.prepare(`UPDATE goals
+          SET status = 'blocked',
+              metadata = json_set(metadata, '$.completion_evidence_status', 'UNDETERMINED', '$.blocked_reason', 'no_findings'),
+              updated_at = ?
+          WHERE id = ?`).run(new Date().toISOString(), goal.id);
         swarmEventBus.emit('convergence', {
-          daemon: 'goal_completed',
+          daemon: 'goal_blocked',
           goal_id: goal.id,
           run_id: run.id,
-          reason: 'no findings — goal completed (nothing to fix)',
+          reason: 'no findings — acceptance evidence remains undetermined',
         });
         return;
       }
