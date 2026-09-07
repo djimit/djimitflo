@@ -814,8 +814,8 @@ describe('workstation swarm resource plan', () => {
       expect(drain.started).toHaveLength(2);
       expect(drain.started.map((item: any) => item.decision.next_action)).toEqual(['execute_maker', 'execute_checker']);
       expect(drain.started[1].decision.reviewer_independence).toMatchObject({
-        state: 'FAIL',
-        correlated_fields: expect.arrayContaining(['model_family_independence', 'provider_independence']),
+        state: 'UNDETERMINED',
+        correlated_fields: expect.arrayContaining(['model_family_independence']),
       });
 
       const leases = db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(loopRunId) as any[];
@@ -1095,8 +1095,8 @@ describe('workstation swarm resource plan', () => {
         expect.objectContaining({
           role: 'checker',
           eligible: false,
-          blocked_reasons: expect.arrayContaining(['checker_independence_fail']),
-          reviewer_independence: expect.objectContaining({ state: 'FAIL' }),
+          blocked_reasons: expect.arrayContaining(['checker_independence_undetermined']),
+          reviewer_independence: expect.objectContaining({ state: 'UNDETERMINED' }),
         }),
       ]));
     } finally {

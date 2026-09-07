@@ -8,7 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
@@ -157,6 +157,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      ...this.reviewIdentity(makerLease.runtime, 'maker', prompt, makerLease.id),
     };
 
     if (wasCancelled) {
@@ -266,6 +267,7 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
+      ...this.reviewIdentity(runtime, 'checker', prompt, checker.id),
     });
 
     const gates: LoopGate[] = [
@@ -307,6 +309,27 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private reviewIdentity(runtime: string, role: 'maker' | 'checker', prompt: string, leaseId: string): Record<string, string> {
+    const configuredModel = runtime === 'opencode' ? process.env.DJIMITFLO_OPENCODE_MODEL
+      : runtime === 'claude' ? process.env.DJIMITFLO_CLAUDE_MODEL
+        : runtime === 'gemini' ? process.env.DJIMITFLO_GEMINI_MODEL
+          : runtime === 'editor' ? process.env.DJIMITFLO_CLINE_MODEL
+            : undefined;
+    const provider = configuredModel?.split('/', 1)[0]
+      || ({ codex: 'openai', claude: 'anthropic', gemini: 'google', mock: 'synthetic' }[runtime]);
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+    const identity: Record<string, string> = {
+      prompt_hash: hash(prompt),
+      context_hash: hash(`${role}:context:${prompt}`),
+      memory_scope_hash: hash(`${role}:fresh-process:${leaseId}`),
+      retrieval_hash: hash(`${role}:evidence:${prompt}`),
+      oracle_hash: hash(role === 'checker' ? 'checker-verdict-v1' : 'maker-objective-v1'),
+    };
+    if (configuredModel || provider) identity.model_family = configuredModel || runtime;
+    if (provider) identity.provider = provider;
+    return identity;
+  }
 
   private async executeMockWorker(
     lease: WorkerLeaseRecord,

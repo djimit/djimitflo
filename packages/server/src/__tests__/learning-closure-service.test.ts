@@ -20,6 +20,11 @@ function makeDb() {
 
 function seedRun(db: Database.Database, id: string, checkerAccepted = true, repositoryPath = '/repo/default') {
   const now = new Date().toISOString();
+  const identity = (suffix: string) => JSON.stringify({
+    model_family: `model-${suffix}`, provider: `provider-${suffix}`, system_prompt_hash: `prompt-${suffix}`,
+    context_hash: `context-${suffix}`, memory_scope_hash: `memory-${suffix}`,
+    retrieval_hash: `retrieval-${suffix}`, oracle_hash: `oracle-${suffix}`,
+  });
   db.prepare(`
     INSERT INTO loop_runs (id, loop_name, mode, status, repository_path, gates_json, findings_json, plan_json, next_actions_json, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -27,13 +32,13 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true, repo
   db.prepare(`
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(`${id}-maker`, id, 'maker', 'mock', 'completed', '{}', now, now);
+  `).run(`${id}-maker`, id, 'maker', 'opencode', 'completed', identity('maker'), now, now);
   db.prepare(`
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(`${id}-checker`, id, 'checker', 'mock', checkerAccepted ? 'completed' : 'prepared', checkerAccepted
-    ? JSON.stringify({ verdict: 'accepted', maker_lease_id: `${id}-maker` })
-    : JSON.stringify({ maker_lease_id: `${id}-maker` }), now, now);
+  `).run(`${id}-checker`, id, 'checker', 'codex', checkerAccepted ? 'completed' : 'prepared', checkerAccepted
+    ? JSON.stringify({ ...JSON.parse(identity('checker')), verdict: 'accepted', maker_lease_id: `${id}-maker` })
+    : JSON.stringify({ ...JSON.parse(identity('checker')), maker_lease_id: `${id}-maker` }), now, now);
   const assurance = new AgentAssuranceService(db);
   assurance.createTraceSpan({
     trace_id: `trace-${id}`,
@@ -61,6 +66,19 @@ describe('loop learning closure', () => {
       expect(result).toMatchObject({ status: 'blocked' });
       expect(result.blocked_reasons).toContain('checker_not_accepted');
       expect(db.prepare('SELECT COUNT(*) as count FROM agent_eval_runs').get()).toMatchObject({ count: 0 });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('blocks closure when reviewer independence is unknown', () => {
+    const db = makeDb();
+    try {
+      seedRun(db, 'loop-unknown-independence', true);
+      db.prepare("UPDATE worker_leases SET runtime = 'mock', metadata = '{}' WHERE loop_run_id = 'loop-unknown-independence'").run();
+      const result = new KnowledgeRuntimeService(db).closeLoop({ loop_run_id: 'loop-unknown-independence' });
+      expect(result).toMatchObject({ status: 'blocked' });
+      expect(result.blocked_reasons).toContain('checker_independence_undetermined');
     } finally {
       db.close();
     }

@@ -106,7 +106,7 @@ describe('learning flywheel smoke', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  it('validates OKF, syncs capabilities, runs mock workers and closes learning without promotion', async () => {
+  it('validates OKF, syncs capabilities and blocks mock-reviewed learning', async () => {
     const runtime = await (await fetch(`${baseUrl}/swarms/knowledge/runtime`)).json() as any;
     expect(runtime.validate_okf.status).toBe('pass');
     expect(runtime.counts.skills).toBe(1);
@@ -198,9 +198,10 @@ describe('learning flywheel smoke', () => {
     expect(closed.status).toBe(201);
     const closure = await closed.json() as any;
     expect(closure).toMatchObject({
-      status: 'closed',
+      status: 'blocked',
       loop_run_id: loopRunId,
-      memory_candidate: { promotion_status: 'proposed' },
+      blocked_reasons: ['checker_independence_undetermined'],
+      memory_candidate: null,
     });
     expect(db.prepare("SELECT COUNT(*) as count FROM memory_candidates WHERE status = 'promoted'").get()).toMatchObject({ count: 0 });
   }, 30000);

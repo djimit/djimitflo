@@ -9,6 +9,7 @@ import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
 import { LoopDaemon } from '../services/loop-daemon';
 import { swarmEventBus } from '../services/swarm-event-bus';
+import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 
 let db: Database.Database;
 let loops: LoopService;
@@ -107,13 +108,55 @@ describe('G16: Continuous operation mode', () => {
     const events: any[] = [];
     swarmEventBus.subscribe((event) => events.push(event));
 
-    await (daemon as any).executeGoal({ id: goalId, objective: 'Investigate an unproven gap', risk_class: 'low', metadata: { recommended_loop: 'research-loop' }, created_at: new Date().toISOString() });
+    await (daemon as any).executeGoal({ id: goalId, objective: 'Investigate an unproven gap', risk_class: 'low', metadata: { recommended_loop: 'research-loop', repository_path: tempDir, maker_runtime: 'opencode' }, created_at: new Date().toISOString() });
 
     const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(goalId) as { status: string; metadata: string };
-    expect(startLoop).toHaveBeenCalledWith({ goal_id: goalId, loop_name: 'research-loop' });
+    expect(startLoop).toHaveBeenCalledWith({ goal_id: goalId, loop_name: 'research-loop', repository_path: tempDir });
     expect(goal.status).toBe('blocked');
     expect(JSON.parse(goal.metadata)).toMatchObject({ completion_evidence_status: 'UNDETERMINED', blocked_reason: 'no_findings' });
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ data: expect.objectContaining({ daemon: 'goal_blocked', goal_id: goalId }) })]));
+  });
+
+  it('executes a distinct checker and leaves certified work behind human approval', async () => {
+    const goalId = insertGoal('governed-research', 'Run a governed research candidate', 'medium');
+    db.prepare("UPDATE goals SET status = 'decomposed' WHERE id = ?").run(goalId);
+    const identity = (suffix: string) => ({
+      model_family: `model-${suffix}`, provider: `provider-${suffix}`, system_prompt_hash: `prompt-${suffix}`,
+      context_hash: `context-${suffix}`, memory_scope_hash: `memory-${suffix}`,
+      retrieval_hash: `retrieval-${suffix}`, oracle_hash: `oracle-${suffix}`,
+    });
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES ('review-run', ?, 'research-loop', 'closed', 'verifying', ?, '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(goalId, tempDir, now, now);
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
+      VALUES ('maker-lease', 'review-run', 'maker', 'opencode', 'completed', ?, ?, ?),
+             ('checker-lease', 'review-run', 'checker', 'codex', 'completed', ?, ?, ?)`).run(
+      JSON.stringify(identity('maker')), now, now,
+      JSON.stringify({ ...identity('checker'), maker_lease_id: 'maker-lease', verdict: 'accepted' }), now, now,
+    );
+    vi.spyOn(loops, 'startLoop').mockReturnValue({ id: 'review-run', findings: [{ id: 'finding-1' }] } as any);
+    vi.spyOn(loops, 'continueLoopRun').mockReturnValue({ run: {} as any, leases: [
+      { id: 'maker-lease', role: 'maker', runtime: 'opencode', status: 'prepared', metadata: {} },
+      { id: 'checker-lease', role: 'checker', runtime: 'manual', status: 'prepared', metadata: { maker_lease_id: 'maker-lease' } },
+    ] } as any);
+    vi.spyOn(loops, 'executeWorker').mockResolvedValue({} as any);
+    vi.spyOn(loops, 'runDeterministicChecks').mockReturnValue({ run: { status: 'verifying' } } as any);
+    vi.spyOn(loops, 'listWorkerLeases').mockReturnValue([
+      { id: 'checker-lease', role: 'checker', runtime: 'manual', status: 'prepared', metadata: { maker_lease_id: 'maker-lease' } },
+    ] as any);
+    const executeChecker = vi.spyOn(loops, 'executeChecker').mockResolvedValue({} as any);
+    const certify = vi.spyOn(loops, 'certifyLoopRun').mockReturnValue({ certified: true, gates: [{ name: 'security_checker_verdict', status: 'skipped' }], run: { status: 'ready_for_human_merge' } } as any);
+    vi.spyOn(KnowledgeRuntimeService.prototype, 'closeLoop').mockReturnValue({ status: 'closed' } as any);
+
+    await (daemon as any).executeGoal({ id: goalId, objective: 'Run a governed research candidate', risk_class: 'medium', metadata: {
+      recommended_loop: 'research-loop', repository_path: tempDir, maker_runtime: 'opencode', checker_runtime: 'codex',
+    }, created_at: now });
+
+    expect(executeChecker).toHaveBeenCalledWith('review-run', expect.objectContaining({ lease_id: 'checker-lease', runtime: 'codex' }));
+    expect(certify).toHaveBeenCalledWith('review-run');
+    expect(loops.getGoal(goalId)).toMatchObject({ status: 'blocked', metadata: {
+      completion_evidence_status: 'SUPPORTED', blocked_reason: 'human_approval_required', promotion_performed: false,
+    } });
   });
 
   it('prunes stale worktrees on every tick', async () => {
@@ -150,7 +193,7 @@ describe('G16: Continuous operation mode', () => {
       id: goalId,
       objective: 'Persist autonomous failure evidence',
       risk_class: 'medium',
-      metadata: { recommended_loop: 'research-loop' },
+      metadata: { recommended_loop: 'research-loop', maker_runtime: 'opencode' },
       created_at: new Date().toISOString(),
     });
 

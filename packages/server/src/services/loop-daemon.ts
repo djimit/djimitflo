@@ -5,8 +5,18 @@ import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { ReviewerIndependenceService } from './reviewer-independence-service';
 import { authorityGateForGoal } from './authority-gate';
 import { isCanonicalLoopName } from '@djimitflo/shared';
+
+const AUTONOMOUS_RUNTIMES = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'pi'] as const;
+type AutonomousRuntime = typeof AUTONOMOUS_RUNTIMES[number];
+
+function autonomousRuntime(value: unknown): AutonomousRuntime | undefined {
+  return typeof value === 'string' && AUTONOMOUS_RUNTIMES.includes(value as AutonomousRuntime)
+    ? value as AutonomousRuntime
+    : undefined;
+}
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -231,7 +241,16 @@ export class LoopDaemon {
         && isCanonicalLoopName(goal.metadata.recommended_loop)
         ? goal.metadata.recommended_loop
         : undefined;
-      const run = this.loops.startLoop({ goal_id: goal.id, loop_name: recommendedLoop });
+      const repositoryPath = typeof goal.metadata.repository_path === 'string' && goal.metadata.repository_path.trim()
+        ? goal.metadata.repository_path.trim()
+        : process.env.LOOP_REPOSITORY_PATH?.trim();
+      const makerRuntime = autonomousRuntime(goal.metadata.maker_runtime) || autonomousRuntime(process.env.LOOP_MAKER_RUNTIME);
+      if (!makerRuntime) throw new Error('AUTONOMOUS_MAKER_RUNTIME_REQUIRED');
+      const run = this.loops.startLoop({
+        goal_id: goal.id,
+        loop_name: recommendedLoop,
+        ...(repositoryPath ? { repository_path: repositoryPath } : {}),
+      });
       runId = run.id;
 
       // 3. Skip execution if no findings were discovered.
@@ -264,6 +283,7 @@ export class LoopDaemon {
       const prepared = this.loops.continueLoopRun(run.id, {
         max_assignments: 1,
         max_maker_workers: 1,
+        runtime: makerRuntime,
       });
 
       // 5. Find the prepared maker lease and execute it.
@@ -280,58 +300,76 @@ export class LoopDaemon {
         skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
       });
 
-      // 7. Run deterministic checks (test, lint, type-check).
-      try {
-        const checks = this.loops.runDeterministicChecks(run.id, {
-          lease_id: makerLease.id,
+      // 7. Run deterministic checks (test, lint, type-check) and retry once.
+      let activeMaker = makerLease;
+      let checks = this.loops.runDeterministicChecks(run.id, {
+        lease_id: activeMaker.id,
+        timeout_ms: 120_000,
+      });
+      if (checks.run.status === 'blocked') {
+        const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: activeMaker.id });
+        activeMaker = retry.retry_maker;
+        await this.loops.executeWorker(run.id, {
+          lease_id: activeMaker.id,
+          timeout_ms: 300_000,
+          diff_max_lines: 200,
+          skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
+        });
+        checks = this.loops.runDeterministicChecks(run.id, {
+          lease_id: activeMaker.id,
           timeout_ms: 120_000,
         });
-
-        // 8. If checks fail, retry once (G3 feedback law).
-        if (checks.run.status === 'blocked') {
-          try {
-            const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id });
-            const retryMaker = retry.retry_maker;
-            await this.loops.executeWorker(run.id, {
-              lease_id: retryMaker.id,
-              timeout_ms: 300_000,
-              diff_max_lines: 200,
-              skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
-            });
-            this.loops.runDeterministicChecks(run.id, {
-              lease_id: retryMaker.id,
-              timeout_ms: 120_000,
-            });
-          } catch { /* best-effort retry */ }
-        }
-      } catch { /* best-effort: checks are not fatal for the daemon */ }
-
-      // 9. Verify the run (G3.4 convergence verification).
-      const verification = this.loops.verifyLoopRun(run.id);
-      const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
-
-      // 9b. Close learning loop (reflection + memory + follow-up).
-      if (allGatesPass) {
-        try {
-          const knowledge = new KnowledgeRuntimeService(this.db);
-          knowledge.closeLoop({ loop_run_id: run.id });
-        } catch { /* best-effort: learning closure is not fatal */ }
       }
+      if (checks.run.status === 'blocked') throw new Error('DETERMINISTIC_CHECKS_FAILED');
 
-      // 10. Update goal + run status.
-      const goalStatus = allGatesPass ? 'completed' : 'failed';
-      const runStatus = allGatesPass ? 'completed' : 'blocked';
-      this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
-        .run(goalStatus, new Date().toISOString(), goal.id);
-      this.db.prepare('UPDATE loop_runs SET status = ?, updated_at = ? WHERE id = ?')
-        .run(runStatus, new Date().toISOString(), run.id);
+      // 8. Select and execute a distinct real checker runtime.
+      const checkerRuntime = autonomousRuntime(goal.metadata.checker_runtime) || autonomousRuntime(process.env.LOOP_CHECKER_RUNTIME);
+      if (!checkerRuntime) throw new Error('INDEPENDENT_CHECKER_RUNTIME_REQUIRED');
+      if (checkerRuntime === activeMaker.runtime) throw new Error('CHECKER_RUNTIME_NOT_INDEPENDENT');
+      const checkerLease = this.loops.listWorkerLeases(run.id).find((lease) =>
+        lease.role === 'checker'
+        && lease.status === 'prepared'
+        && lease.metadata.maker_lease_id === activeMaker.id
+      );
+      if (!checkerLease) throw new Error('CHECKER_LEASE_NOT_FOUND');
+      await this.loops.executeChecker(run.id, {
+        lease_id: checkerLease.id,
+        runtime: checkerRuntime,
+        timeout_ms: 300_000,
+        skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
+      });
+
+      // 9. Require independently evidenced review, then reuse canonical certification.
+      const independence = new ReviewerIndependenceService(this.db).assessLoop(run.id);
+      if (independence.state !== 'PASS') throw new Error(`CHECKER_INDEPENDENCE_${independence.state}`);
+      const certification = this.loops.certifyLoopRun(run.id);
+      const learning = certification.certified
+        ? new KnowledgeRuntimeService(this.db).closeLoop({ loop_run_id: run.id })
+        : null;
+      const candidateReady = certification.certified && learning?.status === 'closed';
+
+      // 10. Keep a certified candidate behind the existing human promotion boundary.
+      this.loops.updateGoal(goal.id, {
+        status: candidateReady ? 'blocked' : 'failed',
+        metadata: {
+          ...goal.metadata,
+          loop_run_id: run.id,
+          completion_evidence_status: candidateReady ? 'SUPPORTED' : 'UNDETERMINED',
+          blocked_reason: candidateReady ? 'human_approval_required' : 'learning_closure_blocked',
+          reviewer_independence: independence,
+          learning_closure_status: learning?.status || 'not_started',
+          promotion_performed: false,
+        },
+      });
 
       swarmEventBus.emit('convergence', {
-        daemon: 'goal_completed',
+        daemon: candidateReady ? 'goal_candidate_ready' : 'goal_blocked',
         goal_id: goal.id,
         run_id: run.id,
-        certified: allGatesPass,
-        gates: verification.gates.map(g => `${g.name}:${g.status}`),
+        certified: certification.certified,
+        learning_closed: learning?.status === 'closed',
+        promotion_performed: false,
+        gates: certification.gates.map(g => `${g.name}:${g.status}`),
       });
 
     } catch (error) {

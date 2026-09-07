@@ -69,7 +69,7 @@ describe('G19: Parallel goal execution', () => {
     await daemon.tick();
 
     // Both goals should have been processed (started or completed if no findings).
-    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked');
+    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked' || e.data?.daemon === 'goal_failed');
     expect(daemonEvents.length).toBe(2);
 
     // The tick_processed event should report 2 processed.
@@ -92,7 +92,7 @@ describe('G19: Parallel goal execution', () => {
 
     await daemon.tick();
 
-    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked');
+    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked' || e.data?.daemon === 'goal_failed');
     expect(daemonEvents.length).toBe(3); // only 3 slots
   });
 
@@ -136,7 +136,7 @@ describe('G19: Parallel goal execution', () => {
 
     await singleDaemon.tick();
 
-    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked');
+    const daemonEvents = events.filter((e) => e.data?.daemon === 'goal_started' || e.data?.daemon === 'goal_completed' || e.data?.daemon === 'goal_blocked' || e.data?.daemon === 'goal_failed');
     expect(daemonEvents.length).toBe(1);
     // Critical priority goal should be processed first
     expect(daemonEvents[0].data.goal_id).toBe(criticalId);

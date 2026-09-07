@@ -38,4 +38,13 @@ describe('ReviewerIndependenceService', () => {
       { id: 'maker', metadata: {} }, { id: 'checker', metadata: {} }, 'loop-1',
     )).toMatchObject({ state: 'UNDETERMINED', risk: 'medium' });
   });
+
+  it('does not treat mock reviewers as independent production evidence', () => {
+    const checker = Object.fromEntries(Object.entries(independent).map(([key, value]) => [key, `${value}-checker`]));
+    expect(new ReviewerIndependenceService(db).assess(
+      { id: 'maker', runtime: 'opencode', metadata: independent },
+      { id: 'checker', runtime: 'mock', metadata: checker },
+      'loop-1',
+    )).toMatchObject({ state: 'UNDETERMINED', risk: 'medium' });
+  });
 });

@@ -227,7 +227,7 @@ export class KnowledgeRuntimeService {
     const blockedReasons: string[] = [];
     if (!maker || maker.status !== 'completed') blockedReasons.push('maker_not_completed');
     if (!checker || checker.status !== 'completed' || checker.metadata.verdict !== 'accepted') blockedReasons.push('checker_not_accepted');
-    if (reviewerIndependence.state === 'FAIL') blockedReasons.push('checker_independence_failed');
+    if (reviewerIndependence.state !== 'PASS') blockedReasons.push(`checker_independence_${reviewerIndependence.state.toLowerCase()}`);
     if (bundle.run.gates.length === 0) blockedReasons.push('gates_missing');
     if (bundle.run.gates.some((gate) => gate.status === 'fail')) blockedReasons.push('gate_not_passed');
 

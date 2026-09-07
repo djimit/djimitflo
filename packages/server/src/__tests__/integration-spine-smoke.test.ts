@@ -79,7 +79,7 @@ describe('agentic OS integration spine smoke', () => {
     fs.rmSync(worktreeRoot, { recursive: true, force: true });
   });
 
-  it('runs one imported integration event through worker, checker and learning closure', async () => {
+  it('runs one imported integration event and blocks synthetic reviewer learning', async () => {
     const repo = makeRepo();
     try {
       const importedResponse = await fetch(`${baseUrl}/work-items/integrations/import`, {
@@ -178,15 +178,12 @@ describe('agentic OS integration spine smoke', () => {
       expect(closure).toMatchObject({
         action: 'closed_loop_learning',
         loop_run_id: loopRunId,
-        status: 'closed',
-        blocked_reasons: [],
+        status: 'blocked',
+        blocked_reasons: ['checker_independence_undetermined'],
       });
-      expect(closure.eval_run.id).toEqual(expect.any(String));
-      expect(closure.reflection.id).toEqual(expect.any(String));
-      expect(closure.memory_candidate).toMatchObject({
-        source_ref: `loop:${loopRunId}`,
-        promotion_status: 'proposed',
-      });
+      expect(closure.eval_run).toBeNull();
+      expect(closure.reflection).toBeNull();
+      expect(closure.memory_candidate).toBeNull();
 
       const workItem = db.prepare('SELECT status, metadata FROM work_items WHERE id = ?').get(workItemId) as any;
       const metadata = JSON.parse(workItem.metadata);
@@ -218,25 +215,25 @@ describe('agentic OS integration spine smoke', () => {
           id: loopRunId,
         },
         requested_runtime: 'mock',
-        next_safe_action: 'Review reflection and memory candidates',
+        next_safe_action: 'Close loop learning',
       });
       expect(mission.integration_spine.latest.leases).toEqual(expect.arrayContaining([
         expect.objectContaining({ role: 'maker', effective_runtime: 'mock', status: 'completed' }),
         expect.objectContaining({ role: 'checker', effective_runtime: 'mock', status: 'completed' }),
       ]));
-      expect(mission.integration_spine.latest.eval_run.id).toBe(closure.eval_run.id);
-      expect(mission.integration_spine.next_safe_action).toBe('Review reflection and memory candidates');
+      expect(mission.integration_spine.latest.eval_run).toBeNull();
+      expect(mission.integration_spine.next_safe_action).toBe('Close loop learning');
       expect(mission.production_pilot).toMatchObject({
         metrics: {
           total_runs: 1,
-          completed_runs: 1,
-          success_rate: 1,
+          completed_runs: 0,
+          success_rate: 0,
           checker_rejection_rate: 0,
-          reflection_candidates: 1,
-          memory_candidates: 1,
+          reflection_candidates: 0,
+          memory_candidates: 0,
           manual_intervention_count: 0,
         },
-        next_safe_action: 'Review reflection and memory candidates',
+        next_safe_action: 'Close loop learning',
       });
       expect(mission.production_pilot.latest.work_item.id).toBe(workItemId);
     } finally {
