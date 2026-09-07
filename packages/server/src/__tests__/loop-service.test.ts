@@ -509,6 +509,7 @@ describe('doc-drift-and-small-fix-loop', () => {
       'const readme = path.join(dir, "README.md");',
       'const raw = fs.readFileSync(readme, "utf8");',
       'fs.writeFileSync(readme, raw.replace("TODO: document setup", "Setup is documented."));',
+      'fs.writeFileSync(path.join(dir, "NOTES.md"), Array(25).fill("bounded note").join("\\n"));',
       'console.log(JSON.stringify({ type: "text", part: { type: "text", text: "patched README" } }));',
       'console.log(JSON.stringify({ type: "text", part: { type: "text", text: JSON.stringify({ verdict: "accepted", notes: "Small docs fix accepted." }) } }));',
     ]);
@@ -535,12 +536,13 @@ describe('doc-drift-and-small-fix-loop', () => {
     const executeResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/execute-maker`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: maker.id, diff_max_lines: 20, timeout_ms: 10_000 }),
+      body: JSON.stringify({ lease_id: maker.id, diff_max_lines: 40, timeout_ms: 10_000 }),
     });
 
     expect(executeResponse.status).toBe(200);
     const executed = await executeResponse.json() as any;
     expect(executed.lease.status).toBe('completed');
+    expect(executed.lease.metadata.diff_lines).toBeGreaterThanOrEqual(25);
     expect(executed.gates).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'maker_runtime_exit_zero', status: 'pass' }),
       expect.objectContaining({ name: 'diff_under_threshold', status: 'pass' }),
@@ -556,7 +558,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     expect(maker.worktree_path).toBeTruthy();
     const worktreePackagePath = path.join(maker.worktree_path, 'package.json');
     const worktreePackage = JSON.parse(fs.readFileSync(worktreePackagePath, 'utf8'));
-    worktreePackage.scripts.test = 'node -e "require(\'fs\').writeFileSync(\'env-leak.txt\', process.env.JWT_SECRET || \'missing\')"';
+    worktreePackage.scripts.test = 'node -e "setTimeout(() => require(\'fs\').writeFileSync(\'env-leak.txt\', process.env.JWT_SECRET || \'missing\'), 250)"';
     fs.writeFileSync(worktreePackagePath, JSON.stringify(worktreePackage, null, 2));
 
     const preCheckerVerifyResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/verify`, { method: 'POST' });
@@ -573,11 +575,15 @@ describe('doc-drift-and-small-fix-loop', () => {
     const blockedComplete = await blockedCompleteResponse.json() as any;
     expect(blockedComplete.error.code).toBe('LOOP_COMPLETION_BLOCKED');
 
-    const checksResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/run-checks`, {
+    const checksStartedAt = Date.now();
+    const checksRequest = fetch(`${baseUrl}/loops/runs/${run.id}/run-checks`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ lease_id: maker.id, timeout_ms: 10_000 }),
     });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(Date.now() - checksStartedAt).toBeLessThan(200);
+    const checksResponse = await checksRequest;
     expect(checksResponse.status).toBe(200);
     const checks = await checksResponse.json() as any;
     expect(checks.checks).toEqual(expect.arrayContaining([

@@ -322,9 +322,9 @@ export class LoopDaemon {
 
       // 7. Run deterministic checks (test, lint, type-check) and retry once.
       let activeMaker = makerLease;
-      let checks = this.loops.runDeterministicChecks(run.id, {
+      let checks = await this.loops.runDeterministicChecks(run.id, {
         lease_id: activeMaker.id,
-        timeout_ms: 120_000,
+        timeout_ms: 300_000,
       });
       if (checks.run.status === 'blocked') {
         const retry = this.loops.retryLoopRun(run.id, { maker_lease_id: activeMaker.id });
@@ -335,9 +335,9 @@ export class LoopDaemon {
           diff_max_lines: 200,
           skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
         });
-        checks = this.loops.runDeterministicChecks(run.id, {
+        checks = await this.loops.runDeterministicChecks(run.id, {
           lease_id: activeMaker.id,
-          timeout_ms: 120_000,
+          timeout_ms: 300_000,
         });
       }
       if (checks.run.status === 'blocked') throw new Error('DETERMINISTIC_CHECKS_FAILED');

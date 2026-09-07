@@ -405,7 +405,7 @@ describe('workstation swarm resource plan', () => {
         trace: { trace_id: 'trace-worker-pool-skip', spans: [], edges: [], roots: [] },
       };
     };
-    service.loops.runDeterministicChecks = () => null;
+    service.loops.runDeterministicChecks = async () => null;
 
     const result = await service.startNextWorker({
       skip_permissions: true,

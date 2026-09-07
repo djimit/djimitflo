@@ -1003,7 +1003,7 @@ export class SwarmStatusService {
           skip_permissions: input.skip_permissions,
         });
       if (decision.next_action === 'execute_maker') {
-        const checked = this.loops.runDeterministicChecks(decision.loop_run_id, {
+        const checked = await this.loops.runDeterministicChecks(decision.loop_run_id, {
           lease_id: decision.lease_id,
           timeout_ms: input.timeout_ms,
         });

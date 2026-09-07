@@ -262,9 +262,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/run-checks', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/run-checks', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.runDeterministicChecks(req.params.id, req.body || {}));
+      res.json(await loopService.runDeterministicChecks(req.params.id, req.body || {}));
     } catch (error) {
       try {
         mapLoopServiceError(error);

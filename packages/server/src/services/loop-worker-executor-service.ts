@@ -128,8 +128,7 @@ export class LoopWorkerExecutorService {
       : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
-    const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
-    const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
+    const diffLines = this.changedLineCount(makerLease.worktree_path!);
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
@@ -309,6 +308,25 @@ export class LoopWorkerExecutorService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private changedLineCount(worktreePath: string): number {
+    const diff = this.loopService.git(worktreePath, ['diff', '--', '.']);
+    let lines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
+    const root = path.resolve(worktreePath);
+    const untracked = this.loopService.git(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z']);
+    for (const relativePath of untracked.split('\0').filter(Boolean)) {
+      const filePath = path.resolve(root, relativePath);
+      if (!filePath.startsWith(`${root}${path.sep}`)) continue;
+      const stat = fs.lstatSync(filePath);
+      if (stat.isSymbolicLink()) {
+        lines += 1;
+      } else if (stat.isFile()) {
+        const content = fs.readFileSync(filePath);
+        lines += content.length === 0 ? 0 : content.reduce((count, byte) => count + (byte === 10 ? 1 : 0), content.at(-1) === 10 ? 0 : 1);
+      }
+    }
+    return lines;
+  }
 
   private reviewIdentity(runtime: string, role: 'maker' | 'checker', prompt: string): Record<string, string> {
     const configuredModel = runtime === 'opencode' ? process.env.DJIMITFLO_OPENCODE_MODEL

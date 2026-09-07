@@ -140,7 +140,7 @@ describe('G16: Continuous operation mode', () => {
       { id: 'checker-lease', role: 'checker', runtime: 'manual', status: 'prepared', metadata: { maker_lease_id: 'maker-lease' } },
     ] } as any);
     vi.spyOn(loops, 'executeWorker').mockResolvedValue({} as any);
-    vi.spyOn(loops, 'runDeterministicChecks').mockReturnValue({ run: { status: 'verifying' } } as any);
+    vi.spyOn(loops, 'runDeterministicChecks').mockResolvedValue({ run: { status: 'verifying' } } as any);
     vi.spyOn(loops, 'listWorkerLeases').mockReturnValue([
       { id: 'checker-lease', role: 'checker', runtime: 'manual', status: 'prepared', metadata: { maker_lease_id: 'maker-lease' } },
     ] as any);
@@ -188,7 +188,7 @@ describe('G16: Continuous operation mode', () => {
         loops.updateWorkerLeaseStatus('approval-maker', 'completed', identity('maker'));
         return {} as any;
       });
-    vi.spyOn(loops, 'runDeterministicChecks').mockReturnValue({ run: { status: 'verifying' } } as any);
+    vi.spyOn(loops, 'runDeterministicChecks').mockResolvedValue({ run: { status: 'verifying' } } as any);
     const executeChecker = vi.spyOn(loops, 'executeChecker')
       .mockImplementationOnce(async () => {
         db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)

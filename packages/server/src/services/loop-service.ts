@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
-import { spawnSync } from 'child_process';
+import { execFile } from 'child_process';
 import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
@@ -993,7 +993,7 @@ export class LoopService {
     };
   }
 
-  runDeterministicChecks(id: string, input: RunChecksInput = {}): { run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> } {
+  async runDeterministicChecks(id: string, input: RunChecksInput = {}): Promise<{ run: LoopRunRecord; lease: WorkerLeaseRecord; checks: Array<Record<string, unknown>> }> {
     const run = this.getLoopRun(id);
     const leases = this.listWorkerLeases(run.id);
     const makerLease = input.lease_id
@@ -1019,41 +1019,48 @@ export class LoopService {
     const outputDir = path.join(this.evidenceRoot, run.id, 'checks', makerLease.id);
     fs.mkdirSync(outputDir, { recursive: true });
 
-    const checks = scripts.map((scriptName) => {
+    const checks: Array<Record<string, unknown>> = [];
+    for (const scriptName of scripts) {
       const stdoutPath = path.join(outputDir, `${scriptName}.stdout.log`);
       const stderrPath = path.join(outputDir, `${scriptName}.stderr.log`);
       if (!packageScripts.has(scriptName)) {
         fs.writeFileSync(stdoutPath, '', 'utf8');
         fs.writeFileSync(stderrPath, `script not present: ${scriptName}\n`, 'utf8');
-        return {
+        checks.push({
           name: scriptName,
           status: 'skipped',
           exit_status: null,
           stdout_path: stdoutPath,
           stderr_path: stderrPath,
-        };
+        });
+        continue;
       }
 
-      const result = spawnSync('npm', ['run', scriptName], {
-        cwd: makerLease.worktree_path!,
-        encoding: 'utf8',
-        timeout: timeoutMs,
-        env: this.buildRuntimeEnv(),
-        maxBuffer: 5 * 1024 * 1024,
+      const result = await new Promise<{ stdout: string; stderr: string; exitStatus: number | null; timedOut: boolean }>((resolve) => {
+        execFile('npm', ['run', scriptName], {
+          cwd: makerLease.worktree_path!,
+          encoding: 'utf8',
+          timeout: timeoutMs,
+          env: this.buildRuntimeEnv(),
+          maxBuffer: 5 * 1024 * 1024,
+        }, (error, stdout, stderr) => resolve({
+          stdout,
+          stderr: stderr || error?.message || '',
+          exitStatus: error ? (typeof error.code === 'number' ? error.code : null) : 0,
+          timedOut: Boolean(error?.killed || error?.message.includes('ETIMEDOUT')),
+        }));
       });
-      const exitStatus = typeof result.status === 'number' ? result.status : null;
-      const timedOut = Boolean(result.error && result.error.message.includes('ETIMEDOUT'));
       fs.writeFileSync(stdoutPath, result.stdout || '', 'utf8');
-      fs.writeFileSync(stderrPath, result.stderr || result.error?.message || '', 'utf8');
-      return {
+      fs.writeFileSync(stderrPath, result.stderr, 'utf8');
+      checks.push({
         name: scriptName,
-        status: exitStatus === 0 && !timedOut ? 'pass' : 'fail',
-        exit_status: exitStatus,
-        timed_out: timedOut,
+        status: result.exitStatus === 0 && !result.timedOut ? 'pass' : 'fail',
+        exit_status: result.exitStatus,
+        timed_out: result.timedOut,
         stdout_path: stdoutPath,
         stderr_path: stderrPath,
-      };
-    });
+      });
+    }
 
     const failed = checks.some((check) => check.status === 'fail');
     this.updateWorkerLeaseStatus(makerLease.id, failed ? 'failed' : 'completed', {

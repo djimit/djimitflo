@@ -679,7 +679,7 @@ export class ProofRunService {
         skip_permissions: skipPermissions,
       });
       this.ensureProofRunMetadata(loopRunId, proofRunId);
-      const checks = this.loops.runDeterministicChecks(loopRunId, {
+      const checks = await this.loops.runDeterministicChecks(loopRunId, {
         lease_id: makerPrepared.id,
         timeout_ms: 120_000,
         scripts: ['proof:test', 'proof:lint', 'proof:type-check'],
@@ -701,7 +701,7 @@ export class ProofRunService {
             skip_permissions: skipPermissions,
           });
           this.ensureProofRunMetadata(loopRunId, proofRunId);
-          const retryChecks = this.loops.runDeterministicChecks(loopRunId, {
+          const retryChecks = await this.loops.runDeterministicChecks(loopRunId, {
             lease_id: retryMaker.id,
             timeout_ms: 120_000,
             scripts: ['proof:test', 'proof:lint', 'proof:type-check'],
