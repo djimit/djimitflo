@@ -335,15 +335,28 @@ export class LoopDaemon {
       });
 
     } catch (error) {
-      // Mark the goal as failed if execution fails.
-      this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
-        .run('failed', new Date().toISOString(), goal.id);
+      const now = new Date().toISOString();
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const failureCode = errorMessage.match(/^[A-Z][A-Z0-9_]+/)?.[0]
+        || (error instanceof Error ? error.name : 'UNKNOWN_EXECUTION_FAILURE');
+      this.db.prepare(`UPDATE goals
+        SET status = 'failed',
+            metadata = json_set(metadata, '$.completion_evidence_status', 'UNDETERMINED', '$.blocked_reason', 'execution_failed', '$.execution_failure', ?),
+            updated_at = ?
+        WHERE id = ?`).run(failureCode, now, goal.id);
+      if (runId) {
+        this.db.prepare(`UPDATE loop_runs
+          SET status = 'blocked',
+              metadata = json_set(metadata, '$.completion_evidence_status', 'UNDETERMINED', '$.blocked_reason', 'execution_failed', '$.execution_failure', ?),
+              updated_at = ?
+          WHERE id = ?`).run(failureCode, now, runId);
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
         goal_id: goal.id,
         run_id: runId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
       });
     } finally {
       // G19: remove from active goals when done (success or failure).

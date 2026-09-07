@@ -134,6 +134,42 @@ describe('G16: Continuous operation mode', () => {
     expect(prune).toHaveBeenCalledOnce();
   });
 
+  it('persists fail-closed evidence when execution throws after a loop starts', async () => {
+    const goalId = insertGoal('Persist autonomous failure evidence', 'medium');
+    db.prepare("UPDATE goals SET status = 'decomposed', metadata = ? WHERE id = ?").run(JSON.stringify({
+      recommended_loop: 'research-loop',
+      source_work_item_id: 'test-work-item',
+      source_ref: 'test:failure-evidence',
+    }), goalId);
+    const startLoop = vi.spyOn(loops, 'startLoop');
+    vi.spyOn(loops, 'continueLoopRun').mockImplementation(() => {
+      throw new Error('WORKTREE_CREATE_FAILED: repository is unavailable');
+    });
+
+    await (daemon as any).executeGoal({
+      id: goalId,
+      objective: 'Persist autonomous failure evidence',
+      risk_class: 'medium',
+      metadata: { recommended_loop: 'research-loop' },
+      created_at: new Date().toISOString(),
+    });
+
+    const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(goalId) as { status: string; metadata: string };
+    expect(goal.status).toBe('failed');
+    expect(JSON.parse(goal.metadata)).toMatchObject({
+      completion_evidence_status: 'UNDETERMINED',
+      blocked_reason: 'execution_failed',
+      execution_failure: 'WORKTREE_CREATE_FAILED',
+    });
+    const run = db.prepare('SELECT status, metadata FROM loop_runs WHERE id = ?').get(startLoop.mock.results[0].value.id) as { status: string; metadata: string };
+    expect(run.status).toBe('blocked');
+    expect(JSON.parse(run.metadata)).toMatchObject({
+      completion_evidence_status: 'UNDETERMINED',
+      blocked_reason: 'execution_failed',
+      execution_failure: 'WORKTREE_CREATE_FAILED',
+    });
+  });
+
   it('marks a goal as failed if execution throws', async () => {
     const events: any[] = [];
     swarmEventBus.subscribe((e) => events.push(e));
