@@ -129,6 +129,27 @@ describe('createWorktree git-lock retry', () => {
     expect(status.trim()).toBe('');
   });
 
+  it('includes untracked files in independent checker evidence', () => {
+    const repoPath = path.join(worktreeRoot, 'checker-evidence-repo');
+    fs.mkdirSync(repoPath, { recursive: true });
+    fs.writeFileSync(path.join(repoPath, 'README.md'), 'baseline\n');
+    execFileSync('git', ['init'], { cwd: repoPath, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'worktree-test@example.invalid'], { cwd: repoPath });
+    execFileSync('git', ['config', 'user.name', 'Worktree Test'], { cwd: repoPath });
+    execFileSync('git', ['add', 'README.md'], { cwd: repoPath });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repoPath, stdio: 'ignore' });
+    fs.writeFileSync(path.join(repoPath, 'new-test.ts'), 'export const checkerSeesMe = true;\n');
+
+    const prompt = new LoopService(db).buildCheckerPrompt(
+      { id: 'run-checker-evidence', loop_name: 'research-loop' } as any,
+      { id: 'maker', worktree_path: repoPath, metadata: {} } as any,
+      { id: 'checker', metadata: {} } as any,
+    );
+
+    expect(prompt).toContain('diff --git a/new-test.ts b/new-test.ts');
+    expect(prompt).toContain('+export const checkerSeesMe = true;');
+  });
+
   it('snapshots tracked source edits into worker worktrees', () => {
     const mgr = new WorktreeManager(db);
     const repoPath = path.join(worktreeRoot, 'tracked-repo');

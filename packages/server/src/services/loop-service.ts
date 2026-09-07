@@ -2119,7 +2119,25 @@ export class LoopService {
 
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
-    const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const trackedDiff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const worktreeRoot = path.resolve(worktreePath || '.');
+    const untrackedDiff = worktreePath
+      ? this.git(worktreePath, ['ls-files', '--others', '--exclude-standard', '-z'])
+          .split('\0')
+          .filter(Boolean)
+          .map((relativePath) => {
+            const filePath = path.resolve(worktreeRoot, relativePath);
+            if (!filePath.startsWith(`${worktreeRoot}${path.sep}`) || !fs.existsSync(filePath) || !fs.lstatSync(filePath).isFile()) return '';
+            const content = fs.readFileSync(filePath);
+            const body = content.includes(0)
+              ? 'Binary file omitted from checker prompt.'
+              : content.toString('utf8').split(/\r?\n/).map((line) => `+${line}`).join('\n');
+            return [`diff --git a/${relativePath} b/${relativePath}`, 'new file mode 100644', '--- /dev/null', `+++ b/${relativePath}`, body].join('\n');
+          })
+          .filter(Boolean)
+          .join('\n')
+      : '';
+    const diff = [trackedDiff, untrackedDiff].filter(Boolean).join('\n').slice(0, 40_000);
     const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
       ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
       : '';
