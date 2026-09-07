@@ -1,7 +1,7 @@
 {
   "schema": "djimit.golden-learning.evidence.v1",
   "campaign_id": "djimit-golden-learning-20260907",
-  "generated_at": "2026-09-07T12:24:41Z",
+  "generated_at": "2026-09-07T13:33:25Z",
   "status": "VALIDATED_CANDIDATE_REVIEW_REQUIRED",
   "authority": {
     "openmythos": "norms_oracles_and_promotion_evidence",
@@ -22,9 +22,10 @@
       "build": "PASS",
       "lint": "PASS",
       "typecheck": "PASS",
-      "tests_passed": 2171,
+      "tests_passed": 2173,
       "tests_skipped": 21,
-      "test_log_sha256": "f0ef0844c83dc0bd0f4cd780e55a83091b450720f6d9cdc631eb2a755c4cce6a",
+      "test_log_sha256": null,
+      "test_log_status": "PASS_REVIEW_FIX_RUN_GITHUB_CI_REVALIDATION_REQUIRED",
       "lint_log_sha256": "e1b106b7f03e2cf7bf9f5bbc2f819de4b3ac4c6a1a26f87e3227f127cf78c038",
       "build_log_sha256": "ca04ad648dd064fbbc8560c42508f400082f7c5e8261b45c3ba40f026af69a48",
       "typecheck_log_sha256": "c8fcbd87467c6ec584ffce547a463892f6ac35f0af3e6bd64aefa5ff504a2ec9",
@@ -46,6 +47,24 @@
       "corpus_cases": 351,
       "test_log_sha256": "da85ca6665ac2c90b00a602dbbcf5076c4f14a5bf8466bfc117db7eedd99e9d7"
     }
+  },
+  "review_closure": {
+    "review_fix_commit": "85360e58f65ceaad0a9f934432858cb551c784a3",
+    "targeted_tests": "50_PASS",
+    "full_tests": "2173_PASS_21_SKIPPED",
+    "build": "PASS",
+    "lint": "PASS",
+    "typecheck": "PASS",
+    "fixed_findings": [
+      "durable_capability_token_resurrection",
+      "unresolved_containment_release_evidence_and_actor_spoofing",
+      "non_executable_research_work_items",
+      "baseline_fragmented_outcome_replications",
+      "external_event_scope_inflation",
+      "blanket_json_field_coercion",
+      "goal_batch_metadata_clobbering",
+      "stale_dream_opportunity_ranking"
+    ]
   },
   "worldlab": {
     "pointwise_control": {
@@ -94,13 +113,13 @@
     }
   },
   "goals": [
-    { "goal_id": "GLC-01-source-provenance", "functional": "PASS", "live": "PENDING_PUBLICATION" },
+    { "goal_id": "GLC-01-source-provenance", "functional": "PASS", "live": "CANDIDATE_DEPLOYED_EXACT_SHA_REVIEW_REQUIRED" },
     { "goal_id": "GLC-02-observation-learning-spine", "functional": "PASS", "live": "PARTIAL" },
-    { "goal_id": "GLC-03-curiosity-experiment", "functional": "PASS", "live": "UNDETERMINED" },
+    { "goal_id": "GLC-03-curiosity-experiment", "functional": "PASS", "live": "PASS_INERT_RESEARCH_WORK_ITEMS" },
     { "goal_id": "GLC-04-causal-outcome-attribution", "functional": "PASS", "live": "UNDETERMINED" },
     { "goal_id": "GLC-05-reviewer-independence-routing", "functional": "PASS", "live": "UNDETERMINED" },
-    { "goal_id": "GLC-06-contract-golden-traces", "functional": "PASS", "live": "PARTIAL_5_OF_14_OBSERVED" },
-    { "goal_id": "GLC-07-interaction-board-actions", "functional": "PASS", "live": "PENDING_DEPLOYMENT" },
+    { "goal_id": "GLC-06-contract-golden-traces", "functional": "PASS", "live": "PARTIAL_1_OF_14_DECLARED_CONTRACTS_OBSERVED" },
+    { "goal_id": "GLC-07-interaction-board-actions", "functional": "PASS", "live": "PASS_TYPED_ACTION_TO_INERT_RESEARCH_ITEM" },
     { "goal_id": "GLC-08-outcome-specialization", "functional": "PASS", "live": "PARTIAL" },
     { "goal_id": "GLC-09-worldlab-pointwise-trajectory-pov", "functional": "PASS", "live": "NOT_APPLICABLE_LAB_EVIDENCE" },
     { "goal_id": "GLC-10-counterfactual-recovery", "functional": "PASS", "live": "NOT_APPLICABLE_LAB_EVIDENCE" },
@@ -109,7 +128,7 @@
   ],
   "known_gaps": [
     "Canonical OpenMythos source publication is unresolved because the only source is a dirty user worktree.",
-    "Nine of fourteen declared ecosystem routes have no observed production trace and remain UNDETERMINED.",
+    "Thirteen of fourteen declared ecosystem contracts have no matching observed trace and remain UNDETERMINED; six undeclared or partial component routes are visible separately.",
     "No live high-risk checker has all seven independence dimensions evidenced.",
     "Operational causal outcome and skill attribution lack a live confirmatory sample.",
     "Provider monoculture is the only uncontained synthetic federation-chaos fault."
