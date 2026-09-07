@@ -1,7 +1,7 @@
 {
   "schema": "djimit.golden-learning.evidence.v1",
   "campaign_id": "djimit-golden-learning-20260907",
-  "generated_at": "2026-09-07T13:33:25Z",
+  "generated_at": "2026-09-07T13:54:00Z",
   "status": "VALIDATED_CANDIDATE_REVIEW_REQUIRED",
   "authority": {
     "openmythos": "norms_oracles_and_promotion_evidence",
@@ -25,7 +25,7 @@
       "tests_passed": 2173,
       "tests_skipped": 21,
       "test_log_sha256": null,
-      "test_log_status": "PASS_REVIEW_FIX_RUN_GITHUB_CI_REVALIDATION_REQUIRED",
+      "test_log_status": "PASS_LOCAL_GITHUB_STATUS_AUTHORITATIVE_IN_PR",
       "lint_log_sha256": "e1b106b7f03e2cf7bf9f5bbc2f819de4b3ac4c6a1a26f87e3227f127cf78c038",
       "build_log_sha256": "ca04ad648dd064fbbc8560c42508f400082f7c5e8261b45c3ba40f026af69a48",
       "typecheck_log_sha256": "c8fcbd87467c6ec584ffce547a463892f6ac35f0af3e6bd64aefa5ff504a2ec9",
@@ -63,7 +63,8 @@
       "external_event_scope_inflation",
       "blanket_json_field_coercion",
       "goal_batch_metadata_clobbering",
-      "stale_dream_opportunity_ranking"
+      "stale_dream_opportunity_ranking",
+      "noncanonical_outcome_loop_routing"
     ]
   },
   "worldlab": {
@@ -114,7 +115,7 @@
   },
   "goals": [
     { "goal_id": "GLC-01-source-provenance", "functional": "PASS", "live": "CANDIDATE_DEPLOYED_EXACT_SHA_REVIEW_REQUIRED" },
-    { "goal_id": "GLC-02-observation-learning-spine", "functional": "PASS", "live": "PARTIAL" },
+    { "goal_id": "GLC-02-observation-learning-spine", "functional": "PASS", "live": "PASS_30_SIMULATED_REPLICATIONS_ONE_ASSESSMENT_ONE_INERT_WORK_ITEM_EXPLICIT_GOAL_CONVERSION_FAIL_CLOSED" },
     { "goal_id": "GLC-03-curiosity-experiment", "functional": "PASS", "live": "PASS_INERT_RESEARCH_WORK_ITEMS" },
     { "goal_id": "GLC-04-causal-outcome-attribution", "functional": "PASS", "live": "UNDETERMINED" },
     { "goal_id": "GLC-05-reviewer-independence-routing", "functional": "PASS", "live": "UNDETERMINED" },

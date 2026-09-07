@@ -36,7 +36,8 @@ describe('WorldLab to DjimitFlo outcome spine', () => {
       result: { exploratory: true, required_next_gate: 'confirmatory_replication', promotion_eligible: false },
     });
 
-    const item = db.prepare("SELECT id FROM work_items WHERE source = 'outcome_observed'").get() as { id: string };
+    const item = db.prepare("SELECT id, recommended_loop FROM work_items WHERE source = 'outcome_observed'").get() as { id: string; recommended_loop: string };
+    expect(item.recommended_loop).toBe('research-loop');
     const converted = new WorkItemService(db).convertToGoal(item.id);
     const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(converted.goal_id) as any;
     expect(goal.status).toBe('created');

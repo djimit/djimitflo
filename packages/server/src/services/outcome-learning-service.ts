@@ -175,7 +175,7 @@ export class OutcomeLearningService {
           value_score: evaluation.status === 'FALSIFIED' ? 90 : 75,
           confidence: this.mean(outcomes.map((outcome) => outcome.confidence)),
           status: 'candidate',
-          recommended_loop: 'outcome-learning-loop',
+          recommended_loop: 'research-loop',
           metadata,
         });
         if (existing.created) workItemsCreated += 1;
