@@ -76,6 +76,13 @@ COPY packages/mcp-server/package.json packages/mcp-server/
 # The runtime also executes the repository's deterministic promotion checks.
 RUN npm install && \
     node -e "new (require('better-sqlite3'))(':memory:').close()" && \
+    for workspace in packages/shared packages/server packages/dashboard packages/telegram packages/agent-catalog packages/mcp-server packages/ransomware-module; do \
+      rm -rf "$workspace/node_modules/typescript" && \
+      ln -s /app/node_modules/typescript "$workspace/node_modules/typescript" && \
+      test -x "$workspace/node_modules/.bin/tsc"; \
+    done && \
+    rm -rf node_modules/@typescript && \
+    test ! -d node_modules/@typescript && \
     test -x node_modules/.bin/tsc && \
     test -x node_modules/.bin/eslint && \
     test -x node_modules/.bin/vitest
