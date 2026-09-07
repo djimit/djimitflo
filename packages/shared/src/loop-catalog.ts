@@ -41,6 +41,12 @@ export const LOOP_CATALOG = [
     description: 'Detect drift in approval policies, risk gates and autonomy boundaries without applying policy changes.',
     mode: 'closed',
   },
+  {
+    name: 'research-loop',
+    title: 'Research',
+    description: 'Execute preregistered curiosity and reproduction work items without granting direct operational authority.',
+    mode: 'closed',
+  },
 ] as const;
 
 export type LoopName = typeof LOOP_CATALOG[number]['name'];

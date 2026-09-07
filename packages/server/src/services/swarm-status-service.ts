@@ -1,6 +1,7 @@
 import os from 'os';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
+import { LOOP_CATALOG } from '@djimitflo/shared';
 import type { Database } from 'better-sqlite3';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
 import { LoopService, type LoopName, type WorkerLeaseRecord } from './loop-service';
@@ -8,6 +9,7 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { messageBus, type SwarmMessage } from './message_bus';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
+import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -23,15 +25,7 @@ const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
 // a short TTL so each binary is probed at most once per window, process-wide.
 const RUNTIME_BIN_CACHE_TTL_MS = 30_000;
 const runtimeBinCache = new Map<string, { available: boolean; expiresAt: number }>();
-const SUPPORTED_LOOP_NAMES = new Set<LoopName>([
-  'doc-drift-and-small-fix-loop',
-  'repo-maintenance-loop',
-  'skill-quality-loop',
-  'mcp-connector-validation-loop',
-  'security-regression-loop',
-  'okf-synchronization-loop',
-  'overwatch-policy-drift-loop',
-]);
+const SUPPORTED_LOOP_NAMES = new Set<LoopName>(LOOP_CATALOG.map(({ name }) => name));
 
 interface SwarmStatusOptions {
   staleAfterMs?: number;
@@ -208,6 +202,7 @@ export interface WorkerPoolDecision {
   queue_age_ms: number;
   bottleneck_reason: string | null;
   next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+  reviewer_independence: ReviewerIndependenceAssessment | null;
 }
 
 export interface WorkerPoolPlanResult {
@@ -1529,6 +1524,7 @@ export class SwarmStatusService {
     const gates = JSON.parse(row.run_gates_json || '[]') as Array<{ name?: string; status?: string }>;
     const pool = pools.get(effectiveRuntime);
     const blocked: string[] = [];
+    let reviewerIndependence: ReviewerIndependenceAssessment | null = null;
     const queueAgeMs = row.created_at ? Math.max(0, Date.now() - Date.parse(row.created_at)) : 0;
 
     if (row.status === 'running') blocked.push('already_running');
@@ -1549,9 +1545,20 @@ export class SwarmStatusService {
     if (role === 'checker') {
       const metadata = JSON.parse(row.metadata || '{}');
       const makerLeaseId = metadata.maker_lease_id;
-      const maker = makerLeaseId ? this.db.prepare('SELECT status FROM worker_leases WHERE id = ?').get(makerLeaseId) as { status?: string } | undefined : null;
+      const maker = makerLeaseId ? this.db.prepare('SELECT id, loop_run_id, role, runtime, status, metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as any : null;
       if (!makerLeaseId) blocked.push('checker_maker_link_missing');
       if (makerLeaseId && maker?.status !== 'completed') blocked.push('checker_maker_not_completed');
+      if (maker) {
+        const makerMetadata = JSON.parse(maker.metadata || '{}');
+        reviewerIndependence = new ReviewerIndependenceService(this.db).assess(
+          { ...maker, metadata: { model_family: maker.runtime, provider: maker.runtime, ...makerMetadata } },
+          { ...row, metadata: { model_family: effectiveRuntime, provider: effectiveRuntime, ...metadata } },
+          row.loop_run_id,
+        );
+        if (['high', 'critical'].includes(riskClass) && reviewerIndependence.state !== 'PASS') {
+          blocked.push(`checker_independence_${reviewerIndependence.state.toLowerCase()}`);
+        }
+      }
     }
 
     const blockedReasons = [...new Set(blocked)];
@@ -1572,6 +1579,7 @@ export class SwarmStatusService {
       queue_age_ms: queueAgeMs,
       bottleneck_reason: blockedReasons[0] || null,
       next_action: nextAction,
+      reviewer_independence: reviewerIndependence,
     };
   }
 

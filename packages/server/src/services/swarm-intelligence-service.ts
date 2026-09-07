@@ -1512,7 +1512,19 @@ export class SwarmIntelligenceService {
       nodes,
       declared_contracts: ECOSYSTEM_CONTRACTS.map((contract) => {
         const observed = observedRoutes.find((route) => route.from === contract.from && route.to === contract.to);
-        return { ...contract, evidence_state: observed ? 'OBSERVED' : 'UNDETERMINED', observed_count: observed?.observed_count || 0, last_seen: observed?.last_seen || null };
+        return {
+          id: `contract:${contract.from}:${contract.to}`,
+          ...contract,
+          evidence_state: observed ? 'OBSERVED' : 'UNDETERMINED',
+          observed_count: observed?.observed_count || 0,
+          last_seen: observed?.last_seen || null,
+          trace: observed ? {
+            actions: observed.actions,
+            effect_scopes: observed.effect_scopes,
+            statuses: observed.statuses,
+            evidence_refs: observed.evidence_refs,
+          } : null,
+        };
       }),
       observed_routes: observedRoutes,
       evolution,

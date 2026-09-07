@@ -107,6 +107,14 @@ describe('AgentInteractionLedgerService', () => {
     expect(map.observed_routes).toEqual(expect.arrayContaining([
       expect.objectContaining({ from: 'worldlab', to: 'djimitflo', observed_count: 1, effect_scopes: ['simulated'] }),
     ]));
+    expect(map.declared_contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'contract:worldlab:djimitflo',
+        evidence_state: 'OBSERVED',
+        trace: expect.objectContaining({ effect_scopes: ['simulated'], evidence_refs: expect.arrayContaining(['external_events:finding-1']) }),
+      }),
+      expect.objectContaining({ id: 'contract:roborev:paperclip', evidence_state: 'UNDETERMINED', trace: null }),
+    ]));
     expect(map.inventory.repositories[0]).toMatchObject({
       component_id: 'openmythos',
       mapping_basis: 'name_match',

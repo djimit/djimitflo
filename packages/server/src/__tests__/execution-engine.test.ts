@@ -509,6 +509,21 @@ describe('ExecutionEngine', () => {
         agent_id: 'agent-skill', success: 1, tokens_used: 100,
       });
       expect(row.skill_content_hash).toMatch(/^[a-f0-9]{64}$/);
+
+      db.prepare(`INSERT INTO swarm_capabilities (
+        id, kind, owner, version, status, risk_ceiling, input_schema_ref, output_schema_ref,
+        allowed_actions_json, forbidden_actions_json, required_evidence_json, eval_score,
+        eval_threshold, cost_model_json, removal_strategy, metadata, created_at, updated_at
+      ) VALUES ('held-skill', 'skill', 'test', '0.1.0', 'validated', 'low', 'in', 'out',
+        '["execute"]', '["deploy"]', '["outcome"]', 1, 0.5, '{}', 'hold_on_regression', ?, datetime('now'), datetime('now'))`)
+        .run(JSON.stringify({ agent_skill_id: '.opencode.skills.running-tests', outcome_hold: { assessment_id: 'assessment-falsified-1' } }));
+      db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, metadata)
+        VALUES ('task-held-skill', 'Run contained skill', 'Must remain blocked', 'pending', 'medium', 'low', 'local', 'agent-skill', ?)`)
+        .run(JSON.stringify({ skillId: '.opencode.skills.running-tests' }));
+      await expect(attributedEngine.executeTask('task-held-skill', 'mock')).resolves.toMatchObject({
+        status: 'denied', reason: expect.stringContaining('contained by causal outcome evidence'),
+      });
+      expect((db.prepare("SELECT status FROM tasks WHERE id = 'task-held-skill'").get() as any).status).toBe('cancelled');
     } finally {
       fs.rmSync(skillsDir, { recursive: true, force: true });
     }

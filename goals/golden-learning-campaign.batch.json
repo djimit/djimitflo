@@ -1,0 +1,205 @@
+{
+  "schema": "djimit.openmythos.worldlab.goal.v1",
+  "campaign_id": "djimit-golden-learning-20260907",
+  "change": "close-observation-to-evolution-learning-chain",
+  "source": {
+    "experiment_id": "golden-learning-campaign",
+    "scenario": "shared-memory-injection-cascade",
+    "finding_id": "blind-spot-analysis-20260907",
+    "evidence_hash": "git:fad60f452c6a46b7a6729df9f18d58820334ce73"
+  },
+  "finding": {
+    "failure_mode": "learning_loop_not_causally_closed",
+    "severity": "high",
+    "confidence": 0.95
+  },
+  "waves": [
+    {
+      "wave_id": "wave-0-truth-spine",
+      "ordered_goals": [
+        {
+          "id": "GLC-01-source-provenance",
+          "target": "repository-and-deployment-provenance",
+          "api": { "body": {
+            "objective": "Publish a reviewable canonical source candidate linked to the exact deployed artifact without autonomously merging it.",
+            "acceptance_criteria": ["Candidate branch records commit, image digest, full tests, rollback and deployment identity", "Canonical promotion remains REVIEW_REQUIRED until independent human approval"],
+            "constraints": ["do not modify the user's in-progress rebase", "do not merge or promote without human approval", "preserve exact deployed artifact identity"],
+            "falsification_tests": ["A clean checkout cannot reproduce the recorded tests or artifact identity"],
+            "risk_class": "medium",
+              "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P0", "status": "IN_PROGRESS", "skill": "independent-reproduction" }
+          } }
+        },
+        {
+          "id": "GLC-02-observation-learning-spine",
+          "depends_on": ["GLC-01-source-provenance"],
+          "target": "packages/server/src/services/continuous-learning-loop.ts",
+          "api": { "body": {
+            "objective": "Prove WorldLab outcome ingestion, replicated assessment, inert goal projection and interaction lineage as one fail-closed chain.",
+            "acceptance_criteria": ["Thirty replicated events create one assessment and one inert goal", "Every event and goal is visible with experiment, trajectory, finding and evidence lineage"],
+            "constraints": ["reuse external event ingestion and OutcomeLearningService", "no automatic worker start", "no causal claim from exploratory evidence"],
+            "falsification_tests": ["Exploratory or correlated evidence becomes promotion eligible"],
+            "risk_class": "medium",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P0", "status": "VERIFIED_EXISTING", "skill": "causal-outcome-attribution" }
+          } }
+        },
+        {
+          "id": "GLC-03-curiosity-experiment",
+          "depends_on": ["GLC-02-observation-learning-spine"],
+          "target": "packages/server/src/services/curiosity-service.ts",
+          "api": { "body": {
+            "objective": "Project each deduplicated curiosity gap into a bounded preregistered research work item that an existing research loop can execute.",
+            "acceptance_criteria": ["The projection contains question, hypothesis, null hypothesis, variables, controls, confounders, randomization, replication count, stopping condition, falsification and limitations", "Repeated scans do not duplicate active research work"],
+            "constraints": ["reuse WorkItemService and research-loop", "network and side effects denied by default", "projection alone is not research evidence"],
+            "falsification_tests": ["A gap can be marked resolved without evidence or a falsifiable protocol"],
+            "risk_class": "low",
+            "recommended_loop": "research-loop",
+            "metadata": { "priority": "P0", "status": "PARTIAL", "skill": "inquiry-to-experiment" }
+          } }
+        }
+      ]
+    },
+    {
+      "wave_id": "wave-1-independent-evidence",
+      "ordered_goals": [
+        {
+          "id": "GLC-04-causal-outcome-attribution",
+          "depends_on": ["GLC-03-curiosity-experiment"],
+          "target": "packages/server/src/services/outcome-learning-service.ts",
+          "api": { "body": {
+            "objective": "Require exact candidate, capability, model, runtime and skill attribution plus causal support before outcome evidence can support evolution.",
+            "acceptance_criteria": ["Correlated and exploratory signals remain UNDETERMINED", "Duplicate replications do not increase n", "Falsified causal evidence contains the capability"],
+            "constraints": ["preserve raw evidence references", "no aggregate World Score", "no promotion eligibility from this service"],
+            "falsification_tests": ["Missing attribution or duplicate seeds produce SUPPORTED assurance"],
+            "risk_class": "high",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P0", "status": "VERIFIED_EXISTING", "skill": "causal-outcome-attribution" }
+          } }
+        },
+        {
+          "id": "GLC-05-reviewer-independence-routing",
+          "depends_on": ["GLC-04-causal-outcome-attribution"],
+          "target": "packages/server/src/services/loop-lifecycle-service.ts",
+          "api": { "body": {
+            "objective": "Route checker work using the seven-dimensional independence vector and block unknown or correlated high-risk review assignments.",
+            "acceptance_criteria": ["Checker lease records all seven identity dimensions", "High-risk assignment is blocked when independence is FAIL or UNDETERMINED", "Different agent IDs alone never yield PASS"],
+            "constraints": ["reuse ReviewerIndependenceService", "preserve maker-checker-approver separation", "manual checker remains possible but UNDETERMINED until identity evidence exists"],
+            "falsification_tests": ["Same model, prompt, context or memory is accepted as independent"],
+            "risk_class": "high",
+              "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P1", "status": "PARTIAL", "skill": "independent-reproduction" }
+          } }
+        },
+        {
+          "id": "GLC-06-contract-golden-traces",
+          "depends_on": ["GLC-05-reviewer-independence-routing"],
+          "target": "packages/server/src/services/agent-interaction-ledger-service.ts",
+          "api": { "body": {
+            "objective": "Attach a replayable success or deliberate-denial trace to every declared ecosystem contract and expose missing traffic as UNDETERMINED.",
+            "acceptance_criteria": ["Every declared contract has a stable contract identifier and evidence state", "Observed traces include correlation, actor, target, action, scope, status and evidence", "Missing observations remain UNDETERMINED"],
+            "constraints": ["do not fabricate production evidence", "keep declared contracts separate from observed traffic", "reuse the interaction ledger"],
+            "falsification_tests": ["A declared but unobserved contract is shown as PASS"],
+            "risk_class": "medium",
+              "recommended_loop": "repo-maintenance-loop",
+            "metadata": { "priority": "P1", "status": "PARTIAL", "skill": "independent-reproduction" }
+          } }
+        }
+      ]
+    },
+    {
+      "wave_id": "wave-2-interaction-longitudinal",
+      "ordered_goals": [
+        {
+          "id": "GLC-07-interaction-board-actions",
+          "depends_on": ["GLC-06-contract-golden-traces"],
+          "target": "packages/dashboard/src/pages/InteractionBoardPage.tsx",
+          "api": { "body": {
+            "objective": "Provide four typed, audited evidence actions on the Interaction Board without direct execution authority.",
+            "acceptance_criteria": ["Users can request evidence, challenge a claim, request reproduction or start a bounded experiment", "Every action records actor, target, correlation, reason and evidence references", "Actions project only into existing governed records"],
+            "constraints": ["require write:swarm_action", "no direct tool invocation", "no implicit promotion or goal completion"],
+            "falsification_tests": ["A board action causes an external side effect or bypasses DjimitFlo policy"],
+            "risk_class": "medium",
+              "recommended_loop": "repo-maintenance-loop",
+            "metadata": { "priority": "P1", "status": "NOT_STARTED", "skill": "inquiry-to-experiment" }
+          } }
+        },
+        {
+          "id": "GLC-08-outcome-specialization",
+          "depends_on": ["GLC-07-interaction-board-actions"],
+          "target": "packages/server/src/services/emergent-specialization-service.ts",
+          "api": { "body": {
+            "objective": "Derive agent specialization only from attributed operational outcomes and expose sample size and success rate.",
+            "acceptance_criteria": ["Lease completion updates the exact agent, domain and role specialization", "Specialization remains emerging until the configured evidence threshold", "The Interaction Board exposes provenance"],
+            "constraints": ["no self-declared specialization", "failed outcomes count", "reuse worker lease finalization"],
+            "falsification_tests": ["An agent becomes established without sufficient observed outcomes"],
+            "risk_class": "low",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P1", "status": "VERIFIED_EXISTING", "skill": "causal-outcome-attribution" }
+          } }
+        },
+        {
+          "id": "GLC-09-worldlab-pointwise-trajectory-pov",
+          "depends_on": ["GLC-08-outcome-specialization"],
+          "target": "worldlab/scenarios/injection/shared-memory-001.json",
+          "api": { "body": {
+            "objective": "Prove one reproducible failure family that passes pointwise evaluation but fails longitudinal trajectory assurance.",
+            "acceptance_criteria": ["At least 30 paired control and treatment replications", "Pointwise PASS and trajectory FAIL are both explicit", "Treatment effect and confidence interval are reported as a vector of metrics"],
+            "constraints": ["deterministic synthetic agents first", "same seed set for control and treatment", "single trajectory is never ground truth"],
+            "falsification_tests": ["No materially relevant trajectory-only failure is reproduced"],
+            "risk_class": "medium",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P2", "status": "VERIFIED_EXISTING", "skill": "independent-reproduction" }
+          } }
+        }
+      ]
+    },
+    {
+      "wave_id": "wave-3-recovery-lifecycle",
+      "ordered_goals": [
+        {
+          "id": "GLC-10-counterfactual-recovery",
+          "depends_on": ["GLC-09-worldlab-pointwise-trajectory-pov"],
+          "target": "worldlab/runtime/replay.py",
+          "api": { "body": {
+            "objective": "Test explicit policy, memory, model or capability interventions through counterfactual replay and recovery measurement.",
+            "acceptance_criteria": ["Replay starts from a verified event prefix", "Intervention fields and changed outcomes are recorded", "Unsupported causality remains false", "Correction persistence and recovery probability are measured"],
+            "constraints": ["preserve original trajectory", "label temporal and causal edges separately", "no production mutation"],
+            "falsification_tests": ["Counterfactual replay silently rewrites history or claims unsupported causality"],
+            "risk_class": "medium",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P2", "status": "VERIFIED_EXISTING", "skill": "causal-outcome-attribution" }
+          } }
+        },
+        {
+          "id": "GLC-11-skill-belief-retirement",
+          "depends_on": ["GLC-10-counterfactual-recovery"],
+          "target": "packages/server/src/services/outcome-learning-service.ts",
+          "api": { "body": {
+            "objective": "Contain repeatedly falsified capabilities and demote contradicted beliefs until independent release evidence exists.",
+            "acceptance_criteria": ["Repeated causal falsification creates an execution hold", "Contradicted beliefs are demoted with reason and evidence", "Release requires WorldLab, OpenMythos and approval references"],
+            "constraints": ["fail closed", "retain audit history", "no autonomous reactivation"],
+            "falsification_tests": ["A contained capability executes or a demoted belief is treated as trusted without release evidence"],
+            "risk_class": "high",
+              "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P2", "status": "PARTIAL", "skill": "belief-and-skill-retirement" }
+          } }
+        },
+        {
+          "id": "GLC-12-economics-federation-chaos",
+          "depends_on": ["GLC-11-skill-belief-retirement"],
+          "target": "worldlab/advanced.py",
+          "api": { "body": {
+            "objective": "Measure scarcity, provider monoculture, stale registry, containment and recovery in the synthetic read-only federation mirror.",
+            "acceptance_criteria": ["All inputs are synthetic or sanitized snapshots", "Resource starvation, behavioral degradation, epistemic degradation, containment and recovery are reported separately", "Protected DjimitFlo invariants never fail"],
+            "constraints": ["do not start until goals 1 through 11 pass", "no live federation mutation", "no production secrets", "no virtual currency"],
+            "falsification_tests": ["A synthetic chaos run gains operational authority or hides provider monoculture failure"],
+            "risk_class": "medium",
+              "recommended_loop": "research-loop",
+            "metadata": { "priority": "P3", "status": "GATED", "skill": "belief-and-skill-retirement" }
+          } }
+        }
+      ]
+    }
+  ]
+}

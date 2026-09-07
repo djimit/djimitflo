@@ -201,9 +201,27 @@ describe('critical HTTP contracts', () => {
       method: 'POST', body: JSON.stringify({ status: 'hypothesized' }),
     })).status).toBe(200);
     expect((await request(`/swarms/intelligence/missions/${missionId}/decisions`)).status).toBe(200);
-    expect((await request('/swarms/intelligence/decisions', {
+    const contractDecision = await request('/swarms/intelligence/decisions', {
       method: 'POST', body: JSON.stringify({ mission_id: missionId, decision_type: 'route', decision: 'contract' }),
-    })).status).toBe(201);
+    });
+    expect(contractDecision.status).toBe(201);
+    const contractDecisionId = (await contractDecision.json() as any).id;
+    const interactionAction = await request('/swarms/intelligence/interactions/actions', {
+      method: 'POST',
+      body: JSON.stringify({
+        action: 'request_reproduction', interaction_id: `swarm_decisions:${contractDecisionId}`,
+        reason: 'Independently reproduce the observed claim.',
+      }),
+    });
+    expect(interactionAction.status).toBe(201);
+    expect(await interactionAction.json()).toMatchObject({
+      decision: { decision: 'request_reproduction' },
+      work_item: { source: 'interaction_action', status: 'candidate', recommended_loop: 'research-loop' },
+    });
+    expect((await request('/swarms/intelligence/interactions/actions', { method: 'POST', body: '{}' })).status).toBe(400);
+    expect((await request('/swarms/intelligence/interactions/actions', {
+      method: 'POST', body: JSON.stringify({ action: 'request_evidence', interaction_id: 'external_events:missing', reason: 'Verify it.' }),
+    })).status).toBe(404);
 
     expect((await request('/swarms/intelligence/circuit-breaker/contract')).status).toBe(200);
     expect((await request('/swarms/intelligence/circuit-breaker/contract/failure', { method: 'POST', body: '{}' })).status).toBe(200);

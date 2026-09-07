@@ -335,6 +335,7 @@ export type WorkerPoolDecision = {
   queue_age_ms: number;
   bottleneck_reason: string | null;
   next_action: 'execute_maker' | 'execute_checker' | 'human_review' | 'wait';
+  reviewer_independence: ReviewerIndependenceAssessment | null;
 };
 
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -735,6 +736,7 @@ export type EcosystemMapSummary = {
     evidence_refs: string[];
   }>;
   declared_contracts: Array<{
+    id: string;
     from: string;
     to: string;
     exchange: string;
@@ -742,6 +744,12 @@ export type EcosystemMapSummary = {
     evidence_state: 'OBSERVED' | 'UNDETERMINED';
     observed_count: number;
     last_seen: string | null;
+    trace: {
+      actions: string[];
+      effect_scopes: string[];
+      statuses: string[];
+      evidence_refs: string[];
+    } | null;
   }>;
   observed_routes: Array<{
     from: string;
@@ -1489,6 +1497,19 @@ class ApiClient {
   async getAgentInteractions(params: { agent_id?: string; correlation_id?: string; status?: string; source?: string; limit?: number } = {}): Promise<{ interactions: AgentInteractionRecord[] }> {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
+  }
+
+  async submitInteractionAction(input: {
+    action: 'request_evidence' | 'challenge_claim' | 'request_reproduction' | 'start_experiment';
+    interaction_id: string;
+    correlation_id?: string | null;
+    reason: string;
+    evidence_refs?: string[];
+  }): Promise<{ decision: Record<string, unknown>; work_item: WorkItemRecord | null }> {
+    return this.request('/swarms/intelligence/interactions/actions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {

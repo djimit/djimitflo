@@ -813,6 +813,10 @@ describe('workstation swarm resource plan', () => {
       const drain = await drainResponse.json() as any;
       expect(drain.started).toHaveLength(2);
       expect(drain.started.map((item: any) => item.decision.next_action)).toEqual(['execute_maker', 'execute_checker']);
+      expect(drain.started[1].decision.reviewer_independence).toMatchObject({
+        state: 'FAIL',
+        correlated_fields: expect.arrayContaining(['model_family_independence', 'provider_independence']),
+      });
 
       const leases = db.prepare('SELECT role, runtime, status, metadata FROM worker_leases WHERE loop_run_id = ? ORDER BY role ASC').all(loopRunId) as any[];
       expect(leases).toEqual(expect.arrayContaining([
@@ -1077,6 +1081,24 @@ describe('workstation swarm resource plan', () => {
       expect(startResponse.status).toBe(200);
       const start = await startResponse.json() as any;
       expect(start.action).toBe('blocked');
+
+      const governedDrainResponse = await fetch(`${baseUrl}/swarms/worker-pool/drain`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ runtime: 'mock', checker_runtime: 'mock', ignore_capacity: true, allow_high_risk: true, max_workers: 3, timeout_ms: 10_000 }),
+      });
+      expect(governedDrainResponse.status).toBe(200);
+      const governedDrain = await governedDrainResponse.json() as any;
+      expect(governedDrain.started).toHaveLength(1);
+      expect(governedDrain.started[0].decision.role).toBe('maker');
+      expect(governedDrain.final_plan.decisions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          role: 'checker',
+          eligible: false,
+          blocked_reasons: expect.arrayContaining(['checker_independence_fail']),
+          reviewer_independence: expect.objectContaining({ state: 'FAIL' }),
+        }),
+      ]));
     } finally {
       if (previousWorktreeRoot) {
         process.env.LOOP_WORKTREE_ROOT = previousWorktreeRoot;

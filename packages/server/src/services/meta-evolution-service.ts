@@ -79,14 +79,19 @@ export class MetaEvolutionService {
     try {
       const badRules = this.db.prepare('SELECT id FROM swarm_claims WHERE status = \'contradicted\' AND claim_type = \'memory\'').all() as Array<{ id: string }>;
       for (const rule of badRules) {
-        const contradictions = this.db.prepare('SELECT COUNT(*) as c FROM swarm_claims WHERE contradicts_ref = ?').get(rule.id) as { c: number };
-        if (contradictions.c >= 3) {
+        const contradictions = this.db.prepare('SELECT id, evidence_refs_json FROM swarm_claims WHERE contradicts_ref = ? ORDER BY created_at, id').all(rule.id) as Array<{ id: string; evidence_refs_json: string }>;
+        if (contradictions.length >= 3) {
           // Demote: set trust to 0.3 (via metadata update)
           const existing = this.db.prepare('SELECT metadata FROM swarm_claims WHERE id = ?').get(rule.id) as { metadata: string };
           const meta = JSON.parse(existing.metadata || '{}');
+          if (meta.demoted) continue;
           meta.demoted = true;
+          meta.trust = 0.3;
           meta.demoted_at = now;
-          meta.demoted_reason = `${contradictions.c} contradictions`;
+          meta.demoted_reason = `${contradictions.length} contradictions`;
+          meta.demotion_evidence_refs = [...new Set(contradictions.flatMap((claim) => {
+            try { return [claim.id, ...JSON.parse(claim.evidence_refs_json || '[]')]; } catch { return [claim.id]; }
+          }))];
           this.db.prepare('UPDATE swarm_claims SET metadata = ?, updated_at = ? WHERE id = ?')
             .run(JSON.stringify(meta), now, rule.id);
           demotedRules++;

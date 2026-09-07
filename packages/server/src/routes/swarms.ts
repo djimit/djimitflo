@@ -35,6 +35,8 @@ import { createWorkerRoutes } from './swarm-workers';
 import { createIntelligenceRoutes } from './swarm-intel';
 import { createGovernanceRoutes } from './swarm-governance';
 import { createKnowledgeRoutes } from './swarm-knowledge';
+import { WorkItemService } from '../services/work-item-service';
+import { AgentInteractionLedgerService } from '../services/agent-interaction-ledger-service';
 
 type RouteHandler = (req: Request, res: Response, next: NextFunction) => void | Promise<void>;
 
@@ -172,6 +174,52 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.post('/intelligence/tasks/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionTask(req.params.id, req.body.status, req.body)); });
   router.get('/intelligence/missions/:id/decisions', requirePermission('read:evidence'), (req, res) => { res.json({ decisions: missionsSvc().listDecisions(req.params.id) }); });
   router.post('/intelligence/decisions', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().recordDecision(req.body)); });
+  router.post('/intelligence/interactions/actions', requirePermission('write:swarm_action'), route((req, res) => {
+    const action = String(req.body?.action || '').trim();
+    const interactionId = String(req.body?.interaction_id || '').trim();
+    const reason = String(req.body?.reason || '').trim();
+    const validActions = ['request_evidence', 'challenge_claim', 'request_reproduction', 'start_experiment'];
+    if (!validActions.includes(action) || !interactionId || !reason) {
+      throw createError(400, 'action, interaction_id and reason are required', 'INTERACTION_ACTION_INVALID');
+    }
+    const interaction = new AgentInteractionLedgerService(db).list({ limit: 500 }).find((item) => item.id === interactionId);
+    if (!interaction) throw createError(404, 'Interaction not found', 'INTERACTION_NOT_FOUND');
+    const evidenceRefs = [...new Set([interactionId, ...interaction.evidence_refs])];
+    const correlationId = interaction.correlation_id;
+    const decision = missionsSvc().recordDecision({
+      decision_type: action === 'request_evidence' || action === 'challenge_claim' ? 'review' : 'route',
+      decision: action,
+      reason,
+      actor: req.user?.sub || req.user?.email || 'interaction-board',
+      evidence_refs: evidenceRefs,
+      metadata: { interaction_action: action, interaction_id: interactionId, correlation_id: correlationId, effect_scope: 'isolated' },
+    });
+    let workItem = null;
+    if (action === 'request_reproduction' || action === 'start_experiment') {
+      workItem = new WorkItemService(db).createIfMissingBySourceRef({
+        title: action === 'request_reproduction' ? `Reproduce interaction evidence ${interactionId}` : `Experiment from interaction ${interactionId}`,
+        description: reason,
+        source: 'interaction_action',
+        source_ref: `${interactionId}:${action}`,
+        risk_class: 'medium',
+        confidence: 0.5,
+        status: 'candidate',
+        recommended_loop: 'research-loop',
+        metadata: {
+          objective: action === 'request_reproduction' ? 'Independently reproduce the referenced evidence' : 'Run a bounded control/treatment experiment for the referenced interaction',
+          constraints: ['no production mutation', 'no autonomous promotion', 'external access requires mediation'],
+          acceptance_criteria: ['evidence lineage complete', 'result independently evaluated'],
+          falsification_tests: ['replication fails', 'confidence interval crosses the operational threshold'],
+          correlation_id: correlationId,
+          interaction_id: interactionId,
+          decision_id: decision.id,
+          evidence_refs: evidenceRefs,
+          protocol: { replications: 30, control_required: true, independent_checker_required: true, status: 'DRAFT' },
+        },
+      }).work_item;
+    }
+    res.status(201).json({ decision, work_item: workItem });
+  }));
 
   // Circuit breaker
   router.get('/intelligence/circuit-breaker/:scope', requirePermission('read:evidence'), (req, res) => { res.json(missionsSvc().checkCircuitBreaker(req.params.scope)); });

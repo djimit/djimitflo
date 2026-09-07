@@ -53,6 +53,24 @@ describe('G32: Meta-evolution loop', () => {
     expect(metaEvent).toBeDefined();
   });
 
+  it('demotes repeatedly contradicted memory once with evidence lineage', () => {
+    db.prepare(`INSERT INTO swarm_claims
+      (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, metadata, created_at, updated_at)
+      VALUES ('memory-1', 'stale rule', 'memory', 'routing', 'rule', 'contradicted', 0.8, '[]', 'test', '{}', datetime('now'), datetime('now'))`).run();
+    for (let index = 1; index <= 3; index += 1) {
+      db.prepare(`INSERT INTO swarm_claims
+        (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, contradicts_ref, metadata, created_at, updated_at)
+        VALUES (?, 'counter evidence', 'observation', 'routing', 'contradiction', 'supported', 0.9, ?, 'independent-checker', 'memory-1', '{}', datetime('now'), datetime('now'))`)
+        .run(`counter-${index}`, JSON.stringify([`evidence:${index}`]));
+    }
+
+    expect(meta.evaluate().demoted_rules).toBe(1);
+    expect(meta.evaluate().demoted_rules).toBe(0);
+    const metadata = JSON.parse((db.prepare("SELECT metadata FROM swarm_claims WHERE id = 'memory-1'").get() as any).metadata);
+    expect(metadata).toMatchObject({ demoted: true, trust: 0.3, demoted_reason: '3 contradictions' });
+    expect(metadata.demotion_evidence_refs).toEqual(expect.arrayContaining(['counter-1', 'evidence:1', 'counter-3', 'evidence:3']));
+  });
+
   it('start/stop controls the timer', () => {
     meta.start();
     meta.stop();

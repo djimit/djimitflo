@@ -1144,16 +1144,42 @@ export class ExecutionEngine {
           );
         }
       }
+      const outcomeHold = this.skillOutcomeHold(explicitSkillId);
+      if (outcomeHold) {
+        return this.blockSkillAttribution(task, `Skill ${explicitSkillId} is contained by causal outcome evidence: ${outcomeHold}.`, [explicitSkillId], 'skill_outcome_hold');
+      }
       return null;
     }
 
     if (!task.agent_id) return null;
 
     const assigned = this.skillLoader.getAgentSkills(task.agent_id);
-    if (assigned.length <= 1) return null;
+    if (assigned.length === 1) {
+      const outcomeHold = this.skillOutcomeHold(assigned[0].id);
+      return outcomeHold
+        ? this.blockSkillAttribution(task, `Skill ${assigned[0].id} is contained by causal outcome evidence: ${outcomeHold}.`, [assigned[0].id], 'skill_outcome_hold')
+        : null;
+    }
+    if (assigned.length === 0) return null;
 
     const reason = 'Multiple skills are assigned to the agent; set task metadata.skillId before execution.';
     return this.blockSkillAttribution(task, reason, assigned.map((skill) => skill.id), 'ambiguous_skill_attribution');
+  }
+
+  private skillOutcomeHold(skillId: string): string | null {
+    const row = this.db.prepare(`
+      SELECT metadata FROM swarm_capabilities
+      WHERE json_extract(metadata, '$.agent_skill_id') = ?
+        AND json_extract(metadata, '$.outcome_hold') IS NOT NULL
+      LIMIT 1
+    `).get(skillId) as { metadata?: string } | undefined;
+    if (!row) return null;
+    try {
+      const hold = JSON.parse(row.metadata || '{}').outcome_hold;
+      return String(hold?.assessment_id || hold?.reason || 'active hold');
+    } catch {
+      return 'active hold';
+    }
   }
 
   private blockSkillAttribution(task: Task, reason: string, assignedSkillIds: string[], code: string): string {

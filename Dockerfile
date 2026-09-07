@@ -94,6 +94,8 @@ COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/di
 COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
+COPY openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json
+COPY goals/golden-learning-campaign.batch.json goals/golden-learning-campaign.batch.json
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

@@ -35,47 +35,12 @@ afterEach(() => {
 });
 
 describe('G39: Research Loop', () => {
-  it('research-loop is a valid LoopName type', () => {
-    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
-    expect(run).toBeDefined();
-  });
+  it('routes preregistered work through the governed research contract', () => {
+    const run = loops.startLoop({ loop_name: 'research-loop', repository_path: tempDir });
+    const contract = loops.getCatalog().loops.find(({ name }) => name === 'research-loop');
 
-  it('discovers research questions from capability gaps', () => {
-    db.prepare(`
-      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, created_at, updated_at)
-      VALUES ('gap1', 'Missing security knowledge', 'capability', 'security', 'gap', 'proposed', 0.5, '[]', 'test', datetime('now'), datetime('now'))
-    `).run();
-    db.prepare(`
-      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, created_at, updated_at)
-      VALUES ('gap2', 'Missing performance knowledge', 'capability', 'performance', 'gap', 'proposed', 0.5, '[]', 'test', datetime('now'), datetime('now'))
-    `).run();
-    db.prepare(`
-      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, created_at, updated_at)
-      VALUES ('gap3', 'Missing testing knowledge', 'capability', 'testing', 'gap', 'proposed', 0.5, '[]', 'test', datetime('now'), datetime('now'))
-    `).run();
-
-    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
-    expect(run).toBeDefined();
-  });
-
-  it('discovers research questions from draft hypotheses', () => {
-    db.prepare(`
-      INSERT INTO swarm_hypotheses (id, question, evidence_plan_json, projection_state, created_at, updated_at)
-      VALUES ('h1', 'Does caching improve response time?', '[]', 'draft', datetime('now'), datetime('now'))
-    `).run();
-
-    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
-    expect(run).toBeDefined();
-  });
-
-  it('research loop generates findings with correct type', () => {
-    db.prepare(`
-      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_at, updated_at, created_from)
-      VALUES ('rg1', 'Gap in security knowledge', 'capability', 'security', 'gap', 'proposed', 0.5, '[]', 'test', datetime('now'), datetime('now'))
-    `).run();
-
-    const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
-    expect(run.id).toBeDefined();
-    expect(run.status).toBeDefined();
+    expect(run).toMatchObject({ loop_name: 'research-loop', status: 'completed', findings: [] });
+    expect(contract).toMatchObject({ risk_class: 'medium', status: 'implemented' });
+    expect(contract?.actions_forbidden).toContain('production_mutation');
   });
 });

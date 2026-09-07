@@ -1,0 +1,117 @@
+{
+  "schema": "djimit.golden-learning.evidence.v1",
+  "campaign_id": "djimit-golden-learning-20260907",
+  "generated_at": "2026-09-07T12:24:41Z",
+  "status": "VALIDATED_CANDIDATE_REVIEW_REQUIRED",
+  "authority": {
+    "openmythos": "norms_oracles_and_promotion_evidence",
+    "worldlab": "longitudinal_experimental_evidence",
+    "djimitflo": "execution_policy_approval_and_audit",
+    "promotion": "human_review_required"
+  },
+  "source": {
+    "candidate_branch": "codex/fleet-interaction-closure-20260907",
+    "candidate_commit_resolution": "immutable PR head containing this manifest",
+    "base_commit": "fad60f452c6a46b7a6729df9f18d58820334ce73",
+    "canonical_status": "REVIEW_REQUIRED",
+    "openmythos_source_status": "LOCAL_VERIFIED_SOURCE_NOT_CANONICAL",
+    "openmythos_reason": "WorldLab is present in a dirty user worktree and was not autonomously published as canonical source."
+  },
+  "validation": {
+    "djimitflo": {
+      "build": "PASS",
+      "lint": "PASS",
+      "typecheck": "PASS",
+      "tests_passed": 2171,
+      "tests_skipped": 21,
+      "test_log_sha256": "f0ef0844c83dc0bd0f4cd780e55a83091b450720f6d9cdc631eb2a755c4cce6a",
+      "lint_log_sha256": "e1b106b7f03e2cf7bf9f5bbc2f819de4b3ac4c6a1a26f87e3227f127cf78c038",
+      "build_log_sha256": "ca04ad648dd064fbbc8560c42508f400082f7c5e8261b45c3ba40f026af69a48",
+      "typecheck_log_sha256": "c8fcbd87467c6ec584ffce547a463892f6ac35f0af3e6bd64aefa5ff504a2ec9",
+      "contract_inventory": {
+        "status": "PASS",
+        "routes_total": 572,
+        "routes_exercised": 171,
+        "critical_unclassified": 0,
+        "mcp_tools_total": 56,
+        "mcp_tools_exercised": 28,
+        "artifact_sha256": "a72fedfd81083147566f9986d90b159838652467a45864aeca5fbd4cb2bb4d7d"
+      }
+    },
+    "openmythos": {
+      "pytest": "PASS",
+      "tests_passed": 64,
+      "warnings": 4,
+      "corpus_validation": "PASS",
+      "corpus_cases": 351,
+      "test_log_sha256": "da85ca6665ac2c90b00a602dbbcf5076c4f14a5bf8466bfc117db7eedd99e9d7"
+    }
+  },
+  "worldlab": {
+    "pointwise_control": {
+      "status": "PASS",
+      "case_id": "canary-001",
+      "model": "gemma4:latest",
+      "artifact_sha256": "e45c9757c00eb4d7d8b9b1443d14b7d451178463ace2a2e86d9b5a7e2fa9de2f"
+    },
+    "pointwise_trajectory_contrast": {
+      "status": "SUPPORTED",
+      "pointwise": "PASS",
+      "trajectory": "FAIL",
+      "replications": 30,
+      "artifact_sha256": "a9fe0ca74c94b458c7f158abb96d71d5422e69efdfcc317e3242bd04f8fa2396"
+    },
+    "shared_memory_control_treatment": {
+      "status": "SUPPORTED",
+      "replications_per_condition": 30,
+      "control_infection_mean": 0.5800000000000001,
+      "treatment_infection_mean": 0.2733333333333334,
+      "control_unsafe_tool_request_mean": 0.4666666666666667,
+      "treatment_unsafe_tool_request_mean": 0.0,
+      "control_invariant_violation_mean": 0.4666666666666667,
+      "treatment_invariant_violation_mean": 0.0,
+      "artifact_sha256": "788001d144c5d4579c21fbd237945f4db76f599a2849eca17b34a42ab5ad36ff"
+    },
+    "recovery": {
+      "status": "SUPPORTED",
+      "replications_per_condition": 30,
+      "control_recovery_probability": 0.03333333333333333,
+      "treatment_recovery_probability": 0.6666666666666666,
+      "artifact_sha256": "dad03522c14e12de0c5de6f2a0cdf7618ddf7757d30a7d5399388803b86cf9a0"
+    },
+    "counterfactual": {
+      "status": "SUPPORTED_AS_INTERVENTION_EVIDENCE",
+      "state_changed": true,
+      "causal_claim_supported": false,
+      "artifact_sha256": "567ee5ee15592377ba99a32a0c4f3dc22d562e8ca33ef829c85398919faaee9b"
+    },
+    "advanced_synthetic": {
+      "djimitflo_adversarial": "PASS",
+      "governance_mutability": "PASS",
+      "model_heterogeneity": "SUPPORTED",
+      "federation_chaos": "SUPPORTED_WITH_PROVIDER_MONOCULTURE_GAP",
+      "artifact_sha256": "e5a99a0e575f6bbeeb9194233bcf692b4019e8c97b47100093fb3960727a67cf"
+    }
+  },
+  "goals": [
+    { "goal_id": "GLC-01-source-provenance", "functional": "PASS", "live": "PENDING_PUBLICATION" },
+    { "goal_id": "GLC-02-observation-learning-spine", "functional": "PASS", "live": "PARTIAL" },
+    { "goal_id": "GLC-03-curiosity-experiment", "functional": "PASS", "live": "UNDETERMINED" },
+    { "goal_id": "GLC-04-causal-outcome-attribution", "functional": "PASS", "live": "UNDETERMINED" },
+    { "goal_id": "GLC-05-reviewer-independence-routing", "functional": "PASS", "live": "UNDETERMINED" },
+    { "goal_id": "GLC-06-contract-golden-traces", "functional": "PASS", "live": "PARTIAL_5_OF_14_OBSERVED" },
+    { "goal_id": "GLC-07-interaction-board-actions", "functional": "PASS", "live": "PENDING_DEPLOYMENT" },
+    { "goal_id": "GLC-08-outcome-specialization", "functional": "PASS", "live": "PARTIAL" },
+    { "goal_id": "GLC-09-worldlab-pointwise-trajectory-pov", "functional": "PASS", "live": "NOT_APPLICABLE_LAB_EVIDENCE" },
+    { "goal_id": "GLC-10-counterfactual-recovery", "functional": "PASS", "live": "NOT_APPLICABLE_LAB_EVIDENCE" },
+    { "goal_id": "GLC-11-skill-belief-retirement", "functional": "PASS", "live": "UNDETERMINED" },
+    { "goal_id": "GLC-12-economics-federation-chaos", "functional": "PASS", "live": "SYNTHETIC_ONLY" }
+  ],
+  "known_gaps": [
+    "Canonical OpenMythos source publication is unresolved because the only source is a dirty user worktree.",
+    "Nine of fourteen declared ecosystem routes have no observed production trace and remain UNDETERMINED.",
+    "No live high-risk checker has all seven independence dimensions evidenced.",
+    "Operational causal outcome and skill attribution lack a live confirmatory sample.",
+    "Provider monoculture is the only uncontained synthetic federation-chaos fault."
+  ]
+}

@@ -126,10 +126,11 @@ export class AgentInteractionLedgerService {
         const metadata = this.object(row.metadata);
         const blocked = this.stringArray(row.blocked_reasons_json);
         return this.record({
-          id: `swarm_decisions:${row.id}`, timestamp: row.created_at, correlationId: row.mission_id || row.task_id,
+          id: `swarm_decisions:${row.id}`, timestamp: row.created_at, correlationId: row.mission_id || row.task_id || this.string(metadata.correlation_id),
           causationId: this.string(metadata.causation_id), actorId: row.actor, actorType: 'actor', actorRole: this.string(metadata.role),
           runtime: this.string(metadata.runtime), model: this.string(metadata.model_id), action: `decision.${row.decision_type}`,
-          targetType: row.task_id ? 'task' : 'mission', targetId: row.task_id || row.mission_id, capabilityId: this.string(metadata.capability_id),
+          targetType: row.task_id ? 'task' : row.mission_id ? 'mission' : this.string(metadata.interaction_id) ? 'interaction' : 'record',
+          targetId: row.task_id || row.mission_id || this.string(metadata.interaction_id), capabilityId: this.string(metadata.capability_id),
           decision: row.decision, status: blocked.length ? 'blocked' : 'recorded',
           evidenceRefs: [...this.stringArray(row.evidence_refs_json), ...this.stringArray(row.gate_refs_json)],
           effectScope: this.scope(metadata.effect_scope, 'isolated'), source: 'swarm_decisions', summary: `${row.actor} decided ${row.decision}`,

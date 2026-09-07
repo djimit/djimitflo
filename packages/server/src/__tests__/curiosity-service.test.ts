@@ -67,7 +67,7 @@ describe('G41: Curiosity Service', () => {
     expect((await curiosity.scanForGaps()).published).toBe(0);
   });
 
-  it('turns a curiosity claim into a bounded investigation goal once', async () => {
+  it('turns a curiosity claim into a preregistered inert investigation once', async () => {
     new AutonomousGoalGenerator(db);
     db.prepare(`
       INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, metadata, created_at, updated_at)
@@ -76,9 +76,14 @@ describe('G41: Curiosity Service', () => {
     const goals = new AutonomousGoalGenerator(db);
     expect(goals.generateFromCuriosityGaps()).toBe(1);
     expect(goals.generateFromCuriosityGaps()).toBe(0);
-    expect(db.prepare("SELECT objective, risk_class FROM goals WHERE json_extract(metadata, '$.gap_id') = 'curiosity-1'").get()).toEqual({
-      objective: 'Investigate knowledge gap: routing', risk_class: 'low',
+    const item = db.prepare("SELECT title, risk_class, status, recommended_loop, metadata FROM work_items WHERE source_ref = 'curiosity-1'").get() as any;
+    expect(item).toMatchObject({ title: 'Investigate knowledge gap: routing', risk_class: 'low', status: 'candidate', recommended_loop: 'research-loop' });
+    expect(JSON.parse(item.metadata).protocol).toMatchObject({
+      research_question: expect.stringContaining('routing'),
+      replication_count: 30,
+      run_class: 'exploratory',
     });
+    expect(db.prepare("SELECT COUNT(*) count FROM goals WHERE json_extract(metadata, '$.gap_id') = 'curiosity-1'").get()).toEqual({ count: 0 });
   });
 
   it('returns empty report when no gaps exist', async () => {

@@ -45,6 +45,9 @@ interface GoalBatchInput {
   selected_ids?: string[];
 }
 
+const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
+const GOLDEN_LEARNING_BATCH_PATH = 'goals/golden-learning-campaign.batch.json';
+
 export class GoalBatchService {
   private loops: LoopService;
 
@@ -141,14 +144,17 @@ export class GoalBatchService {
 
   private resolveBatch(input: GoalBatchInput): unknown {
     if (input.batch && typeof input.batch === 'object') return input.batch;
-    const requestedPath = path.resolve(this.repoRoot, input.path || 'goals.batch.json');
     const repoRoot = fs.realpathSync.native(path.resolve(this.repoRoot));
-    if (!requestedPath.startsWith(`${repoRoot}${path.sep}`) && requestedPath !== repoRoot) {
-      throw new Error('GOAL_BATCH_PATH_FORBIDDEN');
-    }
+    const requestedPath = input.path === FLYWHEEL_BATCH_PATH
+      ? path.join(repoRoot, 'openspec', 'changes', 'prove-learning-flywheel-operator-loop', 'goals.batch.json')
+      : input.path === GOLDEN_LEARNING_BATCH_PATH
+        ? path.join(repoRoot, 'goals', 'golden-learning-campaign.batch.json')
+        : null;
+    if (!requestedPath) throw new Error('GOAL_BATCH_PATH_FORBIDDEN');
     if (!fs.existsSync(requestedPath)) throw new Error('GOAL_BATCH_NOT_FOUND');
     const batchPath = fs.realpathSync.native(requestedPath);
-    if (!batchPath.startsWith(`${repoRoot}${path.sep}`) && batchPath !== repoRoot) {
+    const relativePath = path.relative(repoRoot, batchPath);
+    if (relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
       throw new Error('GOAL_BATCH_PATH_FORBIDDEN');
     }
     try {

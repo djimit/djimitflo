@@ -12,6 +12,7 @@
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import type { LoopName } from '@djimitflo/shared';
 
 const MAX_MARKDOWN_FILE_BYTES = 64 * 1024;
 const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.djimitflo-loop-worktrees']);
@@ -29,15 +30,6 @@ export interface LoopFinding {
   metadata?: Record<string, unknown>;
 }
 
-type LoopName =
-  | 'doc-drift-and-small-fix-loop'
-  | 'repo-maintenance-loop'
-  | 'skill-quality-loop'
-  | 'mcp-connector-validation-loop'
-  | 'security-regression-loop'
-  | 'okf-synchronization-loop'
-  | 'overwatch-policy-drift-loop';
-
 export class LoopDiscoveryService {
   /**
    * Discover findings for a given loop type.
@@ -51,6 +43,7 @@ export class LoopDiscoveryService {
       case 'security-regression-loop': return this.discoverSecurityRegression(repositoryPath, maxFindings);
       case 'okf-synchronization-loop': return this.discoverOkfSynchronization(repositoryPath, maxFindings);
       case 'overwatch-policy-drift-loop': return this.discoverOverwatchPolicyDrift(repositoryPath, maxFindings);
+      case 'research-loop': return [];
       default: return [];
     }
   }

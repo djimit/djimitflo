@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { schema } from '../database/schema';
@@ -8,6 +8,7 @@ import { runMigrations } from '../database/migrate';
 import { GoalBatchService } from '../services/goal-batch-service';
 import { GoalService } from '../services/goal-service';
 import { LoopService } from '../services/loop-service';
+import { isCanonicalLoopName } from '@djimitflo/shared';
 
 function makeDb() {
   const database = new Database(':memory:');
@@ -190,6 +191,35 @@ describe('goal batch service', () => {
     }
   });
 
+  it('previews the repository golden learning campaign without writes', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalBatchService(db, join(__dirname, '../../../..'));
+      const before = counts(db);
+      const preview = service.preview({ path: 'goals/golden-learning-campaign.batch.json' });
+      expect(preview).toMatchObject({
+        schema: 'djimit.openmythos.worldlab.goal.v1',
+        campaign_id: 'djimit-golden-learning-20260907',
+        total: 12,
+        valid: 12,
+        blocked: 0,
+        writes: 0,
+      });
+      expect(preview.items.map((item) => item.wave_id)).toEqual([
+        ...Array(3).fill('wave-0-truth-spine'),
+        ...Array(3).fill('wave-1-independent-evidence'),
+        ...Array(3).fill('wave-2-interaction-longitudinal'),
+        ...Array(3).fill('wave-3-recovery-lifecycle'),
+      ]);
+      const batch = JSON.parse(readFileSync(join(__dirname, '../../../../goals/golden-learning-campaign.batch.json'), 'utf8'));
+      expect(batch.waves.flatMap((wave: any) => wave.ordered_goals)
+        .every((goal: any) => isCanonicalLoopName(goal.api.body.recommended_loop))).toBe(true);
+      expect(counts(db)).toEqual(before);
+    } finally {
+      db.close();
+    }
+  });
+
   it('accepts a dependency imported by an earlier campaign wave', () => {
     const db = makeDb();
     try {
@@ -230,8 +260,9 @@ describe('goal batch service', () => {
     const outside = mkdtempSync(join(tmpdir(), 'goal-batch-outside-'));
     try {
       writeFileSync(join(outside, 'batch.json'), JSON.stringify({ goals: [] }));
-      symlinkSync(join(outside, 'batch.json'), join(repo, 'batch.json'));
-      expect(() => new GoalBatchService(db, repo).preview({ path: 'batch.json' }))
+      mkdirSync(join(repo, 'goals'));
+      symlinkSync(join(outside, 'batch.json'), join(repo, 'goals/golden-learning-campaign.batch.json'));
+      expect(() => new GoalBatchService(db, repo).preview({ path: 'goals/golden-learning-campaign.batch.json' }))
         .toThrow('GOAL_BATCH_PATH_FORBIDDEN');
     } finally {
       db.close();

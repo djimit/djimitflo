@@ -243,6 +243,21 @@ const LOOP_CONTRACTS: LoopContract[] = [
     escalation: ['policy_change_requested', 'approval_gate_missing', 'autonomy_expansion'],
     stop_conditions: ['policy_drift_findings_planned', 'human_required_for_mutating_policy_change'],
   },
+  {
+    name: 'research-loop',
+    title: 'Research',
+    description: 'Execute preregistered curiosity and independent reproduction work items without granting direct operational authority.',
+    mode: 'closed',
+    risk_class: 'medium',
+    trigger: ['curiosity_gap', 'interaction_action', 'reproduction_request'],
+    context_sources: ['work_item', 'swarm_hypotheses', 'swarm_claims', 'evidence_refs'],
+    actions_allowed: ['read_repo', 'read_evidence', 'evaluate_hypothesis', 'write_loop_state', 'prepare_worktree', 'run_checks', 'submit_checker_verdict'],
+    actions_forbidden: ['unmediated_network', 'production_mutation', 'merge', 'deploy', 'modify_secrets', 'self_approve'],
+    verification: ['preregistration_present', 'replication_count_present', 'falsification_criteria_present', 'independent_checker', 'no_automatic_merge'],
+    state: ['sqlite:work_items', 'sqlite:loop_runs', 'sqlite:loop_events', 'markdown:LOOP_STATE.md'],
+    escalation: ['missing_evidence', 'hypothesis_undetermined', 'operational_authority_requested'],
+    stop_conditions: ['falsified', 'supported_with_replicated_evidence', 'undetermined', 'human_required'],
+  },
 ];
 
 /**

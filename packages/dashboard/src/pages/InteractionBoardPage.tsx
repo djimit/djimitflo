@@ -236,10 +236,11 @@ export function InteractionBoardPage() {
             <p className="mt-1 text-sm text-foreground-secondary">Normative routes remain separate from observed traffic.</p>
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {(ecosystem?.declared_contracts || []).map((contract) => (
-                <article key={`${contract.from}:${contract.to}:${contract.exchange}`} className="rounded-lg border border-border bg-background p-3">
+                <article key={contract.id} className="rounded-lg border border-border bg-background p-3">
                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground"><span>{contract.from}</span><span className="text-foreground-tertiary">→</span><span>{contract.to}</span><Badge value={contract.evidence_state} /></div>
                   <p className="mt-2 text-sm text-foreground-secondary">{contract.exchange}</p>
                   <p className="mt-2 text-xs text-foreground-tertiary">Boundary: {contract.boundary} · observed {contract.observed_count} · last {time(contract.last_seen)}</p>
+                  {contract.trace && <details className="mt-2 text-xs text-foreground-secondary"><summary className="cursor-pointer text-accent">Replayable trace ({contract.trace.evidence_refs.length})</summary><div className="mt-2 space-y-1 font-mono"><div>actions: {contract.trace.actions.join(', ')}</div><div>scope: {contract.trace.effect_scopes.join(', ')}</div><div>status: {contract.trace.statuses.join(', ')}</div>{contract.trace.evidence_refs.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}
                 </article>
               ))}
               {!ecosystem?.declared_contracts.length && <p className="text-sm text-foreground-tertiary">No declared contracts available.</p>}
@@ -272,6 +273,31 @@ function Badge({ value }: { value: string }) {
 }
 
 function InteractionCard({ interaction }: { interaction: AgentInteractionRecord }) {
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function submit(action: 'request_evidence' | 'challenge_claim' | 'request_reproduction' | 'start_experiment') {
+    if (!reason.trim()) return;
+    setSubmitting(action);
+    setResult(null);
+    try {
+      const response = await api.submitInteractionAction({
+        action,
+        interaction_id: interaction.id,
+        correlation_id: interaction.correlation_id,
+        reason: reason.trim(),
+        evidence_refs: interaction.evidence_refs,
+      });
+      setResult(response.work_item ? `Recorded · research item ${response.work_item.id}` : 'Recorded in decision ledger');
+      setReason('');
+    } catch (error) {
+      setResult(error instanceof Error ? error.message : 'Action failed');
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
   return (
     <article className="rounded-lg border border-border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -280,6 +306,20 @@ function InteractionCard({ interaction }: { interaction: AgentInteractionRecord 
       </div>
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground-tertiary"><span>{time(interaction.timestamp)}</span><span>source: {interaction.source}</span>{interaction.actor.role && <span>role: {interaction.actor.role}</span>}{interaction.actor.runtime && <span>runtime: {interaction.actor.runtime}</span>}{interaction.actor.model && <span>model: {interaction.actor.model}</span>}{interaction.decision && <span>decision: {interaction.decision}</span>}</div>
       {(interaction.causation_id || interaction.evidence_refs.length > 0) && <details className="mt-3 text-xs text-foreground-secondary"><summary className="cursor-pointer text-accent">Evidence & lineage ({interaction.evidence_refs.length})</summary><div className="mt-2 space-y-1 font-mono">{interaction.correlation_id && <div>correlation: {interaction.correlation_id}</div>}{interaction.causation_id && <div>causation: {interaction.causation_id}</div>}{interaction.evidence_refs.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}
+      <details className="mt-3 text-xs text-foreground-secondary">
+        <summary className="cursor-pointer text-accent">Governed action</summary>
+        <label className="mt-2 block"><span className="sr-only">Reason for interaction action</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Question, challenge or falsifiable reason…" className="w-full rounded border border-border bg-background-elevated px-3 py-2 text-sm text-foreground" /></label>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {([
+            ['request_evidence', 'Request evidence'],
+            ['challenge_claim', 'Challenge claim'],
+            ['request_reproduction', 'Request reproduction'],
+            ['start_experiment', 'Start bounded experiment'],
+          ] as const).map(([action, label]) => <button key={action} type="button" disabled={!reason.trim() || submitting !== null} onClick={() => void submit(action)} className="rounded border border-border px-2 py-1 text-xs text-foreground-secondary hover:bg-background-elevated disabled:opacity-40">{submitting === action ? 'Recording…' : label}</button>)}
+        </div>
+        {result && <p role="status" className="mt-2 text-foreground-tertiary">{result}</p>}
+        <p className="mt-2 text-foreground-tertiary">Actions create governed decisions or inert research items; they never invoke tools directly.</p>
+      </details>
     </article>
   );
 }

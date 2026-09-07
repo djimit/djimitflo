@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { WorkItemService } from './work-item-service';
 
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {
@@ -107,20 +108,43 @@ export class AutonomousGoalGenerator {
 
     let created = 0;
     for (const gap of gaps) {
-      const goalId = randomUUID();
-      this.db.prepare(`
-        INSERT OR IGNORE INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
-        VALUES (?, ?, 'created', ?, ?, '{}', ?, datetime('now'), datetime('now'))
-      `).run(
-        goalId,
-        `Investigate knowledge gap: ${gap.domain}`,
-        'low',
-        JSON.stringify(['Knowledge gap addressed', 'Documentation updated']),
-        JSON.stringify({ source: 'curiosity-gap', gap_id: gap.id, autonomous: true })
-      );
-
+      const protocol = {
+        research_question: `What evidence would close the ${gap.domain} knowledge gap?`,
+        hypothesis: `A bounded independent investigation can materially increase evidence coverage for ${gap.domain}.`,
+        null_hypothesis: `The investigation produces no operationally meaningful evidence gain for ${gap.domain}.`,
+        independent_variables: ['evidence_source', 'reviewer_identity'],
+        dependent_variables: ['supported_claim_count', 'contradiction_count', 'confidence_delta'],
+        controls: ['current evidence baseline'],
+        confounders: ['source overlap', 'shared model context', 'stale evidence'],
+        randomization: 'paired seed set when stochastic agents are used',
+        replication_count: 30,
+        stopping_condition: '30 replications completed or a protected invariant fails',
+        falsification_criteria: ['confidence interval crosses the minimum operational effect', 'independent reproduction fails'],
+        analysis_method: 'paired comparison with separate assurance dimensions',
+        limitations: ['projection is not evidence', 'external sources require mediated network access'],
+        run_class: 'exploratory',
+      };
+      const result = new WorkItemService(this.db).createIfMissingBySourceRef({
+        title: `Investigate knowledge gap: ${gap.domain}`,
+        description: gap.description,
+        source: 'curiosity_gap',
+        source_ref: gap.id,
+        risk_class: 'low',
+        value_score: Math.round(Math.max(0, Math.min(1, gap.priority)) * 100),
+        confidence: gap.priority,
+        status: 'candidate',
+        recommended_loop: 'research-loop',
+        metadata: {
+          objective: `Test and independently reproduce evidence for the ${gap.domain} knowledge gap`,
+          constraints: ['no production mutation', 'network denied unless explicitly mediated', 'no autonomous promotion'],
+          acceptance_criteria: ['preregistered protocol completed', 'independent evidence and limitations recorded'],
+          falsification_tests: protocol.falsification_criteria,
+          gap_id: gap.id,
+          protocol,
+        },
+      });
       this.db.prepare("UPDATE swarm_claims SET status = 'review_required', updated_at = datetime('now') WHERE id = ?").run(gap.id);
-      created++;
+      if (result.created) created++;
     }
 
     return created;
