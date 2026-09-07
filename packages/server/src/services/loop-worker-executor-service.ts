@@ -376,6 +376,13 @@ export class LoopWorkerExecutorService {
       if (previousResult && ['completed', 'failed', 'cancelled'].includes(previousTask!.status)) {
         return this.toRuntimeResult(previousResult);
       }
+      if (previousTask && ['completed', 'failed', 'cancelled'].includes(previousTask.status)) {
+        this.loopService.updateWorkerLeaseStatus(lease.id, 'failed', {
+          execution_task_id: previousTaskId,
+          execution_denied_reason: `terminal task ${previousTask.status} has no execution result`,
+        });
+        throw new Error(`LOOP_WORKER_EXECUTION_${previousTask.status.toUpperCase()}_WITHOUT_RESULT`);
+      }
       if (previousTask?.status === 'awaiting_approval') throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
       if (previousTask?.status === 'running' || previousTask?.status === 'queued') throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
     }

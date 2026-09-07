@@ -118,6 +118,7 @@ export class LoopDaemon {
    */
   async tick(): Promise<void> {
     // Allow tick to run even when not started (for testing)
+    this.reconcileApprovalResumes();
     this.pruneWorktrees();
 
     try {
@@ -219,9 +220,14 @@ export class LoopDaemon {
   private async executeGoal(goal: QueueEntry): Promise<void> {
     let runId: string | null = null;
     try {
+      goal.metadata = { ...goal.metadata, ...this.loops.getGoal(goal.id).metadata };
+      const resumeRunId = typeof goal.metadata.resume_loop_run_id === 'string'
+        ? goal.metadata.resume_loop_run_id
+        : null;
+
       // 1. Decompose the goal if not already decomposed.
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
-      if (currentStatus?.status === 'created') {
+      if (!resumeRunId && currentStatus?.status === 'created') {
         const canSchedule = this.scheduler.canSchedule(goal.metadata);
         if (!canSchedule.canSchedule) {
           swarmEventBus.emit('convergence', {
@@ -246,15 +252,18 @@ export class LoopDaemon {
         : process.env.LOOP_REPOSITORY_PATH?.trim();
       const makerRuntime = autonomousRuntime(goal.metadata.maker_runtime) || autonomousRuntime(process.env.LOOP_MAKER_RUNTIME);
       if (!makerRuntime) throw new Error('AUTONOMOUS_MAKER_RUNTIME_REQUIRED');
-      const run = this.loops.startLoop({
-        goal_id: goal.id,
-        loop_name: recommendedLoop,
-        ...(repositoryPath ? { repository_path: repositoryPath } : {}),
-      });
+      const run = resumeRunId
+        ? this.loops.getLoopRun(resumeRunId)
+        : this.loops.startLoop({
+            goal_id: goal.id,
+            loop_name: recommendedLoop,
+            ...(repositoryPath ? { repository_path: repositoryPath } : {}),
+          });
+      if (resumeRunId && run.goal_id !== goal.id) throw new Error('LOOP_RESUME_GOAL_MISMATCH');
       runId = run.id;
 
       // 3. Skip execution if no findings were discovered.
-      if (run.findings.length === 0) {
+      if (!resumeRunId && run.findings.length === 0) {
         this.db.prepare(`UPDATE goals
           SET status = 'blocked',
               metadata = json_set(metadata, '$.completion_evidence_status', 'UNDETERMINED', '$.blocked_reason', 'no_findings'),
@@ -270,7 +279,7 @@ export class LoopDaemon {
       }
 
       swarmEventBus.emit('convergence', {
-        daemon: 'goal_started',
+        daemon: resumeRunId ? 'goal_resumed' : 'goal_started',
         goal_id: goal.id,
         run_id: run.id,
         objective: goal.objective,
@@ -280,25 +289,36 @@ export class LoopDaemon {
       // 4. Continue the loop — creates maker+checker leases (prepared status).
       // G28+G33: the planner selects the runtime per finding based on per-runtime
       // competence (not hardcoded 'codex'). The plan is produced inside continueLoopRun.
-      const prepared = this.loops.continueLoopRun(run.id, {
-        max_assignments: 1,
-        max_maker_workers: 1,
-        runtime: makerRuntime,
-      });
+      const leases = resumeRunId
+        ? this.loops.listWorkerLeases(run.id)
+        : this.loops.continueLoopRun(run.id, {
+            max_assignments: 1,
+            max_maker_workers: 1,
+            runtime: makerRuntime,
+          }).leases;
 
-      // 5. Find the prepared maker lease and execute it.
-      const makerLease = prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      // 5. Find the maker selected before approval and continue the same lease.
+      const resumeLease = resumeRunId
+        ? leases.find((lease) => lease.id === goal.metadata.resume_worker_lease_id)
+        : null;
+      const makerLease = resumeLease?.role === 'checker'
+        ? leases.find((lease) => lease.id === resumeLease.metadata.maker_lease_id)
+        : resumeLease || leases.find((lease) => lease.role === 'maker' && lease.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
       }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
-      await this.loops.executeWorker(run.id, {
-        lease_id: makerLease.id,
-        timeout_ms: 300_000, // 5 min timeout for production goals
-        diff_max_lines: 200,
-        skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
-      });
+      if (makerLease.status === 'prepared') {
+        await this.loops.executeWorker(run.id, {
+          lease_id: makerLease.id,
+          timeout_ms: 300_000, // 5 min timeout for production goals
+          diff_max_lines: 200,
+          skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
+        });
+      } else if (makerLease.status !== 'completed') {
+        throw new Error('RESUMED_MAKER_LEASE_NOT_EXECUTABLE');
+      }
 
       // 7. Run deterministic checks (test, lint, type-check) and retry once.
       let activeMaker = makerLease;
@@ -375,6 +395,41 @@ export class LoopDaemon {
     } catch (error) {
       const now = new Date().toISOString();
       const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage === 'LOOP_WORKER_APPROVAL_REQUIRED' && runId) {
+        const pending = this.db.prepare(`
+          SELECT wl.id AS lease_id, wl.role, json_extract(wl.metadata, '$.execution_task_id') AS task_id,
+                 json_extract(wl.metadata, '$.approval_id') AS approval_id
+          FROM worker_leases wl
+          JOIN tasks t ON t.id = json_extract(wl.metadata, '$.execution_task_id')
+          WHERE wl.loop_run_id = ? AND wl.status = 'prepared' AND t.status = 'awaiting_approval'
+          ORDER BY wl.updated_at DESC LIMIT 1
+        `).get(runId) as { lease_id: string; role: string; task_id: string; approval_id: string | null } | undefined;
+        if (pending) {
+          this.loops.updateGoal(goal.id, {
+            status: 'blocked',
+            metadata: {
+              ...goal.metadata,
+              completion_evidence_status: 'UNDETERMINED',
+              blocked_reason: 'execution_approval_required',
+              resume_loop_run_id: runId,
+              resume_worker_lease_id: pending.lease_id,
+              resume_worker_role: pending.role,
+              resume_execution_task_id: pending.task_id,
+              resume_approval_id: pending.approval_id,
+            },
+          });
+          this.db.prepare(`UPDATE loop_runs
+            SET status = 'blocked',
+                metadata = json_set(COALESCE(metadata, '{}'), '$.completion_evidence_status', 'UNDETERMINED', '$.blocked_reason', 'execution_approval_required', '$.resume_execution_task_id', ?),
+                updated_at = ?
+            WHERE id = ?`).run(pending.task_id, now, runId);
+          swarmEventBus.emit('convergence', {
+            daemon: 'goal_blocked', goal_id: goal.id, run_id: runId,
+            reason: 'execution approval required', approval_id: pending.approval_id,
+          });
+          return;
+        }
+      }
       const failureCode = errorMessage.match(/^[A-Z][A-Z0-9_]+/)?.[0]
         || (error instanceof Error ? error.name : 'UNKNOWN_EXECUTION_FAILURE');
       this.db.prepare(`UPDATE goals
@@ -401,6 +456,30 @@ export class LoopDaemon {
       this.activeGoals.delete(goal.id);
       this.persistActiveGoals();
       this.pruneWorktrees();
+    }
+  }
+
+  /** Requeue only the exact approval-blocked loop whose execution task reached a terminal state. */
+  private reconcileApprovalResumes(): void {
+    const rows = this.db.prepare(`
+      SELECT g.id, json_extract(g.metadata, '$.resume_execution_task_id') AS task_id, t.status AS task_status
+      FROM goals g
+      JOIN tasks t ON t.id = json_extract(g.metadata, '$.resume_execution_task_id')
+      WHERE g.status = 'blocked'
+        AND json_extract(g.metadata, '$.blocked_reason') = 'execution_approval_required'
+        AND t.status IN ('completed', 'failed', 'cancelled')
+    `).all() as Array<{ id: string; task_id: string; task_status: string }>;
+    const now = new Date().toISOString();
+    for (const row of rows) {
+      this.db.prepare(`UPDATE goals
+        SET status = 'created',
+            metadata = json_set(COALESCE(metadata, '{}'), '$.blocked_reason', 'execution_approval_resolved', '$.resume_execution_status', ?),
+            updated_at = ?
+        WHERE id = ? AND status = 'blocked' AND json_extract(metadata, '$.resume_execution_task_id') = ?
+      `).run(row.task_status, now, row.id, row.task_id);
+      swarmEventBus.emit('recovery', {
+        daemon: 'approval_resume_queued', goal_id: row.id, task_id: row.task_id, task_status: row.task_status,
+      });
     }
   }
 

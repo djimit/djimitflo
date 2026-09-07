@@ -159,6 +159,84 @@ describe('G16: Continuous operation mode', () => {
     } });
   });
 
+  it('resumes the same run after an approved worker task completes', async () => {
+    const goalId = insertGoal('approval-resume', 'Resume a governed worker after approval', 'medium');
+    const now = new Date().toISOString();
+    const identity = (suffix: string) => ({
+      model_family: `model-${suffix}`, provider: `provider-${suffix}`, prompt_hash: `prompt-${suffix}`,
+      context_hash: `context-${suffix}`, memory_scope_hash: `memory-${suffix}`,
+      retrieval_hash: `retrieval-${suffix}`, oracle_hash: `oracle-${suffix}`,
+    });
+    db.prepare("UPDATE goals SET status = 'decomposed', metadata = ? WHERE id = ?").run(JSON.stringify({
+      recommended_loop: 'research-loop', repository_path: tempDir, maker_runtime: 'opencode', checker_runtime: 'hermes',
+    }), goalId);
+    db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES ('approval-run', ?, 'research-loop', 'closed', 'running', ?, '[{"id":"finding-1"}]', '{}', '[]', '[]', '{}', ?, ?)`).run(goalId, tempDir, now, now);
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, finding_id, worktree_path, metadata, created_at, updated_at)
+      VALUES ('approval-maker', 'approval-run', 'maker', 'opencode', 'prepared', 'finding-1', ?, ?, ?, ?),
+             ('approval-checker', 'approval-run', 'checker', 'manual', 'prepared', 'finding-1', ?, ?, ?, ?)`)
+      .run(tempDir, JSON.stringify({ execution_task_id: 'approval-task', approval_id: 'approval-1' }), now, now,
+        tempDir, JSON.stringify({ maker_lease_id: 'approval-maker' }), now, now);
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+      VALUES ('approval-task', 'approved loop worker', 'test', 'awaiting_approval', 'medium', 'low', 'local', '[]', '{}', ?, ?)`).run(now, now);
+
+    const startLoop = vi.spyOn(loops, 'startLoop').mockReturnValue({ id: 'approval-run', goal_id: goalId, findings: [{ id: 'finding-1' }] } as any);
+    const continueLoop = vi.spyOn(loops, 'continueLoopRun').mockReturnValue({ run: {} as any, leases: loops.listWorkerLeases('approval-run') } as any);
+    const executeWorker = vi.spyOn(loops, 'executeWorker')
+      .mockRejectedValueOnce(new Error('LOOP_WORKER_APPROVAL_REQUIRED'))
+      .mockImplementationOnce(async () => {
+        loops.updateWorkerLeaseStatus('approval-maker', 'completed', identity('maker'));
+        return {} as any;
+      });
+    vi.spyOn(loops, 'runDeterministicChecks').mockReturnValue({ run: { status: 'verifying' } } as any);
+    const executeChecker = vi.spyOn(loops, 'executeChecker')
+      .mockImplementationOnce(async () => {
+        db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
+          VALUES ('checker-task', 'approved checker', 'test', 'awaiting_approval', 'medium', 'low', 'local', '[]', '{}', ?, ?)`).run(now, now);
+        loops.patchWorkerLeaseMetadata('approval-checker', { execution_task_id: 'checker-task', approval_id: 'approval-2' });
+        throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      })
+      .mockImplementationOnce(async () => {
+        loops.updateWorkerLeaseRuntime('approval-checker', 'hermes');
+        loops.updateWorkerLeaseStatus('approval-checker', 'completed', { ...identity('checker'), maker_lease_id: 'approval-maker', verdict: 'accepted' });
+        return {} as any;
+      });
+    vi.spyOn(loops, 'certifyLoopRun').mockReturnValue({ certified: true, gates: [], run: { status: 'ready_for_human_merge' } } as any);
+    vi.spyOn(KnowledgeRuntimeService.prototype, 'closeLoop').mockReturnValue({ status: 'closed' } as any);
+
+    await (daemon as any).executeGoal({ id: goalId, objective: 'Resume a governed worker after approval', risk_class: 'medium', metadata: {}, created_at: now });
+    expect(loops.getGoal(goalId)).toMatchObject({ status: 'blocked', metadata: {
+      blocked_reason: 'execution_approval_required', resume_loop_run_id: 'approval-run',
+      resume_worker_lease_id: 'approval-maker', resume_execution_task_id: 'approval-task',
+    } });
+
+    db.prepare("UPDATE tasks SET status = 'completed', metadata = json_set(metadata, '$.executionResult', json(?)) WHERE id = 'approval-task'")
+      .run(JSON.stringify({ status: 'completed', message: 'approved execution completed' }));
+    (daemon as any).reconcileApprovalResumes();
+    const resumedGoal = loops.getGoal(goalId);
+    expect(resumedGoal.status).toBe('created');
+
+    await (daemon as any).executeGoal({ id: goalId, objective: resumedGoal.objective, risk_class: resumedGoal.risk_class, metadata: resumedGoal.metadata, created_at: now });
+    expect(loops.getGoal(goalId)).toMatchObject({ status: 'blocked', metadata: {
+      blocked_reason: 'execution_approval_required', resume_worker_role: 'checker',
+      resume_worker_lease_id: 'approval-checker', resume_execution_task_id: 'checker-task',
+    } });
+
+    db.prepare("UPDATE tasks SET status = 'completed', metadata = json_set(metadata, '$.executionResult', json(?)) WHERE id = 'checker-task'")
+      .run(JSON.stringify({ status: 'completed', message: 'approved checker completed' }));
+    (daemon as any).reconcileApprovalResumes();
+    const checkerResumeGoal = loops.getGoal(goalId);
+    await (daemon as any).executeGoal({ id: goalId, objective: checkerResumeGoal.objective, risk_class: checkerResumeGoal.risk_class, metadata: checkerResumeGoal.metadata, created_at: now });
+
+    expect(startLoop).toHaveBeenCalledOnce();
+    expect(continueLoop).toHaveBeenCalledOnce();
+    expect(executeWorker).toHaveBeenCalledTimes(2);
+    expect(executeChecker).toHaveBeenCalledTimes(2);
+    expect(loops.getGoal(goalId)).toMatchObject({ status: 'blocked', metadata: {
+      completion_evidence_status: 'SUPPORTED', blocked_reason: 'human_approval_required', promotion_performed: false,
+    } });
+  });
+
   it('prunes stale worktrees on every tick', async () => {
     const prune = vi.spyOn(loops, 'pruneOrphanedWorktrees').mockReturnValue(0);
 
