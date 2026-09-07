@@ -56,6 +56,14 @@ export class CuriosityService {
     let published = 0;
     for (const gap of gaps) {
       try {
+        const active = this.db.prepare(`
+          SELECT 1 FROM swarm_claims
+          WHERE predicate = 'gap' AND subject_ref = ? AND created_from = 'curiosity-service'
+            AND json_extract(metadata, '$.gap_type') = ?
+            AND status IN ('proposed', 'review_required', 'supported')
+          LIMIT 1
+        `).get(gap.domain, gap.type);
+        if (active) continue;
         this.intelligence.createClaim({
           claim: `Knowledge gap: ${gap.description}`,
           claim_type: 'capability',
@@ -64,6 +72,7 @@ export class CuriosityService {
           confidence: gap.severity,
           evidence_refs: [],
           created_from: 'curiosity-service',
+          metadata: { gap_type: gap.type },
         });
         published++;
       } catch { /* skip duplicates */ }

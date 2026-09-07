@@ -705,6 +705,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
   ON external_events(source, aggregate_id, aggregate_version)
   WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
 
+-- Replicated, idempotent assessments derived from immutable outcome events.
+CREATE TABLE IF NOT EXISTS outcome_learning_assessments (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL,
+  capability_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  direction TEXT,
+  observation_window TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  signal_status TEXT NOT NULL CHECK(signal_status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  replications INTEGER NOT NULL DEFAULT 0,
+  mean_value REAL,
+  baseline_value REAL,
+  confidence_low REAL,
+  confidence_high REAL,
+  causal_support INTEGER NOT NULL DEFAULT 0,
+  event_ids_json TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  work_item_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_outcome_learning_status ON outcome_learning_assessments(status);
+CREATE INDEX IF NOT EXISTS idx_outcome_learning_capability ON outcome_learning_assessments(capability_id, metric);
+
+CREATE TABLE IF NOT EXISTS openmythos_attestations (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  corpus_sha256 TEXT NOT NULL,
+  openmythos_commit TEXT NOT NULL,
+  certification_eligible INTEGER NOT NULL DEFAULT 0,
+  corpus_certification_ready INTEGER NOT NULL DEFAULT 0,
+  payload TEXT NOT NULL,
+  imported_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_openmythos_attestations_run ON openmythos_attestations(run_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS system_state (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,

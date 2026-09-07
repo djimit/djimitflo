@@ -125,21 +125,18 @@ describe('G20: Inter-agent negotiation', () => {
       risk_class: 'low',
     });
 
-    knowledgeBus.publish({
-      claim_id: 'help-req-2',
-      capability_id: 'cap-debug',
-      predicate: 'help_request',
-      subject_ref: 'lease:root-maker',
-      confidence: 0.5,
-      status: 'supported',
-      trust: 0.5,
-      provenance_run: 'run-neg',
-      evidence_refs: [],
-      created_from: root.root_lease_id,
-    });
+    NegotiationCoordinator.emitHelpRequest(
+      root.root_lease_id, 'run-neg', root.spawn_tree_id, 'cap-debug', 'Need a debugging specialist', 'high'
+    );
 
-    // The coordinator should respond (accepted or rejected depending on spawn gate).
-    expect(responses.length).toBeGreaterThanOrEqual(0);
+    expect(responses).toHaveLength(1);
+    expect(responses[0]).toMatchObject({
+      capability_id: 'cap-debug',
+      subject_ref: `lease:${root.root_lease_id}`,
+      status: 'supported',
+      provenance_run: 'run-neg',
+    });
+    expect(responses[0].evidence_refs).toHaveLength(1);
   });
 
   it('emits negotiation events on the SSE stream', () => {

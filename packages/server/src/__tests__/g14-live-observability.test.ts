@@ -69,7 +69,7 @@ describe('G14: Live observability', () => {
     expect(convergenceEvent!.data.certified).toBeDefined();
   });
 
-  it('emits capability_transition on auto-deprecation', () => {
+  it('records a low-competence signal without auto-deprecation', () => {
     const events: any[] = [];
     swarmEventBus.subscribe((e) => events.push(e));
 
@@ -84,7 +84,7 @@ describe('G14: Live observability', () => {
         '["spawn_runtime_worker"]', '["deploy"]', '["proof:test"]', 0, 0.5, '{}', 'demote_on_fail', null, '{}', datetime('now'), datetime('now'))
     `).run('cap-bad');
 
-    // Insert 3 failed leases to trigger auto-deprecation.
+    // Insert 3 failed leases to trigger a review signal.
     db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status) VALUES ('run-dep', 'test', 'closed', 'completed')`).run();
     for (let i = 0; i < 3; i++) {
       db.prepare(`
@@ -96,10 +96,10 @@ describe('G14: Live observability', () => {
     intelligence.measureCompetence('cap-bad');
 
     const transitionEvent = events.find((e) => e.type === 'capability_transition');
-    expect(transitionEvent).toBeDefined();
-    expect(transitionEvent.data.capability_id).toBe('cap-bad');
-    expect(transitionEvent.data.old_status).toBe('validated');
-    expect(transitionEvent.data.new_status).toBe('deprecated');
+    expect(transitionEvent).toBeUndefined();
+    const capability = intelligence.getCapability('cap-bad');
+    expect(capability.status).toBe('validated');
+    expect(capability.metadata.competence_signal).toBe('review_required');
   });
 
   it('emits recovery event on resumeInterruptedRun', () => {

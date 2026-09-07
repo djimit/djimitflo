@@ -12,6 +12,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { WorkerLeaseRecord, WorkerRole } from './loop-types';
+import { EmergentSpecializationService } from './emergent-specialization-service';
 
 export interface InsertLeaseInput {
   id: string;
@@ -39,7 +40,11 @@ export interface LeaseFilter {
 }
 
 export class WorkerLeaseRepo {
-  constructor(private db: Database) {}
+  private specializations: EmergentSpecializationService;
+
+  constructor(private db: Database) {
+    this.specializations = new EmergentSpecializationService(db);
+  }
 
   /**
    * Insert a new worker lease.
@@ -75,13 +80,20 @@ export class WorkerLeaseRepo {
    * Update lease status with metadata merge.
    */
   updateStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
-    const existing = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata?: string } | undefined;
+    const existing = this.db.prepare('SELECT status, role, runtime, capability_id, spawned_by_agent_id, metadata FROM worker_leases WHERE id = ?').get(id) as {
+      status: WorkerLeaseRecord['status']; role: string; runtime: string; capability_id: string | null; spawned_by_agent_id: string | null; metadata?: string;
+    } | undefined;
     const metadata = {
       ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
       ...metadataPatch,
     };
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
+    if (existing && ['completed', 'failed'].includes(status) && !['completed', 'failed'].includes(existing.status)) {
+      const agentId = String(metadata.agent_id || existing.spawned_by_agent_id || existing.runtime);
+      const domain = String(existing.capability_id || metadata.task_type || existing.role);
+      try { this.specializations.recordPerformance(agentId, domain, existing.role, status === 'completed'); } catch { /* learning must not block lease finalization */ }
+    }
   }
 
   /**

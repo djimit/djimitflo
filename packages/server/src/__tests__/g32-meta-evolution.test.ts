@@ -35,13 +35,14 @@ describe('G32: Meta-evolution loop', () => {
     expect(report.planner_accuracy).toBe(0.5);
   });
 
-  it('prunes dormant capabilities (0 runs in 30 days)', () => {
+  it('flags dormant capabilities without treating non-use as demotion evidence', () => {
     insertCapability('cap-dormant', 'validated');
     const report = meta.evaluate();
     expect(report.dormant_capabilities).toBe(1);
-    expect(report.pruned).toBe(1);
-    const cap = db.prepare('SELECT status FROM swarm_capabilities WHERE id = ?').get('cap-dormant') as { status: string };
-    expect(cap.status).toBe('deprecated');
+    expect(report.pruned).toBe(0);
+    const cap = db.prepare('SELECT status, metadata FROM swarm_capabilities WHERE id = ?').get('cap-dormant') as { status: string; metadata: string };
+    expect(cap.status).toBe('validated');
+    expect(JSON.parse(cap.metadata).dormancy.status).toBe('review_required');
   });
 
   it('emits a meta_evolution event', () => {

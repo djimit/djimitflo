@@ -7,6 +7,7 @@ import { AgentAssuranceService, type EvalRunRecord, type ReflectionCandidateReco
 import { LoopService } from './loop-service';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
+import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action';
 type RiskClass = 'low' | 'medium' | 'high' | 'critical';
@@ -64,6 +65,7 @@ export interface LoopLearningClosureResult {
   memory_candidate: MemoryCandidateRecord | null;
   follow_up_work_item: WorkItemRecord | null;
   skill_improvement_work_item: WorkItemRecord | null;
+  reviewer_independence: ReviewerIndependenceAssessment | null;
 }
 
 interface ParsedOkfFile {
@@ -215,14 +217,17 @@ export class KnowledgeRuntimeService {
         memory_candidate: this.memory.get(closure.memory_candidate_id),
         follow_up_work_item: null,
         skill_improvement_work_item: null,
+        reviewer_independence: new ReviewerIndependenceService(this.db).assessLoop(loopRunId),
       };
     }
     const leases = bundle.leases;
     const maker = leases.find((lease) => lease.role === 'maker' && !lease.metadata.superseded_by_maker_lease_id);
     const checker = leases.find((lease) => lease.role === 'checker' && lease.metadata.maker_lease_id === maker?.id);
+    const reviewerIndependence = new ReviewerIndependenceService(this.db).assess(maker || null, checker || null, loopRunId);
     const blockedReasons: string[] = [];
     if (!maker || maker.status !== 'completed') blockedReasons.push('maker_not_completed');
     if (!checker || checker.status !== 'completed' || checker.metadata.verdict !== 'accepted') blockedReasons.push('checker_not_accepted');
+    if (reviewerIndependence.state === 'FAIL') blockedReasons.push('checker_independence_failed');
     if (bundle.run.gates.length === 0) blockedReasons.push('gates_missing');
     if (bundle.run.gates.some((gate) => gate.status === 'fail')) blockedReasons.push('gate_not_passed');
 
@@ -236,7 +241,7 @@ export class KnowledgeRuntimeService {
     }
 
     if (blockedReasons.length > 0) {
-      return this.emptyClosure(loopRunId, blockedReasons);
+      return this.emptyClosure(loopRunId, blockedReasons, reviewerIndependence);
     }
 
     const previous = this.latestEval('loop-learning', 'loop', loopRunId);
@@ -244,7 +249,7 @@ export class KnowledgeRuntimeService {
       suite_name: 'loop-learning',
       target_type: 'loop',
       target_ref: loopRunId,
-      metadata: { closure_pipeline: true, loop_run_id: loopRunId, work_item_id: input.work_item_id || null, evidence_counts: evidenceCounts },
+      metadata: { closure_pipeline: true, loop_run_id: loopRunId, work_item_id: input.work_item_id || null, evidence_counts: evidenceCounts, reviewer_independence: reviewerIndependence },
     });
     const previousScore = previous?.score ?? null;
     const scoreDelta = previousScore === null ? null : Number((evalRun.score - previousScore).toFixed(4));
@@ -316,6 +321,7 @@ export class KnowledgeRuntimeService {
       memory_candidate: memoryCandidate,
       follow_up_work_item: followUp,
       skill_improvement_work_item: skillImprovement,
+      reviewer_independence: reviewerIndependence,
     };
   }
 
@@ -549,7 +555,7 @@ export class KnowledgeRuntimeService {
     };
   }
 
-  private emptyClosure(loopRunId: string, blockedReasons: string[]): LoopLearningClosureResult {
+  private emptyClosure(loopRunId: string, blockedReasons: string[], reviewerIndependence: ReviewerIndependenceAssessment | null = null): LoopLearningClosureResult {
     return {
       action: 'closed_loop_learning',
       loop_run_id: loopRunId,
@@ -562,6 +568,7 @@ export class KnowledgeRuntimeService {
       memory_candidate: null,
       follow_up_work_item: null,
       skill_improvement_work_item: null,
+      reviewer_independence: reviewerIndependence,
     };
   }
 

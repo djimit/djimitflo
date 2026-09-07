@@ -660,6 +660,10 @@ export type SwarmMissionControl = {
     chains: IntegrationSpineChain[];
     next_safe_action: string;
   };
+  ecosystem_map?: EcosystemMapSummary;
+  agent_interactions?: AgentInteractionRecord[];
+  outcome_learning?: OutcomeLearningAssessment[];
+  reviewer_independence?: ReviewerIndependenceAssessment[];
   production_pilot?: ProductionPilotSummary;
   runtime_readiness?: RuntimeReadinessResult;
   production_certification?: ProductionCertificationState;
@@ -670,6 +674,108 @@ export type SwarmMissionControl = {
     readiness: number;
     recent_changes: Array<Record<string, unknown>>;
   } | null;
+};
+
+export type AgentInteractionRecord = {
+  id: string;
+  timestamp: string;
+  correlation_id: string | null;
+  causation_id: string | null;
+  actor: { type: string; id: string; role: string | null; runtime: string | null; model: string | null };
+  action: string;
+  target: { type: string; id: string } | null;
+  capability_id: string | null;
+  decision: string | null;
+  status: string;
+  evidence_refs: string[];
+  effect_scope: 'simulated' | 'isolated' | 'production';
+  source: string;
+  summary: string;
+};
+
+export type OutcomeLearningAssessment = {
+  id: string;
+  candidate_id: string;
+  capability_id: string;
+  metric: string;
+  direction: 'increase' | 'decrease' | 'maintain' | null;
+  status: 'SUPPORTED' | 'FALSIFIED' | 'UNDETERMINED';
+  signal_status: 'SUPPORTED' | 'FALSIFIED' | 'UNDETERMINED';
+  replications: number;
+  causal_support: boolean;
+  work_item_id: string | null;
+  updated_at: string;
+};
+
+export type ReviewerIndependenceAssessment = {
+  loop_run_id: string;
+  maker_lease_id: string | null;
+  checker_lease_id: string | null;
+  state: 'PASS' | 'FAIL' | 'UNDETERMINED';
+  risk: 'low' | 'medium' | 'high';
+  dimensions: Record<string, boolean | null>;
+  correlated_fields: string[];
+  unknown_fields: string[];
+};
+
+export type EcosystemMapSummary = {
+  evidence_window: { interactions: number; integration_chains: number };
+  nodes: Array<{
+    id: string;
+    label: string;
+    kind: string;
+    responsibility: string;
+    boundary: string;
+    tradeoff: string;
+    evidence_state: 'OBSERVED' | 'REGISTERED' | 'UNDETERMINED';
+    observed_interactions: number;
+    registered_repositories: string[];
+    registered_agents: string[];
+    last_seen: string | null;
+    evidence_refs: string[];
+  }>;
+  declared_contracts: Array<{
+    from: string;
+    to: string;
+    exchange: string;
+    boundary: string;
+    evidence_state: 'OBSERVED' | 'UNDETERMINED';
+    observed_count: number;
+    last_seen: string | null;
+  }>;
+  observed_routes: Array<{
+    from: string;
+    to: string;
+    actions: string[];
+    observed_count: number;
+    effect_scopes: string[];
+    statuses: string[];
+    last_seen: string;
+    evidence_refs: string[];
+  }>;
+  evolution: Array<{ stage: string; count: number; evidence_state: 'OBSERVED' | 'UNDETERMINED' }>;
+  integrality: Array<{
+    dimension: string;
+    state: 'PASS' | 'FAIL' | 'UNDETERMINED';
+    evidence: string;
+    blocked_reasons: string[];
+  }>;
+  decisions: Array<{
+    id: string;
+    timestamp: string;
+    actor: string;
+    type: string;
+    decision: string;
+    rationale: string;
+    status: 'BLOCKED' | 'RECORDED';
+    evidence_refs: string[];
+    blocked_reasons: string[];
+  }>;
+  inventory: {
+    repositories: Array<{ id: string; name: string; status: string; branch: string | null; commit: string | null; last_seen: string | null; component_id: string | null; mapping_basis: 'metadata' | 'name_match' | null }>;
+    agents: Array<{ id: string; name: string; status: string; model: string | null; last_seen: string | null; component_id: string | null; mapping_basis: 'metadata' | 'name_match' | null }>;
+    observed_actors: Array<{ id: string; type: string; component_id: string | null; registered: boolean; observed_interactions: number; last_seen: string }>;
+  };
 };
 
 export type RuntimeReadinessResult = {
@@ -1378,6 +1484,11 @@ class ApiClient {
 
   async getSwarmMissionControl(): Promise<SwarmMissionControl> {
     return this.request('/swarms/intelligence/mission-control');
+  }
+
+  async getAgentInteractions(params: { agent_id?: string; correlation_id?: string; status?: string; source?: string; limit?: number } = {}): Promise<{ interactions: AgentInteractionRecord[] }> {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
+    return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
   }
 
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {

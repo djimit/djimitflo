@@ -24,6 +24,11 @@ export interface KnowledgeBusClaim {
   provenance_run: string | null;
   evidence_refs: string[];
   created_from: string | null;
+  context?: {
+    reason?: string;
+    urgency?: 'low' | 'medium' | 'high';
+    spawn_tree_id?: string;
+  };
 }
 
 type ClaimCallback = (claim: KnowledgeBusClaim) => void;

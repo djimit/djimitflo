@@ -11,12 +11,40 @@ import { createError } from '../middleware/error-handler';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
 import { ApexReportService } from '../services/apex-report-service';
+import { OpenMythosAttestationService } from '../services/openmythos-attestation-service';
+import { WorldLabEvidenceService } from '../services/worldlab-evidence-service';
 
 export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const evalService = new OpenMythosEvalService(db);
   const guardService = new GovernanceGuardService(db);
+  const attestations = new OpenMythosAttestationService(db);
+  const worldLabEvidence = new WorldLabEvidenceService(db);
+
+  router.post('/worldlab/retests', requirePermission('write:governance'), (req, res, next) => {
+    try { res.status(201).json(worldLabEvidence.recordRetest(req.body)); }
+    catch (error) {
+      const code = error instanceof Error ? error.message : 'WORLDLAB_RETEST_INVALID';
+      next(createError(code.endsWith('_NOT_FOUND') ? 404 : code.endsWith('_MISMATCH') ? 409 : 400,
+        'WorldLab retest evidence rejected', code));
+    }
+  });
+
+  router.post('/attestations', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      res.status(201).json(attestations.import(req.body, req.user?.sub || req.user?.email || 'authenticated-operator'));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'OPENMYTHOS_ATTESTATION_INVALID';
+      next(createError(code.endsWith('_NOT_FOUND') ? 404 : code.endsWith('_INCOMPLETE') || code.endsWith('_MISMATCH') ? 409 : 400,
+        'OpenMythos attestation rejected', code));
+    }
+  });
+
+  router.get('/attestations', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json({ attestations: attestations.list(Number(req.query.limit) || 50) }); }
+    catch (error) { next(error); }
+  });
 
   router.get(['/status', '/status/:agentId'], requirePermission('read:evidence'), (req, res, next) => {
     try {

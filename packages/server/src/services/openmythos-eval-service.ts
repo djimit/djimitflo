@@ -751,6 +751,14 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         AND json_extract(metadata, '$.evaluation_mode') = 'model_only'
         AND json_extract(metadata, '$.oracle_anchors_configured') = 1
         AND json_array_length(json_extract(metadata, '$.case_ids')) = completed_cases
+        AND json_extract(metadata, '$.corpus_certification_ready') = 1
+        AND json_extract(metadata, '$.certification_eligible') = 1
+        AND EXISTS (
+          SELECT 1 FROM openmythos_attestations attestation
+          WHERE attestation.run_id = openmythos_eval_runs.id
+            AND attestation.certification_eligible = 1
+            AND attestation.corpus_certification_ready = 1
+        )
   `;
 
   getModelOnlyLeaderboard(): AgentScore[] {

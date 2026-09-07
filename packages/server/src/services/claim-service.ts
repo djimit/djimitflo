@@ -82,7 +82,7 @@ export class ClaimService {
   createEvidenceEdge(fromRef: string, toRef: string, relation: string, metadata: Record<string, unknown> = {}): string {
     const id = randomUUID();
     this.db.prepare(`
-      INSERT INTO swarm_evidence_edges (id, from_ref, to_ref, relation, metadata_json, created_at)
+      INSERT INTO swarm_evidence_edges (id, from_ref, to_ref, relation, metadata, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(id, fromRef, toRef, relation, JSON.stringify(metadata), new Date().toISOString());
     return id;
@@ -168,7 +168,7 @@ function parseClaim(row: any): ClaimLedgerRecord {
     supports_ref: row.supports_ref,
     contradicts_ref: row.contradicts_ref,
     created_from: row.created_from,
-    metadata: JSON.parse(row.metadata_json || '{}'),
+    metadata: JSON.parse(row.metadata || '{}'),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

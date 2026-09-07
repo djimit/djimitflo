@@ -7,6 +7,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
+import { OpenMythosAttestationService } from '../services/openmythos-attestation-service';
 
 let db: Database.Database;
 let svc: SwarmIntelligenceService;
@@ -20,6 +21,7 @@ function writeRunner(name: string, source: string) {
 }
 
 function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', baselineHash = 'baseline-hash', candidateSuccesses = 30) {
+  const corpusHash = 'a'.repeat(64);
   const insert = db.prepare(`
     INSERT INTO skill_outcomes (
       id, skill_id, success, tokens_used, duration_ms, domain, skill_version, skill_content_hash, evidence_refs_json
@@ -38,12 +40,21 @@ function seedSkillEvidence(skillId: string, candidateHash = 'candidate-hash', ba
     skill_id: skillId,
     skill_version: '0.1.0',
     skill_content_hash: candidateHash,
-    certification_eligible: true,
+    corpus_sha256: corpusHash,
     score_valid: true,
   }));
+  const attestation: Record<string, unknown> = {
+    schema: 'djimit.openmythos.calibration.v1', run_id: `eval-${skillId}`, openmythos_commit: 'd'.repeat(40),
+    corpus_sha256: corpusHash, corpus_version: '1', corpus_schema_version: 1, corpus_certification_ready: true,
+    case_result_rows: 18, total_cases: 18, completed_cases: 18, calibrated: true, certification_eligible: true,
+    agreement_rate: 0.9, lowest_category_agreement_rate: 0.8,
+    evidence_sha256: { corpus: corpusHash, run: 'b'.repeat(64), results: 'c'.repeat(64) },
+  };
+  attestation.attestation_hash = `sha256:${OpenMythosAttestationService.hashArtifact(attestation)}`;
+  const imported = new OpenMythosAttestationService(db).import(attestation, 'test-operator');
   return {
     baseline_skill_content_hash: baselineHash,
-    evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:eval-${skillId}`],
+    evidence_refs: [`skill_outcomes:${skillId}:${candidateHash}`, `openmythos:eval-${skillId}`, `openmythos-attestation:${imported.id}`],
   };
 }
 

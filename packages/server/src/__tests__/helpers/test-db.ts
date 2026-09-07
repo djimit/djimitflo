@@ -236,7 +236,7 @@ const SCHEMA = `
     from_ref TEXT NOT NULL,
     to_ref TEXT NOT NULL,
     relation TEXT NOT NULL,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
+    metadata TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -1329,6 +1329,56 @@ CREATE INDEX IF NOT EXISTS idx_explainer_jobs_scheduled_at ON explainer_jobs(sch
 CREATE UNIQUE INDEX IF NOT EXISTS idx_explainer_jobs_active_dedupe
   ON explainer_jobs(dedupe_key)
   WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'queued', 'running');
+
+CREATE TABLE IF NOT EXISTS external_events (
+  id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'external',
+  correlation_id TEXT,
+  causation_id TEXT,
+  aggregate_id TEXT,
+  aggregate_version INTEGER,
+  dedupe_key TEXT UNIQUE,
+  occurred_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  ingested_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS outcome_learning_assessments (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL,
+  capability_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  direction TEXT,
+  observation_window TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  signal_status TEXT NOT NULL CHECK(signal_status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  replications INTEGER NOT NULL DEFAULT 0,
+  mean_value REAL,
+  baseline_value REAL,
+  confidence_low REAL,
+  confidence_high REAL,
+  causal_support INTEGER NOT NULL DEFAULT 0,
+  event_ids_json TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  work_item_id TEXT REFERENCES work_items(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS openmythos_attestations (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE,
+  schema_version TEXT NOT NULL,
+  corpus_sha256 TEXT NOT NULL,
+  openmythos_commit TEXT NOT NULL,
+  certification_eligible INTEGER NOT NULL DEFAULT 0,
+  corpus_certification_ready INTEGER NOT NULL DEFAULT 0,
+  payload TEXT NOT NULL,
+  imported_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
 -- Performance indexes
   CREATE INDEX IF NOT EXISTS idx_loop_runs_status ON loop_runs(status);

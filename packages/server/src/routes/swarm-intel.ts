@@ -11,6 +11,9 @@ import { KnowledgeSharingService } from '../services/knowledge-sharing-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
+import { AgentInteractionLedgerService } from '../services/agent-interaction-ledger-service';
+import { OutcomeLearningService } from '../services/outcome-learning-service';
+import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
 
 /** @deprecated Backward compatibility for swarms.ts — use createSwarmIntelRoutes */
 export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _wsService?: any): Router {
@@ -149,6 +152,35 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   // ─── Mission Control ───────────────────────────────────────────────
   router.get('/intelligence/mission-control', requirePermission('read:evidence'), (_req, res) => {
     res.json(intelligence.missionControl());
+  });
+
+  router.get('/intelligence/interactions', requirePermission('read:evidence'), (req, res) => {
+    res.json({ interactions: new AgentInteractionLedgerService(db).list({
+      agent_id: typeof req.query.agent_id === 'string' ? req.query.agent_id : undefined,
+      correlation_id: typeof req.query.correlation_id === 'string' ? req.query.correlation_id : undefined,
+      status: typeof req.query.status === 'string' ? req.query.status : undefined,
+      source: typeof req.query.source === 'string' ? req.query.source : undefined,
+      limit: Number(req.query.limit) || 100,
+    }) });
+  });
+
+  router.get('/intelligence/outcome-learning', requirePermission('read:evidence'), (req, res) => {
+    res.json({ assessments: new OutcomeLearningService(db).list(Number(req.query.limit) || 100) });
+  });
+
+  router.post('/intelligence/outcome-learning/capabilities/:id/release', requirePermission('write:capability'), (req, res, next) => {
+    try {
+      new OutcomeLearningService(db).releaseContainment(req.params.id, req.body || {});
+      res.json({ released: true, capability_id: req.params.id });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'OUTCOME_CONTAINMENT_RELEASE_FAILED';
+      next(createError(code.endsWith('_NOT_FOUND') ? 404 : code.endsWith('_REQUIRED') ? 400 : 409,
+        'Outcome containment release rejected', code));
+    }
+  });
+
+  router.get('/intelligence/reviewer-independence', requirePermission('read:evidence'), (req, res) => {
+    res.json({ assessments: new ReviewerIndependenceService(db).latest(Number(req.query.limit) || 20) });
   });
 
   // ─── OKF Drift ─────────────────────────────────────────────────────

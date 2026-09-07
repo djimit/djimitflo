@@ -34,6 +34,13 @@ describe('OpenMythosEvalService', () => {
         latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
+      CREATE TABLE openmythos_attestations (
+        id TEXT PRIMARY KEY, run_id TEXT NOT NULL, schema_version TEXT NOT NULL,
+        corpus_sha256 TEXT NOT NULL, openmythos_commit TEXT NOT NULL,
+        certification_eligible INTEGER NOT NULL DEFAULT 0,
+        corpus_certification_ready INTEGER NOT NULL DEFAULT 0,
+        payload TEXT NOT NULL, imported_by TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // Create temp corpus file
@@ -366,6 +373,14 @@ describe('GovernanceGuardService', () => {
         latency_ms INTEGER DEFAULT 0, status TEXT DEFAULT 'pending',
         created_at TEXT DEFAULT (datetime('now')), FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
       );
+      CREATE TABLE openmythos_attestations (
+        id TEXT PRIMARY KEY, run_id TEXT NOT NULL, schema_version TEXT NOT NULL,
+        corpus_sha256 TEXT NOT NULL, openmythos_commit TEXT NOT NULL,
+        certification_eligible INTEGER NOT NULL DEFAULT 0,
+        corpus_certification_ready INTEGER NOT NULL DEFAULT 0,
+        payload TEXT NOT NULL, imported_by TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
     `);
     guardService = new GovernanceGuardService(db);
   });
@@ -399,19 +414,17 @@ describe('GovernanceGuardService', () => {
     expect(guardService.getLatestScore('new-skill')).toBe(0);
   });
 
-  it('certifies only a matching eligible calibration report', () => {
+  it('certifies only a matching imported calibration attestation', () => {
     const runId = 'calibrated-run';
     db.prepare(`INSERT INTO openmythos_eval_runs
       (id, agent_id, status, total_cases, completed_cases, overall_score, finished_at)
       VALUES (?, ?, 'completed', 1, 1, 4.5, datetime('now'))`).run(runId, 'skill-1');
-    const reportPath = join(tmpdir(), `openmythos-calibration-${Date.now()}.json`);
-    writeFileSync(reportPath, JSON.stringify({
-      run_id: runId, agent_id: 'skill-1', calibrated: true, certification_eligible: true,
-      case_result_rows: 1, total_cases: 1,
-    }));
-    process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH = reportPath;
+    db.prepare(`INSERT INTO openmythos_attestations (
+      id, run_id, schema_version, corpus_sha256, openmythos_commit,
+      certification_eligible, corpus_certification_ready, payload, imported_by
+    ) VALUES ('attestation-1', ?, 'djimit.openmythos.calibration.v1', ?, 'commit', 1, 1, '{}', 'test')`)
+      .run(runId, 'a'.repeat(64));
     expect(guardService.isGovernanceCertified('skill-1')).toBe(true);
-    rmSync(reportPath, { force: true });
   });
 
   it('blocks when evaluation evidence is incomplete', async () => {

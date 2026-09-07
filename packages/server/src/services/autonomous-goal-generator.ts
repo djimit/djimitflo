@@ -98,7 +98,10 @@ export class AutonomousGoalGenerator {
     let gaps: Array<{ id: string; domain: string; description: string; priority: number }> = [];
     try {
       gaps = this.db.prepare(
-        "SELECT * FROM knowledge_gaps WHERE status = 'open' ORDER BY priority DESC LIMIT 3"
+        `SELECT id, subject_ref AS domain, claim AS description, confidence AS priority
+         FROM swarm_claims
+         WHERE predicate = 'gap' AND created_from = 'curiosity-service' AND status = 'proposed'
+         ORDER BY confidence DESC LIMIT 3`
       ).all() as Array<{ id: string; domain: string; description: string; priority: number }>;
     } catch { return 0; }
 
@@ -116,7 +119,7 @@ export class AutonomousGoalGenerator {
         JSON.stringify({ source: 'curiosity-gap', gap_id: gap.id, autonomous: true })
       );
 
-      this.db.prepare("UPDATE knowledge_gaps SET status = 'addressing' WHERE id = ?").run(gap.id);
+      this.db.prepare("UPDATE swarm_claims SET status = 'review_required', updated_at = datetime('now') WHERE id = ?").run(gap.id);
       created++;
     }
 

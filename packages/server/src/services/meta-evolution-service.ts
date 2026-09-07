@@ -6,7 +6,7 @@ import { swarmEventBus } from './swarm-event-bus';
  * G32: MetaEvolutionService — periodic self-evaluation of the swarm's performance.
  *
  * Evaluates: planner accuracy, rule accuracy, capability usage.
- * Prunes: dormant capabilities (0 runs in 30 days), demotes bad rules (≥3 contradictions).
+ * Flags: dormant capabilities (0 runs in 30 days), demotes bad rules (≥3 contradictions).
  * Emits a `meta_evolution` event on the SSE stream with the evaluation report.
  */
 
@@ -61,21 +61,16 @@ export class MetaEvolutionService {
     // 3. Capability usage: find dormant capabilities (0 runs in 30 days).
     const caps = this.intelligence.listCapabilities().filter(c => c.status === 'validated' || c.status === 'candidate');
     let dormantCount = 0;
-    let pruned = 0;
+    const pruned = 0;
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
     for (const cap of caps) {
       const recentRuns = this.db.prepare('SELECT COUNT(*) as c FROM worker_leases WHERE capability_id = ? AND created_at > ?').get(cap.id, thirtyDaysAgo) as { c: number };
       if (recentRuns.c === 0 && cap.status === 'validated') {
         dormantCount++;
-        // Prune: deprecate dormant validated capabilities.
-        this.db.prepare('UPDATE swarm_capabilities SET status = ?, updated_at = ? WHERE id = ?')
-          .run('deprecated', now, cap.id);
-        pruned++;
-        swarmEventBus.emit('capability_transition', {
-          capability_id: cap.id, old_status: 'validated', new_status: 'deprecated',
-          reason: 'dormant: 0 runs in 30 days',
-        });
+        const metadata = { ...cap.metadata, dormancy: { status: 'review_required', observed_at: now, reason: '0 runs in 30 days' } };
+        this.db.prepare('UPDATE swarm_capabilities SET metadata = ?, updated_at = ? WHERE id = ?')
+          .run(JSON.stringify(metadata), now, cap.id);
       }
     }
 

@@ -2,6 +2,7 @@ import { LoopService } from './loop-service';
 import { NestedSpawnService } from './nested-spawn-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { knowledgeBus } from './knowledge-bus';
+import type { KnowledgeBusClaim } from './knowledge-bus';
 import { swarmEventBus } from './swarm-event-bus';
 
 /**
@@ -51,7 +52,7 @@ export class NegotiationCoordinator {
   start(): void {
     this.unsub = knowledgeBus.subscribe('*', (claim) => {
       if (claim.predicate === 'help_request') {
-        this.handleHelpRequest(claim as unknown as HelpRequest & { claim_id: string });
+        this.handleHelpRequest(this.decodeHelpRequest(claim));
       }
     });
   }
@@ -122,6 +123,24 @@ export class NegotiationCoordinator {
     }
   }
 
+  private decodeHelpRequest(claim: KnowledgeBusClaim): HelpRequest & { claim_id: string } {
+    const fromLeaseId = claim.created_from || claim.subject_ref.replace(/^lease:/, '');
+    let spawnTreeId = claim.context?.spawn_tree_id || '';
+    if (!spawnTreeId && fromLeaseId) {
+      try { spawnTreeId = this.loops.getWorkerLeasePublic(fromLeaseId).spawn_tree_id || ''; } catch { /* rejected by the spawn gate below */ }
+    }
+    return {
+      claim_id: claim.claim_id,
+      type: 'help_request',
+      from_lease_id: fromLeaseId,
+      from_run_id: claim.provenance_run || '',
+      spawn_tree_id: spawnTreeId,
+      capability_needed: claim.capability_id || '',
+      reason: claim.context?.reason || `Help requested for ${claim.subject_ref}`,
+      urgency: claim.context?.urgency || 'medium',
+    };
+  }
+
   /**
    * Emit a help_response on the knowledge bus + SSE stream.
    */
@@ -164,7 +183,7 @@ export class NegotiationCoordinator {
   static emitHelpRequest(
     fromLeaseId: string,
     fromRunId: string,
-    _spawnTreeId: string,
+    spawnTreeId: string,
     capabilityNeeded: string,
     reason: string,
     urgency: 'low' | 'medium' | 'high' = 'medium',
@@ -180,6 +199,7 @@ export class NegotiationCoordinator {
       provenance_run: fromRunId,
       evidence_refs: [],
       created_from: fromLeaseId,
+      context: { spawn_tree_id: spawnTreeId, reason, urgency },
     });
 
     swarmEventBus.emit('convergence', {

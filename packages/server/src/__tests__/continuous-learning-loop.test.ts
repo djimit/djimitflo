@@ -22,6 +22,8 @@ describe('G127: Continuous Learning Loop', () => {
     const result = await loop.runCycle();
     expect(result.id).toBeDefined();
     expect(result.timestamp).toBeDefined();
+    expect(result.outcomeAssessments).toBe(0);
+    expect(result.outcomeWorkItemsCreated).toBe(0);
   });
 
   it('tracks history', async () => {

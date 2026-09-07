@@ -13,7 +13,6 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { readFileSync } from 'fs';
 import { OpenMythosEvalService } from './openmythos-eval-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { SkillLoaderService } from './skill-loader-service';
@@ -222,15 +221,15 @@ export class GovernanceGuardService {
   }
 
   private isCalibrationEligible(runId: string, skillId: string): boolean {
-    const path = process.env.OPENMYTHOS_CALIBRATION_REPORT_PATH;
-    if (!path) return false;
     try {
-      const report = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-      return report.run_id === runId
-        && report.agent_id === skillId
-        && report.calibrated === true
-        && report.certification_eligible === true
-        && report.case_result_rows === report.total_cases;
+      return Boolean(this.db.prepare(`
+        SELECT 1 FROM openmythos_attestations attestation
+        JOIN openmythos_eval_runs run ON run.id = attestation.run_id
+        WHERE attestation.run_id = ? AND run.agent_id = ?
+          AND attestation.certification_eligible = 1
+          AND attestation.corpus_certification_ready = 1
+        LIMIT 1
+      `).get(runId, skillId));
     } catch {
       return false;
     }

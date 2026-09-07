@@ -377,6 +377,17 @@ describe('swarm intelligence layer', () => {
       active_execution_count: 0,
       registry_is_not_execution: true,
     });
+    expect(mission.ecosystem_map.inventory.agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'agent-registry-only', status: 'idle' }),
+    ]));
+    expect(mission.ecosystem_map.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'djimitflo', evidence_state: 'OBSERVED' }),
+      expect.objectContaining({ id: 'worldlab', evidence_state: 'UNDETERMINED' }),
+    ]));
+    expect(mission.ecosystem_map.integrality).toEqual(expect.arrayContaining([
+      expect.objectContaining({ dimension: 'production_containment', state: 'UNDETERMINED' }),
+    ]));
+    expect(mission.ecosystem_map).not.toHaveProperty('score');
     expect(mission.next_safe_actions.length).toBeGreaterThan(0);
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asArray, integrationSpinePanelModel, knowledgeRuntimePanelModel, productionCertificationPanelModel, productionPilotPanelModel } from './SwarmMissionControlPage';
+import { asArray, ecosystemMapPanelModel, integrationSpinePanelModel, knowledgeRuntimePanelModel, productionCertificationPanelModel, productionPilotPanelModel } from './SwarmMissionControlPage';
 import type { KnowledgeRuntimeHealth } from '../lib/api';
 
 function health(overrides: Partial<KnowledgeRuntimeHealth> = {}): KnowledgeRuntimeHealth {
@@ -139,6 +139,27 @@ describe('mission control execution truth', () => {
     expect(model.latest?.work_item.id).toBe('wi-1');
     expect(model.nextSafeAction).toBe('Close loop learning');
     expect(model.chains[0].leases[0]).toMatchObject({ effective_runtime: 'mock' });
+  });
+
+  it('normalizes the central ecosystem projection without inventing evidence', () => {
+    const empty = ecosystemMapPanelModel(undefined);
+    expect(empty).toMatchObject({ nodes: [], routes: [], integrality: [], evidenceWindow: { interactions: 0, integration_chains: 0 } });
+
+    const model = ecosystemMapPanelModel({
+      evidence_window: { interactions: 4, integration_chains: 1 },
+      nodes: [{ id: 'worldlab', label: 'WorldLab', evidence_state: 'OBSERVED' }],
+      declared_contracts: {},
+      observed_routes: [{ from: 'worldlab', to: 'djimitflo', observed_count: 4 }],
+      evolution: [],
+      integrality: [{ dimension: 'production_containment', state: 'PASS' }],
+      decisions: [],
+      inventory: { repositories: [], agents: [], observed_actors: [] },
+    } as any);
+
+    expect(model.nodes[0]).toMatchObject({ id: 'worldlab', evidence_state: 'OBSERVED' });
+    expect(model.contracts).toEqual([]);
+    expect(model.routes[0]).toMatchObject({ from: 'worldlab', to: 'djimitflo' });
+    expect(model.integrality[0]).toMatchObject({ state: 'PASS' });
   });
 
   it('models production certification without requiring a proof run', () => {

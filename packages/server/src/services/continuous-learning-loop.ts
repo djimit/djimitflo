@@ -9,6 +9,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { DreamCycleService } from './dream-cycle-service';
 import { DreamTaskPlannerService } from './dream-task-planner-service';
 import { config as envConfig } from '../config/env';
+import { OutcomeLearningService } from './outcome-learning-service';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
@@ -16,6 +17,8 @@ export interface LearningCycleResult {
   proposalsGenerated: number; goalsGenerated: number; durationMs: number;
   dreamOpportunitiesGenerated: number;
   dreamTasksPlanned: number;
+  outcomeAssessments: number;
+  outcomeWorkItemsCreated: number;
   producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
@@ -26,6 +29,7 @@ export class ContinuousLearningLoop {
   private improvements: SelfImprovementService;
   private dreams: DreamCycleService;
   private dreamTasks: DreamTaskPlannerService;
+  private outcomeLearning: OutcomeLearningService;
   private _trajectories?: TrajectoryStore;
   private segml?: SelfEvolvingGovernanceLoop;
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
@@ -43,6 +47,7 @@ export class ContinuousLearningLoop {
     this.improvements = new SelfImprovementService(db);
     this.dreams = new DreamCycleService(db);
     this.dreamTasks = new DreamTaskPlannerService(db);
+    this.outcomeLearning = new OutcomeLearningService(db);
     this.intervalMs = options.intervalMs ?? 3600_000;
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
@@ -65,6 +70,7 @@ export class ContinuousLearningLoop {
     const start = Date.now();
     const id = randomUUID();
     const pendingEpisodes = this.collectPendingEpisodes();
+    const outcomeLearning = this.outcomeLearning.process();
     let episodesIngested = 0;
     for (const episode of pendingEpisodes) { this.curator.curate(episode); episodesIngested++; }
     const recentRuns = this.getUnlearnedCompletedRuns(10);
@@ -92,6 +98,8 @@ export class ContinuousLearningLoop {
       goalsGenerated,
       dreamOpportunitiesGenerated,
       dreamTasksPlanned,
+      outcomeAssessments: outcomeLearning.assessments,
+      outcomeWorkItemsCreated: outcomeLearning.work_items_created,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,

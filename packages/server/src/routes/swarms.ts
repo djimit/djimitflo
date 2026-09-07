@@ -161,22 +161,22 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     try { res.json(intelligence.transitionHypothesis(req.params.id, req.body.state, req.body.evidence_refs)); } catch (error) { try { mapSwarmIntelligenceError(error); } catch (mapped) { next(mapped); } }
   });
 
-  // Missions, tasks, decisions (public endpoints)
+  // Missions, tasks, decisions
   const missionsSvc = () => new SwarmIntelligenceService(db);
-  router.get('/intelligence/missions', (req, res) => { res.json({ missions: missionsSvc().listMissions(Number(req.query.limit) || 100) }); });
-  router.post('/intelligence/missions', (req, res) => { res.status(201).json(missionsSvc().createMission(req.body)); });
-  router.get('/intelligence/missions/:id', (req, res) => { res.json(missionsSvc().getMission(req.params.id)); });
-  router.post('/intelligence/missions/:id/transition', (req, res) => { res.json(missionsSvc().transitionMission(req.params.id, req.body.status, req.body)); });
-  router.get('/intelligence/missions/:id/tasks', (req, res) => { res.json({ tasks: missionsSvc().listTasks(req.params.id) }); });
-  router.post('/intelligence/missions/:id/tasks', (req, res) => { res.status(201).json(missionsSvc().createTask({ ...req.body, mission_id: req.params.id })); });
-  router.post('/intelligence/tasks/:id/transition', (req, res) => { res.json(missionsSvc().transitionTask(req.params.id, req.body.status, req.body)); });
-  router.get('/intelligence/missions/:id/decisions', (req, res) => { res.json({ decisions: missionsSvc().listDecisions(req.params.id) }); });
-  router.post('/intelligence/decisions', (req, res) => { res.status(201).json(missionsSvc().recordDecision(req.body)); });
+  router.get('/intelligence/missions', requirePermission('read:evidence'), (req, res) => { res.json({ missions: missionsSvc().listMissions(Number(req.query.limit) || 100) }); });
+  router.post('/intelligence/missions', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().createMission(req.body)); });
+  router.get('/intelligence/missions/:id', requirePermission('read:evidence'), (req, res) => { res.json(missionsSvc().getMission(req.params.id)); });
+  router.post('/intelligence/missions/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionMission(req.params.id, req.body.status, req.body)); });
+  router.get('/intelligence/missions/:id/tasks', requirePermission('read:evidence'), (req, res) => { res.json({ tasks: missionsSvc().listTasks(req.params.id) }); });
+  router.post('/intelligence/missions/:id/tasks', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().createTask({ ...req.body, mission_id: req.params.id })); });
+  router.post('/intelligence/tasks/:id/transition', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().transitionTask(req.params.id, req.body.status, req.body)); });
+  router.get('/intelligence/missions/:id/decisions', requirePermission('read:evidence'), (req, res) => { res.json({ decisions: missionsSvc().listDecisions(req.params.id) }); });
+  router.post('/intelligence/decisions', requirePermission('write:swarm_action'), (req, res) => { res.status(201).json(missionsSvc().recordDecision(req.body)); });
 
   // Circuit breaker
-  router.get('/intelligence/circuit-breaker/:scope', (req, res) => { res.json(missionsSvc().checkCircuitBreaker(req.params.scope)); });
-  router.post('/intelligence/circuit-breaker/:scope/failure', (req, res) => { res.json(missionsSvc().recordCircuitBreakerFailure(req.params.scope)); });
-  router.post('/intelligence/circuit-breaker/:scope/reset', (req, res) => { missionsSvc().resetCircuitBreaker(req.params.scope); res.json({ reset: true }); });
+  router.get('/intelligence/circuit-breaker/:scope', requirePermission('read:evidence'), (req, res) => { res.json(missionsSvc().checkCircuitBreaker(req.params.scope)); });
+  router.post('/intelligence/circuit-breaker/:scope/failure', requirePermission('write:swarm_action'), (req, res) => { res.json(missionsSvc().recordCircuitBreakerFailure(req.params.scope)); });
+  router.post('/intelligence/circuit-breaker/:scope/reset', requirePermission('write:swarm_action'), (req, res) => { missionsSvc().resetCircuitBreaker(req.params.scope); res.json({ reset: true }); });
 
   // Expert Swarm
   router.post('/expert/dispatch', requirePermission('write:swarm_action'), route(async (req, res) => {

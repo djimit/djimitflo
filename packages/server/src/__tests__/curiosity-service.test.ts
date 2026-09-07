@@ -4,6 +4,7 @@ import { CuriosityService } from '../services/curiosity-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 
 let db: Database.Database;
 let intelligence: SwarmIntelligenceService;
@@ -61,7 +62,23 @@ describe('G41: Curiosity Service', () => {
       VALUES ('c4', 'test', 'memory', 'architecture', 'has_property', 'supported', 0.9, '[]', 'test', datetime('now'), datetime('now'))
     `).run();
     const report = await curiosity.scanForGaps();
-    expect(report.gapsFound).toBeGreaterThanOrEqual(0);
+    expect(report.published).toBeGreaterThan(0);
+    expect(db.prepare("SELECT COUNT(*) count FROM swarm_claims WHERE predicate = 'gap' AND created_from = 'curiosity-service'").get()).toMatchObject({ count: report.published });
+    expect((await curiosity.scanForGaps()).published).toBe(0);
+  });
+
+  it('turns a curiosity claim into a bounded investigation goal once', async () => {
+    new AutonomousGoalGenerator(db);
+    db.prepare(`
+      INSERT INTO swarm_claims (id, claim, claim_type, subject_ref, predicate, status, confidence, evidence_refs_json, created_from, metadata, created_at, updated_at)
+      VALUES ('curiosity-1', 'Knowledge gap: verify routing', 'capability', 'routing', 'gap', 'proposed', 0.8, '[]', 'curiosity-service', '{"gap_type":"coverage"}', datetime('now'), datetime('now'))
+    `).run();
+    const goals = new AutonomousGoalGenerator(db);
+    expect(goals.generateFromCuriosityGaps()).toBe(1);
+    expect(goals.generateFromCuriosityGaps()).toBe(0);
+    expect(db.prepare("SELECT objective, risk_class FROM goals WHERE json_extract(metadata, '$.gap_id') = 'curiosity-1'").get()).toEqual({
+      objective: 'Investigate knowledge gap: routing', risk_class: 'low',
+    });
   });
 
   it('returns empty report when no gaps exist', async () => {

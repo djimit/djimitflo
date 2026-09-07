@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, BrainCircuit, CheckCircle2, ChevronDown, Database, Gauge, GitBranch, Network, PlayCircle, RefreshCw, RotateCcw, Route, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type CapacityPlanV2Result, type ClaimLedgerRecord, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type ProofRunSummary, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
+import { api, type AgentInteractionRecord, type CapacityPlanV2Result, type ClaimLedgerRecord, type EcosystemMapSummary, type GoalBatchPreviewResult, type IntegrationSpineChain, type KnowledgeRuntimeHealth, type KnowledgeSyncResult, type OutcomeLearningAssessment, type ProofRunSummary, type ReviewerIndependenceAssessment, type SwarmCapabilityRecord, type SwarmMissionControl, type WorkerPoolPlanResult } from '../lib/api';
 
 const FLYWHEEL_BATCH_PATH = 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json';
 
@@ -24,6 +24,21 @@ export function integrationSpinePanelModel(spine: SwarmMissionControl['integrati
     latest: spine?.latest || chains[0] || null,
     chains,
     nextSafeAction: spine?.next_safe_action || chains[0]?.next_safe_action || 'Import integration event',
+  };
+}
+
+export function ecosystemMapPanelModel(map: EcosystemMapSummary | null | undefined) {
+  return {
+    nodes: asArray<EcosystemMapSummary['nodes'][number]>(map?.nodes),
+    contracts: asArray<EcosystemMapSummary['declared_contracts'][number]>(map?.declared_contracts),
+    routes: asArray<EcosystemMapSummary['observed_routes'][number]>(map?.observed_routes),
+    evolution: asArray<EcosystemMapSummary['evolution'][number]>(map?.evolution),
+    integrality: asArray<EcosystemMapSummary['integrality'][number]>(map?.integrality),
+    decisions: asArray<EcosystemMapSummary['decisions'][number]>(map?.decisions),
+    repositories: asArray<EcosystemMapSummary['inventory']['repositories'][number]>(map?.inventory?.repositories),
+    agents: asArray<EcosystemMapSummary['inventory']['agents'][number]>(map?.inventory?.agents),
+    actors: asArray<EcosystemMapSummary['inventory']['observed_actors'][number]>(map?.inventory?.observed_actors),
+    evidenceWindow: map?.evidence_window || { interactions: 0, integration_chains: 0 },
   };
 }
 
@@ -232,6 +247,9 @@ export function SwarmMissionControlPage() {
   const auditManifestPreview = asArray<any>(capacity?.audit_manifest_preview);
   const nextSafeActions = asArray<string>(mission?.next_safe_actions);
   const skillEvolution = Array.isArray(mission?.skill_evolution) ? mission.skill_evolution : [];
+  const interactions = asArray<AgentInteractionRecord>(mission?.agent_interactions);
+  const outcomeAssessments = asArray<OutcomeLearningAssessment>(mission?.outcome_learning);
+  const reviewerIndependence = asArray<ReviewerIndependenceAssessment>(mission?.reviewer_independence);
 
   return (
     <div className="p-8 space-y-6">
@@ -239,7 +257,7 @@ export function SwarmMissionControlPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">Swarm Mission Control</h1>
           <p className="mt-2 max-w-3xl text-foreground-secondary">
-            Evidence-first control surface for skills, specialist councils, claim ledger, capacity governor and runner governance.
+            Evidence-first control surface for ecosystem interactions, evolution, skills, specialist councils, claims, capacity and runner governance.
           </p>
         </div>
         <div className="flex gap-2">
@@ -311,8 +329,81 @@ export function SwarmMissionControlPage() {
         onCloseLearningLoop={() => void closeLearningLoop()}
       />
 
+      <EcosystemMapPanel map={mission?.ecosystem_map} />
       <IntegrationSpinePanel spine={mission?.integration_spine} />
       <ProductionPilotPanel pilot={mission?.production_pilot} />
+
+      <section className="rounded-lg border border-border bg-background-secondary p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Agent Interaction Ledger</h2>
+            <p className="mt-1 text-sm text-foreground-secondary">
+              Redacted actor → action → target evidence projected from the existing operational ledgers.
+            </p>
+          </div>
+          <div className="text-xs text-foreground-tertiary">
+            {interactions.length} recent interactions · {outcomeAssessments.length} outcome assessments
+          </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-foreground-tertiary">
+              <tr>
+                <th className="py-2 pr-4">Time</th>
+                <th className="py-2 pr-4">Actor</th>
+                <th className="py-2 pr-4">Action</th>
+                <th className="py-2 pr-4">Target</th>
+                <th className="py-2 pr-4">Scope</th>
+                <th className="py-2 pr-4">Status</th>
+                <th className="py-2">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {interactions.map((interaction) => (
+                <tr key={interaction.id} className="border-t border-border align-top">
+                  <td className="whitespace-nowrap py-2 pr-4 text-xs text-foreground-tertiary">
+                    <time dateTime={interaction.timestamp}>{new Date(interaction.timestamp).toLocaleString()}</time>
+                  </td>
+                  <td className="py-2 pr-4">
+                    <div className="font-mono text-xs text-foreground">{interaction.actor.id}</div>
+                    <div className="text-xs text-foreground-tertiary">{interaction.actor.role || interaction.actor.type}{interaction.actor.runtime ? ` · ${interaction.actor.runtime}` : ''}</div>
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{interaction.action}</td>
+                  <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{interaction.target ? `${interaction.target.type}:${interaction.target.id}` : 'none'}</td>
+                  <td className="py-2 pr-4"><StatusBadge status={interaction.effect_scope} /></td>
+                  <td className="py-2 pr-4"><StatusBadge status={interaction.status} /></td>
+                  <td className="py-2 text-xs text-foreground-tertiary">{asArray<string>(interaction.evidence_refs).slice(0, 2).join(', ') || 'none'}</td>
+                </tr>
+              ))}
+              {interactions.length === 0 && (
+                <tr><td colSpan={7} className="border-t border-border py-4 text-center text-sm text-foreground-tertiary">No attributable agent interactions recorded.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {outcomeAssessments.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2" aria-label="Outcome learning assessments">
+            {outcomeAssessments.slice(0, 8).map((assessment) => (
+              <div key={assessment.id} className="rounded border border-border px-3 py-2 text-xs text-foreground-secondary">
+                <span className="font-medium text-foreground">{assessment.capability_id}</span>
+                {' · '}{assessment.metric}{' · '}n={assessment.replications}{' '}
+                <StatusBadge status={assessment.status.toLowerCase()} />
+              </div>
+            ))}
+          </div>
+        )}
+        {reviewerIndependence.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2" aria-label="Reviewer independence diagnostics">
+            {reviewerIndependence.slice(0, 8).map((assessment) => (
+              <div key={assessment.loop_run_id} className="rounded border border-border px-3 py-2 text-xs text-foreground-secondary">
+                <span className="font-mono text-foreground">{assessment.loop_run_id}</span>
+                {' · reviewer independence '}<StatusBadge status={assessment.state.toLowerCase()} />
+                {assessment.correlated_fields.length > 0 ? ` · correlated: ${assessment.correlated_fields.join(', ')}` : ''}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="rounded-lg border border-border bg-background-secondary p-5">
         <div className="flex items-start justify-between gap-4">
@@ -798,6 +889,202 @@ function ProductionPilotPanel({ pilot }: { pilot: SwarmMissionControl['productio
   );
 }
 
+function EcosystemMapPanel({ map }: { map: EcosystemMapSummary | null | undefined }) {
+  const model = ecosystemMapPanelModel(map);
+  const label = (reference: string) => model.nodes.find((node) => node.id === reference)?.label
+    || reference.replace(/^agent:/, 'agent ').replace(/^actor:/, 'actor ').replace(/^tool:/, 'tool ');
+  const observedNodes = model.nodes.filter((node) => node.evidence_state === 'OBSERVED').length;
+  const observedContracts = model.contracts.filter((contract) => contract.evidence_state === 'OBSERVED').length;
+  const failedDimensions = model.integrality.filter((dimension) => dimension.state === 'FAIL').length;
+  const undeterminedDimensions = model.integrality.filter((dimension) => dimension.state === 'UNDETERMINED').length;
+  const actorRows = [
+    ...model.actors,
+    ...model.agents.filter((agent) => !model.actors.some((actor) => actor.id === agent.id)).map((agent) => ({
+      id: agent.id,
+      type: 'agent',
+      component_id: agent.component_id,
+      registered: true,
+      observed_interactions: 0,
+      last_seen: agent.last_seen || '',
+    })),
+  ];
+
+  return (
+    <section className="rounded-lg border border-border bg-background-secondary p-5" aria-labelledby="ecosystem-map-heading">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <Network className="h-5 w-5 text-accent" />
+            <h2 id="ecosystem-map-heading" className="text-lg font-semibold text-foreground">DJIMIT Ecosystem Map</h2>
+          </div>
+          <p className="mt-1 max-w-4xl text-sm text-foreground-secondary">
+            One read-only view of authority boundaries, observed component and bot interactions, evolution closure, decisions and provenance gaps. No aggregate safety score is calculated.
+          </p>
+        </div>
+        <div className="text-right text-xs text-foreground-tertiary">
+          <div>{model.evidenceWindow.interactions} interactions · {model.evidenceWindow.integration_chains} integration chains</div>
+          <div>{observedNodes}/{model.nodes.length} components observed · {observedContracts}/{model.contracts.length} declared routes observed</div>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <SmallStat label="Repositories" value={model.repositories.length} />
+        <SmallStat label="Agents / bots" value={actorRows.length} />
+        <SmallStat label="Observed actors" value={model.actors.length} />
+        <SmallStat label="Fail / unknown" value={`${failedDimensions}/${undeterminedDimensions}`} />
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-sm font-semibold text-foreground">Authority and responsibility</h3>
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {model.nodes.map((node) => (
+            <article key={node.id} className="rounded border border-border bg-background p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-semibold text-foreground">{node.label}</div>
+                  <div className="text-xs text-foreground-tertiary">{node.kind.replace(/_/g, ' ')}</div>
+                </div>
+                <StatusBadge status={node.evidence_state} />
+              </div>
+              <p className="mt-2 text-xs text-foreground-secondary">{node.responsibility}</p>
+              <p className="mt-2 border-l-2 border-status-warning/40 pl-2 text-xs text-foreground-tertiary">{node.boundary}</p>
+              <details className="mt-2 text-xs text-foreground-tertiary">
+                <summary className="cursor-pointer select-none">Trade-off and evidence</summary>
+                <p className="mt-1">{node.tradeoff}</p>
+                <p className="mt-1">{node.observed_interactions} interactions · {node.registered_repositories.length} repos · {node.registered_agents.length} agents</p>
+              </details>
+            </article>
+          ))}
+          {model.nodes.length === 0 && <p className="text-sm text-foreground-tertiary">Ecosystem projection unavailable.</p>}
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded border border-border bg-background p-4">
+          <h3 className="text-sm font-semibold text-foreground">Evolution and learning chain</h3>
+          <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {model.evolution.map((stage, index) => (
+              <div key={stage.stage} className="relative rounded border border-border p-3">
+                <div className="text-xs uppercase text-foreground-tertiary">{index + 1}. {stage.stage.replace(/_/g, ' ')}</div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <span className="text-xl font-semibold text-foreground">{stage.count}</span>
+                  <StatusBadge status={stage.evidence_state} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded border border-border bg-background p-4">
+          <h3 className="text-sm font-semibold text-foreground">Integrality vector</h3>
+          <p className="mt-1 text-xs text-foreground-tertiary">Independent states remain PASS, FAIL or UNDETERMINED; unknown evidence is never treated as pass.</p>
+          <div className="mt-3 space-y-2">
+            {model.integrality.map((dimension) => (
+              <div key={dimension.dimension} className="flex items-start justify-between gap-3 border-t border-border pt-2 first:border-0 first:pt-0">
+                <div>
+                  <div className="text-sm font-medium text-foreground">{dimension.dimension.replace(/_/g, ' ')}</div>
+                  <div className="text-xs text-foreground-tertiary">{dimension.evidence}</div>
+                  {dimension.blocked_reasons.length > 0 && <div className="mt-1 text-xs text-status-warning">{dimension.blocked_reasons.slice(0, 3).join(', ')}</div>}
+                </div>
+                <StatusBadge status={dimension.state} />
+              </div>
+            ))}
+            {model.integrality.length === 0 && <p className="text-sm text-foreground-tertiary">No integrality evidence available.</p>}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-x-auto">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold text-foreground">Observed interactions</h3>
+          <span className="text-xs text-foreground-tertiary">aggregated from immutable and operational ledgers</span>
+        </div>
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs uppercase text-foreground-tertiary">
+            <tr>
+              <th className="py-2 pr-4">From</th>
+              <th className="py-2 pr-4">To</th>
+              <th className="py-2 pr-4">Actions</th>
+              <th className="py-2 pr-4">Scope</th>
+              <th className="py-2 pr-4">Count</th>
+              <th className="py-2">Last evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {model.routes.map((route) => (
+              <tr key={`${route.from}:${route.to}`} className="border-t border-border align-top">
+                <td className="py-2 pr-4 font-medium text-foreground">{label(route.from)}</td>
+                <td className="py-2 pr-4 font-medium text-foreground">{label(route.to)}</td>
+                <td className="py-2 pr-4 font-mono text-xs text-foreground-secondary">{route.actions.join(', ')}</td>
+                <td className="py-2 pr-4"><div className="flex flex-wrap gap-1">{route.effect_scopes.map((scope) => <StatusBadge key={scope} status={scope} />)}</div></td>
+                <td className="py-2 pr-4 text-foreground-secondary">{route.observed_count}</td>
+                <td className="whitespace-nowrap py-2 text-xs text-foreground-tertiary"><time dateTime={route.last_seen}>{new Date(route.last_seen).toLocaleString()}</time></td>
+              </tr>
+            ))}
+            {model.routes.length === 0 && <tr><td colSpan={6} className="border-t border-border py-4 text-center text-foreground-tertiary">No attributable routes observed.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      <details className="mt-5 rounded border border-border bg-background p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Declared integration contracts and boundaries</summary>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-foreground-tertiary"><tr><th className="py-2 pr-4">Route</th><th className="py-2 pr-4">Exchange</th><th className="py-2 pr-4">Boundary</th><th className="py-2">Evidence</th></tr></thead>
+            <tbody>{model.contracts.map((contract) => (
+              <tr key={`${contract.from}:${contract.to}`} className="border-t border-border align-top">
+                <td className="whitespace-nowrap py-2 pr-4 font-medium text-foreground">{label(contract.from)} → {label(contract.to)}</td>
+                <td className="py-2 pr-4 text-foreground-secondary">{contract.exchange}</td>
+                <td className="py-2 pr-4 text-foreground-tertiary">{contract.boundary}</td>
+                <td className="py-2"><StatusBadge status={contract.evidence_state} /> <span className="ml-1 text-xs text-foreground-tertiary">n={contract.observed_count}</span></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </details>
+
+      <details className="mt-3 rounded border border-border bg-background p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Repositories, agents and bots</summary>
+        <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <div className="overflow-x-auto">
+            <h4 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">Registered repositories</h4>
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-foreground-tertiary"><tr><th className="py-2 pr-4">Repository</th><th className="py-2 pr-4">Component</th><th className="py-2 pr-4">State</th><th className="py-2">Commit</th></tr></thead>
+              <tbody>{model.repositories.map((repo) => (
+                <tr key={repo.id} className="border-t border-border"><td className="py-2 pr-4"><Link className="text-accent hover:underline" to={`/repositories/${repo.id}`}>{repo.name}</Link></td><td className="py-2 pr-4 text-foreground-secondary"><div>{repo.component_id ? label(repo.component_id) : 'unmapped'}</div><div className="text-xs text-foreground-tertiary">{repo.mapping_basis || 'no mapping evidence'}</div></td><td className="py-2 pr-4"><StatusBadge status={repo.status} /></td><td className="py-2 font-mono text-xs text-foreground-tertiary">{repo.commit?.slice(0, 12) || 'unproven'}</td></tr>
+              ))}{model.repositories.length === 0 && <tr><td colSpan={4} className="border-t border-border py-3 text-foreground-tertiary">No registered repositories.</td></tr>}</tbody>
+            </table>
+          </div>
+          <div className="overflow-x-auto">
+            <h4 className="mb-2 text-xs font-semibold uppercase text-foreground-tertiary">Registered and observed actors</h4>
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase text-foreground-tertiary"><tr><th className="py-2 pr-4">Agent / bot</th><th className="py-2 pr-4">Component</th><th className="py-2 pr-4">State</th><th className="py-2">Interactions</th></tr></thead>
+              <tbody>{actorRows.map((actor) => {
+                const registered = model.agents.find((agent) => agent.id === actor.id);
+                return <tr key={actor.id} className="border-t border-border"><td className="py-2 pr-4"><div className="font-medium text-foreground">{registered?.name || actor.id}</div><div className="font-mono text-xs text-foreground-tertiary">{actor.id}</div></td><td className="py-2 pr-4 text-foreground-secondary"><div>{actor.component_id ? label(actor.component_id) : 'unmapped'}</div><div className="text-xs text-foreground-tertiary">{registered?.mapping_basis || (actor.component_id ? 'runtime name match' : 'no mapping evidence')}</div></td><td className="py-2 pr-4"><StatusBadge status={registered?.status || 'observed'} /></td><td className="py-2 text-foreground-secondary">{actor.observed_interactions}</td></tr>;
+              })}{actorRows.length === 0 && <tr><td colSpan={4} className="border-t border-border py-3 text-foreground-tertiary">No registered or observed actors.</td></tr>}</tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
+      <details className="mt-3 rounded border border-border bg-background p-4">
+        <summary className="cursor-pointer select-none text-sm font-semibold text-foreground">Recorded decisions and trade-offs</summary>
+        <div className="mt-3 space-y-2">
+          {model.decisions.map((decision) => (
+            <div key={decision.id} className="rounded border border-border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div className="text-sm font-medium text-foreground">{decision.actor}: {decision.decision}</div><StatusBadge status={decision.status} /></div>
+              <p className="mt-1 text-xs text-foreground-secondary">{decision.rationale || 'No rationale recorded.'}</p>
+              <div className="mt-1 text-xs text-foreground-tertiary">{decision.type} · {decision.evidence_refs.length} evidence/gate refs · <time dateTime={decision.timestamp}>{new Date(decision.timestamp).toLocaleString()}</time></div>
+              {decision.blocked_reasons.length > 0 && <div className="mt-1 text-xs text-status-warning">{decision.blocked_reasons.join(', ')}</div>}
+            </div>
+          ))}
+          {model.decisions.length === 0 && <p className="text-sm text-foreground-tertiary">No recorded decisions.</p>}
+        </div>
+      </details>
+    </section>
+  );
+}
+
 function IntegrationSpinePanel({ spine }: { spine: SwarmMissionControl['integration_spine'] | null | undefined }) {
   const model = integrationSpinePanelModel(spine);
   const latest = model.latest;
@@ -1104,9 +1391,11 @@ function HealthStrip({ label, values }: { label: string; values: string[] }) {
 
 function StatusBadge({ status }: { status: string }) {
   const normalized = status.toLowerCase();
-  const tone = ['routable', 'available', 'start', 'truth-gated', 'supported', 'validated'].includes(normalized)
+  const tone = ['routable', 'available', 'start', 'truth-gated', 'supported', 'validated', 'pass'].includes(normalized)
     ? 'border-status-success/30 bg-status-success/10 text-status-success'
-    : ['blocked', 'contradicted', 'review_required', 'skip', 'draft', 'candidate'].includes(normalized)
+    : ['fail', 'error', 'denied'].includes(normalized)
+      ? 'border-status-error/30 bg-status-error/10 text-status-error'
+      : ['blocked', 'contradicted', 'review_required', 'skip', 'draft', 'candidate', 'undetermined'].includes(normalized)
       ? 'border-status-warning/30 bg-status-warning/10 text-status-warning'
       : 'border-border bg-background-elevated text-foreground-secondary';
   return <span className={`rounded border px-2 py-1 text-xs font-medium ${tone}`}>{status}</span>;

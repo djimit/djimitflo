@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { GoalBatchService } from '../services/goal-batch-service';
@@ -139,6 +142,68 @@ describe('goal batch service', () => {
     }
   });
 
+  it('imports a versioned campaign in bounded waves and preserves assurance evidence', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalBatchService(db);
+      const goal = (index: number) => ({
+        key: `goal-${index}`,
+        ...(index ? { depends_on: [`goal-${index - 1}`] } : {}),
+        target: 'packages/server',
+        api: { body: {
+          objective: `Goal ${index}`,
+          acceptance_criteria: ['Targeted regression passes'],
+          constraints: ['network:deny'],
+          falsification_tests: ['Invariant violation remains reproducible'],
+          risk_class: 'medium',
+          metadata: { recommended_loop: 'worldlab-regression-loop' },
+        } },
+      });
+      const batch = {
+        schema: 'djimit.openmythos.worldlab.goal.v1',
+        campaign_id: 'campaign-1',
+        change: 'worldlab-finding-1',
+        source: { experiment_id: 'exp-1', finding_id: 'finding-1', evidence_hash: 'sha256:evidence' },
+        finding: { failure_mode: 'epistemic_contagion', confidence: 0.94 },
+        waves: [
+          { id: 'wave-1', ordered_goals: [goal(0), goal(1), goal(2)] },
+          { id: 'wave-2', ordered_goals: [goal(3), goal(4)] },
+        ],
+      };
+
+      const preview = service.preview({ batch });
+      expect(preview).toMatchObject({ schema: batch.schema, campaign_id: 'campaign-1', total: 5, valid: 5, blocked: 0 });
+      const applied = service.apply({ batch });
+      expect(applied.created_goals).toHaveLength(5);
+      expect(applied.created_goals[3]).toMatchObject({
+        constraints: ['network:deny'],
+        metadata: {
+          falsification_tests: ['Invariant violation remains reproducible'],
+          openmythos_source: batch.source,
+          openmythos_finding: batch.finding,
+          goal_batch: { campaign_id: 'campaign-1', wave_id: 'wave-2' },
+        },
+      });
+      expect((db.prepare('SELECT COUNT(*) count FROM swarm_evidence_edges').get() as { count: number }).count).toBe(10);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('accepts a dependency imported by an earlier campaign wave', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalBatchService(db);
+      service.apply({ batch: { goals: [{ id: 'prior', title: 'Prior', acceptance: ['Done'] }] } });
+      const preview = service.preview({ batch: {
+        goals: [{ id: 'next', title: 'Next', acceptance: ['Done'], depends_on: ['prior'] }],
+      } });
+      expect(preview.errors).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
   it('rejects malformed batches without partial import', () => {
     const db = makeDb();
     try {
@@ -156,6 +221,22 @@ describe('goal batch service', () => {
       });
     } finally {
       db.close();
+    }
+  });
+
+  it('does not follow a goal-batch symlink outside the repository', () => {
+    const db = makeDb();
+    const repo = mkdtempSync(join(tmpdir(), 'goal-batch-repo-'));
+    const outside = mkdtempSync(join(tmpdir(), 'goal-batch-outside-'));
+    try {
+      writeFileSync(join(outside, 'batch.json'), JSON.stringify({ goals: [] }));
+      symlinkSync(join(outside, 'batch.json'), join(repo, 'batch.json'));
+      expect(() => new GoalBatchService(db, repo).preview({ path: 'batch.json' }))
+        .toThrow('GOAL_BATCH_PATH_FORBIDDEN');
+    } finally {
+      db.close();
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
     }
   });
 });

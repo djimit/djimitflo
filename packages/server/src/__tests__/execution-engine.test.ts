@@ -238,6 +238,20 @@ describe('ExecutionEngine', () => {
     expect(broadcastTaskEventById).toHaveBeenCalledWith(task.id, expect.objectContaining({ type: 'approval.expired' }));
   });
 
+  it('preserves the explicit expired-approval error contract', () => {
+    const task = createTask({ id: 'already-expired-approval' });
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'low', 'local');
+    db.prepare(`
+      INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, requested_by, expires_at, metadata)
+      VALUES (?, ?, 'expired', 'low', 'high_risk_action', 'expired', '{}', 'maker-1', ?, '{}')
+    `).run('approval-already-expired', task.id, new Date(Date.now() + 60_000).toISOString());
+
+    const approvalService = new ApprovalService(db, createMockWsService(), new AuditService(db));
+    expect(() => approvalService.decideApproval('approval-already-expired', true, 'checker-1'))
+      .toThrow('APPROVAL_EXPIRED');
+  });
+
   it('materializes Dennis approvals without starting a generic executor', async () => {
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
     db.prepare("INSERT INTO agents (id, name) VALUES ('dennis-agent', 'Dennis Agent')").run();

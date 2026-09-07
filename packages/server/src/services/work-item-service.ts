@@ -309,6 +309,10 @@ export class WorkItemService {
     const item = this.get(id);
     const now = new Date().toISOString();
     const goalId = randomUUID();
+    const constraints = nonEmptyStringList(item.metadata.constraints);
+    const acceptanceCriteria = nonEmptyStringList(item.metadata.acceptance_criteria);
+    const falsificationTests = nonEmptyStringList(item.metadata.falsification_tests);
+    const objective = nonEmptyString(item.metadata.objective) || item.title;
     this.db.prepare(`
       INSERT INTO goals (
         id, objective, constraints_json, acceptance_criteria_json, risk_class,
@@ -316,13 +320,20 @@ export class WorkItemService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       goalId,
-      item.title,
-      JSON.stringify(['created_from_work_item']),
-      JSON.stringify([item.description]),
+      objective,
+      JSON.stringify(constraints.length ? constraints : ['created_from_work_item']),
+      JSON.stringify(acceptanceCriteria.length ? acceptanceCriteria : [item.description]),
       item.risk_class,
       JSON.stringify({ max_retries: 1, max_failure_count: 3 }),
       'created',
-      JSON.stringify({ source_work_item_id: item.id, recommended_loop: item.recommended_loop }),
+      JSON.stringify({
+        ...item.metadata,
+        source_work_item_id: item.id,
+        source: item.source,
+        source_ref: item.source_ref,
+        recommended_loop: item.recommended_loop,
+        falsification_tests: falsificationTests,
+      }),
       now,
       now
     );

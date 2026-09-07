@@ -129,6 +129,7 @@ describe('critical HTTP contracts', () => {
     expect((await request('/exports/repository/missing', { method: 'POST', body: '{}' })).status).toBe(404);
     expect((await request('/exports/report/summary', { method: 'POST', body: '{}' })).status).toBe(200);
     expect((await request('/exports/training')).status).toBe(200);
+    expect((await request('/exports/stream/audit')).status).toBe(200);
   });
 
   it('exercises OpenMythos validation, no-data, guard, and report contracts', async () => {
@@ -140,6 +141,13 @@ describe('critical HTTP contracts', () => {
     expect((await request('/openmythos/guard/certified/skill')).status).toBe(200);
     expect((await request('/openmythos/runs')).status).toBe(200);
     expect((await request('/openmythos/leaderboard')).status).toBe(200);
+    expect((await request('/openmythos/attestations')).status).toBe(200);
+    const invalidAttestation = await request('/openmythos/attestations', { method: 'POST', body: '{}' });
+    expect(invalidAttestation.status).toBe(400);
+    expect((await invalidAttestation.json() as any).error.code).toBe('OPENMYTHOS_ATTESTATION_INVALID');
+    const invalidRetest = await request('/openmythos/worldlab/retests', { method: 'POST', body: '{}' });
+    expect(invalidRetest.status).toBe(400);
+    expect((await invalidRetest.json() as any).error.code).toBe('WORLDLAB_RETEST_INVALID');
     expect((await request('/openmythos/apex/reports')).status).toBe(200);
     expect((await request('/openmythos/apex/reports/-1')).status).toBe(400);
   });
@@ -205,7 +213,8 @@ describe('critical HTTP contracts', () => {
       '/swarms/expert/history', '/swarms/expert/sources', '/swarms/expert/updates',
       '/swarms/rsi/proposals', '/swarms/rsi/specializations', '/swarms/rsi/safety',
       '/swarms/learning/history', '/swarms/learning/last', '/swarms/learning-curve',
-      '/swarms/economy', '/swarms/fix/history',
+      '/swarms/economy', '/swarms/fix/history', '/swarms/intelligence/interactions',
+      '/swarms/intelligence/outcome-learning', '/swarms/intelligence/reviewer-independence',
     ]) expect((await request(path)).status, path).toBe(200);
     expect((await request('/swarms/rsi/safety/toggle', { method: 'POST', body: '{}' })).status).toBe(200);
     expect((await request('/swarms/rsi/analyze', { method: 'POST', body: '{}' })).status).toBe(200);

@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import { WorkerLeaseRepo } from '../services/loop-worker-lease-repo';
 
 let db: Database.Database;
 let service: EmergentSpecializationService;
@@ -95,5 +96,20 @@ describe('G104: Emergent Specialization', () => {
     const specs = service.getSpecializations('agent-1');
     expect(specs.length).toBe(1);
     expect(specs[0].nRuns).toBe(2);
+  });
+
+  it('learns once when a worker lease reaches a terminal result', () => {
+    db.prepare(`INSERT INTO loop_runs
+      (id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata)
+      VALUES ('run-specialist', 'doc_drift', 'closed', 'running', '[]', '{}', '[]', '[]', '{}')`).run();
+    db.prepare(`INSERT INTO worker_leases
+      (id, loop_run_id, role, runtime, status, capability_id, metadata, created_at, updated_at)
+      VALUES ('lease-specialist', 'run-specialist', 'maker', 'codex', 'running', 'debugging', '{"agent_id":"agent-codex"}', datetime('now'), datetime('now'))`).run();
+    const leases = new WorkerLeaseRepo(db);
+    leases.updateStatus('lease-specialist', 'completed');
+    leases.updateStatus('lease-specialist', 'completed');
+    expect(service.getSpecializations('agent-codex')).toEqual([
+      expect.objectContaining({ domain: 'debugging', subDomain: 'maker', nRuns: 1, successRate: 1 }),
+    ]);
   });
 });
