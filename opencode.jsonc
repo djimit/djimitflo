@@ -5,5 +5,11 @@
     "CLAUDE.md",
     ".github/copilot-instructions.md"
   ],
-  "model": "ollama/qwen2.5-coder:3b"
+  "model": "ollama/qwen2.5-coder:3b",
+  "permission": {
+    "edit": "allow",
+    "external_directory": "deny",
+    "task": "deny",
+    "skill": "ask"
+  }
 }
