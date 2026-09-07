@@ -24,11 +24,18 @@ export class WorktreeManager {
   }
 
   /**
-   * Create a git worktree for a finding, with retry on lock contention.
-   */
+  * Create a git worktree for a finding, with retry on lock contention.
+  */
   createWorktree(repositoryPath: string, runId: string, findingId: string, branchName: string, linkDependencies = true): string {
-    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
-    const sourceHead = this.git(repositoryPath, ['rev-parse', 'HEAD']).trim();
+    let repositoryRoot: string;
+    let sourceHead: string;
+    try {
+      repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+      sourceHead = this.git(repositoryPath, ['rev-parse', 'HEAD']).trim();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`WORKTREE_CREATE_FAILED: ${reason}`);
+    }
     const worktreeRoot = process.env.LOOP_WORKTREE_ROOT || path.resolve(repositoryRoot, '..', '.djimitflo-loop-worktrees');
     const sanitizedFindingId = findingId.replace(/[^a-zA-Z0-9_.-]/g, '-');
     const worktreePath = path.join(worktreeRoot, runId, sanitizedFindingId);

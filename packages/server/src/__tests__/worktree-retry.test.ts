@@ -179,4 +179,15 @@ describe('createWorktree git-lock retry', () => {
     expect(() => (loops as any).createWorktree(repoPath, 'run-2', 'find-2', 'bad-branch')).toThrow(/WORKTREE_CREATE_FAILED/);
     expect(worktreeAddCalls).toBe(1); // no retry for a non-lock error
   });
+
+  it('normalizes initial repository discovery failures', () => {
+    const loops = new LoopService(db);
+    const repoPath = path.join(worktreeRoot, 'not-a-repository');
+    vi.spyOn((loops as any).worktree, 'git').mockImplementation(() => {
+      throw new Error('fatal: not a git repository');
+    });
+
+    expect(() => (loops as any).createWorktree(repoPath, 'run-4', 'find-4', 'branch-4'))
+      .toThrow(/^WORKTREE_CREATE_FAILED:/);
+  });
 });
