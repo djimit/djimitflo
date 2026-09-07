@@ -772,7 +772,7 @@ export type EcosystemMapSummary = {
     blocked_reasons: string[];
   }>;
   inventory: {
-    repositories: Array<{ id: string; name: string; status: string; branch: string | null; commit: string | null; last_seen: string | null; component_id: string | null; mapping_basis: 'metadata' | 'name_match' | null }>;
+    repositories: Array<{ id: string; name: string; status: string; branch: string | null; commit: string | null; last_seen: string | null; component_id: string | null; mapping_basis: 'metadata' | 'name_match' | null; deployment_provenance: null | { status: string; commit: string; source_archive_sha256: string | null; image_digest: string | null; runtime_instance: string | null; canonical_source_state: string; recorded_at: string | null } }>;
     agents: Array<{ id: string; name: string; status: string; model: string | null; last_seen: string | null; component_id: string | null; mapping_basis: 'metadata' | 'name_match' | null }>;
     observed_actors: Array<{ id: string; type: string; component_id: string | null; registered: boolean; observed_interactions: number; last_seen: string }>;
   };

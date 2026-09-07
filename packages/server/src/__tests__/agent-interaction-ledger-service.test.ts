@@ -83,8 +83,9 @@ describe('AgentInteractionLedgerService', () => {
   it('provides one fail-closed ecosystem view over components, repos, bots, routes and decisions', () => {
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('worldlab-bot', 'WorldLab Bot', 'idle')").run();
     db.prepare("UPDATE agents SET metadata = ? WHERE id = 'agent-a'").run(JSON.stringify({ ecosystem_component_id: 'paperclip' }));
-    db.prepare(`INSERT INTO repositories (id, name, description, path, status, git_commit)
-      VALUES ('openmythos-repo', 'openmythos-benchmark', 'evaluation', '/synthetic/openmythos', 'clean', 'abc123')`).run();
+    db.prepare(`INSERT INTO repositories (id, name, description, path, status, git_commit, metadata)
+      VALUES ('openmythos-repo', 'openmythos-benchmark', 'evaluation', '/synthetic/openmythos', 'clean', 'abc123', ?)`)
+      .run(JSON.stringify({ deployment_provenance: { status: 'VERIFIED', commit: 'def456', source_archive_sha256: 'sha256-source', image_digest: 'sha256-image', canonical_source_state: 'REVIEW_REQUIRED' } }));
     db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
       VALUES ('finding-1', 'worldlab.finding', 'openmythos-worldlab', 'experiment-1', '2026-09-07T00:02:00Z', '{}')`).run();
 
@@ -106,7 +107,11 @@ describe('AgentInteractionLedgerService', () => {
     expect(map.observed_routes).toEqual(expect.arrayContaining([
       expect.objectContaining({ from: 'worldlab', to: 'djimitflo', observed_count: 1, effect_scopes: ['simulated'] }),
     ]));
-    expect(map.inventory.repositories[0]).toMatchObject({ component_id: 'openmythos', mapping_basis: 'name_match' });
+    expect(map.inventory.repositories[0]).toMatchObject({
+      component_id: 'openmythos',
+      mapping_basis: 'name_match',
+      deployment_provenance: { status: 'VERIFIED', commit: 'def456', canonical_source_state: 'REVIEW_REQUIRED' },
+    });
     expect(map.inventory.agents).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'worldlab-bot', component_id: 'worldlab', mapping_basis: 'name_match' }),
       expect.objectContaining({ id: 'agent-a', component_id: 'paperclip', mapping_basis: 'metadata' }),

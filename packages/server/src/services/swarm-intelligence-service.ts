@@ -1309,7 +1309,10 @@ export class SwarmIntelligenceService {
       SELECT id, name, status, git_branch, git_commit, last_synced_at, metadata, updated_at
       FROM repositories WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 100
     `).all() as any[]).map((row) => {
-      const declaredComponent = this.declaredEcosystemComponent(row.metadata);
+      const metadata = this.jsonObject(row.metadata);
+      const deployment = this.jsonObject(metadata.deployment_provenance);
+      const deployedCommit = this.trimStringOrNull(deployment.commit);
+      const declaredComponent = this.declaredEcosystemComponent(metadata);
       const matchedComponent = this.ecosystemComponentId(row.id, row.name);
       return {
         id: String(row.id),
@@ -1320,6 +1323,15 @@ export class SwarmIntelligenceService {
         last_seen: this.trimStringOrNull(row.last_synced_at) || this.trimStringOrNull(row.updated_at),
         component_id: declaredComponent || matchedComponent,
         mapping_basis: declaredComponent ? 'metadata' : matchedComponent ? 'name_match' : null,
+        deployment_provenance: deployedCommit ? {
+          status: this.trimStringOrNull(deployment.status) || 'UNDETERMINED',
+          commit: deployedCommit,
+          source_archive_sha256: this.trimStringOrNull(deployment.source_archive_sha256),
+          image_digest: this.trimStringOrNull(deployment.image_digest),
+          runtime_instance: this.trimStringOrNull(deployment.runtime_instance),
+          canonical_source_state: this.trimStringOrNull(deployment.canonical_source_state) || 'UNDETERMINED',
+          recorded_at: this.trimStringOrNull(deployment.recorded_at),
+        } : null,
       };
     });
     const agents = (this.db.prepare(`
@@ -1445,6 +1457,7 @@ export class SwarmIntelligenceService {
     const incompleteProductionEvidence = productionInteractions.filter((interaction) =>
       !interaction.correlation_id || interaction.evidence_refs.length === 0);
     const unprovenRepositories = repositories.filter((repo) => repo.status !== 'clean' || !repo.commit);
+    const provenDeployments = repositories.filter((repo) => repo.deployment_provenance?.status === 'VERIFIED').length;
     const reviewerState = input.reviewerIndependence.length === 0 ? 'UNDETERMINED'
       : input.reviewerIndependence.some((assessment) => assessment.state === 'FAIL') ? 'FAIL'
         : input.reviewerIndependence.every((assessment) => assessment.state === 'PASS') ? 'PASS' : 'UNDETERMINED';
@@ -1483,7 +1496,7 @@ export class SwarmIntelligenceService {
       {
         dimension: 'repository_provenance',
         state: repositories.length === 0 ? 'UNDETERMINED' : unprovenRepositories.length ? 'FAIL' : 'PASS',
-        evidence: `${repositories.length - unprovenRepositories.length}/${repositories.length} registered repositories are clean with a commit`,
+        evidence: `${repositories.length - unprovenRepositories.length}/${repositories.length} canonical repositories clean with a commit; ${provenDeployments} verified deployment artifact(s)`,
         blocked_reasons: unprovenRepositories.map((repo) => `unproven_repository:${repo.id}`).slice(0, 12),
       },
       {
