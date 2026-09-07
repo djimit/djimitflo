@@ -116,16 +116,22 @@ describe('ExternalEventIngestService', () => {
       { ...outcome, event_id: 'outcome:padded-redelivery', dedupe_key: ` ${outcome.dedupe_key} ` },
       { ...outcome, event_id: 'outcome:missing-dedupe', dedupe_key: undefined },
       { ...outcome, event_id: 'outcome:blank-id', outcome_id: '   ', dedupe_key: 'outcome:blank-id' },
+      { ...outcome, event_id: 'outcome:numeric-identifiers', outcome_id: '123', subject_id: 'null', task_id: 'true',
+        candidate_id: '456', capability_id: 'false', evidence_refs: '["paperclip:task-1"]', confidence: '0.8',
+        value: '1', baseline: '0', dedupe_key: 'outcome:numeric-identifiers' },
       { event_id: 'outcome:invalid', event_type: 'outcome.observed', outcome_id: 'missing-fields' },
     ] }), { status: 200 })));
 
     const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
-    expect(await service.pollOnce()).toBe(3);
+    expect(await service.pollOnce()).toBe(4);
     expect(db.prepare("SELECT id, event_type, source, occurred_at FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
       { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
       { id: 'outcome:fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
       { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
+      { id: 'outcome:numeric-identifiers', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
     ]);
+    const stored = JSON.parse((db.prepare("SELECT payload FROM external_events WHERE id = 'outcome:numeric-identifiers'").get() as any).payload);
+    expect(stored).toMatchObject({ outcome_id: '123', subject_id: 'null', task_id: 'true', candidate_id: '456', capability_id: 'false', value: 1, baseline: 0 });
     db.close();
   });
 });

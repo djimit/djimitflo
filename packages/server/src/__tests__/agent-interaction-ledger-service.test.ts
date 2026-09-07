@@ -30,13 +30,29 @@ describe('AgentInteractionLedgerService', () => {
     const interactions = new AgentInteractionLedgerService(db).list({ correlation_id: 'goal-1' });
     expect(interactions).toHaveLength(2);
     expect(interactions[0]).toMatchObject({
-      actor: { id: 'eve-v' }, action: 'outcome.observed', target: { type: 'publication', id: 'pub-1' }, effect_scope: 'production',
+      actor: { id: 'eve-v' }, action: 'outcome.observed', target: { type: 'publication', id: 'pub-1' }, effect_scope: 'isolated',
     });
     expect(interactions[1]).toMatchObject({
       actor: { id: 'agent-a' }, action: 'message.knowledge_share', target: { type: 'agent', id: 'agent-b' }, evidence_refs: ['memory:1'],
     });
     expect(JSON.stringify(interactions)).not.toContain('must-not-leak');
     expect(JSON.stringify(interactions)).not.toContain('private');
+  });
+
+  it('uses only explicit valid external-event scope and keeps WorldLab simulated', () => {
+    const insert = db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
+      VALUES (?, ?, ?, 'scope-test', '2026-09-07T00:01:00Z', ?)`);
+    insert.run('production', 'outcome.observed', 'eve-v', JSON.stringify({ effect_scope: 'production' }));
+    insert.run('invalid', 'paperclip.issue.created', 'paperclip', JSON.stringify({ effect_scope: 'anything' }));
+    insert.run('worldlab', 'worldlab.finding', 'worldlab', JSON.stringify({ effect_scope: 'production' }));
+
+    const scopes = Object.fromEntries(new AgentInteractionLedgerService(db).list({ correlation_id: 'scope-test' })
+      .map((item) => [item.id, item.effect_scope]));
+    expect(scopes).toEqual({
+      'external_events:worldlab': 'simulated',
+      'external_events:production': 'production',
+      'external_events:invalid': 'isolated',
+    });
   });
 
   it('filters by agent without requiring every optional source table', () => {

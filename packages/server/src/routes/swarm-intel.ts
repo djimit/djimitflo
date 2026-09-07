@@ -168,9 +168,12 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     res.json({ assessments: new OutcomeLearningService(db).list(Number(req.query.limit) || 100) });
   });
 
-  router.post('/intelligence/outcome-learning/capabilities/:id/release', requirePermission('write:capability'), (req, res, next) => {
+  router.post('/intelligence/outcome-learning/capabilities/:id/release', requirePermission('approve:task'), (req, res, next) => {
     try {
-      new OutcomeLearningService(db).releaseContainment(req.params.id, req.body || {});
+      new OutcomeLearningService(db).releaseContainment(req.params.id, {
+        evidence_refs: req.body?.evidence_refs,
+        released_by: req.user?.sub,
+      });
       res.json({ released: true, capability_id: req.params.id });
     } catch (error) {
       const code = error instanceof Error ? error.message : 'OUTCOME_CONTAINMENT_RELEASE_FAILED';

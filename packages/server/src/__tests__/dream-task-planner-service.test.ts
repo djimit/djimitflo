@@ -13,6 +13,11 @@ describe('DreamTaskPlannerService', () => {
       VALUES ('cap-plan', 'skill', 'test', '1', 'candidate', 'low', '', '', 0.2, 0.8, 'manual_review', '{}', datetime('now'), datetime('now'))`);
     const dreams = new DreamCycleService(db);
     dreams.runCycle();
+    const initialScore = dreams.list()[0].score;
+    db.prepare("UPDATE swarm_capabilities SET eval_score = 0.5 WHERE id = 'cap-plan'").run();
+    dreams.runCycle();
+    expect(dreams.list()).toEqual([expect.objectContaining({ score: expect.any(Number), rationale: expect.stringContaining('gap=0.300') })]);
+    expect(dreams.list()[0].score).toBeLessThan(initialScore);
     const planner = new DreamTaskPlannerService(db);
     const first = planner.plan();
     const pending = join(mkdtempSync(join(tmpdir(), 'dream-plan-')), 'pending.jsonl');

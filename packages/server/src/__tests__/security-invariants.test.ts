@@ -143,8 +143,12 @@ describe('Security Invariant: ToolBroker', () => {
     `).run();
 
     const original = broker.evaluateToolCall(makeRequest({ data_classification: 'internal' }));
+    const token = original.capability_token!;
     const reevaluated = broker.reevaluateOnParameterChange(original.decision_id, makeRequest({ tool: 'write_file' }));
     expect(reevaluated.decision_id).not.toBe(original.decision_id);
+    expect(broker.validateCapabilityToken(token.token_id, token.tool, token.task_id)).toBe(false);
+    expect(new ToolBroker(db).validateCapabilityToken(token.token_id, token.tool, token.task_id)).toBe(false);
+    expect(db.prepare('SELECT COUNT(*) AS c FROM tool_broker_capability_tokens WHERE token_id = ?').get(token.token_id)).toEqual({ c: 0 });
   });
 });
 

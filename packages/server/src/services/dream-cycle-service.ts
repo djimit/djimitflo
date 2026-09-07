@@ -45,9 +45,14 @@ export class DreamCycleService {
       const suggestedAction = kind === 'evaluate' ? 'Run an independent OpenMythos/DAPS evaluation with baseline and holdout evidence.' : kind === 'improve' ? 'Design the smallest isolated change, then require independent review and outcome measurement.' : 'Draft a bounded capability proposal only after a demonstrated capability gap.';
       const dedupeKey = createHash('sha256').update(`${capability.id}:${capability.status}:${kind}`).digest('hex');
       const id = `dream:${dedupeKey.slice(0, 24)}`;
-      this.db.prepare(`INSERT OR IGNORE INTO dream_opportunities
+      this.db.prepare(`INSERT INTO dream_opportunities
         (id, capability_id, score, kind, title, rationale, suggested_action, dedupe_key)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, capability.id, score, kind, title, rationale, suggestedAction, dedupeKey);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(dedupe_key) DO UPDATE SET
+          score = excluded.score,
+          title = excluded.title,
+          rationale = excluded.rationale,
+          suggested_action = excluded.suggested_action`).run(id, capability.id, score, kind, title, rationale, suggestedAction, dedupeKey);
       result.push({ id, capabilityId: capability.id, score, kind, title, rationale, suggestedAction, status: 'proposed' });
     }
     return result.sort((a, b) => b.score - a.score).slice(0, limit);

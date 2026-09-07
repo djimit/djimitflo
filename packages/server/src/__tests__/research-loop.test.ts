@@ -7,6 +7,7 @@ import { execFileSync } from 'child_process';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopService } from '../services/loop-service';
+import { WorkItemService } from '../services/work-item-service';
 
 let db: Database.Database;
 let loops: LoopService;
@@ -36,10 +37,32 @@ afterEach(() => {
 
 describe('G39: Research Loop', () => {
   it('routes preregistered work through the governed research contract', () => {
-    const run = loops.startLoop({ loop_name: 'research-loop', repository_path: tempDir });
+    const workItems = new WorkItemService(db);
+    const workItem = workItems.create({
+      title: 'Reproduce interaction evidence',
+      description: 'Run the bounded comparison.',
+      source: 'interaction_action',
+      source_ref: 'interaction-1:request_reproduction',
+      status: 'triaged',
+      risk_class: 'medium',
+      recommended_loop: 'research-loop',
+      metadata: {
+        objective: 'Independently reproduce interaction evidence',
+        constraints: ['no production mutation'],
+        acceptance_criteria: ['replication evidence recorded'],
+        falsification_tests: ['replication fails'],
+        protocol: { replications: 30, control_required: true, independent_checker_required: true },
+      },
+    });
+    const goalId = workItems.convertToGoal(workItem.id).goal_id;
+    const run = loops.startLoop({ loop_name: 'research-loop', goal_id: goalId, repository_path: tempDir });
     const contract = loops.getCatalog().loops.find(({ name }) => name === 'research-loop');
 
-    expect(run).toMatchObject({ loop_name: 'research-loop', status: 'completed', findings: [] });
+    expect(run).toMatchObject({
+      loop_name: 'research-loop',
+      status: 'planning',
+      findings: [expect.objectContaining({ type: 'research_work_item', metadata: expect.objectContaining({ work_item_id: workItem.id }) })],
+    });
     expect(contract).toMatchObject({ risk_class: 'medium', status: 'implemented' });
     expect(contract?.actions_forbidden).toContain('production_mutation');
   });

@@ -157,7 +157,12 @@ describe('goal batch service', () => {
           constraints: ['network:deny'],
           falsification_tests: ['Invariant violation remains reproducible'],
           risk_class: 'medium',
-          metadata: { recommended_loop: 'worldlab-regression-loop' },
+          metadata: {
+            recommended_loop: 'worldlab-regression-loop',
+            goal_batch: { id: 'attacker-controlled' },
+            depends_on_goal_keys: ['attacker-controlled'],
+            falsification_tests: ['attacker-controlled'],
+          },
         } },
       });
       const batch = {
@@ -182,9 +187,11 @@ describe('goal batch service', () => {
           falsification_tests: ['Invariant violation remains reproducible'],
           openmythos_source: batch.source,
           openmythos_finding: batch.finding,
-          goal_batch: { campaign_id: 'campaign-1', wave_id: 'wave-2' },
+          goal_batch: { id: 'goal-3', campaign_id: 'campaign-1', wave_id: 'wave-2' },
+          depends_on_goal_keys: ['goal-2'],
         },
       });
+      expect(applied.created_goals[3].metadata.goal_batch.id).not.toBe('attacker-controlled');
       expect((db.prepare('SELECT COUNT(*) count FROM swarm_evidence_edges').get() as { count: number }).count).toBe(10);
     } finally {
       db.close();

@@ -257,10 +257,10 @@ export class ToolBroker {
    * Invalidates the previous capability token.
    */
   reevaluateOnParameterChange(
-    _original_decision_id: string,
+    original_decision_id: string,
     request: ToolCallRequest,
   ): ToolCallDecision {
-    this.invalidateCapabilityToken();
+    this.invalidateCapabilityToken(original_decision_id);
     return this.evaluateToolCall(request);
   }
 
@@ -357,13 +357,12 @@ export class ToolBroker {
     return token;
   }
 
-  private invalidateCapabilityToken(): void {
-    for (const [id] of this.capability_tokens) {
-      if (id.startsWith('cap-')) {
-        this.capability_tokens.delete(id);
-        break;
-      }
+  private invalidateCapabilityToken(decisionId: string): void {
+    for (const [id, token] of this.capability_tokens) {
+      if (token.constraints.decision_id === decisionId) this.capability_tokens.delete(id);
     }
+    this.db.prepare("DELETE FROM tool_broker_capability_tokens WHERE json_extract(constraints_json, '$.decision_id') = ?")
+      .run(decisionId);
   }
 
   private auditDecision(result: ToolCallDecision): void {

@@ -109,6 +109,7 @@ export class GoalBatchService {
           risk_class: item.risk_class,
           budget: { max_failure_count: 2 },
           metadata: {
+            ...item.metadata,
             goal_batch: {
               id: item.id,
               schema: preview.schema,
@@ -119,7 +120,6 @@ export class GoalBatchService {
             },
             depends_on_goal_keys: item.depends_on,
             falsification_tests: item.falsification_tests,
-            ...item.metadata,
             imported_without_worker_start: true,
             execution_source: 'goal_batch_import',
             executor_runtime: null,

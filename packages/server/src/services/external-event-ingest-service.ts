@@ -6,6 +6,7 @@ const decodeField = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return value; }
 };
+const ENCODED_OUTCOME_FIELDS = new Set(['value', 'baseline', 'evidence_refs', 'confidence', 'minimum_effect', 'exploratory']);
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -102,7 +103,8 @@ export class ExternalEventIngestService {
         if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
-          const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
+          const candidate = Object.fromEntries(Object.entries(event)
+            .map(([key, value]) => [key, ENCODED_OUTCOME_FIELDS.has(key) ? decodeField(value) : value]));
           const parsed = outcomeObservedSchema.safeParse(candidate);
           if (!parsed.success) continue;
           normalizedEvent = { ...event, ...parsed.data };

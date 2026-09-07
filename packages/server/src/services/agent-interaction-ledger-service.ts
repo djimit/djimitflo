@@ -260,7 +260,8 @@ export class AgentInteractionLedgerService {
           targetType: this.string(payload.subject_type) || 'aggregate', targetId: this.string(payload.subject_id) || row.aggregate_id,
           capabilityId: this.string(payload.capability_id), decision: this.string(payload.causal_status), status: 'observed',
           evidenceRefs: [`external-event:${row.id}`, ...this.stringArray(payload.evidence_refs)],
-          effectScope: row.event_type.startsWith('worldlab.') || row.source.includes('worldlab') || payload.exploratory === true ? 'simulated' : 'production', source: 'external_events',
+          effectScope: row.event_type.startsWith('worldlab.') || row.source.includes('worldlab') || payload.exploratory === true
+            ? 'simulated' : this.scope(payload.effect_scope, 'isolated'), source: 'external_events',
           summary: `${row.source} emitted ${row.event_type}`,
         });
       });

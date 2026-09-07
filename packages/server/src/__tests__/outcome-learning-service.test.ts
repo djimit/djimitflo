@@ -47,6 +47,16 @@ describe('OutcomeLearningService', () => {
     expect((db.prepare("SELECT COUNT(*) count FROM work_items WHERE source = 'outcome_observed'").get() as any).count).toBe(1);
   });
 
+  it('aggregates varying per-replication baselines into one experiment series', () => {
+    insertOutcome(0, { baseline: 0.48 });
+    insertOutcome(1, { baseline: 0.50 });
+    insertOutcome(2, { baseline: 0.52 });
+    const service = new OutcomeLearningService(db, { minimumReplications: 3 });
+
+    expect(service.process()).toMatchObject({ groups: 1, assessments: 1, supported: 1 });
+    expect(service.list()[0]).toMatchObject({ replications: 3, baseline_value: 0.5 });
+  });
+
   it('keeps a replicated correlated signal undetermined and promotion-ineligible', () => {
     for (let index = 0; index < 3; index += 1) insertOutcome(index, { causal_status: 'correlated' });
     const service = new OutcomeLearningService(db, { minimumReplications: 3 });
@@ -84,8 +94,27 @@ describe('OutcomeLearningService', () => {
     expect(new SwarmIntelligenceService(db).getCapability('capability-1').blocked_reasons).toContain('outcome_evidence_hold');
     expect(() => service.releaseContainment('capability-1', { released_by: 'operator', evidence_refs: ['worldlab:retest'] }))
       .toThrow('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_REQUIRED');
-    service.releaseContainment('capability-1', {
+    expect(() => service.releaseContainment('capability-1', {
       released_by: 'operator', evidence_refs: ['worldlab:retest', 'openmythos:static-regression', 'approval:paperclip-1'],
+    })).toThrow('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_UNRESOLVED');
+    db.prepare(`INSERT INTO openmythos_eval_runs (id, agent_id, total_cases, completed_cases, status, metadata)
+      VALUES ('om-run', 'agent', 1, 1, 'completed', '{}')`).run();
+    db.prepare(`INSERT INTO openmythos_attestations
+      (id, run_id, schema_version, corpus_sha256, openmythos_commit, certification_eligible, corpus_certification_ready, payload, imported_by)
+      VALUES ('attestation-1', 'om-run', 'v1', 'corpus', 'abcdef1', 1, 1, '{}', 'checker')`).run();
+    db.prepare(`INSERT INTO goals (id, objective, constraints_json, acceptance_criteria_json, risk_class, budget_json, status, metadata)
+      VALUES ('goal-retest', 'Retest', '[]', '["passes"]', 'medium', '{}', 'created', ?)`).run(JSON.stringify({
+        worldlab_retests: [{ id: 'worldlab-retest:1', decision: 'PROMOTION_CANDIDATE' }],
+      }));
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode)
+      VALUES ('release-task', 'Release containment', 'Independent release', 'completed', 'high', 'high', 'review_only')`).run();
+    db.prepare(`INSERT INTO approvals
+      (id, task_id, status, risk_level, request_type, request_message, request_data, requested_by, decided_by, metadata)
+      VALUES ('release-approval', 'release-task', 'approved', 'high', 'high_risk_action', 'Release', '{}', 'maker', 'approver', ?)`).run(JSON.stringify({
+        capability_id: 'capability-1', action: 'release_outcome_containment',
+      }));
+    service.releaseContainment('capability-1', {
+      released_by: 'approver', evidence_refs: ['worldlab:worldlab-retest:1', 'openmythos:attestation-1', 'approval:release-approval'],
     });
     expect(new SwarmIntelligenceService(db).getCapability('capability-1').blocked_reasons).not.toContain('outcome_evidence_hold');
   });

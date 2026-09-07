@@ -436,7 +436,25 @@ export class LoopService {
     const runId = randomUUID();
     const now = new Date().toISOString();
 
-    const findings = this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
+    const sourceWorkItemId = typeof goal?.metadata?.source_work_item_id === 'string' ? goal.metadata.source_work_item_id : '';
+    const findings = contract.name === 'research-loop' && goal && sourceWorkItemId
+      ? [{
+        id: `work-item-${sourceWorkItemId}`,
+        type: 'research_work_item',
+        severity: runRiskClass === 'low' ? 'info' as const : 'warning' as const,
+        file: 'WORK_ITEM',
+        message: goal.objective,
+        evidence: String(goal.metadata.source_ref || `work_item:${sourceWorkItemId}`),
+        suggested_fix: 'Execute the preregistered protocol, record limitations, and submit independent evidence without operational side effects.',
+        metadata: {
+          work_item_id: sourceWorkItemId,
+          source: goal.metadata.source,
+          source_ref: goal.metadata.source_ref,
+          protocol: goal.metadata.protocol || {},
+          direct_assignment: true,
+        },
+      }]
+      : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
