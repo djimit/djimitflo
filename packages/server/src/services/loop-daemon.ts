@@ -6,6 +6,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { authorityGateForGoal } from './authority-gate';
+import { isCanonicalLoopName } from '@djimitflo/shared';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -226,9 +227,11 @@ export class LoopDaemon {
       }
 
       // 2. Start the loop (discovers findings, creates the loop_run).
-      const run = this.loops.startDocDriftAndSmallFixLoop({
-        goal_id: goal.id,
-      });
+      const recommendedLoop = typeof goal.metadata.recommended_loop === 'string'
+        && isCanonicalLoopName(goal.metadata.recommended_loop)
+        ? goal.metadata.recommended_loop
+        : undefined;
+      const run = this.loops.startLoop({ goal_id: goal.id, loop_name: recommendedLoop });
       runId = run.id;
 
       // 3. Skip execution if no findings were discovered.

@@ -103,13 +103,14 @@ describe('G16: Continuous operation mode', () => {
   it('blocks an empty discovery instead of claiming goal completion', async () => {
     const goalId = insertGoal('Investigate an unproven gap', 'low');
     db.prepare("UPDATE goals SET status = 'decomposed' WHERE id = ?").run(goalId);
-    vi.spyOn(loops, 'startDocDriftAndSmallFixLoop').mockReturnValue({ id: 'empty-run', findings: [] } as any);
+    const startLoop = vi.spyOn(loops, 'startLoop').mockReturnValue({ id: 'empty-run', findings: [] } as any);
     const events: any[] = [];
     swarmEventBus.subscribe((event) => events.push(event));
 
-    await (daemon as any).executeGoal({ id: goalId, objective: 'Investigate an unproven gap', risk_class: 'low', metadata: {}, created_at: new Date().toISOString() });
+    await (daemon as any).executeGoal({ id: goalId, objective: 'Investigate an unproven gap', risk_class: 'low', metadata: { recommended_loop: 'research-loop' }, created_at: new Date().toISOString() });
 
     const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(goalId) as { status: string; metadata: string };
+    expect(startLoop).toHaveBeenCalledWith({ goal_id: goalId, loop_name: 'research-loop' });
     expect(goal.status).toBe('blocked');
     expect(JSON.parse(goal.metadata)).toMatchObject({ completion_evidence_status: 'UNDETERMINED', blocked_reason: 'no_findings' });
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ data: expect.objectContaining({ daemon: 'goal_blocked', goal_id: goalId }) })]));
