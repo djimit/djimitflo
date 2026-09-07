@@ -5,5 +5,5 @@
     "CLAUDE.md",
     ".github/copilot-instructions.md"
   ],
-  "model": "ollama-cloud/gpt-oss:120b"
+  "model": "ollama/qwen2.5-coder:3b"
 }

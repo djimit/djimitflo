@@ -69,6 +69,15 @@ describe('OpenCodeExecutor', () => {
       expect(args[args.indexOf('--model') + 1]).toBe('anthropic/claude-sonnet-4-20250514');
     });
 
+    it('uses the governed default model when execution options omit one', () => {
+      const original = process.env.DJIMITFLO_OPENCODE_MODEL;
+      process.env.DJIMITFLO_OPENCODE_MODEL = 'ollama/qwen2.5-coder:3b';
+      const args = (executor as any).buildOpenCodeArgs(makeTask({ description: 'test prompt' }), {});
+      expect(args[args.indexOf('--model') + 1]).toBe('ollama/qwen2.5-coder:3b');
+      if (original === undefined) delete process.env.DJIMITFLO_OPENCODE_MODEL;
+      else process.env.DJIMITFLO_OPENCODE_MODEL = original;
+    });
+
     it('uses --agent for agent selection', () => {
       const task = makeTask({ description: 'test prompt' });
       const options: ExecutorOptions = { agentKind: 'build' };

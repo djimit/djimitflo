@@ -240,8 +240,9 @@ export class OpenCodeExecutor implements TaskExecutor {
       args.push('--dir', options.workingDirectory);
     }
 
-    if (options?.model) {
-      args.push('--model', options.model);
+    const model = options?.model || process.env.DJIMITFLO_OPENCODE_MODEL;
+    if (model) {
+      args.push('--model', model);
     }
 
     if (options?.agentKind) {
