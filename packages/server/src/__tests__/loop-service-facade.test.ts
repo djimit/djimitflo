@@ -47,6 +47,22 @@ describe('LoopService delegation contract', () => {
   });
 
   describe('lifecycle delegation (→ LoopOrchestrationService)', () => {
+    it('keeps an empty goal discovery evidence-undetermined', () => {
+      const goal = service.createGoal({
+        objective: 'Investigate an unproven gap',
+        acceptance_criteria: ['Independent evidence supports or falsifies the gap'],
+      });
+      fs.writeFileSync(path.join(tempDir, 'README.md'), 'Documentation is current.\n');
+
+      const run = service.startDocDriftAndSmallFixLoop({ repository_path: tempDir, goal_id: goal.id });
+
+      expect(run.findings).toHaveLength(0);
+      expect(service.getGoal(goal.id)).toMatchObject({
+        status: 'blocked',
+        metadata: { completion_evidence_status: 'UNDETERMINED', blocked_reason: 'no_findings' },
+      });
+    });
+
     it('startDocDriftAndSmallFixLoop creates a run with findings', () => {
       const run = service.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
       expect(run.id).toBeDefined();

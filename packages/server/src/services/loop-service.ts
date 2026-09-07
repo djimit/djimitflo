@@ -496,7 +496,17 @@ export class LoopService {
     if (goal) {
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('running', now, goal.id);
-      if (findings.length === 0 && this.completeGoalIfSettled(goal.id, runId, now)) {
+      if (findings.length === 0) {
+        const metadata = {
+          ...goal.metadata,
+          execution_source: 'loop_service',
+          attempt_count: Number(goal.metadata?.attempt_count || 0) + 1,
+          completion_evidence_status: 'UNDETERMINED',
+          blocked_reason: 'no_findings',
+          ...(Array.isArray(goal.metadata?.acceptance_evidence) ? { acceptance_evidence_superseded: true } : {}),
+        };
+        this.db.prepare("UPDATE goals SET status = 'blocked', metadata = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(metadata), now, goal.id);
         const improvementId = typeof goal.metadata?.improvement_id === 'string' ? goal.metadata.improvement_id : null;
         if (improvementId) {
           this.db.prepare("UPDATE self_improvements SET status = 'no_change', updated_at = ? WHERE id = ?").run(now, improvementId);
