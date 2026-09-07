@@ -7,6 +7,7 @@ import { LOOP_CATALOG } from '@djimitflo/shared';
 
 import type { Database } from 'better-sqlite3';
 import type { ExecutionEngine } from '../execution/execution-engine';
+import { buildExecutorEnv } from '../execution/executors/executor-env';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -1689,43 +1690,12 @@ export class LoopService {
     return process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true';
   }
 
-  /**
-   * Env allowlist passed to spawned runtime children (codex/opencode). We never
-   * blanket-copy process.env: the server's own secrets (auth keys, DB URLs,
-   * session secrets) stay out of the child. Only standard process env, the
-   * model-provider credentials the runtime legitimately needs, and an explicit
-   * operator passthrough (RUNTIME_ENV_PASSTHROUGH=NAME,NAME) are forwarded.
-   */
-  private static readonly RUNTIME_ENV_ALLOWLIST = [
-    'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
-    'TMPDIR', 'TMP', 'TEMP',
-    'CODEX_BIN_PATH', 'OPENCODE_BIN_PATH', 'CLAUDE_BIN_PATH', 'GEMINI_BIN_PATH', 'CLINE_BIN_PATH',
-    'DJIMITFLO_OPENCODE_MODEL', 'DJIMITFLO_CLAUDE_MODEL', 'DJIMITFLO_GEMINI_MODEL', 'DJIMITFLO_CLINE_MODEL', 'DJIMITFLO_CLINE_THINKING',
-    // Nested-spawn control channel (P1): the child runtime uses these to call back
-    // into the server to spawn its own sub-agents. The token is scoped + expiring.
-    'DJIMITFLO_CONTROL_URL', 'DJIMITFLO_SPAWN_TOKEN',
-    'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT',
-    'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'MISTRAL_API_KEY', 'DEEPSEEK_API_KEY',
-    'OPENROUTER_API_KEY', 'GROQ_API_KEY', 'XAI_API_KEY', 'OLLAMA_API_KEY', 'LOCALAI_BASE_URL', 'OLLAMA_BASE_URL', 'OLLAMA_HOST',
-    'OPENCODE_OLLAMA_API_KEY', 'OPENCODE_OPENAI_API_KEY', 'OPENCODE_ANTHROPIC_API_KEY', 'OPENCODE_DEEPSEEK_API_KEY',
-    'OPENCODE_GEMINI_API_KEY', 'OPENCODE_MOONSHOT_API_KEY', 'OPENCODE_NVIDIA_API_KEY', 'OPENCODE_OPENROUTER_API_KEY', 'OPENCODE_REQUESTY_API_KEY',
-  ];
-
   public buildRuntimeEnv(): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = {
+    return {
       RUNTIME_SANDBOX: '1',
       DJIMITFLO_RUNTIME_CHILD: '1',
+      ...buildExecutorEnv(),
     };
-    const names = new Set<string>(LoopService.RUNTIME_ENV_ALLOWLIST);
-    const extra = process.env.RUNTIME_ENV_PASSTHROUGH;
-    if (extra) {
-      for (const name of extra.split(',').map((value) => value.trim()).filter(Boolean)) names.add(name);
-    }
-    for (const name of names) {
-      const value = process.env[name];
-      if (value !== undefined) env[name] = value;
-    }
-    return env;
   }
 
   /**

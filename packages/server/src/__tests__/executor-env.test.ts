@@ -25,6 +25,19 @@ describe('buildExecutorEnv', () => {
     expect(env.MY_EXTRA).toBe('extra-value');
   });
 
+  it('passes the governed OpenCode config path to child runtimes', () => {
+    const original = process.env.OPENCODE_CONFIG;
+    const originalContent = process.env.OPENCODE_CONFIG_CONTENT;
+    process.env.OPENCODE_CONFIG = '/app/opencode.json';
+    process.env.OPENCODE_CONFIG_CONTENT = '{"provider":{"ollama":{}}}';
+    expect(buildExecutorEnv().OPENCODE_CONFIG).toBe('/app/opencode.json');
+    expect(buildExecutorEnv().OPENCODE_CONFIG_CONTENT).toBe('{"provider":{"ollama":{}}}');
+    if (original === undefined) delete process.env.OPENCODE_CONFIG;
+    else process.env.OPENCODE_CONFIG = original;
+    if (originalContent === undefined) delete process.env.OPENCODE_CONFIG_CONTENT;
+    else process.env.OPENCODE_CONFIG_CONTENT = originalContent;
+  });
+
   it('overrides take precedence over allowlisted values', () => {
     process.env.PATH = '/usr/bin';
     const env = buildExecutorEnv({ PATH: '/custom/bin' });
