@@ -129,7 +129,11 @@ export class WorktreeManager {
 
     if (trackedDiff.length === 0 && copied === 0) return;
     this.git(worktreePath, ['add', '.']);
-    this.git(worktreePath, ['commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify']);
+    this.git(worktreePath, [
+      '-c', 'user.name=DjimitFlo Loop',
+      '-c', 'user.email=loop@djimit.invalid',
+      'commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify',
+    ]);
   }
 
   /**

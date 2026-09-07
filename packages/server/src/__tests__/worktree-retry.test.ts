@@ -106,13 +106,19 @@ describe('createWorktree git-lock retry', () => {
   it('snapshots untracked source files into worker worktrees', () => {
     const mgr = new WorktreeManager(db);
     const repoPath = path.join(worktreeRoot, 'repo');
+    const emptyGitConfig = path.join(worktreeRoot, 'empty-gitconfig');
+    fs.writeFileSync(emptyGitConfig, '');
+    process.env.GIT_CONFIG_GLOBAL = emptyGitConfig;
+    process.env.GIT_CONFIG_NOSYSTEM = '1';
     fs.mkdirSync(repoPath, { recursive: true });
     fs.writeFileSync(path.join(repoPath, 'package.json'), JSON.stringify({ scripts: { test: 'node -e "process.exit(0)"' } }, null, 2));
     execFileSync('git', ['init'], { cwd: repoPath, stdio: 'ignore' });
-    execFileSync('git', ['config', 'user.email', 'worktree-test@example.invalid'], { cwd: repoPath });
-    execFileSync('git', ['config', 'user.name', 'Worktree Test'], { cwd: repoPath });
     execFileSync('git', ['add', 'package.json'], { cwd: repoPath });
-    execFileSync('git', ['commit', '-m', 'initial'], { cwd: repoPath, stdio: 'ignore' });
+    execFileSync('git', [
+      '-c', 'user.name=Test Fixture',
+      '-c', 'user.email=fixture@example.invalid',
+      'commit', '-m', 'initial',
+    ], { cwd: repoPath, stdio: 'ignore' });
     fs.mkdirSync(path.join(repoPath, 'src', 'services'), { recursive: true });
     fs.writeFileSync(path.join(repoPath, 'src', 'services', 'new-service.ts'), 'export const answer = 42;\n');
 
