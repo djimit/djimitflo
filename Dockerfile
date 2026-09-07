@@ -52,7 +52,7 @@ WORKDIR /app
 ARG VCS_REF=unknown
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal && \
+    apt-get install -y --no-install-recommends ca-certificates git openssh-client python3-minimal && \
     rm -rf /var/lib/apt/lists/*
 
 # Keep the production worker surface equal to the runtimes accepted by
@@ -96,6 +96,8 @@ COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
 COPY openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json
 COPY goals/golden-learning-campaign.batch.json goals/golden-learning-campaign.batch.json
+COPY scripts/eve-v-checker-ssh /usr/local/bin/eve-v-checker
+RUN chmod 0555 /usr/local/bin/eve-v-checker
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh

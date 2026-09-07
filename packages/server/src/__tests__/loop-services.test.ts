@@ -8,6 +8,7 @@ import { LoopDiscoveryService } from '../services/loop-discovery-service';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { RetentionService } from '../services/retention-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
+import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
 import { swarmEventBus } from '../services/swarm-event-bus';
 
 describe('Extracted Loop Services', () => {
@@ -51,6 +52,26 @@ describe('Extracted Loop Services', () => {
       const result = loops.runtimeCommand.buildRuntimeCommand('opencode', '/tmp/test', 'fix bug', false);
       expect(result.command).toBe('opencode');
       expect(result.args).toContain('run');
+    });
+
+    it('builds the existing Hermes executor contract without permission bypass', () => {
+      const result = loops.runtimeCommand.buildRuntimeCommand('hermes', '/tmp/test', 'review this', false);
+      expect(result.command).toBe('hermes');
+      expect(result.args).toEqual(['chat', '-q', 'review this', '--oneshot', '--quiet']);
+      expect(result.args).not.toContain('--yolo');
+    });
+
+    it('records real correlated reviewer inputs instead of role-salting them', () => {
+      const identity = (loops.workerExecutor as any).reviewIdentity.bind(loops.workerExecutor);
+      const maker = identity('opencode', 'maker', 'same input');
+      const checker = identity('opencode', 'checker', 'same input');
+      expect(checker.context_hash).toBe(maker.context_hash);
+      expect(checker.memory_scope_hash).toBe(maker.memory_scope_hash);
+      expect(checker.retrieval_hash).toBe(maker.retrieval_hash);
+      expect(new ReviewerIndependenceService(db).assess(
+        { id: 'maker', runtime: 'opencode', metadata: maker },
+        { id: 'checker', runtime: 'opencode', metadata: checker },
+      ).state).toBe('FAIL');
     });
 
     it('returns manual runtime contract without probing', () => {

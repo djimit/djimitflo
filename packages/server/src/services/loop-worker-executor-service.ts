@@ -157,7 +157,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
-      ...this.reviewIdentity(makerLease.runtime, 'maker', prompt, makerLease.id),
+      ...this.reviewIdentity(makerLease.runtime, 'maker', prompt),
     };
 
     if (wasCancelled) {
@@ -267,7 +267,7 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
-      ...this.reviewIdentity(runtime, 'checker', prompt, checker.id),
+      ...this.reviewIdentity(runtime, 'checker', prompt),
     });
 
     const gates: LoopGate[] = [
@@ -310,21 +310,24 @@ export class LoopWorkerExecutorService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private reviewIdentity(runtime: string, role: 'maker' | 'checker', prompt: string, leaseId: string): Record<string, string> {
+  private reviewIdentity(runtime: string, role: 'maker' | 'checker', prompt: string): Record<string, string> {
     const configuredModel = runtime === 'opencode' ? process.env.DJIMITFLO_OPENCODE_MODEL
       : runtime === 'claude' ? process.env.DJIMITFLO_CLAUDE_MODEL
-        : runtime === 'gemini' ? process.env.DJIMITFLO_GEMINI_MODEL
+        : runtime === 'hermes' ? process.env.DJIMITFLO_HERMES_MODEL
+          : runtime === 'gemini' ? process.env.DJIMITFLO_GEMINI_MODEL
           : runtime === 'editor' ? process.env.DJIMITFLO_CLINE_MODEL
             : undefined;
-    const provider = configuredModel?.split('/', 1)[0]
+    const provider = (runtime === 'hermes' ? process.env.DJIMITFLO_HERMES_PROVIDER : undefined)
+      || configuredModel?.split('/', 1)[0]
       || ({ codex: 'openai', claude: 'anthropic', gemini: 'google', mock: 'synthetic' }[runtime]);
     const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+    const retrievalContract = runtime === 'hermes' ? 'prompt-only:no-tools' : `isolated-worktree:${runtime}`;
     const identity: Record<string, string> = {
       prompt_hash: hash(prompt),
-      context_hash: hash(`${role}:context:${prompt}`),
-      memory_scope_hash: hash(`${role}:fresh-process:${leaseId}`),
-      retrieval_hash: hash(`${role}:evidence:${prompt}`),
-      oracle_hash: hash(role === 'checker' ? 'checker-verdict-v1' : 'maker-objective-v1'),
+      context_hash: hash(prompt),
+      memory_scope_hash: hash(`one-shot-process:${runtime}`),
+      retrieval_hash: hash(retrievalContract),
+      oracle_hash: hash(role === 'checker' ? 'read-only-checker-verdict-contract-v1' : 'bounded-maker-assignment-contract-v1'),
     };
     if (configuredModel || provider) identity.model_family = configuredModel || runtime;
     if (provider) identity.provider = provider;

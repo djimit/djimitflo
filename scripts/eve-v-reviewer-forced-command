@@ -1,0 +1,22 @@
+#!/bin/sh
+set -eu
+
+case "${SSH_ORIGINAL_COMMAND:-}" in
+  version)
+    printf '%s\n' 'eve-v-hermes-reviewer/1'
+    ;;
+  review)
+    umask 077
+    prompt=$(mktemp)
+    trap 'rm -f "$prompt"' EXIT HUP INT TERM
+    head -c 65537 > "$prompt"
+    [ "$(wc -c < "$prompt")" -le 65536 ] || { printf '%s\n' 'review prompt too large' >&2; exit 65; }
+    cd /home/djimit
+    timeout 90 /opt/hermes/venv/bin/python -m hermes_cli.main chat --oneshot -Q \
+      --ignore-rules -t bot_room --max-turns 1 --run-budget 60 --source tool --query-file "$prompt"
+    ;;
+  *)
+    printf '%s\n' 'unsupported reviewer command' >&2
+    exit 64
+    ;;
+esac

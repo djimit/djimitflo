@@ -1,0 +1,16 @@
+[Unit]
+Description=EVE-V tool-less reviewer SSH endpoint
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStartPre=/usr/sbin/sshd -t -f /etc/ssh/sshd_config_djimitflo_reviewer
+ExecStart=/usr/sbin/sshd -D -f /etc/ssh/sshd_config_djimitflo_reviewer
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target

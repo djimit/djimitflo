@@ -105,7 +105,7 @@ interface ExecuteMakerInput {
 }
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'pi' | 'mock';
 }
 
 interface CheckerVerdictInput {

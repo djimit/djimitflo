@@ -1,0 +1,29 @@
+#!/bin/sh
+set -eu
+
+target=${EVE_V_CHECKER_TARGET:-djimit@100.78.97.2}
+port=${EVE_V_CHECKER_PORT:-2222}
+key=${EVE_V_CHECKER_KEY:-/run/eve-v-reviewer/id_ed25519}
+known_hosts=${EVE_V_CHECKER_KNOWN_HOSTS:-/run/eve-v-reviewer/known_hosts}
+
+ssh_review() {
+  ssh -p "$port" -i "$key" -o BatchMode=yes -o ConnectTimeout=10 -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$known_hosts" "$target" "$@"
+}
+
+if [ "${1:-}" = "--version" ]; then
+  ssh_review version
+  exit $?
+fi
+
+if [ "${1:-}" = "chat" ] && [ "${2:-}" = "--help" ]; then
+  printf '%s\n' 'usage: eve-v-checker chat -q PROMPT --oneshot --quiet'
+  exit 0
+fi
+
+if [ "$#" -ne 5 ] || [ "$1" != "chat" ] || [ "$2" != "-q" ] || [ "$4" != "--oneshot" ] || [ "$5" != "--quiet" ]; then
+  printf '%s\n' 'unsupported EVE-V checker invocation' >&2
+  exit 64
+fi
+
+printf '%s' "$3" | ssh_review review

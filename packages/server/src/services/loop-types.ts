@@ -99,12 +99,12 @@ export interface ContinueLoopInput {
   finding_ids?: string[];
   max_assignments?: number;
   max_maker_workers?: number;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
 }
 
 export interface RetryLoopInput {
   maker_lease_id?: string;
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
   max_retries?: number;
 }
 
@@ -120,7 +120,7 @@ export interface SplitLoopInput {
 }
 
 export interface RuntimeContract {
-  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi';
+  runtime: 'manual' | 'mock' | 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'pi';
   available: boolean;
   command: string | null;
   version?: string;
@@ -197,7 +197,7 @@ export interface ExecuteMakerInput {
 }
 
 export interface ExecuteCheckerInput extends ExecuteMakerInput {
-  runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
+  runtime?: 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'pi' | 'mock';
 }
 
 export type LoopDatabaseHandle = Database;

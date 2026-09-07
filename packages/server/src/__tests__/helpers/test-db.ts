@@ -64,7 +64,7 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     loop_run_id TEXT NOT NULL REFERENCES loop_runs(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK(role IN ('planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard', 'orchestrator')),
-    runtime TEXT NOT NULL DEFAULT 'codex' CHECK(runtime IN ('manual', 'mock', 'codex', 'opencode', 'claude', 'gemini', 'editor', 'pi', 'cline', 'goose', 'aider', 'kimi', 'continue', 'kiro', 'kilo')),
+    runtime TEXT NOT NULL DEFAULT 'codex' CHECK(runtime IN ('manual', 'mock', 'codex', 'opencode', 'claude', 'hermes', 'gemini', 'editor', 'pi', 'cline', 'goose', 'aider', 'kimi', 'continue', 'kiro', 'kilo')),
     status TEXT NOT NULL DEFAULT 'prepared' CHECK(status IN ('prepared', 'running', 'completed', 'failed', 'cancelled', 'blocked', 'needs_revision', 'rejected', 'insufficient_evidence')),
     finding_id TEXT,
     worktree_path TEXT,

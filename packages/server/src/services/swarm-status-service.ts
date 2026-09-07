@@ -12,7 +12,7 @@ import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-can
 import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
-type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
+type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'hermes' | 'gemini' | 'editor' | 'mock' | 'manual';
 type GovernanceRiskClass = 'low' | 'medium' | 'high' | 'critical';
 type RunnerLeaseRole = 'maker' | 'checker' | 'security_checker' | 'planner' | 'memory_curator' | 'governance_guard';
 const DEFAULT_LOOP_NAME: LoopName = 'doc-drift-and-small-fix-loop';
@@ -771,7 +771,7 @@ export class SwarmStatusService {
       LEFT JOIN loop_runs lr ON lr.id = wl.loop_run_id
       WHERE wl.status IN ('prepared', 'running', 'completed', 'failed')
     `).all() as any[];
-    const runtimes = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'mock', 'manual'];
+    const runtimes = ['codex', 'opencode', 'claude', 'hermes', 'gemini', 'editor', 'mock', 'manual'];
     const load = resourceSnapshot.load_average[0] || 0;
     const freeMemoryRatio = resourceSnapshot.total_memory_bytes > 0
       ? resourceSnapshot.free_memory_bytes / resourceSnapshot.total_memory_bytes

@@ -9,7 +9,7 @@ import { ReviewerIndependenceService } from './reviewer-independence-service';
 import { authorityGateForGoal } from './authority-gate';
 import { isCanonicalLoopName } from '@djimitflo/shared';
 
-const AUTONOMOUS_RUNTIMES = ['codex', 'opencode', 'claude', 'gemini', 'editor', 'pi'] as const;
+const AUTONOMOUS_RUNTIMES = ['codex', 'opencode', 'claude', 'hermes', 'gemini', 'editor', 'pi'] as const;
 type AutonomousRuntime = typeof AUTONOMOUS_RUNTIMES[number];
 
 function autonomousRuntime(value: unknown): AutonomousRuntime | undefined {

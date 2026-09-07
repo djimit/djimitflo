@@ -110,6 +110,9 @@ export class RuntimeCommandService {
       if (model) args.push('--model', model);
       return { command: process.env.CLAUDE_BIN_PATH || 'claude', args };
     }
+    if (runtime === 'hermes') {
+      return { command: process.env.HERMES_BIN_PATH || 'hermes', args: ['chat', '-q', prompt, '--oneshot', '--quiet'] };
+    }
     if (runtime === 'gemini') {
       const args = ['-p', prompt, '-o', 'json'];
       if (skipPermissions) args.push('-y');
@@ -150,10 +153,11 @@ export class RuntimeCommandService {
     if (runtime === 'mock') {
       return this.withConformance({ runtime: 'mock', available: true, command: process.execPath, version: 'mock-runtime', status: 'ok', cwd_flag: 'argv', json_flag: 'stdout-json', supports_json_events: true, supports_usage_parsing: true, supports_timeout_kill: true, evidence: ['deterministic in-process mock runtime'] });
     }
-    const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string }> = {
+    const PROBES: Record<string, { binEnv: string; defaultBin: string; helpArgs: string[]; jsonFlag: string; jsonFlagHelp: string; cwdFlag: string | null; headlessFlag: string; structured?: boolean; usage?: boolean }> = {
       codex: { binEnv: 'CODEX_BIN_PATH', defaultBin: 'codex', helpArgs: ['exec', '--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '--cd', headlessFlag: '--json' },
       opencode: { binEnv: 'OPENCODE_BIN_PATH', defaultBin: 'opencode', helpArgs: ['run', '--help'], jsonFlag: '--format', jsonFlagHelp: '--format', cwdFlag: '--dir', headlessFlag: '--format' },
       claude: { binEnv: 'CLAUDE_BIN_PATH', defaultBin: 'claude', helpArgs: ['--help'], jsonFlag: '--output-format', jsonFlagHelp: '--output-format', cwdFlag: null, headlessFlag: '-p' },
+      hermes: { binEnv: 'HERMES_BIN_PATH', defaultBin: 'hermes', helpArgs: ['chat', '--help'], jsonFlag: '--quiet', jsonFlagHelp: '--quiet', cwdFlag: null, headlessFlag: '--oneshot', structured: false, usage: false },
       gemini: { binEnv: 'GEMINI_BIN_PATH', defaultBin: 'gemini', helpArgs: ['--help'], jsonFlag: '-o', jsonFlagHelp: '-o', cwdFlag: null, headlessFlag: '-p' },
       editor: { binEnv: 'CLINE_BIN_PATH', defaultBin: 'cline', helpArgs: ['--help'], jsonFlag: '--json', jsonFlagHelp: '--json', cwdFlag: '-c', headlessFlag: '--json' },
       pi: { binEnv: 'PI_BIN_PATH', defaultBin: 'pi', helpArgs: ['--help'], jsonFlag: '--mode', jsonFlagHelp: '--mode', cwdFlag: null, headlessFlag: '-p' },
@@ -196,7 +200,7 @@ export class RuntimeCommandService {
       status: drifted ? 'drifted' : 'ok',
       ...(probe.cwdFlag ? { cwd_flag: probe.cwdFlag } : {}),
       json_flag: probe.jsonFlag === '--format' ? ['--format', 'json'] : probe.jsonFlag,
-      supports_json_events: !drifted, supports_usage_parsing: !drifted, supports_timeout_kill: true, evidence,
+      supports_json_events: !drifted && (probe.structured ?? true), supports_usage_parsing: !drifted && (probe.usage ?? true), supports_timeout_kill: true, evidence,
       ...(drifted ? { reason: `missing required flags: ${[!hasJsonFlag ? 'json' : '', !hasCwdFlag ? 'cwd' : '', !hasHeadlessFlag ? 'headless' : ''].filter(Boolean).join(', ')}` } : {}),
     });
     const probedAt = new Date().toISOString();
