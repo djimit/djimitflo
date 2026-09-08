@@ -1205,6 +1205,62 @@ function ensureLoopRunsInterruptedStatus(db: BetterSqlite3Database) {
   rebuildLoopTables(db);
 }
 
+function repairLoopEvidenceIntegrity(db: BetterSqlite3Database) {
+  if (!tableSql(db, 'worker_leases') || !tableSql(db, 'loop_runs')) return;
+  db.exec(`
+    INSERT OR IGNORE INTO loop_runs (
+      id, loop_name, mode, status, repository_path, findings_json, plan_json,
+      gates_json, next_actions_json, metadata, created_at, updated_at, completed_at
+    )
+    SELECT worker_leases.loop_run_id, 'legacy-evidence-recovery', 'closed', 'interrupted', NULL,
+      '[]', '{}', '[]', '[]',
+      '{"evidence_status":"UNDETERMINED","repair_kind":"missing_legacy_parent","original_parent_missing":true}',
+      MIN(worker_leases.created_at), MAX(worker_leases.updated_at), MAX(worker_leases.updated_at)
+    FROM worker_leases
+    LEFT JOIN loop_runs ON loop_runs.id = worker_leases.loop_run_id
+    WHERE loop_runs.id IS NULL
+    GROUP BY worker_leases.loop_run_id
+  `);
+
+  if (!tableSql(db, 'sub_agent_spawns')) return;
+  const targets = new Set((db.pragma('foreign_key_list(sub_agent_spawns)') as Array<{ table: string }>).map((row) => row.table));
+  if (targets.size === 1 && targets.has('worker_leases')) return;
+
+  const foreignKeys = db.pragma('foreign_keys', { simple: true }) as number;
+  db.pragma('foreign_keys = OFF');
+  try {
+    db.exec(`
+      ALTER TABLE sub_agent_spawns RENAME TO sub_agent_spawns_fk_repair;
+      CREATE TABLE sub_agent_spawns (
+        id TEXT PRIMARY KEY,
+        spawn_tree_id TEXT NOT NULL,
+        parent_lease_id TEXT,
+        child_lease_id TEXT,
+        requested_by_lease_id TEXT NOT NULL,
+        depth INTEGER NOT NULL CHECK(depth >= 0),
+        runtime TEXT NOT NULL,
+        requested_role TEXT NOT NULL,
+        prompt_digest TEXT NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('requested', 'gated_out', 'prepared', 'running', 'completed', 'failed', 'cancelled')),
+        reject_reason TEXT,
+        token_budget_grant INTEGER,
+        wall_budget_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (parent_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+        FOREIGN KEY (child_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE,
+        FOREIGN KEY (requested_by_lease_id) REFERENCES worker_leases(id) ON DELETE CASCADE
+      );
+      INSERT INTO sub_agent_spawns SELECT * FROM sub_agent_spawns_fk_repair;
+      DROP TABLE sub_agent_spawns_fk_repair;
+      CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_tree ON sub_agent_spawns(spawn_tree_id);
+      CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_parent ON sub_agent_spawns(parent_lease_id);
+      CREATE INDEX IF NOT EXISTS idx_sub_agent_spawns_status ON sub_agent_spawns(status);
+    `);
+  } finally {
+    db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+  }
+}
+
 function rebuildLoopTables(db: BetterSqlite3Database) {
   const loopRuns = db.prepare('SELECT * FROM loop_runs').all() as Array<Record<string, unknown>>;
   const loopEvents = tableSql(db, 'loop_events') ? db.prepare('SELECT * FROM loop_events').all() as Array<Record<string, unknown>> : [];
@@ -1659,6 +1715,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   addMissingColumns(db, 'swarm_claims', swarmClaimColumns);
   ensureLoopRunsReadyStatus(db);
   ensureLoopRunsInterruptedStatus(db);
+  repairLoopEvidenceIntegrity(db);
   createOpenMythosEvalTables(db);
   addMissingColumns(db, 'openmythos_case_results', openMythosCaseResultColumns);
   addMissingColumns(db, 'agents', agentRetirementColumns);
