@@ -504,6 +504,44 @@ describe('Apex Integration Tests', () => {
       expect(() => new WorkItemService(db).convertToGoal(item.id)).toThrow('BOARD_HANDOFF_REVIEW_REQUIRED');
     });
 
+    it('carries a complete research thread from claim through counter-read and action handoff', () => {
+      const threadId = 'controlled-research-thread-1';
+      const claim = service.send({
+        from: 'research-agent', to: 'critic-agent', type: 'knowledge', action: 'state-claim',
+        context: 'A proposed control reduces the target risk.', threadId,
+        epistemicRole: 'claim', evidence: ['source:primary-1'], idempotencyKey: 'thread-1-claim',
+      });
+      service.send({
+        from: 'curiosity-agent', to: 'research-agent', type: 'question', action: 'ask-for-falsifier',
+        context: 'What observation would disprove this claim?', threadId,
+        epistemicRole: 'question', evidence: ['source:primary-1'], idempotencyKey: 'thread-1-question',
+      });
+      service.send({
+        from: 'critic-agent', to: 'research-agent', type: 'knowledge', action: 'counter-read',
+        context: 'The claim may fail under the stated boundary condition.', threadId,
+        replyTo: claim.id, epistemicRole: 'objection', evidence: ['source:counter-1'],
+        idempotencyKey: 'thread-1-objection',
+      });
+      service.send({
+        from: 'research-agent', to: 'EVE-V', type: 'handoff', action: 'hold-for-independent-review',
+        context: 'Proceed only after the counter-read and evidence review.', threadId,
+        epistemicRole: 'proposal', evidence: ['source:primary-1', 'source:counter-1'],
+        idempotencyKey: 'thread-1-proposal',
+      });
+
+      const handoff = new BoardHandoffService(db);
+      expect(handoff.reconcile()).toMatchObject({ scanned: 4, candidates: 1, created: 1, status: 'PASS' });
+      const item = db.prepare("SELECT * FROM work_items WHERE source = 'agent_board'").get() as any;
+      expect(JSON.parse(item.metadata)).toMatchObject({
+        thread_id: threadId,
+        epistemic_role: 'proposal',
+        approval_state: 'REVIEW_REQUIRED',
+        requires_human_approval: true,
+        evidence_refs: ['source:primary-1', 'source:counter-1'],
+      });
+      expect((db.prepare('SELECT COUNT(*) AS count FROM board_handoff_outbox').get() as any).count).toBe(1);
+    });
+
     it('publishes a durable board handoff outbox event exactly once', async () => {
       service.send({ from: 'agent-a', to: 'agent-b', type: 'knowledge', action: 'publish-board-handoff', threadId: 'research-outbox', epistemicRole: 'proposal', evidence: ['arxiv:outbox'] });
       const handoff = new BoardHandoffService(db);
