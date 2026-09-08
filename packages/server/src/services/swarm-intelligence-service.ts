@@ -1699,12 +1699,12 @@ export class SwarmIntelligenceService {
     checkerStatus: string | null,
     hasEval: boolean
   ): string {
+    if (hasEval) return 'Review reflection and memory candidates';
     if (workItemStatus === 'triaged') return 'Plan and prepare selected work item';
     if (workItemStatus === 'planned') return 'Prepare maker and checker leases';
     if (makerStatus === 'prepared') return 'Run worker-pool scheduler';
     if (makerStatus === 'completed' && checkerStatus === 'prepared') return 'Run checker through worker pool';
     if (checkerStatus === 'completed' && !hasEval) return 'Close loop learning';
-    if (hasEval) return 'Review reflection and memory candidates';
     if (loopStatus === 'blocked' || workItemStatus === 'blocked') return 'Inspect blocked reasons';
     return 'Import integration event';
   }

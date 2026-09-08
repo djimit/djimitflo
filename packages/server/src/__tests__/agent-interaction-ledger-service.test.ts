@@ -172,11 +172,15 @@ describe('AgentInteractionLedgerService', () => {
       (id, goal_id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
       VALUES ('loop-integration', 'goal-integration', 'research-loop', 'closed', 'ready_for_human_merge',
         '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(now, now);
+    db.prepare(`INSERT INTO agent_eval_runs
+      (id, suite_name, target_type, target_ref, status, score, created_at)
+      VALUES ('eval-integration', 'loop-learning', 'loop', 'loop-integration', 'passed', 1, ?)`).run(now);
 
     expect(new SwarmIntelligenceService(db).missionControl().integration_spine.latest).toMatchObject({
       work_item: { id: 'work-integration' },
       goal_id: 'goal-integration',
       loop: { id: 'loop-integration', status: 'ready_for_human_merge' },
+      next_safe_action: 'Review reflection and memory candidates',
     });
   });
 });
