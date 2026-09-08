@@ -118,6 +118,11 @@ describe('AgentInteractionLedgerService', () => {
       .run(JSON.stringify({ deployment_provenance: { status: 'VERIFIED', commit: 'def456', source_archive_sha256: 'sha256-source', image_digest: 'sha256-image', canonical_source_state: 'REVIEW_REQUIRED' } }));
     db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
       VALUES ('finding-1', 'worldlab.finding', 'openmythos-worldlab', 'experiment-1', '2026-09-07T00:02:00Z', '{}')`).run();
+    const insertNoise = db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
+      VALUES (?, 'paperclip.issue.status_changed', 'paperclip', ?, ?, '{}')`);
+    for (let index = 0; index < 200; index += 1) {
+      insertNoise.run(`noise-${index}`, `noise-${index}`, new Date(Date.UTC(2026, 8, 7, 1, 0, index)).toISOString());
+    }
 
     const service = new SwarmIntelligenceService(db);
     service.recordDecision({

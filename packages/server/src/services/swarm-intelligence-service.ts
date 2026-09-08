@@ -178,7 +178,7 @@ export class SwarmIntelligenceService {
     const manifests = this.listRunnerManifests(25);
     const integrationSpine = this.integrationSpineSummary();
     const interactionLedger = new AgentInteractionLedgerService(this.db);
-    const interactions = interactionLedger.list({ limit: 200 });
+    const interactions = interactionLedger.list({ limit: 500 });
     const outcomeLearning = new OutcomeLearningService(this.db).list(50);
     const reviewerIndependence = new ReviewerIndependenceService(this.db).latest(25);
 
