@@ -242,7 +242,7 @@ export class AgentInteractionLedgerService {
           action: row.tool_name ? 'tool.invocation' : `execution.${row.event_type}`, targetType: row.tool_name ? 'tool' : 'task',
           targetId: row.tool_name || row.task_id, capabilityId: this.string(metadata.capability_id),
           decision: row.approval_id ? 'approved' : this.string(metadata.authorization_decision), status: row.tool_error || row.level === 'error' ? 'error' : 'recorded',
-          evidenceRefs: [row.approval_id && `approval:${row.approval_id}`, row.artifact_id && `artifact:${row.artifact_id}`, ...this.evidence(metadata)].filter(Boolean),
+          evidenceRefs: [`task:${row.task_id}`, row.approval_id && `approval:${row.approval_id}`, row.artifact_id && `artifact:${row.artifact_id}`, ...this.evidence(metadata)].filter(Boolean),
           effectScope: this.scope(metadata.effect_scope, 'production'), source: 'execution_events',
           summary: row.tool_name ? `${this.string(metadata.agent_id) || 'execution-engine'} invoked ${row.tool_name}` : `${row.event_type} for ${row.task_id}`,
         });

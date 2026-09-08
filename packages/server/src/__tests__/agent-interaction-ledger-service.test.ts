@@ -75,6 +75,20 @@ describe('AgentInteractionLedgerService', () => {
     expect(JSON.stringify(result)).not.toContain('not-visible');
   });
 
+  it('retains the task provenance edge for every execution event', () => {
+    db.exec(`CREATE TABLE execution_events (
+      id TEXT PRIMARY KEY, task_id TEXT NOT NULL, event_type TEXT NOT NULL, timestamp TEXT DEFAULT (datetime('now')),
+      message TEXT NOT NULL, level TEXT NOT NULL, tool_name TEXT, tool_error TEXT, approval_id TEXT,
+      artifact_id TEXT, metadata TEXT
+    )`);
+    db.prepare(`INSERT INTO execution_events (id, task_id, event_type, message, level, metadata)
+      VALUES ('event-1', 'task-1', 'task_completed', 'Done', 'info', '{}')`).run();
+
+    expect(new AgentInteractionLedgerService(db).list({ source: 'execution_events' })).toEqual([
+      expect.objectContaining({ correlation_id: 'task-1', evidence_refs: ['task:task-1'] }),
+    ]);
+  });
+
   it('makes questions, creative alternatives, learning and specialization visible', () => {
     new ReflectionEngine(db);
     new DreamCycleService(db);
