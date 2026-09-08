@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import { messageBus, SwarmMessage } from '../services/message_bus';
@@ -18,6 +19,9 @@ export function createMessageRoutes(
   auth?: AuthMiddleware
 ): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: every message handler performs DB access
+  // and several also authorize or mutate durable agent state.
+  router.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   db.exec(`
     CREATE TABLE IF NOT EXISTS board_idempotency_keys (

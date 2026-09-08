@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
@@ -10,6 +11,9 @@ import { AgentCommunicationService } from '../services/agent-communication-servi
 
 export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  // CodeQL js/missing-rate-limiting: session, communication and acknowledgement
+  // handlers all access durable swarm state.
+  router.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const swarm = new SwarmOrchestrationService(db);
   const comms = new AgentCommunicationService(db);
