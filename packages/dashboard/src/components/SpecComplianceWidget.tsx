@@ -5,6 +5,7 @@
  * Constitution v1.1.0 — Specification Quality Gates
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { api } from '../lib/api';
 
 interface LayerCompliance {
   layer: string;
@@ -46,9 +47,7 @@ export function SpecComplianceWidget({ controls = false }: { controls?: boolean 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/compliance/specs${refresh ? '?refresh=1' : ''}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await api.request<ComplianceReport>(`/compliance/specs${refresh ? '?refresh=1' : ''}`);
       setReport(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');

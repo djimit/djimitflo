@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CompliancePage } from './CompliancePage';
+import { api } from '../lib/api';
+
+vi.mock('../lib/api', () => ({ api: { request: vi.fn() } }));
 
 const report = {
   generatedAt: '2026-08-27T10:00:00.000Z',
@@ -14,14 +17,15 @@ const report = {
   ],
 };
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => vi.clearAllMocks());
 
 describe('CompliancePage', () => {
   it('shows evidence and filters by compliance level', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => report }));
+    vi.mocked(api.request).mockResolvedValue(report);
     render(<CompliancePage />);
 
     expect(await screen.findByText('full-spec')).toBeTruthy();
+    expect(api.request).toHaveBeenCalledWith('/compliance/specs');
     expect(screen.getByText('partial-spec')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Compliance filter'), { target: { value: 'full' } });
     expect(screen.queryByText('partial-spec')).toBeNull();
