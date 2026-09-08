@@ -3,7 +3,7 @@
  */
 
 import { create } from 'zustand';
-import type { Task, Agent, TaskStatus } from '@djimitflo/shared';
+import type { Task, Agent } from '@djimitflo/shared';
 
 interface DjimitfloState {
   // Tasks
@@ -87,19 +87,3 @@ export const useStore = create<DjimitfloState>((set) => ({
   isConnected: false,
   setConnected: (connected) => set({ isConnected: connected }),
 }));
-
-// Computed selectors
-export const selectTasksByStatus = (status: TaskStatus) => (state: DjimitfloState) =>
-  state.tasks.filter((t) => t.status === status);
-
-export const selectActiveTasks = (state: DjimitfloState) =>
-  state.tasks.filter((t) => ['running', 'queued', 'pending'].includes(t.status));
-
-export const selectCompletedTasks = (state: DjimitfloState) =>
-  state.tasks.filter((t) => t.status === 'completed');
-
-export const selectFailedTasks = (state: DjimitfloState) =>
-  state.tasks.filter((t) => t.status === 'failed');
-
-export const selectActiveAgents = (state: DjimitfloState) =>
-  state.agents.filter((a) => a.status === 'active');

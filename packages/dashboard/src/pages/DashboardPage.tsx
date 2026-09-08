@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Activity, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
-import { useStore, selectActiveTasks, selectCompletedTasks, selectFailedTasks } from '../lib/store';
+import { useStore } from '../lib/store';
 import { api } from '../lib/api';
 import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
 
@@ -11,9 +11,9 @@ export function DashboardPage() {
   const systemHealth = useStore((state) => state.systemHealth);
   const isConnected = useStore((state) => state.isConnected);
 
-  const activeTasks = useStore(selectActiveTasks);
-  const completedTasks = useStore(selectCompletedTasks);
-  const failedTasks = useStore(selectFailedTasks);
+  const activeTasks = tasks.filter((task) => ['running', 'queued', 'pending'].includes(task.status));
+  const completedTasks = tasks.filter((task) => task.status === 'completed');
+  const failedTasks = tasks.filter((task) => task.status === 'failed');
   const queuedTasks = tasks.filter((t) => t.status === 'queued' || t.status === 'pending');
 
   // D3: REST fallback — load initial data via API when WebSocket store is empty.
