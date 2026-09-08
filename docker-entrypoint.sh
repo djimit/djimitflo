@@ -26,6 +26,12 @@ if [ "$NODE_ENV" = "production" ] && [ -z "$JWT_SECRET" ]; then
   exit 1
 fi
 
+# Image provenance is authoritative; host configuration may be stale.
+if [ -r /app/.djimitflo-commit ]; then
+  DJIMITFLO_COMMIT_SHA="$(cat /app/.djimitflo-commit)"
+  export DJIMITFLO_COMMIT_SHA
+fi
+
 # Print safe startup info
 echo "Port: ${PORT:-3001}"
 echo "Host: ${HOST:-0.0.0.0}"

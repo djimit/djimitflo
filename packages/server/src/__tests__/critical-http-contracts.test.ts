@@ -216,7 +216,12 @@ describe('critical HTTP contracts', () => {
     expect(interactionAction.status).toBe(201);
     expect(await interactionAction.json()).toMatchObject({
       decision: { decision: 'request_reproduction' },
-      work_item: { source: 'interaction_action', status: 'candidate', recommended_loop: 'research-loop' },
+      work_item: {
+        source: 'interaction_action',
+        status: 'candidate',
+        recommended_loop: 'research-loop',
+        metadata: { integration: { source: 'interaction_action', source_ref: `swarm_decisions:${contractDecisionId}:request_reproduction` } },
+      },
     });
     expect((await request('/swarms/intelligence/interactions/actions', { method: 'POST', body: '{}' })).status).toBe(400);
     expect((await request('/swarms/intelligence/interactions/actions', {

@@ -127,6 +127,7 @@ ENV DB_PATH=/data/djimitflo.sqlite
 ENV DASHBOARD_PATH=/app/packages/dashboard/dist
 ENV BACKUP_DIR=/data/backups
 ARG VCS_REF=unknown
+RUN printf '%s\n' "$VCS_REF" > /app/.djimitflo-commit && test "$(cat /app/.djimitflo-commit)" = "$VCS_REF"
 ENV DJIMITFLO_COMMIT_SHA=$VCS_REF
 
 EXPOSE 3001

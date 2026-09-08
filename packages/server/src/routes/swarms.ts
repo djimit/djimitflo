@@ -206,6 +206,11 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         status: 'candidate',
         recommended_loop: 'research-loop',
         metadata: {
+          integration: {
+            source: 'interaction_action',
+            source_ref: `${interactionId}:${action}`,
+            received_at: new Date().toISOString(),
+          },
           objective: action === 'request_reproduction' ? 'Independently reproduce the referenced evidence' : 'Run a bounded control/treatment experiment for the referenced interaction',
           constraints: ['no production mutation', 'no autonomous promotion', 'external access requires mediation'],
           acceptance_criteria: ['evidence lineage complete', 'result independently evaluated'],
