@@ -220,7 +220,10 @@ describe('critical HTTP contracts', () => {
         source: 'interaction_action',
         status: 'candidate',
         recommended_loop: 'research-loop',
-        metadata: { integration: { source: 'interaction_action', source_ref: `swarm_decisions:${contractDecisionId}:request_reproduction` } },
+        metadata: {
+          objective: 'Independently reproduce the observed claim.',
+          integration: { source: 'interaction_action', source_ref: `swarm_decisions:${contractDecisionId}:request_reproduction` },
+        },
       },
     });
     expect((await request('/swarms/intelligence/interactions/actions', { method: 'POST', body: '{}' })).status).toBe(400);
