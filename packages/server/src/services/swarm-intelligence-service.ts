@@ -179,6 +179,10 @@ export class SwarmIntelligenceService {
     const integrationSpine = this.integrationSpineSummary();
     const interactionLedger = new AgentInteractionLedgerService(this.db);
     const interactions = interactionLedger.list({ limit: 500 });
+    const contractInteractions = [...interactions,
+      ...interactionLedger.list({ source: 'swarm_evidence_edges', limit: 500 }),
+      ...interactionLedger.list({ source: 'external_events', limit: 500 }),
+    ].filter((interaction, index, all) => all.findIndex((candidate) => candidate.id === interaction.id) === index);
     const outcomeLearning = new OutcomeLearningService(this.db).list(50);
     const reviewerIndependence = new ReviewerIndependenceService(this.db).latest(25);
 
@@ -217,7 +221,7 @@ export class SwarmIntelligenceService {
       },
       capacity,
       integration_spine: integrationSpine,
-      ecosystem_map: this.ecosystemMapSummary({ interactions, outcomeLearning, reviewerIndependence, integrationSpine }),
+      ecosystem_map: this.ecosystemMapSummary({ interactions, contractInteractions, outcomeLearning, reviewerIndependence, integrationSpine }),
       agent_interactions: interactions.slice(0, 25),
       outcome_learning: outcomeLearning.slice(0, 10),
       reviewer_independence: reviewerIndependence.slice(0, 10),
@@ -1301,6 +1305,7 @@ export class SwarmIntelligenceService {
 
   private ecosystemMapSummary(input: {
     interactions: AgentInteractionRecord[];
+    contractInteractions: AgentInteractionRecord[];
     outcomeLearning: OutcomeLearningAssessment[];
     reviewerIndependence: ReviewerIndependenceAssessment[];
     integrationSpine: { chains: any[] };
@@ -1361,7 +1366,7 @@ export class SwarmIntelligenceService {
       evidenceRefs: Set<string>;
       lastSeen: string;
     }>();
-    for (const interaction of input.interactions) {
+    for (const interaction of input.contractInteractions) {
       const from = this.ecosystemActorRef(interaction);
       const to = this.ecosystemTargetRef(interaction);
       if (!from || !to || from === to) continue;

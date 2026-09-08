@@ -181,6 +181,21 @@ describe('AgentInteractionLedgerService', () => {
     expect(map).not.toHaveProperty('score');
   });
 
+  it('does not let the global interaction window hide declared contract evidence', () => {
+    new SwarmEvidenceService(db).createEvidenceEdge('openmythos:finding-1', 'djimitflo:change-1', 'submits_assurance');
+    db.exec("CREATE TABLE learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL)");
+    const insert = db.prepare('INSERT INTO learning_cycles (id, result_json, created_at) VALUES (?, ?, ?)');
+    for (let index = 0; index < 600; index += 1) {
+      const timestamp = new Date(Date.UTC(2030, 0, 1, 0, 0, index)).toISOString();
+      insert.run(`cycle-${index}`, JSON.stringify({ timestamp, producer: 'continuous-learning-loop', schemaVersion: 1 }), timestamp);
+    }
+
+    expect(new SwarmIntelligenceService(db).missionControl().ecosystem_map.declared_contracts)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'contract:openmythos:djimitflo', evidence_state: 'OBSERVED' }),
+      ]));
+  });
+
   it('links converted integration work items to their goal loop without duplicate metadata', () => {
     const now = new Date().toISOString();
     db.prepare(`INSERT INTO goals (id, objective, status, risk_class, created_at, updated_at)

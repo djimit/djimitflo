@@ -1,6 +1,6 @@
 # Djimit Ecosystem Activation Campaign
 
-Status: `IN_PROGRESS_FAIL_CLOSED`  
+Status: `AUTONOMOUS_TRANCHE_COMPLETE_REVIEW_REQUIRED`
 Campaign: `djimit-ecosystem-activation-20260908`  
 Authority: Paperclip controls work; DjimitFlo mediates execution, evidence and change; OpenMythos evaluates and gates promotion; WorldLab supplies longitudinal evidence; EVE-V challenges claims; protected merge, production promotion and capability release remain human decisions.
 
