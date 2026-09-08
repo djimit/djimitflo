@@ -129,11 +129,12 @@ describe('ExternalEventIngestService', () => {
     ] }), { status: 200 })));
 
     const service = new ExternalEventIngestService(db, 'http://event-bus', 'djimit.events');
-    expect(await service.pollOnce()).toBe(4);
+    expect(await service.pollOnce()).toBe(5);
     expect(db.prepare("SELECT id, event_type, source, occurred_at FROM external_events WHERE event_type = 'outcome.observed'").all()).toEqual([
       { id: outcome.event_id, event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
       { id: 'outcome:fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
       { id: 'outcome:object-id-fallback', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
+      { id: 'outcome:missing-skill-id', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
       { id: 'outcome:numeric-identifiers', event_type: 'outcome.observed', source: 'eve-v', occurred_at: '2026-08-29T12:00:00.000Z' },
     ]);
     const stored = JSON.parse((db.prepare("SELECT payload FROM external_events WHERE id = 'outcome:numeric-identifiers'").get() as any).payload);

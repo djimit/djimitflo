@@ -79,6 +79,21 @@ describe('OutcomeLearningService', () => {
     expect(assessment.result).toMatchObject({ promotion_eligible: false, required_next_gate: 'controlled_or_counterfactual_evidence' });
   });
 
+  it('keeps legacy outcome evidence usable but incomplete attribution fail-closed', () => {
+    for (let index = 0; index < 3; index += 1) {
+      insertOutcome(index, { skill_id: undefined, skill_version: undefined, cost_amount: undefined,
+        cost_currency: undefined, cost_basis: undefined });
+    }
+    const service = new OutcomeLearningService(db, { minimumReplications: 3 });
+    service.process();
+    expect(service.list()[0].result).toMatchObject({
+      skill_attribution: { complete: false },
+      execution_attribution: { cost_complete: false, total_cost: null },
+      promotion_eligible: false,
+      required_next_gate: 'skill_attribution',
+    });
+  });
+
   it('does not create work from incomplete or duplicate replication evidence', () => {
     insertOutcome(0, { direction: undefined, replication_id: 'same-seed' });
     insertOutcome(1, { direction: undefined, replication_id: 'same-seed' });

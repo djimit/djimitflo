@@ -118,7 +118,10 @@ export class OutcomeLearningService {
             task_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.task_id || '')).filter(Boolean))],
             model_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.model_id || '')).filter(Boolean))],
             runtime_identities: [...new Set(outcomes.map((outcome) => String(outcome.payload.runtime_identity || '')).filter(Boolean))],
-            total_cost: outcomes.reduce((sum, outcome) => sum + (Number(outcome.payload.cost_amount) || 0), 0),
+            cost_complete: outcomes.every((outcome) => typeof outcome.payload.cost_amount === 'number'
+              && Boolean(outcome.payload.cost_currency) && Boolean(outcome.payload.cost_basis)),
+            total_cost: outcomes.every((outcome) => typeof outcome.payload.cost_amount === 'number')
+              ? outcomes.reduce((sum, outcome) => sum + Number(outcome.payload.cost_amount), 0) : null,
             cost_currencies: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_currency || '')).filter(Boolean))],
             cost_bases: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_basis || '')).filter(Boolean))],
           },
