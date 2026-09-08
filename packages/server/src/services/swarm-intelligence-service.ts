@@ -1554,7 +1554,13 @@ export class SwarmIntelligenceService {
   }
 
   private ecosystemComponentId(...values: unknown[]): string | null {
-    const haystack = values.filter((value) => typeof value === 'string').join(' ').toLowerCase();
+    const strings = values.filter((value): value is string => typeof value === 'string');
+    for (const value of strings) {
+      const namespace = value.trim().toLowerCase().split(':', 1)[0];
+      const component = ECOSYSTEM_COMPONENTS.find((candidate) => candidate.id === namespace || candidate.tokens.some((token) => token === namespace));
+      if (component) return component.id;
+    }
+    const haystack = strings.join(' ').toLowerCase();
     if (!haystack) return null;
     return ECOSYSTEM_COMPONENTS.find((component) => component.tokens.some((token) => haystack.includes(token)))?.id || null;
   }

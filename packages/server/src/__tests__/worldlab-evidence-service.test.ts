@@ -25,7 +25,7 @@ function retest(goalId: string, gates: Record<string, string> = {
 }) {
   return {
     schema: 'djimit.openmythos.worldlab.retest.v1', finding_id: 'finding-1', goal_id: goalId,
-    change_id: 'change-1', commit: 'abcdef1234567', trajectory_id: 'trajectory-retest-1',
+    change_id: 'activation-worldlab-1', commit: 'abcdef1234567', trajectory_id: 'trajectory-retest-1',
     evidence_hash: `sha256:${'b'.repeat(64)}`, gates,
     evidence_refs: ['openmythos:static-1', 'worldlab:retest-1', 'djimitflo:proof-1', 'security:invariants-1'],
   };
