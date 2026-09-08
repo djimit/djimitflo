@@ -1636,7 +1636,10 @@ export class SwarmIntelligenceService {
     const integration = this.jsonObject(metadata.integration);
     if (!integration) return null;
     const goalId = row.parent_goal_id || null;
-    const loopRunId = this.trimStringOrNull(metadata.loop_run_id);
+    const linkedLoop = goalId && !this.trimStringOrNull(metadata.loop_run_id)
+      ? this.db.prepare('SELECT id FROM loop_runs WHERE goal_id = ? ORDER BY created_at DESC LIMIT 1').get(goalId) as { id: string } | undefined
+      : undefined;
+    const loopRunId = this.trimStringOrNull(metadata.loop_run_id) || linkedLoop?.id || null;
     const loop = loopRunId
       ? this.db.prepare('SELECT id, status, metadata, completed_at FROM loop_runs WHERE id = ?').get(loopRunId) as any | undefined
       : null;

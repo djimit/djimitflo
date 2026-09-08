@@ -157,4 +157,26 @@ describe('AgentInteractionLedgerService', () => {
     });
     expect(map).not.toHaveProperty('score');
   });
+
+  it('links converted integration work items to their goal loop without duplicate metadata', () => {
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO goals (id, objective, status, risk_class, created_at, updated_at)
+      VALUES ('goal-integration', 'Reproduce interaction evidence', 'blocked', 'medium', ?, ?)`).run(now, now);
+    db.prepare(`INSERT INTO work_items
+      (id, title, description, source, source_ref, risk_class, status, recommended_loop, parent_goal_id, metadata, created_at, updated_at)
+      VALUES ('work-integration', 'Reproduce evidence', 'Run a bounded reproduction', 'interaction_action',
+        'interaction:request_reproduction', 'medium', 'planned', 'research-loop', 'goal-integration', ?, ?, ?)`).run(
+      JSON.stringify({ integration: { source: 'interaction_action' } }), now, now
+    );
+    db.prepare(`INSERT INTO loop_runs
+      (id, goal_id, loop_name, mode, status, findings_json, plan_json, gates_json, next_actions_json, metadata, created_at, updated_at)
+      VALUES ('loop-integration', 'goal-integration', 'research-loop', 'closed', 'ready_for_human_merge',
+        '[]', '{}', '[]', '[]', '{}', ?, ?)`).run(now, now);
+
+    expect(new SwarmIntelligenceService(db).missionControl().integration_spine.latest).toMatchObject({
+      work_item: { id: 'work-integration' },
+      goal_id: 'goal-integration',
+      loop: { id: 'loop-integration', status: 'ready_for_human_merge' },
+    });
+  });
 });
