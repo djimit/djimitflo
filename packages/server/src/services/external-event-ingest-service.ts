@@ -23,6 +23,15 @@ const outcomeObservedSchema = z.object({
   evidence_refs: z.array(nonBlank).min(1),
   confidence: z.number().min(0).max(1),
   causal_status: nonBlank,
+  direction: z.enum(['increase', 'decrease', 'maintain']).optional(),
+  minimum_effect: z.number().nonnegative().optional(),
+  experiment_id: nonBlank.optional(),
+  trajectory_id: nonBlank.optional(),
+  finding_id: nonBlank.optional(),
+  condition: nonBlank.optional(),
+  replication_id: nonBlank.optional(),
+  risk_class: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  exploratory: z.boolean().optional(),
   observed_at: z.string().datetime({ offset: true }),
   dedupe_key: nonBlank,
 });
@@ -90,7 +99,7 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
+        if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed' && eventType !== 'agent.board.handoff.created')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
           const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));

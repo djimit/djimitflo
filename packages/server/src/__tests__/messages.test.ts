@@ -8,6 +8,7 @@ import { createTestDb } from './helpers/test-db';
 import { createMessageRoutes } from '../routes/messages';
 import { errorHandler } from '../middleware/error-handler';
 import { messageBus } from '../services/message_bus';
+import { AgentCommunicationService } from '../services/agent-communication-service';
 import { WebSocketEventType } from '@djimitflo/shared';
 
 let db: Database.Database;
@@ -102,7 +103,9 @@ describe('message routes', () => {
     expect(list.count).toBe(1);
     expect(list.messages[0].id).toBe(created.id);
 
-    const readResponse = await fetch(`${baseUrl}/messages/${created.id}/read`, { method: 'PATCH' });
+    const readResponse = await fetch(`${baseUrl}/messages/${created.id}/read`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ agent_id: 'agent-b' }),
+    });
     expect(readResponse.status).toBe(200);
     const read = await readResponse.json() as any;
     expect(read.id).toBe(created.id);
@@ -128,5 +131,83 @@ describe('message routes', () => {
     expect(response.status).toBe(400);
     const body = await response.json() as any;
     expect(body.error.code).toBe('INVALID_INPUT');
+  });
+
+  it('rejects evidence-free claims on the legacy message route', async () => {
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from_agent_id: 'agent-a',
+        to_agent_id: 'agent-b',
+        type: 'knowledge_share',
+        payload: { epistemic_role: 'claim', statement: 'unsupported' },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json() as any;
+    expect(body.error.code).toBe('BOARD_CLAIM_EVIDENCE_REQUIRED');
+  });
+
+  it('rejects camelCase evidence-free claims on the legacy message route', async () => {
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'knowledge_share',
+        payload: { epistemicRole: 'claim', statement: 'unsupported' },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: { code: 'BOARD_CLAIM_EVIDENCE_REQUIRED' } });
+  });
+
+  it('replays an idempotent legacy message without republishing it', async () => {
+    const body = {
+      from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'status_update',
+      idempotency_key: 'legacy-1', payload: { state: 'ready' },
+    };
+    const firstResponse = await fetch(`${baseUrl}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const first = await firstResponse.json() as any;
+    const secondResponse = await fetch(`${baseUrl}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const second = await secondResponse.json() as any;
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(200);
+    expect(second.id).toBe(first.id);
+    expect(broadcasts).toHaveLength(1);
+  });
+
+  it('rejects a cross-store idempotency collision instead of duplicating a board event', async () => {
+    const service = new AgentCommunicationService(db);
+    const durable = service.send({ from: 'agent-a', to: 'agent-b', type: 'alert', action: 'shared-alert', idempotencyKey: 'shared-board-key' });
+
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'alert',
+        idempotency_key: 'shared-board-key', payload: { action: 'duplicate-alert' },
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'BOARD_IDEMPOTENCY_SCOPE_CONFLICT' } });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM agent_messages WHERE id = ?').get(durable.id)).toMatchObject({ count: 1 });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM messages WHERE type = 'alert'").get()).toMatchObject({ count: 0 });
+  });
+
+  it('deletes only messages owned by the sender principal', async () => {
+    const created = await (await fetch(`${baseUrl}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'alert' }),
+    })).json() as any;
+    const response = await fetch(`${baseUrl}/messages/${created.id}`, { method: 'DELETE' });
+    expect(response.status).toBe(204);
   });
 });

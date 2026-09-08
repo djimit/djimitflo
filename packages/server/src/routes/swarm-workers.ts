@@ -28,6 +28,8 @@ function mapHandoffError(error: unknown): never {
   if (message === 'SWARM_HANDOFF_ALREADY_ACCEPTED') throw createError(409, 'handoff is already accepted', 'SWARM_HANDOFF_ALREADY_ACCEPTED');
   if (message === 'SWARM_HANDOFF_AGENT_NOT_FOUND') throw createError(404, 'handoff agent not found', 'SWARM_HANDOFF_AGENT_NOT_FOUND');
   if (message === 'SWARM_HANDOFF_LEASE_NOT_FOUND') throw createError(404, 'handoff source lease not found', 'SWARM_HANDOFF_LEASE_NOT_FOUND');
+  if (message === 'SWARM_HANDOFF_SOURCE_AGENT_INVALID') throw createError(403, 'handoff source does not belong to from_agent_id', 'SWARM_HANDOFF_SOURCE_AGENT_INVALID');
+  if (message === 'SWARM_HANDOFF_PRINCIPAL_INVALID') throw createError(403, 'handoff recipient does not match authenticated agent', 'SWARM_HANDOFF_PRINCIPAL_INVALID');
   if (message === 'SWARM_HANDOFF_WORK_ITEM_NOT_FOUND') throw createError(404, 'handoff work item not found', 'SWARM_HANDOFF_WORK_ITEM_NOT_FOUND');
   if (message === 'SWARM_HANDOFF_TASK_NOT_FOUND') throw createError(404, 'handoff task not found', 'SWARM_HANDOFF_TASK_NOT_FOUND');
   throw error;
@@ -63,6 +65,11 @@ export function createWorkerRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   router.post('/handoffs', requirePermission('write:swarm_action'), async (req, res, next) => {
+    const principal = (req.user as any)?.agent_id;
+    if (principal && principal !== req.body?.from_agent_id) {
+      res.status(403).json({ error: { message: 'handoff source does not match authenticated agent', code: 'SWARM_HANDOFF_PRINCIPAL_INVALID' } });
+      return;
+    }
     try { res.status(201).json(await service.createHandoff(req.body || {})); } catch (error) { try { mapHandoffError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
@@ -71,7 +78,7 @@ export function createWorkerRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   router.post('/handoffs/:id/accept', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(service.acceptHandoff(req.params.id)); } catch (error) { try { mapHandoffError(error); } catch (mapped) { next(mapped); } next(error); }
+    try { res.json(service.acceptHandoff(req.params.id, (req.user as any)?.agent_id)); } catch (error) { try { mapHandoffError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   return router;

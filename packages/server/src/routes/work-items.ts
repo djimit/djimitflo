@@ -33,6 +33,7 @@ function mapWorkItemError(error: unknown): never {
   if (message === 'SECURITY_FINDING_LOOP_EVIDENCE_REQUIRED') throw createError(409, 'a completed, gated security-regression-loop for this finding is required', message);
   if (message === 'SECURITY_FINDING_DISPOSITION_EVIDENCE_REQUIRED') throw createError(409, 'security finding disposition evidence is required', message);
   if (message === 'SECURITY_FINDING_INDEPENDENT_REVIEW_REQUIRED') throw createError(409, 'high-risk security findings require independent review and human approval', message);
+  if (message === 'BOARD_HANDOFF_REVIEW_REQUIRED') throw createError(409, 'board-origin work requires independent review before mutation', message);
   if (message === 'SECURITY_FINDING_APPROVER_IDENTITY_REQUIRED') throw createError(401, 'authenticated approver identity is required', message);
   throw error;
 }
@@ -112,6 +113,10 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
   router.patch('/:id', requirePermission('create:task'), (req, res, next) => {
     try {
       const item = service.get(req.params.id);
+      if (item.source === 'agent_board' && req.body?.status && req.body.status !== 'blocked') {
+        next(createError(409, 'board-origin work requires independent review before mutation', 'BOARD_HANDOFF_REVIEW_REQUIRED'));
+        return;
+      }
       const terminalHighRiskSecurityFinding = item.source === SECURITY_FINDING_SOURCE
         && (item.risk_class === 'high' || item.risk_class === 'critical')
         && (req.body?.status === 'done' || req.body?.status === 'discarded');
@@ -168,6 +173,9 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
 
   router.post('/:id/convert-to-goal', requirePermission('create:task'), (req, res, next) => {
     try {
+      if (service.get(req.params.id).source === 'agent_board') {
+        throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
+      }
       res.status(201).json(service.convertToGoal(req.params.id));
     } catch (error) {
       try {

@@ -19,9 +19,39 @@ import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-anal
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { ExplainerFleetWorker } from '../services/explainer-fleet-worker';
+import { TrajectoryStore } from '../services/trajectory-store';
+import { CuriosityService } from '../services/curiosity-service';
+import { BoardHandoffService } from '../services/board-handoff-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
+  try {
+    if (process.env.DJIMITFLO_BOARD_HANDOFF_AUTONOMY !== 'false') {
+      const handoff = new BoardHandoffService(db);
+      let running = false;
+      const tick = async () => {
+        if (running) return;
+        running = true;
+        try {
+          const result = handoff.reconcile(500);
+          if (result.created || result.rejected) console.log(`[BoardHandoff] scanned=${result.scanned} created=${result.created} rejected=${result.rejected} status=${result.status}`);
+          const publish = await handoff.publishPending(500);
+          if (publish.attempted) console.log(`[BoardHandoff] outbox attempted=${publish.attempted} published=${publish.published} failed=${publish.failed} status=${publish.status}`);
+        } catch (error) {
+          console.warn('⚠️  Board handoff reconcile failed:', error instanceof Error ? error.message : String(error));
+        } finally {
+          running = false;
+        }
+      };
+      const timer = setInterval(() => void tick(), 60_000);
+      lifecycleManager.register({ serviceName: 'BoardHandoffService', stop: () => clearInterval(timer) });
+      void tick();
+    }
+  } catch (error) {
+    console.warn('⚠️  Board handoff failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
   const learningLoop = new ContinuousLearningLoop(db);
+  learningLoop.setTrajectoryStore(new TrajectoryStore(db));
   learningLoop.start();
   lifecycleManager.register({ serviceName: 'ContinuousLearningLoop', stop: () => learningLoop.stop() });
   void learningLoop.runCycle().catch((error) => {
@@ -60,10 +90,15 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
 
   try {
     const autonomousGoals = new AutonomousGoalGenerator(db);
-    const generated = autonomousGoals.generateAll();
-    if (generated.total > 0) {
-      console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
-    }
+    const curiosity = new CuriosityService(db, intelligence);
+    curiosity.start();
+    lifecycleManager.register({ serviceName: 'CuriosityService', stop: () => curiosity.stop() });
+    void curiosity.scanForGaps().catch((error) => {
+      console.warn('⚠️  Initial curiosity scan failed (non-fatal):', error instanceof Error ? error.message : String(error));
+    }).then(() => {
+      const generated = autonomousGoals.generateAll();
+      if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+    });
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }

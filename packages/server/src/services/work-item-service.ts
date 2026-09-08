@@ -59,6 +59,7 @@ const RISK_RANK: Record<RiskClass, number> = { low: 0, medium: 1, high: 2, criti
 const VALID_CIA_IMPACTS = ['confidentiality', 'integrity', 'availability'] as const;
 
 export const SECURITY_FINDING_SOURCE = 'security_finding';
+export const BOARD_HANDOFF_AUTHORITY = Symbol('BOARD_HANDOFF_AUTHORITY');
 
 export interface SecurityFindingContract extends Record<string, unknown> {
   target: string;
@@ -137,6 +138,12 @@ export class WorkItemService {
   constructor(private db: Database) {}
 
   create(input: WorkItemCreateInput): WorkItemRecord {
+    const normalized = this.normalizeSource(input);
+    if (normalized.source === 'agent_board') throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
+    return this.insert(normalized);
+  }
+
+  private insert(input: WorkItemCreateInput): WorkItemRecord {
     this.validateCreate(input);
     const now = new Date().toISOString();
     const id = randomUUID();
@@ -173,41 +180,59 @@ export class WorkItemService {
     return this.get(id);
   }
 
-  createIfMissingBySourceRef(input: WorkItemCreateInput): { work_item: WorkItemRecord; created: boolean } {
-    if (input.source && input.source_ref) {
-      const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(input.source, input.source_ref);
+  createIfMissingBySourceRef(
+    input: WorkItemCreateInput,
+    authority?: typeof BOARD_HANDOFF_AUTHORITY,
+  ): { work_item: WorkItemRecord; created: boolean } {
+    const normalized = this.normalizeSource(input);
+    if (normalized.source === 'agent_board' && authority !== BOARD_HANDOFF_AUTHORITY) {
+      throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
+    }
+    if (normalized.source === 'agent_board'
+      && (normalized.status !== 'blocked'
+        || normalized.metadata?.approval_state !== 'REVIEW_REQUIRED'
+        || normalized.metadata?.requires_human_approval !== true)) {
+      throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
+    }
+    if (normalized.source && normalized.source_ref) {
+      const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(normalized.source, normalized.source_ref);
       if (existing) {
         return { work_item: this.parse(existing), created: false };
       }
     }
-    return { work_item: this.create(input), created: true };
+    return { work_item: this.insert(normalized), created: true };
+  }
+
+  private normalizeSource(input: WorkItemCreateInput): WorkItemCreateInput {
+    return typeof input.source === 'string' ? { ...input, source: input.source.trim() } : input;
   }
 
   upsertBySourceRef(input: WorkItemCreateInput): { work_item: WorkItemRecord; created: boolean } {
-    if (!input.source || !input.source_ref) {
-      return { work_item: this.create(input), created: true };
+    const normalized = this.normalizeSource(input);
+    if (!normalized.source || !normalized.source_ref) {
+      return { work_item: this.create(normalized), created: true };
     }
-    const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(input.source, input.source_ref);
+    const existing = this.db.prepare('SELECT * FROM work_items WHERE source = ? AND source_ref = ?').get(normalized.source, normalized.source_ref);
     if (!existing) {
-      return { work_item: this.create(input), created: true };
+      return { work_item: this.create(normalized), created: true };
     }
     const existingItem = this.parse(existing);
     const metadata = existingItem.source === SECURITY_FINDING_SOURCE
       && (existingItem.status === 'done' || existingItem.status === 'discarded')
       ? this.appendSecurityResolution(existingItem, input.metadata || {})
-      : input.metadata;
+      : normalized.metadata;
     return {
       work_item: this.update(existingItem.id, {
-        title: input.title,
-        description: input.description,
-        risk_class: input.risk_class,
-        value_score: input.value_score,
-        confidence: input.confidence,
-        status: input.status,
-        recommended_loop: input.recommended_loop,
-        assigned_agent_id: input.assigned_agent_id,
-        assigned_runtime: input.assigned_runtime,
-        parent_goal_id: input.parent_goal_id,
+        title: normalized.title,
+        description: normalized.description,
+        risk_class: normalized.risk_class,
+        value_score: normalized.value_score,
+        confidence: normalized.confidence,
+        status: normalized.status,
+        recommended_loop: normalized.recommended_loop,
+        assigned_agent_id: normalized.assigned_agent_id,
+        assigned_runtime: normalized.assigned_runtime,
+        parent_goal_id: normalized.parent_goal_id,
         metadata,
       }, { allowSecurityReopen: true }),
       created: false,
@@ -237,6 +262,7 @@ export class WorkItemService {
 
   update(id: string, input: WorkItemUpdateInput, options: { allowSecurityReopen?: boolean } = {}): WorkItemRecord {
     const existing = this.get(id);
+    if (existing.source === 'agent_board') throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
     const next = {
       title: input.title ?? existing.title,
       description: input.description ?? existing.description,
@@ -307,8 +333,13 @@ export class WorkItemService {
 
   convertToGoal(id: string): { work_item: WorkItemRecord; goal_id: string } {
     const item = this.get(id);
+    if (item.source === 'agent_board') throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
     const now = new Date().toISOString();
     const goalId = randomUUID();
+    const constraints = nonEmptyStringList(item.metadata.constraints);
+    const acceptanceCriteria = nonEmptyStringList(item.metadata.acceptance_criteria);
+    const falsificationTests = nonEmptyStringList(item.metadata.falsification_tests);
+    const objective = nonEmptyString(item.metadata.objective) || item.title;
     this.db.prepare(`
       INSERT INTO goals (
         id, objective, constraints_json, acceptance_criteria_json, risk_class,
@@ -316,13 +347,20 @@ export class WorkItemService {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       goalId,
-      item.title,
-      JSON.stringify(['created_from_work_item']),
-      JSON.stringify([item.description]),
+      objective,
+      JSON.stringify(constraints.length ? constraints : ['created_from_work_item']),
+      JSON.stringify(acceptanceCriteria.length ? acceptanceCriteria : [item.description]),
       item.risk_class,
       JSON.stringify({ max_retries: 1, max_failure_count: 3 }),
       'created',
-      JSON.stringify({ source_work_item_id: item.id, recommended_loop: item.recommended_loop }),
+      JSON.stringify({
+        ...item.metadata,
+        source_work_item_id: item.id,
+        source: item.source,
+        source_ref: item.source_ref,
+        recommended_loop: item.recommended_loop,
+        falsification_tests: falsificationTests,
+      }),
       now,
       now
     );
