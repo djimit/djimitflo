@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS messages (
   priority TEXT NOT NULL DEFAULT 'low' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
   read_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  idempotency_key TEXT,
   FOREIGN KEY (from_agent_id) REFERENCES agents(id) ON DELETE CASCADE,
   FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
@@ -18,3 +19,6 @@ CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(type);
 CREATE INDEX IF NOT EXISTS idx_messages_priority ON messages(priority);
 CREATE INDEX IF NOT EXISTS idx_messages_read_at ON messages(read_at);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_idempotency
+  ON messages(from_agent_id, to_agent_id, type, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
