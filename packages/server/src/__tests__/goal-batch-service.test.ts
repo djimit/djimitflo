@@ -227,6 +227,32 @@ describe('goal batch service', () => {
     }
   });
 
+  it('previews the ecosystem activation campaign without writes', () => {
+    const db = makeDb();
+    try {
+      const service = new GoalBatchService(db);
+      const before = counts(db);
+      const batch = JSON.parse(readFileSync(join(__dirname, '../../../../goals/ecosystem-activation-campaign.batch.json'), 'utf8'));
+      const preview = service.preview({ batch });
+      expect(preview).toMatchObject({
+        schema: 'djimit.openmythos.worldlab.goal.v1',
+        campaign_id: 'djimit-ecosystem-activation-20260908',
+        total: 9,
+        valid: 9,
+        blocked: 0,
+        writes: 0,
+      });
+      expect(preview.items.map((item) => item.wave_id)).toEqual([
+        ...Array(3).fill('wave-0-canonical-secure'),
+        ...Array(3).fill('wave-1-operational-activation'),
+        ...Array(3).fill('wave-2-learning-value'),
+      ]);
+      expect(counts(db)).toEqual(before);
+    } finally {
+      db.close();
+    }
+  });
+
   it('accepts a dependency imported by an earlier campaign wave', () => {
     const db = makeDb();
     try {

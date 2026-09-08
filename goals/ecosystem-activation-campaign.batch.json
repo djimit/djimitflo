@@ -1,0 +1,148 @@
+{
+  "schema": "djimit.openmythos.worldlab.goal.v1",
+  "campaign_id": "djimit-ecosystem-activation-20260908",
+  "change": "activate-golden-learning-capabilities",
+  "source": {
+    "experiment_id": "djimit-golden-learning-20260907",
+    "finding_id": "activation-gap-20260908",
+    "evidence_hash": "sha256:49b3738ece89200aa1a95b94311e658c39ed127df04cef89176f4b82229d3329"
+  },
+  "finding": {
+    "failure_mode": "validated_but_inactive_learning_loop",
+    "severity": "high",
+    "confidence": 0.98
+  },
+  "waves": [
+    {
+      "wave_id": "wave-0-canonical-secure",
+      "ordered_goals": [
+        {
+          "id": "ACT-01-plan-and-goals",
+          "target": "docs/ecosystem-activation-campaign-plan.md",
+          "api": { "body": {
+            "objective": "Publish and validate the executable Djimit ecosystem activation plan and typed goal batch.",
+            "acceptance_criteria": ["Plan defines four bounded loops and nine ordered goals", "Goal batch preview validates every item with zero writes"],
+            "constraints": ["reuse existing goal batch service", "no worker starts during preview", "no new control plane"],
+            "falsification_tests": ["Preview mutates state or accepts an invalid dependency"],
+            "risk_class": "low", "recommended_loop": "repo-maintenance-loop",
+            "metadata": { "priority": "P0", "status": "IN_PROGRESS", "activation_loop": "L1" }
+          }}
+        },
+        {
+          "id": "ACT-02-proxy-rate-limit-boundary",
+          "depends_on": ["ACT-01-plan-and-goals"],
+          "target": "packages/server/src/index.ts",
+          "api": { "body": {
+            "objective": "Restore trustworthy per-client rate limiting behind nginx without trusting direct Tailscale peers or public addresses.",
+            "acceptance_criteria": ["Private reverse-proxy hops are trusted", "Direct CGNAT and public addresses are not trusted", "Live nginx requests emit no forwarded-for validation error"],
+            "constraints": ["preserve direct access", "no authentication weakening", "no new dependency"],
+            "falsification_tests": ["An untrusted peer can choose req.ip through X-Forwarded-For", "Legitimate proxied API requests fail"],
+            "risk_class": "high", "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P0", "status": "IN_PROGRESS", "activation_loop": "L1" }
+          }}
+        },
+        {
+          "id": "ACT-03-canonical-review-deploy",
+          "depends_on": ["ACT-02-proxy-rate-limit-boundary"],
+          "target": "github:openmythos#4,djimitflo#183",
+          "api": { "body": {
+            "objective": "Canonicalize reviewed OpenMythos and DjimitFlo source and deploy only the resulting attested main artifact.",
+            "acceptance_criteria": ["Independent reviews and required checks pass", "OpenMythos merges before DjimitFlo", "Live commit, digest, database and rollback evidence match canonical source"],
+            "constraints": ["human approval required", "no autonomous merge or promotion", "preserve rollback"],
+            "falsification_tests": ["Runtime identity differs from canonical source", "A required review is bypassed"],
+            "risk_class": "critical", "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P0", "status": "REVIEW_REQUIRED", "activation_loop": "L1" }
+          }}
+        }
+      ]
+    },
+    {
+      "wave_id": "wave-1-operational-activation",
+      "ordered_goals": [
+        {
+          "id": "ACT-04-three-production-pilots",
+          "depends_on": ["ACT-02-proxy-rate-limit-boundary"],
+          "target": "packages/server/src/services/loop-service.ts",
+          "api": { "body": {
+            "objective": "Close three bounded operational pilots covering success, deliberate denial and failure recovery.",
+            "acceptance_criteria": ["Each pilot has a distinct correlation and complete evidence lineage", "Maker, checker and protected approval separation remains intact", "Success, denial and recovery are visible on the Interaction Board"],
+            "constraints": ["isolated worktrees", "no merge or promotion", "low-risk fixtures only"],
+            "falsification_tests": ["A denied action mutates state", "A failure is reclassified as success"],
+            "risk_class": "medium", "recommended_loop": "repo-maintenance-loop",
+            "metadata": { "priority": "P1", "status": "NOT_STARTED", "activation_loop": "L1,L4" }
+          }}
+        },
+        {
+          "id": "ACT-05-assurance-spine-contracts",
+          "depends_on": ["ACT-04-three-production-pilots"],
+          "target": "packages/server/src/services/agent-interaction-ledger-service.ts",
+          "api": { "body": {
+            "objective": "Prove the four-link OpenMythos and WorldLab assurance spine with replayable success and denial evidence.",
+            "acceptance_criteria": ["Four prioritized contracts are OBSERVED", "Every trace contains actor, correlation, status, scope and evidence references", "Unexercised contracts remain UNDETERMINED"],
+            "constraints": ["do not synthesize production evidence", "no aggregate score", "preserve raw provenance"],
+            "falsification_tests": ["A declared contract becomes OBSERVED without a matching interaction"],
+            "risk_class": "medium", "recommended_loop": "research-loop",
+            "metadata": { "priority": "P1", "status": "NOT_STARTED", "activation_loop": "L1,L2" }
+          }}
+        },
+        {
+          "id": "ACT-06-curiosity-and-live-workers",
+          "depends_on": ["ACT-04-three-production-pilots"],
+          "target": "packages/server/src/services/dream-task-planner-service.ts",
+          "api": { "body": {
+            "objective": "Convert one qualified curiosity opportunity into a bounded Paperclip-ready protocol and prove live runtime execution identity.",
+            "acceptance_criteria": ["At most one task exports per planning cycle", "Protocol includes question, null, falsification, budget and reversibility", "Maker, checker and challenger runtime evidence is observed"],
+            "constraints": ["human_required remains true", "no new agent identity", "no direct tool execution"],
+            "falsification_tests": ["A dream opportunity directly executes or more than one exports per cycle"],
+            "risk_class": "medium", "recommended_loop": "research-loop",
+            "metadata": { "priority": "P1", "status": "NOT_STARTED", "activation_loop": "L3" }
+          }}
+        }
+      ]
+    },
+    {
+      "wave_id": "wave-2-learning-value",
+      "ordered_goals": [
+        {
+          "id": "ACT-07-discriminative-worldlab",
+          "depends_on": ["ACT-05-assurance-spine-contracts"],
+          "target": "openmythos:worldlab",
+          "api": { "body": {
+            "objective": "Run a preregistered 2x2 provenance and checker-independence WorldLab campaign after challenge calibration.",
+            "acceptance_criteria": ["Control is calibrated away from floor and ceiling", "At least 30 valid paired replications per confirmatory cell", "Condition vectors, confidence intervals and falsification status are packaged"],
+            "constraints": ["network denied", "synthetic credentials and tools", "no world score or causal overclaim"],
+            "falsification_tests": ["Control cannot discriminate", "Model or artifact identity is missing"],
+            "risk_class": "medium", "recommended_loop": "research-loop",
+            "metadata": { "priority": "P2", "status": "NOT_STARTED", "activation_loop": "L2" }
+          }}
+        },
+        {
+          "id": "ACT-08-attributed-skill-lifecycle",
+          "depends_on": ["ACT-07-discriminative-worldlab"],
+          "target": "packages/server/src/services/outcome-learning-service.ts",
+          "api": { "body": {
+            "objective": "Reach a governed retain, reject or promotion-candidate decision for one existing skill using complete operational attribution.",
+            "acceptance_criteria": ["Skill id, version, hash, task, model, runtime, baseline, metric, cost and causal status are present", "Independent holdout evidence supports the decision", "Promotion remains human-gated"],
+            "constraints": ["one existing skill only", "no self-declared specialization", "no autonomous release"],
+            "falsification_tests": ["Missing attribution becomes evidence-ready", "Exploratory evidence promotes the skill"],
+            "risk_class": "high", "recommended_loop": "research-loop",
+            "metadata": { "priority": "P2", "status": "NOT_STARTED", "activation_loop": "L1,L2" }
+          }}
+        },
+        {
+          "id": "ACT-09-final-verification",
+          "depends_on": ["ACT-08-attributed-skill-lifecycle"],
+          "target": "docs/ecosystem-activation-campaign-report.md",
+          "api": { "body": {
+            "objective": "Publish an independently checkable activation status matrix after repository, runtime, browser and assurance validation.",
+            "acceptance_criteria": ["All claims use explicit evidence states", "Regression, security, mutation, replay, corpus and browser checks are recorded", "Remaining authority gates and removal paths are explicit"],
+            "constraints": ["no implicit PASS", "no secret output", "no autonomous protected action"],
+            "falsification_tests": ["A health response or passing CI is presented as complete integration proof"],
+            "risk_class": "medium", "recommended_loop": "security-regression-loop",
+            "metadata": { "priority": "P2", "status": "NOT_STARTED", "activation_loop": "L1,L2,L3,L4" }
+          }}
+        }
+      ]
+    }
+  ]
+}

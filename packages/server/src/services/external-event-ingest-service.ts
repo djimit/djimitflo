@@ -6,7 +6,7 @@ const decodeField = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try { return JSON.parse(value); } catch { return value; }
 };
-const ENCODED_OUTCOME_FIELDS = new Set(['value', 'baseline', 'evidence_refs', 'confidence', 'minimum_effect', 'exploratory']);
+const ENCODED_OUTCOME_FIELDS = new Set(['value', 'baseline', 'evidence_refs', 'confidence', 'minimum_effect', 'exploratory', 'cost_amount']);
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -15,8 +15,13 @@ const outcomeObservedSchema = z.object({
   candidate_id: nonBlank,
   capability_id: nonBlank,
   model_id: nonBlank,
+  skill_id: nonBlank,
+  skill_version: nonBlank,
   skill_hash: nonBlank,
   runtime_identity: nonBlank,
+  cost_amount: z.number().nonnegative(),
+  cost_currency: nonBlank,
+  cost_basis: nonBlank,
   metric: nonBlank,
   value: z.union([nonBlank, z.number(), z.boolean()]),
   baseline: z.union([nonBlank, z.number(), z.boolean()]),

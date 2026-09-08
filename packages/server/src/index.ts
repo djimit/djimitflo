@@ -41,6 +41,7 @@ import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEna
 import { initExternalEventIngest, initOperatorServices } from './bootstrap/operator-services';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
+import { configureProxyTrust } from './config/proxy-trust';
 
 type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
 
@@ -112,6 +113,7 @@ async function main() {
   
   // Create Express app
   const app = express();
+  configureProxyTrust(app);
   
   // Middleware
   app.use(cors({

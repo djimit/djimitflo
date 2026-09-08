@@ -14,6 +14,15 @@ function insertOutcome(index: number, overrides: Record<string, unknown> = {}) {
     outcome_id: `outcome-${index}`,
     candidate_id: 'candidate-1',
     capability_id: 'capability-1',
+    task_id: 'task-1',
+    model_id: 'model-1',
+    skill_id: 'skill-1',
+    skill_version: '1.0.0',
+    skill_hash: 'sha256:skill-1',
+    runtime_identity: 'git:test',
+    cost_amount: 0.1,
+    cost_currency: 'EUR',
+    cost_basis: 'test_fixture',
     metric: 'qualified_result_rate',
     value: 0.8 + index * 0.01,
     baseline: 0.5,
@@ -43,6 +52,10 @@ describe('OutcomeLearningService', () => {
     expect(service.process()).toMatchObject({ assessments: 1, work_items_created: 0, supported: 1 });
     expect(service.list()).toEqual([expect.objectContaining({
       status: 'SUPPORTED', signal_status: 'SUPPORTED', replications: 3, causal_support: true,
+      result: expect.objectContaining({
+        skill_attribution: { skill_id: 'skill-1', skill_version: '1.0.0', skill_hash: 'sha256:skill-1', complete: true },
+        execution_attribution: expect.objectContaining({ task_ids: ['task-1'], model_ids: ['model-1'], total_cost: 0.30000000000000004 }),
+      }),
     })]);
     expect((db.prepare("SELECT COUNT(*) count FROM work_items WHERE source = 'outcome_observed'").get() as any).count).toBe(1);
   });

@@ -31,6 +31,9 @@ interface OutcomeEvent {
   eventId: string;
   candidateId: string;
   capabilityId: string;
+  skillId: string;
+  skillVersion: string;
+  skillHash: string;
   metric: string;
   direction: OutcomeLearningAssessment['direction'];
   observationWindow: string;
@@ -105,11 +108,27 @@ export class OutcomeLearningService {
           experiment_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.experiment_id || '')).filter(Boolean))],
           trajectory_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.trajectory_id || '')).filter(Boolean))],
           finding_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.finding_id || '')).filter(Boolean))],
+          skill_attribution: {
+            skill_id: first.skillId,
+            skill_version: first.skillVersion,
+            skill_hash: first.skillHash,
+            complete: Boolean(first.skillId && first.skillVersion && first.skillHash),
+          },
+          execution_attribution: {
+            task_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.task_id || '')).filter(Boolean))],
+            model_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.model_id || '')).filter(Boolean))],
+            runtime_identities: [...new Set(outcomes.map((outcome) => String(outcome.payload.runtime_identity || '')).filter(Boolean))],
+            total_cost: outcomes.reduce((sum, outcome) => sum + (Number(outcome.payload.cost_amount) || 0), 0),
+            cost_currencies: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_currency || '')).filter(Boolean))],
+            cost_bases: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_basis || '')).filter(Boolean))],
+          },
           exploratory: outcomes.some((outcome) => outcome.exploratory),
           promotion_eligible: false,
           required_next_gate: outcomes.some((outcome) => outcome.exploratory)
             ? 'confirmatory_replication'
-            : evaluation.causalSupport ? 'openmythos_targeted_retest' : 'controlled_or_counterfactual_evidence',
+            : !first.skillId || !first.skillVersion || !first.skillHash
+              ? 'skill_attribution'
+              : evaluation.causalSupport ? 'openmythos_targeted_retest' : 'controlled_or_counterfactual_evidence',
         };
         const now = new Date().toISOString();
         this.db.prepare(`
@@ -277,6 +296,9 @@ export class OutcomeLearningService {
       eventId: row.id,
       candidateId: String(payload.candidate_id),
       capabilityId: String(payload.capability_id),
+      skillId: String(payload.skill_id || '').trim(),
+      skillVersion: String(payload.skill_version || '').trim(),
+      skillHash: String(payload.skill_hash || '').trim(),
       metric: String(payload.metric),
       direction,
       observationWindow: String(payload.observation_window),
@@ -298,6 +320,7 @@ export class OutcomeLearningService {
       outcome.candidateId, outcome.capabilityId, outcome.metric, outcome.direction,
       outcome.observationWindow, outcome.minimumEffect,
       String(outcome.payload.condition || ''), String(outcome.payload.experiment_id || ''),
+      outcome.skillId, outcome.skillVersion, outcome.skillHash,
     ]);
   }
 

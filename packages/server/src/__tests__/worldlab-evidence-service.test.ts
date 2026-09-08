@@ -4,6 +4,7 @@ import { createTestDb } from './helpers/test-db';
 import { GoalBatchService } from '../services/goal-batch-service';
 import { WorldLabEvidenceService } from '../services/worldlab-evidence-service';
 import { AgentInteractionLedgerService } from '../services/agent-interaction-ledger-service';
+import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
 
 let db: Database.Database;
 beforeEach(() => { db = createTestDb(); });
@@ -40,6 +41,14 @@ describe('WorldLabEvidenceService', () => {
     expect(stored.status).toBe('created');
     expect(JSON.parse(stored.metadata)).toMatchObject({ promotion_state: 'PROMOTION_CANDIDATE', worldlab_retests: [{ promoted: false }] });
     expect(new AgentInteractionLedgerService(db).list({ source: 'swarm_evidence_edges' }).length).toBeGreaterThanOrEqual(7);
+    const contracts = new SwarmIntelligenceService(db).missionControl().ecosystem_map.declared_contracts;
+    for (const id of [
+      'contract:openmythos:worldlab', 'contract:worldlab:openmythos',
+      'contract:openmythos:djimitflo', 'contract:djimitflo:openmythos',
+    ]) {
+      expect(contracts.find((contract: any) => contract.id === id)).toMatchObject({ id, evidence_state: 'OBSERVED' });
+      expect(contracts.find((contract: any) => contract.id === id)?.observed_count).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it('never treats unknown or incomplete evidence as pass', () => {

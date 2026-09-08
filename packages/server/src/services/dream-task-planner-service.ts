@@ -41,7 +41,17 @@ export class DreamTaskPlannerService {
         context: `${opportunity.suggestedAction} Capability=${opportunity.capabilityId}. This is an inert proposal; Paperclip/DAPS/OpenMythos gates remain authoritative.`,
         assignee_role: evaluate ? 'architecture/security-reviewer' : 'skill-factory-agent',
         labels: ['dream-cycle', 'paperclip-ready', evaluate ? 'evaluation' : 'capability-improvement'],
-        metadata: { source: 'djimitflo.dream_cycle', opportunity_id: opportunity.id, capability_id: opportunity.capabilityId, score: opportunity.score, execution_tier: 'A2', human_required: true },
+        metadata: {
+          source: 'djimitflo.dream_cycle', opportunity_id: opportunity.id,
+          capability_id: opportunity.capabilityId, score: opportunity.score,
+          execution_tier: 'A2', human_required: true, reversible: true,
+          research_protocol: {
+            question: `Does independently evaluating ${opportunity.capabilityId} close the observed evidence gap?`,
+            null_hypothesis: `Independent evaluation does not materially change the evidence status of ${opportunity.capabilityId}.`,
+            falsification_criteria: ['No reproducible delta from baseline', 'Required attribution or holdout evidence is missing'],
+            budget: { max_replications: 30, max_failures: 2 },
+          },
+        },
       };
       const inserted = insert.run(dedupeKey, opportunity.id);
       if (inserted.changes) {
@@ -57,7 +67,7 @@ export class DreamTaskPlannerService {
     return planned;
   }
 
-  exportPending(path = process.env.DENNIS_AGENT_PAPERCLIP_PENDING || `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl`, limit = 3, minScore = 0.25): number {
+  exportPending(path = process.env.DENNIS_AGENT_PAPERCLIP_PENDING || `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl`, limit = 1, minScore = 0.25): number {
     const tasks = this.plan(limit, minScore);
     if (!tasks.length) return 0;
     mkdirSync(dirname(path), { recursive: true });
