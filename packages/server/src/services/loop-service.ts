@@ -1219,6 +1219,7 @@ export class LoopService {
         codex: this.getRuntimeContract('codex'),
         opencode: this.getRuntimeContract('opencode'),
         claude: this.getRuntimeContract('claude'),
+        hermes: this.getRuntimeContract('hermes'),
         gemini: this.getRuntimeContract('gemini'),
         editor: this.getRuntimeContract('editor'),
         pi: this.getRuntimeContract('pi'),

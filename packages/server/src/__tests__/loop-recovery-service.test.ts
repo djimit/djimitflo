@@ -157,6 +157,25 @@ describe('LoopRecoveryService', () => {
     expect((db.prepare("SELECT status FROM loop_runs WHERE id = 'run-planning'").get() as { status: string }).status).toBe('planning');
   });
 
+  it('preserves pending-approval work across restart', () => {
+    seedRun('run-approval', 'running');
+    db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata)
+      VALUES ('lease-approval', 'run-approval', 'maker', 'opencode', 'running', '{"execution_task_id":"task-approval"}')`).run();
+    db.prepare(`INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode)
+      VALUES ('task-approval', 'Worker', '', 'awaiting_approval', 'low', 'low', 'local')`).run();
+    db.prepare(`INSERT INTO approvals
+      (id, task_id, status, risk_level, request_type, request_message, request_data)
+      VALUES ('approval-pending', 'task-approval', 'pending', 'low', 'high_risk_action', 'approve', '{}')`).run();
+
+    expect(service.recoverInterruptedRuns()).toEqual({ interruptedRuns: 0, failedLeases: 0 });
+    expect(db.prepare("SELECT status FROM worker_leases WHERE id = 'lease-approval'").get()).toEqual({ status: 'prepared' });
+    const run = db.prepare("SELECT status, metadata FROM loop_runs WHERE id = 'run-approval'").get() as any;
+    expect(run.status).toBe('blocked');
+    expect(JSON.parse(run.metadata)).toMatchObject({
+      blocked_reason: 'execution_approval_required', resume_approval_id: 'approval-pending',
+    });
+  });
+
   it('resumes interrupted run', () => {
     seedRun('run-1', 'interrupted');
     const result = service.resumeInterruptedRun('run-1');

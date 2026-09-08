@@ -401,7 +401,15 @@ export class LoopWorkerExecutorService {
         });
         throw new Error(`LOOP_WORKER_EXECUTION_${previousTask.status.toUpperCase()}_WITHOUT_RESULT`);
       }
-      if (previousTask?.status === 'awaiting_approval') throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      if (previousTask?.status === 'awaiting_approval') {
+        const approval = this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1")
+          .get(previousTaskId) as { id?: string } | undefined;
+        this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', {
+          execution_task_id: previousTaskId,
+          ...(approval?.id ? { approval_id: approval.id } : {}),
+        });
+        throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      }
       if (previousTask?.status === 'running' || previousTask?.status === 'queued') throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
     }
 

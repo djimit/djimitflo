@@ -854,6 +854,7 @@ export class SwarmStatusService {
       codex: { env: 'CODEX_BIN_PATH', defaultBin: 'codex' },
       opencode: { env: 'OPENCODE_BIN_PATH', defaultBin: 'opencode' },
       claude: { env: 'CLAUDE_BIN_PATH', defaultBin: 'claude' },
+      hermes: { env: 'HERMES_BIN_PATH', defaultBin: 'hermes' },
       gemini: { env: 'GEMINI_BIN_PATH', defaultBin: 'gemini' },
       editor: { env: 'CLINE_BIN_PATH', defaultBin: 'cline' },
     };

@@ -22,8 +22,9 @@ function mapKnowledgeRuntimeError(error: unknown): never {
   throw error;
 }
 
-function runtimeReadiness(db: Database, runtimeInput?: unknown) {
-  const allowedProduction = new Set(['codex', 'opencode']);
+function runtimeReadiness(db: Database, runtimeInput?: unknown, roleInput?: unknown) {
+  const role = roleInput === 'checker' ? 'checker' : 'maker';
+  const allowedProduction = new Set(role === 'checker' ? ['codex', 'opencode', 'hermes'] : ['codex', 'opencode']);
   const requested = typeof runtimeInput === 'string' && runtimeInput.trim()
     ? [runtimeInput.trim().toLowerCase()]
     : ['codex', 'opencode'];
@@ -39,9 +40,11 @@ function runtimeReadiness(db: Database, runtimeInput?: unknown) {
       ? Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY)
       : runtime === 'opencode'
         ? Boolean(process.env.DJIMITFLO_OPENCODE_MODEL && (process.env.OPENCODE_CONFIG_CONTENT || process.env.OPENCODE_CONFIG))
-        : false;
+        : runtime === 'hermes'
+          ? Boolean(process.env.HERMES_BIN_PATH && process.env.DJIMITFLO_HERMES_PROVIDER && process.env.DJIMITFLO_HERMES_MODEL)
+          : false;
     if (allowedProduction.has(runtime) && !credentialConfigured) blocked.push('runtime_provider_not_configured');
-    return { runtime, production_runtime: allowedProduction.has(runtime), provider_configured: credentialConfigured, ready: blocked.length === 0, start_allowed: blocked.length === 0, command: contract.command || null, status: contract.status || 'unavailable', available: Boolean(contract.available), version: contract.version || null, evidence: Array.isArray(contract.evidence) ? contract.evidence : [], blocked_reasons: [...new Set(blocked)], contract };
+    return { runtime, role, production_runtime: allowedProduction.has(runtime), provider_configured: credentialConfigured, ready: blocked.length === 0, start_allowed: blocked.length === 0, command: contract.command || null, status: contract.status || 'unavailable', available: Boolean(contract.available), version: contract.version || null, evidence: Array.isArray(contract.evidence) ? contract.evidence : [], blocked_reasons: [...new Set(blocked)], contract };
   });
   return { runtimes, ready: runtimes.some((r) => r.ready), next_safe_action: runtimes.some((r) => r.ready) ? 'Run opt-in real runtime certification' : 'Install the runtime and configure its provider before production certification', starts_workers: false };
 }
@@ -60,7 +63,7 @@ export function createKnowledgeRoutes(db: Database, auth?: AuthMiddleware): Rout
   });
 
   router.get('/runtime-readiness', requirePermission('read:evidence'), (req, res) => {
-    try { res.json(runtimeReadiness(db, req.query.runtime)); } catch (error) { /* best-effort */ }
+    try { res.json(runtimeReadiness(db, req.query.runtime, req.query.role)); } catch (error) { /* best-effort */ }
   });
 
   return router;

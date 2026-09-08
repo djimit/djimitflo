@@ -1379,9 +1379,8 @@ export class SwarmIntelligenceService {
       if (interaction.timestamp > route.lastSeen) route.lastSeen = interaction.timestamp;
       routeMap.set(key, route);
     }
-    const observedRoutes = [...routeMap.values()]
+    const allObservedRoutes = [...routeMap.values()]
       .sort((left, right) => right.count - left.count || right.lastSeen.localeCompare(left.lastSeen))
-      .slice(0, 25)
       .map((route) => ({
         from: route.from,
         to: route.to,
@@ -1512,7 +1511,7 @@ export class SwarmIntelligenceService {
       evidence_window: { interactions: input.interactions.length, integration_chains: chains.length },
       nodes,
       declared_contracts: ECOSYSTEM_CONTRACTS.map((contract) => {
-        const observed = observedRoutes.find((route) => route.from === contract.from && route.to === contract.to);
+        const observed = allObservedRoutes.find((route) => route.from === contract.from && route.to === contract.to);
         return {
           id: `contract:${contract.from}:${contract.to}`,
           ...contract,
@@ -1527,7 +1526,7 @@ export class SwarmIntelligenceService {
           } : null,
         };
       }),
-      observed_routes: observedRoutes,
+      observed_routes: allObservedRoutes.slice(0, 25),
       evolution,
       integrality,
       decisions: this.listDecisions(undefined, 12).map((decision) => ({

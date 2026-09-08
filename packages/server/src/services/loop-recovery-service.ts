@@ -68,7 +68,7 @@ export class LoopRecoveryService {
   private mutations: LoopRunMutationService;
   private experience: ExperienceRetrievalService;
 
-  constructor(db: Database) {
+  constructor(private db: Database) {
     this.leases = new WorkerLeaseRepo(db);
     this.queries = new LoopRunQueryService(db);
     this.mutations = new LoopRunMutationService(db);
@@ -83,11 +83,27 @@ export class LoopRecoveryService {
     const now = new Date().toISOString();
     const liveLeaseIds = RuntimeLeaseRegistry.getLiveIds();
 
+    const approvalWaits = this.db.prepare(`
+      SELECT wl.id AS lease_id, wl.loop_run_id, a.id AS approval_id
+      FROM worker_leases wl
+      JOIN tasks t ON t.id = json_extract(wl.metadata, '$.execution_task_id')
+      JOIN approvals a ON a.task_id = t.id AND a.status = 'pending'
+      WHERE t.status = 'awaiting_approval' AND wl.status IN ('prepared', 'running')
+    `).all() as Array<{ lease_id: string; loop_run_id: string; approval_id: string }>;
+    const approvalLeaseIds = new Set(approvalWaits.map((item) => item.lease_id));
+    for (const wait of approvalWaits) {
+      this.leases.updateStatus(wait.lease_id, 'prepared', { approval_id: wait.approval_id });
+      this.mutations.updateStatus(wait.loop_run_id, 'blocked', {
+        blocked_reason: 'execution_approval_required',
+        resume_approval_id: wait.approval_id,
+      });
+    }
+
     // Fail 'running' leases whose child process is gone.
     const runningLeases = this.leases.getRunning();
     let failedLeases = 0;
     for (const lease of runningLeases) {
-      if (liveLeaseIds.has(lease.id)) continue;
+      if (liveLeaseIds.has(lease.id) || approvalLeaseIds.has(lease.id)) continue;
       this.leases.updateStatus(lease.id, 'failed', {
         failed_reason: 'server_restart',
         failed_at: now,

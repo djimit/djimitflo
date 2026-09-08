@@ -118,6 +118,11 @@ describe('AgentInteractionLedgerService', () => {
       .run(JSON.stringify({ deployment_provenance: { status: 'VERIFIED', commit: 'def456', source_archive_sha256: 'sha256-source', image_digest: 'sha256-image', canonical_source_state: 'REVIEW_REQUIRED' } }));
     db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
       VALUES ('finding-1', 'worldlab.finding', 'openmythos-worldlab', 'experiment-1', '2026-09-07T00:02:00Z', '{}')`).run();
+    const evidence = new SwarmEvidenceService(db);
+    evidence.createEvidenceEdge('openmythos:finding-old', 'djimitflo:change-old', 'submits_assurance');
+    for (let index = 0; index < 30; index += 1) {
+      evidence.createEvidenceEdge(`noise-${index}`, `tool:noise-${index}`, 'noise');
+    }
     const insertNoise = db.prepare(`INSERT INTO external_events (id, event_type, source, correlation_id, occurred_at, payload)
       VALUES (?, 'paperclip.issue.status_changed', 'paperclip', ?, ?, '{}')`);
     for (let index = 0; index < 200; index += 1) {
@@ -137,17 +142,16 @@ describe('AgentInteractionLedgerService', () => {
     const map = service.missionControl().ecosystem_map;
     expect(map.nodes).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'worldlab', evidence_state: 'OBSERVED', registered_agents: ['worldlab-bot'] }),
-      expect.objectContaining({ id: 'openmythos', evidence_state: 'REGISTERED', registered_repositories: ['openmythos-repo'] }),
+      expect.objectContaining({ id: 'openmythos', evidence_state: 'OBSERVED', registered_repositories: ['openmythos-repo'] }),
     ]));
-    expect(map.observed_routes).toEqual(expect.arrayContaining([
-      expect.objectContaining({ from: 'worldlab', to: 'djimitflo', observed_count: 1, effect_scopes: ['simulated'] }),
-    ]));
+    expect(map.observed_routes).toHaveLength(25);
     expect(map.declared_contracts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'contract:worldlab:djimitflo',
         evidence_state: 'OBSERVED',
         trace: expect.objectContaining({ effect_scopes: ['simulated'], evidence_refs: expect.arrayContaining(['external_events:finding-1']) }),
       }),
+      expect.objectContaining({ id: 'contract:openmythos:djimitflo', evidence_state: 'OBSERVED' }),
       expect.objectContaining({ id: 'contract:roborev:paperclip', evidence_state: 'UNDETERMINED', trace: null }),
     ]));
     expect(map.inventory.repositories[0]).toMatchObject({

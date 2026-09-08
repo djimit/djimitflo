@@ -122,6 +122,18 @@ exit 0
     return file;
   }
 
+  function fakeHermesBin(): string {
+    runtimeBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-readiness-runtime-'));
+    const file = path.join(runtimeBinDir, 'hermes');
+    fs.writeFileSync(file, `#!/usr/bin/env sh
+if [ "$1" = "--version" ]; then echo "eve-v-hermes-reviewer/1"; exit 0; fi
+if [ "$1" = "chat" ] && [ "$2" = "--help" ]; then echo "usage: hermes chat --oneshot --quiet"; exit 0; fi
+exit 0
+`);
+    fs.chmodSync(file, 0o755);
+    return file;
+  }
+
   it('rejects mock as a production runtime without starting workers', async () => {
     const response = await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=mock`);
     expect(response.status).toBe(200);
@@ -194,5 +206,20 @@ exit 0
     process.env.OPENCODE_CONFIG_CONTENT = '{"provider":{"ollama":{}}}';
     body = await (await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=opencode`)).json() as any;
     expect(body.runtimes[0]).toMatchObject({ provider_configured: true, start_allowed: true });
+  });
+
+  it('allows configured EVE-V Hermes for checker work but not maker work', async () => {
+    const previous = [process.env.HERMES_BIN_PATH, process.env.DJIMITFLO_HERMES_PROVIDER, process.env.DJIMITFLO_HERMES_MODEL];
+    process.env.HERMES_BIN_PATH = fakeHermesBin();
+    process.env.DJIMITFLO_HERMES_PROVIDER = 'custom-eve-v';
+    process.env.DJIMITFLO_HERMES_MODEL = 'reviewer-model';
+    try {
+      const checker = await (await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=hermes&role=checker`)).json() as any;
+      expect(checker.runtimes[0]).toMatchObject({ runtime: 'hermes', role: 'checker', production_runtime: true, ready: true, start_allowed: true });
+      const maker = await (await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=hermes`)).json() as any;
+      expect(maker.runtimes[0]).toMatchObject({ role: 'maker', production_runtime: false, ready: false, start_allowed: false });
+    } finally {
+      [process.env.HERMES_BIN_PATH, process.env.DJIMITFLO_HERMES_PROVIDER, process.env.DJIMITFLO_HERMES_MODEL] = previous;
+    }
   });
 });
