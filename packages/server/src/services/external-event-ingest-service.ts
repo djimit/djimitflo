@@ -99,7 +99,10 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed' && eventType !== 'agent.board.handoff.created')) continue;
+        if (!id || (!eventType.startsWith('paperclip.')
+          && eventType !== 'outcome.observed'
+          && eventType !== 'agent.board.handoff.created'
+          && eventType !== 'eve-v.board.handoff.received')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
           const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
