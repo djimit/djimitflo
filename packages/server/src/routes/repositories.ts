@@ -4,8 +4,9 @@ import { RepositoryScanner } from '../services/repository-scanner';
 import { AgentsMdValidator } from '../services/agents-md-validator';
 import { DiffCaptureService } from '../services/diff-capture';
 import { createError } from '../middleware/error-handler';
-import { AuthTokenPayload } from '@djimitflo/shared';
+import { AuditEventType, AuthTokenPayload, RiskLevel } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
+import { AuditService } from '../services/audit-service';
 import type { AuthMiddleware } from '../middleware/auth';
 
 function sanitizeRepository(repo: any, isAdmin: boolean): any {
@@ -72,6 +73,35 @@ export function createRepositoryRoutes(db: Database, auth?: AuthMiddleware): Rou
       const result = scanner.scan(repository.path);
       res.json(result);
     } catch (error) { next(error); }
+  });
+
+  router.post('/:id/deployment-provenance', requirePermission('approve:task'), (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const before = scanner.getRepository(req.params.id);
+      const beforeDeployment = before?.metadata?.deployment_provenance;
+      const repository = scanner.recordDeploymentProvenance(req.params.id, {
+        commit: String(req.body?.commit || ''),
+        source_archive_sha256: String(req.body?.source_archive_sha256 || ''),
+        image_digest: String(req.body?.image_digest || ''),
+        runtime_instance: String(req.body?.runtime_instance || ''),
+        canonical_source_state: req.body?.canonical_source_state,
+        verified_by: getUser(req)?.sub || '',
+      });
+      new AuditService(db).record({
+        event_type: AuditEventType.CONFIG_CHANGED,
+        user_id: getUser(req)?.sub,
+        action: 'repository.deployment_provenance.recorded',
+        resource_type: 'repository',
+        resource_id: req.params.id,
+        risk_level: RiskLevel.HIGH,
+        before: beforeDeployment && typeof beforeDeployment === 'object' ? beforeDeployment as Record<string, unknown> : undefined,
+        after: repository.metadata?.deployment_provenance as Record<string, unknown>,
+      });
+      res.status(201).json({ repository });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'DEPLOYMENT_PROVENANCE_INVALID';
+      next(createError(code === 'REPOSITORY_NOT_FOUND' ? 404 : 409, code, code));
+    }
   });
 
   // Detailed repository internals require scan:repository permission (operator/admin)

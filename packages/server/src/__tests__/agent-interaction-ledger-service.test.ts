@@ -142,8 +142,13 @@ describe('AgentInteractionLedgerService', () => {
     ]));
     expect(map.integrality).toEqual(expect.arrayContaining([
       expect.objectContaining({ dimension: 'production_containment', state: 'PASS' }),
-      expect.objectContaining({ dimension: 'repository_provenance', state: 'PASS' }),
+      expect.objectContaining({ dimension: 'repository_provenance', state: 'FAIL' }),
       expect.objectContaining({ dimension: 'reviewer_independence', state: 'UNDETERMINED' }),
+    ]));
+    db.prepare("UPDATE repositories SET metadata = ? WHERE id = 'openmythos-repo'")
+      .run(JSON.stringify({ deployment_provenance: { status: 'VERIFIED', commit: 'abc123', canonical_source_state: 'REVIEW_REQUIRED' } }));
+    expect(new SwarmIntelligenceService(db).missionControl().ecosystem_map.integrality).toEqual(expect.arrayContaining([
+      expect.objectContaining({ dimension: 'repository_provenance', state: 'PASS' }),
     ]));
     expect(map.decisions[0]).toMatchObject({
       decision: 'hold_for_independent_retest',

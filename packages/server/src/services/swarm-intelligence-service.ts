@@ -1456,7 +1456,8 @@ export class SwarmIntelligenceService {
     const productionInteractions = input.interactions.filter((interaction) => interaction.effect_scope === 'production');
     const incompleteProductionEvidence = productionInteractions.filter((interaction) =>
       !interaction.correlation_id || interaction.evidence_refs.length === 0);
-    const unprovenRepositories = repositories.filter((repo) => repo.status !== 'clean' || !repo.commit);
+    const unprovenRepositories = repositories.filter((repo) => repo.status !== 'clean' || !repo.commit
+      || repo.deployment_provenance?.status !== 'VERIFIED' || repo.deployment_provenance.commit !== repo.commit);
     const provenDeployments = repositories.filter((repo) => repo.deployment_provenance?.status === 'VERIFIED').length;
     const reviewerState = input.reviewerIndependence.length === 0 ? 'UNDETERMINED'
       : input.reviewerIndependence.some((assessment) => assessment.state === 'FAIL') ? 'FAIL'

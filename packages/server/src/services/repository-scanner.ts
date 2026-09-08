@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'fs';
-import { delimiter, isAbsolute, join, relative, resolve, sep } from 'path';
+import { basename, delimiter, isAbsolute, join, relative, resolve, sep } from 'path';
 import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
@@ -51,6 +51,16 @@ export class RepositoryScanner {
     };
 
     let repository = this.db.prepare('SELECT * FROM repositories WHERE path = ?').get(resolvedPath) as any;
+    const repositoryName = basename(resolvedPath) || 'unknown';
+
+    if (!repository) {
+      const stale = this.db.prepare('SELECT * FROM repositories WHERE name = ? AND is_active = 1 ORDER BY updated_at DESC LIMIT 1').get(repositoryName) as any;
+      if (stale && !existsSync(stale.path)) {
+        this.db.prepare('UPDATE repositories SET path = ?, description = ?, updated_at = ? WHERE id = ?')
+          .run(resolvedPath, `Repository at ${resolvedPath}`, new Date().toISOString(), stale.id);
+        repository = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(stale.id) as any;
+      }
+    }
 
     if (!repository) {
       const id = randomUUID();
@@ -62,7 +72,7 @@ export class RepositoryScanner {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '{}', ?, ?)
       `).run(
         id,
-        resolvedPath.split('/').pop() || 'unknown',
+        repositoryName,
         `Repository at ${resolvedPath}`,
         resolvedPath,
         'local',
@@ -624,6 +634,40 @@ export class RepositoryScanner {
       has_git: Boolean(row.has_git ?? 0),
       has_agents_md: Boolean(row.has_agents_md ?? 0),
     };
+  }
+
+  recordDeploymentProvenance(id: string, input: {
+    commit: string;
+    source_archive_sha256: string;
+    image_digest: string;
+    runtime_instance: string;
+    canonical_source_state: 'REVIEW_REQUIRED' | 'PROMOTED';
+    verified_by: string;
+  }): Repository {
+    const repository = this.getRepository(id) as any;
+    if (!repository) throw new Error('REPOSITORY_NOT_FOUND');
+    if (repository.status !== 'clean' || repository.git_commit !== input.commit) throw new Error('DEPLOYMENT_SOURCE_MISMATCH');
+    if (!process.env.DJIMITFLO_COMMIT_SHA || process.env.DJIMITFLO_COMMIT_SHA !== input.commit) throw new Error('DEPLOYMENT_RUNTIME_COMMIT_MISMATCH');
+    if (!/^(sha256:)?[a-f0-9]{64}$/.test(input.source_archive_sha256)) throw new Error('DEPLOYMENT_SOURCE_HASH_INVALID');
+    if (!/^sha256:[a-f0-9]{64}$/.test(input.image_digest)) throw new Error('DEPLOYMENT_IMAGE_DIGEST_INVALID');
+    if (!['REVIEW_REQUIRED', 'PROMOTED'].includes(input.canonical_source_state)) throw new Error('DEPLOYMENT_SOURCE_STATE_INVALID');
+    if (!input.runtime_instance?.trim() || !input.verified_by?.trim()) throw new Error('DEPLOYMENT_ATTESTOR_REQUIRED');
+    const metadata = {
+      ...(repository.metadata || {}),
+      deployment_provenance: {
+        status: 'VERIFIED',
+        commit: input.commit,
+        source_archive_sha256: input.source_archive_sha256,
+        image_digest: input.image_digest,
+        runtime_instance: input.runtime_instance.trim(),
+        canonical_source_state: input.canonical_source_state,
+        recorded_at: new Date().toISOString(),
+        verified_by: input.verified_by.trim(),
+      },
+    };
+    this.db.prepare('UPDATE repositories SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(metadata), new Date().toISOString(), id);
+    return this.getRepository(id)!;
   }
 
   getHealthFindings(repositoryId: string): RepositoryHealthFinding[] {
