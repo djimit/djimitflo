@@ -2,6 +2,10 @@ import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 
 const nonBlank = z.string().trim().min(1);
+const decodeField = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return value; }
+};
 const outcomeObservedSchema = z.object({
   outcome_id: nonBlank,
   subject_type: nonBlank,
@@ -19,6 +23,15 @@ const outcomeObservedSchema = z.object({
   evidence_refs: z.array(nonBlank).min(1),
   confidence: z.number().min(0).max(1),
   causal_status: nonBlank,
+  direction: z.enum(['increase', 'decrease', 'maintain']).optional(),
+  minimum_effect: z.number().nonnegative().optional(),
+  experiment_id: nonBlank.optional(),
+  trajectory_id: nonBlank.optional(),
+  finding_id: nonBlank.optional(),
+  condition: nonBlank.optional(),
+  replication_id: nonBlank.optional(),
+  risk_class: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  exploratory: z.boolean().optional(),
   observed_at: z.string().datetime({ offset: true }),
   dedupe_key: nonBlank,
 });
@@ -86,10 +99,14 @@ export class ExternalEventIngestService {
           .map(value => typeof value === 'string' ? value.trim() : '')
           .find(Boolean) || '';
         const eventType = String(event.event_type || '');
-        if (!id || (!eventType.startsWith('paperclip.') && eventType !== 'outcome.observed')) continue;
+        if (!id || (!eventType.startsWith('paperclip.')
+          && eventType !== 'outcome.observed'
+          && eventType !== 'agent.board.handoff.created'
+          && eventType !== 'eve-v.board.handoff.received')) continue;
         let normalizedEvent = event;
         if (eventType === 'outcome.observed') {
-          const parsed = outcomeObservedSchema.safeParse(event);
+          const candidate = Object.fromEntries(Object.entries(event).map(([key, value]) => [key, decodeField(value)]));
+          const parsed = outcomeObservedSchema.safeParse(candidate);
           if (!parsed.success) continue;
           normalizedEvent = { ...event, ...parsed.data };
         }

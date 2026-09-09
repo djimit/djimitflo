@@ -6,12 +6,16 @@ import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { TrajectoryStore } from './trajectory-store';
 import { SelfEvolvingGovernanceLoop } from './self-evolving-governance-loop';
 import { SelfImprovementService } from './self-improvement-service';
+import { DreamCycleService } from './dream-cycle-service';
+import { DreamTaskPlannerService } from './dream-task-planner-service';
 import { config as envConfig } from '../config/env';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
   reflectionsGenerated: number; patternsDetected: number;
   proposalsGenerated: number; goalsGenerated: number; durationMs: number;
+  dreamOpportunitiesGenerated: number;
+  dreamTasksPlanned: number;
   producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
@@ -20,6 +24,8 @@ export class ContinuousLearningLoop {
   private reflections: ReflectionEngine;
   private goals: AutonomousGoalGenerator;
   private improvements: SelfImprovementService;
+  private dreams: DreamCycleService;
+  private dreamTasks: DreamTaskPlannerService;
   private _trajectories?: TrajectoryStore;
   private segml?: SelfEvolvingGovernanceLoop;
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
@@ -35,6 +41,8 @@ export class ContinuousLearningLoop {
     this.reflections = new ReflectionEngine(db);
     this.goals = new AutonomousGoalGenerator(db);
     this.improvements = new SelfImprovementService(db);
+    this.dreams = new DreamCycleService(db);
+    this.dreamTasks = new DreamTaskPlannerService(db);
     this.intervalMs = options.intervalMs ?? 3600_000;
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
@@ -72,6 +80,8 @@ export class ContinuousLearningLoop {
     }
     const patternReport = this.reflections.analyzeReflectionPatterns(50);
     const goalsGenerated = this.goals.generateFromSelfImprovements();
+    const dreamOpportunitiesGenerated = this.dreams.runCycle().length;
+    const dreamTasksPlanned = this.dreamTasks.exportPending();
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
@@ -80,6 +90,8 @@ export class ContinuousLearningLoop {
       patternsDetected: patternReport.recurringPatterns.length,
       proposalsGenerated,
       goalsGenerated,
+      dreamOpportunitiesGenerated,
+      dreamTasksPlanned,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,

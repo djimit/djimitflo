@@ -12,7 +12,8 @@ const telegramKeys = [
   'TELEGRAM_WEBHOOK_SECRET',
   'TELEGRAM_USER_MAP',
 ] as const;
-const originalTelegramEnv = Object.fromEntries(telegramKeys.map((key) => [key, process.env[key]]));
+const envKeys = [...telegramKeys, 'DJIMITFLO_COMMIT_SHA'] as const;
+const originalTelegramEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 
 async function listen(app: express.Express): Promise<{ baseUrl: string; server: Server }> {
   const server = app.listen(0, '127.0.0.1');
@@ -23,7 +24,7 @@ async function listen(app: express.Express): Promise<{ baseUrl: string; server: 
 }
 
 afterEach(() => {
-  for (const key of telegramKeys) {
+  for (const key of envKeys) {
     const value = originalTelegramEnv[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -33,6 +34,7 @@ afterEach(() => {
 describe('public HTTP boundaries', () => {
   it('does not expose database provenance on public health', async () => {
     const db = createTestDb();
+    process.env.DJIMITFLO_COMMIT_SHA = 'test-commit';
     const app = express().use('/api/health', createHealthRoutes(db));
     const { baseUrl, server } = await listen(app);
 
@@ -41,6 +43,7 @@ describe('public HTTP boundaries', () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ status: 'healthy', name: 'djimitflo' });
+    expect(body.commit).toBe('test-commit');
     expect(body).not.toHaveProperty('database');
     server.close();
     db.close();

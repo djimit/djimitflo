@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS messages (
   priority TEXT NOT NULL DEFAULT 'low' CHECK(priority IN ('low', 'medium', 'high', 'urgent')),
   read_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  idempotency_key TEXT,
   FOREIGN KEY (from_agent_id) REFERENCES agents(id) ON DELETE CASCADE,
   FOREIGN KEY (to_agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
@@ -85,6 +86,39 @@ CREATE INDEX IF NOT EXISTS idx_messages_from_agent_id ON messages(from_agent_id)
 CREATE INDEX IF NOT EXISTS idx_messages_to_agent_id ON messages(to_agent_id);
 CREATE INDEX IF NOT EXISTS idx_messages_read_at ON messages(read_at);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_idempotency
+  ON messages(from_agent_id, to_agent_id, type, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS board_handoff_claims (
+  source_ref TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK(status IN ('processing', 'created', 'rejected')),
+  work_item_id TEXT,
+  reason TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS board_idempotency_keys (
+  sender TEXT NOT NULL,
+  recipient TEXT NOT NULL,
+  message_type TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  store TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  PRIMARY KEY (sender, recipient, message_type, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS board_handoff_outbox (
+  source_ref TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  payload TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'published', 'failed')) DEFAULT 'pending',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  published_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_board_handoff_outbox_status ON board_handoff_outbox(status, created_at);
 
 -- Execution events table
 CREATE TABLE IF NOT EXISTS execution_events (
@@ -704,6 +738,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_dedupe_key
 CREATE UNIQUE INDEX IF NOT EXISTS idx_external_events_aggregate_version
   ON external_events(source, aggregate_id, aggregate_version)
   WHERE aggregate_id IS NOT NULL AND aggregate_version IS NOT NULL;
+
+-- Replicated, idempotent assessments derived from immutable outcome events.
+CREATE TABLE IF NOT EXISTS outcome_learning_assessments (
+  id TEXT PRIMARY KEY,
+  candidate_id TEXT NOT NULL,
+  capability_id TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  direction TEXT,
+  observation_window TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  signal_status TEXT NOT NULL CHECK(signal_status IN ('SUPPORTED', 'FALSIFIED', 'UNDETERMINED')),
+  replications INTEGER NOT NULL DEFAULT 0,
+  mean_value REAL,
+  baseline_value REAL,
+  confidence_low REAL,
+  confidence_high REAL,
+  causal_support INTEGER NOT NULL DEFAULT 0,
+  event_ids_json TEXT NOT NULL DEFAULT '[]',
+  evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  work_item_id TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_outcome_learning_status ON outcome_learning_assessments(status);
+CREATE INDEX IF NOT EXISTS idx_outcome_learning_capability ON outcome_learning_assessments(capability_id, metric);
+
+CREATE TABLE IF NOT EXISTS openmythos_attestations (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  schema_version TEXT NOT NULL,
+  corpus_sha256 TEXT NOT NULL,
+  openmythos_commit TEXT NOT NULL,
+  certification_eligible INTEGER NOT NULL DEFAULT 0,
+  corpus_certification_ready INTEGER NOT NULL DEFAULT 0,
+  payload TEXT NOT NULL,
+  imported_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (run_id) REFERENCES openmythos_eval_runs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_openmythos_attestations_run ON openmythos_attestations(run_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS system_state (
   key TEXT PRIMARY KEY,

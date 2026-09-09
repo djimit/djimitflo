@@ -12,6 +12,9 @@ import { SwarmEvidenceService } from './swarm-evidence-service';
 import { SwarmConcurrencyService } from './swarm-concurrency-service';
 import { SwarmOperationsService } from './swarm-operations-service';
 import { SkillTrainingPromotionGate } from './skill-training-promotion-gate';
+import { AgentInteractionLedgerService, type AgentInteractionRecord } from './agent-interaction-ledger-service';
+import { OutcomeLearningService, type OutcomeLearningAssessment } from './outcome-learning-service';
+import { ReviewerIndependenceService, type ReviewerIndependenceAssessment } from './reviewer-independence-service';
 
 type CapabilityKind = 'skill' | 'specialist_agent' | 'runtime_adapter' | 'deterministic_harness' | 'memory_source' | 'dashboard_action' | 'openai_agents_sdk' | 'openai_skill' | 'openai_mcp_connector';
 type CapabilityStatus = 'draft' | 'candidate' | 'validated' | 'deprecated' | 'disabled';
@@ -24,6 +27,36 @@ const CAPABILITY_KINDS: CapabilityKind[] = ['skill', 'specialist_agent', 'runtim
 const CAPABILITY_STATUSES: CapabilityStatus[] = ['draft', 'candidate', 'validated', 'deprecated', 'disabled'];
 const RISK_CLASSES: RiskClass[] = ['low', 'medium', 'high', 'critical'];
 const CLAIM_TYPES: ClaimType[] = ['observation', 'hypothesis', 'decision', 'memory', 'capability', 'backlog', 'policy'];
+
+const ECOSYSTEM_COMPONENTS = [
+  { id: 'worldlab', label: 'WorldLab', kind: 'experimentation', responsibility: 'Longitudinal scenarios, trajectories and counterfactual evidence.', boundary: 'Simulation authority only; no production mutation or ground-truth authority.', tradeoff: 'More behavioral coverage costs replication time and compute.', tokens: ['worldlab'] },
+  { id: 'openmythos', label: 'OpenMythos', kind: 'evaluation', responsibility: 'Governance semantics, oracles, calibration, falsification and promotion evidence.', boundary: 'Defines and evaluates correctness; does not execute changes.', tradeoff: 'Fail-closed evidence gates slow promotion but prevent false-green evolution.', tokens: ['openmythos'] },
+  { id: 'paperclip', label: 'Paperclip', kind: 'work_control', responsibility: 'Durable work intake, coordination and human approval state.', boundary: 'No parallel execution, evidence or promotion authority.', tradeoff: 'One work ledger reduces coordination drift while preserving approval latency.', tokens: ['paperclip'] },
+  { id: 'djimitflo', label: 'DjimitFlo', kind: 'execution', responsibility: 'Governed orchestration, ToolBroker enforcement, execution, audit and learning closure.', boundary: 'Mediates operational mutation; does not redefine external norms or observations.', tradeoff: 'Central mediation improves containment at the cost of routing overhead.', tokens: ['djimitflo', 'execution-engine'] },
+  { id: 'daps', label: 'DAPS', kind: 'evidence', responsibility: 'Deterministic evidence and outcome-contract validation.', boundary: 'Validates evidence; does not approve, execute or promote changes.', tradeoff: 'Strict contracts reject ambiguous observations instead of guessing.', tokens: ['daps'] },
+  { id: 'eve-v', label: 'EVE-V', kind: 'adversarial_review', responsibility: 'Challenges claims, causal reasoning and false-green evidence.', boundary: 'Advisory evaluator; never the sole oracle or final approver.', tradeoff: 'Independent challenge adds latency but reduces correlated blind spots.', tokens: ['eve-v', 'eve_v', 'evev'] },
+  { id: 'juraregel', label: 'JuraRegel', kind: 'advisory_assurance', responsibility: 'Legal, temporal, citation and confidentiality assurance findings.', boundary: 'Advisory assurance only; no legal-decision or execution authority.', tradeoff: 'Conservative legal checks prefer escalation over unsupported certainty.', tokens: ['juraregel', 'jura-regel'] },
+  { id: 'federation', label: 'DJIMIT Federation', kind: 'operational_system', responsibility: 'Operational agents, skills, models, tools, memory and capability registry.', boundary: 'Production capabilities are exercised only through DjimitFlo mediation.', tradeoff: 'Federation breadth improves resilience but increases provenance pressure.', tokens: ['federation', 'djimit-registry', 'djimit-router'] },
+  { id: 'roborev', label: 'Roborev', kind: 'review_events', responsibility: 'Commit-native review events for governed work intake.', boundary: 'Emits review evidence and tasks; owns no task state or approval.', tradeoff: 'Event-only integration avoids duplicate state but depends on downstream pickup.', tokens: ['roborev'] },
+  { id: 'knowledge', label: 'Knowledge / UAMS', kind: 'memory_projection', responsibility: 'Derived retrieval, operational experiences and causal knowledge projections.', boundary: 'Memory and retrieval are evidence inputs, never promotion authority.', tradeoff: 'Shared recall increases reuse while provenance gates contain poisoning risk.', tokens: ['qdrant', 'graphstore', 'uams', 'djimitkbwiki'] },
+] as const;
+
+const ECOSYSTEM_CONTRACTS = [
+  { from: 'roborev', to: 'paperclip', exchange: 'review events -> governed work', boundary: 'Paperclip remains the task source of truth.' },
+  { from: 'juraregel', to: 'daps', exchange: 'assurance findings -> deterministic validation', boundary: 'Advisory findings cannot assert operational truth.' },
+  { from: 'daps', to: 'djimitflo', exchange: 'validated outcome events -> learning intake', boundary: 'Ambiguous evidence remains UNDETERMINED.' },
+  { from: 'paperclip', to: 'djimitflo', exchange: 'approved work -> controlled execution', boundary: 'Approval never bypasses ToolBroker policy.' },
+  { from: 'openmythos', to: 'worldlab', exchange: 'norms and cases -> longitudinal scenarios', boundary: 'WorldLab does not duplicate oracles.' },
+  { from: 'worldlab', to: 'openmythos', exchange: 'trajectories -> assurance and falsification', boundary: 'A trajectory is evidence, not ground truth.' },
+  { from: 'openmythos', to: 'djimitflo', exchange: 'typed goals -> active evolution', boundary: 'No executable shell command crosses this boundary.' },
+  { from: 'worldlab', to: 'djimitflo', exchange: 'evidence artifacts -> validated finding intake', boundary: 'Intake validation cannot execute or promote the proposed change.' },
+  { from: 'djimitflo', to: 'openmythos', exchange: 'change evidence -> static and trajectory retest', boundary: 'Promotion remains fail-closed.' },
+  { from: 'eve-v', to: 'openmythos', exchange: 'adversarial challenge -> evidence review', boundary: 'LLM opinion cannot override deterministic invariants.' },
+  { from: 'eve-v', to: 'djimitflo', exchange: 'independent findings and outcomes -> evidence intake', boundary: 'Advisory evidence cannot self-approve an operational change.' },
+  { from: 'djimitflo', to: 'federation', exchange: 'authorized intents -> governed capability execution', boundary: 'Operational mutation requires mediation and audit.' },
+  { from: 'federation', to: 'djimitflo', exchange: 'traces and outcomes -> causal learning', boundary: 'Runtime presence alone is not execution proof.' },
+  { from: 'knowledge', to: 'djimitflo', exchange: 'retrieval and experiences -> bounded context', boundary: 'Retrieved content retains provenance and confidence.' },
+] as const;
 
 export interface SwarmCapabilityRecord {
   id: string;
@@ -143,6 +176,11 @@ export class SwarmIntelligenceService {
     const capacity = this.planCapacityV2({}, statusService);
     const panels = this.panels.listPanels(25);
     const manifests = this.listRunnerManifests(25);
+    const integrationSpine = this.integrationSpineSummary();
+    const interactionLedger = new AgentInteractionLedgerService(this.db);
+    const interactions = interactionLedger.list({ limit: 200 });
+    const outcomeLearning = new OutcomeLearningService(this.db).list(50);
+    const reviewerIndependence = new ReviewerIndependenceService(this.db).latest(25);
 
     return {
       execution_node: {
@@ -178,7 +216,11 @@ export class SwarmIntelligenceService {
         blocked_or_needs_evidence: panels.filter((panel) => ['blocked', 'needs_more_evidence'].includes(panel.consensus.decision)).length,
       },
       capacity,
-      integration_spine: this.integrationSpineSummary(),
+      integration_spine: integrationSpine,
+      ecosystem_map: this.ecosystemMapSummary({ interactions, outcomeLearning, reviewerIndependence, integrationSpine }),
+      agent_interactions: interactions.slice(0, 25),
+      outcome_learning: outcomeLearning.slice(0, 10),
+      reviewer_independence: reviewerIndependence.slice(0, 10),
       production_pilot: this.productionPilotSummary(),
       latest_runner_manifests: manifests,
       latest_proof_run: new ProofRunService(this.db).latest(),
@@ -1253,6 +1295,269 @@ export class SwarmIntelligenceService {
       actions.push('Prepare or unblock leases before runner drain.');
     }
     return actions;
+  }
+
+  private ecosystemMapSummary(input: {
+    interactions: AgentInteractionRecord[];
+    outcomeLearning: OutcomeLearningAssessment[];
+    reviewerIndependence: ReviewerIndependenceAssessment[];
+    integrationSpine: { chains: any[] };
+  }) {
+    const repositories = (this.db.prepare(`
+      SELECT id, name, status, git_branch, git_commit, last_synced_at, metadata, updated_at
+      FROM repositories WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 100
+    `).all() as any[]).map((row) => {
+      const metadata = this.jsonObject(row.metadata);
+      const deployment = this.jsonObject(metadata.deployment_provenance);
+      const deployedCommit = this.trimStringOrNull(deployment.commit);
+      const declaredComponent = this.declaredEcosystemComponent(metadata);
+      const matchedComponent = this.ecosystemComponentId(row.id, row.name);
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        status: String(row.status || 'unknown'),
+        branch: this.trimStringOrNull(row.git_branch),
+        commit: this.trimStringOrNull(row.git_commit),
+        last_seen: this.trimStringOrNull(row.last_synced_at) || this.trimStringOrNull(row.updated_at),
+        component_id: declaredComponent || matchedComponent,
+        mapping_basis: declaredComponent ? 'metadata' : matchedComponent ? 'name_match' : null,
+        deployment_provenance: deployedCommit ? {
+          status: this.trimStringOrNull(deployment.status) || 'UNDETERMINED',
+          commit: deployedCommit,
+          source_archive_sha256: this.trimStringOrNull(deployment.source_archive_sha256),
+          image_digest: this.trimStringOrNull(deployment.image_digest),
+          runtime_instance: this.trimStringOrNull(deployment.runtime_instance),
+          canonical_source_state: this.trimStringOrNull(deployment.canonical_source_state) || 'UNDETERMINED',
+          recorded_at: this.trimStringOrNull(deployment.recorded_at),
+        } : null,
+      };
+    });
+    const agents = (this.db.prepare(`
+      SELECT id, name, status, model, last_active_at, metadata, updated_at
+      FROM agents ORDER BY updated_at DESC LIMIT 100
+    `).all() as any[]).map((row) => {
+      const declaredComponent = this.declaredEcosystemComponent(row.metadata);
+      const matchedComponent = this.ecosystemComponentId(row.id, row.name, row.model);
+      return {
+        id: String(row.id),
+        name: String(row.name),
+        status: String(row.status || 'unknown'),
+        model: this.trimStringOrNull(row.model),
+        last_seen: this.trimStringOrNull(row.last_active_at) || this.trimStringOrNull(row.updated_at),
+        component_id: declaredComponent || matchedComponent,
+        mapping_basis: declaredComponent ? 'metadata' : matchedComponent ? 'name_match' : null,
+      };
+    });
+
+    const routeMap = new Map<string, {
+      from: string;
+      to: string;
+      count: number;
+      actions: Set<string>;
+      effectScopes: Set<string>;
+      statuses: Set<string>;
+      evidenceRefs: Set<string>;
+      lastSeen: string;
+    }>();
+    for (const interaction of input.interactions) {
+      const from = this.ecosystemActorRef(interaction);
+      const to = this.ecosystemTargetRef(interaction);
+      if (!from || !to || from === to) continue;
+      const key = `${from}\u0000${to}`;
+      const route = routeMap.get(key) || {
+        from, to, count: 0, actions: new Set<string>(), effectScopes: new Set<string>(),
+        statuses: new Set<string>(), evidenceRefs: new Set<string>(), lastSeen: interaction.timestamp,
+      };
+      route.count += 1;
+      route.actions.add(interaction.action);
+      route.effectScopes.add(interaction.effect_scope);
+      route.statuses.add(interaction.status);
+      route.evidenceRefs.add(interaction.id);
+      for (const ref of interaction.evidence_refs) route.evidenceRefs.add(ref);
+      if (interaction.timestamp > route.lastSeen) route.lastSeen = interaction.timestamp;
+      routeMap.set(key, route);
+    }
+    const observedRoutes = [...routeMap.values()]
+      .sort((left, right) => right.count - left.count || right.lastSeen.localeCompare(left.lastSeen))
+      .slice(0, 25)
+      .map((route) => ({
+        from: route.from,
+        to: route.to,
+        actions: [...route.actions].slice(0, 5),
+        observed_count: route.count,
+        effect_scopes: [...route.effectScopes],
+        statuses: [...route.statuses],
+        last_seen: route.lastSeen,
+        evidence_refs: [...route.evidenceRefs].slice(0, 8),
+      }));
+
+    const nodes = ECOSYSTEM_COMPONENTS.map(({ tokens: _tokens, ...component }) => {
+      const componentRepositories = repositories.filter((repo) => repo.component_id === component.id);
+      const componentAgents = agents.filter((agent) => agent.component_id === component.id);
+      const componentInteractions = input.interactions.filter((interaction) =>
+        this.ecosystemActorRef(interaction) === component.id || this.ecosystemTargetRef(interaction) === component.id);
+      return {
+        ...component,
+        evidence_state: componentInteractions.length ? 'OBSERVED' : componentRepositories.length || componentAgents.length ? 'REGISTERED' : 'UNDETERMINED',
+        observed_interactions: componentInteractions.length,
+        registered_repositories: componentRepositories.map((repo) => repo.id),
+        registered_agents: componentAgents.map((agent) => agent.id),
+        last_seen: componentInteractions[0]?.timestamp || componentRepositories[0]?.last_seen || componentAgents[0]?.last_seen || null,
+        evidence_refs: [...new Set(componentInteractions.flatMap((interaction) => [interaction.id, ...interaction.evidence_refs]))].slice(0, 8),
+      };
+    });
+
+    const actorCounts = new Map<string, { id: string; type: string; componentId: string | null; count: number; lastSeen: string }>();
+    for (const interaction of input.interactions) {
+      const current = actorCounts.get(interaction.actor.id) || {
+        id: interaction.actor.id,
+        type: interaction.actor.type,
+        componentId: this.ecosystemComponentId(interaction.actor.id, interaction.actor.runtime),
+        count: 0,
+        lastSeen: interaction.timestamp,
+      };
+      current.count += 1;
+      if (interaction.timestamp > current.lastSeen) current.lastSeen = interaction.timestamp;
+      actorCounts.set(interaction.actor.id, current);
+    }
+    const observedActors = [...actorCounts.values()]
+      .sort((left, right) => right.count - left.count || right.lastSeen.localeCompare(left.lastSeen))
+      .slice(0, 30)
+      .map((actor) => ({
+        id: actor.id,
+        type: actor.type,
+        component_id: actor.componentId,
+        registered: agents.some((agent) => agent.id === actor.id),
+        observed_interactions: actor.count,
+        last_seen: actor.lastSeen,
+      }));
+
+    const chains = Array.isArray(input.integrationSpine.chains) ? input.integrationSpine.chains : [];
+    const evolutionCounts = {
+      observation: input.interactions.filter((interaction) => interaction.source === 'external_events').length,
+      assessment: input.outcomeLearning.length,
+      work_item: chains.length,
+      execution: chains.filter((chain) => Boolean(chain.loop)).length,
+      independent_check: chains.filter((chain) => Array.isArray(chain.leases) && chain.leases.some((lease: any) => lease.role === 'checker')).length,
+      evaluation: chains.filter((chain) => Boolean(chain.eval_run)).length,
+      learning: chains.filter((chain) => Boolean(chain.reflection_candidate || chain.memory_candidate)).length,
+      promotion: chains.filter((chain) => String(chain.memory_candidate?.promotion_status || '').toLowerCase() === 'promoted').length,
+    };
+    const evolution = Object.entries(evolutionCounts).map(([stage, count]) => ({
+      stage,
+      count,
+      evidence_state: count > 0 ? 'OBSERVED' : 'UNDETERMINED',
+    }));
+
+    const worldLabInteractions = input.interactions.filter((interaction) =>
+      this.ecosystemComponentId(interaction.actor.id, interaction.actor.runtime) === 'worldlab');
+    const productionInteractions = input.interactions.filter((interaction) => interaction.effect_scope === 'production');
+    const incompleteProductionEvidence = productionInteractions.filter((interaction) =>
+      !interaction.correlation_id || interaction.evidence_refs.length === 0);
+    const unprovenRepositories = repositories.filter((repo) => repo.status !== 'clean' || !repo.commit);
+    const provenDeployments = repositories.filter((repo) => repo.deployment_provenance?.status === 'VERIFIED').length;
+    const reviewerState = input.reviewerIndependence.length === 0 ? 'UNDETERMINED'
+      : input.reviewerIndependence.some((assessment) => assessment.state === 'FAIL') ? 'FAIL'
+        : input.reviewerIndependence.every((assessment) => assessment.state === 'PASS') ? 'PASS' : 'UNDETERMINED';
+    const causalAssessments = input.outcomeLearning.filter((assessment) =>
+      assessment.causal_support && assessment.status !== 'UNDETERMINED');
+    const closedChains = chains.filter((chain) => Boolean(
+      chain.eval_run && chain.memory_candidate
+      && Array.isArray(chain.leases)
+      && chain.leases.some((lease: any) => lease.role === 'checker' && lease.status === 'completed')));
+    const blockedChains = chains.filter((chain) => chain.work_item?.status === 'blocked' || chain.loop?.status === 'blocked');
+    const integrality = [
+      {
+        dimension: 'production_containment',
+        state: worldLabInteractions.length === 0 ? 'UNDETERMINED' : worldLabInteractions.some((interaction) => interaction.effect_scope === 'production') ? 'FAIL' : 'PASS',
+        evidence: `${worldLabInteractions.length} WorldLab interactions in the current window`,
+        blocked_reasons: worldLabInteractions.length === 0 ? ['no_worldlab_interaction_evidence'] : worldLabInteractions.some((interaction) => interaction.effect_scope === 'production') ? ['worldlab_production_effect_observed'] : [],
+      },
+      {
+        dimension: 'reviewer_independence',
+        state: reviewerState,
+        evidence: `${input.reviewerIndependence.length} maker/checker assessments`,
+        blocked_reasons: input.reviewerIndependence.flatMap((assessment) => assessment.correlated_fields.concat(assessment.unknown_fields)).slice(0, 12),
+      },
+      {
+        dimension: 'causal_outcome_learning',
+        state: causalAssessments.length ? 'PASS' : 'UNDETERMINED',
+        evidence: `${causalAssessments.length}/${input.outcomeLearning.length} assessments have non-undetermined causal support`,
+        blocked_reasons: causalAssessments.length ? [] : ['causal_or_counterfactual_support_missing'],
+      },
+      {
+        dimension: 'evolution_closure',
+        state: blockedChains.length ? 'FAIL' : closedChains.length ? 'PASS' : 'UNDETERMINED',
+        evidence: `${closedChains.length}/${chains.length} recent integration chains close through checker, eval and memory`,
+        blocked_reasons: blockedChains.length ? ['blocked_integration_chain'] : closedChains.length ? [] : ['closed_learning_chain_missing'],
+      },
+      {
+        dimension: 'repository_provenance',
+        state: repositories.length === 0 ? 'UNDETERMINED' : unprovenRepositories.length ? 'FAIL' : 'PASS',
+        evidence: `${repositories.length - unprovenRepositories.length}/${repositories.length} canonical repositories clean with a commit; ${provenDeployments} verified deployment artifact(s)`,
+        blocked_reasons: unprovenRepositories.map((repo) => `unproven_repository:${repo.id}`).slice(0, 12),
+      },
+      {
+        dimension: 'production_evidence_lineage',
+        state: productionInteractions.length === 0 ? 'UNDETERMINED' : incompleteProductionEvidence.length ? 'FAIL' : 'PASS',
+        evidence: `${productionInteractions.length - incompleteProductionEvidence.length}/${productionInteractions.length} production interactions have correlation and evidence refs`,
+        blocked_reasons: incompleteProductionEvidence.map((interaction) => `incomplete_lineage:${interaction.id}`).slice(0, 12),
+      },
+    ];
+
+    return {
+      evidence_window: { interactions: input.interactions.length, integration_chains: chains.length },
+      nodes,
+      declared_contracts: ECOSYSTEM_CONTRACTS.map((contract) => {
+        const observed = observedRoutes.find((route) => route.from === contract.from && route.to === contract.to);
+        return { ...contract, evidence_state: observed ? 'OBSERVED' : 'UNDETERMINED', observed_count: observed?.observed_count || 0, last_seen: observed?.last_seen || null };
+      }),
+      observed_routes: observedRoutes,
+      evolution,
+      integrality,
+      decisions: this.listDecisions(undefined, 12).map((decision) => ({
+        id: decision.id,
+        timestamp: decision.created_at,
+        actor: decision.actor,
+        type: decision.decision_type,
+        decision: decision.decision,
+        rationale: decision.reason,
+        status: decision.blocked_reasons.length ? 'BLOCKED' : 'RECORDED',
+        evidence_refs: [...new Set([...decision.evidence_refs, ...decision.gate_refs])],
+        blocked_reasons: decision.blocked_reasons,
+      })),
+      inventory: {
+        repositories,
+        agents,
+        observed_actors: observedActors,
+      },
+    };
+  }
+
+  private ecosystemComponentId(...values: unknown[]): string | null {
+    const haystack = values.filter((value) => typeof value === 'string').join(' ').toLowerCase();
+    if (!haystack) return null;
+    return ECOSYSTEM_COMPONENTS.find((component) => component.tokens.some((token) => haystack.includes(token)))?.id || null;
+  }
+
+  private declaredEcosystemComponent(metadata: unknown): string | null {
+    const id = this.trimStringOrNull(this.jsonObject(metadata).ecosystem_component_id);
+    return id && ECOSYSTEM_COMPONENTS.some((component) => component.id === id) ? id : null;
+  }
+
+  private ecosystemActorRef(interaction: AgentInteractionRecord): string {
+    return this.ecosystemComponentId(interaction.actor.id, interaction.actor.runtime)
+      || (interaction.actor.type === 'agent' ? `agent:${interaction.actor.id}` : `actor:${interaction.actor.id}`);
+  }
+
+  private ecosystemTargetRef(interaction: AgentInteractionRecord): string | null {
+    if (interaction.source === 'external_events') return 'djimitflo';
+    if (!interaction.target) return 'djimitflo';
+    const component = this.ecosystemComponentId(interaction.target.id);
+    if (component) return component;
+    if (interaction.target.type === 'agent') return `agent:${interaction.target.id}`;
+    if (interaction.target.type === 'tool') return `tool:${interaction.target.id}`;
+    return 'djimitflo';
   }
 
   private integrationSpineSummary() {

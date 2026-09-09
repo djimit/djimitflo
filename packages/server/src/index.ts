@@ -125,6 +125,7 @@ async function main() {
   app.get('/health', (_req, res) => {
     res.json({
       status: 'healthy',
+      commit: process.env.DJIMITFLO_COMMIT_SHA || null,
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });

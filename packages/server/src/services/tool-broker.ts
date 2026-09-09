@@ -240,12 +240,13 @@ export class ToolBroker {
    * Returns true if the token is valid, not expired, and scoped to this tool.
    */
   validateCapabilityToken(token_id: string, tool: string, task_id: string): boolean {
-    const token = this.capability_tokens.get(token_id);
+    const token = this.capability_tokens.get(token_id) ?? this.loadCapabilityToken(token_id);
     if (!token) return false;
     if (token.tool !== tool) return false;
     if (token.task_id !== task_id) return false;
     if (new Date(token.expires_at) < new Date()) {
       this.capability_tokens.delete(token_id);
+      this.db.prepare('DELETE FROM tool_broker_capability_tokens WHERE token_id = ?').run(token_id);
       return false;
     }
     return true;
@@ -308,6 +309,51 @@ export class ToolBroker {
     };
 
     this.capability_tokens.set(token.token_id, token);
+    this.db.prepare(`
+      INSERT INTO tool_broker_capability_tokens
+        (token_id, scope, tool, task_id, principal_id, issued_at, expires_at, constraints_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      token.token_id,
+      token.scope,
+      token.tool,
+      token.task_id,
+      token.principal_id,
+      token.issued_at,
+      token.expires_at,
+      JSON.stringify(token.constraints),
+    );
+    return token;
+  }
+
+  private loadCapabilityToken(token_id: string): CapabilityToken | undefined {
+    const row = this.db.prepare(`
+      SELECT token_id, scope, tool, task_id, principal_id, issued_at, expires_at, constraints_json
+      FROM tool_broker_capability_tokens WHERE token_id = ?
+    `).get(token_id) as {
+      token_id: string; scope: string; tool: string; task_id: string; principal_id: string;
+      issued_at: string; expires_at: string; constraints_json: string;
+    } | undefined;
+    if (!row) return undefined;
+    let constraints: Record<string, unknown>;
+    try {
+      const parsed = JSON.parse(row.constraints_json);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+      constraints = parsed as Record<string, unknown>;
+    } catch {
+      return undefined;
+    }
+    const token: CapabilityToken = {
+      token_id: row.token_id,
+      scope: row.scope,
+      tool: row.tool,
+      task_id: row.task_id,
+      principal_id: row.principal_id,
+      issued_at: row.issued_at,
+      expires_at: row.expires_at,
+      constraints,
+    };
+    this.capability_tokens.set(token_id, token);
     return token;
   }
 
@@ -358,6 +404,18 @@ export class ToolBroker {
       CREATE INDEX IF NOT EXISTS idx_tool_broker_task ON tool_broker_decisions(task_id);
       CREATE INDEX IF NOT EXISTS idx_tool_broker_decision ON tool_broker_decisions(decision);
       CREATE INDEX IF NOT EXISTS idx_tool_broker_created ON tool_broker_decisions(created_at);
+
+      CREATE TABLE IF NOT EXISTS tool_broker_capability_tokens (
+        token_id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        principal_id TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        constraints_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_tool_broker_tokens_expiry ON tool_broker_capability_tokens(expires_at);
     `);
   }
 }

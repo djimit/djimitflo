@@ -25,6 +25,7 @@ import { MockExecutor } from './executors/mock-executor';
 import { OpenCodeExecutor } from './executors/opencode-executor';
 import { CodexExecutor } from './executors/codex-executor';
 import { ClaudeExecutor } from './executors/claude-executor';
+import { HermesExecutor } from './executors/hermes-executor';
 import { GeminiExecutor } from './executors/gemini-executor';
 import { EditorExecutor } from './executors/editor-executor';
 import { PiExecutor } from './executors/pi-executor';
@@ -60,6 +61,15 @@ export interface ExecuteTaskResult {
   approvalId?: string;
   reason?: string;
   completion?: Promise<ExecutionResult>;
+}
+
+/**
+ * Permission bypass is an operator-armed exception, never a task-controlled flag.
+ * Keep this guard at the final executor boundary so direct task execution cannot
+ * accidentally enable an unsandboxed CLI even when metadata requests it.
+ */
+export function resolveExecutorSkipPermissions(requested: unknown): boolean {
+  return requested === true && process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS === 'true';
 }
 
 const RETRYABLE_PROVIDER_ERROR = /(timeout|timed out|ECONN|ENOTFOUND|EAI_AGAIN|429|5\d\d|rate limit|temporar|unavailable|process exited|exit code)/i;
@@ -145,6 +155,7 @@ export class ExecutionEngine {
     this.registerExecutor(new OpenCodeExecutor());
     this.registerExecutor(new CodexExecutor());
     this.registerExecutor(new ClaudeExecutor());
+    this.registerExecutor(new HermesExecutor());
     this.registerExecutor(new GeminiExecutor());
     this.registerExecutor(new EditorExecutor());
     this.registerExecutor(new PiExecutor());
@@ -446,7 +457,7 @@ export class ExecutionEngine {
         ...(workingDirectory ? { workingDirectory } : {}),
         ...(executionMetadata.environment ? { environment: executionMetadata.environment as Record<string, string> } : {}),
         ...(executionMetadata.timeoutMs ? { timeout: Number(executionMetadata.timeoutMs) } : {}),
-        ...(executionMetadata.skipPermissions === true ? { skipPermissions: true } : {}),
+        ...(resolveExecutorSkipPermissions(executionMetadata.skipPermissions) ? { skipPermissions: true } : {}),
       });
       this.activeSessions.set(task.id, session);
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {

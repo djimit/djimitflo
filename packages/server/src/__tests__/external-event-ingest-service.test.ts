@@ -32,6 +32,32 @@ describe('ExternalEventIngestService', () => {
     db.close();
   });
 
+  it('imports a board handoff as a causal event without treating it as approval', async () => {
+    const db = createDb();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [
+      { _id: 'board-1-0', event_id: 'board-handoff:agent_messages:1', event_type: 'agent.board.handoff.created', source: 'djimitflo-board', correlation_id: 'agent_messages:1', causation_id: 'message-1', aggregate_id: 'work-1', aggregate_version: 1, dedupe_key: 'board-handoff:agent_messages:1', approval_state: 'REVIEW_REQUIRED' },
+    ] }), { status: 200 })));
+    const service = new ExternalEventIngestService(db, 'http://event-bus');
+    expect(await service.pollOnce()).toBe(1);
+    expect(db.prepare('SELECT event_type, source, correlation_id FROM external_events').get()).toEqual({
+      event_type: 'agent.board.handoff.created', source: 'djimitflo-board', correlation_id: 'agent_messages:1',
+    });
+    db.close();
+  });
+
+  it('imports the EVE-V receipt so downstream reconciliation remains causal', async () => {
+    const db = createDb();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [
+      { _id: 'receipt-1-0', event_id: 'eve-v-received:board-1', event_type: 'eve-v.board.handoff.received', source: 'eve-v', correlation_id: 'agent_messages:1', causation_id: 'board-handoff:agent_messages:1', aggregate_id: 'board-candidate-1', dedupe_key: 'eve-v-received:board-handoff:agent_messages:1', approval_state: 'REVIEW_REQUIRED', requires_human_approval: true, occurred_at: '2026-09-09T00:00:00Z' },
+    ] }), { status: 200 })));
+    const service = new ExternalEventIngestService(db, 'http://event-bus');
+    expect(await service.pollOnce()).toBe(1);
+    expect(db.prepare('SELECT event_type, source, causation_id, aggregate_id, dedupe_key FROM external_events').get()).toEqual({
+      event_type: 'eve-v.board.handoff.received', source: 'eve-v', causation_id: 'board-handoff:agent_messages:1', aggregate_id: 'board-candidate-1', dedupe_key: 'eve-v-received:board-handoff:agent_messages:1',
+    });
+    db.close();
+  });
+
   it('backfills beyond 5000 events and resumes from a durable cursor', async () => {
     const db = createDb();
     const events = Array.from({ length: 5001 }, (_, index) => ({

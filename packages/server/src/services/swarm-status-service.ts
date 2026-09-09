@@ -333,6 +333,11 @@ export class SwarmStatusService {
     const sourceLeaseId = String(input.source_lease_id || '').trim();
     const lease = sourceLeaseId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(sourceLeaseId) as any | undefined : null;
     if (sourceLeaseId && !lease) throw new Error('SWARM_HANDOFF_LEASE_NOT_FOUND');
+    if (lease) {
+      const leaseMetadata = this.parseJsonSafe(lease.metadata || '{}');
+      const leaseOwner = lease.agent_id || lease.spawned_by_agent_id || leaseMetadata.agent_id;
+      if (leaseOwner && leaseOwner !== fromAgentId) throw new Error('SWARM_HANDOFF_SOURCE_AGENT_INVALID');
+    }
 
     const workItemId = String(input.work_item_id || '').trim();
     if (workItemId && !this.db.prepare('SELECT id FROM work_items WHERE id = ?').get(workItemId)) {
@@ -387,11 +392,12 @@ export class SwarmStatusService {
     return message;
   }
 
-  acceptHandoff(id: string): AgentHandoffAcceptResult {
+  acceptHandoff(id: string, acceptingAgentId?: string): AgentHandoffAcceptResult {
     const row = this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as any | undefined;
     if (!row) throw new Error('SWARM_HANDOFF_NOT_FOUND');
     if (row.read_at) throw new Error('SWARM_HANDOFF_ALREADY_ACCEPTED');
     const message = this.parseMessage(row);
+    if (acceptingAgentId && message.to_agent_id !== acceptingAgentId) throw new Error('SWARM_HANDOFF_PRINCIPAL_INVALID');
     const payload = message.payload;
     if (payload.kind !== 'swarm_handoff') throw new Error('SWARM_HANDOFF_INVALID');
 
