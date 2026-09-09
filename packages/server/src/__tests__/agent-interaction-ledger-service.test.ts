@@ -70,6 +70,22 @@ describe('AgentInteractionLedgerService', () => {
     });
   });
 
+  it('shows actual social actions, runtime provenance and peer content', () => {
+    db.prepare(`INSERT INTO agent_messages (id, from_agent, to_agent, type, payload_json, timestamp, status)
+      VALUES ('social-1', 'agent-a', 'agent-b', 'result', ?, '2026-09-07T00:00:00Z', 'read')`)
+      .run(JSON.stringify({
+        action: 'social.response', thread_id: 'social:test', reply_to: 'question-1', epistemic_role: 'proposal',
+        context: 'Fallback summary', evidence: ['claim:gap'],
+        params: { runtime: 'hermes', model_id: 'model-1', effect_scope: 'isolated', board_summary: 'A falsifiable peer answer.' },
+      }));
+    expect(new AgentInteractionLedgerService(db).list({ source: 'agent_messages' })).toEqual([
+      expect.objectContaining({
+        correlation_id: 'social:test', causation_id: 'question-1', action: 'social.response', summary: 'A falsifiable peer answer.',
+        actor: expect.objectContaining({ id: 'agent-a', role: 'proposal', runtime: 'hermes', model: 'model-1' }),
+      }),
+    ]);
+  });
+
   it('marks a digest degraded when an evidence source cannot be read', () => {
     const sparse = new Database(':memory:');
     const digest = new AgentInteractionLedgerService(sparse).digest();
