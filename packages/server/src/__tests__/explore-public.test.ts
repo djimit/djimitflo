@@ -197,12 +197,12 @@ describe("public explore boundary", () => {
       const corpus = "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9";
       const caseIds = Array.from({ length: 78 }, (_, i) => `case-${i}`);
       // two eligible model-only runs + one eligible-but-older pair for trend
-      const insert = (id: string, agent: string, score: number, finishedAt: string) =>
+      const insert = (id: string, agent: string, score: number, finishedAt: string, mode = "model_only") =>
         db.prepare(`
           INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
           VALUES (?, ?, ?, ?, 78, 78, ?, 'completed', ?)
         `).run(id, agent, finishedAt, finishedAt, score, JSON.stringify({
-          evaluation_mode: "model_only",
+          evaluation_mode: mode,
           oracle_anchors_configured: 1,
           case_ids: caseIds,
           corpus_sha256: corpus,
@@ -212,8 +212,8 @@ describe("public explore boundary", () => {
       insert("run-2", "nightly:llama3.2:1b", 1.92, "2026-09-07T03:15:00Z");
       insert("run-3", "nightly:qwen2.5:3b", 2.33, "2026-09-07T03:20:00Z");
       // excluded: explainer-critic (0-100 scale) and a skill-conditioned run
-      insert("run-4", "explainer-critic", 87, "2026-09-07T03:25:00Z");
-      insert("run-5", "skill-conditioned", 4.8, "2026-09-07T03:30:00Z");
+      insert("run-4", "explainer-critic", 87, "2026-09-07T03:25:00Z", "critic");
+      insert("run-5", "skill-conditioned", 4.8, "2026-09-07T03:30:00Z", "skill_conditioned");
 
       const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" }, db);
       const response = await fetch(`${url}/explore/leaderboard`);
