@@ -67,7 +67,7 @@ import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
 import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
-import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
+import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
 import { createSwarmIntelRoutes } from './swarm-intel';
 import { createAgiRoutes } from './agi';
@@ -213,6 +213,7 @@ export function createRoutes(
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
+    { prefix: '/swarm-v2/social-runtime', middleware: [], router: createAgentSocialRuntimeRoutes(db, runtimeGovernance) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
     { prefix: '/swarm-intel', middleware: [requireAuth], router: createSwarmIntelRoutes(db, auth) },

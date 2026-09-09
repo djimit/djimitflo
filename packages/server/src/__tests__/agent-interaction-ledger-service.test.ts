@@ -75,7 +75,7 @@ describe('AgentInteractionLedgerService', () => {
     expect(new AgentInteractionLedgerService(db).list({ source: 'agent_messages' })).toEqual([
       expect.objectContaining({
         correlation_id: 'social-round-1', causation_id: 'claim:gap-1', action: 'social.question',
-        actor: expect.objectContaining({ id: 'agent-a', role: 'peer' }), target: { type: 'agent', id: 'agent-b' },
+        actor: expect.objectContaining({ id: 'agent-a', role: 'facilitated_peer' }), target: { type: 'agent', id: 'agent-b' },
         status: 'delivered', effect_scope: 'isolated', evidence_refs: ['claim:gap-1'], summary: 'Which evidence falsifies this claim?',
       }),
     ]);

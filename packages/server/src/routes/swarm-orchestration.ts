@@ -7,6 +7,8 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
+import { resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 
 export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -89,6 +91,58 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/socialize', requirePermission('write:swarm_action'), (_req, res) => {
     const result = comms.socialize();
     res.status(result.status === 'started' ? 201 : 200).json(result);
+  });
+
+  return router;
+}
+
+/** Least-privilege callback surface for signed agent-runtime pollers. */
+export function createAgentSocialRuntimeRoutes(
+  db: Database,
+  runtimeGovernance = new RuntimeGovernanceService(db),
+): Router {
+  const router = Router();
+  const comms = new AgentCommunicationService(db);
+
+  function authorized(req: any, res: any): boolean {
+    const agentId = String(req.params.agentId || '');
+    const token = req.get('X-Agent-Social-Token') || '';
+    if (!agentId || !validateSpawnToken(resolveSpawnTokenSecret(), token, agentId, 'social-runtime')) {
+      res.status(401).json({ error: { code: 'SOCIAL_TOKEN_INVALID', message: 'Social runtime token is invalid, expired, or scoped to another agent' } });
+      return false;
+    }
+    if (!runtimeGovernance.isAllowed(agentId)) {
+      res.status(403).json({ error: { code: 'SOCIAL_AGENT_BLOCKED', message: 'Agent is blocked by runtime governance' } });
+      return false;
+    }
+    return true;
+  }
+
+  function fail(res: any, error: unknown): void {
+    const code = error instanceof Error ? error.message : 'SOCIAL_RUNTIME_ERROR';
+    const status = code === 'SOCIAL_AGENT_NOT_FOUND' || code === 'SOCIAL_MESSAGE_NOT_FOUND' ? 404
+      : code === 'SOCIAL_MESSAGE_EXPIRED' || code === 'SOCIAL_MESSAGE_NOT_ACTIONABLE' ? 409
+        : code.startsWith('SOCIAL_') && code.endsWith('_REQUIRED') ? 400 : 500;
+    const safeCode = status === 500 ? 'SOCIAL_RUNTIME_ERROR' : code;
+    res.status(status).json({ error: { code: safeCode, message: safeCode } });
+  }
+
+  router.post('/:agentId/heartbeat', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.json(comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id)); } catch (error) { fail(res, error); }
+  });
+
+  router.get('/:agentId/messages', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.json({ messages: comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4) }); } catch (error) { fail(res, error); }
+  });
+
+  router.post('/:agentId/messages/:messageId/respond', (req, res) => {
+    if (!authorized(req, res)) return;
+    try {
+      const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
+      res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
   });
 
   return router;

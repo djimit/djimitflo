@@ -62,7 +62,9 @@ function createTestDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS loop_runs (id TEXT PRIMARY KEY, status TEXT);
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', status TEXT,
-      capabilities_json TEXT NOT NULL DEFAULT '[]', created_at TEXT DEFAULT (datetime('now'))
+      capabilities_json TEXT NOT NULL DEFAULT '[]', metadata TEXT NOT NULL DEFAULT '{}',
+      last_heartbeat_at TEXT, last_active_at TEXT, updated_at TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS swarm_claims (
       id TEXT PRIMARY KEY, claim TEXT NOT NULL, predicate TEXT, claim_type TEXT NOT NULL,
@@ -71,6 +73,12 @@ function createTestDb(): Database.Database {
     );
     CREATE TABLE IF NOT EXISTS worker_leases (id TEXT PRIMARY KEY, status TEXT);
     CREATE TABLE IF NOT EXISTS goals (id TEXT PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS reflection_candidates (
+      id TEXT PRIMARY KEY, source_type TEXT NOT NULL, source_ref TEXT NOT NULL,
+      lesson TEXT NOT NULL, status TEXT NOT NULL, sensitivity TEXT NOT NULL,
+      human_required INTEGER NOT NULL DEFAULT 0, evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      metadata TEXT NOT NULL DEFAULT '{}', created_at TEXT, updated_at TEXT
+    );
   `);
   return db;
 }
@@ -381,8 +389,9 @@ describe('Apex Integration Tests', () => {
     });
 
     it('opens one evidence-linked reciprocal social round per cooldown', () => {
-      db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\",\"testing\"]')").run();
-      db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-b', 'Agent B', 'active', '[\"security\",\"research\"]')").run();
+      const heartbeat = new Date().toISOString();
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata, last_heartbeat_at) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\",\"testing\"]', ?, ?)").run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: heartbeat } }), heartbeat);
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata, last_heartbeat_at) VALUES ('agent-b', 'Agent B', 'active', '[\"security\",\"research\"]', ?, ?)").run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: heartbeat } }), heartbeat);
       db.prepare(`INSERT INTO swarm_claims
         (id, claim, predicate, claim_type, subject_ref, evidence_refs_json, status, created_from)
         VALUES ('gap-1', 'Checker independence is unknown', 'gap', 'capability', 'reviewer-independence', '["evidence:1"]', 'review_required', 'curiosity-service')`).run();
@@ -393,6 +402,42 @@ describe('Apex Integration Tests', () => {
       expect(first.messages[0]).toMatchObject({ type: 'question', payload: { action: 'social.question', evidence: ['claim:gap-1', 'evidence:1'] } });
       expect(first.messages[1].payload.params.correlation_id).toBe(first.correlation_id);
       expect(service.socialize()).toMatchObject({ status: 'skipped', correlation_id: first.correlation_id, reason: 'cooldown_active' });
+    });
+
+    it('closes a social round with idempotent real responses and candidate learnings', () => {
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata) VALUES ('agent-a', 'Agent A', 'active', '[]', '{}')").run();
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json, metadata) VALUES ('agent-b', 'Agent B', 'active', '[]', '{}')").run();
+      service.heartbeat('agent-b', 'synthetic-runtime', 'model-b');
+      const question = service.send({
+        from: 'agent-a', to: 'agent-b', type: 'question', action: 'social.question',
+        evidence: ['claim:gap-1'], params: { correlation_id: 'social:1', topic: 'A gap' },
+      });
+      expect(service.receiveSocial('agent-b')).toEqual([expect.objectContaining({ id: question.id, status: 'delivered' })]);
+      const response = service.respondSocial('agent-b', question.id, {
+        answer: 'Test the gap from a second perspective.', uncertainty: 'The sample is small.',
+        falsifiable_next_step: 'Run two controlled cases.', creative_alternative: 'Invert the claim.',
+        stop_condition: 'Stop if both controls disagree.', evidence_refs: ['claim:gap-1', 'invented:ref'],
+        runtime: 'synthetic-runtime', model_id: 'model-b', runtime_run_id: 'run-b', usage: { total_tokens: 12, ignored: 'x' },
+      });
+      expect(response).toMatchObject({ duplicate: false, reflection_id: null, message: { payload: { action: 'social.response' } } });
+      expect(response.message.payload.evidence).toEqual(['claim:gap-1', `message:${question.id}`, 'runtime:agent-b:synthetic-runtime']);
+      expect(service.respondSocial('agent-b', question.id, {
+        answer: 'Different text.', uncertainty: 'u', falsifiable_next_step: 'f', creative_alternative: 'c', stop_condition: 's',
+      })).toMatchObject({ duplicate: true, message: { id: response.message.id } });
+
+      const peerResponse = service.send({
+        from: 'agent-a', to: 'agent-b', type: 'result', action: 'social.response',
+        evidence: ['claim:gap-1'], params: { correlation_id: 'social:1', topic: 'A gap' },
+      });
+      const learning = service.respondSocial('agent-b', peerResponse.id, {
+        answer: 'The peer exposed a missing negative control.', uncertainty: 'The effect size is unknown.',
+        falsifiable_next_step: 'Add the negative control.', creative_alternative: 'Use a blinded evaluator.',
+        stop_condition: 'Stop if the control has no effect.', evidence_refs: ['claim:gap-1'], runtime: 'synthetic-runtime',
+      });
+      expect(learning).toMatchObject({ duplicate: false, message: { status: 'read', payload: { action: 'social.learning' } } });
+      expect(learning.reflection_id).toBeTruthy();
+      expect(db.prepare('SELECT status, metadata FROM reflection_candidates WHERE id = ?').get(learning.reflection_id)).toEqual(expect.objectContaining({ status: 'candidate' }));
+      expect(JSON.parse((db.prepare('SELECT metadata FROM reflection_candidates WHERE id = ?').get(learning.reflection_id) as any).metadata)).toMatchObject({ empirical_status: 'UNDETERMINED', promotion_allowed: false });
     });
 
     it('broadcasts to all agents', () => {

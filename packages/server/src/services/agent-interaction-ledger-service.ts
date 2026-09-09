@@ -81,7 +81,11 @@ export class AgentInteractionLedgerService {
       .map((row) => {
         const payload = this.object(row.payload_json);
         const params = this.object(payload.params);
-        const social = this.string(payload.action)?.startsWith('social.') === true;
+        const action = this.string(payload.action);
+        const social = action?.startsWith('social.') === true;
+        const socialRole = action === 'social.question' ? 'facilitated_peer'
+          : action === 'social.response' ? 'runtime_peer'
+            : action === 'social.learning' ? 'peer_learner' : 'peer';
         const summary = social
           ? redactSecrets(this.string(params.board_summary) || this.string(payload.context) || `${row.from_agent} sent ${this.string(payload.action)} to ${row.to_agent}`).redacted.slice(0, 500)
           : `${row.from_agent} sent ${row.type} to ${row.to_agent}`;
@@ -89,7 +93,7 @@ export class AgentInteractionLedgerService {
           id: `agent_messages:${row.id}`, timestamp: row.timestamp,
           correlationId: this.string(params.correlation_id) || row.id,
           causationId: this.string(params.causation_id) || this.string(params.reply_to),
-          actorId: row.from_agent, actorType: 'agent', actorRole: social && params.facilitated_by ? 'facilitated_peer' : social ? 'peer' : null,
+          actorId: row.from_agent, actorType: 'agent', actorRole: social ? socialRole : null,
           runtime: this.string(params.runtime), model: this.string(params.model_id),
           action: social ? this.string(payload.action)! : `message.${row.type}`,
           targetType: 'agent', targetId: row.to_agent,
