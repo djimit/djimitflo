@@ -175,32 +175,14 @@ describe("public explore boundary", () => {
       });
     }
 
-    function seedModelOnlyRun(db: ReturnType<typeof createTestDb>, run: {
-      id: string; agentId: string; score: number; finishedAt: string;
-      mode?: string; anchors?: number; caseIds?: number[]; corpus?: string;
-    }) {
-      db.prepare(`
-        INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?)
-      `).run(
-        run.id, run.agentId, run.finishedAt, run.finishedAt,
-        run.caseIds?.length ?? 78, run.caseIds?.length ?? 78, run.score,
-        JSON.stringify({
-          evaluation_mode: run.mode ?? "model_only",
-          oracle_anchors_configured: run.anchors ?? 1,
-          case_ids: run.caseIds ?? [],
-          corpus_sha256: run.corpus ?? "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
-        }),
-      );
-    }
-
-    void seedModelOnlyRun;
-
     it("is off by default (404 without OPENMYTHOS_LEADERBOARD_PUBLIC)", async () => {
-      const { url, restore } = await startApp();
+      // Kilo P2: explicitly clear the gate so the test establishes the true
+      // "unset" condition regardless of the host environment, and restore.
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "" });
       const response = await fetch(`${url}/explore/leaderboard`);
       expect(response.status).toBe(404);
       expect(await response.text()).toContain("not published");
+      restore();
     });
 
     it("returns 404 when explicitly disabled", async () => {
