@@ -178,8 +178,9 @@ export function InteractionBoardPage() {
 
       {error && <div className="flex items-center gap-2 rounded-lg border border-status-error/30 bg-status-error/10 p-3 text-sm text-status-error"><AlertTriangle className="h-4 w-4" />{error}</div>}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Interactions" value={filtered.length} />
+        <Metric label="Social exchanges" value={filtered.filter((item) => item.action.startsWith('social.')).length} />
         <Metric label="Threads" value={threads.length} />
         <Metric label="Relations" value={relations.length} />
         <Metric label="Declared contracts" value={ecosystem?.declared_contracts.length || 0} />

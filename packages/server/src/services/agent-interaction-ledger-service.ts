@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { redactSecrets } from './secret-patterns';
 
 export type InteractionEffectScope = 'simulated' | 'isolated' | 'production';
 
@@ -35,6 +36,7 @@ export class AgentInteractionLedgerService {
     const fetchLimit = Math.min(1000, limit * 3);
     const interactions = [
       ...this.messages(fetchLimit),
+      ...this.agentMessages(fetchLimit),
       ...this.leases(fetchLimit),
       ...this.spawns(fetchLimit),
       ...this.traceSpans(fetchLimit),
@@ -70,6 +72,30 @@ export class AgentInteractionLedgerService {
           capabilityId: this.string(metadata.capability_id), decision: null, status: row.read_at ? 'read' : 'unread',
           evidenceRefs: this.stringArray(metadata.evidence_refs), effectScope: this.scope(metadata.effect_scope, 'isolated'),
           source: 'messages', summary: `${row.from_agent_id} sent ${row.type} to ${row.to_agent_id}`,
+        });
+      });
+  }
+
+  private agentMessages(limit: number): AgentInteractionRecord[] {
+    return this.query(`SELECT id, from_agent, to_agent, type, payload_json, status, timestamp FROM agent_messages ORDER BY timestamp DESC LIMIT ?`, limit)
+      .map((row) => {
+        const payload = this.object(row.payload_json);
+        const params = this.object(payload.params);
+        const social = this.string(payload.action)?.startsWith('social.') === true;
+        const summary = social
+          ? redactSecrets(this.string(params.board_summary) || this.string(payload.context) || `${row.from_agent} sent ${this.string(payload.action)} to ${row.to_agent}`).redacted.slice(0, 500)
+          : `${row.from_agent} sent ${row.type} to ${row.to_agent}`;
+        return this.record({
+          id: `agent_messages:${row.id}`, timestamp: row.timestamp,
+          correlationId: this.string(params.correlation_id) || row.id,
+          causationId: this.string(params.causation_id) || this.string(params.reply_to),
+          actorId: row.from_agent, actorType: 'agent', actorRole: social && params.facilitated_by ? 'facilitated_peer' : social ? 'peer' : null,
+          runtime: this.string(params.runtime), model: this.string(params.model_id),
+          action: social ? this.string(payload.action)! : `message.${row.type}`,
+          targetType: 'agent', targetId: row.to_agent,
+          capabilityId: this.string(params.capability_id), decision: null, status: row.status,
+          evidenceRefs: this.stringArray(payload.evidence),
+          effectScope: social ? 'isolated' : this.scope(params.effect_scope, 'isolated'), source: 'agent_messages', summary,
         });
       });
   }
@@ -226,7 +252,7 @@ export class AgentInteractionLedgerService {
           actorId: this.string(result.producer) || 'continuous-learning-loop', actorType: 'system', actorRole: 'learner', runtime: null, model: null,
           action: 'learning.cycle', targetType: 'evidence', targetId: row.id, capabilityId: null, decision: null, status: 'recorded',
           evidenceRefs: [`learning-cycle:${row.id}`], effectScope: 'isolated', source: 'learning_cycles',
-          summary: `Learning cycle ingested ${Number(result.episodesIngested || 0)} episode(s), reflected on ${Number(result.reflectionsGenerated || 0)} run(s), and proposed ${Number(result.proposalsGenerated || 0)} improvement(s)`,
+          summary: `Learning cycle ingested ${Number(result.episodesIngested || 0)} episode(s), reflected on ${Number(result.reflectionsGenerated || 0)} run(s), proposed ${Number(result.proposalsGenerated || 0)} improvement(s), and opened ${Number(result.socialExchangesStarted || 0)} peer question(s)`,
         });
       });
   }

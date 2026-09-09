@@ -60,7 +60,15 @@ function createTestDb(): Database.Database {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE TABLE IF NOT EXISTS loop_runs (id TEXT PRIMARY KEY, status TEXT);
-    CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, status TEXT);
+    CREATE TABLE IF NOT EXISTS agents (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL DEFAULT '', status TEXT,
+      capabilities_json TEXT NOT NULL DEFAULT '[]', created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS swarm_claims (
+      id TEXT PRIMARY KEY, claim TEXT NOT NULL, predicate TEXT, claim_type TEXT NOT NULL,
+      subject_ref TEXT NOT NULL, evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL, created_from TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now'))
+    );
     CREATE TABLE IF NOT EXISTS worker_leases (id TEXT PRIMARY KEY, status TEXT);
     CREATE TABLE IF NOT EXISTS goals (id TEXT PRIMARY KEY);
   `);
@@ -365,6 +373,28 @@ describe('Apex Integration Tests', () => {
       expect(messages[0].from).toBe('a');
     });
 
+    it('delivers persisted messages across service instances', () => {
+      service.send({ from: 'a', to: 'b', type: 'question', action: 'social.question' });
+      const messages = new AgentCommunicationService(db).receive('b');
+      expect(messages).toEqual([expect.objectContaining({ from: 'a', to: 'b', status: 'delivered' })]);
+      expect(service.getStats().deliveredMessages).toBe(1);
+    });
+
+    it('opens one evidence-linked reciprocal social round per cooldown', () => {
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\",\"testing\"]')").run();
+      db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-b', 'Agent B', 'active', '[\"security\",\"research\"]')").run();
+      db.prepare(`INSERT INTO swarm_claims
+        (id, claim, predicate, claim_type, subject_ref, evidence_refs_json, status, created_from)
+        VALUES ('gap-1', 'Checker independence is unknown', 'gap', 'capability', 'reviewer-independence', '["evidence:1"]', 'review_required', 'curiosity-service')`).run();
+
+      const first = service.socialize();
+      expect(first).toMatchObject({ status: 'started', topic: 'Checker independence is unknown', participants: ['agent-a', 'agent-b'] });
+      expect(first.messages).toHaveLength(2);
+      expect(first.messages[0]).toMatchObject({ type: 'question', payload: { action: 'social.question', evidence: ['claim:gap-1', 'evidence:1'] } });
+      expect(first.messages[1].payload.params.correlation_id).toBe(first.correlation_id);
+      expect(service.socialize()).toMatchObject({ status: 'skipped', correlation_id: first.correlation_id, reason: 'cooldown_active' });
+    });
+
     it('broadcasts to all agents', () => {
       const msg = service.broadcast({ from: 'coordinator', type: 'alert', action: 'stop-all' });
       expect(msg.to).toBe('broadcast');
@@ -378,9 +408,8 @@ describe('Apex Integration Tests', () => {
 
     it('cleans up expired messages', () => {
       service.send({ from: 'a', to: 'b', type: 'task', action: 'test', ttl: 0 });
-      // Message should be expired immediately
       const cleaned = service.cleanup();
-      expect(cleaned).toBeGreaterThanOrEqual(0);
+      expect(cleaned).toBe(1);
     });
 
     it('provides stats', () => {

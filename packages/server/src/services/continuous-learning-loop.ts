@@ -10,6 +10,7 @@ import { DreamCycleService } from './dream-cycle-service';
 import { DreamTaskPlannerService } from './dream-task-planner-service';
 import { config as envConfig } from '../config/env';
 import { OutcomeLearningService } from './outcome-learning-service';
+import { AgentCommunicationService } from './agent-communication-service';
 
 export interface LearningCycleResult {
   id: string; timestamp: string; episodesIngested: number;
@@ -19,6 +20,7 @@ export interface LearningCycleResult {
   dreamTasksPlanned: number;
   outcomeAssessments: number;
   outcomeWorkItemsCreated: number;
+  socialExchangesStarted: number;
   producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
@@ -30,6 +32,7 @@ export class ContinuousLearningLoop {
   private dreams: DreamCycleService;
   private dreamTasks: DreamTaskPlannerService;
   private outcomeLearning: OutcomeLearningService;
+  private communication: AgentCommunicationService;
   private _trajectories?: TrajectoryStore;
   private segml?: SelfEvolvingGovernanceLoop;
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
@@ -48,6 +51,7 @@ export class ContinuousLearningLoop {
     this.dreams = new DreamCycleService(db);
     this.dreamTasks = new DreamTaskPlannerService(db);
     this.outcomeLearning = new OutcomeLearningService(db);
+    this.communication = new AgentCommunicationService(db);
     this.intervalMs = options.intervalMs ?? 3600_000;
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
@@ -88,6 +92,7 @@ export class ContinuousLearningLoop {
     const goalsGenerated = this.goals.generateFromSelfImprovements();
     const dreamOpportunitiesGenerated = this.dreams.runCycle().length;
     const dreamTasksPlanned = this.dreamTasks.exportPending();
+    const socialization = this.communication.socialize();
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
@@ -100,6 +105,7 @@ export class ContinuousLearningLoop {
       dreamTasksPlanned,
       outcomeAssessments: outcomeLearning.assessments,
       outcomeWorkItemsCreated: outcomeLearning.work_items_created,
+      socialExchangesStarted: socialization.messages.length,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,

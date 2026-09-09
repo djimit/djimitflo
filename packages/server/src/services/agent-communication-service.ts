@@ -18,7 +18,7 @@ import type { Database } from 'better-sqlite3';
 type MessageType = 'task' | 'result' | 'question' | 'alert' | 'handoff' | 'knowledge';
 type Priority = 1 | 2 | 3 | 4 | 5; // 1=critical, 5=low
 
-interface AgentMessage {
+export interface AgentMessage {
   id: string;
   from: string;
   to: string;
@@ -43,8 +43,16 @@ interface CommunicationStats {
   avgDeliveryTimeMs: number;
 }
 
+export interface SocializationResult {
+  status: 'started' | 'skipped';
+  correlation_id: string | null;
+  topic: string | null;
+  participants: string[];
+  messages: AgentMessage[];
+  reason: string | null;
+}
+
 export class AgentCommunicationService {
-  private messageQueue: AgentMessage[] = [];
   private deliveryLog: Array<{ messageId: string; deliveredAt: string; latencyMs: number }> = [];
 
   constructor(private db: Database) {
@@ -78,17 +86,9 @@ export class AgentCommunicationService {
         evidence: input.evidence,
       },
       timestamp: new Date().toISOString(),
-      ttl: input.ttl || 300, // 5 minutes default
+      ttl: input.ttl ?? 300, // 5 minutes default
       status: 'pending',
     };
-
-    // Insert in priority order
-    const insertIndex = this.messageQueue.findIndex((m) => m.priority > message.priority);
-    if (insertIndex === -1) {
-      this.messageQueue.push(message);
-    } else {
-      this.messageQueue.splice(insertIndex, 0, message);
-    }
 
     // Persist
     this.db.prepare(`
@@ -100,6 +100,67 @@ export class AgentCommunicationService {
     );
 
     return message;
+  }
+
+  /** Pair two complementary registered agents around the latest real curiosity gap. */
+  socialize(cooldownMs = 6 * 3600_000): SocializationResult {
+    this.cleanup();
+    const cutoff = new Date(Date.now() - Math.max(0, cooldownMs)).toISOString();
+    const recent = this.db.prepare(`
+      SELECT payload_json FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ?
+      ORDER BY timestamp DESC LIMIT 1
+    `).get(cutoff) as { payload_json: string } | undefined;
+    if (recent) {
+      const payload = this.parsePayload(recent.payload_json);
+      const params = payload.params as Record<string, unknown> | undefined;
+      return {
+        status: 'skipped',
+        correlation_id: String(params?.correlation_id || '') || null,
+        topic: String(params?.topic || '') || null,
+        participants: [], messages: [], reason: 'cooldown_active',
+      };
+    }
+
+    const agents = this.db.prepare("SELECT * FROM agents WHERE status IN ('active', 'idle') ORDER BY id ASC").all() as Array<Record<string, unknown>>;
+    if (agents.length < 2) {
+      return { status: 'skipped', correlation_id: null, topic: null, participants: [], messages: [], reason: 'insufficient_agents' };
+    }
+
+    // ponytail: O(n2) is clearer for the small registry; index pairings if the fleet grows beyond hundreds.
+    let pair: [Record<string, unknown>, Record<string, unknown>] = [agents[0], agents[1]];
+    let pairScore = -1;
+    for (let left = 0; left < agents.length; left += 1) {
+      for (let right = left + 1; right < agents.length; right += 1) {
+        const leftCapabilities = this.capabilities(agents[left]);
+        const rightCapabilities = this.capabilities(agents[right]);
+        const score = new Set([...leftCapabilities.filter((value) => !rightCapabilities.includes(value)), ...rightCapabilities.filter((value) => !leftCapabilities.includes(value))]).size;
+        if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
+      }
+    }
+
+    const gap = this.db.prepare(`
+      SELECT id, claim, subject_ref, evidence_refs_json FROM swarm_claims
+      WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as { id: string; claim: string; subject_ref: string; evidence_refs_json: string } | undefined;
+    const topic = gap?.claim || 'cross-agent learning in the Djimit ecosystem';
+    const topicRef = gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
+    const evidence = gap ? [topicRef, ...this.stringArray(gap.evidence_refs_json)] : [topicRef];
+    const correlationId = `social:${randomUUID()}`;
+    const [first, second] = pair;
+    const firstId = String(first.id);
+    const secondId = String(second.id);
+    const firstPerspective = this.uniquePerspective(first, second);
+    const secondPerspective = this.uniquePerspective(second, first);
+    const common = { correlation_id: correlationId, topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: 'continuous-learning-loop', presence_basis: 'registry_status' };
+    const firstQuestion = `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`;
+    const secondQuestion = `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Include evidence and a stop condition.`;
+    const messages = [
+      this.send({ from: firstId, to: secondId, type: 'question', action: 'social.question', context: firstQuestion, evidence, params: { ...common, board_summary: firstQuestion }, ttl: 86_400 }),
+      this.send({ from: secondId, to: firstId, type: 'question', action: 'social.question', context: secondQuestion, evidence, params: { ...common, board_summary: secondQuestion }, ttl: 86_400 }),
+    ];
+    return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
 
   /**
@@ -127,20 +188,24 @@ export class AgentCommunicationService {
     const now = Date.now();
     const messages: AgentMessage[] = [];
 
-    // Get pending messages for this agent (or broadcast)
-    const pending = this.messageQueue.filter(
-      (m) => m.status === 'pending' && (m.to === agentId || m.to === 'broadcast')
-    );
+    const pending = this.db.prepare(`
+      SELECT * FROM agent_messages
+      WHERE status = 'pending' AND (to_agent = ? OR to_agent = 'broadcast')
+      ORDER BY priority ASC, timestamp ASC LIMIT ?
+    `).all(agentId, Math.max(1, Math.min(limit, 100))) as Array<Record<string, unknown>>;
 
-    for (const message of pending) {
+    for (const row of pending) {
+      const message = this.parseMessage(row);
       // Check TTL
       const messageAge = now - new Date(message.timestamp).getTime();
       if (messageAge > message.ttl * 1000) {
         message.status = 'expired';
+        this.db.prepare("UPDATE agent_messages SET status = 'expired' WHERE id = ?").run(message.id);
         continue;
       }
 
       message.status = 'delivered';
+      this.db.prepare("UPDATE agent_messages SET status = 'delivered' WHERE id = ?").run(message.id);
       messages.push(message);
 
       // Log delivery
@@ -160,31 +225,30 @@ export class AgentCommunicationService {
    * Acknowledge message receipt.
    */
   acknowledge(messageId: string): void {
-    const message = this.messageQueue.find((m) => m.id === messageId);
-    if (message) {
-      message.status = 'read';
-      this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(messageId);
-    }
+    this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ? AND status != 'expired'").run(messageId);
   }
 
   /**
    * Get communication statistics.
    */
   getStats(): CommunicationStats {
-    const total = this.messageQueue.length;
-    const pending = this.messageQueue.filter((m) => m.status === 'pending').length;
-    const delivered = this.messageQueue.filter((m) => m.status === 'delivered' || m.status === 'read').length;
-    const expired = this.messageQueue.filter((m) => m.status === 'expired').length;
+    const counts = this.db.prepare(`
+      SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending,
+        COALESCE(SUM(CASE WHEN status IN ('delivered', 'read') THEN 1 ELSE 0 END), 0) AS delivered,
+        COALESCE(SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END), 0) AS expired
+      FROM agent_messages
+    `).get() as { total: number; pending: number; delivered: number; expired: number };
 
     const avgLatency = this.deliveryLog.length > 0
       ? this.deliveryLog.reduce((sum, d) => sum + d.latencyMs, 0) / this.deliveryLog.length
       : 0;
 
     return {
-      totalMessages: total,
-      pendingMessages: pending,
-      deliveredMessages: delivered,
-      expiredMessages: expired,
+      totalMessages: counts.total,
+      pendingMessages: counts.pending,
+      deliveredMessages: counts.delivered,
+      expiredMessages: counts.expired,
       avgDeliveryTimeMs: Math.round(avgLatency),
     };
   }
@@ -196,17 +260,46 @@ export class AgentCommunicationService {
     const now = Date.now();
     let cleaned = 0;
 
-    this.messageQueue = this.messageQueue.filter((message) => {
+    const pending = this.db.prepare("SELECT * FROM agent_messages WHERE status = 'pending'").all() as Array<Record<string, unknown>>;
+    for (const row of pending) {
+      const message = this.parseMessage(row);
       const age = now - new Date(message.timestamp).getTime();
-      if (age > message.ttl * 1000 && message.status === 'pending') {
-        message.status = 'expired';
+      if (age >= message.ttl * 1000) {
+        this.db.prepare("UPDATE agent_messages SET status = 'expired' WHERE id = ?").run(message.id);
         cleaned++;
-        return false;
       }
-      return true;
-    });
+    }
 
     return cleaned;
+  }
+
+  private parseMessage(row: Record<string, unknown>): AgentMessage {
+    return {
+      id: String(row.id), from: String(row.from_agent), to: String(row.to_agent),
+      type: String(row.type) as MessageType, priority: Number(row.priority) as Priority,
+      payload: this.parsePayload(row.payload_json), timestamp: String(row.timestamp),
+      ttl: Number(row.ttl), status: String(row.status) as AgentMessage['status'],
+    };
+  }
+
+  private parsePayload(value: unknown): AgentMessage['payload'] {
+    try { return JSON.parse(String(value || '{}')) as AgentMessage['payload']; } catch { return { action: 'invalid', params: {} }; }
+  }
+
+  private capabilities(agent: Record<string, unknown>): string[] {
+    return this.stringArray(agent.capabilities ?? agent.capabilities_json);
+  }
+
+  private uniquePerspective(agent: Record<string, unknown>, peer: Record<string, unknown>): string {
+    const peerCapabilities = this.capabilities(peer);
+    return this.capabilities(agent).find((value) => !peerCapabilities.includes(value)) || String(agent.name || agent.id);
+  }
+
+  private stringArray(value: unknown): string[] {
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())) : [];
+    } catch { return []; }
   }
 
   private ensureTables(): void {

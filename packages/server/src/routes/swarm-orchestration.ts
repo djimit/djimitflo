@@ -85,5 +85,11 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     res.json(comms.getStats());
   });
 
+  // POST /api/swarm-v2/socialize — open a bounded, evidence-linked peer exchange
+  router.post('/socialize', requirePermission('write:swarm_action'), (_req, res) => {
+    const result = comms.socialize();
+    res.status(result.status === 'started' ? 201 : 200).json(result);
+  });
+
   return router;
 }

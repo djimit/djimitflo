@@ -63,6 +63,24 @@ describe('AgentInteractionLedgerService', () => {
     ]);
   });
 
+  it('shows social questions with safe content, lineage and delivery state', () => {
+    db.prepare(`INSERT INTO agent_messages (id, from_agent, to_agent, type, payload_json, status, timestamp)
+      VALUES ('social-1', 'agent-a', 'agent-b', 'question', ?, 'delivered', '2026-09-07T00:00:00Z')`)
+      .run(JSON.stringify({
+        action: 'social.question',
+        params: { correlation_id: 'social-round-1', reply_to: 'claim:gap-1', effect_scope: 'production', board_summary: 'Which evidence falsifies this claim?' },
+        evidence: ['claim:gap-1'],
+      }));
+
+    expect(new AgentInteractionLedgerService(db).list({ source: 'agent_messages' })).toEqual([
+      expect.objectContaining({
+        correlation_id: 'social-round-1', causation_id: 'claim:gap-1', action: 'social.question',
+        actor: expect.objectContaining({ id: 'agent-a', role: 'peer' }), target: { type: 'agent', id: 'agent-b' },
+        status: 'delivered', effect_scope: 'isolated', evidence_refs: ['claim:gap-1'], summary: 'Which evidence falsifies this claim?',
+      }),
+    ]);
+  });
+
   it('projects evidence lineage with allowlisted metadata only', () => {
     new SwarmEvidenceService(db).createEvidenceEdge('worldlab:finding-1', 'goal:goal-1', 'proposes', {
       correlation_id: 'experiment-1', effect_scope: 'simulated', secret: 'not-visible',

@@ -24,6 +24,7 @@ describe('G127: Continuous Learning Loop', () => {
     expect(result.timestamp).toBeDefined();
     expect(result.outcomeAssessments).toBe(0);
     expect(result.outcomeWorkItemsCreated).toBe(0);
+    expect(result.socialExchangesStarted).toBe(0);
   });
 
   it('tracks history', async () => {
