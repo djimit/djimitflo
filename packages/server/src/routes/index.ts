@@ -181,6 +181,7 @@ export function createRoutes(
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.
     { prefix: '/swarms/spawns', middleware: [requireAuthOrSpawnToken], router: createSpawnRoutes(db, auth, wsService) },
+    { prefix: '/swarm-v2/social-runtime', middleware: [], router: createAgentSocialRuntimeRoutes(db, runtimeGovernance) },
     { prefix: '/swarms', middleware: [requireAuth], router: createSwarmRoutes(db, auth, wsService) },
     { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
     { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
@@ -213,7 +214,6 @@ export function createRoutes(
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
     { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
-    { prefix: '/swarm-v2/social-runtime', middleware: [], router: createAgentSocialRuntimeRoutes(db, runtimeGovernance) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/self-improve', middleware: [requireAuth], router: createSelfImprovementRoutes(db, auth) },
