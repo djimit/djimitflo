@@ -197,7 +197,6 @@ describe("public explore boundary", () => {
       const corpus = "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9";
       const caseIds = Array.from({ length: 78 }, (_, i) => `case-${i}`);
       // two eligible model-only runs + one eligible-but-older pair for trend
-      db.prepare;
       const insert = (id: string, agent: string, score: number, finishedAt: string) =>
         db.prepare(`
           INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
