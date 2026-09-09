@@ -272,15 +272,19 @@ describe("public explore boundary", () => {
       restore();
     });
 
-    it("excludes subset evaluations (case_ids != completed_cases)", async () => {
+    it("excludes subset evaluations (case_ids span != completed_cases)", async () => {
       const db = createTestDb();
+      // Een operator/debug subset-eval draait op 2 van de 78 cases maar telt
+      // alle 78 als completed (metadata case_ids bevat alleen de subset).
+      // De predicate vergelijkt de case_ids-span met completed_cases, dus
+      // deze run mag niet op de publieke ranking verschijnen.
       db.prepare(`
         INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
-        VALUES ('run-subset', 'nightly:subset', '2026-09-07T03:00:00Z', '2026-09-07T03:00:00Z', 78, 1, 5.0, 'completed', ?)
+        VALUES ('run-subset', 'nightly:subset', '2026-09-07T03:00:00Z', '2026-09-07T03:00:00Z', 78, 78, 5.0, 'completed', ?)
       `).run(JSON.stringify({
         evaluation_mode: "model_only",
         oracle_anchors_configured: 1,
-        case_ids: ["case-1"],
+        case_ids: ["case-0", "case-1"],
         corpus_sha256: "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
       }));
       const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" }, db);
