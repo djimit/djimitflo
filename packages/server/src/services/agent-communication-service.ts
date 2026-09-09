@@ -387,6 +387,8 @@ export class AgentCommunicationService {
       this.acknowledge(original.id, agentId, this.cleanRequired(input.delivery_lease_token, 'SOCIAL_LEASE_REQUIRED', 200));
       let reflectionId: string | null = null;
       if (action === 'social.learning') {
+        this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
+        message.status = 'read';
         reflectionId = new AgentAssuranceService(this.db).createReflection({
           source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence,
           metadata: {

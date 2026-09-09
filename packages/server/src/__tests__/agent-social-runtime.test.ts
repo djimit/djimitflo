@@ -95,7 +95,7 @@ describe('signed agent social runtime', () => {
     });
     const learningJson = await learning.json();
     expect(learning.status).toBe(201);
-    expect(learningJson).toMatchObject({ reflection_id: expect.any(String), message: { payload: { action: 'social.learning', epistemic_role: 'outcome' } } });
+    expect(learningJson).toMatchObject({ reflection_id: expect.any(String), message: { status: 'read', payload: { action: 'social.learning', epistemic_role: 'outcome' } } });
     const reflection = db.prepare('SELECT status, metadata FROM reflection_candidates WHERE id = ?').get(learningJson.reflection_id) as { status: string; metadata: string };
     expect(['candidate', 'review_required']).toContain(reflection.status);
     expect(JSON.parse(reflection.metadata)).toMatchObject({ empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true });
