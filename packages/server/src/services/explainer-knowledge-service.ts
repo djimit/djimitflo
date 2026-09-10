@@ -17,6 +17,7 @@ const COLLECTION = process.env.DJIMITFLO_EXPLAINER_COLLECTION || "djimitflo_expl
 const VECTOR_SIZE = Number(process.env.DJIMITFLO_EXPLAINER_VECTOR_SIZE) || 384;
 const OLLAMA_EMBED_URL = process.env.DJIMITFLO_EMBED_URL || process.env.OLLAMA_CLOUD_URL || "http://100.77.58.72:11434";
 const OLLAMA_EMBED_MODEL = process.env.DJIMITFLO_EMBED_MODEL || "snowflake-arctic-embed:s";
+const QDRANT_SEARCH_TIMEOUT_MS = Number(process.env.DJIMITFLO_QDRANT_SEARCH_TIMEOUT_MS) || 2_000;
 
 function qdrantHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -211,6 +212,7 @@ export class ExplainerKnowledgeService {
       const res = await fetch(`${QDRANT_URL}/collections/${COLLECTION}/points/search`, {
         method: 'POST',
         headers: qdrantHeaders(),
+        signal: AbortSignal.timeout(QDRANT_SEARCH_TIMEOUT_MS),
         body: JSON.stringify({
           vector: queryEmbed.vector,
           limit: limit * 2,
