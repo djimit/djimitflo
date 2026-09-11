@@ -15,12 +15,14 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
+import { AgentAssuranceService } from './agent-assurance-service';
+import { redactSecrets } from './secret-patterns';
 
 type MessageType = 'task' | 'result' | 'question' | 'alert' | 'handoff' | 'knowledge';
 type Priority = 1 | 2 | 3 | 4 | 5; // 1=critical, 5=low
 type EpistemicRole = BoardEpistemicRole;
 
-interface AgentMessage {
+export interface AgentMessage {
   id: string;
   from: string;
   to: string;
@@ -39,6 +41,35 @@ interface AgentMessage {
   ttl: number;
   status: 'pending' | 'delivered' | 'read' | 'expired';
   deliveryLeaseToken?: string;
+}
+
+export interface SocializationResult {
+  status: 'started' | 'skipped';
+  correlation_id: string | null;
+  topic: string | null;
+  participants: string[];
+  messages: AgentMessage[];
+  reason: string | null;
+}
+
+export interface SocialRuntimeReply {
+  answer: string;
+  uncertainty: string;
+  falsifiable_next_step: string;
+  creative_alternative: string;
+  stop_condition: string;
+  evidence_refs?: string[];
+  runtime?: string;
+  model_id?: string;
+  runtime_run_id?: string;
+  usage?: Record<string, unknown>;
+  delivery_lease_token?: string;
+}
+
+export interface SocialReplyResult {
+  message: AgentMessage;
+  reflection_id: string | null;
+  duplicate: boolean;
 }
 
 interface CommunicationStats {
@@ -186,6 +217,196 @@ export class AgentCommunicationService {
     else this.messageQueue.splice(insertIndex, 0, message);
 
     return message;
+  }
+
+  /** Open one bounded peer exchange between recently connected real runtimes. */
+  socialize(cooldownMs = 6 * 3600_000): SocializationResult {
+    this.cleanup();
+    const cutoff = new Date(Date.now() - Math.max(0, cooldownMs)).toISOString();
+    const recent = this.db.prepare(`
+      SELECT payload_json FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ?
+      ORDER BY timestamp DESC LIMIT 1
+    `).get(cutoff) as { payload_json: string } | undefined;
+    if (recent) {
+      const payload = this.object(recent.payload_json);
+      const params = this.object(payload.params);
+      return {
+        status: 'skipped', correlation_id: this.string(payload.thread_id) || null,
+        topic: this.string(params.topic) || null, participants: [], messages: [], reason: 'cooldown_active',
+      };
+    }
+
+    const heartbeatCutoff = new Date(Date.now() - 20 * 60_000).toISOString();
+    const agents = this.db.prepare(`
+      SELECT * FROM agents
+      WHERE status IN ('active', 'idle')
+        AND json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
+        AND json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at') >= ?
+      ORDER BY id ASC
+    `).all(heartbeatCutoff) as Array<Record<string, unknown>>;
+    if (agents.length < 2) {
+      return { status: 'skipped', correlation_id: null, topic: null, participants: [], messages: [], reason: 'insufficient_agents' };
+    }
+
+    // ponytail: O(n2) is clearer for the small registry; index pairings if the fleet grows beyond hundreds.
+    let pair: [Record<string, unknown>, Record<string, unknown>] = [agents[0], agents[1]];
+    let pairScore = -1;
+    for (let left = 0; left < agents.length; left += 1) {
+      for (let right = left + 1; right < agents.length; right += 1) {
+        const leftCapabilities = this.capabilities(agents[left]);
+        const rightCapabilities = this.capabilities(agents[right]);
+        const score = new Set([...leftCapabilities.filter((value) => !rightCapabilities.includes(value)), ...rightCapabilities.filter((value) => !leftCapabilities.includes(value))]).size;
+        if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
+      }
+    }
+
+    const gap = this.db.prepare(`
+      SELECT id, claim, evidence_refs_json FROM swarm_claims
+      WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as { id: string; claim: string; evidence_refs_json: string } | undefined;
+    const topic = this.cleanOptional(gap?.claim || 'cross-agent learning in the Djimit ecosystem', 1_000);
+    const topicRef = gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
+    const evidence = (gap ? [topicRef, ...this.stringArray(gap.evidence_refs_json)] : [topicRef])
+      .map((reference) => this.cleanOptional(reference, 200)).filter(Boolean).slice(0, 20);
+    const correlationId = `social:${randomUUID()}`;
+    const [first, second] = pair;
+    const firstId = String(first.id);
+    const secondId = String(second.id);
+    const firstPerspective = this.uniquePerspective(first, second);
+    const secondPerspective = this.uniquePerspective(second, first);
+    const firstQuestion = `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`;
+    const secondQuestion = `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Include evidence and a stop condition.`;
+    const question = (from: string, to: string, context: string) => this.send({
+      from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
+      epistemicRole: 'question', ttl: 86_400,
+      params: { topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: 'continuous-learning-loop', board_summary: context },
+    });
+    const messages = this.db.transaction(() => [
+      question(firstId, secondId, firstQuestion), question(secondId, firstId, secondQuestion),
+    ])();
+    return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
+  }
+
+  /** Record a signed runtime poller as eligible for future social rounds. */
+  heartbeat(agentId: string, runtime: string, modelId?: string): { agent_id: string; status: 'active'; timestamp: string } {
+    const row = this.db.prepare('SELECT id, status, metadata FROM agents WHERE id = ?').get(agentId) as { id: string; status: string; metadata: string | null } | undefined;
+    if (!row) throw new Error('SOCIAL_AGENT_NOT_FOUND');
+    // Kilo P1: a runtime-poller token must not bypass operator-controlled
+    // lifecycle states. Only agents that are already active (or were never
+    // paused) may be re-activated by a heartbeat; paused/error/offline/
+    // pending_approval agents keep their status and are rejected.
+    const eligibleStatuses = new Set(['active', 'idle']);
+    if (!eligibleStatuses.has(row.status)) {
+      throw new Error(`SOCIAL_AGENT_NOT_ELIGIBLE: agent ${agentId} has status '${row.status}'`);
+    }
+    const timestamp = new Date().toISOString();
+    const metadata = this.object(row.metadata);
+    metadata.social_runtime = {
+      enabled: true, runtime: this.cleanRequired(runtime, 'SOCIAL_RUNTIME_REQUIRED', 100),
+      model_id: this.cleanOptional(modelId, 100), last_heartbeat_at: timestamp,
+      provenance_status: 'signed_runtime_poller',
+    };
+    this.db.prepare(`UPDATE agents SET status = 'active', metadata = ?, last_active_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'idle')`)
+      .run(JSON.stringify(metadata), timestamp, timestamp, agentId);
+    return { agent_id: agentId, status: 'active', timestamp };
+  }
+
+  /** Claim only social work, leaving unrelated agent messages untouched. */
+  receiveSocial(agentId: string, limit = 4): AgentMessage[] {
+    this.cleanup();
+    const now = Date.now();
+    const rows = this.db.transaction((max: number) => {
+      const candidates = this.db.prepare(`
+        SELECT * FROM agent_messages message
+        WHERE message.to_agent = ?
+          AND json_extract(message.payload_json, '$.action') IN ('social.question', 'social.response')
+          AND json_type(message.payload_json, '$.thread_id') = 'text'
+          AND (message.status = 'pending' OR (message.status = 'delivered' AND (message.delivery_lease_until <= ? OR message.delivery_lease_until IS NULL)))
+          AND NOT EXISTS (
+            SELECT 1 FROM agent_messages reply
+            WHERE reply.from_agent = ? AND json_extract(reply.payload_json, '$.reply_to') = message.id
+          )
+        ORDER BY message.priority ASC, message.timestamp ASC LIMIT ?
+      `).all(agentId, now, agentId, max) as Array<Record<string, unknown>>;
+      const claimed: AgentMessage[] = [];
+      const leaseUntil = now + 5 * 60_000;
+      const deliver = this.db.prepare(`
+        UPDATE agent_messages SET status = 'delivered', delivery_lease_until = ?, delivery_lease_token = ?
+        WHERE id = ? AND to_agent = ? AND (status = 'pending' OR (status = 'delivered' AND (delivery_lease_until <= ? OR delivery_lease_until IS NULL)))
+      `);
+      for (const row of candidates) {
+        const token = randomUUID();
+        if (deliver.run(leaseUntil, token, row.id, agentId, now).changes !== 1) continue;
+        claimed.push(this.runtimeSafeMessage({ ...this.messageFromRow(row), status: 'delivered', deliveryLeaseToken: token }));
+      }
+      return claimed;
+    })(Math.max(1, Math.min(Number(limit) || 4, 10)));
+    return rows;
+  }
+
+  /** Persist an isolated runtime reply or candidate learning; never promote it. */
+  respondSocial(agentId: string, messageId: string, input: SocialRuntimeReply): SocialReplyResult {
+    const originalRow = this.db.prepare('SELECT * FROM agent_messages WHERE id = ? AND to_agent = ?').get(messageId, agentId) as Record<string, unknown> | undefined;
+    if (!originalRow) throw new Error('SOCIAL_MESSAGE_NOT_FOUND');
+    const original = this.messageFromRow(originalRow);
+    if (original.status === 'expired') throw new Error('SOCIAL_MESSAGE_EXPIRED');
+    if (!['social.question', 'social.response'].includes(original.payload.action)) throw new Error('SOCIAL_MESSAGE_NOT_ACTIONABLE');
+    const existing = this.db.prepare(`SELECT * FROM agent_messages WHERE from_agent = ? AND json_extract(payload_json, '$.reply_to') = ? ORDER BY timestamp ASC LIMIT 1`)
+      .get(agentId, messageId) as Record<string, unknown> | undefined;
+    if (existing) {
+      const message = this.messageFromRow(existing);
+      const reflection = this.db.prepare('SELECT id FROM reflection_candidates WHERE source_ref = ? ORDER BY created_at ASC LIMIT 1').get(`message:${message.id}`) as { id: string } | undefined;
+      return { message, reflection_id: reflection?.id || null, duplicate: true };
+    }
+
+    const answer = this.cleanRequired(input.answer, 'SOCIAL_ANSWER_REQUIRED', 3_000);
+    const uncertainty = this.cleanRequired(input.uncertainty, 'SOCIAL_UNCERTAINTY_REQUIRED', 1_000);
+    const nextStep = this.cleanRequired(input.falsifiable_next_step, 'SOCIAL_FALSIFICATION_REQUIRED', 1_000);
+    const alternative = this.cleanRequired(input.creative_alternative, 'SOCIAL_ALTERNATIVE_REQUIRED', 1_000);
+    const stopCondition = this.cleanRequired(input.stop_condition, 'SOCIAL_STOP_CONDITION_REQUIRED', 1_000);
+    const originalEvidence = this.stringArray(original.payload.evidence);
+    const citedEvidence = this.stringArray(input.evidence_refs).filter((ref) => originalEvidence.includes(ref));
+    const runtime = this.cleanOptional(input.runtime, 100) || 'unknown-runtime';
+    const modelId = this.cleanOptional(input.model_id, 100);
+    const runtimeRunId = this.cleanOptional(input.runtime_run_id, 200);
+    const threadId = this.cleanRequired(original.payload.thread_id, 'SOCIAL_THREAD_REQUIRED', 200);
+    const action = original.payload.action === 'social.question' ? 'social.response' : 'social.learning';
+    const evidence = [...new Set([...citedEvidence, `message:${original.id}`, `runtime:${agentId}:${runtime}`])];
+    const summary = action === 'social.response'
+      ? `${answer} Uncertainty: ${uncertainty} Test: ${nextStep}`
+      : `${answer} Peer challenge: ${alternative} Next test: ${nextStep}`;
+    const usage = Object.fromEntries(Object.entries(input.usage || {}).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)));
+
+    return this.db.transaction(() => {
+      const message = this.send({
+        from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge',
+        action, context: summary.slice(0, 500), evidence, threadId, replyTo: original.id,
+        epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
+        params: {
+          topic: this.string(original.payload.params?.topic), answer, uncertainty,
+          falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition,
+          runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage,
+          response_kind: 'actual_runtime', provenance_status: 'runtime_reported',
+          external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500),
+        },
+      });
+      this.acknowledge(original.id, agentId, this.cleanRequired(input.delivery_lease_token, 'SOCIAL_LEASE_REQUIRED', 200));
+      let reflectionId: string | null = null;
+      if (action === 'social.learning') {
+        this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
+        message.status = 'read';
+        reflectionId = new AgentAssuranceService(this.db).createReflection({
+          source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence,
+          metadata: {
+            correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from,
+            empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true,
+          },
+        }).id;
+      }
+      return { message, reflection_id: reflectionId, duplicate: false };
+    })();
   }
 
   /**
@@ -397,6 +618,65 @@ export class AgentCommunicationService {
       SELECT id, from_agent, to_agent, type, priority, payload_json, timestamp, ttl, status
       FROM agent_messages WHERE from_agent = ? AND to_agent = ? AND type = ? AND idempotency_key = ?
     `).get(from, to, type, key) as any;
+  }
+
+  private runtimeSafeMessage(message: AgentMessage): AgentMessage {
+    const params = message.payload.params || {};
+    const allowedParams = [
+      'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step',
+      'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id',
+    ];
+    return {
+      ...message,
+      payload: {
+        action: message.payload.action,
+        context: this.cleanOptional(message.payload.context, 4_000),
+        evidence: this.stringArray(message.payload.evidence).map((item) => this.cleanOptional(item, 200)).filter(Boolean).slice(0, 20),
+        thread_id: this.cleanOptional(message.payload.thread_id, 200),
+        reply_to: this.cleanOptional(message.payload.reply_to, 200),
+        epistemic_role: message.payload.epistemic_role,
+        params: Object.fromEntries(allowedParams
+          .filter((key) => typeof params[key] === 'string')
+          .map((key) => [key, this.cleanOptional(params[key], key === 'answer' ? 3_000 : 1_000)])),
+      },
+    };
+  }
+
+  private capabilities(agent: Record<string, unknown>): string[] {
+    return this.stringArray(agent.capabilities ?? agent.capabilities_json);
+  }
+
+  private uniquePerspective(agent: Record<string, unknown>, peer: Record<string, unknown>): string {
+    const peerCapabilities = this.capabilities(peer);
+    return this.capabilities(agent).find((value) => !peerCapabilities.includes(value)) || String(agent.name || agent.id);
+  }
+
+  private object(value: unknown): Record<string, unknown> {
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+    } catch { return {}; }
+  }
+
+  private string(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+  }
+
+  private stringArray(value: unknown): string[] {
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())) : [];
+    } catch { return []; }
+  }
+
+  private cleanRequired(value: unknown, error: string, maxLength: number): string {
+    const cleaned = this.cleanOptional(value, maxLength);
+    if (!cleaned) throw new Error(error);
+    return cleaned;
+  }
+
+  private cleanOptional(value: unknown, maxLength: number): string {
+    return redactSecrets(String(value || '').trim()).redacted.slice(0, maxLength);
   }
 
   private ensureTables(): void {
