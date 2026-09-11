@@ -291,8 +291,16 @@ export class AgentCommunicationService {
 
   /** Record a signed runtime poller as eligible for future social rounds. */
   heartbeat(agentId: string, runtime: string, modelId?: string): { agent_id: string; status: 'active'; timestamp: string } {
-    const row = this.db.prepare('SELECT id, metadata FROM agents WHERE id = ?').get(agentId) as { id: string; metadata: string | null } | undefined;
+    const row = this.db.prepare('SELECT id, status, metadata FROM agents WHERE id = ?').get(agentId) as { id: string; status: string; metadata: string | null } | undefined;
     if (!row) throw new Error('SOCIAL_AGENT_NOT_FOUND');
+    // Kilo P1: a runtime-poller token must not bypass operator-controlled
+    // lifecycle states. Only agents that are already active (or were never
+    // paused) may be re-activated by a heartbeat; paused/error/offline/
+    // pending_approval agents keep their status and are rejected.
+    const eligibleStatuses = new Set(['active', 'idle']);
+    if (!eligibleStatuses.has(row.status)) {
+      throw new Error(`SOCIAL_AGENT_NOT_ELIGIBLE: agent ${agentId} has status '${row.status}'`);
+    }
     const timestamp = new Date().toISOString();
     const metadata = this.object(row.metadata);
     metadata.social_runtime = {
@@ -300,7 +308,7 @@ export class AgentCommunicationService {
       model_id: this.cleanOptional(modelId, 100), last_heartbeat_at: timestamp,
       provenance_status: 'signed_runtime_poller',
     };
-    this.db.prepare(`UPDATE agents SET status = 'active', metadata = ?, last_active_at = ?, updated_at = ? WHERE id = ?`)
+    this.db.prepare(`UPDATE agents SET status = 'active', metadata = ?, last_active_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'idle')`)
       .run(JSON.stringify(metadata), timestamp, timestamp, agentId);
     return { agent_id: agentId, status: 'active', timestamp };
   }
