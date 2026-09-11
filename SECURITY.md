@@ -15,7 +15,7 @@ DjimFlo is built security-first:
 
 **DO NOT** open a public issue for security vulnerabilities.
 
-Email: dlandman@djimit.nl
+Email: info@djimit.nl
 
 Include:
 - Description of the vulnerability
