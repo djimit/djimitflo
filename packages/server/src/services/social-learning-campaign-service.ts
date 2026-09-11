@@ -43,6 +43,7 @@ interface InternalPair {
     content_novelty: number;
     evidence_retention: number;
     field_completeness: number;
+    falsifiability_specificity: number;
     explicit_correction_signal: number;
     repetition_risk: number;
   };
@@ -131,7 +132,7 @@ export class SocialLearningCampaignService {
       started_at: startedAt, ends_at: endsAt, minimum_pairs: minimumPairs,
       unit_of_analysis: 'paired agent proposal and post-peer-feedback learning within one social thread',
       independent_variables: ['peer feedback exposure'],
-      dependent_variables: ['peer uptake delta', 'content novelty', 'evidence retention', 'repetition risk', 'linked operational outcome lift'],
+      dependent_variables: ['peer uptake delta', 'content novelty', 'evidence retention', 'falsifiability specificity', 'explicit correction signal', 'repetition risk', 'linked operational outcome lift'],
       controls: ['same thread', 'same agent', 'same topic', 'pre-feedback proposal'],
       confounders: ['fixed ordering', 'topic drift', 'model updates', 'runtime retries', 'mandatory response fields'],
       randomization: 'none; paired observational design with WorldLab counterfactual replay',
@@ -153,6 +154,40 @@ export class SocialLearningCampaignService {
     return { duplicate: false, state, manifest_hash: manifestHash };
   }
 
+  amendBeforeEvidence(input: { analyzer_commit: string; amended_at: string }): { duplicate: boolean; state: CampaignState; previous_manifest_hash: string; manifest_hash: string } {
+    const state = this.state();
+    if (!state) throw new Error('SOCIAL_CAMPAIGN_NOT_STARTED');
+    if (state.status !== 'RUNNING') throw new Error('SOCIAL_CAMPAIGN_NOT_RUNNING');
+    const amendedAt = this.timestamp(input.amended_at);
+    if (Date.parse(amendedAt) < Date.parse(state.started_at)) throw new Error('SOCIAL_CAMPAIGN_AMENDMENT_BEFORE_START');
+    if (Date.parse(amendedAt) > Date.parse(state.ends_at)) throw new Error('SOCIAL_CAMPAIGN_AMENDMENT_AFTER_END');
+    const analyzerCommit = this.commit(input.analyzer_commit, 'SOCIAL_CAMPAIGN_ANALYZER_COMMIT_REQUIRED');
+    const provenance = this.object(state.manifest.provenance);
+    const amendments = Array.isArray(state.manifest.amendments) ? state.manifest.amendments : [];
+    const previousManifestHash = this.hash(state.manifest);
+    if (amendments.length && provenance.analyzer_commit === analyzerCommit) {
+      return { duplicate: true, state, previous_manifest_hash: this.string(this.object(amendments.at(-1)).previous_manifest_hash).replace(/^sha256:/, ''), manifest_hash: previousManifestHash };
+    }
+    if (amendments.length) throw new Error('SOCIAL_CAMPAIGN_ALREADY_AMENDED');
+    const evidence = this.db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE timestamp >= ? AND json_extract(payload_json, '$.action') LIKE 'social.%'").get(state.started_at) as { count: number };
+    if (Number(evidence.count) > 0) throw new Error('SOCIAL_CAMPAIGN_AMENDMENT_AFTER_EVIDENCE');
+
+    const dependentVariables = Array.isArray(state.manifest.dependent_variables) ? state.manifest.dependent_variables : [];
+    const manifest = {
+      ...state.manifest,
+      dependent_variables: [...new Set([...dependentVariables, 'falsifiability specificity', 'explicit correction signal'])],
+      provenance: { ...provenance, analyzer_commit: analyzerCommit },
+      amendments: [{ amended_at: amendedAt, previous_manifest_hash: `sha256:${previousManifestHash}`, reason: 'make the pre-registered falsifiability and correction measurements explicit before confirmatory evidence exists' }],
+    };
+    const manifestHash = this.hash(manifest);
+    const nextState: CampaignState = { ...state, manifest, latest_report_hash: null, updated_at: amendedAt };
+    this.db.transaction(() => {
+      this.saveState(nextState);
+      this.event(state.campaign_id, 'social.campaign.amended', amendedAt, 1_000, { previous_manifest_hash: `sha256:${previousManifestHash}`, manifest_hash: `sha256:${manifestHash}`, analyzer_commit: analyzerCommit, evidence_count: 0 });
+    })();
+    return { duplicate: false, state: nextState, previous_manifest_hash: previousManifestHash, manifest_hash: manifestHash };
+  }
+
   tick(input: { observed_at: string; worldlab?: unknown }): CampaignReport {
     const state = this.state();
     if (!state) throw new Error('SOCIAL_CAMPAIGN_NOT_STARTED');
@@ -162,7 +197,7 @@ export class SocialLearningCampaignService {
     const windowEnd = complete ? state.ends_at : observedAt;
     const pairs = this.pairs(state.started_at, windowEnd);
     this.addRepetitionRisk(pairs);
-    const metrics = Object.fromEntries((['peer_uptake_delta', 'content_novelty', 'evidence_retention', 'field_completeness', 'explicit_correction_signal', 'repetition_risk'] as const)
+    const metrics = Object.fromEntries((['peer_uptake_delta', 'content_novelty', 'evidence_retention', 'field_completeness', 'falsifiability_specificity', 'explicit_correction_signal', 'repetition_risk'] as const)
       .map(metric => [metric, this.summarize(pairs.map(pair => pair.metrics[metric]), `${state.campaign_id}:${metric}`)]));
     const peerSignal = this.classify(metrics.peer_uptake_delta, state.minimum_pairs, 0.05);
     const checker = this.check(pairs);
@@ -188,7 +223,7 @@ export class SocialLearningCampaignService {
       independent_checker: checker, worldlab,
       outcome_evidence: { matched: outcome.matched, causal: outcome.causalCount, metric: outcome.metric },
       promotion: { allowed: false as const, reason: status === 'SUPPORTED' ? 'supported evidence may create a review-gated goal batch; promotion still requires approval' : 'evidence is not fully supported' },
-      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.'],
+      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'Falsifiability specificity measures structured detail, not whether a proposed test is valid.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.'],
       evidence_hash: evidenceHash, goal_batch: goalBatch,
     };
     const report: CampaignReport = { ...core, report_hash: `sha256:${this.hash(core)}` };
@@ -236,6 +271,7 @@ export class SocialLearningCampaignService {
           content_novelty: 1 - this.jaccard(learning.answer, baseline.answer),
           evidence_retention: inputEvidence.size ? retained / inputEvidence.size : 0,
           field_completeness: fields.filter(field => this.string(learning.params[field])).length / fields.length,
+          falsifiability_specificity: Math.min(1, this.tokens(`${this.string(learning.params.falsifiable_next_step)} ${this.string(learning.params.stop_condition)}`).size / 12),
           explicit_correction_signal: CORRECTION.test(learning.answer) ? 1 : 0,
           repetition_risk: 0,
         },

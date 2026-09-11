@@ -34,6 +34,11 @@ try {
     writeJson(join(output, 'manifest.json'), { ...result.state.manifest, manifest_hash: `sha256:${result.manifest_hash}` });
     writeJson(join(output, 'state.json'), result.state);
     console.log(JSON.stringify({ campaign_id: result.state.campaign_id, status: result.state.status, duplicate: result.duplicate, manifest_hash: `sha256:${result.manifest_hash}` }));
+  } else if (command === 'amend') {
+    const result = service.amendBeforeEvidence({ analyzer_commit: required('analyzer-commit'), amended_at: option('at', new Date().toISOString()) });
+    writeJson(join(output, 'manifest.json'), { ...result.state.manifest, manifest_hash: `sha256:${result.manifest_hash}` });
+    writeJson(join(output, 'state.json'), result.state);
+    console.log(JSON.stringify({ campaign_id: result.state.campaign_id, duplicate: result.duplicate, previous_manifest_hash: `sha256:${result.previous_manifest_hash}`, manifest_hash: `sha256:${result.manifest_hash}` }));
   } else if (command === 'tick') {
     const worldlabPath = option('worldlab-evidence');
     const worldlab = worldlabPath && existsSync(worldlabPath) ? JSON.parse(readFileSync(worldlabPath, 'utf8')) : undefined;
@@ -50,7 +55,7 @@ try {
   } else if (command === 'status') {
     console.log(JSON.stringify(service.getState()));
   } else {
-    throw new Error('command must be start, tick, or status');
+    throw new Error('command must be start, amend, tick, or status');
   }
 } finally {
   database.close();

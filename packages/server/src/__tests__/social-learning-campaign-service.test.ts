@@ -64,12 +64,44 @@ describe('SocialLearningCampaignService', () => {
       expect(running).toMatchObject({ status: 'RUNNING', signals: { peer_learning: 'SUPPORTED', operational_outcome_lift: 'SUPPORTED' }, independent_checker: { status: 'PASS' }, promotion: { allowed: false }, goal_batch: null });
       expect(running.pairs).toHaveLength(2);
       expect(running.pairs[0]).not.toHaveProperty('answer');
+      expect(running.metrics.falsifiability_specificity).toMatchObject({ n: 2 });
+      expect(running.metrics.falsifiability_specificity.mean).toBeGreaterThan(0);
 
       const complete = service.tick({ observed_at: '2026-01-08T00:00:00.000Z', worldlab: worldlabEvidence('social-confirmatory-1', running.report_hash) });
       expect(complete.status).toBe('SUPPORTED');
       expect(complete.promotion.allowed).toBe(false);
       expect(complete.goal_batch).toMatchObject({ schema: 'djimit.openmythos.worldlab.goal.v1', waves: [{ ordered_goals: [{ metadata: { promotion_eligible: false } }] }] });
       expect(db.prepare("SELECT COUNT(*) AS count FROM external_events WHERE event_type = 'social.campaign.finalized'").get()).toEqual({ count: 1 });
+    } finally { db.close(); }
+  });
+
+  it('records one append-only pre-evidence measurement amendment and refuses changes after evidence', () => {
+    const db = createTestDb();
+    try {
+      const service = new SocialLearningCampaignService(db);
+      const started = service.start({ campaign_id: 'social-confirmatory-amend', started_at: '2026-01-01T00:00:00.000Z', days: 7, minimum_pairs: 2, runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) });
+      const amended = service.amendBeforeEvidence({ analyzer_commit: 'c'.repeat(40), amended_at: '2026-01-01T00:01:00.000Z' });
+      expect(amended).toMatchObject({ duplicate: false, previous_manifest_hash: started.manifest_hash });
+      expect(amended.state.manifest).toMatchObject({
+        dependent_variables: expect.arrayContaining(['falsifiability specificity', 'explicit correction signal']),
+        provenance: { analyzer_commit: 'c'.repeat(40) },
+        amendments: [{ previous_manifest_hash: `sha256:${started.manifest_hash}` }],
+      });
+      expect(service.amendBeforeEvidence({ analyzer_commit: 'c'.repeat(40), amended_at: '2026-01-01T00:02:00.000Z' }).duplicate).toBe(true);
+      expect(db.prepare("SELECT COUNT(*) AS count FROM external_events WHERE event_type = 'social.campaign.amended'").get()).toEqual({ count: 1 });
+
+      message(db, 'after-start', 'agent-a', 'agent-b', 'social.response', 'social:after-start', '2026-01-01T00:03:00.000Z', 'evidence now exists', []);
+      expect(() => service.amendBeforeEvidence({ analyzer_commit: 'd'.repeat(40), amended_at: '2026-01-01T00:04:00.000Z' })).toThrow('SOCIAL_CAMPAIGN_ALREADY_AMENDED');
+    } finally { db.close(); }
+  });
+
+  it('refuses a measurement amendment once confirmatory evidence exists', () => {
+    const db = createTestDb();
+    try {
+      const service = new SocialLearningCampaignService(db);
+      service.start({ campaign_id: 'social-confirmatory-late-amend', started_at: '2026-01-01T00:00:00.000Z', days: 7, minimum_pairs: 2, runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) });
+      message(db, 'after-start', 'agent-a', 'agent-b', 'social.response', 'social:after-start', '2026-01-01T00:01:00.000Z', 'evidence now exists', []);
+      expect(() => service.amendBeforeEvidence({ analyzer_commit: 'c'.repeat(40), amended_at: '2026-01-01T00:02:00.000Z' })).toThrow('SOCIAL_CAMPAIGN_AMENDMENT_AFTER_EVIDENCE');
     } finally { db.close(); }
   });
 
