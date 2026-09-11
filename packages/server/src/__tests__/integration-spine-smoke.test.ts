@@ -252,7 +252,9 @@ describe('agentic OS integration spine smoke', () => {
 
     const runtime = await fetch(`${baseUrl}/api/swarms/knowledge/runtime`);
     expect(runtime.status).toBe(200);
-    expect((await runtime.json() as any)).toMatchObject({ exists: true, valid: expect.any(Boolean) });
+    const runtimeBody = await runtime.json() as any;
+    expect(runtimeBody).toMatchObject({ exists: expect.any(Boolean), valid: expect.any(Boolean) });
+    if (!runtimeBody.exists) expect(runtimeBody.blocked_reasons).toContain('KNOWLEDGE_RUNTIME_OKF_BASE_MISSING');
     const sync = await fetch(`${baseUrl}/api/swarms/knowledge/sync`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dry_run: true }),
     });

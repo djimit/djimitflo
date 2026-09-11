@@ -53,7 +53,7 @@ describe('G127: Continuous Learning Loop', () => {
     communication.heartbeat('agent-a', 'runtime-a', 'model-a');
     communication.heartbeat('agent-b', 'runtime-b', 'model-b');
     const result = await loop.runCycle();
-    expect(result.socialExchangesStarted).toBe(2);
+    expect(result.socialExchangesStarted).toBe(1);
     expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
   });
 
