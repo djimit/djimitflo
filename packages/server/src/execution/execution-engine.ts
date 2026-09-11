@@ -35,7 +35,7 @@ import { CircuitBreakerService } from '../services/circuit-breaker-service';
 import { FallbackChainService, ExecutionMode } from '../services/fallback-chain-service';
 import { ExecutionModePolicyService } from '../services/execution-mode-policy-service';
 import { WebSocketService } from '../services/websocket-service';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { CommandRiskClassifier } from '../services/command-risk-classifier';
 import { PolicyDecisionService } from '../services/policy-decision-service';
 import { ToolBroker } from '../services/tool-broker';
@@ -46,15 +46,17 @@ import { EvidenceService } from '../services/evidence-service';
 import { DiffCaptureService } from '../services/diff-capture';
 import { MemorySyncService } from '../services/memory-sync-service';
 import { ReasoningBankService } from '../services/reasoning-bank-service';
+import { RuntimeLeaseRegistry } from '../services/loop-recovery-service';
 import { TrajectoryStore } from '../services/trajectory-store';
 import { MetaOrchestrationService } from '../services/meta-orchestration-service';
 import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { SkillLoaderService, type SkillDefinition } from '../services/skill-loader-service';
 import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
-import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
+import { canonicalJson, DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
 import { DennisAgentService } from '../services/dennis-agent-service';
 import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
+import { createError } from '../middleware/error-handler';
 
 export interface ExecuteTaskResult {
   status: 'started' | 'awaiting_approval' | 'denied';
@@ -179,6 +181,61 @@ export class ExecutionEngine {
   getExecutor(kind: ExecutorKind): TaskExecutor | undefined {
     return this.executors.get(kind);
   }
+
+  /**
+   * Startup-only reconciliation under the existing single-server-per-DB model.
+   * Lost JS ownership is NOT proof an external CLI/container has stopped.
+   * Never replay work, kill unknown PIDs, or clear an uncertain recovery hold.
+   */
+  recoverInterruptedTasks(): { failedMockTasks: number; heldTasks: number } {
+    const result = { failedMockTasks: 0, heldTasks: 0 };
+    const tasks = this.db.prepare("SELECT id, metadata FROM tasks WHERE status = 'running'").all() as Array<{ id: string; metadata: string }>;
+    for (const task of tasks) {
+      if (this.activeSessions.has(task.id) || this.pendingExecutions.has(task.id)) continue;
+      let metadata: Record<string, any>;
+      try {
+        metadata = JSON.parse(task.metadata || '{}');
+        if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) metadata = {};
+      } catch { metadata = { execution_recovery_invalid_metadata: true }; }
+      const stamp = metadata.execution_recovery_attempt;
+      // Correlate the protected stamp with the latest engine-authored admission.
+      // Requested model/runtime metadata and legacy uncorrelated logs are not proof.
+      const admitted = this.db.prepare(`SELECT id, metadata FROM execution_events WHERE task_id = ?
+        AND json_valid(metadata) AND json_extract(metadata, '$.source') = 'execution-engine'
+        AND json_extract(metadata, '$.phase') = 'admitted' ORDER BY rowid DESC LIMIT 1`).get(task.id) as { id: string; metadata: string } | undefined;
+      const actual = admitted ? JSON.parse(admitted.metadata) : null;
+      const safeMock = Boolean(stamp && typeof stamp === 'object' && admitted && actual
+        && stamp.event_id === admitted.id && typeof stamp.attempt_id === 'string' && stamp.attempt_id === actual.attempt_id
+        && stamp.executorKind === 'mock' && actual.executorKind === 'mock'
+        && stamp.inProcess === true && actual.inProcess === true && stamp.sandboxed === false && actual.sandboxed === false);
+      const now = new Date().toISOString();
+      const status = safeMock ? TaskStatus.FAILED : TaskStatus.PAUSED;
+      const reason = safeMock
+        ? 'Server ownership was lost; the confirmed in-process mock cannot survive server exit.'
+        : 'Server ownership was lost. External execution outcome is unknown; operator reconciliation is required before redispatch.';
+      const nextMetadata = { ...metadata, execution_recovery_hold: !safeMock,
+        execution_recovery_reason: 'server_restart', execution_recovery_reconciled_at: now,
+        execution_recovery_outcome: safeMock ? 'interrupted_in_process' : 'unknown' };
+      this.db.transaction(() => {
+        this.db.prepare('UPDATE tasks SET status = ?, metadata = ?, failed_at = ?, updated_at = ? WHERE id = ?')
+          .run(status, JSON.stringify(nextMetadata), safeMock ? now : null, now, task.id);
+        const eventId = this.persistEvent({ task_id: task.id,
+          event_type: safeMock ? ExecutionEventType.TASK_FAILED : ExecutionEventType.TASK_PAUSED,
+          level: LogLevel.WARNING, message: reason, metadata: { source: 'startup-recovery', outcome: nextMetadata.execution_recovery_outcome } });
+        this.auditService.record({ event_type: safeMock ? AuditEventType.TASK_EXECUTED : AuditEventType.EXECUTION_PAUSED,
+          action: 'execution_reconciled_after_restart', task_id: task.id, resource_type: 'task', resource_id: task.id,
+          execution_event_id: eventId, before: { status: 'running' }, after: { status }, metadata: { outcome: nextMetadata.execution_recovery_outcome, automatic_replay: false } });
+        this.evidenceService.captureEvidence({ task_id: task.id, execution_event_id: eventId,
+          evidence_type: EvidenceType.EXECUTION_SUMMARY, severity: EvidenceSeverity.WARNING,
+          title: 'Execution ownership lost at server restart', summary: reason,
+          details: { outcome: nextMetadata.execution_recovery_outcome, automaticReplay: false, externalProcessTerminationConfirmed: false }, source: 'system' });
+      })();
+      this.wsService.broadcastTaskEvent(this.getTask(task.id), { type: WebSocketEventType.TASK_UPDATED,
+        payload: { task: this.getTask(task.id) }, timestamp: now });
+      if (safeMock) result.failedMockTasks++; else result.heldTasks++;
+    }
+    return result;
+  }
   
   /**
    * Execute a task
@@ -194,6 +251,9 @@ export class ExecutionEngine {
     if (!task) {
       throw new Error('Task not found');
     }
+    if (task.status === TaskStatus.RUNNING) {
+      throw createError(409, 'TASK_RUNNING: Durable running state must be reconciled before redispatch', 'TASK_RUNNING');
+    }
     
     // Parse JSON fields
     const parsedTask: Task = {
@@ -202,11 +262,15 @@ export class ExecutionEngine {
       metadata: JSON.parse(task.metadata || '{}'),
     };
 
+    if (parsedTask.metadata.execution_recovery_hold === true) {
+      throw createError(409, 'EXECUTION_RECOVERY_REQUIRED: External execution outcome must be reconciled before redispatch', 'EXECUTION_RECOVERY_REQUIRED');
+    }
+
     if (parsedTask.metadata.deep_agent_assurance_hold === true) {
       throw new Error('DEEP_AGENT_ASSURANCE_HOLD: Independent EVE-V assurance is required before redispatch.');
     }
 
-    const latestApproval = this.approvalService.getLatestPendingForTask(taskId);
+    const latestApproval = this.approvalService.getLatestPendingForTask(taskId, { executionOnly: true });
     if (latestApproval) {
       throw new Error('Task is awaiting approval');
     }
@@ -223,6 +287,9 @@ export class ExecutionEngine {
       });
       return { status: 'denied', reason };
     }
+
+    this.assertTaskLoopNotPaused(parsedTask);
+    this.assertAssignedAgentAvailable(parsedTask);
 
     const attributionBlockReason = this.blockInvalidSkillAttribution(parsedTask);
     if (attributionBlockReason) {
@@ -317,7 +384,7 @@ export class ExecutionEngine {
         title: 'Approval required before task execution',
         description: evaluation.explanation,
         policyId: evaluation.matchingPolicies[0]?.id,
-        metadata: { executorKind },
+        metadata: { executorKind, executionInputHash: this.executionInputHash(parsedTask, executorKind) },
         requestedBy: dispatcherId,
       });
       this.updateTaskStatus(taskId, TaskStatus.AWAITING_APPROVAL);
@@ -353,7 +420,7 @@ export class ExecutionEngine {
       task_id: taskId,
       evidence_type: EvidenceType.EXECUTION_SUMMARY,
       severity: EvidenceSeverity.INFO,
-      title: `Task execution started (${evaluation.decision})`,
+      title: `Execution admitted to queue (${evaluation.decision})`,
       summary: `Risk: ${assessment.risk_level}. Policy decision: ${evaluation.decision}. Executor: ${executorKind}.`,
       details: { riskLevel: assessment.risk_level, policyDecision: evaluation.decision, executorKind },
       source: 'system',
@@ -394,6 +461,50 @@ export class ExecutionEngine {
       this.pendingExecutions.delete(taskId);
     }
     try {
+      const currentTask = this.getTask(taskId);
+      this.assertTaskLoopNotPaused(currentTask);
+      this.assertAssignedAgentAvailable(currentTask);
+      if (currentTask.metadata.execution_recovery_hold === true) {
+        throw createError(409, 'Task now requires execution recovery', 'EXECUTION_RECOVERY_REQUIRED');
+      }
+      if (currentTask.metadata.deep_agent_assurance_hold === true) {
+        throw createError(409, 'Task now requires independent EVE-V assurance', 'DEEP_AGENT_ASSURANCE_HOLD');
+      }
+      if (currentTask.status !== TaskStatus.QUEUED) {
+        throw createError(409, 'Task state changed while waiting for capacity', 'TASK_EXECUTION_STATE_CHANGED');
+      }
+      if (this.executionInputHash(parsedTask, executorKind) !== this.executionInputHash(currentTask, executorKind)) {
+        throw createError(409, 'TASK_EXECUTION_INPUT_CHANGED: Task changed while waiting for capacity; request execution again', 'TASK_EXECUTION_INPUT_CHANGED');
+      }
+
+      // Task bytes alone do not bind mutable policy or governance evidence.
+      // Reassess at admission after the asynchronous capacity wait, before any
+      // provider starts; a tighter decision requires a new explicit request.
+      const currentAssessment = this.riskClassifier.assessTask(currentTask, executorKind, process.cwd());
+      let currentEvaluation = this.policyDecisionService.evaluate(currentAssessment);
+      const currentGate = this.governanceGate.assess(currentTask, executorKind);
+      if (currentGate.action === 'require_approval' && currentEvaluation.decision === 'allow') {
+        currentEvaluation = { ...currentEvaluation, decision: 'require_approval', explanation: currentGate.reason };
+      }
+      this.persistRiskAssessment(taskId, currentAssessment, `${currentTask.title}: ${currentTask.description}`);
+      this.evidenceService.captureEvidence({
+        task_id: taskId,
+        evidence_type: EvidenceType.POLICY_DECISION,
+        severity: currentEvaluation.decision === 'deny' ? EvidenceSeverity.CRITICAL
+          : currentEvaluation.decision === 'require_approval' ? EvidenceSeverity.WARNING : EvidenceSeverity.INFO,
+        title: 'Execution admission revalidated after capacity wait',
+        summary: currentEvaluation.explanation,
+        details: { previousDecision: evaluation.decision, decision: currentEvaluation.decision,
+          riskLevel: currentAssessment.risk_level, governanceAction: currentGate.action,
+          matchingPolicyIds: currentEvaluation.matchingPolicies.map(policy => policy.id), executorKind },
+        source: 'queue-admission',
+      });
+      if (currentEvaluation.decision === 'deny') {
+        throw createError(409, 'Execution denied by current policy after capacity wait', 'EXECUTION_POLICY_DENIED');
+      }
+      if (currentEvaluation.decision === 'require_approval' && !this.hasApprovedStart(taskId, executorKind)) {
+        throw createError(409, 'Execution approval is no longer current; request execution again', 'EXECUTION_APPROVAL_STALE');
+      }
       if (executorKind === 'deep-agent') {
         if (!this.deepAgentIssuer) throw new Error('Deep Agent Federation issuer is unavailable');
         parsedTask.metadata.deep_agent_contract = this.deepAgentIssuer.issue(parsedTask, dispatcherId || '');
@@ -404,14 +515,65 @@ export class ExecutionEngine {
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
       const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
-      return { status: 'started', completion: session.result };
+      const completion = session.closed ? session.result.then(
+        async result => { await session.closed; return result; },
+        async error => { await session.closed; throw error; },
+      ) : session.result;
+      return { status: 'started', completion };
     } catch (error) {
       runtimeConcurrencySemaphore.release(`execution:${taskId}`);
-      this.updateTaskStatus(taskId, TaskStatus.FAILED, {
-        failed_at: new Date().toISOString(),
-      });
+      // Preserve an explicit operator cancellation/pause observed at admission.
+      if (![TaskStatus.CANCELLED, TaskStatus.PAUSED].includes(this.getTask(taskId).status)) {
+        this.updateTaskStatus(taskId, TaskStatus.FAILED, {
+          failed_at: new Date().toISOString(),
+        });
+      }
       throw error;
     }
+  }
+
+  private assertTaskLoopNotPaused(task: Task): void {
+    const loopIds = new Set<string>();
+    // Resolve server-owned pointers as well: old clients could previously erase
+    // the task's editable metadata, but cannot detach its canonical worker.
+    const workers = this.db.prepare(`SELECT loop_run_id FROM worker_leases
+      WHERE json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.execution_task_id') = ?`)
+      .all(task.id) as Array<{ loop_run_id: string }>;
+    for (const worker of workers) loopIds.add(worker.loop_run_id);
+    if (typeof task.metadata.loop_run_id === 'string') loopIds.add(task.metadata.loop_run_id);
+    if (typeof task.metadata.lease_id === 'string') {
+      const lease = this.db.prepare('SELECT loop_run_id FROM worker_leases WHERE id = ?').get(task.metadata.lease_id) as { loop_run_id: string } | undefined;
+      if (lease) loopIds.add(lease.loop_run_id);
+    }
+    for (const loopId of loopIds) {
+      const run = this.db.prepare(`SELECT r.metadata AS run_metadata, g.metadata AS goal_metadata
+        FROM loop_runs r LEFT JOIN goals g ON g.id = r.goal_id WHERE r.id = ?`).get(loopId) as { run_metadata: string; goal_metadata: string | null } | undefined;
+      if (!run) continue;
+      if (JSON.parse(run.run_metadata || '{}').operator_paused !== true
+        && JSON.parse(run.goal_metadata || '{}').operator_paused !== true) continue;
+      this.persistEvent({ task_id: task.id, event_type: ExecutionEventType.ERROR, level: LogLevel.ERROR,
+        message: 'Loop execution is paused by its operator', metadata: { source: 'loop-dispatch-admission', loopRunId: loopId } });
+      throw createError(409, 'LOOP_OPERATOR_PAUSED: Resume the operator-paused goal before dispatch', 'LOOP_OPERATOR_PAUSED');
+    }
+  }
+
+  private assertAssignedAgentAvailable(task: Task): void {
+    if (!task.agent_id) return;
+    const agent = this.db.prepare('SELECT status, retired_at FROM agents WHERE id = ?').get(task.agent_id) as { status: string; retired_at: string | null } | undefined;
+    const reason = !agent
+      ? `Assigned agent ${task.agent_id} no longer exists`
+      : agent.retired_at
+        ? `Assigned agent ${task.agent_id} is retired`
+      : !['idle', 'active'].includes(agent.status)
+        ? `Assigned agent ${task.agent_id} cannot dispatch while ${agent.status}`
+        : !this.runtimeGovernance.isAllowed(task.agent_id)
+          ? `Assigned agent ${task.agent_id} is blocked by runtime governance`
+          : null;
+    if (!reason) return;
+    this.persistEvent({ task_id: task.id, event_type: ExecutionEventType.ERROR,
+      level: LogLevel.ERROR, message: reason,
+      metadata: { source: 'agent-dispatch-admission', agentId: task.agent_id, agentStatus: agent?.status ?? 'missing' } });
+    throw createError(409, reason, 'AGENT_UNAVAILABLE');
   }
 
   private async startExecutionAttempt(
@@ -422,6 +584,10 @@ export class ExecutionEngine {
     maxRetries: number,
     workingDirectory?: string,
   ): Promise<ExecutionSession> {
+    // Capacity waits and fallback attempts are new admission boundaries: an
+    // agent can be paused, retired or quarantined after the initial request.
+    this.assertTaskLoopNotPaused(task);
+    this.assertAssignedAgentAvailable(task);
     const executor = this.executors.get(executorKind);
     if (!executor || !executor.canExecute(task)) {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
@@ -453,13 +619,50 @@ export class ExecutionEngine {
 
     try {
       const executionMetadata = task.metadata as Record<string, unknown>;
+      if (executionMetadata.model !== undefined && (typeof executionMetadata.model !== 'string' || !executionMetadata.model.trim() || executionMetadata.model.length > 200)) {
+        throw new Error('INVALID_EXECUTION_MODEL');
+      }
+      const reasoningEffort = executionMetadata.reasoningEffort;
+      if (reasoningEffort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(String(reasoningEffort))) {
+        throw new Error('INVALID_REASONING_EFFORT');
+      }
+      const codexSandbox = executionMetadata.codexSandbox;
+      if (codexSandbox !== undefined && !['read-only', 'workspace-write'].includes(String(codexSandbox))) {
+        throw new Error('INVALID_CODEX_SANDBOX');
+      }
+      // Record the actual attempt before any external start, including fallback
+      // and sandbox selection. This is provenance, not durable process ownership.
+      const admission = { source: 'execution-engine', phase: 'admitted', attempt_id: randomUUID(),
+        executorKind: activeExecutor.kind, inProcess: activeExecutor instanceof MockExecutor,
+        sandboxed: sandboxMeta.enabled === true };
+      this.db.transaction(() => {
+        const eventId = this.persistEvent({ task_id: task.id, event_type: ExecutionEventType.LOG,
+          level: LogLevel.INFO, message: 'Execution attempt admitted; process start not yet confirmed', metadata: admission });
+        this.db.prepare(`UPDATE tasks SET status = 'running', metadata = json_set(COALESCE(metadata, '{}'),
+          '$.execution_recovery_attempt', json(?)), updated_at = ? WHERE id = ?`)
+          .run(JSON.stringify({ ...admission, event_id: eventId }), new Date().toISOString(), task.id);
+      })();
       const session = await activeExecutor.start(task, {
+        ...(executionMetadata.model ? { model: String(executionMetadata.model) } : {}),
+        ...(reasoningEffort ? { reasoningEffort: reasoningEffort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' } : {}),
+        ...(codexSandbox ? { codexSandbox: codexSandbox as 'read-only' | 'workspace-write' } : {}),
         ...(workingDirectory ? { workingDirectory } : {}),
         ...(executionMetadata.environment ? { environment: executionMetadata.environment as Record<string, string> } : {}),
         ...(executionMetadata.timeoutMs ? { timeout: Number(executionMetadata.timeoutMs) } : {}),
         ...(resolveExecutorSkipPermissions(executionMetadata.skipPermissions) ? { skipPermissions: true } : {}),
       });
       this.activeSessions.set(task.id, session);
+      const leaseId = task.metadata.lease_id;
+      if (typeof leaseId === 'string') {
+        const lease = this.db.prepare("SELECT id FROM worker_leases WHERE id = ? AND json_extract(metadata, '$.execution_task_id') = ?").get(leaseId, task.id);
+        if (lease) {
+          const unregister = RuntimeLeaseRegistry.register(leaseId, async () => {
+            if (this.activeSessions.get(task.id) === session) await this.cancelTask(task.id);
+          });
+          const cleanup = async () => { if (session.closed) await session.closed; unregister(); };
+          void session.result.then(cleanup, cleanup);
+        }
+      }
       this.updateTaskStatus(task.id, TaskStatus.RUNNING, {
         started_at: session.startedAt.toISOString(),
       });
@@ -506,7 +709,8 @@ export class ExecutionEngine {
     maxRetries: number,
     workingDirectory?: string,
   ): Promise<void> {
-    if (session.status === 'cancelled') return;
+    if (session.closed) await session.closed;
+    if (session.status === 'cancelled' || this.activeSessions.get(task.id) !== session) return;
     if (result.status === 'completed') {
       this.circuitBreaker.recordSuccess(session.executorKind);
       if (this.trajectoryStore) {
@@ -546,7 +750,8 @@ export class ExecutionEngine {
     workingDirectory?: string,
     failedResult?: ExecutionResult,
   ): Promise<void> {
-    this.activeSessions.delete(task.id);
+    if (session.closed) await session.closed;
+    if (session.status === 'cancelled' || this.activeSessions.get(task.id) !== session) return;
     this.circuitBreaker.recordFailure(session.executorKind);
     const fallback = this.nextRetryExecutor(session.executorKind, mode, attempt, maxRetries, failure);
     if (fallback) {
@@ -559,7 +764,7 @@ export class ExecutionEngine {
       }
     }
     if (failedResult) this.handleExecutionComplete(task.id, session, failedResult);
-    else this.handleExecutionError(task.id, new ExecutionFailureError(failure));
+    else this.handleExecutionError(task.id, new ExecutionFailureError(failure), session);
   }
 
   private nextRetryExecutor(
@@ -621,6 +826,16 @@ export class ExecutionEngine {
 
   async handleApprovalDecision(approvalId: string, approved: boolean, decidedBy?: string, reason?: string): Promise<ExecuteTaskResult | null> {
     const approval = this.approvalService.decideApproval(approvalId, approved, decidedBy || 'system', reason);
+    if (approval.metadata?.manual_action === true) {
+      this.evidenceService.captureEvidence({
+        task_id: approval.task_id, approval_id: approvalId,
+        evidence_type: EvidenceType.APPROVAL_DECISION,
+        severity: approved ? EvidenceSeverity.INFO : EvidenceSeverity.WARNING,
+        title: approved ? 'Action approved' : 'Action denied',
+        summary: reason || 'Manual action reviewed; execution is not implied.', source: 'approval',
+      });
+      return null;
+    }
     if (!approved) {
       if (approval.metadata?.dennis_action === 'materialize_dry_run') {
         new DennisAgentService(this.db).finalizeDeniedDryRun(approvalId, decidedBy);
@@ -693,7 +908,10 @@ export class ExecutionEngine {
       throw new Error('Task is not running');
     }
     
+    session.status = 'cancelled';
     await session.cancel();
+    if (session.closed) await session.closed;
+    if (this.activeSessions.get(taskId) !== session) return;
     this.activeSessions.delete(taskId);
     runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.diffContexts.delete(taskId);
@@ -797,14 +1015,18 @@ export class ExecutionEngine {
     eventId: string,
     event: ExecutionEventCreateInput
   ): void {
+    // The input deliberately has no timestamp. Use the persisted event's
+    // canonical times so WebSocket and REST consumers receive the same record.
+    const timestamps = this.db.prepare(`
+      SELECT timestamp, created_at, updated_at FROM execution_events WHERE id = ? AND task_id = ?
+    `).get(eventId, taskId) as { timestamp: string; created_at: string; updated_at: string };
     this.wsService.broadcastTaskEventById(taskId, {
       type: WebSocketEventType.EXECUTION_EVENT,
       payload: {
         event: {
           id: eventId,
           ...event,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          ...timestamps,
         },
       },
       timestamp: new Date().toISOString(),
@@ -819,6 +1041,7 @@ export class ExecutionEngine {
     session: ExecutionSession,
     result: any
   ): void {
+    if (this.activeSessions.get(taskId) !== session) return;
     this.activeSessions.delete(taskId);
     runtimeConcurrencySemaphore.release(`execution:${taskId}`);
     this.db.prepare("UPDATE tasks SET metadata = json_set(COALESCE(metadata, '{}'), '$.executionResult', json(?)) WHERE id = ?")
@@ -941,7 +1164,8 @@ export class ExecutionEngine {
   /**
    * Handle execution error
    */
-  private handleExecutionError(taskId: string, error: Error): void {
+  private handleExecutionError(taskId: string, error: Error, session?: ExecutionSession): void {
+    if (session && this.activeSessions.get(taskId) !== session) return;
     this.activeSessions.delete(taskId);
     runtimeConcurrencySemaphore.release(`execution:${taskId}`);
 
@@ -1046,11 +1270,32 @@ export class ExecutionEngine {
     const setClauses = Object.keys(updates).map(key => `${key} = ?`).join(', ');
     const values = Object.values(updates);
     
-    this.db.prepare(`UPDATE tasks SET ${setClauses} WHERE id = ?`).run(...values, taskId);
+    const task = this.db.transaction(() => {
+      const previous = this.getTask(taskId);
+      this.db.prepare(`UPDATE tasks SET ${setClauses} WHERE id = ?`).run(...values, taskId);
+      const current = this.getTask(taskId);
+      if (previous.status !== current.status && (current.status === TaskStatus.COMPLETED || current.status === TaskStatus.FAILED)) {
+        const completed = current.status === TaskStatus.COMPLETED;
+        this.auditService.record({
+          event_type: completed ? AuditEventType.TASK_EXECUTED : AuditEventType.EXECUTION_FAILED,
+          action: completed ? 'execution_completed' : 'execution_failed',
+          user_id: 'system', // Engine transition, not an inferred human approval.
+          agent_id: current.agent_id || undefined,
+          task_id: taskId,
+          resource_type: 'task',
+          resource_id: taskId,
+          risk_level: current.risk_level,
+          before: { status: previous.status, completed_at: previous.completed_at, failed_at: previous.failed_at },
+          after: { status: current.status, completed_at: current.completed_at, failed_at: current.failed_at },
+          metadata: { source: 'execution-engine', execution_time_ms: current.execution_time_ms },
+        });
+      }
+      return current;
+    })();
     
-    this.wsService.broadcastTaskEvent(this.getTask(taskId), {
+    this.wsService.broadcastTaskEvent(task, {
       type: WebSocketEventType.TASK_UPDATED,
-      payload: { task: this.getTask(taskId) },
+      payload: { task },
       timestamp: new Date().toISOString(),
     });
   }
@@ -1208,16 +1453,35 @@ export class ExecutionEngine {
     return id;
   }
 
+  private executionInputHash(task: Task, executorKind: ExecutorKind): string {
+    const metadata = { ...task.metadata };
+    // Runtime output/recovery stamps are not new execution instructions.
+    for (const key of Object.keys(metadata)) {
+      if (key === 'executionResult' || key === 'deep_agent_contract' || key.startsWith('execution_recovery_')) delete metadata[key];
+    }
+    return createHash('sha256').update(canonicalJson({
+      executorKind, taskId: task.id, title: task.title, description: task.description,
+      priority: task.priority, risk: task.risk_level, mode: task.execution_mode,
+      agentId: task.agent_id ?? null, parentTaskId: task.parent_task_id ?? null,
+      repositoryId: task.repository_id ?? null, instructionProfileId: task.instruction_profile_id ?? null,
+      tags: task.tags, metadata,
+    })).digest('hex');
+  }
+
   private hasApprovedStart(taskId: string, executorKind: ExecutorKind): boolean {
     const approval = this.db.prepare(`
       SELECT * FROM approvals
-      WHERE task_id = ? AND status = 'approved'
+      WHERE task_id = ?
         AND json_valid(COALESCE(metadata, '{}')) = 1
         AND json_extract(COALESCE(metadata, '{}'), '$.executorKind') = ?
-      ORDER BY updated_at DESC
+        AND COALESCE(json_type(metadata, '$.manual_action'), 'null') != 'true'
+      ORDER BY created_at DESC, rowid DESC
       LIMIT 1
     `).get(taskId, executorKind) as any;
-    return Boolean(approval);
+    if (!approval || approval.status !== 'approved' || !approval.expires_at
+      || !(Date.parse(approval.expires_at) > Date.now())) return false;
+    // Historical unbound approvals stay evidence, not reusable execution grants.
+    return JSON.parse(approval.metadata).executionInputHash === this.executionInputHash(this.getTask(taskId), executorKind);
   }
 
   private capturePreExecutionDiff(taskId: string, repositoryId: string | null | undefined): void {

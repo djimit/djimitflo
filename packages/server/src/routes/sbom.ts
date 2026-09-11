@@ -10,6 +10,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 interface SBOMComponent {
   type: 'library' | 'framework' | 'application';
@@ -81,7 +82,7 @@ export function createSBOMRoutes(_db: Database, auth?: AuthMiddleware): Router {
 
 function generateCycloneDX(): CycloneDXSBOM {
   const components: SBOMComponent[] = [];
-  const rootDir = process.cwd();
+  const rootDir = resolveRepositoryRoot(process.cwd());
 
   const lockfilePath = join(rootDir, 'package-lock.json');
   if (existsSync(lockfilePath)) {

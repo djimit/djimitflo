@@ -7,12 +7,22 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SkillEvolutionGym } from '../services/skill-evolution-gym';
 import { GymGovernanceCurriculum } from '../services/gym-governance-curriculum';
+import { createError } from '../middleware/error-handler';
 
 export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const gym = new SkillEvolutionGym(db);
   const curriculum = new GymGovernanceCurriculum(db);
+
+  function boundedLimit(value: unknown): number {
+    if (value === undefined) return 10;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+    }
+    return limit;
+  }
 
   // GET /api/gym/governance/:skillId — governance status
   router.get('/governance/:skillId', requirePermission('read:evidence'), (req, res, next) => {
@@ -54,8 +64,7 @@ export function createGymRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/gym/governance/:skillId/history — governance evaluation history
   router.get('/governance/:skillId/history', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const limit = req.query.limit ? Number(req.query.limit) : 10;
-      const history = gym.getGovernanceHistory(req.params.skillId, limit);
+      const history = gym.getGovernanceHistory(req.params.skillId, boundedLimit(req.query.limit));
       res.json({ skillId: req.params.skillId, history });
     } catch (error) {
       next(error);

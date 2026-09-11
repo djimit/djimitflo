@@ -10,6 +10,7 @@ import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { ExecutionEngine } from '../execution/execution-engine';
+import { createError } from '../middleware/error-handler';
 import type { ExecutionResult, ExecutorKind } from '../execution/types';
 import type { LoopService } from './loop-service';
 import type {
@@ -55,6 +56,7 @@ export class LoopWorkerExecutorService {
 
   async executeMaker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertWallClockBudgetAvailable(run);
     const leases = this.loopService.listWorkerLeases(run.id);
     const makerLease = input.lease_id
@@ -172,6 +174,7 @@ export class LoopWorkerExecutorService {
     this.updateRunAndRecord(run, makerLease, failed, wasCancelled, gates, budgetRisk, stdoutPath, stderrPath, runtimeUsage, runtimeWarnings, efficiency, tokenBudget, result, runtimeContract);
 
     const completedLease = this.loopService.getWorkerLease(makerLease.id);
+    if (wasCancelled) return { run: this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
     if (!wasCancelled && completionStatus === 'completed') {
       return { run: failed ? this.loopService.escalateIfFailureThresholdExceeded(run.id, 'maker_execution_failed') : this.loopService.getLoopRun(run.id), lease: completedLease, gates, stdout_path: stdoutPath, stderr_path: stderrPath };
     }
@@ -187,21 +190,28 @@ export class LoopWorkerExecutorService {
 
   async executeChecker(id: string, input: ExecuteCheckerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     const leases = this.loopService.listWorkerLeases(run.id);
     const checker = input.lease_id
       ? leases.find((candidate) => candidate.id === input.lease_id)
       : leases.find((candidate) => candidate.role === 'checker' && candidate.status === 'prepared');
 
     if (!checker) throw new Error('CHECKER_LEASE_NOT_FOUND');
-    if (checker.role !== 'checker') throw new Error('LEASE_NOT_CHECKER');
+    if (checker.role !== 'checker' && checker.role !== 'security_checker') throw new Error('LEASE_NOT_CHECKER');
+    if (checker.status !== 'prepared') throw createError(409, 'Checker lease must be prepared before dispatch', 'CHECKER_LEASE_NOT_PREPARED');
+    const reviewRole = checker.role;
 
     const makerLeaseId = checker.metadata.maker_lease_id as string | undefined;
     if (!makerLeaseId) throw new Error('CHECKER_MAKER_LINK_MISSING');
     const maker = leases.find((lease) => lease.id === makerLeaseId);
-    if (!maker || maker.status !== 'completed') throw new Error('CHECKER_MAKER_NOT_COMPLETED');
+    if (!maker || maker.role !== 'maker' || maker.status !== 'completed') throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     if (!maker.worktree_path || !fs.existsSync(maker.worktree_path)) throw new Error('MAKER_WORKTREE_NOT_FOUND');
 
-    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : 'mock');
+    const runtime = input.runtime || (checker.runtime !== 'manual' ? checker.runtime : undefined);
+    if (!runtime || runtime === 'manual') throw createError(400, 'An explicit runtime is required to dispatch a manual reviewer; use verdict submission for manual review', 'CHECKER_RUNTIME_REQUIRED');
+    if (checker.metadata.execution_task_id && runtime !== checker.runtime) {
+      throw createError(409, 'Reviewer continuation must use the originally dispatched runtime', 'CHECKER_RUNTIME_MISMATCH');
+    }
     const runtimeContract = this.loopService.getRuntimeContract(runtime);
 
     this.loopService.recordWorkerManifest({
@@ -226,7 +236,7 @@ export class LoopWorkerExecutorService {
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
-    const checkerFindingId = `${maker.finding_id || maker.id}-checker-${checker.id.slice(0, 8)}`;
+    const checkerFindingId = `${maker.finding_id || maker.id}-${reviewRole}-${checker.id.slice(0, 8)}`;
     const checkerBranch = this.loopService.branchNameFor(run.id, checkerFindingId);
     const checkerWorktree = checker.worktree_path || this.loopService.createWorktree(
       maker.worktree_path,
@@ -235,6 +245,11 @@ export class LoopWorkerExecutorService {
       checkerBranch,
       false,
     );
+    const checkerRealPath = fs.realpathSync(checkerWorktree);
+    if (leases.some((lease) => lease.id !== checker.id && lease.worktree_path
+      && fs.existsSync(lease.worktree_path) && fs.realpathSync(lease.worktree_path) === checkerRealPath)) {
+      throw createError(409, 'Reviewer worktree must be independent of all other worker leases', 'CHECKER_WORKTREE_NOT_INDEPENDENT');
+    }
     this.loopService.updateWorkerLeaseWorktree(checker.id, checkerWorktree, checkerBranch);
 
     const traceId = `loop-${run.id}-checker-${checker.id}`;
@@ -251,6 +266,10 @@ export class LoopWorkerExecutorService {
       : await this.executeViaEngine(run, checker, runtime, prompt, checkerWorktree, timeoutMs, skipPermissions);
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
+    if (this.loopService.isWorkerLeaseCancelled(checker.id)) {
+      this.loopService.patchWorkerLeaseMetadata(checker.id, { stdout_path: stdoutPath, stderr_path: stderrPath, runtime_was_cancelled: true });
+      return { run: this.loopService.getLoopRun(run.id), lease: this.loopService.getWorkerLease(checker.id), gates: [], stdout_path: stdoutPath, stderr_path: stderrPath };
+    }
     const exitStatus = result.exitCode;
     const timedOut = result.timedOut;
     const runtimeUsage = this.loopService.extractRuntimeUsage(result.stdout || '');
@@ -266,12 +285,13 @@ export class LoopWorkerExecutorService {
       exit_status: exitStatus, timed_out: timedOut, runtime_pid: result.runtimePid, runtime_signal: result.signal,
       runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt, runtime_adapter: runtime,
       runtime_contract: runtimeContract, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings,
+      read_only_contract_passed: checkerReadOnly, runtime_verdict: verdict,
     });
 
     const gates: LoopGate[] = [
-      { name: 'checker_runtime_exit_zero', status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
-      { name: 'checker_verdict', status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `checker verdict=${verdict}` },
-      { name: 'checker_read_only_contract', status: checkerReadOnly ? 'pass' : 'fail', evidence: checkerReadOnly ? 'Checker worktree remained clean.' : (checkerDiffStat || checkerStatus).slice(0, 1_000) },
+      { name: `${reviewRole}_runtime_exit_zero`, status: exitStatus === 0 && !timedOut ? 'pass' : 'fail', evidence: `runtime=${runtime}, exit=${exitStatus ?? 'signal'}, timed_out=${timedOut}` },
+      { name: `${reviewRole}_verdict`, status: verdict === 'accepted' ? 'pass' : 'fail', evidence: `${reviewRole} verdict=${verdict}` },
+      { name: `${reviewRole}_read_only_contract`, status: checkerReadOnly ? 'pass' : 'fail', evidence: checkerReadOnly ? 'Checker worktree remained clean.' : (checkerDiffStat || checkerStatus).slice(0, 1_000) },
     ];
 
     const failed = gates.some((gate) => gate.status === 'fail');
@@ -284,7 +304,7 @@ export class LoopWorkerExecutorService {
       new Date().toISOString(), run.id,
     );
 
-    this.loopService.recordLoopEvent(run.id, 'checker_executed', failed ? 'warning' : 'info', `Checker lease ${checker.id} ${failed ? 'failed gates' : 'completed'}.`, { checker_lease_id: checker.id, maker_lease_id: maker.id, verdict, gates, stdout_path: stdoutPath, stderr_path: stderrPath, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings });
+    this.loopService.recordLoopEvent(run.id, `${reviewRole}_executed`, failed ? 'warning' : 'info', `${reviewRole} lease ${checker.id} ${failed ? 'failed gates' : 'completed'}.`, { worker_role: reviewRole, checker_lease_id: checker.id, maker_lease_id: maker.id, verdict, gates, stdout_path: stdoutPath, stderr_path: stderrPath, runtime_usage: runtimeUsage || { usage_source: 'unknown' }, runtime_warnings: runtimeWarnings });
     this.loopService.recordWorkerManifest({
       decisionId: this.loopService.makeManifestDecisionId(run.id, checker.id, failed ? 'fail' : 'complete'),
       loopRunId: run.id, leaseId: checker.id, action: failed ? 'fail' : 'complete', runtimeContract,
@@ -346,12 +366,20 @@ export class LoopWorkerExecutorService {
     const previousTaskId = lease.metadata.execution_task_id as string | undefined;
     if (previousTaskId) {
       const previousTask = this.db.prepare('SELECT status, metadata FROM tasks WHERE id = ?').get(previousTaskId) as { status: string; metadata: string } | undefined;
-      const previousResult = previousTask ? JSON.parse(previousTask.metadata || '{}').executionResult as ExecutionResult | undefined : undefined;
+      const previousMetadata = previousTask ? JSON.parse(previousTask.metadata || '{}') : {};
+      if (previousMetadata.execution_recovery_hold === true) throw new Error('LOOP_WORKER_EXECUTION_RECOVERY_REQUIRED');
+      const previousResult = previousMetadata.executionResult as ExecutionResult | undefined;
       if (previousResult && ['completed', 'failed', 'cancelled'].includes(previousTask!.status)) {
         return this.toRuntimeResult(previousResult);
       }
-      if (previousTask?.status === 'awaiting_approval') throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
-      if (previousTask?.status === 'running' || previousTask?.status === 'queued') throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
+      if (previousTask?.status === 'awaiting_approval') {
+        this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', {});
+        throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      }
+      if (previousTask?.status === 'running' || previousTask?.status === 'queued') {
+        this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', {});
+        throw new Error('LOOP_WORKER_EXECUTION_IN_PROGRESS');
+      }
     }
 
     const taskId = `loop-worker-${lease.id}-${randomUUID().slice(0, 8)}`;
@@ -368,7 +396,11 @@ export class LoopWorkerExecutorService {
       this.loopService.isHighRiskRun(run) ? 'high' : 'medium',
       this.loopService.isHighRiskRun(run) ? 'high' : 'low',
       JSON.stringify(['loop-worker', lease.role, runtime]),
-      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment }),
+      JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
+        ...(typeof lease.metadata.model === 'string' ? { model: lease.metadata.model } : {}),
+        ...(runtime === 'codex' && typeof lease.metadata.reasoningEffort === 'string' ? { reasoningEffort: lease.metadata.reasoningEffort } : {}),
+        ...(runtime === 'codex' ? { codexSandbox: lease.role === 'maker' ? 'workspace-write' : 'read-only' } : {}),
+      }),
       now,
       now,
     );

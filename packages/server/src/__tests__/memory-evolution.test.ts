@@ -45,6 +45,18 @@ describe('memory evolution routes', () => {
     expect(evolved.status).toBe('scheduled');
     expect(evolved.goals).toHaveLength(1);
     expect(db.prepare('SELECT status FROM goals WHERE id = ?').get(evolved.goals[0].id)).toEqual({ status: 'created' });
+
+    const promoted = await fetch(`${baseUrl}/memory-evolution/promote/${ingested.candidate.id}`, { method: 'POST' });
+    expect(promoted.status).toBe(200);
+    expect((await promoted.json() as any).eligible).toBe(false);
+    const lease = await fetch(`${baseUrl}/memory-evolution/leases`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ loop_run_id: evolved.goals[0].id, role: 'memory_evaluator', memory_candidate_id: ingested.candidate.id, metadata: { source: 'route-test' } }),
+    });
+    expect(lease.status).toBe(201);
+    const listedLeases = await fetch(`${baseUrl}/memory-evolution/leases?role=memory_evaluator`);
+    expect(listedLeases.status).toBe(200);
+    expect((await listedLeases.json() as any).leases[0]).toMatchObject({ role: 'memory_evaluator', memory_candidate_id: ingested.candidate.id, metadata: { source: 'route-test' } });
   });
 
   it('derives cross-agent usage from distinct retrieval access records', async () => {
@@ -65,5 +77,27 @@ describe('memory evolution routes', () => {
     expect((await quality.json() as any).crossAgentUsage).toBe(1);
     expect(db.prepare('SELECT COUNT(DISTINCT agent_id) AS count FROM memory_access_log WHERE candidate_id = ?').get(candidate.id))
       .toEqual({ count: 2 });
+  });
+
+  it('rejects malformed retrieval limits at the HTTP boundary', async () => {
+    for (const value of ['NaN', '0', '101', '1.5']) {
+      const response = await fetch(`${baseUrl}/memory-evolution/retrieve?agent_id=agent-a&limit=${value}`);
+      expect(response.status, value).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
+  });
+
+  it('rejects malformed ingest, evolution and lease payloads before mutation', async () => {
+    for (const [path, body] of [
+      ['/memory-evolution/ingest', { agent_id: {}, content: 'trace' }],
+      ['/memory-evolution/evolve', { action: 'evaluate', candidate_ids: [42] }],
+      ['/memory-evolution/leases', { loop_run_id: 'run-1', role: 'unknown' }],
+      ['/memory-evolution/leases', { loop_run_id: 'run-1', role: 'memory_evaluator', metadata: [] }],
+    ] as const) {
+      const response = await fetch(`${baseUrl}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      expect(response.status, path).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
+    expect(db.prepare('SELECT COUNT(*) AS count FROM memory_evolution_leases').get()).toEqual({ count: 0 });
   });
 });

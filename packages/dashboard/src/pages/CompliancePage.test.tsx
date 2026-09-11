@@ -22,6 +22,7 @@ describe('CompliancePage', () => {
     render(<CompliancePage />);
 
     expect(await screen.findByText('full-spec')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledWith('/api/compliance/specs', expect.objectContaining({ headers: expect.any(Object) }));
     expect(screen.getByText('partial-spec')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Compliance filter'), { target: { value: 'full' } });
     expect(screen.queryByText('partial-spec')).toBeNull();

@@ -1,0 +1,17 @@
+{
+  "generated_at": "2026-09-09T09:08:35.107Z",
+  "state": "PASS",
+  "transport": "real SDK SSE over loopback",
+  "secrets_recorded": false,
+  "tool_count": 56,
+  "task_id": "873cb83b-4172-4bee-b010-49df1fb4c6d9",
+  "approval_id": "bd8980a9-3d0c-45ac-ae54-e44fdbd73706",
+  "proven": [
+    "SDK initialize/list/tools-call transport",
+    "Authenticated principal forwarded",
+    "Task-bound approval persisted and readable over REST",
+    "Expiry and manual-action marker",
+    "Audit request stored",
+    "Task not dispatched"
+  ]
+}

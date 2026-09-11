@@ -3,6 +3,12 @@ import type { Database } from 'better-sqlite3';
 import { EvidenceService } from '../services/evidence-service';
 import type { AuthMiddleware } from '../middleware/auth';
 
+function parseWindow(value: unknown, fallback: number, maximum: number): number | null {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= maximum ? parsed : null;
+}
+
 export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
   const evidenceService = new EvidenceService(db);
@@ -22,7 +28,11 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
   // GET /observability/risk-trends — admin-only
   router.get('/risk-trends', requireAuth, requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const days = parseInt(req.query.days as string) || 30;
+      const days = parseWindow(req.query.days, 30, 3650);
+      if (days === null) {
+        res.status(400).json({ error: { message: 'days must be an integer between 1 and 3650', code: 'VALIDATION_ERROR' } });
+        return;
+      }
 
       const trends = db.prepare(`
         SELECT
@@ -82,7 +92,11 @@ export function createObservabilityRoutes(db: Database, auth: AuthMiddleware): R
   // GET /observability/execution-activity — admin-only
   router.get('/execution-activity', requireAuth, requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const hours = parseInt(req.query.hours as string) || 24;
+      const hours = parseWindow(req.query.hours, 24, 8760);
+      if (hours === null) {
+        res.status(400).json({ error: { message: 'hours must be an integer between 1 and 8760', code: 'VALIDATION_ERROR' } });
+        return;
+      }
 
       const activity = db.prepare(`
         SELECT

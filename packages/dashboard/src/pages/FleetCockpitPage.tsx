@@ -26,6 +26,7 @@ import {
   type WorkerPoolPlanResult,
 } from '../lib/api';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { WebSocketEventType } from '@djimitflo/shared';
 
 type RuntimeChoice = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
 type CheckerRuntimeChoice = Exclude<RuntimeChoice, 'manual'>;
@@ -158,7 +159,7 @@ export function FleetCockpitPage() {
 
   useEffect(() => {
     const unsubLoop = subscribe('LOOP_RUN_UPDATED' as any, () => void refresh());
-    const unsubProof = subscribe('PROOF_RUN_UPDATED' as any, () => void refresh());
+    const unsubProof = subscribe(WebSocketEventType.PROOF_RUN_UPDATED, () => void refresh());
     return () => {
       unsubLoop();
       unsubProof();

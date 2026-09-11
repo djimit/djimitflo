@@ -2,10 +2,12 @@
  * RepositoryIndexService — per-repository code indexing and search.
  *
  * Provides source-grounded retrieval for repositories:
- * - Per-repository vector collections
- * - Incremental indexing (only changed files)
- * - Hybrid search (vector + keyword + metadata filtering)
- * - Embedding provenance tracking
+ * - Durable per-repository text chunks in SQLite
+ * - Full-snapshot re-indexing, including removal of deleted files
+ * - Keyword, symbol and import scoring with metadata filtering
+ *
+ * Legacy vector/hybrid search_type values currently use the same lexical scorer;
+ * no embeddings or vector retrieval are implemented by this service.
  *
  * Inspired by RuvNet Brain's per-repository indexing pattern.
  */
@@ -75,7 +77,6 @@ const CHUNK_OVERLAP = 200;
 
 export class RepositoryIndexService {
   private repositories: Map<string, Repository> = new Map();
-  private chunkCache: Map<string, CodeChunk[]> = new Map();
 
   constructor(private db: Database) {
     this.ensureTables();
@@ -87,17 +88,19 @@ export class RepositoryIndexService {
    */
   registerRepository(name: string, path: string, url?: string): Repository {
     const id = `repo-${createHash('sha256').update(path).digest('hex').slice(0, 8)}`;
+    const existing = this.repositories.get(id);
     const repo: Repository = {
       id,
       name,
       path,
-      url,
-      file_count: 0,
-      chunk_count: 0,
-      status: 'pending',
+      url: url ?? existing?.url,
+      last_indexed_at: existing?.last_indexed_at,
+      file_count: existing?.file_count ?? 0,
+      chunk_count: existing?.chunk_count ?? 0,
+      status: existing?.status ?? 'pending',
     };
-    this.repositories.set(id, repo);
     this.persistRepository(repo);
+    this.repositories.set(id, repo);
     return repo;
   }
 
@@ -107,6 +110,7 @@ export class RepositoryIndexService {
   async indexRepository(repositoryId: string): Promise<IndexStats> {
     const repo = this.repositories.get(repositoryId);
     if (!repo) throw new Error(`Repository not found: ${repositoryId}`);
+    const previousStats = { file_count: repo.file_count, chunk_count: repo.chunk_count, last_indexed_at: repo.last_indexed_at };
 
     repo.status = 'indexing';
     this.persistRepository(repo);
@@ -119,10 +123,12 @@ export class RepositoryIndexService {
     try {
       const files = this.discoverFiles(repo.path);
       repo.file_count = files.length;
+      const snapshot: CodeChunk[] = [];
 
       for (const filePath of files) {
         try {
           const chunks = this.chunkFile(repo.id, filePath);
+          snapshot.push(...chunks);
           totalChunks += chunks.length;
           indexedFiles++;
         } catch {
@@ -133,7 +139,11 @@ export class RepositoryIndexService {
       repo.chunk_count = totalChunks;
       repo.status = 'active';
       repo.last_indexed_at = new Date().toISOString();
-      this.persistRepository(repo);
+      this.db.transaction(() => {
+        this.db.prepare('DELETE FROM code_chunks WHERE repository_id = ?').run(repositoryId);
+        this.persistChunks(snapshot);
+        this.persistRepository(repo);
+      })();
 
       return {
         repository_id: repositoryId,
@@ -144,6 +154,7 @@ export class RepositoryIndexService {
         duration_ms: Date.now() - startTime,
       };
     } catch (error) {
+      Object.assign(repo, previousStats);
       repo.status = 'failed';
       this.persistRepository(repo);
       throw error;
@@ -211,15 +222,18 @@ export class RepositoryIndexService {
    * Delete a repository and its index.
    */
   deleteRepository(repositoryId: string): void {
+    if (!this.repositories.has(repositoryId)) throw new Error(`Repository not found: ${repositoryId}`);
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM code_chunks WHERE repository_id = ?').run(repositoryId);
+      this.db.prepare('DELETE FROM repository_indexes WHERE id = ?').run(repositoryId);
+    })();
     this.repositories.delete(repositoryId);
-    this.chunkCache.delete(repositoryId);
-    this.db.prepare('DELETE FROM repository_indexes WHERE id = ?').run(repositoryId);
-    this.db.prepare('DELETE FROM code_chunks WHERE repository_id = ?').run(repositoryId);
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────
 
   private discoverFiles(repoPath: string): string[] {
+    if (!existsSync(repoPath)) throw new Error(`Repository path unavailable: ${repoPath}`);
     const files: string[] = [];
 
     const walk = (dir: string) => {
@@ -258,7 +272,7 @@ export class RepositoryIndexService {
       const endLine = content.slice(0, end).split('\n').length;
 
       const chunk: CodeChunk = {
-        id: `chunk-${createHash('sha256').update(`${filePath}:${chunkIndex}`).digest('hex').slice(0, 8)}`,
+        id: `chunk-${createHash('sha256').update(`${repositoryId}:${filePath}:${chunkIndex}`).digest('hex')}`,
         repository_id: repositoryId,
         file_path: relative(this.getRepoPath(repositoryId), filePath),
         content: chunkContent,
@@ -277,12 +291,6 @@ export class RepositoryIndexService {
       offset += CHUNK_SIZE - CHUNK_OVERLAP;
       chunkIndex++;
     }
-
-    // Cache and persist chunks
-    const existing = this.chunkCache.get(repositoryId) || [];
-    const filtered = existing.filter(c => c.file_path !== relative(this.getRepoPath(repositoryId), filePath));
-    this.chunkCache.set(repositoryId, [...filtered, ...chunks]);
-    this.persistChunks(chunks);
 
     return chunks;
   }
@@ -361,7 +369,20 @@ export class RepositoryIndexService {
   }
 
   private getChunks(repositoryId: string): CodeChunk[] {
-    return this.chunkCache.get(repositoryId) || [];
+    const rows = this.db.prepare(`SELECT id, repository_id, file_path, content, start_line, end_line, chunk_index, metadata_hash
+      FROM code_chunks WHERE repository_id = ? ORDER BY file_path, chunk_index`).all(repositoryId) as Array<Omit<CodeChunk, 'metadata'> & { metadata_hash: string }>;
+    // Existing rows store text and its hash. Reconstruct file-level metadata
+    // from overlapping chunks so search remains equivalent after a restart.
+    const fileContents = new Map<string, string>();
+    for (const row of rows) {
+      fileContents.set(row.file_path, (fileContents.get(row.file_path) || '') +
+        (row.chunk_index === 0 ? row.content : row.content.slice(CHUNK_OVERLAP)));
+    }
+    const metadata = new Map(Array.from(fileContents, ([file, content]) => {
+      const language = this.detectLanguage(file);
+      return [file, { language, symbols: this.extractSymbols(content, language), imports: this.extractImports(content, language) }];
+    }));
+    return rows.map(({ metadata_hash, ...row }) => ({ ...row, metadata: { ...metadata.get(row.file_path)!, hash: metadata_hash } }));
   }
 
   private getRepoPath(repositoryId: string): string {
@@ -376,8 +397,8 @@ export class RepositoryIndexService {
         id: row.id,
         name: row.name,
         path: row.path,
-        url: row.url,
-        last_indexed_at: row.last_indexed_at,
+        url: row.url || undefined,
+        last_indexed_at: row.last_indexed_at || undefined,
         file_count: row.file_count,
         chunk_count: row.chunk_count,
         status: row.status,
@@ -387,8 +408,11 @@ export class RepositoryIndexService {
 
   private persistRepository(repo: Repository): void {
     this.db.prepare(`
-      INSERT OR REPLACE INTO repository_indexes (id, name, path, url, last_indexed_at, file_count, chunk_count, status)
+      INSERT INTO repository_indexes (id, name, path, url, last_indexed_at, file_count, chunk_count, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, path=excluded.path, url=excluded.url,
+        last_indexed_at=excluded.last_indexed_at, file_count=excluded.file_count,
+        chunk_count=excluded.chunk_count, status=excluded.status
     `).run(repo.id, repo.name, repo.path, repo.url || null, repo.last_indexed_at || null, repo.file_count, repo.chunk_count, repo.status);
   }
 

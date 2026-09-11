@@ -1,0 +1,31 @@
+{
+  "scope": "actual browser rescan then independent readonly SQLite/filesystem check",
+  "repository": {
+    "id": "2b99f1a1-5956-459a-9e44-7477cc199231",
+    "git_branch": "audit-fixture",
+    "git_commit": "3c15f3e3faf7568eccd50b942984d6ed1b89bbff",
+    "typecheck_commands": "[\"npm run type-check\"]"
+  },
+  "files": [
+    {
+      "relative_path": "AGENTS.md",
+      "applies_to_path": "/",
+      "size_bytes": 99
+    },
+    {
+      "relative_path": "packages/demo/AGENTS.md",
+      "applies_to_path": "/packages/demo",
+      "size_bytes": 106
+    }
+  ],
+  "latest": {
+    "id": "2fdd6832-9641-40ef-94ae-a2eaa9f52bcd"
+  },
+  "findings": [
+    {
+      "id": "61752667-af7d-427e-b1b1-af3ef0411b57",
+      "scan_id": "2fdd6832-9641-40ef-94ae-a2eaa9f52bcd",
+      "title": "No TypeScript detected"
+    }
+  ]
+}

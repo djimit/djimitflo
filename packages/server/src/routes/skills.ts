@@ -33,25 +33,39 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // POST /api/skills/:id/enable — enable a skill
-  router.post('/:id/enable', requirePermission('write:config'), (req, res) => {
-    loader.setSkillEnabled(req.params.id, true);
-    res.json({ enabled: true });
+  router.post('/:id/enable', requirePermission('manage:config'), (_req, res) => {
+    res.status(503).json({ error: { code: 'SKILL_ACTIVATION_UNAVAILABLE', message: 'No shared runtime skill activation mechanism is configured; a router-local inventory flag is not activation.' } });
   });
 
   // POST /api/skills/:id/disable — disable a skill
-  router.post('/:id/disable', requirePermission('write:config'), (req, res) => {
-    loader.setSkillEnabled(req.params.id, false);
-    res.json({ disabled: true });
+  router.post('/:id/disable', requirePermission('manage:config'), (_req, res) => {
+    res.status(503).json({ error: { code: 'SKILL_ACTIVATION_UNAVAILABLE', message: 'No shared runtime skill deactivation mechanism is configured; a router-local inventory flag does not stop execution.' } });
   });
 
   // POST /api/skills/:id/assign/:agentId — assign skill to agent
-  router.post('/:id/assign/:agentId', requirePermission('write:config'), (req, res) => {
+  router.post('/:id/assign/:agentId', requirePermission('write:skills'), requirePermission('write:agents'), (req, res) => {
+    if (!loader.getSkill(req.params.id)) {
+      res.status(404).json({ error: { code: 'SKILL_NOT_ADMITTED', message: 'Skill is not admitted from the operator-configured skill directory' } });
+      return;
+    }
+    if (!db.prepare('SELECT id FROM agents WHERE id = ?').get(req.params.agentId)) {
+      res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' } });
+      return;
+    }
     const assignment = loader.assignSkillToAgent(req.params.agentId, req.params.id);
     res.status(201).json(assignment);
   });
 
   // DELETE /api/skills/:id/assign/:agentId — remove skill from agent
-  router.delete('/:id/assign/:agentId', requirePermission('write:config'), (req, res) => {
+  router.delete('/:id/assign/:agentId', requirePermission('write:skills'), requirePermission('write:agents'), (req, res) => {
+    if (!loader.getSkill(req.params.id)) {
+      res.status(404).json({ error: { code: 'SKILL_NOT_ADMITTED', message: 'Skill is not admitted from the operator-configured skill directory' } });
+      return;
+    }
+    if (!db.prepare('SELECT id FROM agents WHERE id = ?').get(req.params.agentId)) {
+      res.status(404).json({ error: { code: 'AGENT_NOT_FOUND', message: 'Agent not found' } });
+      return;
+    }
     loader.removeSkillFromAgent(req.params.agentId, req.params.id);
     res.json({ removed: true });
   });
@@ -67,9 +81,8 @@ export function createSkillRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   // POST /api/skills/reload — reload all skills from disk
-  router.post('/reload', requirePermission('write:config'), (_req, res) => {
-    const loaded = loader.loadSkills();
-    res.json({ reloaded: loaded.length });
+  router.post('/reload', requirePermission('manage:config'), (_req, res) => {
+    res.status(503).json({ error: { code: 'SKILL_RELOAD_UNAVAILABLE', message: 'Reloading this router does not refresh execution-engine skill admission; shared runtime reload is not configured.' } });
   });
 
   return router;

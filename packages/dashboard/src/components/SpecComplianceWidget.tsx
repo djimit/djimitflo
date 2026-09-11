@@ -5,6 +5,7 @@
  * Constitution v1.1.0 — Specification Quality Gates
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { api } from '../lib/api';
 
 interface LayerCompliance {
   layer: string;
@@ -46,10 +47,7 @@ export function SpecComplianceWidget({ controls = false }: { controls?: boolean 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/compliance/specs${refresh ? '?refresh=1' : ''}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setReport(data);
+      setReport(await api.request<ComplianceReport>(`/compliance/specs${refresh ? '?refresh=1' : ''}`));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
     } finally {
@@ -102,8 +100,8 @@ export function SpecComplianceWidget({ controls = false }: { controls?: boolean 
               <option value="score">Score</option><option value="name">Name</option><option value="status">Status</option>
             </select>
           </label>
-          <a href="/api/compliance/export?format=json" download className="ml-auto px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">Export JSON</a>
-          <a href="/api/compliance/export?format=csv" download className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">Export CSV</a>
+          <button onClick={() => void api.exportCompliance('json').catch(e => setError(e instanceof Error ? e.message : 'Export failed'))} className="ml-auto px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">Export JSON</button>
+          <button onClick={() => void api.exportCompliance('csv').catch(e => setError(e instanceof Error ? e.message : 'Export failed'))} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded">Export CSV</button>
         </div>
       )}
 

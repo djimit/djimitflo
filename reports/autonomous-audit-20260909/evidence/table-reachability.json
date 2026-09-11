@@ -1,0 +1,4153 @@
+{
+  "database": "/Users/dlandman/djimitflo-audit-20260909/.data/audit.sqlite",
+  "limitations": [
+    "Static SQL regex references, not runtime execution proof.",
+    "Raw readers/writers include test and schema sources; use runtime-filtered graph for operational source classification.",
+    "Dynamic SQL, SQL comments, aliases and unusual quoted identifiers require manual tracing."
+  ],
+  "tables": 165,
+  "empty": 125,
+  "unreachable": [
+    {
+      "table": "agents_md_issues",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "audit_logs",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [
+        "packages/server/src/routes/audit-logs.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/multi-tenancy.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "council_reliability",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "explainer_feedback",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "instruction_profiles",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "repository_scan_artifacts",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "sandbox_policies",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "sub_agent_scratch",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "sub_agent_tool_outputs",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "task_artifacts",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "worker_results",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    }
+  ],
+  "report": [
+    {
+      "table": "agent_archives",
+      "rows": 1,
+      "writers": [
+        "packages/server/src/services/agent-retirement-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09 15:34:42"
+    },
+    {
+      "table": "agent_eval_runs",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/assurance-governance.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/assurance-governance.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agent-assurance-service.test.ts",
+        "packages/server/src/__tests__/assurance-governance.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "agent_message_deliveries",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/services/agent-communication-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/agent-communication-service.ts",
+        "packages/server/src/services/board-protocol.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "agent_messages",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/services/agent-communication-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/services/agent-communication-service.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/board-handoff-service.ts",
+        "packages/server/src/services/board-protocol.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/messages.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "agent_skills",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/services/skill-loader-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/services/skill-loader-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "agent_subscriptions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/knowledge-sharing-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/services/knowledge-sharing-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "agent_trace_spans",
+      "rows": 3,
+      "writers": [
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agent-assurance-service.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.697Z"
+    },
+    {
+      "table": "agents",
+      "rows": 2,
+      "writers": [
+        "packages/mcp-server/src/tools/orchestration.ts",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/__tests__/nl-agent-factory.test.ts",
+        "packages/server/src/__tests__/phase4-autonomy.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/__tests__/skill-loader-service.test.ts",
+        "packages/server/src/__tests__/skill-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-orchestration-routes.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/database/seed.ts",
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/nl-agent-factory.ts",
+        "packages/server/src/services/telegram-bot-service.ts"
+      ],
+      "readers": [
+        "packages/dashboard/src/pages/AgentsPage.test.tsx",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/mcp-server/src/tools/agents.ts",
+        "packages/mcp-server/src/tools/mission-control.ts",
+        "packages/mcp-server/src/tools/orchestration.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/nl-agent-factory.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/routes/skills.ts",
+        "packages/server/src/routes/swarm-orchestration.ts",
+        "packages/server/src/services/agent-communication-service.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/agi-goal-reasoning-engine.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/compliance-audit-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/memory-sync-service.ts",
+        "packages/server/src/services/nl-agent-factory.ts",
+        "packages/server/src/services/openmythos-eval-service.ts",
+        "packages/server/src/services/reasoning-bank-service.ts",
+        "packages/server/src/services/skill-loader-service.ts",
+        "packages/server/src/services/skill-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/telegram-bot-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/catalog.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/memory-evolution.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/routes/openmythos.ts",
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/routes/runtime-governance.ts",
+        "packages/server/src/routes/skills.ts",
+        "packages/server/src/routes/swarm-orchestration.ts"
+      ],
+      "tests": [
+        "packages/agent-catalog/test/catalog.test.js",
+        "packages/agent-catalog/test/catalog.test.ts",
+        "packages/agent-catalog/test/static-gate-surfaces.test.ts",
+        "packages/dashboard/src/hooks/useCatalog.test.tsx",
+        "packages/dashboard/src/pages/AgentCatalogPage.test.tsx",
+        "packages/dashboard/src/pages/AgentsPage.test.tsx",
+        "packages/dashboard/src/pages/DashboardPage.test.tsx",
+        "packages/dashboard/src/pages/RepositoriesPage.test.tsx",
+        "packages/dashboard/src/pages/SwarmMissionControlPage.test.ts",
+        "packages/dashboard/src/pages/TaskRuntime.test.tsx",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/server/src/__tests__/agent-evaluation.test.ts",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/agent-registry.test.ts",
+        "packages/server/src/__tests__/agents-md-validator.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/explainer-critic-service.test.ts",
+        "packages/server/src/__tests__/fixtures/synthetic-repos.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/g16-opencode-openai.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/knowledge-capability-sync.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/__tests__/mutation-validation.test.ts",
+        "packages/server/src/__tests__/nl-agent-factory.test.ts",
+        "packages/server/src/__tests__/openmythos-scorecard.test.ts",
+        "packages/server/src/__tests__/phase4-autonomy.test.ts",
+        "packages/server/src/__tests__/repository-scanner.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/__tests__/runtime-governance.test.ts",
+        "packages/server/src/__tests__/security-hardening.test.ts",
+        "packages/server/src/__tests__/segml-cpo-bridge.test.ts",
+        "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts",
+        "packages/server/src/__tests__/segml-world-model-bridge.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/skill-loader-service.test.ts",
+        "packages/server/src/__tests__/skill-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-orchestration-routes.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/swarm-session-persistence.test.ts",
+        "packages/server/src/__tests__/swarm-status-service.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts"
+      ],
+      "last_write": "2026-09-09T15:34:42.251Z"
+    },
+    {
+      "table": "agents_md_files",
+      "rows": 3,
+      "writers": [
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T19:33:12.126Z"
+    },
+    {
+      "table": "agents_md_issues",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "approval_policies",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/fase2-security.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts",
+        "packages/server/src/__tests__/security-invariants.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/database/seed.ts",
+        "packages/server/src/routes/policies.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/policy-mutation-audit.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/routes/policies.ts",
+        "packages/server/src/services/policy-decision-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/routes/policies.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/fase2-security.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts",
+        "packages/server/src/__tests__/policy-mutation-audit.test.ts",
+        "packages/server/src/__tests__/security-invariants.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+      ],
+      "last_write": "2026-09-09T09:26:02.517Z"
+    },
+    {
+      "table": "approvals",
+      "rows": 7,
+      "writers": [
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/database/seed.ts",
+        "packages/server/src/routes/approvals.ts",
+        "packages/server/src/services/approval-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/authority.ts",
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/approvals.ts",
+        "packages/server/src/routes/authority.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/approval-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/evidence-service.ts",
+        "packages/server/src/services/reasoning-bank-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/approvals.ts",
+        "packages/server/src/routes/authority.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/routes/self-modification.ts",
+        "packages/server/src/routes/tasks.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/ApprovalQueuePage.test.tsx",
+        "packages/dashboard/src/pages/TaskRuntime.test.tsx",
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/agents-md-validator.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/authorization.test.ts",
+        "packages/server/src/__tests__/codex-executor.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/e2e-smoke.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/runtime-security.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts"
+      ],
+      "last_write": "2026-09-09T19:32:39.892Z"
+    },
+    {
+      "table": "audit_anchors",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/audit-anchoring.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/audit-anchoring-persistence.test.ts",
+        "packages/server/src/services/audit-anchoring.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/audit-anchoring-persistence.test.ts",
+        "packages/server/src/__tests__/fase2-security.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "audit_events",
+      "rows": 122,
+      "writers": [
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/services/compliance-audit-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/backup.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/execution-terminal-audit.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/policy-mutation-audit.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/audit-logs.ts",
+        "packages/server/src/routes/audit.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/audit-service.ts",
+        "packages/server/src/services/compliance-audit-service.ts",
+        "packages/server/src/services/evidence-service.ts",
+        "packages/server/src/services/export-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/audit-logs.ts",
+        "packages/server/src/routes/audit.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/tasks.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/backup.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/execution-terminal-audit.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/phase3-services.test.ts",
+        "packages/server/src/__tests__/policy-mutation-audit.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts"
+      ],
+      "last_write": "2026-09-09T19:32:39.892Z"
+    },
+    {
+      "table": "audit_logs",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [
+        "packages/server/src/routes/audit-logs.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/multi-tenancy.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "board_handoff_claims",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/services/board-handoff-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/board-handoff-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "board_handoff_outbox",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/board-handoff-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/services/board-handoff-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "board_idempotency_keys",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/services/agent-communication-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/services/agent-communication-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/messages.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/messages.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "calibration_ratings",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "capability_tokens",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/agent-assurance-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/authority.ts",
+        "packages/server/src/services/agent-assurance-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/server/src/__tests__/agent-assurance-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "code_chunks",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/repository-index-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/repository-index.test.ts",
+        "packages/server/src/services/repository-index-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/repository-index.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "cognitive_episodes",
+      "rows": 14,
+      "writers": [
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts",
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/mutation-validation.test.ts",
+        "packages/server/src/services/cognitive-loop-closure-service.ts",
+        "packages/server/src/services/meta-orchestration-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts",
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/mutation-validation.test.ts"
+      ],
+      "last_write": "2026-09-09 18:00:34"
+    },
+    {
+      "table": "cognitive_meta_learning",
+      "rows": 2,
+      "writers": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts",
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "cognitive_patterns",
+      "rows": 5,
+      "writers": [
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/cognitive-loop-closure-service.ts",
+        "packages/server/src/services/meta-orchestration-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/loop-services.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "cognitive_strategies",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts",
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/cognitive-loop-closure-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/cognitive-evidence-idempotency.test.ts"
+      ],
+      "last_write": "2026-09-09T18:00:34.582Z"
+    },
+    {
+      "table": "compliance_reports",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/compliance-audit-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/governance-reports.test.ts",
+        "packages/server/src/services/compliance-audit-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/governance-reports.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "config",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/apex.ts",
+        "packages/server/src/routes/catalog.ts",
+        "packages/server/src/routes/intervention.ts",
+        "packages/server/src/routes/learning.ts",
+        "packages/server/src/routes/mcp.ts",
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/routes/policies.ts",
+        "packages/server/src/routes/segml-l3.ts",
+        "packages/server/src/routes/segml.ts",
+        "packages/server/src/routes/skills.ts",
+        "packages/server/src/routes/usage.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/AgentCatalogPage.test.tsx",
+        "packages/ransomware-module/tests/response-orchestrator.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/auth-service.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/docker-sandbox-executor.test.ts",
+        "packages/server/src/__tests__/execution-mode-policy-service.test.ts",
+        "packages/server/src/__tests__/g11-runtime-selection.test.ts",
+        "packages/server/src/__tests__/g13-dollar-economy.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g16-continuous-operation.test.ts",
+        "packages/server/src/__tests__/g16-opencode-openai.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/__tests__/g20-negotiation.test.ts",
+        "packages/server/src/__tests__/g21-goal-decomposition.test.ts",
+        "packages/server/src/__tests__/g29-31-skill-specialised.test.ts",
+        "packages/server/src/__tests__/github-cocreate.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/loop-service-facade.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/loop-services.test.ts",
+        "packages/server/src/__tests__/main-entry.test.ts",
+        "packages/server/src/__tests__/nested-spawn-loop.test.ts",
+        "packages/server/src/__tests__/nested-spawn.test.ts",
+        "packages/server/src/__tests__/nl-agent-factory.test.ts",
+        "packages/server/src/__tests__/oidc-audit.test.ts",
+        "packages/server/src/__tests__/oidc-id-token-signature.test.ts",
+        "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/research-loop.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/__tests__/runtime-profile.test.ts",
+        "packages/server/src/__tests__/segml-meta-learning-bridge.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/worktree-retry.test.ts",
+        "packages/telegram/src/index.test.ts",
+        "packages/telegram/src/transport.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "consensus_debates",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/migration-lazy-tables.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "consensus_proposals",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "consensus_votes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/multi-agent-consensus-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "council_aggregations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/synthesis-engine.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/council-routes.test.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/council-routes.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "council_evaluations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/structured-evaluator.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/council-orchestrator.ts",
+        "packages/server/src/services/structured-evaluator.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "council_models",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/council-registry.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/council-registry.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "council_outputs",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/council-orchestrator.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/council-orchestrator.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "council_reliability",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "council_sessions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/council-engine.test.ts",
+        "packages/server/src/services/council-orchestrator.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/council-orchestrator.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/council-engine.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "discovered_repositories",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/explainer-discovery-service.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/services/explainer-discovery-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/explainer-discovery-service.ts",
+        "packages/server/src/services/explainer-fleet-worker.ts",
+        "packages/server/src/services/explainer-knowledge-service.ts",
+        "packages/server/src/services/explore-public-page-service.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/explainer-discovery-service.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "discussion_proposals",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "discussion_turns",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/discussion-turn-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/discussion-turn-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "discussion_votes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "discussions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/discussion-turns.test.ts",
+        "packages/server/src/routes/discussions.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/discussions.ts",
+        "packages/server/src/services/discussion-turn-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/discussions.ts",
+        "packages/server/src/routes/index.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/SwarmOverviewPage.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/discussion-turns.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "execution_events",
+      "rows": 55,
+      "writers": [
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/database/seed.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/services/dennis-agent-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/tasks.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/InteractionBoardPage.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts"
+      ],
+      "last_write": "2026-09-09T15:34:41.858Z"
+    },
+    {
+      "table": "execution_evidence",
+      "rows": 22,
+      "writers": [
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/authority.ts",
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts"
+      ],
+      "last_write": "2026-09-09T15:34:42.043Z"
+    },
+    {
+      "table": "execution_plans",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/swarm-task-decomposer.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/swarm-task-decomposer.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "execution_summaries",
+      "rows": 3,
+      "writers": [
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T15:44:03.408Z"
+    },
+    {
+      "table": "experience_embeddings",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/loop-assignment-context.test.ts",
+        "packages/server/src/__tests__/task-context-execution-chain.test.ts",
+        "packages/server/src/services/experience-retrieval-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/services/experience-retrieval-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/loop-assignment-context.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/task-context-execution-chain.test.ts"
+      ],
+      "last_write": "2026-09-09T12:00:46.029Z"
+    },
+    {
+      "table": "explainer_audit_log",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/explainer-generation-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "explainer_bundles",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/bundle-builder.ts",
+        "packages/server/src/services/explainer-generation-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/__tests__/bundle-builder.test.ts",
+        "packages/server/src/__tests__/explainer-generation-service.test.ts",
+        "packages/server/src/__tests__/explainer-pipeline-contract.test.ts",
+        "packages/server/src/__tests__/explainer-tracer-bullet.test.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/scripts/explain-repo-tracer.ts",
+        "packages/server/src/services/bundle-builder.ts",
+        "packages/server/src/services/explainer-fleet-worker.ts",
+        "packages/server/src/services/explainer-generation-service.ts",
+        "packages/server/src/services/explainer-knowledge-service.ts",
+        "packages/server/src/services/explore-public-page-service.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/bundle-builder.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explainer-generation-service.test.ts",
+        "packages/server/src/__tests__/explainer-pipeline-contract.test.ts",
+        "packages/server/src/__tests__/explainer-tracer-bullet.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "explainer_feedback",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "explainer_jobs",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "explainer_sections",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/bundle-builder.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/bundle-builder.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "explainer_tasks",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/__tests__/bundle-builder.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/services/explainer-generation-service.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/explainer.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explainer-pipeline-contract.test.ts",
+        "packages/server/src/__tests__/explainer-tracer-bullet.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/scripts/explain-repo-tracer.ts",
+        "packages/server/src/services/explainer-fleet-worker.ts",
+        "packages/server/src/services/explainer-generation-service.ts",
+        "packages/server/src/services/explainer-knowledge-service.ts",
+        "packages/server/src/services/explore-public-page-service.ts",
+        "packages/server/src/services/repo-explainer-scheduler.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/bundle-builder.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-worker.test.ts",
+        "packages/server/src/__tests__/explainer-pipeline-contract.test.ts",
+        "packages/server/src/__tests__/explainer-tracer-bullet.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "external_events",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/services/external-event-ingest-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/external-event-ingest-service.ts",
+        "packages/server/src/services/outcome-learning-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/dashboard/src/pages/InteractionBoardPage.test.ts",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "federation_peers",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/federation-routes.test.ts",
+        "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts",
+        "packages/server/src/routes/federation.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/federation.ts",
+        "packages/server/src/services/segml-federated-governance-bridge.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/federation.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/federation-routes.test.ts",
+        "packages/server/src/__tests__/segml-federated-governance-bridge.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "file_changes",
+      "rows": 2,
+      "writers": [
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/evidence.ts",
+        "packages/server/src/routes/repositories.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/ReviewPage.test.tsx",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T10:57:16.135Z"
+    },
+    {
+      "table": "fleet_capability_sync",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "fleet_handoffs",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/tools/orchestration.ts",
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "fleet_nodes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/orchestration.ts",
+        "packages/server/src/__tests__/fleet-routes.test.ts",
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/fleet-routes.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "fleet_work_distribution",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/fleet-mesh-service.ts"
+      ],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "goal_hypotheses",
+      "rows": 1,
+      "writers": [
+        "packages/server/src/services/agi-goal-reasoning-engine.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/agi-routes.test.ts",
+        "packages/server/src/services/agi-goal-reasoning-engine.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agi-routes.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T19:34:11.079Z"
+    },
+    {
+      "table": "goals",
+      "rows": 11,
+      "writers": [
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/g16-continuous-operation.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-http.test.ts",
+        "packages/server/src/__tests__/self-improvement-service.test.ts",
+        "packages/server/src/__tests__/worldlab-evidence-service.test.ts",
+        "packages/server/src/services/autonomous-goal-generator.ts",
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/goal-formation-service.ts",
+        "packages/server/src/services/goal-service.ts",
+        "packages/server/src/services/loop-daemon.ts",
+        "packages/server/src/services/loop-service.ts",
+        "packages/server/src/services/memory-evolution-service.ts",
+        "packages/server/src/services/operator-intervention.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/work-item-service.ts",
+        "packages/server/src/services/worldlab-evidence-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/goals.ts",
+        "packages/mcp-server/src/tools/mission-control.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/memory-evolution.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-http.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/self-improvement-routes.test.ts",
+        "packages/server/src/__tests__/self-improvement-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts",
+        "packages/server/src/__tests__/worldlab-evidence-service.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/scripts/run-autonomous-cycle.ts",
+        "packages/server/src/services/agi-goal-reasoning-engine.ts",
+        "packages/server/src/services/autonomous-goal-generator.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/experience-retrieval-service.ts",
+        "packages/server/src/services/goal-batch-service.ts",
+        "packages/server/src/services/goal-formation-service.ts",
+        "packages/server/src/services/goal-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/loop-daemon.ts",
+        "packages/server/src/services/operator-intervention.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/telegram-bot-service.ts",
+        "packages/server/src/services/work-item-service.ts",
+        "packages/server/src/services/worldlab-evidence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/goals.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/memory-evolution.ts",
+        "packages/server/src/routes/self-improvement.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/GoalsLoopsPage.test.tsx",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/g16-continuous-operation.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-full-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/memory-evolution-service.test.ts",
+        "packages/server/src/__tests__/memory-evolution.test.ts",
+        "packages/server/src/__tests__/meta-tuning-chain.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-http.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/self-improvement-routes.test.ts",
+        "packages/server/src/__tests__/self-improvement-service.test.ts",
+        "packages/server/src/__tests__/spec-compliance-export.test.ts",
+        "packages/server/src/__tests__/spec-compliance-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/traceability.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts",
+        "packages/server/src/__tests__/worldlab-evidence-service.test.ts"
+      ],
+      "last_write": "2026-09-09T17:54:41.205Z"
+    },
+    {
+      "table": "governance_feedback",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/governance-feedback-service.ts",
+        "packages/server/src/services/legal-ruleops/rule-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/legal-routes.test.ts",
+        "packages/server/src/services/governance-feedback-service.ts",
+        "packages/server/src/services/legal-ruleops/rule-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/legal-routes.test.ts",
+        "packages/server/src/__tests__/legal-ruleops.test.ts",
+        "packages/server/src/__tests__/route-inventory.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "governance_feedback_loops",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/governance-feedback-loop.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/governance-feedback-loop.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "governance_improvement_proposals",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/governance-feedback-loop.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/governance-feedback-loop.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "gym_evaluations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/gym-governance-curriculum.ts",
+        "packages/server/src/services/skill-evolution-gym.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/gym-governance-curriculum.test.ts",
+        "packages/server/src/services/gym-governance-curriculum.ts",
+        "packages/server/src/services/skill-evolution-gym.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/gym-governance-curriculum.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "human_review_queue",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/explainer-generation-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/governance-calibration-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "instruction_profiles",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "judge_calibration",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/judge-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/judge-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "judge_verdicts",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/judge-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/judge-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "knowledge_claims",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/knowledge-sharing-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/swarm-intel-pagination.test.ts",
+        "packages/server/src/services/knowledge-sharing-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/swarm-intel-pagination.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "knowledge_gaps",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/autonomous-goal-generator.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/autonomous-goal-generator.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "llm_provider_metrics",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/llm-router-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/llm-router-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "loop_checkpoints",
+      "rows": 3,
+      "writers": [
+        "packages/server/src/services/agent-assurance-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/agent-assurance-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.697Z"
+    },
+    {
+      "table": "loop_events",
+      "rows": 30,
+      "writers": [
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/loop-event-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/loops.ts",
+        "packages/mcp-server/src/tools/mission-control.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/services/loop-event-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-full-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-event-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.849Z"
+    },
+    {
+      "table": "loop_learning_closures",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/knowledge-runtime-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "loop_runs",
+      "rows": 6,
+      "writers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/ai-correctness.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g10-crash-recovery.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g20-negotiation.test.ts",
+        "packages/server/src/__tests__/g22-23-24-services.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/integration-full-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-event-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-run-query-service.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-verification-completion.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/reflection-engine.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/loop-budget-service.ts",
+        "packages/server/src/services/loop-daemon.ts",
+        "packages/server/src/services/loop-lifecycle-service.ts",
+        "packages/server/src/services/loop-run-mutation-service.ts",
+        "packages/server/src/services/loop-service.ts",
+        "packages/server/src/services/loop-verification-service.ts",
+        "packages/server/src/services/loop-worker-executor-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/authority.ts",
+        "packages/mcp-server/src/tools/goals.ts",
+        "packages/mcp-server/src/tools/loops.ts",
+        "packages/mcp-server/src/tools/mission-control.ts",
+        "packages/server/src/__tests__/federation-routes.test.ts",
+        "packages/server/src/__tests__/g10-crash-recovery.test.ts",
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/__tests__/github-cocreate.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/authority.ts",
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/federation.ts",
+        "packages/server/src/scripts/run-autonomous-cycle.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/agi-goal-reasoning-engine.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/continuous-learning-loop.ts",
+        "packages/server/src/services/experience-retrieval-service.ts",
+        "packages/server/src/services/fix-loop-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/loop-run-mutation-service.ts",
+        "packages/server/src/services/loop-run-query-service.ts",
+        "packages/server/src/services/loop-service.ts",
+        "packages/server/src/services/metrics-service.ts",
+        "packages/server/src/services/operator-intervention.ts",
+        "packages/server/src/services/predictive-analytics-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/reflection-engine.ts",
+        "packages/server/src/services/self-healing-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/telegram-bot-service.ts",
+        "packages/server/src/services/work-item-service.ts",
+        "packages/server/src/services/worktree-manager.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/authority.ts",
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/federation.ts",
+        "packages/server/src/routes/metrics.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/agent-assurance-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/ai-correctness.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/federation-routes.test.ts",
+        "packages/server/src/__tests__/g10-crash-recovery.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g20-negotiation.test.ts",
+        "packages/server/src/__tests__/g22-23-24-services.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/github-cocreate.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-full-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-event-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-run-query-service.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-verification-completion.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/reflection-engine.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/swarm-status-service.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.849Z"
+    },
+    {
+      "table": "mcp_servers",
+      "rows": 8,
+      "writers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts",
+        "packages/server/src/__tests__/seed-mcp-servers.test.ts",
+        "packages/server/src/database/seed-mcp-servers.ts",
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts",
+        "packages/server/src/__tests__/seed-mcp-servers.test.ts",
+        "packages/server/src/database/seed-mcp-servers.ts",
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts",
+        "packages/server/src/__tests__/seed-mcp-servers.test.ts"
+      ],
+      "last_write": "2026-09-09T19:32:55.080Z"
+    },
+    {
+      "table": "mcp_tool_permissions",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts",
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "mcp_tools",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts",
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/routes/mcp.ts",
+        "packages/server/src/services/integration-inbox-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/mcp.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/mcp-routes.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "memory_access_log",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/memory-evolution-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/memory-evolution.test.ts",
+        "packages/server/src/services/memory-evolution-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/memory-evolution.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "memory_candidates",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/services/expert-swarm-orchestrator.ts",
+        "packages/server/src/services/memory-candidate-service.ts",
+        "packages/server/src/services/memory-evolution-observability.ts",
+        "packages/server/src/services/memory-evolution-scheduler.ts",
+        "packages/server/src/services/memory-evolution-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/platform.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/memory-evolution.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/memory-candidate-service.ts",
+        "packages/server/src/services/memory-evolution-observability.ts",
+        "packages/server/src/services/memory-evolution-scheduler.ts",
+        "packages/server/src/services/memory-evolution-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/dashboard/src/pages/SwarmMissionControlPage.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/g15-detail-enforcement.test.ts",
+        "packages/server/src/__tests__/g8-memory-stores.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/memory-evolution.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "memory_evolution_leases",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/memory-evolution-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/memory-evolution-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "messages",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/services/agent-communication-service.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/board-handoff-service.ts",
+        "packages/server/src/services/board-protocol.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/messages.ts",
+        "packages/server/src/routes/swarm-orchestration.ts",
+        "packages/server/src/routes/telegram.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/InteractionBoardPage.test.ts",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/loop-event-service.test.ts",
+        "packages/server/src/__tests__/messages.test.ts",
+        "packages/server/src/__tests__/pi-executor.test.ts",
+        "packages/server/src/__tests__/swarm-orchestration-routes.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "model_capabilities",
+      "rows": 2,
+      "writers": [
+        "packages/server/src/services/multi-model-intelligence.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/knowledge-multimodel-pagination.test.ts",
+        "packages/server/src/services/multi-model-intelligence.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/knowledge-multimodel-pagination.test.ts"
+      ],
+      "last_write": "2026-09-09T08:45:54.634Z"
+    },
+    {
+      "table": "model_execution_outcomes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/multi-model-intelligence.ts"
+      ],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "model_routing_decisions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/multi-model-intelligence.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/multi-model-intelligence.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/loop-services.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "openmythos_attestations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/openmythos-attestation-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/openmythos-attestation-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "openmythos_case_results",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/openmythos-cache-integrity.test.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/self-evolving-governance-loop.test.ts",
+        "packages/server/src/services/openmythos-eval-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/openmythos-status-http.test.ts",
+        "packages/server/src/services/governance-feedback-loop.ts",
+        "packages/server/src/services/governance-history-service.ts",
+        "packages/server/src/services/openmythos-eval-service.ts",
+        "packages/server/src/services/self-evolving-governance-loop.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/assurance-governance.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/gym-governance-curriculum.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/openmythos-cache-integrity.test.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/openmythos-status-http.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/self-evolving-governance-loop.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "openmythos_eval_runs",
+      "rows": 0,
+      "writers": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/explore-public-leaderboard.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/g15-capability-promotion.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/governance-gate.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/metrics.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-http.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-service.test.ts",
+        "packages/server/src/__tests__/openmythos-cache-integrity.test.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/openmythos-nightly.test.ts",
+        "packages/server/src/__tests__/openmythos-scorecard.test.ts",
+        "packages/server/src/__tests__/openmythos-status-http.test.ts",
+        "packages/server/src/__tests__/self-evolving-governance-loop.test.ts",
+        "packages/server/src/bootstrap/recovery.ts",
+        "packages/server/src/services/explainer-generation-service.ts",
+        "packages/server/src/services/openmythos-attestation-service.ts",
+        "packages/server/src/services/openmythos-eval-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/mcp-server/src/tools/openmythos.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-service.test.ts",
+        "packages/server/src/__tests__/openmythos-cache-integrity.test.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/openmythos-status-http.test.ts",
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/agi-goal-reasoning-engine.ts",
+        "packages/server/src/services/compliance-audit-service.ts",
+        "packages/server/src/services/governance-feedback-loop.ts",
+        "packages/server/src/services/governance-gate-service.ts",
+        "packages/server/src/services/governance-guard-service.ts",
+        "packages/server/src/services/governance-history-service.ts",
+        "packages/server/src/services/openmythos-attestation-service.ts",
+        "packages/server/src/services/openmythos-eval-service.ts",
+        "packages/server/src/services/openmythos-nightly-service.ts",
+        "packages/server/src/services/segml-world-model-bridge.ts",
+        "packages/server/src/services/self-evolving-governance-loop.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/metrics.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/assurance-governance.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/explore-public-leaderboard.test.ts",
+        "packages/server/src/__tests__/explore-public.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g15-capability-promotion.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/governance-gate.test.ts",
+        "packages/server/src/__tests__/gym-governance-curriculum.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/metrics.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-http.test.ts",
+        "packages/server/src/__tests__/openmythos-attestation-service.test.ts",
+        "packages/server/src/__tests__/openmythos-cache-integrity.test.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/openmythos-nightly.test.ts",
+        "packages/server/src/__tests__/openmythos-scorecard.test.ts",
+        "packages/server/src/__tests__/openmythos-status-http.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/self-evolving-governance-loop.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "organizations",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/database/migrate.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/routes/organizations.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/organizations.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/components/OrganizationSelector.test.tsx",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts"
+      ],
+      "last_write": "2026-09-09 13:43:54"
+    },
+    {
+      "table": "outcome_learning_assessments",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/outcome-learning-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/services/outcome-learning-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "plugins",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/plugin-registry-service.ts"
+      ],
+      "readers": [],
+      "routes": [
+        "packages/server/src/routes/apex.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/plugin-registry-service.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "policy_violations",
+      "rows": 0,
+      "writers": [],
+      "readers": [
+        "packages/mcp-server/src/tools/authority.ts",
+        "packages/server/src/routes/authority.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/authority.ts"
+      ],
+      "tests": [
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "proactive_memories",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/proactive-memory-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/proactive-memory-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "proactive_memory_relations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/proactive-memory-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/proactive-memory-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "prompt_patterns",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/prompt-intel-service.ts",
+        "packages/server/src/services/prompt-pattern-registry.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/prompt-pattern-registry.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "provider_configs",
+      "rows": 6,
+      "writers": [
+        "packages/server/src/database/migrate-phase56.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/usage-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": "2026-09-09T08:45:54.263Z"
+    },
+    {
+      "table": "reconciliation_runs",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/reconciliation.test.ts",
+        "packages/server/src/services/reconciliation-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/reconciliation-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/reconciliation.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "red_team_reports",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/adversarial-red-team-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/adversarial-red-team-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "reflection_candidates",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/agent-assurance-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/dashboard/src/pages/SwarmMissionControlPage.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "refresh_tokens",
+      "rows": 9,
+      "writers": [
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/refresh-token-continuation.test.ts",
+        "packages/server/src/__tests__/refresh-token-rotation.test.ts",
+        "packages/server/src/services/auth-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/transports/http.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/refresh-token-continuation.test.ts",
+        "packages/server/src/services/auth-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/refresh-token-continuation.test.ts",
+        "packages/server/src/__tests__/refresh-token-rotation.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "repo_graph_snapshots",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/repo-graph-builder.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/repo-graph-builder.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "repositories",
+      "rows": 2,
+      "writers": [
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/repo-graph-builder.test.ts",
+        "packages/server/src/__tests__/repository-scanner.test.ts",
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "readers": [
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/services/export-service.ts",
+        "packages/server/src/services/repository-scanner.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/routes/repository-index.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/RepositoriesPage.test.tsx",
+        "packages/dashboard/src/pages/TaskRuntime.test.tsx",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/authorization.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/explainer-discovery-service.test.ts",
+        "packages/server/src/__tests__/explainer-fleet-routes.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repo-graph-builder.test.ts",
+        "packages/server/src/__tests__/repository-index.test.ts",
+        "packages/server/src/__tests__/repository-scanner.test.ts"
+      ],
+      "last_write": "2026-09-09T19:33:12.125Z"
+    },
+    {
+      "table": "repository_health_findings",
+      "rows": 6,
+      "writers": [
+        "packages/server/src/__tests__/repository-scanner.test.ts",
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/repository-scanner.test.ts",
+        "packages/server/src/services/export-service.ts",
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repository-scanner.test.ts"
+      ],
+      "last_write": "2026-09-09 19:33:12"
+    },
+    {
+      "table": "repository_indexes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/repository-index-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/repository-index-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/repository-index.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "repository_scan_artifacts",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "repository_scans",
+      "rows": 5,
+      "writers": [
+        "packages/server/src/__tests__/repository-scanner.test.ts",
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/repository-scanner.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/repository-scanner.test.ts"
+      ],
+      "last_write": "2026-09-09T19:33:12.125Z"
+    },
+    {
+      "table": "research_citations",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "research_claims",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "research_contradictions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "research_reports",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "research_sources",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/citation-research-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "risk_assessments",
+      "rows": 7,
+      "writers": [
+        "packages/server/src/execution/execution-engine.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/services/evidence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/observability.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts"
+      ],
+      "last_write": "2026-09-09T15:34:35.036Z"
+    },
+    {
+      "table": "runtime_contract_probes",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/services/runtime-command-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/runtime-command.test.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/runtime-command.test.ts"
+      ],
+      "last_write": "2026-09-09T19:33:22.327Z"
+    },
+    {
+      "table": "runtime_governance_agents",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/phase4-autonomy.test.ts",
+        "packages/server/src/services/runtime-governance-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/runtime-governance-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/phase4-autonomy.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "runtime_governance_alerts",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/runtime-governance-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/runtime-governance-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "sandbox_policies",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "security_scans",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/security-scanning-agent.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/autonomous-goal-generator.ts",
+        "packages/server/src/services/security-scanning-agent.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "segml_campaign_targets",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/segml-red-team-bridge.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/segml-red-team-bridge.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "segml_psychometry_log",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/segml-psychometry-bridge.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/segml-psychometry-bridge.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "segml_red_team_seeds",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/segml-red-team-bridge.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/segml-red-team-bridge.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "segml_runtime_targets",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/segml-runtime-governance-bridge.ts"
+      ],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "segml_violation_triggers",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/segml-runtime-governance-bridge.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/segml-runtime-governance-bridge.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "self_improvements",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/self-improvement-service.test.ts",
+        "packages/server/src/services/autonomous-goal-generator.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/loop-service.ts",
+        "packages/server/src/services/self-improvement-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/autonomous-goal-generator.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/self-improvement-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/self-improvement-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "self_model_snapshots",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/self-model-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/self-model-service.test.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/self-model-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "self_modification_opportunities",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/self-modification.test.ts",
+        "packages/server/src/services/self-modification-pipeline.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/self-modification.test.ts",
+        "packages/server/src/services/self-modification-pipeline.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/self-modification.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "self_modification_plans",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/self-modification-pipeline.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/self-modification.test.ts",
+        "packages/server/src/services/self-modification-pipeline.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/self-modification.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "self_modification_results",
+      "rows": 0,
+      "writers": [],
+      "readers": [
+        "packages/server/src/services/self-modification-pipeline.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "skill_genomes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/skill-evolution-engine.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/services/skill-evolution-engine.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "skill_outcomes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/g15-capability-promotion.test.ts",
+        "packages/server/src/services/skill-evolution-engine.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/services/dream-cycle-service.ts",
+        "packages/server/src/services/skill-evolution-engine.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/g15-capability-promotion.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "skill_patterns",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/skill-pattern-miner.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/skill-pattern-miner.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "spawn_trees",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/nested-spawn-service.ts",
+        "packages/server/src/services/proof-run-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/services/nested-spawn-service.ts",
+        "packages/server/src/services/proof-run-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/spawns.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "specialist_panels",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/self-improvement-service.ts",
+        "packages/server/src/services/specialist-panel-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/specialist-panel-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "specialist_reviews",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/specialist-panel-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/self-improvement-service.ts",
+        "packages/server/src/services/specialist-panel-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "strategy_nodes",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/services/agi-goal-reasoning-engine.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/agi-goal-reasoning-engine.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T19:34:11.080Z"
+    },
+    {
+      "table": "sub_agent_scratch",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "sub_agent_spawns",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/nested-spawn-service.ts",
+        "packages/server/src/services/proof-run-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/nested-spawn-service.ts",
+        "packages/server/src/services/proof-run-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "sub_agent_tool_outputs",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_capabilities",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/dream-cycle-service.test.ts",
+        "packages/server/src/__tests__/dream-task-planner-service.test.ts",
+        "packages/server/src/__tests__/g11-runtime-selection.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g15-enforcement.test.ts",
+        "packages/server/src/__tests__/g16-opencode-openai.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g20-negotiation.test.ts",
+        "packages/server/src/__tests__/g22-23-24-services.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g29-31-skill-specialised.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-evidence-service.test.ts",
+        "packages/server/src/services/capability-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/meta-evolution-service.ts",
+        "packages/server/src/services/outcome-learning-service.ts",
+        "packages/server/src/services/plugin-registry-service.ts",
+        "packages/server/src/services/swarm-capability-ops-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/adaptive-self-modification.test.ts",
+        "packages/server/src/__tests__/dream-cycle-service.test.ts",
+        "packages/server/src/__tests__/g22-23-24-services.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/knowledge-capability-sync.test.ts",
+        "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/plugin-registry-service.test.ts",
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/federation.ts",
+        "packages/server/src/services/capability-acquisition.ts",
+        "packages/server/src/services/capability-service.ts",
+        "packages/server/src/services/curiosity-service.ts",
+        "packages/server/src/services/dream-cycle-service.ts",
+        "packages/server/src/services/governance-feedback-loop.ts",
+        "packages/server/src/services/integration-inbox-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/meta-evolution-service.ts",
+        "packages/server/src/services/outcome-learning-service.ts",
+        "packages/server/src/services/self-model-service.ts",
+        "packages/server/src/services/swarm-capability-ops-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/federation.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/adaptive-self-modification.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/dream-cycle-service.test.ts",
+        "packages/server/src/__tests__/dream-task-planner-service.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g11-runtime-selection.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g15-enforcement.test.ts",
+        "packages/server/src/__tests__/g16-opencode-openai.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g20-negotiation.test.ts",
+        "packages/server/src/__tests__/g22-23-24-services.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g29-31-skill-specialised.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/governance-feedback-loop.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/knowledge-capability-sync.test.ts",
+        "packages/server/src/__tests__/knowledge-runtime-service.test.ts",
+        "packages/server/src/__tests__/learning-flywheel-smoke.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/plugin-registry-service.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-evidence-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_claims",
+      "rows": 1,
+      "writers": [
+        "packages/server/src/__tests__/adaptive-self-modification.test.ts",
+        "packages/server/src/__tests__/curiosity-service.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/research-loop.test.ts",
+        "packages/server/src/services/claim-service.ts",
+        "packages/server/src/services/meta-evolution-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/adaptive-self-modification.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/routes/knowledge.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/claim-service.ts",
+        "packages/server/src/services/context-injection-service.ts",
+        "packages/server/src/services/curiosity-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/meta-evolution-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/knowledge.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/adaptive-self-modification.test.ts",
+        "packages/server/src/__tests__/curiosity-service.test.ts",
+        "packages/server/src/__tests__/goal-formation.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/research-loop.test.ts"
+      ],
+      "last_write": "2026-09-09T13:00:43.367Z"
+    },
+    {
+      "table": "swarm_decisions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_evidence_edges",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/claim-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/claim-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/agent-interaction-ledger-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/openmythos-eval-service.test.ts",
+        "packages/server/src/__tests__/swarm-evidence-service.test.ts",
+        "packages/server/src/__tests__/worldlab-evidence-service.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_hypotheses",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/research-loop.test.ts",
+        "packages/server/src/services/hypothesis-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/hypothesis-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/research-loop.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_learning",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/routes/learning.ts"
+      ],
+      "readers": [
+        "packages/server/src/routes/learning.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/learning.ts"
+      ],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "swarm_missions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_runner_manifests",
+      "rows": 9,
+      "writers": [
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/services/swarm-operations-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-operations-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.697Z"
+    },
+    {
+      "table": "swarm_sessions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/swarm-session-persistence.test.ts",
+        "packages/server/src/services/swarm-orchestration-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/swarm-orchestration-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/swarm-session-persistence.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "swarm_tasks",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-mission-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "system_state",
+      "rows": 1,
+      "writers": [
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/mcp-server/src/__tests__/db.test.ts",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/database/provenance.ts",
+        "packages/server/src/services/external-event-ingest-service.ts",
+        "packages/server/src/services/loop-daemon.ts",
+        "packages/server/src/services/memory-evolution-scheduler.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/db.ts",
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/database/provenance.ts",
+        "packages/server/src/services/external-event-ingest-service.ts",
+        "packages/server/src/services/loop-daemon.ts",
+        "packages/server/src/services/memory-evolution-scheduler.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/authority-tools.test.ts",
+        "packages/mcp-server/src/__tests__/db.test.ts",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/server/src/__tests__/database-provenance.test.ts",
+        "packages/server/src/__tests__/external-event-ingest-service.test.ts",
+        "packages/server/src/__tests__/g19-parallel-goals.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts"
+      ],
+      "last_write": "2026-09-09 08:45:54"
+    },
+    {
+      "table": "task_artifacts",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "task_repository_snapshots",
+      "rows": 4,
+      "writers": [
+        "packages/server/src/services/diff-capture.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/diff-capture.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": "2026-09-09T10:57:16.087Z"
+    },
+    {
+      "table": "tasks",
+      "rows": 11,
+      "writers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/execution-terminal-audit.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/metrics.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/database/seed.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/governance-feedback-loop.ts",
+        "packages/server/src/services/loop-worker-executor-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/execution-terminal-audit.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/route-inventory.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/approvals.ts",
+        "packages/server/src/routes/evidence.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/evidence-service.ts",
+        "packages/server/src/services/export-service.ts",
+        "packages/server/src/services/loop-worker-executor-service.ts",
+        "packages/server/src/services/memory-sync-service.ts",
+        "packages/server/src/services/operator-intervention.ts",
+        "packages/server/src/services/reasoning-bank-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/websocket-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/agents.ts",
+        "packages/server/src/routes/approvals.ts",
+        "packages/server/src/routes/evidence.ts",
+        "packages/server/src/routes/explainer.ts",
+        "packages/server/src/routes/exports.ts",
+        "packages/server/src/routes/index.ts",
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/routes/observability.ts",
+        "packages/server/src/routes/repositories.ts",
+        "packages/server/src/routes/swarms.ts",
+        "packages/server/src/routes/tasks.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/lib/store.test.ts",
+        "packages/dashboard/src/pages/AgentsPage.test.tsx",
+        "packages/dashboard/src/pages/AuditPage.test.tsx",
+        "packages/dashboard/src/pages/DashboardPage.test.tsx",
+        "packages/dashboard/src/pages/ReviewPage.test.tsx",
+        "packages/dashboard/src/pages/TaskRuntime.test.tsx",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/approval-atomicity.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/authorization.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/council-engine.test.ts",
+        "packages/server/src/__tests__/critical-http-contracts.test.ts",
+        "packages/server/src/__tests__/critical-routes.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/e2e-smoke.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/execution-approval-binding.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/execution-terminal-audit.test.ts",
+        "packages/server/src/__tests__/explainer-pagination.test.ts",
+        "packages/server/src/__tests__/export.test.ts",
+        "packages/server/src/__tests__/g14-swarm-intelligence.test.ts",
+        "packages/server/src/__tests__/g15-knowledge-bus.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/learning-pipe-e2e.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-service.test.ts",
+        "packages/server/src/__tests__/manual-approvals.test.ts",
+        "packages/server/src/__tests__/metrics.test.ts",
+        "packages/server/src/__tests__/nl-agent-factory.test.ts",
+        "packages/server/src/__tests__/operator-intervention-chain.test.ts",
+        "packages/server/src/__tests__/repo-explainer-scheduler.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/route-inventory.test.ts",
+        "packages/server/src/__tests__/route-permissions-http.test.ts",
+        "packages/server/src/__tests__/source-learning.test.ts",
+        "packages/server/src/__tests__/spec-compliance-service.test.ts",
+        "packages/server/src/__tests__/swarm-status-service.test.ts",
+        "packages/server/src/__tests__/task-context-execution-chain.test.ts",
+        "packages/server/src/__tests__/task-execution-fallback-http.test.ts",
+        "packages/server/src/__tests__/task-live-events.test.ts",
+        "packages/server/src/__tests__/task-recovery.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts",
+        "packages/server/src/__tests__/worker-pool.test.ts"
+      ],
+      "last_write": "2026-09-09T15:34:42.041Z"
+    },
+    {
+      "table": "token_usage_log",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/usage-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/tools/governance.ts",
+        "packages/server/src/__tests__/compliance-usage-pagination.test.ts",
+        "packages/server/src/services/usage-service.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/server/src/__tests__/compliance-usage-pagination.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "tool_broker_capability_tokens",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/security-invariants.test.ts",
+        "packages/server/src/services/tool-broker.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/security-invariants.test.ts",
+        "packages/server/src/services/tool-broker.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/security-invariants.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "tool_broker_decisions",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/tool-broker.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/security-invariants.test.ts",
+        "packages/server/src/services/tool-broker.ts"
+      ],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/fase2-security.test.ts",
+        "packages/server/src/__tests__/security-invariants.test.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "trajectory_steps",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/trajectory-store.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/trajectory-store.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "users",
+      "rows": 3,
+      "writers": [
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/refresh-token-continuation.test.ts",
+        "packages/server/src/__tests__/refresh-token-rotation.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/services/auth-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/transports/http.ts",
+        "packages/ransomware-module/tests/patterns.test.ts",
+        "packages/ransomware-module/tests/ransomware-indicator-service.test.ts",
+        "packages/server/src/services/adversarial-red-team-service.ts",
+        "packages/server/src/services/auth-service.ts",
+        "packages/server/src/services/telegram-bot-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/index.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/SwarmMissionControlPage.test.ts",
+        "packages/mcp-server/src/__tests__/http-auth.test.ts",
+        "packages/ransomware-module/tests/djimitflo-adapter.test.ts",
+        "packages/ransomware-module/tests/patterns.test.ts",
+        "packages/ransomware-module/tests/ransomware-indicator-service.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/approvals-http.test.ts",
+        "packages/server/src/__tests__/auth-cookie-session.test.ts",
+        "packages/server/src/__tests__/auth-principal-chain.test.ts",
+        "packages/server/src/__tests__/catalog-http.test.ts",
+        "packages/server/src/__tests__/evidence-summary-continuation.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/live-canvas.test.ts",
+        "packages/server/src/__tests__/multi-tenancy.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/refresh-token-continuation.test.ts",
+        "packages/server/src/__tests__/refresh-token-rotation.test.ts",
+        "packages/server/src/__tests__/runtime-ports.test.ts",
+        "packages/server/src/__tests__/telegram-api-chain.test.ts",
+        "packages/server/src/__tests__/traceability.test.ts"
+      ],
+      "last_write": "2026-09-09T13:43:54.846Z"
+    },
+    {
+      "table": "vector_feedback",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/vector-memory-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/vector-memory-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "vector_memories",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/vector-memory-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/services/vector-memory-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/console.ts"
+      ],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "work_items",
+      "rows": 1,
+      "writers": [
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/work-item-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/services/dennis-agent-service.ts",
+        "packages/server/src/services/outcome-learning-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/work-item-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/routes/work-items.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/SwarmResourcesPage.test.tsx",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/dennis-agent-service.test.ts",
+        "packages/server/src/__tests__/execution-engine.test.ts",
+        "packages/server/src/__tests__/github-webhooks.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-spine-service.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/outcome-ingest-chain.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/swarm-status-service.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts"
+      ],
+      "last_write": "2026-09-09T13:39:32.477Z"
+    },
+    {
+      "table": "worker_leases",
+      "rows": 11,
+      "writers": [
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/ai-correctness.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g10-crash-recovery.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g13-dollar-economy.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-verification-completion.test.ts",
+        "packages/server/src/__tests__/reflection-engine.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/loop-worker-lease-repo.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/self-healing-service.ts",
+        "packages/server/src/services/swarm-status-service.ts"
+      ],
+      "readers": [
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/mcp-server/src/tools/agents.ts",
+        "packages/mcp-server/src/tools/loops.ts",
+        "packages/mcp-server/src/tools/mission-control.ts",
+        "packages/mcp-server/src/tools/orchestration.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/github-cocreate.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts",
+        "packages/server/src/database/migrate.ts",
+        "packages/server/src/execution/execution-engine.ts",
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/health.ts",
+        "packages/server/src/routes/tasks.ts",
+        "packages/server/src/services/agent-assurance-service.ts",
+        "packages/server/src/services/agent-interaction-ledger-service.ts",
+        "packages/server/src/services/agent-retirement-service.ts",
+        "packages/server/src/services/background-worker-service.ts",
+        "packages/server/src/services/capability-service.ts",
+        "packages/server/src/services/compliance-audit-service.ts",
+        "packages/server/src/services/continuous-learning-loop.ts",
+        "packages/server/src/services/cs-skill-swarm-harness-service.ts",
+        "packages/server/src/services/experience-retrieval-service.ts",
+        "packages/server/src/services/knowledge-runtime-service.ts",
+        "packages/server/src/services/loop-budget-service.ts",
+        "packages/server/src/services/loop-worker-lease-repo.ts",
+        "packages/server/src/services/memory-evolution-service.ts",
+        "packages/server/src/services/meta-evolution-service.ts",
+        "packages/server/src/services/metrics-service.ts",
+        "packages/server/src/services/nested-spawn-service.ts",
+        "packages/server/src/services/operator-intervention.ts",
+        "packages/server/src/services/predictive-analytics-service.ts",
+        "packages/server/src/services/proof-run-service.ts",
+        "packages/server/src/services/reflection-engine.ts",
+        "packages/server/src/services/reviewer-independence-service.ts",
+        "packages/server/src/services/self-healing-service.ts",
+        "packages/server/src/services/self-model-service.ts",
+        "packages/server/src/services/swarm-evidence-service.ts",
+        "packages/server/src/services/swarm-intelligence-service.ts",
+        "packages/server/src/services/swarm-status-service.ts",
+        "packages/server/src/services/telegram-bot-service.ts",
+        "packages/server/src/services/worktree-manager.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/console.ts",
+        "packages/server/src/routes/health.ts",
+        "packages/server/src/routes/metrics.ts",
+        "packages/server/src/routes/tasks.ts"
+      ],
+      "tests": [
+        "packages/dashboard/src/pages/ProofRunDetailPage.test.tsx",
+        "packages/mcp-server/src/__tests__/mcp-server.test.ts",
+        "packages/mcp-server/src/__tests__/orchestration-registration.test.ts",
+        "packages/server/src/__tests__/agent-lifecycle-boundary.test.ts",
+        "packages/server/src/__tests__/ai-correctness.test.ts",
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/calibrated-selection.test.ts",
+        "packages/server/src/__tests__/continuous-learning-loop.test.ts",
+        "packages/server/src/__tests__/execution-operator-pause.test.ts",
+        "packages/server/src/__tests__/experience-retrieval.test.ts",
+        "packages/server/src/__tests__/failure-metadata.test.ts",
+        "packages/server/src/__tests__/g10-crash-recovery.test.ts",
+        "packages/server/src/__tests__/g12-distillation-composition.test.ts",
+        "packages/server/src/__tests__/g13-dollar-economy.test.ts",
+        "packages/server/src/__tests__/g14-live-observability.test.ts",
+        "packages/server/src/__tests__/g18-economy-endpoint.test.ts",
+        "packages/server/src/__tests__/g28-competence-per-runtime.test.ts",
+        "packages/server/src/__tests__/g32-meta-evolution.test.ts",
+        "packages/server/src/__tests__/github-cocreate.test.ts",
+        "packages/server/src/__tests__/goal-batch-service.test.ts",
+        "packages/server/src/__tests__/helpers/mock-factories.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts",
+        "packages/server/src/__tests__/integration-core-flow.test.ts",
+        "packages/server/src/__tests__/integration-full-loop.test.ts",
+        "packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts",
+        "packages/server/src/__tests__/integration-spine-smoke.test.ts",
+        "packages/server/src/__tests__/learning-closure-service.test.ts",
+        "packages/server/src/__tests__/loop-budget-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery-service.test.ts",
+        "packages/server/src/__tests__/loop-recovery.test.ts",
+        "packages/server/src/__tests__/loop-routing-continuation.test.ts",
+        "packages/server/src/__tests__/loop-runtime-stop.test.ts",
+        "packages/server/src/__tests__/loop-security-checker.test.ts",
+        "packages/server/src/__tests__/loop-verification-completion.test.ts",
+        "packages/server/src/__tests__/production-runtime-readiness.test.ts",
+        "packages/server/src/__tests__/proof-run-service.test.ts",
+        "packages/server/src/__tests__/reflection-engine.test.ts",
+        "packages/server/src/__tests__/research-loop.test.ts",
+        "packages/server/src/__tests__/route-factories.test.ts",
+        "packages/server/src/__tests__/self-healing.test.ts",
+        "packages/server/src/__tests__/self-model-service.test.ts",
+        "packages/server/src/__tests__/swarm-intelligence-service.test.ts",
+        "packages/server/src/__tests__/swarm-resource-plan.test.ts",
+        "packages/server/src/__tests__/swarm-status-service.test.ts",
+        "packages/server/src/__tests__/work-item-evidence-conversion.test.ts"
+      ],
+      "last_write": "2026-09-09T18:01:47.845Z"
+    },
+    {
+      "table": "worker_results",
+      "rows": 0,
+      "writers": [],
+      "readers": [],
+      "routes": [],
+      "tests": [
+        "packages/server/src/__tests__/apex-integration.test.ts",
+        "packages/server/src/__tests__/helpers/test-db.ts"
+      ],
+      "last_write": null
+    },
+    {
+      "table": "workflow_edges",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "workflow_nodes",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "routes": [],
+      "tests": [],
+      "last_write": null
+    },
+    {
+      "table": "workflows",
+      "rows": 0,
+      "writers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "readers": [
+        "packages/server/src/services/workflow-graph-service.ts"
+      ],
+      "routes": [
+        "packages/server/src/routes/advanced.ts"
+      ],
+      "tests": [
+        "packages/agent-catalog/test/catalog.test.js",
+        "packages/agent-catalog/test/catalog.test.ts",
+        "packages/agent-catalog/test/static-gate-surfaces.test.ts",
+        "packages/server/src/__tests__/controlled-runtime-improvement.test.ts",
+        "packages/server/src/__tests__/fixtures/synthetic-repos.ts",
+        "packages/server/src/__tests__/mutation-validation.test.ts",
+        "packages/server/src/__tests__/skill-loader-service.test.ts"
+      ],
+      "last_write": null
+    }
+  ]
+}

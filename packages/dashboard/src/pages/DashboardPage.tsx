@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Activity, CheckCircle2, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, selectActiveTasks, selectCompletedTasks, selectFailedTasks } from '../lib/store';
 import { api } from '../lib/api';
 import { SpecComplianceWidget } from '../components/SpecComplianceWidget';
@@ -11,9 +12,9 @@ export function DashboardPage() {
   const systemHealth = useStore((state) => state.systemHealth);
   const isConnected = useStore((state) => state.isConnected);
 
-  const activeTasks = useStore(selectActiveTasks);
-  const completedTasks = useStore(selectCompletedTasks);
-  const failedTasks = useStore(selectFailedTasks);
+  const activeTasks = useStore(useShallow(selectActiveTasks));
+  const completedTasks = useStore(useShallow(selectCompletedTasks));
+  const failedTasks = useStore(useShallow(selectFailedTasks));
   const queuedTasks = tasks.filter((t) => t.status === 'queued' || t.status === 'pending');
 
   // D3: REST fallback — load initial data via API when WebSocket store is empty.
@@ -58,7 +59,7 @@ export function DashboardPage() {
           title="Active Tasks"
           value={activeTasks.length.toString()}
           icon={<Activity className="w-6 h-6 text-status-running" />}
-          trend={`${activeTasks.length} running now`}
+          trend={`${tasks.filter(task => task.status === 'running').length} running now`}
           trendUp={true}
         />
         <StatusCard

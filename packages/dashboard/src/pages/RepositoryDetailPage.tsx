@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Shield, GitBranch, Package, FileText, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 
 export function RepositoryDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -9,22 +10,35 @@ export function RepositoryDetailPage() {
   const [health, setHealth] = useState<any>(null);
   const [agentsMd, setAgentsMd] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const canScan = useAuthStore(s => s.hasPermission('scan:repository'));
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      api.getRepository(id).catch(() => null),
-      api.getRepositoryHealth(id).catch(() => null),
-      api.getRepositoryAgentsMd(id).catch(() => null),
+    let active = true;
+    setLoading(true);
+    setRepository(null); setHealth(null); setAgentsMd(null); setErrors({});
+    Promise.allSettled([
+      api.getRepository(id),
+      canScan ? api.getRepositoryHealth(id) : Promise.reject(new Error('Repository health details require scan permission.')),
+      canScan ? api.getRepositoryAgentsMd(id) : Promise.reject(new Error('Repository instructions require scan permission.')),
     ]).then(([repoRes, healthRes, agentsRes]) => {
-      if (repoRes) setRepository(repoRes.repository);
-      if (healthRes) setHealth(healthRes);
-      if (agentsRes) setAgentsMd(agentsRes);
-    }).finally(() => setLoading(false));
-  }, [id]);
+      if (!active) return;
+      if (repoRes.status === 'fulfilled') setRepository(repoRes.value.repository);
+      if (healthRes.status === 'fulfilled') setHealth(healthRes.value);
+      if (agentsRes.status === 'fulfilled') setAgentsMd(agentsRes.value);
+      const failures: Record<string, string> = {};
+      for (const [key, result] of [['repository', repoRes], ['health', healthRes], ['agents', agentsRes]] as const) {
+        if (result.status === 'rejected') failures[key] = result.reason instanceof Error ? result.reason.message : `${key} unavailable`;
+      }
+      setErrors(failures);
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [id, canScan]);
 
   if (loading) return <div className="p-8 animate-pulse"><div className="h-8 bg-background-secondary rounded w-1/3 mb-4" /><div className="h-64 bg-background-secondary rounded" /></div>;
-  if (!repository) return <div className="p-8 text-center"><h2 className="text-2xl font-bold">Repository not found</h2><Link to="/repositories" className="text-accent mt-4 inline-block">Back to Repositories</Link></div>;
+  if (!repository) return <div className="p-8 text-center"><h2 className="text-2xl font-bold">Repository unavailable</h2><p role="alert">{errors.repository || 'Repository not found'}</p><Link to="/repositories" className="text-accent mt-4 inline-block">Back to Repositories</Link></div>;
 
   const healthScore = health?.health_score ?? repository.health_score ?? 'N/A';
   const findings = health?.findings ?? [];
@@ -34,7 +48,7 @@ export function RepositoryDetailPage() {
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center gap-4">
-        <Link to="/repositories" className="p-2 hover:bg-background-elevated rounded-lg transition-colors"><ArrowLeft className="w-5 h-5 text-foreground-secondary" /></Link>
+        <Link to="/repositories" aria-label="Back to Repositories" className="p-2 hover:bg-background-elevated rounded-lg transition-colors"><ArrowLeft className="w-5 h-5 text-foreground-secondary" /></Link>
         <div className="flex-1">
           <h1 className="text-3xl font-bold text-foreground">{repository.name}</h1>
           <p className="text-foreground-secondary mt-1">{repository.path}</p>
@@ -82,7 +96,7 @@ export function RepositoryDetailPage() {
             <div className="h-full bg-status-completed rounded-full" style={{ width: `${typeof healthScore === 'number' ? healthScore : 0}%` }} />
           </div>
         </div>
-        {findings.length > 0 ? (
+        {errors.health ? <p role="alert">Health findings unavailable: {errors.health}</p> : findings.length > 0 ? (
           <div className="space-y-2">
             {findings.map((f: any, i: number) => (
               <div key={i} className={`p-3 rounded border text-sm ${f.severity === 'critical' ? 'bg-risk-critical/10 border-risk-critical/20' : f.severity === 'warning' ? 'bg-status-paused/10 border-status-paused/20' : 'bg-blue-500/10 border-blue-500/20'}`}>
@@ -103,7 +117,7 @@ export function RepositoryDetailPage() {
 
       <div className="bg-background-secondary border border-border rounded-lg p-6">
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2"><FileText className="w-5 h-5" /> AGENTS.md ({agentsMdFiles.length})</h2>
-        {agentsMdFiles.length > 0 ? (
+        {errors.agents ? <p role="alert">Repository instructions unavailable: {errors.agents}</p> : agentsMdFiles.length > 0 ? (
           <div className="space-y-3">
             {agentsMdFiles.map((f: any) => (
               <div key={f.id} className="border border-border rounded p-3">

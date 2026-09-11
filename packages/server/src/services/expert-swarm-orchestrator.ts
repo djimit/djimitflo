@@ -52,7 +52,11 @@ export class ExpertSwarmOrchestrator {
   async dispatch(input: ExpertSwarmInput): Promise<ExpertSwarmResult> {
     const start = Date.now();
     const id = randomUUID();
-    const maxParallel = Math.min(input.maxParallel ?? 3, this.maxParallel);
+    const requestedParallel = input.maxParallel ?? 3;
+    if (!Number.isInteger(requestedParallel) || requestedParallel < 1 || requestedParallel > this.maxParallel) {
+      throw new Error('EXPERT_SWARM_MAX_PARALLEL_INVALID');
+    }
+    const maxParallel = Math.min(requestedParallel, this.maxParallel);
     const sources = input.sources ?? ['wikipedia', 'arxiv', 'okf'];
 
     const answers: ExpertAnswer[] = [];

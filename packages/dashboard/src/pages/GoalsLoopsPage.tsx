@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, GitBranch, Play, Plus, RefreshCw, ShieldCheck, Split, Square, Target, Timer, Workflow, XCircle } from 'lucide-react';
 import { api, type GoalRecord, type LoopCatalogItem, type LoopGate, type LoopReviewBundle, type LoopRunRecord, type WorkerLeaseRecord } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 
-const DEFAULT_REPOSITORY_PATH = '/Users/dlandman/djimitflo';
-
 export function GoalsLoopsPage() {
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
+  const canIntervene = useAuthStore((state) => state.hasPermission('manage:config'));
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [runs, setRuns] = useState<LoopRunRecord[]>([]);
   const [catalog, setCatalog] = useState<LoopCatalogItem[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [bundle, setBundle] = useState<LoopReviewBundle | null>(null);
-  const [repositoryPath, setRepositoryPath] = useState(DEFAULT_REPOSITORY_PATH);
+  const [repositoryPath, setRepositoryPath] = useState('');
   const [selectedLoopName, setSelectedLoopName] = useState('doc-drift-and-small-fix-loop');
   const [selectedGoalId, setSelectedGoalId] = useState('');
   const [runtime, setRuntime] = useState<'manual' | 'codex' | 'opencode'>('manual');
@@ -21,12 +20,20 @@ export function GoalsLoopsPage() {
   const [goalRisk, setGoalRisk] = useState<'low' | 'medium' | 'high' | 'critical'>('low');
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
+  const actionPending = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const selectedRun = useMemo(
     () => runs.find((run) => run.id === selectedRunId) || runs[0] || null,
     [runs, selectedRunId]
   );
+  const selectedBundle = bundle?.run.id === selectedRun?.id ? bundle : null;
+  const selectedRunRef = useRef<string | null>(null);
+  selectedRunRef.current = selectedRun?.id || null;
+  const bundleRequest = useRef(0);
+  const chosenGoal = goals.find(goal => goal.id === selectedGoalId);
+  const runLocked = !!selectedRun && (selectedRun.metadata?.operator_paused === true || ['completed', 'cancelled', 'escalated'].includes(selectedRun.status));
 
   useEffect(() => {
     void refresh();
@@ -63,16 +70,22 @@ export function GoalsLoopsPage() {
   }
 
   async function loadBundle(runId: string) {
+    if (selectedRunRef.current !== runId) return;
+    const requestId = ++bundleRequest.current;
     try {
-      setBundle(await api.getLoopReviewBundle(runId));
+      const response = await api.getLoopReviewBundle(runId);
+      if (selectedRunRef.current === runId && requestId === bundleRequest.current) setBundle(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load review bundle');
+      if (selectedRunRef.current === runId && requestId === bundleRequest.current) setError(err instanceof Error ? err.message : 'Failed to load review bundle');
     }
   }
 
   async function runAction(label: string, action: () => Promise<unknown>) {
+    if (actionPending.current) return;
+    actionPending.current = true;
     setActionId(label);
     setError(null);
+    setNotice(null);
     try {
       await action();
       await refresh();
@@ -80,10 +93,38 @@ export function GoalsLoopsPage() {
         await loadBundle(selectedRun.id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      const message = err instanceof Error ? err.message : 'Action failed';
+      // Approval-required responses can follow a durable task/lease transition.
+      // Refresh before offering another action instead of retaining a manual lease.
+      setBundle(null);
+      await refresh();
+      if (selectedRun?.id) await loadBundle(selectedRun.id);
+      setError(message);
     } finally {
+      actionPending.current = false;
       setActionId(null);
     }
+  }
+
+  async function startLoop() {
+    const repository = repositoryPath.trim();
+    if (!repository) throw new Error('Choose an explicit repository path before starting a loop');
+    const created = await api.startLoop({ loop_name: selectedLoopName, repository_path: repository, goal_id: selectedGoalId || undefined });
+    setSelectedRunId(created.id);
+    setBundle(null);
+  }
+
+  async function executeChecker(lease: WorkerLeaseRecord) {
+    if (!selectedRun || runLocked) return;
+    if (runtime === 'manual') throw new Error('Select Codex or OpenCode for runtime review, or submit a manual verdict');
+    await api.executeChecker(selectedRun.id, lease.id, { runtime, timeout_ms: 120_000 });
+  }
+
+  async function completeLoop() {
+    if (!selectedRun || selectedRun.status !== 'ready_for_human_merge' || !canApprove) return;
+    const confirmed = window.confirm(`Confirm human approval to complete loop ${selectedRun.id}? The server records your authenticated identity and rechecks all verification gates. This does not merge, push, or deploy changes.`);
+    if (!confirmed) return;
+    await api.completeLoopRun(selectedRun.id, true);
   }
 
   async function createGoal() {
@@ -111,22 +152,30 @@ export function GoalsLoopsPage() {
 
   // D9: Operator intervention
   async function pauseGoal(goalId: string) {
-    try { await api.request(`/intervention/${goalId}/pause`, { method: 'POST' }); refresh(); } catch (e) { console.error('Pause failed:', e); }
+    await api.request(`/intervention/${goalId}/pause`, { method: 'POST' });
+    setNotice('Goal admission paused. No live workers were checkpointed or drained.');
   }
   async function resumeGoal(goalId: string) {
-    try { await api.request(`/intervention/${goalId}/resume`, { method: 'POST' }); refresh(); } catch (e) { console.error('Resume failed:', e); }
+    await api.request(`/intervention/${goalId}/resume`, { method: 'POST' });
+    setNotice('Operator pause released. Runtime dispatch still requires an explicit action.');
   }
   async function injectKnowledge(goalId: string) {
     const evidence = window.prompt('Enter knowledge to inject:');
-    if (!evidence) return;
-    try { await api.request(`/intervention/${goalId}/inject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence }) }); } catch (e) { console.error('Inject failed:', e); }
+    if (evidence === null) return;
+    if (!evidence.trim()) throw new Error('Knowledge text is required');
+    const result = await api.request<{ claim_id: string }>(`/intervention/${goalId}/inject`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ predicate: 'recommends', subject_ref: `goal:${goalId}`, confidence: 0.9, evidence: evidence.trim() }) });
+    setNotice(`Knowledge proposal stored: ${result.claim_id}. Operator input is not independently verified evidence.`);
   }
   async function overrideGate(goalId: string) {
-    const gate = window.prompt('Gate name to override:');
-    if (!gate) return;
-    const decision = window.prompt('Decision (proceed/stop):') || 'proceed';
-    const reason = window.prompt('Reason:') || 'operator override';
-    try { await api.request(`/intervention/${goalId}/override`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate, decision, reason }) }); refresh(); } catch (e) { console.error('Override failed:', e); }
+    const gate = window.prompt('Gate name for advisory decision (verification gates are not overridden):');
+    if (gate === null) return;
+    const decision = window.prompt('Advisory decision (proceed/stop); this does not execute or stop workers:');
+    if (decision === null) return;
+    const reason = window.prompt('Reason:');
+    if (reason === null) return;
+    if (!gate.trim() || !['proceed','stop'].includes(decision.trim()) || !reason.trim()) throw new Error('Gate, proceed/stop decision and reason are required');
+    await api.request(`/intervention/${goalId}/override`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gate: gate.trim(), decision: decision.trim(), reason: reason.trim() }) });
+    setNotice('Gate advice recorded. Verification evidence, approvals and worker execution are unchanged.');
   }
 
   async function splitFinding(findingId: string) {
@@ -150,7 +199,7 @@ export function GoalsLoopsPage() {
   const selectedLoop = catalog.find((loop) => loop.name === selectedLoopName);
   const highRiskRuns = runs.filter((run) => run.metadata?.risk_class === 'high' || run.metadata?.risk_class === 'critical' || run.gates.some((gate) => gate.name === 'security_checker_verdict' && gate.status === 'fail')).length;
   const blockedRuns = runs.filter((run) => ['blocked', 'escalated', 'failed'].includes(run.status)).length;
-  const activeWorkers = bundle?.leases.filter((lease) => ['prepared', 'running'].includes(lease.status)).length ?? 0;
+  const activeWorkers = selectedBundle?.leases.filter((lease) => ['prepared', 'running'].includes(lease.status)).length ?? 0;
 
   return (
     <div className="p-8 space-y-6">
@@ -170,11 +219,12 @@ export function GoalsLoopsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error}
         </div>
       )}
+      {notice && <p role="status" className="text-sm text-foreground-secondary">{notice}</p>}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Metric icon={<Target className="h-5 w-5" />} label="Goals" value={goals.length} tone="blue" />
@@ -223,7 +273,7 @@ export function GoalsLoopsPage() {
 
         <div className="bg-background-secondary border border-border rounded-lg p-4 space-y-3">
           <div className="text-sm font-semibold text-foreground">Start Loop</div>
-          <div className="flex flex-col lg:flex-row gap-3">
+          <div className="flex flex-col lg:flex-row lg:flex-wrap gap-3">
             <input
               type="text"
               value={repositoryPath}
@@ -233,6 +283,8 @@ export function GoalsLoopsPage() {
             />
             <select
               value={selectedGoalId}
+              aria-label="Loop goal"
+              disabled={actionId !== null}
               onChange={(event) => setSelectedGoalId(event.target.value)}
               className="lg:w-56 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
             >
@@ -252,28 +304,31 @@ export function GoalsLoopsPage() {
             </select>
             <select
               value={runtime}
+              aria-label="Worker runtime"
               onChange={(event) => setRuntime(event.target.value as typeof runtime)}
               className="lg:w-32 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
             >
-              <option value="manual">manual</option>
+              <option value="manual">manual (no runtime)</option>
               <option value="codex">codex</option>
               <option value="opencode">opencode</option>
             </select>
             <button
-              onClick={() => void runAction('start-loop', () => api.startLoop({ loop_name: selectedLoopName, repository_path: repositoryPath, goal_id: selectedGoalId || undefined }))}
-              disabled={actionId !== null || !repositoryPath.trim()}
+              onClick={() => void runAction('start-loop', startLoop)}
+              disabled={actionId !== null || !repositoryPath.trim() || chosenGoal?.metadata?.operator_paused === true}
               className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
             >
               <Play className="h-4 w-4" />
               Start
             </button>
           </div>
-          {selectedGoalId && (
+          {selectedGoalId && canIntervene && (
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => pauseGoal(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg hover:bg-status-paused/20">Pause</button>
-              <button onClick={() => resumeGoal(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-active/10 text-status-active border border-status-active/20 rounded-lg hover:bg-status-active/20">Resume</button>
-              <button onClick={() => injectKnowledge(selectedGoalId)} className="px-3 py-1.5 text-xs bg-accent/10 text-accent-secondary border border-accent/20 rounded-lg hover:bg-accent/20">Inject Knowledge</button>
-              <button onClick={() => overrideGate(selectedGoalId)} className="px-3 py-1.5 text-xs bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20">Override Gate</button>
+              <p className="w-full text-xs text-foreground-secondary">Goal admission: {chosenGoal?.metadata?.operator_paused === true ? 'paused by operator' : chosenGoal?.status || 'unknown'}</p>
+              <button disabled={actionId !== null} onClick={() => void runAction('pause-goal', () => pauseGoal(selectedGoalId))} className="px-3 py-1.5 text-xs bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg hover:bg-status-paused/20 disabled:opacity-50">Pause idle goal</button>
+              <button disabled={actionId !== null} onClick={() => void runAction('resume-goal', () => resumeGoal(selectedGoalId))} className="px-3 py-1.5 text-xs bg-status-active/10 text-status-active border border-status-active/20 rounded-lg hover:bg-status-active/20 disabled:opacity-50">Resume</button>
+              <button disabled={actionId !== null} onClick={() => void runAction('inject-knowledge', () => injectKnowledge(selectedGoalId))} className="px-3 py-1.5 text-xs bg-accent/10 text-accent-secondary border border-accent/20 rounded-lg hover:bg-accent/20 disabled:opacity-50">Inject Knowledge</button>
+              <button disabled={actionId !== null} onClick={() => void runAction('gate-advice', () => overrideGate(selectedGoalId))} className="px-3 py-1.5 text-xs bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20 disabled:opacity-50">Record gate advice</button>
+              <p className="w-full text-xs text-foreground-tertiary">Pause requires quiescent workers. Gate advice does not override verification or execute/stop workers.</p>
             </div>
           )}
           {selectedLoop && (
@@ -297,6 +352,7 @@ export function GoalsLoopsPage() {
               <button
                 key={run.id}
                 onClick={() => setSelectedRunId(run.id)}
+                disabled={actionId !== null}
                 className={`w-full text-left rounded-lg border p-4 transition-colors ${selectedRun?.id === run.id ? 'border-accent/40 bg-accent/5' : 'border-border bg-background-secondary hover:border-accent/20'}`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -326,7 +382,7 @@ export function GoalsLoopsPage() {
           {selectedRun ? (
             <>
               <div className="bg-background-secondary border border-border rounded-lg p-5">
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-start lg:justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <StatusIcon status={selectedRun.status} />
@@ -340,10 +396,10 @@ export function GoalsLoopsPage() {
                       {activeWorkers > 0 && <span>{activeWorkers} active worker(s)</span>}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => void runAction(`step-${selectedRun.id}`, () => api.stepLoopRun(selectedRun.id))}
-                      disabled={actionId !== null}
+                      disabled={actionId !== null || runLocked}
                       className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
                     >
                       <Workflow className="h-4 w-4" />
@@ -351,7 +407,7 @@ export function GoalsLoopsPage() {
                     </button>
                     <button
                       onClick={() => void runAction(`continue-${selectedRun.id}`, () => api.continueLoopRun(selectedRun.id, { max_assignments: 1, runtime }))}
-                      disabled={actionId !== null || ['running', 'verifying', 'completed', 'escalated'].includes(selectedRun.status)}
+                      disabled={actionId !== null || runLocked || ['running', 'verifying'].includes(selectedRun.status)}
                       className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
                     >
                       <GitBranch className="h-4 w-4" />
@@ -359,7 +415,7 @@ export function GoalsLoopsPage() {
                     </button>
                     <button
                       onClick={() => void runAction(`verify-${selectedRun.id}`, () => api.verifyLoopRun(selectedRun.id))}
-                      disabled={actionId !== null}
+                      disabled={actionId !== null || runLocked}
                       className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" />
@@ -367,8 +423,8 @@ export function GoalsLoopsPage() {
                     </button>
                     {canApprove && (
                       <button
-                        onClick={() => void runAction(`complete-${selectedRun.id}`, () => api.completeLoopRun(selectedRun.id))}
-                        disabled={actionId !== null || selectedRun.status === 'completed'}
+                        onClick={() => void runAction(`complete-${selectedRun.id}`, completeLoop)}
+                        disabled={actionId !== null || selectedRun.status !== 'ready_for_human_merge'}
                         className="inline-flex items-center gap-2 px-3 py-2 bg-background border border-border rounded-lg text-sm text-foreground hover:border-accent/30 disabled:opacity-50"
                       >
                         <CheckCircle2 className="h-4 w-4" />
@@ -390,7 +446,7 @@ export function GoalsLoopsPage() {
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Gates</h3>
                 <div className="space-y-2">
-                  {(bundle?.run.gates.length ? bundle.run.gates : selectedRun.gates).map((gate) => (
+                  {(selectedBundle?.run.gates.length ? selectedBundle.run.gates : selectedRun.gates).map((gate) => (
                     <GateRow key={gate.name} gate={gate} />
                   ))}
                 </div>
@@ -398,8 +454,9 @@ export function GoalsLoopsPage() {
 
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Worker Leases</h3>
+                {runtime === 'manual' && <p className="text-sm text-foreground-secondary mb-3">Manual review does not execute a runtime. Select Codex or OpenCode above to run a checker, or submit an explicit manual verdict.</p>}
                 <div className="space-y-2">
-                  {bundle?.leases.length ? bundle.leases.map((lease) => (
+                  {selectedBundle?.leases.length ? selectedBundle.leases.map((lease) => (
                     <LeaseRow
                       key={lease.id}
                       lease={lease}
@@ -411,11 +468,13 @@ export function GoalsLoopsPage() {
                         : api.submitCheckerVerdict(selectedRun.id, lease.id, 'needs_revision', 'Needs revision from dashboard'))}
                       onRetry={() => void runAction(`retry-${lease.id}`, () => api.retryLoopRun(selectedRun.id, lease.id, runtime))}
                       onExecute={() => void runAction(`execute-worker-${lease.id}`, () => api.executeWorker(selectedRun.id, lease.id, { timeout_ms: 120_000, diff_max_lines: 200 }))}
-                      onExecuteChecker={() => void runAction(`execute-checker-${lease.id}`, () => api.executeChecker(selectedRun.id, lease.id, { runtime: runtime === 'manual' ? 'mock' : runtime, timeout_ms: 120_000 }))}
-                      busy={actionId !== null}
+                      onExecuteChecker={() => void runAction(`execute-checker-${lease.id}`, () => executeChecker(lease))}
+                      selectedRuntime={runtime}
+                      makerCompleted={selectedBundle.leases.some((maker) => maker.id === lease.metadata.maker_lease_id && maker.role === 'maker' && maker.status === 'completed')}
+                      busy={actionId !== null || loading || runLocked}
                     />
                   )) : (
-                    <p className="text-sm text-foreground-secondary">No worker leases for this run.</p>
+                    <p className="text-sm text-foreground-secondary">{selectedBundle ? 'No worker leases for this run.' : 'Review bundle unavailable or loading.'}</p>
                   )}
                 </div>
               </section>
@@ -432,7 +491,7 @@ export function GoalsLoopsPage() {
                           {finding.metadata?.status !== 'split' && (
                             <button
                               onClick={() => void runAction(`split-${finding.id}`, () => splitFinding(finding.id))}
-                              disabled={actionId !== null}
+                              disabled={actionId !== null || runLocked}
                               className="p-1 rounded hover:bg-background-elevated disabled:opacity-50"
                               title="Split finding"
                             >
@@ -450,7 +509,7 @@ export function GoalsLoopsPage() {
               <section className="bg-background-secondary border border-border rounded-lg p-5">
                 <h3 className="text-lg font-semibold text-foreground mb-3">Review Events</h3>
                 <div className="space-y-2">
-                  {bundle?.events.slice(-8).reverse().map((event) => (
+                  {selectedBundle?.events.slice(-8).reverse().map((event) => (
                     <div key={event.id} className="flex items-start gap-3 rounded border border-border bg-background p-3">
                       <Timer className="h-4 w-4 text-foreground-tertiary mt-0.5 shrink-0" />
                       <div className="min-w-0">
@@ -517,6 +576,8 @@ function LeaseRow({
   onAccept,
   onNeedsRevision,
   onRetry,
+  selectedRuntime,
+  makerCompleted,
   busy,
 }: {
   lease: WorkerLeaseRecord;
@@ -525,11 +586,16 @@ function LeaseRow({
   onAccept: () => void;
   onNeedsRevision: () => void;
   onRetry: () => void;
+  selectedRuntime: 'manual' | 'codex' | 'opencode';
+  makerCompleted: boolean;
   busy: boolean;
 }) {
-  const canVerdict = (lease.role === 'checker' || lease.role === 'security_checker') && lease.status === 'prepared';
+  const isReviewer = lease.role === 'checker' || lease.role === 'security_checker';
+  const canVerdict = isReviewer && lease.status === 'prepared' && lease.runtime === 'manual' && !lease.metadata.execution_task_id;
   const canExecute = lease.role === 'maker' && lease.status === 'prepared' && lease.runtime !== 'manual';
-  const canExecuteChecker = lease.role === 'checker' && lease.status === 'prepared';
+  const canExecuteChecker = isReviewer && lease.status === 'prepared';
+  const reviewDisabled = busy || !makerCompleted || selectedRuntime === 'manual'
+    || (!!lease.metadata.execution_task_id && selectedRuntime !== lease.runtime);
   const canRetry = lease.role === 'maker' && lease.status === 'failed';
   const runtimeUsage = lease.metadata.runtime_usage as { total_tokens?: number } | undefined;
   const efficiency = lease.metadata.token_efficiency as { tokens_per_diff_line?: number | null } | undefined;
@@ -564,15 +630,15 @@ function LeaseRow({
             </button>
           )}
           {canExecuteChecker && (
-            <button onClick={onExecuteChecker} disabled={busy} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">
+            <button onClick={onExecuteChecker} disabled={reviewDisabled} title={selectedRuntime === 'manual' ? 'Select Codex or OpenCode for runtime review' : undefined} className="inline-flex items-center gap-1 px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">
               <Play className="h-3 w-3" />
-              Run Checker
+              {lease.role === 'security_checker' ? 'Run Security Checker' : 'Run Checker'}
             </button>
           )}
           {canVerdict && (
             <>
-              <button onClick={onAccept} disabled={busy} className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50">Accept</button>
-              <button onClick={onNeedsRevision} disabled={busy} className="px-2 py-1 rounded border border-status-paused/20 text-xs text-status-paused hover:bg-status-paused/10 disabled:opacity-50">Needs revision</button>
+              <button onClick={onAccept} disabled={busy || !makerCompleted} className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50">Accept manually</button>
+              <button onClick={onNeedsRevision} disabled={busy || !makerCompleted} className="px-2 py-1 rounded border border-status-paused/20 text-xs text-status-paused hover:bg-status-paused/10 disabled:opacity-50">Needs revision (manual)</button>
             </>
           )}
           {canRetry && (

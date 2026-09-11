@@ -164,7 +164,7 @@ export class DennisAgentService {
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         description = excluded.description,
-        status = 'active',
+        status = CASE WHEN agents.retired_at IS NOT NULL THEN 'offline' ELSE agents.status END,
         capabilities = excluded.capabilities,
         model = excluded.model,
         temperature = excluded.temperature,
@@ -192,6 +192,7 @@ export class DennisAgentService {
       now,
     );
 
+    const current = this.db.prepare('SELECT status, retired_at FROM agents WHERE id = ?').get(DENNIS_AGENT_ID) as { status: string; retired_at: string | null };
     const registry = new AgentRegistryService(this.options.okfBase);
     const okfConceptPath = join(this.options.okfBase || KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true }), 'agents', 'dennis-agent.md');
     if (!existsSync(okfConceptPath)) {
@@ -204,7 +205,7 @@ export class DennisAgentService {
         hostMachineId: DENNIS_AGENT_ID,
         capabilities: CAPABILITIES,
         lastSeen: now,
-        status: 'active',
+        status: current.status,
         metadata: baseMetadata,
       });
     }
@@ -214,7 +215,9 @@ export class DennisAgentService {
       this.db.prepare('UPDATE agents SET okf_concept_path = ? WHERE id = ?').run(okfConceptPath, DENNIS_AGENT_ID);
     }
 
-    const paperclipImport = this.importPaperclipPending();
+    const paperclipImport = !current.retired_at && ['active', 'idle'].includes(current.status)
+      ? this.importPaperclipPending()
+      : { path: this.defaultPaperclipPendingPath(), imported_tasks: 0, imported_work_items: 0, skipped: 0 };
     const dryRunProcessing = { processed: 0, skipped: 0, work_items_blocked: 0 };
     const traceSpanId = this.recordTrace(now, {
       okf_concept_path: okfConceptPath,
@@ -226,7 +229,7 @@ export class DennisAgentService {
 
     return {
       agent_id: DENNIS_AGENT_ID,
-      status: 'active',
+      status: current.status,
       last_heartbeat_at: now,
       okf_concept_path: okfConceptPath,
       trace_span_id: traceSpanId,

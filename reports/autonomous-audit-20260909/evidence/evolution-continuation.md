@@ -1,0 +1,38 @@
+# G72–G75: executed functional-evolution checkpoint
+
+Implemented and locally verified; the mission is not complete. Original dirty checkout preserved. No merge, push, production deployment, new paid provider call or fabricated approval. Testing Strategy supplied negative controls and evidence boundaries; Ponytail kept changes inside existing services. Playwright exercised the local browser and outage/retry path.
+
+## Measured corrections
+
+| Gap | Before | After and execution evidence | Boundary |
+|---|---|---|---|
+| G72 | Ten fixed outcomes inflated from50%/N10 to90.9%/N55 after replay; overlapping patterns doubledN; global batches left currentN10 at37.5%/N8, including after restart. | Distinct durable episodes, non-overlapping cohorts, replacement projections, immediate and startup materialization. Same oracle remains50%/N10; overlap duration1000ms. `cognitive-evidence-continuation.md`, `cognitive-review-and-controlled-loop-plan.md`, `cognitive-current-projection-{red,green}.log`, `cognitive-restart-projection-{red,green}.log`. | Better measurement, not better task outcomes. Advice is not applied; full-history scaling unmeasured. |
+| G73 | Cancelled/partial runs or stale checker evidence could close learning; verified improvements had no evaluating transition; empty findings could hide high risk. | Shared review/risk helpers validate all workers, matching checks, gates, terminal state and pause, including replay. Valid completed goal/run/proposal joins append actual eval/reflection refs atomically and advance only to evaluating. `self-improvement-learning-continuation.md`;73 scoped tests. | Structural evaluation is not held-out improvement or promotion. |
+| G74 | Ingested outcomes had no assessment consumer; causal labels were trusted; replay overwrote operator scope, missed higher risk and retained stale candidate signals. | Existing poll transaction closes normalization→storage→assessment→advisory candidate→cursor. Real HTTP/SQLite/recurrent poll/reopen/rollback; scope and lifecycle retained, risk monotonic, contradicted candidate refreshed. `outcome-ingest-chain-red.log`, `outcome-replay-preservation.md`. | No verified experimental binding: causal_support=false, assurance UNDETERMINED, promotion ineligible. |
+| G75 | Inventory lost aliases, direct/array/nested routes and mislabelled middleware as authentication. |610 actual API registrations match577 declarations. All604 auth-marked routes actually return401 anonymously; six unmarked exclusions explicit. Real OpenMythos status projection tests. `route-registration-continuation.md`. | Registration/auth is not domain completion;136 source declarations still unclassified. Unmounted GitHub webhook is DISCONNECTED. |
+
+## Goals and actual loops
+
+Six goals were imported/replayed through existing APIs: six unique goals, zero implicit workers/schedules. E1 completed with baseline SHA-256; E2/E3/E4 remain running external-audit work, E5/E6 remain created with unmet prerequisites. `evolution-goals-registered.json`, `evolution-baseline.json`, `evolution-goals-progress.json`; statuses survive restart in `evolution-http-after-restart.json`.
+
+Actual local loop `f7c21f53-b8a1-4750-8a65-f54a804c91d4` uses fresh no-remote Git fixture `/private/tmp/djimitflo-evolution-loop.I7u89r`. Scanner→isolated worktree→explicit mock echo child→real npm test was executed. The deliberate success-fraction defect failed with exit1; maker became failed, verify retained failed gates, continue returned409 `LOOP_FAILED_GATES_BLOCK_CONTINUE`, and learning closure returned blocked without evaluation. `evolution-loop-negative-control-final.json` preserves the review bundle and assertion log. No mock checker, manual verdict, approval, completion or code repair was submitted. This is a useful negative control, not self-improving engineering intelligence.
+
+Existing ingestion polling was started, polled at least twice, stopped, reopened against file-backed SQLite, started/polled again and stopped. Counts stayed3 observations/1 assessment/1 candidate/0 goals. This proves the mechanism under test, not a running production schedule. Codex background goal remains usageLimited; no unavailable `/loops` command or background monitor is claimed.
+
+## HTTP, browser and restart
+
+Ten explicitly synthetic observations submitted through authenticated cognitive API remain50%/N10 after nine evolve requests. Process restart and nine further requests retain identity/count/rate and six goal statuses: `evolution-http-before.json`, `evolution-http-after-restart.json`. Real Chromium renders the same row and advisory-only explanation: `browser-evolution-cognitive-fixed.log`, `browser-evolution-cognitive-restarted.log`. Screenshot `../../../output/playwright/evolution-cognitive.png` was inspected.
+
+Injected503 on meta-learning shows an error and Retry, not empty success. Removing interception and clicking Retry recovers actual data: `browser-evolution-cognitive-outage.log`, `browser-evolution-cognitive-retry.log`, `browser-evolution-cognitive-network.log`. Only the network artifact explicitly collects requests/page exceptions; the earlier retry extraction is not clean-network evidence. Automation-origin data: CSP noise and intentional503 remain separate from application exceptions.
+
+Initial failures are retained: loop harness expected200 although continue correctly returned201; the same prepared run was resumed. Initial cognitive HTTP exposed37.5%/N8 and led to the freshness/startup fixes. Intermediate builds/tests predate those final changes and are not final integration evidence.
+
+The initial final-network capture included an expired access-token401, not an unexplained application failure: `browser-evolution-request-history.log` records `/auth/me`401 → `/auth/refresh`200 → `/auth/me`200. The subsequent full API capture (`browser-evolution-cognitive-network-revalidated.log`) has no failing requests/page exceptions, current50%/N10 and only automation data: CSP messages. Earlier request/refresh noise is preserved. `evolution-artifact-check.json` joins actual logs, all604 denials, browser/restart evidence and read-only SQLite assertions:10 distinct observations/50%, failed maker, blocked loop, zero learning closures. Executable validator: `node reports/autonomous-audit-20260909/evidence/evolution-artifact-check.mjs`.
+
+## Integration and remaining work
+
+Root suite **2696 passed,20 skipped**: server2409/dashboard149/catalog26/MCP39/ransomware40/shared3/Telegram30 (`evolution-tests-frozen.log`). Full build plus post-freshness server rebuild, full typecheck/lint pass: `evolution-build-final.log`, `evolution-server-build-integrated.log`, `evolution-typecheck-frozen.log`, `evolution-lint-frozen.log`. Configured mutation71/71 killed,0survived/uncovered/errors (`evolution-mutation.log`), not repository-wide coverage. Standalone assurance/parser checks15/15 (`evolution-assurance-scripts.log`).
+
+Aggregate assurance stays BLOCKED (`assurance-evolution.json`): missing real OpenMythos evaluation/certification and deployed identity/external dependencies. No unseen-task improvement, automatic strategy application, authenticated production-wide walkthrough, live Telegram or universal runtime/tool mediation is claimed. E2–E6 and the original mission remain incomplete; integration REVIEW_REQUIRED.
+
+Regenerated capability graph:77groups/38pages/577source declarations/610actual API registrations/56MCP tools/165core tables plus5catalog tables. Table source reachability:140ACTIVE,4READ-ONLY,9WRITE-ONLY,12UNREACHABLE; not production-liveness certification. All required nine reports retain historical evidence and describe this current checkpoint.

@@ -23,6 +23,8 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'LOOP_TOKEN_BUDGET_EXHAUSTED') throw createError(409, 'token budget exhausted for this loop run', 'LOOP_TOKEN_BUDGET_EXHAUSTED');
   if (message === 'LOOP_WALL_CLOCK_BUDGET_EXHAUSTED') throw createError(409, 'wall-clock budget exhausted for this loop run', 'LOOP_WALL_CLOCK_BUDGET_EXHAUSTED');
   if (message === 'LOOP_RETRY_BUDGET_EXHAUSTED') throw createError(409, 'retry budget exhausted for this loop run', 'LOOP_RETRY_BUDGET_EXHAUSTED');
+  if (message === 'INVALID_EXECUTION_MODEL') throw createError(400, 'model must be a non-empty string of at most 200 characters', 'INVALID_EXECUTION_MODEL');
+  if (message === 'INVALID_REASONING_EFFORT') throw createError(400, 'reasoningEffort must be low, medium, high, xhigh, or max', 'INVALID_REASONING_EFFORT');
   if (message === 'LOOP_RETRY_NOT_ALLOWED') throw createError(409, 'maker lease is not failed, rejected, or marked for revision', 'LOOP_RETRY_NOT_ALLOWED');
   if (message === 'LOOP_ESCALATED_REQUIRES_HUMAN') throw createError(409, 'loop is escalated and requires human review before leasing more workers', 'LOOP_ESCALATED_REQUIRES_HUMAN');
   if (message === 'LOOP_FAILED_GATES_BLOCK_CONTINUE') throw createError(409, 'failed gates block continuation', 'LOOP_FAILED_GATES_BLOCK_CONTINUE');
@@ -49,6 +51,7 @@ function mapLoopServiceError(error: unknown): never {
   if (message === 'CHECKER_MAKER_NOT_COMPLETED') throw createError(409, 'maker lease is not completed yet', 'CHECKER_MAKER_NOT_COMPLETED');
   if (message === 'HIGH_RISK_SECURITY_CHECK_REQUIRED') throw createError(409, 'high-risk loop requires accepted security checker verdict before completion', 'HIGH_RISK_SECURITY_CHECK_REQUIRED');
   if (message === 'LOOP_COMPLETION_LEASES_INCOMPLETE') throw createError(409, 'all worker leases must be completed before loop completion', 'LOOP_COMPLETION_LEASES_INCOMPLETE');
+  if (message === 'LOOP_COMPLETION_CANCELLED') throw createError(409, 'cancelled loops cannot be completed', 'LOOP_COMPLETION_CANCELLED');
   if (message === 'LOOP_COMPLETION_NO_WORKERS') throw createError(409, 'loop has no completed worker path to close', 'LOOP_COMPLETION_NO_WORKERS');
   if (message === 'LOOP_HUMAN_APPROVAL_REQUIRED') throw createError(409, 'human approval is required before completing mutating work', 'LOOP_HUMAN_APPROVAL_REQUIRED');
   if (message?.startsWith('CAPABILITY_NOT_FOUND:')) { const [, id] = message.split(':'); throw createError(403, `capability not found: ${id}`, 'CAPABILITY_NOT_FOUND'); }
@@ -290,9 +293,9 @@ export function createLoopRoutes(db: Database, auth?: AuthMiddleware, evidenceRo
     }
   });
 
-  router.post('/runs/:id/stop', requirePermission('create:task'), (req, res, next) => {
+  router.post('/runs/:id/stop', requirePermission('create:task'), async (req, res, next) => {
     try {
-      res.json(loopService.stopLoopRun(req.params.id));
+      res.json(await loopService.stopLoopRun(req.params.id));
     } catch (error) {
       try {
         mapLoopServiceError(error);

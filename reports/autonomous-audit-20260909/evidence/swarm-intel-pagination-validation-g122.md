@@ -1,0 +1,3 @@
+# G122 swarm-intelligence pagination validation
+
+The swarm-intelligence interaction, digest, handoff-reconcile, outcome-learning, reviewer-independence, capability and claim endpoints now reject malformed `limit` values before ledger, learning, capability or handoff queries. The focused HTTP regression passes; the full server suite passes **2444/20 skipped**, the full workspace passes **2731/20 skipped**, `/loops` passes **12/12**, and the refreshed route inventory passes **581 source routes / 263 contract-tested; 608/608 marked-auth anonymous denials** (614 instantiated registrations). No external provider, deployment, merge or production mutation was performed.

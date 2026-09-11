@@ -2,10 +2,13 @@ import { useEffect } from 'react';
 import { Bot, Activity, XCircle, Clock } from 'lucide-react';
 import { useStore } from '../lib/store'
 import { api } from '../lib/api';
+import { Link, useParams } from 'react-router-dom';
 
 export function AgentsPage() {
+  const { agentId } = useParams();
   const agents = useStore((state) => state.agents);
   const tasks = useStore((state) => state.tasks);
+  const visibleAgents = agentId ? agents.filter(agent => agent.id === agentId) : agents;
 
   // D4: REST fallback — load agents via API when WebSocket store is empty.
   useEffect(() => {
@@ -18,20 +21,21 @@ export function AgentsPage() {
     <div className="p-8 space-y-6">
       {/* Header */}
       <div>
+        {agentId && <Link to="/agents" className="text-accent">All agents</Link>}
         <h1 className="text-3xl font-bold text-foreground">Agents</h1>
         <p className="text-foreground-secondary mt-2">
-          Manage and monitor your AI agents
+          Monitor your AI agents
         </p>
       </div>
       
       {/* Agent Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {agents.length === 0 ? (
+        {visibleAgents.length === 0 ? (
           <div className="col-span-2 bg-background-secondary border border-border rounded-lg p-12 text-center">
-            <p className="text-foreground-muted">No agents configured</p>
+            <p className="text-foreground-muted">{agentId ? 'Agent not found' : 'No agents configured'}</p>
           </div>
         ) : (
-          agents.map((agent) => {
+          visibleAgents.map((agent) => {
             const agentTasks = tasks.filter((t) => t.agent_id === agent.id);
             const currentTask = agentTasks.find((t) => t.status === 'running');
             
@@ -46,6 +50,8 @@ export function AgentsPage() {
                 completedTasks={agent.completed_tasks}
                 failedTasks={agent.failed_tasks}
                 capabilities={agent.capabilities}
+                retiredAt={agent.retired_at}
+                retirementReason={agent.retirement_reason}
               />
             );
           })
@@ -58,7 +64,9 @@ export function AgentsPage() {
 interface AgentCardProps {
   name: string;
   description: string;
-  status: 'active' | 'idle' | 'error' | 'offline' | 'paused';
+  status: string;
+  retiredAt?: string | null;
+  retirementReason?: string | null;
   currentTask: string | null;
   totalTasks: number;
   completedTasks: number;
@@ -75,8 +83,14 @@ function AgentCard({
   completedTasks,
   failedTasks,
   capabilities,
+  retiredAt,
+  retirementReason,
 }: AgentCardProps) {
-  const statusConfig = {
+  const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
+    pending_approval: {
+      color: 'bg-status-paused/10 text-status-paused border-status-paused/20',
+      icon: <Clock className="w-4 h-4" />,
+    },
     active: {
       color: 'bg-status-active/10 text-status-active border-status-active/20',
       icon: <Activity className="w-4 h-4" />,
@@ -98,6 +112,7 @@ function AgentCard({
       icon: <XCircle className="w-4 h-4" />,
     },
   };
+  const appearance = statusConfig[status] ?? statusConfig.offline;
   
   const successRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   
@@ -114,11 +129,13 @@ function AgentCard({
             <p className="text-sm text-foreground-secondary mt-1">{description}</p>
           </div>
         </div>
-        <span className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${statusConfig[status].color}`}>
-          {statusConfig[status].icon}
+        <span className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-2 ${appearance.color}`}>
+          {appearance.icon}
           {status}
         </span>
       </div>
+
+      {retiredAt && <p className="mb-4 text-sm text-foreground-secondary">Retired at {retiredAt}{retirementReason ? ` — ${retirementReason}` : ''}</p>}
       
       {/* Current Task */}
       {currentTask && (

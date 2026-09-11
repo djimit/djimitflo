@@ -68,16 +68,16 @@ describe('G11: Runtime-adaptive selection', () => {
     delete process.env.PI_OFFLINE;
   });
 
-  it('defaults to codex when no capability matches', () => {
+  it('requires manual selection when no capability matches', () => {
     const run = loops.startDocDriftAndSmallFixLoop({ repository_path: tempDir });
     const plan = loops.planLoopRun(run.id);
     expect(plan.length).toBeGreaterThan(0);
     for (const item of plan) {
-      expect(item.runtime).toBe('codex');
+      expect(item.runtime).toBe('manual');
     }
   });
 
-  it('routes to opencode when capability has low p50_tokens', () => {
+  it('does not infer an executor from unattributed capability token counts', () => {
     insertCapability('cap-light', 'validated', {
       competence: { success_rate: 0.5, p50_cost: 1000 },
       cost_model: { learned: true, p50_tokens: 1000 },
@@ -87,11 +87,11 @@ describe('G11: Runtime-adaptive selection', () => {
     const plan = loops.planLoopRun(run.id);
     expect(plan.length).toBeGreaterThan(0);
     for (const item of plan) {
-      expect(item.runtime).toBe('opencode');
+      expect(item.runtime).toBe('manual');
     }
   });
 
-  it('routes to codex when capability has high success_rate', () => {
+  it('does not infer an executor from an unmatched capability-wide success rate', () => {
     insertCapability('cap-complex', 'validated', {
       competence: { success_rate: 0.9, p50_cost: 20000 },
       cost_model: { learned: true, p50_tokens: 20000 },
@@ -101,7 +101,7 @@ describe('G11: Runtime-adaptive selection', () => {
     const plan = loops.planLoopRun(run.id);
     expect(plan.length).toBeGreaterThan(0);
     for (const item of plan) {
-      expect(item.runtime).toBe('codex');
+      expect(item.runtime).toBe('manual');
     }
   });
 });

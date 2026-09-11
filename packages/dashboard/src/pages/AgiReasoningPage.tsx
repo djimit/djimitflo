@@ -4,6 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { Play, Brain, Target, CheckCircle, AlertTriangle, Loader } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface ReasoningResult {
   observations: { observations: string[]; anomalies: string[]; opportunities: string[] };
@@ -20,10 +21,7 @@ export function AgiReasoningPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/agi/reason', { method: 'POST' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      setResult(data);
+      setResult(await api.request<ReasoningResult>('/agi/reason', { method: 'POST' }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run reasoning');
     } finally {

@@ -18,6 +18,15 @@ import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 import { CsSkillSwarmHarnessService } from '../services/cs-skill-swarm-harness-service';
 import type { WebSocketService } from '../services/websocket-service';
 
+function boundedLimit(value: unknown, maximum = 500): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+    throw createError(400, `limit must be an integer between 1 and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return limit;
+}
+
 function mapProofRunError(error: unknown): unknown {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'PROOF_RUN_NOT_FOUND') return createError(404, 'Proof run not found', 'PROOF_RUN_NOT_FOUND');
@@ -146,7 +155,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.get('/assurance/capability-tokens', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.listCapabilityTokens(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { next(mapAssuranceError(error)); }
+    try { res.json(assurance.listCapabilityTokens(boundedLimit(req.query.limit))); } catch (error) { next(mapAssuranceError(error)); }
   });
 
   router.post('/assurance/capability-tokens', requirePermission('write:swarm_action'), (req, res, next) => {
@@ -154,7 +163,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
   });
 
   router.get('/assurance/reflections', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(assurance.listReflections(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { next(mapAssuranceError(error)); }
+    try { res.json(assurance.listReflections(boundedLimit(req.query.limit))); } catch (error) { next(mapAssuranceError(error)); }
   });
 
   router.post('/assurance/reflections', requirePermission('write:swarm_action'), (req, res, next) => {
@@ -163,7 +172,7 @@ export function createGovernanceRoutes(db: Database, auth?: AuthMiddleware, wsSe
 
   // Memory candidates
   router.get('/memory/candidates', requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json(memoryCandidates.list(req.query.limit ? Number(req.query.limit) : undefined)); } catch (error) { next(error); }
+    try { res.json({ candidates: memoryCandidates.list(boundedLimit(req.query.limit)) }); } catch (error) { next(error); }
   });
 
   router.post('/memory/candidates', requirePermission('write:claim'), (req, res, next) => {

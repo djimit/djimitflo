@@ -63,7 +63,11 @@ export function createSegmlL3Routes(db: Database, auth?: AuthMiddleware): Router
   router.get('/world-model/scenarios', requireAuth('read:evidence'), (req, res, next) => {
     try {
       const bridge = new SegmlLevel3Bridge(db);
-      const count = req.query.count ? Math.min(50, Number(req.query.count)) : 10;
+      const count = req.query.count === undefined ? 10 : Number(req.query.count);
+      if (!Number.isInteger(count) || count < 1 || count > 50) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'count must be an integer between 1 and 50' } });
+        return;
+      }
       res.json({ scenarios: bridge.generateScenarios(count) });
     } catch (error) {
       next(error);

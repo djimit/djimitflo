@@ -101,10 +101,6 @@ function getCorpusPath(): string {
   return process.env.OPENMYTHOS_CORPUS_PATH.trim();
 }
 
-function sha256File(path: string): string {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
-}
-
 async function getOllamaModelDigest(model: string, override?: string): Promise<string> {
   if (override?.trim()) return override.trim();
   const response = await fetch(`${getOllamaUrl()}/api/tags`);
@@ -124,6 +120,8 @@ export class OpenMythosEvalService {
   private ollamaBreaker: OllamaCircuitBreaker;
   private corpusValidator: CorpusSchemaValidator;
   private corpusManifest: CorpusManifest | null = null;
+  private corpusSha256: string | null = null;
+  private anchorsSha256: string | null = null;
 
   constructor(private db: Database) {
     this.evidenceService = new SwarmEvidenceService(db);
@@ -168,8 +166,9 @@ export class OpenMythosEvalService {
   loadCases(categories?: string[]): OpenMythosCase[] {
     if (!this.casesCache) {
       const corpusPath = getCorpusPath();
-      const content = readFileSync(corpusPath, 'utf8');
-      const lines = content.split('\n').filter((line) => line.trim());
+      const content = readFileSync(corpusPath);
+      const corpusSha256 = createHash('sha256').update(content).digest('hex');
+      const lines = content.toString('utf8').split('\n').filter((line) => line.trim());
       const { valid, invalid } = this.corpusValidator.validateAll(lines);
       if (invalid.length > 0) {
         console.warn(`[OpenMythos] ${invalid.length} invalid corpus entries skipped`);
@@ -177,20 +176,22 @@ export class OpenMythosEvalService {
           console.warn(`  Line ${inv.line}: ${inv.errors.join(', ')}`);
         }
       }
-      this.casesCache = valid as unknown as OpenMythosCase[];
       const manifestPath = process.env.OPENMYTHOS_CORPUS_MANIFEST_PATH?.trim() || join(dirname(corpusPath), 'manifest.json');
-      this.corpusManifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as CorpusManifest;
-      if (this.corpusManifest.schema_version !== 1
-        || this.corpusManifest.case_count !== this.casesCache.length
-        || this.corpusManifest.sha256 !== sha256File(corpusPath)) {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as CorpusManifest;
+      if (manifest.schema_version !== 1
+        || manifest.case_count !== valid.length
+        || manifest.sha256 !== corpusSha256) {
         throw new Error('OPENMYTHOS_CORPUS_MANIFEST_MISMATCH');
       }
+      // Publish one validated snapshot. A failed load cannot leave a usable
+      // cache, and later disk changes cannot relabel these cached prompts.
+      this.corpusManifest = manifest;
+      this.corpusSha256 = corpusSha256;
+      this.casesCache = valid.map(testCase => Object.freeze(testCase)) as OpenMythosCase[];
     }
 
-    if (categories && categories.length > 0) {
-      return this.casesCache.filter((c) => categories.includes(c.category));
-    }
-    return this.casesCache;
+    // Do not expose the cache array for callers to append unvalidated cases.
+    return this.casesCache.filter(c => !categories?.length || categories.includes(c.category));
   }
 
   /**
@@ -225,25 +226,23 @@ export class OpenMythosEvalService {
     const oracleAnchorCases = cases.filter((testCase) => anchors.has(testCase.id)).length;
     const runId = randomUUID();
     const startedAt = new Date().toISOString();
-    const corpusPath = getCorpusPath();
-    const anchorsPath = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim();
     const baseMetadata = {
       subject_model: subjectModel,
       subject_model_digest: subjectModelDigest,
       judge_backend: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? 'ollama' : 'judge_service',
       judge_model: process.env.OPENMYTHOS_USE_JUDGE_SERVICE === 'false' ? getJudgeModel() : 'djimitflo-judge-service',
       judge_model_digest: judgeModelDigest,
-      corpus_sha256: sha256File(corpusPath),
+      corpus_sha256: this.corpusSha256,
       corpus_version: this.corpusManifest?.corpus_version,
       corpus_certification_ready: this.corpusManifest?.certification_ready === true,
-      oracle_anchors_sha256: anchorsPath ? sha256File(anchorsPath) : undefined,
+      oracle_anchors_sha256: this.anchorsSha256 ?? undefined,
       generation_options: { temperature: 0, seed: 0, num_predict: 1024 },
       case_ids: caseIds || [],
       evaluation_mode: subject ? 'skill_conditioned_prompt' : 'model_only',
       skill_id: subject?.id,
       skill_version: subject?.version,
       skill_content_hash: subject?.contentHash,
-      oracle_anchors_configured: Boolean(process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim()),
+      oracle_anchors_configured: this.anchorsSha256 !== null,
       oracle_anchor_cases: oracleAnchorCases,
       discrimination_gate_enabled: discriminationGateEnabled,
       discrimination_gate_has_prior_data: discriminationPriorCases > 0,
@@ -454,20 +453,27 @@ export class OpenMythosEvalService {
 
   private loadAnchors(): Map<string, OracleAnchor> {
     if (this.anchorsCache) return this.anchorsCache;
-    this.anchorsCache = new Map();
-    const path = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH;
-    if (!path) return this.anchorsCache;
-    const payload = JSON.parse(readFileSync(path, 'utf8')) as { schema_version?: number; anchors?: OracleAnchor[] };
+    const anchors = new Map<string, OracleAnchor>();
+    const path = process.env.OPENMYTHOS_ORACLE_ANCHORS_PATH?.trim();
+    if (!path) {
+      this.anchorsSha256 = null;
+      this.anchorsCache = anchors;
+      return anchors;
+    }
+    const content = readFileSync(path);
+    const payload = JSON.parse(content.toString('utf8')) as { schema_version?: number; anchors?: OracleAnchor[] };
     if (payload.schema_version !== 1 || !Array.isArray(payload.anchors)) {
       throw new Error('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
     }
     for (const anchor of payload.anchors) {
-      if (!anchor?.case_id || !anchor.oracle_type || !anchor.rule || this.anchorsCache.has(anchor.case_id)) {
+      if (!anchor?.case_id || !anchor.oracle_type || !anchor.rule || anchors.has(anchor.case_id)) {
         throw new Error('OPENMYTHOS_ORACLE_ANCHORS_INVALID');
       }
-      this.anchorsCache.set(anchor.case_id, anchor);
+      anchors.set(anchor.case_id, anchor);
     }
-    return this.anchorsCache;
+    this.anchorsSha256 = createHash('sha256').update(content).digest('hex');
+    this.anchorsCache = anchors;
+    return anchors;
   }
 
   private scoreWithOracle(caseId: string, response: string) {
@@ -820,6 +826,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
     if (process.env.OPENMYTHOS_DISCRIMINATION_GATE_ENABLED === 'false') {
       return cases;
     }
+    this.loadCases(); // Bind prior-result lookup to the same validated snapshot.
 
     const placeholders = cases.map(() => '?').join(',');
     const rows = this.db.prepare(`
@@ -834,7 +841,7 @@ Respond with JSON: {"score": <number>, "rationale": "<brief explanation>"}`;
         AND json_extract(r.metadata, '$.corpus_sha256') = ?
       GROUP BY cr.case_id
       HAVING run_count >= ? AND model_count >= 2 AND score_variants > 1
-    `).all(...cases.map(c => c.id), sha256File(getCorpusPath()), _minRuns) as Array<{ case_id: string }>;
+    `).all(...cases.map(c => c.id), this.corpusSha256, _minRuns) as Array<{ case_id: string }>;
 
     const discriminatingIds = new Set(rows.map(r => r.case_id));
     const filtered = cases.filter(c => discriminatingIds.has(c.id));

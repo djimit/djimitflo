@@ -1,0 +1,36 @@
+{
+  "captured_at": "2026-09-09T19:40:42Z",
+  "source": "curl -sS -L against https://djimitflo.agentical.nl",
+  "observations": [
+    {
+      "url": "https://djimitflo.agentical.nl/",
+      "status": 200,
+      "server": "nginx",
+      "content_type": "text/html; charset=utf-8",
+      "bundle": "/assets/index-4v75G2Yu.js",
+      "scope": "Public HTML availability only"
+    },
+    {
+      "url": "https://djimitflo.agentical.nl/api/version",
+      "status": 200,
+      "body": {"version": "0.5.8", "name": "Djimitflo API"},
+      "scope": "Public version endpoint only"
+    },
+    {
+      "url": "https://djimitflo.agentical.nl/api/health",
+      "status": 401,
+      "body": {"error": {"message": "Authentication required", "code": "AUTH_REQUIRED"}},
+      "scope": "Anonymous auth boundary"
+    },
+    {
+      "url": "https://djimitflo.agentical.nl/api/openapi.json",
+      "status": 401,
+      "body": {"error": {"message": "Authentication required", "code": "AUTH_REQUIRED"}},
+      "scope": "Anonymous auth boundary"
+    }
+  ],
+  "limitations": [
+    "No authenticated browser surface was available.",
+    "This does not prove authenticated UI semantics, deployment commit identity, task execution or provider quality."
+  ]
+}

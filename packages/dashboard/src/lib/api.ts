@@ -29,9 +29,8 @@ import type {
   ExportRequest,
 } from '@djimitflo/shared';
 
-export const API_BASE = import.meta.env.PROD ? '/api' : import.meta.env.VITE_API_BASE || '/api';
-
-const AUTH_SESSION_KEY = 'djimitflo_auth_session';
+import { API_BASE, authenticatedFetch } from './auth-store';
+export { API_BASE } from './auth-store';
 
 export type AgentGovernanceScore = {
   agentId: string;
@@ -883,31 +882,8 @@ export type CatalogSearchResult = {
 };
 
 class ApiClient {
-  private getToken(): string | null {
-    return localStorage.getItem(AUTH_SESSION_KEY);
-  }
-
   async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const token = this.getToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...options?.headers as Record<string, string>,
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (response.status === 401) {
-      localStorage.removeItem(AUTH_SESSION_KEY);
-      window.location.href = '/login';
-      throw new Error('Session expired');
-    }
+    const response = await authenticatedFetch(endpoint, options);
 
     if (response.status === 403) {
       throw new Error('Access denied');
@@ -955,7 +931,7 @@ class ApiClient {
     });
   }
 
-  async executeTask(id: string, executor: 'mock' | 'opencode' = 'opencode'): Promise<{ message: string; task_id: string; executor: string; status: string; approvalId?: string; reason?: string }> {
+  async executeTask(id: string, executor = 'opencode'): Promise<{ message: string; task_id: string; executor: string; status: string; approvalId?: string; reason?: string }> {
     return this.request(`/tasks/${id}/execute`, {
       method: 'POST',
       body: JSON.stringify({ executor }),
@@ -1097,7 +1073,7 @@ class ApiClient {
     return this.request(`/evidence/task/${taskId}${query}`);
   }
 
-  async getExecutionSummary(taskId: string): Promise<{ summary: ExecutionSummary | null }> {
+  async getExecutionSummary(taskId: string): Promise<ExecutionSummary | null> {
     return this.request(`/evidence/summary/${taskId}`);
   }
 
@@ -1105,7 +1081,7 @@ class ApiClient {
     return this.request(`/evidence/file-changes/${taskId}`);
   }
 
-  async getAuditTrail(taskId: string): Promise<{ trail: AuditTrailEntry[] }> {
+  async getAuditTrail(taskId: string): Promise<{ audit_trail: AuditTrailEntry[] }> {
     return this.request(`/evidence/audit-trail/${taskId}`);
   }
 
@@ -1325,8 +1301,14 @@ class ApiClient {
     });
   }
 
-  async completeLoopRun(runId: string): Promise<{ run: LoopRunRecord; gates: LoopGate[] }> {
-    return this.request(`/loops/runs/${runId}/complete`, { method: 'POST' });
+  async completeLoopRun(runId: string, humanConfirmed: true): Promise<{ run: LoopRunRecord; gates: LoopGate[] }> {
+    if (humanConfirmed !== true) throw new Error('Explicit human confirmation is required');
+    return this.request(`/loops/runs/${runId}/complete`, {
+      method: 'POST',
+      // This marker conveys confirmation only; the server derives actor identity
+      // from authentication and independently enforces completion gates.
+      body: JSON.stringify({ human_approval_ref: 'dashboard:explicit-confirmation' }),
+    });
   }
 
   async stopLoopRun(runId: string): Promise<{ run: LoopRunRecord; events: LoopEventRecord[] }> {
@@ -1598,23 +1580,11 @@ class ApiClient {
   }
 
   // Exports
-  private async exportDownload(endpoint: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
-    const url = `${API_BASE}${endpoint}`;
-    const token = this.getToken();
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify({ format, ...options }),
+  private async exportDownload(endpoint: string, format: ExportFormat | 'json' | 'csv', options?: Partial<ExportRequest>, method = 'POST'): Promise<void> {
+    const response = await authenticatedFetch(endpoint, {
+      method,
+      body: method === 'GET' ? undefined : JSON.stringify({ format, ...options }),
     });
-
-    if (response.status === 401) {
-      localStorage.removeItem(AUTH_SESSION_KEY);
-      window.location.href = '/login';
-      throw new Error('Session expired');
-    }
     if (response.status === 403) throw new Error('Access denied');
     if (response.status === 404) throw new Error('Not found');
     if (!response.ok) {
@@ -1641,6 +1611,10 @@ class ApiClient {
     return this.exportDownload(`/exports/task/${taskId}`, format, options);
   }
 
+  async exportCompliance(format: 'json' | 'csv'): Promise<void> {
+    return this.exportDownload(`/compliance/export?format=${format}`, format, undefined, 'GET');
+  }
+
   async exportEvidence(taskId: string, format: ExportFormat, options?: Partial<ExportRequest>): Promise<void> {
     return this.exportDownload(`/exports/evidence/${taskId}`, format, options);
   }
@@ -1664,7 +1638,9 @@ class ApiClient {
   }
 
   async getCatalogAgents(params?: { division?: string; status?: string }): Promise<{ agents: CatalogAgent[] }> {
-    const query = new URLSearchParams(params as Record<string, string>);
+    const query = new URLSearchParams();
+    if (params?.division) query.set('division', params.division);
+    if (params?.status) query.set('status', params.status);
     const qs = query.toString();
     return this.request(`/catalog/agents${qs ? `?${qs}` : ""}`);
   }
@@ -1737,7 +1713,8 @@ class ApiClient {
     return this.request("/compliance/status");
   }
 
-  async getMetaStats(): Promise<{
+  async getMetaStats(): Promise<{ enabled: false } | {
+    enabled: true;
     totalDecisions: number; failuresPredicted: number; costSavingsDollars: number;
   }> {
     return this.request("/meta/stats");

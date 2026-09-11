@@ -20,6 +20,8 @@ export const WS_CLOSE_CODES = {
 
 export interface AuthenticatedClient {
   userId: string;
+  sessionId?: string;
+  organizationId?: string;
   email: string;
   role: UserRole;
   tokenExp: number;

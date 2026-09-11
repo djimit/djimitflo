@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
 import { LoopService, type GoalRecord } from './loop-service';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 type GoalRisk = 'low' | 'medium' | 'high' | 'critical';
 
@@ -41,7 +42,7 @@ interface GoalBatchInput {
 export class GoalBatchService {
   private loops: LoopService;
 
-  constructor(private db: Database, private repoRoot = process.cwd()) {
+  constructor(private db: Database, private repoRoot = resolveRepositoryRoot(process.cwd())) {
     this.loops = new LoopService(db);
   }
 

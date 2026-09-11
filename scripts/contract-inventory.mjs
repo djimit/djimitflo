@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
+import { inventoryRouteSource, compareRuntimeRoutes, routeSourceFingerprint, inventoryDashboardClient } from './route-source-inventory.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 
@@ -14,22 +15,14 @@ function files(dir, suffix) {
 
 const testFiles = files(join(root, 'packages'), '.test.ts');
 const tests = testFiles.map(path => ({ path, content: readFileSync(path, 'utf8') }));
-const routeFiles = files(join(root, 'packages/server/src/routes'), '.ts').filter(path => basename(path) !== 'index.ts');
+const sourceInventory = inventoryRouteSource(root);
 const critical = /^(auth|approvals|backup|exports|council|openmythos|mcp|runtime-governance|swarms|spawns)$/;
 const routeExemptions = new Map([
   ['swarms:POST:/expert/dispatch', 'Dispatches external research providers; requires an isolated network-controlled contract canary.'],
   ['swarms:POST:/fix', 'Can modify a repository and invoke an agent runtime; requires an isolated disposable-worktree canary.'],
 ]);
 const routes = [];
-const routeIndex = readFileSync(join(root, 'packages/server/src/routes/index.ts'), 'utf8');
-const factoryModules = new Map();
-for (const match of routeIndex.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"]\.\/([^'"]+)['"]/g)) {
-  for (const factory of match[1].matchAll(/\b(create\w+Routes)\b/g)) factoryModules.set(factory[1], match[2]);
-}
-const mountPrefixes = new Map([...routeIndex.matchAll(/\{\s*prefix:\s*(['"])([^'"]*)\1[\s\S]{0,500}?router:\s*(create\w+Routes)\(/g)].map(match => [match[3], match[2]]));
-
-function endpointPattern(factory, routePath) {
-  const prefix = mountPrefixes.get(factory) ?? '';
+function endpointPattern(prefix = '', routePath) {
   const endpoint = `${prefix}${routePath === '/' ? '' : routePath}` || '/';
   const escaped = endpoint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const path = escaped.replace(/:([A-Za-z0-9_]+)/g, '(?:\\$\\{[^}]+\\}|[^/\\s\"\'`?]+)');
@@ -72,45 +65,43 @@ function toolExecuted(content, tool) {
   return false;
 }
 
-if (mountPrefixes.get('createApprovalRoutes') !== '/approvals') throw new Error('contract inventory mount parser self-check failed');
-if (!endpointPattern('createSpawnRoutes', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
-if (!routeExecuted('await fetch(`${baseUrl}/approvals`, { method: \'POST\' });', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route execution self-check failed');
-if (routeExecuted('await fetch(`${baseUrl}/approvals`);', 'POST', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route method self-check failed');
-if (routeExecuted('await fetch(`${baseUrl}/approvals/id`);', 'GET', endpointPattern('createApprovalRoutes', '/'))) throw new Error('contract inventory route boundary self-check failed');
+if (!sourceInventory.mounted.some(route => route.factory === 'createApprovalRoutes' && route.mounted_path === '/api/approvals')) throw new Error('contract inventory mount parser self-check failed');
+if (!endpointPattern('/swarms/spawns', '/:id/status').test('/swarms/spawns/${created.id}/status')) throw new Error('contract inventory endpoint matcher self-check failed');
+if (!routeExecuted('await fetch(`${baseUrl}/approvals`, { method: \'POST\' });', 'POST', endpointPattern('/approvals', '/'))) throw new Error('contract inventory route execution self-check failed');
+if (routeExecuted('await fetch(`${baseUrl}/approvals`);', 'POST', endpointPattern('/approvals', '/'))) throw new Error('contract inventory route method self-check failed');
+if (routeExecuted('await fetch(`${baseUrl}/approvals/id`);', 'GET', endpointPattern('/approvals', '/'))) throw new Error('contract inventory route boundary self-check failed');
 if (toolExecuted("expect(names).toContain('example_tool')", 'example_tool')) throw new Error('contract inventory MCP registration self-check failed');
 if (!toolExecuted("const tool = getTool('example_tool'); await tool({});", 'example_tool')) throw new Error('contract inventory MCP execution self-check failed');
 
-for (const path of routeFiles) {
-  const source = readFileSync(path, 'utf8');
-  const module = basename(path, '.ts');
-  const matcher = /router\.(get|post|put|patch|delete)\(\s*(['"`])([^'"`]+)\2/g;
-  for (const match of source.matchAll(matcher)) {
-    const factories = [...source.slice(0, match.index).matchAll(/(?:export\s+)?function\s+(create\w+Routes)\s*\(/g)];
-    const factory = factories.at(-1)?.[1];
-    const endpoint = endpointPattern(factory, match[3]);
-    const relativeEndpoint = endpointPattern(undefined, match[3]);
+for (const declaration of sourceInventory.definitions) {
+    const { module, factory, method, path, id } = declaration;
+    const mountedPaths = sourceInventory.mounted.filter(item => item.module === module && item.factory === factory && item.method === method && item.path === path).map(item => item.mounted_path);
+    const endpoints = mountedPaths.map(path => endpointPattern(undefined, path.replace(/^\/api/, '')));
+    const relativeEndpoint = endpointPattern(undefined, path);
     const evidence = tests
-      .filter(test => routeExecuted(test.content, match[1].toUpperCase(), endpoint)
+      .filter(test => endpoints.some(endpoint => routeExecuted(test.content, method, endpoint))
         || (test.content.includes(`../routes/${module}`)
-          && routeExecuted(test.content, match[1].toUpperCase(), relativeEndpoint)))
+          && routeExecuted(test.content, method, relativeEndpoint)))
       .map(test => relative(root, test.path));
     const moduleEvidence = tests
       .filter(test => test.content.includes(`../routes/${module}`))
       .map(test => relative(root, test.path));
-    const id = `${module}:${match[1].toUpperCase()}:${match[3]}`;
     const exemption = routeExemptions.get(id);
     routes.push({
       id,
       module,
-      method: match[1].toUpperCase(),
-      path: match[3],
+      factory,
+      method,
+      path,
+      mounted_paths: mountedPaths,
+      registration_scope: mountedPaths.length ? 'api_source_declaration' : 'outside_api_mount_graph',
+      evidence_kind: 'static_test_reference_not_execution',
       critical: critical.test(module),
       status: evidence.length ? 'exercised' : exemption ? 'exempted' : moduleEvidence.length ? 'module_covered' : 'unclassified',
       exemption: exemption || null,
       evidence,
       module_evidence: moduleEvidence,
     });
-  }
 }
 
 const toolFiles = files(join(root, 'packages/mcp-server/src/tools'), '.ts');
@@ -127,14 +118,21 @@ for (const path of toolFiles) {
       module,
       critical: /^(governance|orchestration)$/.test(module),
       status: evidence.length ? 'tested' : 'unclassified',
+      evidence_kind: 'static_test_reference_not_execution',
       evidence,
     });
   }
 }
 
 const report = {
-  schema_version: 1,
+  schema_version: 2,
   generated_at: new Date().toISOString(),
+  evidence_limits: ['Legacy status exercised/tested means a static test-source reference, not an executed test or domain proof.', 'Runtime comparison covers explicit API method/path registrations; implicit HEAD/OPTIONS and startup /health, /metrics, /explore and static SPA middleware are outside this API fixture.'],
+  source_registration: {
+    mounted: sourceInventory.mounted,
+    outside_api_mount_graph: sourceInventory.outside_api_mount_graph,
+    unsupported: sourceInventory.unsupported,
+  },
   routes: {
     total: routes.length,
     tested: routes.filter(item => item.status === 'exercised').length,
@@ -153,6 +151,16 @@ const report = {
   },
 };
 
+if (process.env.RUNTIME_ROUTE_INVENTORY_PATH) {
+  const runtime = JSON.parse(readFileSync(resolve(root, process.env.RUNTIME_ROUTE_INVENTORY_PATH), 'utf8'));
+  if (runtime.scope !== 'instantiated_api_router' || !Array.isArray(runtime.routes)) throw new Error('Invalid runtime route inventory');
+  if (runtime.source_sha256 !== routeSourceFingerprint(root)) throw new Error('Stale runtime route inventory: route/auth source fingerprint differs');
+  report.runtime_registration = { evidence_path: process.env.RUNTIME_ROUTE_INVENTORY_PATH, ...compareRuntimeRoutes(sourceInventory, runtime.routes) };
+  report.dashboard_client = inventoryDashboardClient(root, runtime.routes);
+} else {
+  report.runtime_registration = { status: 'NOT_EXECUTED', reason: 'Supply RUNTIME_ROUTE_INVENTORY_PATH from the route-registration HTTP fixture; source references alone are not runtime proof.' };
+}
+
 const output = resolve(root, process.env.CONTRACT_INVENTORY_PATH || 'openspec/changes/assurance-truth-closure/contract-inventory.json');
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({
@@ -160,4 +168,6 @@ console.log(JSON.stringify({
   routes: { total: report.routes.total, tested: report.routes.tested, critical_unclassified: report.routes.critical_unclassified.length },
   mcp_tools: { total: report.mcp_tools.total, tested: report.mcp_tools.tested, critical_unclassified: report.mcp_tools.critical_unclassified.length },
 }, null, 2));
-process.exitCode = report.routes.critical_unclassified.length || report.mcp_tools.critical_unclassified.length ? 1 : 0;
+process.exitCode = report.routes.critical_unclassified.length || report.mcp_tools.critical_unclassified.length
+  || sourceInventory.unsupported.length || report.runtime_registration.declared_not_registered?.length
+  || report.runtime_registration.registered_not_declared?.length ? 1 : 0;

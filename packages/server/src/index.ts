@@ -7,16 +7,17 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { initializeDatabase } from './database';
 import { errorHandler } from './middleware/error-handler';
 import { requestLogger } from './middleware/request-logger';
+import { securityHeaders } from './middleware/security-headers';
 import { createAuthMiddleware } from './middleware/auth';
 import { AuthService } from './services/auth-service';
 import { createRoutes } from './routes';
 import { createExplorePublicRoutes } from './routes/explore-public';
+import { createGitHubWebhookRoutes } from './routes/github-webhooks';
 import { createMetricsHandler, metricsRateLimiter } from './routes/metrics';
 import { WebSocketService } from './services/websocket-service';
 import { ExecutionEngine } from './execution/execution-engine';
@@ -41,8 +42,10 @@ import { resolveRuntimeProfile, runtimeProfileEnablesAutonomy, runtimeProfileEna
 import { initExternalEventIngest, initOperatorServices } from './bootstrap/operator-services';
 import { initAutonomousServices } from './bootstrap/autonomous-services';
 import { DennisAgentService } from './services/dennis-agent-service';
+import { TelegramApiService } from './services/telegram-api-service';
+import { parseTelegramAllowedUsers, parseTelegramUserMap } from './routes/telegram';
 
-type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string };
+type TelegramBotConfig = { token: string; machineId: string; agentType: string; hostIp: string; name: string; allowedUsers?: number[]; userMap?: Record<string, string> };
 
 const PORT = process.env.PORT || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -114,10 +117,14 @@ async function main() {
   const app = express();
   
   // Middleware
+  app.use(securityHeaders);
   app.use(cors({
     origin: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
   }));
+  // Exact GitHub signature bytes must be consumed before the general JSON parser.
+  // This connector imports work items only; it never starts goals/loops/workers.
+  app.use('/github/webhook', createGitHubWebhookRoutes(db));
   app.use(express.json());
   app.use(requestLogger);
   
@@ -175,6 +182,10 @@ async function main() {
   const runtimeGovernance = new RuntimeGovernanceService(db);
   runtimeGovernance.start();
   const executionEngine = new ExecutionEngine(db, wsService, undefined, runtimeGovernance);
+  const taskRecovery = executionEngine.recoverInterruptedTasks();
+  if (taskRecovery.failedMockTasks || taskRecovery.heldTasks) {
+    console.log(`🔄 Reconciled ${taskRecovery.failedMockTasks} interrupted mock task(s); ${taskRecovery.heldTasks} task(s) held for operator outcome reconciliation.`);
+  }
   console.log('⚙️  Execution engine initialized');
 
   const memorySync = new MemorySyncService(db);
@@ -252,22 +263,12 @@ async function main() {
   if (operatorRuntime) try {
     const raw = process.env.TELEGRAM_BOTS_CONFIG;
     if (raw) {
-      const configs = JSON.parse(raw) as TelegramBotConfig[];
+      const configs = (JSON.parse(raw) as TelegramBotConfig[]).map(config => ({ ...config,
+        allowedUsers: config.allowedUsers ?? parseTelegramAllowedUsers(process.env.TELEGRAM_ALLOWED_USERS),
+        userMap: config.userMap ?? parseTelegramUserMap(process.env.TELEGRAM_USER_MAP),
+      }));
       const { TelegramGatewayService } = await import('@djimitflo/telegram') as { TelegramGatewayService: new (c: TelegramBotConfig[], ops: any) => any };
-      const tg = new TelegramGatewayService(configs, {
-        createTask: async (prompt: string, machineId: string) => {
-          const id = randomUUID();
-          db.prepare(
-            `INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, created_at, updated_at, created_by) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', datetime('now'), datetime('now'), ?)`
-          ).run(id, prompt.slice(0, 80) || 'Telegram Task', prompt, machineId);
-          return id;
-        },
-        getStatus: async (machineId: string) => {
-          const count = (db.prepare("SELECT COUNT(*) as c FROM tasks WHERE status IN ('pending','queued','running') AND created_by = ?").get(machineId) as any).c;
-          const agent = db.prepare('SELECT * FROM agents WHERE name = ?').get(machineId) as any;
-          return `Machine ${machineId}: ${count} actieve/pending tasks. Status: ${agent?.status || 'unknown'}`;
-        },
-      });
+      const tg = new TelegramGatewayService(configs, new TelegramApiService(authService, `http://127.0.0.1:${PORT}/api`));
       tg.startAll().catch((e: any) => console.warn('⚠️ Telegram startAll fout:', e?.message || e));
       // Retain for graceful shutdown: SIGTERM must call stopAll() so leases are
       // released (otherwise a restart sees EEXIST and skips polling forever).
@@ -328,11 +329,19 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
+    // Upgraded sockets otherwise keep httpServer.close() waiting indefinitely.
+    for (const socket of wss.clients) socket.close(1001, 'Server shutting down');
+    const socketDeadline = setTimeout(() => {
+      for (const socket of wss.clients) socket.terminate();
+    }, 5_000);
+    socketDeadline.unref();
+    wss.close();
     if (dennisQueueTimer) clearInterval(dennisQueueTimer);
     if (telegramGateway) {
       void telegramGateway.stopAll().catch((e: unknown) => console.warn('⚠️ Telegram stopAll fout:', e));
     }
     httpServer.close(() => {
+      clearTimeout(socketDeadline);
       console.log('👋 Server closed');
       db.close();
       process.exit(0);

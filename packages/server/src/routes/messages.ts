@@ -23,6 +23,13 @@ export function createMessageRoutes(
   // and several also authorize or mutate durable agent state.
   router.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false }));
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const boundedLimit = (value: unknown): number => {
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+      throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
+    }
+    return limit;
+  };
   db.exec(`
     CREATE TABLE IF NOT EXISTS board_idempotency_keys (
       sender TEXT NOT NULL,
@@ -127,9 +134,17 @@ export function createMessageRoutes(
       }
 
       if (idempotencyKey) {
+        // Historical rows may overlap across stores. Only the reserved owner
+        // can take the replay shortcut; all others use the transaction below.
         const existing = db.prepare(`
           SELECT * FROM messages
           WHERE from_agent_id = ? AND to_agent_id = ? AND type = ? AND idempotency_key = ?
+            AND EXISTS (
+              SELECT 1 FROM board_idempotency_keys AS owner
+              WHERE owner.sender = messages.from_agent_id AND owner.recipient = messages.to_agent_id
+                AND owner.message_type = messages.type AND owner.idempotency_key = messages.idempotency_key
+                AND owner.store = 'messages' AND owner.message_id = messages.id
+            )
         `).get(from_agent_id, to_agent_id, type, idempotencyKey);
         if (existing) {
           const existingPayload = JSON.parse((existing as any).payload || '{}');
@@ -216,7 +231,7 @@ export function createMessageRoutes(
       const { unread_only = 'false', limit = '50' } = req.query;
 
       const unreadOnly = unread_only === 'true';
-      const maxLimit = Math.min(Number(limit) || 50, 500);
+      const maxLimit = boundedLimit(limit);
 
       let query = `
         SELECT * FROM messages

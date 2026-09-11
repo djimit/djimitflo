@@ -10,10 +10,21 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { SelfEvolvingGovernanceLoop } from '../services/self-evolving-governance-loop';
+import { SegmlJudgeUpdater } from '../services/segml-judge-updater';
+import { SegmlCurriculumAdapter } from '../services/segml-curriculum-adapter';
 
 export function createSegmlRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+
+  function boundedLimit(value: unknown): number {
+    if (value === undefined) return 20;
+    const limit = Number(value);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+    }
+    return limit;
+  }
 
   // POST /api/segml/run/:agentId — trigger a self-evolution cycle
   router.post('/run/:agentId', requirePermission('write:governance'), async (req, res, next) => {
@@ -30,7 +41,7 @@ export function createSegmlRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.get('/history', requirePermission('read:evidence'), (req, res, next) => {
     try {
       const loop = new SelfEvolvingGovernanceLoop(db);
-      const limit = req.query.limit ? Math.min(100, Number(req.query.limit)) : 20;
+      const limit = boundedLimit(req.query.limit);
       res.json({ cycles: loop.getCycleHistory(limit) });
     } catch (error) {
       next(error);
@@ -82,7 +93,7 @@ export function createSegmlRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/segml/judge-rubrics — current judge rubric weights
   router.get('/judge-rubrics', requirePermission('read:evidence'), (_req, res, next) => {
     try {
-      const updater = new (require('../services/segml-judge-updater').SegmlJudgeUpdater)(db);
+      const updater = new SegmlJudgeUpdater(db);
       res.json({ rubrics: updater.getRubricWeights() });
     } catch (error) {
       next(error);
@@ -92,7 +103,7 @@ export function createSegmlRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/segml/curriculum — current curriculum phases
   router.get('/curriculum', requirePermission('read:evidence'), (_req, res, next) => {
     try {
-      const adapter = new (require('../services/segml-curriculum-adapter').SegmlCurriculumAdapter)(db);
+      const adapter = new SegmlCurriculumAdapter(db);
       res.json({ phases: adapter.getPhases() });
     } catch (error) {
       next(error);

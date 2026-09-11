@@ -1,5 +1,6 @@
 import type { AgentsMdFile, AgentsMdIssue, EffectiveInstructionStack } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
+import { posix } from 'path';
 
 interface ValidationRule {
   id: string;
@@ -145,6 +146,7 @@ export class AgentsMdValidator {
   getEffectiveStack(repositoryId: string, files: AgentsMdFile[], targetPath: string): EffectiveInstructionStack {
     const allIssues: AgentsMdIssue[] = [];
     const applicableFiles: AgentsMdFile[] = [];
+    const target = posix.resolve('/', targetPath);
 
     const sorted = [...files].sort((a, b) => {
       if (a.relativePath === 'AGENTS.md') return -1;
@@ -153,8 +155,8 @@ export class AgentsMdValidator {
     });
 
     for (const file of sorted) {
-      const appliesToPath = file.appliesToPath;
-      if (appliesToPath === '/' || targetPath.startsWith(appliesToPath) || targetPath.startsWith(file.relativePath.replace('/AGENTS.md', ''))) {
+      const appliesToPath = posix.resolve('/', file.appliesToPath);
+      if (appliesToPath === '/' || target === appliesToPath || target.startsWith(`${appliesToPath}/`)) {
         applicableFiles.push(file);
       }
 

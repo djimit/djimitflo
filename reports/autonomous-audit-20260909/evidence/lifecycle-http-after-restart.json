@@ -1,0 +1,158 @@
+{
+  "agentId": "3daccc84-a269-484b-9f09-4ff24bbcc52a",
+  "taskId": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+  "retired": {
+    "agentId": "3daccc84-a269-484b-9f09-4ff24bbcc52a",
+    "status": "retired",
+    "retiredAt": "2026-09-09T15:34:42.247Z",
+    "reason": "Disposable fixture retired after pending-status browser check."
+  },
+  "archiveId": "c737d7b3-7e9a-4d8f-8020-0ca95f9b7505",
+  "summary": {
+    "id": "c321c31f-f722-4c10-8d72-f662eafee6d4",
+    "task_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+    "executor_kind": "mock",
+    "started_at": "2026-09-09T15:34:35.037Z",
+    "completed_at": "2026-09-09T15:34:42.041Z",
+    "duration_ms": 7004,
+    "final_status": "completed",
+    "risk_level": "high",
+    "policy_decision": "require_approval",
+    "approval_required": true,
+    "approval_granted": true,
+    "event_count": 15,
+    "error_count": 0,
+    "warning_count": 2,
+    "evidence_count": 6,
+    "tool_call_count": 2,
+    "files_changed": [],
+    "commands_executed": [
+      "read_file",
+      "write_file"
+    ],
+    "artifacts_created": [],
+    "token_usage": 1500,
+    "metadata": {
+      "task_title": "Lifecycle approval fixture",
+      "task_description": "Changed read-only synthetic mock verification.",
+      "executor_kind": "mock",
+      "requested_executor_kind": "mock",
+      "executor_source": "execution_event",
+      "policy_recommendation": "require_approval",
+      "approval_status": "approved",
+      "approval_scope": "recorded_execution_approval",
+      "approval_id": "29c24946-5b01-4561-b9d6-ab573fd73ed0",
+      "approval_history": [
+        {
+          "id": "6c928e53-a419-4cc4-8119-3b042396ab52",
+          "status": "approved",
+          "created_at": "2026-09-09T15:31:29.087Z",
+          "manual_action": false,
+          "executor_kind": "mock"
+        },
+        {
+          "id": "29c24946-5b01-4561-b9d6-ab573fd73ed0",
+          "status": "approved",
+          "created_at": "2026-09-09T15:32:32.981Z",
+          "manual_action": false,
+          "executor_kind": "mock"
+        }
+      ],
+      "execution_mode": "local"
+    },
+    "created_at": "2026-09-09T15:31:29.084Z",
+    "updated_at": "2026-09-09T15:44:03.399Z"
+  },
+  "audit": [
+    {
+      "id": "7d440cd9-72d9-45be-a79b-8c461a7d09dc",
+      "action": "task_created",
+      "event_type": "task.created",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:31:29.082Z"
+    },
+    {
+      "id": "7760a13a-62ab-44f1-8478-f82c068c08a8",
+      "action": "approval_requested",
+      "event_type": "approval.requested",
+      "resource_id": "6c928e53-a419-4cc4-8119-3b042396ab52",
+      "timestamp": "2026-09-09T15:31:29.087Z"
+    },
+    {
+      "id": "6c41cc61-429d-49b4-8317-c85cb55cb0dc",
+      "action": "execution_paused_for_approval",
+      "event_type": "execution.paused",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:31:29.088Z"
+    },
+    {
+      "id": "9f905165-ac22-4f90-adda-2d6562b29ae0",
+      "action": "approval_granted",
+      "event_type": "approval.granted",
+      "resource_id": "6c928e53-a419-4cc4-8119-3b042396ab52",
+      "timestamp": "2026-09-09T15:32:32.980Z"
+    },
+    {
+      "id": "29cb8b1b-058e-49ba-a020-34da15b920bd",
+      "action": "execution_resumed_after_approval",
+      "event_type": "execution.resumed",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:32:32.980Z"
+    },
+    {
+      "id": "17bb4376-0d92-4204-9aa9-2d920340798d",
+      "action": "approval_requested",
+      "event_type": "approval.requested",
+      "resource_id": "29c24946-5b01-4561-b9d6-ab573fd73ed0",
+      "timestamp": "2026-09-09T15:32:32.981Z"
+    },
+    {
+      "id": "436c8ed4-cb13-4d0e-adb5-fed70bae5d0e",
+      "action": "execution_paused_for_approval",
+      "event_type": "execution.paused",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:32:32.981Z"
+    },
+    {
+      "id": "4d07ef38-52b0-43fd-a981-123d682dc944",
+      "action": "approval_granted",
+      "event_type": "approval.granted",
+      "resource_id": "29c24946-5b01-4561-b9d6-ab573fd73ed0",
+      "timestamp": "2026-09-09T15:34:35.035Z"
+    },
+    {
+      "id": "7a184577-5f9f-4bca-b13b-4f89dae4ba56",
+      "action": "execution_resumed_after_approval",
+      "event_type": "execution.resumed",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:34:35.036Z"
+    },
+    {
+      "id": "dc159fb2-c744-433f-8b8c-39863ac6aefe",
+      "action": "execution_completed",
+      "event_type": "task.executed",
+      "resource_id": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+      "timestamp": "2026-09-09T15:34:42.042Z"
+    },
+    {
+      "id": "8a87e91f-d49b-409b-beef-bf114ce5b76b",
+      "action": "agent_retired",
+      "event_type": "agent.retired",
+      "resource_id": "3daccc84-a269-484b-9f09-4ff24bbcc52a",
+      "timestamp": "2026-09-09T15:34:42.248Z"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "6c928e53-a419-4cc4-8119-3b042396ab52",
+      "status": "approved"
+    },
+    {
+      "id": "29c24946-5b01-4561-b9d6-ab573fd73ed0",
+      "status": "approved"
+    }
+  ],
+  "restartPersistence": true,
+  "reviewGrantCount": 2,
+  "reviewGrantTimestampsMatchCanonical": true
+}

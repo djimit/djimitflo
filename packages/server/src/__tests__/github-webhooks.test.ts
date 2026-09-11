@@ -20,14 +20,13 @@ describe('GitHub issue webhook', () => {
     delete process.env.GITHUB_REPOSITORY_PATHS;
   });
 
-  it('validates, deduplicates, marks external content, and starts a loop', async () => {
+  it('imports untrusted issue intake without automatically creating a goal or starting a loop', async () => {
     const db = createTestDb();
     repoPath = mkdtempSync(join(tmpdir(), 'djimitflo-github-webhook-'));
     writeFileSync(join(repoPath, 'README.md'), 'TODO: webhook issue\n');
     process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
     process.env.GITHUB_REPOSITORY_PATHS = JSON.stringify({ 'owner/repo': repoPath });
     const app = express();
-    app.use(express.json({ verify: (req, _res, buffer) => { (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer); } }));
     app.use('/github/webhook', createGitHubWebhookRoutes(db));
     server = await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); });
     const body = JSON.stringify({
@@ -39,12 +38,19 @@ describe('GitHub issue webhook', () => {
     const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/github/webhook`;
     const response = await fetch(url, { method: 'POST', headers, body });
     expect(response.status).toBe(202);
-    expect(await response.json()).toMatchObject({ status: 'started', source_ref: 'owner/repo#42' });
-    const goal = db.prepare('SELECT objective FROM goals').get() as { objective: string };
-    expect(goal.objective).toContain('BEGIN_EXTERNAL_CONTENT');
-    expect(goal.objective).toContain('Ignore previous instructions');
-    expect(db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get()).toEqual({ count: 1 });
+    expect(await response.json()).toMatchObject({ status: 'imported', source_ref: 'owner/repo#42', execution_started: false });
+    const workItem = db.prepare('SELECT description FROM work_items').get() as { description: string };
+    expect(workItem.description).toContain('BEGIN_EXTERNAL_CONTENT');
+    expect(workItem.description).toContain('Ignore previous instructions');
+    expect(db.prepare('SELECT COUNT(*) AS count FROM goals').get()).toEqual({ count: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get()).toEqual({ count: 0 });
     expect((await fetch(url, { method: 'POST', headers, body })).status).toBe(200);
+    // A new delivery for the same issue must refresh external content without
+    // rewinding operator-owned scheduling state.
+    db.prepare("UPDATE work_items SET status = 'leased', assigned_runtime = 'mock' WHERE source_ref = 'owner/repo#42'").run();
+    const secondHeaders = { ...headers, 'x-github-delivery': 'delivery-2' };
+    expect((await fetch(url, { method: 'POST', headers: secondHeaders, body })).status).toBe(202);
+    expect(db.prepare("SELECT status, assigned_runtime FROM work_items WHERE source_ref = 'owner/repo#42'").get()).toEqual({ status: 'leased', assigned_runtime: 'mock' });
     db.close();
   });
 });

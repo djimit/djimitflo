@@ -11,6 +11,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { createError } from '../middleware/error-handler';
 
 export interface AgentConfig {
   name: string;
@@ -161,6 +162,7 @@ export class NlAgentFactory {
   approveAgent(id: string): void {
     const agent = this.db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;
     if (!agent) throw new Error('AGENT_NOT_FOUND');
+    if (agent.retired_at) throw createError(409, 'Retired agents cannot be approved for dispatch', 'AGENT_RETIRED');
     if (agent.status !== 'pending_approval') throw new Error('AGENT_NOT_PENDING');
 
     this.db.prepare("UPDATE agents SET status = 'idle', updated_at = ? WHERE id = ?")

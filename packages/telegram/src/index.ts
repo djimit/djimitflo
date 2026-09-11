@@ -11,13 +11,16 @@ export type TelegramBotConfig = {
   agentType: AgentType;
   hostIp: string;
   name: string;
+  allowedUsers?: number[];
+  userMap?: Record<string, string>;
 };
 
 export class TelegramGatewayService {
   private configs: TelegramBotConfig[];
   private ops: {
-    createTask: (prompt: string, machineId: string) => Promise<string>;
-    getStatus: (machineId: string) => Promise<string>;
+    createTask: (prompt: string, machineId: string, actorUserRef: string) => Promise<string>;
+    getStatus: (machineId: string, actorUserRef: string) => Promise<string>;
+    cancelTask?: (taskId: string, actorUserRef: string) => Promise<void>;
   };
   private bots: any[] = [];
   private leases: string[] = [];
@@ -137,12 +140,23 @@ export class TelegramGatewayService {
           continue;
         }
         const bot = new Bot(cfg.token);
+        // A bot token identifies the transport, never the requesting user.
+        bot.use(async (ctx, next) => {
+          const sender = ctx.from?.id;
+          const actor = sender === undefined ? undefined : cfg.userMap?.[String(sender)];
+          if (sender === undefined || !cfg.allowedUsers?.includes(sender) || !actor?.trim()) {
+            await ctx.reply('⛔ Telegram user is not authorized and linked to a DjimFlo account.');
+            return;
+          }
+          await next();
+        });
+        const actor = (ctx: any): string => cfg.userMap![String(ctx.from.id)];
 
-        bot.command('start', (ctx: any) => ctx.reply(`Bot ${cfg.name} actief voor ${cfg.machineId} (${cfg.agentType}). Gebruik /task, /status.`));
+        bot.command('start', (ctx: any) => ctx.reply(`Bot ${cfg.name} actief voor ${cfg.machineId} (${cfg.agentType}). /task maakt een pending taak; /status en /cancel <task_id> zijn beschikbaar.`));
 
         bot.command('status', async (ctx: any) => {
           try {
-            const s = await this.ops.getStatus(cfg.machineId);
+            const s = await this.ops.getStatus(cfg.machineId, actor(ctx));
             await ctx.reply(s);
           } catch (e: any) {
             await ctx.reply(`Status fout: ${e?.message || e}`);
@@ -150,14 +164,24 @@ export class TelegramGatewayService {
         });
 
         bot.command('task', async (ctx: any) => {
-          const text = (ctx?.message?.text || '').replace(/^\/task\s*/, '');
+          const text = String(ctx.match || '').trim();
           if (!text) return ctx.reply('Gebruik: /task <beschrijving>');
           try {
-            const id = await this.ops.createTask(text, cfg.machineId);
+            const id = await this.ops.createTask(text, cfg.machineId, actor(ctx));
             await ctx.reply(`Task aangemaakt: ${id}`);
           } catch (e: any) {
             await ctx.reply(`Task fout: ${e?.message || e}`);
           }
+        });
+
+        bot.command('cancel', async (ctx) => {
+          const taskId = String(ctx.match || '').trim();
+          if (!taskId) { await ctx.reply('Gebruik: /cancel <task_id>'); return; }
+          try {
+            if (!this.ops.cancelTask) throw new Error('TASK_CANCELLATION_UNAVAILABLE');
+            await this.ops.cancelTask(taskId, actor(ctx));
+            await ctx.reply(`Task geannuleerd: ${taskId}`);
+          } catch (error) { await ctx.reply(`Cancel fout: ${error instanceof Error ? error.message : String(error)}`); }
         });
 
         bot.catch((err: any) => {

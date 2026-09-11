@@ -105,51 +105,109 @@ export class EvidenceService {
   }
 
   generateExecutionSummary(taskId: string): ExecutionSummary | null {
+    return this.db.transaction(() => this.materializeExecutionSummary(taskId))();
+  }
+
+  private materializeExecutionSummary(taskId: string): ExecutionSummary | null {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId) as any;
     if (!task) return null;
 
+    const previous = this.db.prepare('SELECT id, created_at FROM execution_summaries WHERE task_id = ?').get(taskId) as any;
+    const parseRecord = (value: unknown): Record<string, unknown> => {
+      try {
+        const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch { return {}; }
+    };
+    const taskMetadata = parseRecord(task.metadata);
+
     const events = this.db.prepare('SELECT * FROM execution_events WHERE task_id = ? ORDER BY created_at ASC').all(taskId) as any[];
-    const evidence = this.db.prepare('SELECT * FROM execution_evidence WHERE task_id = ?').all(taskId) as any[];
+    const evidence = this.db.prepare('SELECT * FROM execution_evidence WHERE task_id = ? ORDER BY captured_at ASC, rowid ASC').all(taskId) as any[];
     const risk = this.db.prepare('SELECT * FROM risk_assessments WHERE task_id = ? ORDER BY created_at DESC LIMIT 1').get(taskId) as any;
-    const approvals = this.db.prepare('SELECT * FROM approvals WHERE task_id = ?').all(taskId) as any[];
+    const approvals = this.db.prepare('SELECT * FROM approvals WHERE task_id = ? ORDER BY julianday(created_at) ASC, rowid ASC').all(taskId) as any[];
 
     const toolCalls = events.filter((e: any) => e.event_type === 'tool.call');
     const errors = events.filter((e: any) => e.level === 'error' || e.level === 'critical');
     const warnings = events.filter((e: any) => e.level === 'warning');
 
     const riskLevel = risk?.risk_level || task.risk_level || RiskLevel.LOW;
-    const policyDecision = risk?.recommended_decision || 'allow';
-    const approvalRequired = approvals.length > 0;
-    const approvalGranted = approvals.some((a: any) => a.status === 'approved');
+    // A risk recommendation or column default is not an executed policy decision.
+    let policyDecision: ExecutionSummary['policy_decision'] = 'unknown';
+    for (const item of evidence) {
+      if (!['system', 'policy', 'governance-gate', 'queue-admission'].includes(item.source)) continue;
+      // The engine records an approval HOLD as RISK_ASSESSMENT with a separate
+      // top-level decision; nested recommended_decision remains advisory only.
+      if (![EvidenceType.EXECUTION_SUMMARY, EvidenceType.POLICY_DECISION, EvidenceType.RISK_ASSESSMENT].includes(item.evidence_type)) continue;
+      const details = parseRecord(item.details);
+      const decision = details.policyDecision ?? details.decision;
+      if (decision === 'allow' || decision === 'deny' || decision === 'require_approval') policyDecision = decision;
+    }
+    const requestedExecutor = typeof taskMetadata.executorKind === 'string' ? taskMetadata.executorKind
+      : typeof taskMetadata.executor === 'string' ? taskMetadata.executor : null;
+    let observedExecutor: string | null = null;
+    for (const event of events) {
+      const metadata = parseRecord(event.metadata);
+      const executor = metadata.executorKind ?? metadata.executor_kind;
+      if (typeof executor === 'string' && executor) observedExecutor = executor;
+    }
+    const executorKind = observedExecutor || requestedExecutor || 'unknown';
+    const approvalHistory = approvals.map(approval => {
+      const metadata = parseRecord(approval.metadata);
+      return {
+        id: approval.id, status: approval.status, created_at: approval.created_at,
+        manual_action: metadata.manual_action === true,
+        executor_kind: typeof metadata.executorKind === 'string' ? metadata.executorKind : null,
+      };
+    });
+    const executionApprovals = approvalHistory.filter(approval => !approval.manual_action);
+    // Pending execution approvals still hold dispatch regardless of an older grant.
+    // A manual action is independent; old denials remain history, not the current result.
+    const pendingApproval = [...executionApprovals].reverse().find(approval => approval.status === 'pending');
+    const latestApproval = [...executionApprovals].reverse().find(approval => !approval.executor_kind || approval.executor_kind === executorKind);
+    const currentApproval = pendingApproval ?? latestApproval;
+    const approvalRequired = Boolean(currentApproval) || task.status === 'awaiting_approval' || policyDecision === 'require_approval';
+    const approvalStatus = task.status === 'awaiting_approval' || pendingApproval ? 'pending'
+      : currentApproval && ['approved', 'denied', 'expired'].includes(currentApproval.status) ? currentApproval.status
+      : approvalRequired ? 'unknown' : 'not_recorded';
+    const approvalGranted = approvalStatus === 'approved' ? true : ['denied', 'expired'].includes(approvalStatus) ? false : null;
 
     const summary: ExecutionSummary = {
-      id: randomUUID(),
+      id: previous?.id ?? randomUUID(),
       task_id: taskId,
-      executor_kind: task.metadata?.executorKind || 'unknown',
-      started_at: task.started_at || task.created_at,
+      executor_kind: executorKind,
+      started_at: task.started_at || null,
       completed_at: task.completed_at || null,
-      duration_ms: task.execution_time_ms || null,
-      final_status: task.status === 'awaiting_approval' ? 'denied' : task.status,
+      duration_ms: task.execution_time_ms ?? null,
+      final_status: task.status,
       risk_level: riskLevel,
       policy_decision: policyDecision,
       approval_required: approvalRequired,
-      approval_granted: approvalRequired ? approvalGranted : null,
+      approval_granted: approvalGranted,
       event_count: events.length,
       error_count: errors.length,
       warning_count: warnings.length,
       evidence_count: evidence.length,
       tool_call_count: toolCalls.length,
-      files_changed: [],
+      files_changed: [...new Set(this.getFileChanges(taskId).map(change => change.file_path))],
       commands_executed: toolCalls.map((t: any) => t.tool_name).filter(Boolean),
       artifacts_created: [],
-      token_usage: task.token_usage || null,
+      token_usage: task.token_usage ?? null,
       metadata: {
         task_title: task.title,
         task_description: task.description,
-        executor_kind: task.metadata?.executorKind,
+        executor_kind: executorKind,
+        requested_executor_kind: requestedExecutor,
+        executor_source: observedExecutor ? 'execution_event' : requestedExecutor ? 'task_configuration' : 'unknown',
+        policy_recommendation: risk?.recommended_decision ?? null,
+        approval_status: approvalStatus,
+        // Recorded decisions only: this view does not validate execution input hashes
+        // or grant admission. The engine/approval service remains that authority.
+        approval_scope: 'recorded_execution_approval',
+        approval_id: currentApproval?.id ?? null,
+        approval_history: approvalHistory,
         execution_mode: task.execution_mode,
       },
-      created_at: new Date().toISOString(),
+      created_at: previous?.created_at ?? new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
@@ -158,9 +216,8 @@ export class EvidenceService {
   }
 
   getExecutionSummary(taskId: string): ExecutionSummary | null {
-    const row = this.db.prepare('SELECT * FROM execution_summaries WHERE task_id = ?').get(taskId) as any;
-    if (!row) return this.generateExecutionSummary(taskId);
-    return this.mapSummary(row);
+    // This table is a materialized view, not an immutable execution snapshot.
+    return this.generateExecutionSummary(taskId);
   }
 
   recordFileChange(input: FileChangeInput): string {
@@ -256,7 +313,7 @@ export class EvidenceService {
 
     for (const ae of auditEvents) {
       trail.push({
-        timestamp: ae.created_at,
+        timestamp: ae.timestamp || ae.created_at,
         event_type: ae.event_type,
         action: ae.action,
         resource_type: ae.resource_type,
@@ -283,18 +340,32 @@ export class EvidenceService {
     }
 
     for (const ap of approvalEvents) {
-      const action = ap.status === 'approved' ? 'approval.granted' : ap.status === 'denied' ? 'approval.denied' : 'approval.requested';
-      trail.push({
-        timestamp: ap.created_at,
-        event_type: action,
-        action,
-        resource_type: 'approval',
-        resource_id: ap.id,
-        risk_level: ap.risk_level,
-        actor: ap.approved_by || ap.decided_by || 'system',
-        summary: `Approval ${ap.status}: ${ap.request_message || ap.title || 'No message'}`,
-        metadata: JSON.parse(ap.metadata || '{}'),
-      });
+      const hasCanonical = (eventType: string) => auditEvents.some(event => event.resource_type === 'approval'
+        && event.resource_id === ap.id && event.event_type === eventType);
+      // Approval rows are mutable current state. Never project their latest status
+      // onto created_at; canonical events are preferred independently for each stage.
+      const addLegacyProjection = (eventType: string, timestamp: string, timestampSource: string, actor: string, description: string) => {
+        if (hasCanonical(eventType) || !Number.isFinite(Date.parse(timestamp))) return;
+        trail.push({
+          timestamp, event_type: eventType, action: eventType,
+          resource_type: 'approval', resource_id: ap.id, risk_level: ap.risk_level, actor,
+          summary: `${description} (legacy approval projection): ${ap.request_message || ap.title || 'No message'}`,
+          metadata: { source: 'legacy_approval_projection', timestamp_source: timestampSource },
+        });
+      };
+      addLegacyProjection('approval.requested', ap.created_at, 'created_at', ap.requested_by || 'unknown', 'Approval requested');
+      if (ap.status === 'approved' || ap.status === 'denied') {
+        const specificTimestamp = ap.status === 'approved' ? 'approved_at' : 'denied_at';
+        const timestampSource = ap.decided_at ? 'decided_at' : specificTimestamp;
+        const decidedAt = ap[timestampSource];
+        if (decidedAt) {
+          addLegacyProjection(ap.status === 'approved' ? 'approval.granted' : 'approval.denied',
+            decidedAt, timestampSource, ap.decided_by || ap.approved_by || 'unknown',
+            ap.status === 'approved' ? 'Approval granted' : 'Approval denied');
+        }
+      }
+      // expires_at is a deadline, not proof of when expiry was processed. Without
+      // a canonical expiry event, no historical transition timestamp is invented.
     }
 
     trail.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -302,6 +373,9 @@ export class EvidenceService {
   }
 
   private upsertSummary(summary: ExecutionSummary): void {
+    // Legacy schema requires NOT NULL. Empty string means absent in storage only;
+    // the API uses null, never the task creation timestamp as a fictitious start.
+    const storedStartedAt = summary.started_at ?? '';
     const existing = this.db.prepare('SELECT id FROM execution_summaries WHERE task_id = ?').get(summary.task_id) as any;
 
     if (existing) {
@@ -316,7 +390,7 @@ export class EvidenceService {
         WHERE task_id = ?
       `).run(
         summary.executor_kind,
-        summary.started_at,
+        storedStartedAt,
         summary.completed_at,
         summary.duration_ms,
         summary.final_status,
@@ -350,7 +424,7 @@ export class EvidenceService {
         summary.id,
         summary.task_id,
         summary.executor_kind,
-        summary.started_at,
+        storedStartedAt,
         summary.completed_at,
         summary.duration_ms,
         summary.final_status,
@@ -378,19 +452,6 @@ export class EvidenceService {
     return {
       ...row,
       details: row.details ? JSON.parse(row.details) : null,
-      metadata: JSON.parse(row.metadata || '{}'),
-    };
-  }
-
-  private mapSummary(row: any): ExecutionSummary {
-    return {
-      ...row,
-      approval_required: Boolean(row.approval_required),
-      approval_granted: row.approval_granted === null ? null : Boolean(row.approval_granted),
-      files_changed: JSON.parse(row.files_changed || '[]'),
-      commands_executed: JSON.parse(row.commands_executed || '[]'),
-      artifacts_created: JSON.parse(row.artifacts_created || '[]'),
-      token_usage: row.token_usage,
       metadata: JSON.parse(row.metadata || '{}'),
     };
   }

@@ -5,6 +5,7 @@ import { execFileSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { AgentAssuranceService, type EvalRunRecord, type ReflectionCandidateRecord } from './agent-assurance-service';
 import { LoopService } from './loop-service';
+import { LoopVerificationService } from './loop-verification-service';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
 import { WorkItemService, type WorkItemRecord } from './work-item-service';
 
@@ -152,7 +153,7 @@ export class KnowledgeRuntimeService {
     const dryRun = input.apply === true ? false : input.dry_run !== false;
     const health = this.health();
     if (!health.okf_base || !health.exists) throw new Error('KNOWLEDGE_RUNTIME_OKF_BASE_MISSING');
-    if (health.validate_okf.status === 'fail' && !dryRun) throw new Error('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+    if (health.validate_okf.status !== 'pass' && !dryRun) throw new Error('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
 
     const parsed = [
       ...this.readFolder(health.okf_base, 'skills'),
@@ -202,7 +203,38 @@ export class KnowledgeRuntimeService {
     const closure = this.db.prepare('SELECT * FROM loop_learning_closures WHERE loop_run_id = ?').get(loopRunId) as {
       eval_run_id: string; reflection_id: string; memory_candidate_id: string; previous_score: number | null; score_delta: number | null;
     } | undefined;
+    const leases = bundle.leases;
+    const supersededMakerIds = new Set(leases.filter(lease => loops.isSupersededMakerLease(lease)).map(lease => lease.id));
+    const activeLeases = leases.filter(lease => !supersededMakerIds.has(lease.id)
+      && !((lease.role === 'checker' || lease.role === 'security_checker')
+        && typeof lease.metadata.maker_lease_id === 'string' && supersededMakerIds.has(lease.metadata.maker_lease_id)));
+    const makers = activeLeases.filter(lease => lease.role === 'maker');
+    const review = new LoopVerificationService(loops);
+    const blockedReasons: string[] = [];
+    if (!['completed', 'ready_for_human_merge'].includes(bundle.run.status)) blockedReasons.push('run_not_reviewed_terminal');
+    if (bundle.run.metadata.operator_paused === true || (bundle.run.goal_id && loops.getGoal(bundle.run.goal_id).metadata.operator_paused === true)) blockedReasons.push('operator_paused');
+    if (makers.length === 0 || makers.some(lease => lease.status !== 'completed')) blockedReasons.push('maker_not_completed');
+    if (activeLeases.some(lease => lease.status !== 'completed')) blockedReasons.push('active_worker_not_completed');
+    if (makers.some(maker => !activeLeases.some(lease => lease.role === 'checker'
+      && lease.metadata.maker_lease_id === maker.id && review.hasAcceptedReviewEvidence(lease)))) blockedReasons.push('checker_not_accepted');
+    if (activeLeases.some(lease => (lease.role === 'checker' || lease.role === 'security_checker') && !review.hasAcceptedReviewEvidence(lease))) blockedReasons.push('review_evidence_invalid');
+    if (loops.isHighRiskRun(bundle.run) && makers.some(maker => !activeLeases.some(lease => lease.role === 'security_checker'
+      && lease.metadata.maker_lease_id === maker.id && review.hasAcceptedReviewEvidence(lease)))) blockedReasons.push('security_checker_not_accepted');
+    if (bundle.run.gates.length === 0 || !bundle.run.gates.some(gate => gate.status === 'pass')) blockedReasons.push('gates_missing');
+    if (bundle.run.gates.some(gate => gate.status !== 'pass' && gate.status !== 'skipped')) blockedReasons.push('gate_not_passed');
+    const evidenceCounts = {
+      trace_spans: this.count('SELECT COUNT(*) as count FROM agent_trace_spans WHERE loop_run_id = ?', [loopRunId]),
+      checkpoints: this.count('SELECT COUNT(*) as count FROM loop_checkpoints WHERE loop_run_id = ?', [loopRunId]),
+      runner_manifests: this.count('SELECT COUNT(*) as count FROM swarm_runner_manifests WHERE loop_run_id = ?', [loopRunId]),
+    };
+    for (const [kind, count] of Object.entries(evidenceCounts)) {
+      if (count === 0) blockedReasons.push(`${kind}_missing`);
+    }
+    // Revalidate before replaying a historical closure. Preserve its records,
+    // but do not certify them as current after cancellation or evidence loss.
+    if (blockedReasons.length > 0) return this.emptyClosure(loopRunId, blockedReasons);
     if (closure) {
+      this.bindImprovementEvaluation(loopRunId, closure.eval_run_id, closure.reflection_id);
       return {
         action: 'closed_loop_learning',
         loop_run_id: loopRunId,
@@ -217,28 +249,6 @@ export class KnowledgeRuntimeService {
         skill_improvement_work_item: null,
       };
     }
-    const leases = bundle.leases;
-    const maker = leases.find((lease) => lease.role === 'maker' && !lease.metadata.superseded_by_maker_lease_id);
-    const checker = leases.find((lease) => lease.role === 'checker' && lease.metadata.maker_lease_id === maker?.id);
-    const blockedReasons: string[] = [];
-    if (!maker || maker.status !== 'completed') blockedReasons.push('maker_not_completed');
-    if (!checker || checker.status !== 'completed' || checker.metadata.verdict !== 'accepted') blockedReasons.push('checker_not_accepted');
-    if (bundle.run.gates.length === 0) blockedReasons.push('gates_missing');
-    if (bundle.run.gates.some((gate) => gate.status === 'fail')) blockedReasons.push('gate_not_passed');
-
-    const evidenceCounts = {
-      trace_spans: this.count('SELECT COUNT(*) as count FROM agent_trace_spans WHERE loop_run_id = ?', [loopRunId]),
-      checkpoints: this.count('SELECT COUNT(*) as count FROM loop_checkpoints WHERE loop_run_id = ?', [loopRunId]),
-      runner_manifests: this.count('SELECT COUNT(*) as count FROM swarm_runner_manifests WHERE loop_run_id = ?', [loopRunId]),
-    };
-    for (const [kind, count] of Object.entries(evidenceCounts)) {
-      if (count === 0) blockedReasons.push(`${kind}_missing`);
-    }
-
-    if (blockedReasons.length > 0) {
-      return this.emptyClosure(loopRunId, blockedReasons);
-    }
-
     const previous = this.latestEval('loop-learning', 'loop', loopRunId);
     const evalRun = this.assurance.runEval({
       suite_name: 'loop-learning',
@@ -303,6 +313,7 @@ export class KnowledgeRuntimeService {
         loop_run_id, eval_run_id, reflection_id, memory_candidate_id, previous_score, score_delta
       ) VALUES (?, ?, ?, ?, ?, ?)
     `).run(loopRunId, evalRun.id, reflection.id, memoryCandidate.id, previousScore, scoreDelta);
+    this.bindImprovementEvaluation(loopRunId, evalRun.id, reflection.id);
 
     return {
       action: 'closed_loop_learning',
@@ -319,6 +330,27 @@ export class KnowledgeRuntimeService {
     };
   }
 
+  private bindImprovementEvaluation(loopRunId: string, evalId: string, reflectionId: string): void {
+    const improvement = this.db.prepare(`
+      SELECT si.id, si.evidence_refs_json FROM self_improvements si
+      JOIN goals g ON g.improvement_id = si.id
+      JOIN loop_runs lr ON lr.goal_id = g.id
+      WHERE lr.id = ? AND lr.status = 'completed' AND g.status = 'completed'
+        AND si.status = 'verified'
+        AND NOT EXISTS (SELECT 1 FROM loop_runs other WHERE other.goal_id = g.id AND other.status != 'completed')
+    `).get(loopRunId) as { id: string; evidence_refs_json: string } | undefined;
+    if (!improvement) return;
+    const previous: unknown = JSON.parse(improvement.evidence_refs_json || '[]');
+    if (!Array.isArray(previous) || previous.some(ref => typeof ref !== 'string')) {
+      throw new Error('SELF_IMPROVEMENT_EVIDENCE_INVALID');
+    }
+    const refs = previous as string[];
+    this.db.prepare("UPDATE self_improvements SET status = 'evaluating', evidence_refs_json = ?, updated_at = ? WHERE id = ? AND status = 'verified'")
+      .run(JSON.stringify([...new Set([...refs, `loop:${loopRunId}`, `eval:${evalId}`, `reflection:${reflectionId}`])]), new Date().toISOString(), improvement.id);
+    // Structural evaluation starts measurement; it never implies applied,
+    // no_change or regressed product outcomes, nor promotion or merge authority.
+  }
+
   readOkfSpecialistProfiles(): Array<Record<string, unknown>> {
     const base = KnowledgeRuntimeService.resolveCanonicalOkfBase({ allowMissing: true });
     return this.readFolder(base, 'agents')
@@ -327,16 +359,30 @@ export class KnowledgeRuntimeService {
   }
 
   private validateOkf(okfBase: string): KnowledgeRuntimeHealth['validate_okf'] {
-    const repo = path.dirname(fs.realpathSync(okfBase));
-    const script = path.join(repo, 'tools', 'validate_okf.py');
-    if (!fs.existsSync(script)) return { status: 'skipped', command: null, stdout: '', stderr: 'tools/validate_okf.py not found' };
+    const dataBase = fs.realpathSync(okfBase);
+    // Trusted operator configuration only: data bundles need not contain tooling.
+    // Never accept a request-supplied command or silently fall back on misconfiguration.
+    const configuredScript = process.env.OKF_VALIDATOR_PATH?.trim();
+    if (configuredScript && !path.isAbsolute(configuredScript)) {
+      return { status: 'fail', command: null, stdout: '', stderr: 'OKF_VALIDATOR_PATH must be an absolute path to the trusted validator' };
+    }
+    const script = configuredScript || path.join(path.dirname(dataBase), 'tools', 'validate_okf.py');
+    if (!fs.existsSync(script)) {
+      return { status: 'fail', command: null, stdout: '', stderr: 'OKF validator not found; configure OKF_VALIDATOR_PATH or restore tools/validate_okf.py beside the data bundle' };
+    }
+    const repo = path.dirname(path.dirname(script));
+    const command = `OKF_BASE=${JSON.stringify(dataBase)} python3 -B ${JSON.stringify(script)}`;
     try {
-      const stdout = execFileSync('python3', ['tools/validate_okf.py'], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-      return { status: 'pass', command: `cd ${repo} && python3 tools/validate_okf.py`, stdout: stdout.trim(), stderr: '' };
+      const stdout = execFileSync('python3', ['-B', script], {
+        cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, OKF_BASE: dataBase, PYTHONDONTWRITEBYTECODE: '1' },
+        timeout: 10_000, killSignal: 'SIGKILL',
+      });
+      return { status: 'pass', command, stdout: stdout.trim(), stderr: '' };
     } catch (error) {
       return {
         status: 'fail',
-        command: `cd ${repo} && python3 tools/validate_okf.py`,
+        command,
         stdout: (error as { stdout?: Buffer | string }).stdout?.toString().trim() || '',
         stderr: (error as { stderr?: Buffer | string }).stderr?.toString().trim() || (error instanceof Error ? error.message : String(error)),
       };

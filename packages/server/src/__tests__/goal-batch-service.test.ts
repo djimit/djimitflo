@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { GoalBatchService } from '../services/goal-batch-service';
 import { GoalService } from '../services/goal-service';
 import { LoopService } from '../services/loop-service';
+import path from 'path';
 
 function makeDb() {
   const database = new Database(':memory:');
@@ -117,6 +118,24 @@ describe('goal batch service', () => {
       });
       expect(applied.created_goals[0].budget).toMatchObject({ max_failure_count: 2 });
     } finally {
+      db.close();
+    }
+  });
+
+  it('resolves repository-relative batch paths when the server starts from packages/server', () => {
+    const db = makeDb();
+    const originalCwd = process.cwd();
+    try {
+      const monorepoRoot = originalCwd.endsWith(path.join('packages', 'server'))
+        ? path.resolve(originalCwd, '../..')
+        : originalCwd;
+      process.chdir(path.join(monorepoRoot, 'packages', 'server'));
+      const service = new GoalBatchService(db);
+      const preview = service.preview({ path: 'openspec/changes/prove-learning-flywheel-operator-loop/goals.batch.json' });
+      expect(preview.total).toBeGreaterThan(0);
+      expect(preview.errors).not.toContainEqual({ id: 'batch', error: 'GOAL_BATCH_NOT_FOUND' });
+    } finally {
+      process.chdir(originalCwd);
       db.close();
     }
   });

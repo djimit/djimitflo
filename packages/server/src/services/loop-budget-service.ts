@@ -27,6 +27,13 @@ export interface TokenBudgetResult {
   budget: Record<string, unknown>;
 }
 
+export interface EffectiveTokenBudget {
+  maxTokens?: number;
+  maxTokensPerWorker?: number;
+  maxTokensPerDiffLine?: number;
+  source: 'goal' | 'meta' | 'none';
+}
+
 interface GoalBudget {
   max_tokens?: number;
   max_tokens_per_worker?: number;
@@ -197,14 +204,14 @@ export class LoopBudgetService {
     };
   }
 
-  evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): TokenBudgetResult {
-    const budget = this.getTokenBudget(run);
+  evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number, effectiveBudget?: EffectiveTokenBudget): TokenBudgetResult {
+    const budget = effectiveBudget ?? this.getTokenBudget(run);
     if (!budget.maxTokens && !budget.maxTokensPerWorker) {
       return {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'No token budget configured for this goal.' },
         exhausted: false,
         efficiencyExceeded: false,
-        budget,
+        budget: { ...budget },
       };
     }
     if (!runtimeUsage) {
@@ -212,12 +219,20 @@ export class LoopBudgetService {
         gate: { name: 'token_budget', status: 'skipped', evidence: 'Runtime did not report token usage; no estimate was used.' },
         exhausted: false,
         efficiencyExceeded: false,
-        budget,
+        budget: { ...budget },
       };
     }
-    const usedBeforeCurrent = this.sumRuntimeTokens(
-      this.data.listWorkerLeases(run.id).filter((lease) => lease.id !== currentLeaseId)
-    );
+    let usedBeforeCurrent = 0;
+    try {
+      usedBeforeCurrent = this.sumRuntimeTokens(
+        this.data.listWorkerLeases(run.id).filter((lease) => lease.id !== currentLeaseId)
+      );
+    } catch (error) {
+      // ponytail: isolated callers may evaluate a budget before migrations
+      // create worker_leases; treat that as no prior usage, but never hide a
+      // different database failure.
+      if (!String(error).includes('no such table: worker_leases')) throw error;
+    }
     const totalAfterCurrent = usedBeforeCurrent + runtimeUsage.total_tokens;
     const perWorkerExceeded = Boolean(budget.maxTokensPerWorker && runtimeUsage.total_tokens > budget.maxTokensPerWorker);
     const totalExceeded = Boolean(budget.maxTokens && totalAfterCurrent > budget.maxTokens);

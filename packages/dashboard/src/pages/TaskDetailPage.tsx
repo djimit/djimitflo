@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, type ReactElement } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Play, XCircle, CheckCircle, Clock, AlertTriangle, FileSearch, Download } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { api } from '../lib/api';
+import { api, type RuntimeContract } from '../lib/api';
 import { TaskStatus, WebSocketEventType, ExportFormat } from '@djimitflo/shared';
 import type { Task, ExecutionEvent, ApprovalRequest, ExecutionEventPayload, ApprovalEventPayload, WebSocketMessage } from '@djimitflo/shared';
 import { ExecutionTimeline } from '../components/ExecutionTimeline';
@@ -24,7 +24,18 @@ export function TaskDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [exporting, setExporting] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [executor, setExecutor] = useState('');
+  const [runtimes, setRuntimes] = useState<Record<string, RuntimeContract>>({});
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const recoveryHold = task?.metadata?.execution_recovery_hold === true;
+
+  useEffect(() => setExecutor(''), [taskId]);
+
+  useEffect(() => {
+    api.getRuntimeContracts().then(result => setRuntimes(result.runtimes))
+      .catch(error => setRuntimeError(error instanceof Error ? error.message : 'Runtime discovery failed'));
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -108,11 +119,12 @@ export function TaskDetailPage() {
   }, [subscribe, taskId]);
 
   const handleExecute = async () => {
-    if (!taskId) return;
+    if (!taskId || recoveryHold) return;
     
     setExecuting(true);
     try {
-      const result = await api.executeTask(taskId, 'opencode');
+      const selectedExecutor = executor || String(task?.metadata?.executor || 'opencode');
+      const result = await api.executeTask(taskId, selectedExecutor);
       if (result.status === 'awaiting_approval') {
         setTask((prev) => prev ? { ...prev, status: TaskStatus.AWAITING_APPROVAL } : prev);
       } else if (result.status === 'denied') {
@@ -127,7 +139,7 @@ export function TaskDetailPage() {
   };
 
   const handleCancel = async () => {
-    if (!taskId) return;
+    if (!taskId || recoveryHold) return;
     
     if (!confirm('Are you sure you want to cancel this task?')) {
       return;
@@ -182,7 +194,7 @@ export function TaskDetailPage() {
   const riskConfig = getRiskConfig(task.risk_level);
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 sm:p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link
@@ -191,16 +203,24 @@ export function TaskDetailPage() {
         >
           <ArrowLeft className="w-5 h-5 text-foreground-secondary" />
         </Link>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0 break-words">
           <h1 className="text-3xl font-bold text-foreground">{task.title}</h1>
           <p className="text-foreground-secondary mt-1">Task ID: {task.id.slice(0, 8)}</p>
+          {typeof task.metadata?.model === 'string' && <p className="text-sm text-foreground-secondary mt-1">Model: {task.metadata.model}{typeof task.metadata.reasoningEffort === 'string' ? ` · Reasoning: ${task.metadata.reasoningEffort}` : ''}</p>}
         </div>
       </div>
 
+      {recoveryHold && (
+        <div role="alert" className="rounded-lg border border-status-paused/30 bg-status-paused/10 p-4 text-status-paused">
+          <p className="font-semibold">Execution recovery hold</p>
+          <p className="mt-1 text-sm">The task is paused after interrupted execution. The provider outcome is unknown and the provider may still be running. Execute and Cancel are blocked until the execution is reconciled; no automatic replay or hold-clearing action is available here. Review and export remain available.</p>
+        </div>
+      )}
+
       {/* Status Bar */}
       <div className="bg-background-secondary border border-border rounded-lg p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               {statusConfig.icon}
               <span className={`px-3 py-1 rounded-full text-sm font-medium border ${statusConfig.color}`}>
@@ -216,7 +236,15 @@ export function TaskDetailPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {(task.status === 'pending' || task.status === 'paused' || task.status === 'queued') && (
+              <label className="text-sm text-foreground-secondary">Runtime
+                <select aria-label="Execution runtime" value={executor || String(task.metadata?.executor || 'opencode')} onChange={event => setExecutor(event.target.value)} className="ml-2 rounded border border-border bg-background p-2">
+                  {Object.entries(runtimes).filter(([name]) => name !== 'manual').map(([name, contract]) => <option key={name} value={name} disabled={!contract.available}>{name}{contract.available ? '' : ' (unavailable)'}</option>)}
+                </select>
+              </label>
+            )}
+            {runtimeError && <span role="alert" className="text-sm text-status-error">{runtimeError}</span>}
             {task.status === 'awaiting_approval' && (
               <span className="flex items-center gap-2 px-4 py-2 bg-status-paused/10 text-status-paused border border-status-paused/20 rounded-lg">
                 <AlertTriangle className="w-4 h-4" />
@@ -226,7 +254,7 @@ export function TaskDetailPage() {
             {(task.status === 'pending' || task.status === 'paused' || task.status === 'queued') && (
               <button 
                 onClick={handleExecute}
-                disabled={executing}
+                disabled={recoveryHold || executing || !runtimes[executor || String(task.metadata?.executor || 'opencode')]?.available}
                 className="flex items-center gap-2 px-4 py-2 bg-status-running/10 text-status-running border border-status-running/20 rounded-lg hover:bg-status-running/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Play className="w-4 h-4" />
@@ -236,7 +264,7 @@ export function TaskDetailPage() {
             {(task.status === 'running' || task.status === 'queued') && (
               <button 
                 onClick={handleCancel}
-                disabled={cancelling}
+                disabled={recoveryHold || cancelling}
                 className="flex items-center gap-2 px-4 py-2 bg-status-error/10 text-status-error border border-status-error/20 rounded-lg hover:bg-status-error/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <XCircle className="w-4 h-4" />
@@ -370,7 +398,7 @@ export function TaskDetailPage() {
             <div className="bg-background-secondary border border-border rounded-lg p-6">
               <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-status-paused" />
-                Pending Approvals
+                Approvals
               </h2>
               <div className="space-y-3">
                 {approvals.map((approval) => (

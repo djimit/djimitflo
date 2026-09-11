@@ -38,7 +38,17 @@ export class ContextCompressionService {
   private cache: Map<string, CacheEntry> = new Map();
   private readonly DEFAULT_TTL = 3600; // 1 hour
 
-  constructor(private db: Database) {}
+  constructor(private db: Database) {
+    // Keep direct service consumers safe when they do not run the application migrator.
+    this.db.exec(`CREATE TABLE IF NOT EXISTS context_cache (
+      id TEXT PRIMARY KEY,
+      hash TEXT NOT NULL UNIQUE,
+      original TEXT NOT NULL,
+      compressed TEXT NOT NULL,
+      method TEXT NOT NULL DEFAULT 'text',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+  }
 
   /**
    * Compress content using the optimal method for its type.
@@ -101,6 +111,11 @@ export class ContextCompressionService {
       createdAt: new Date().toISOString(),
       ttl: this.DEFAULT_TTL,
     });
+    this.db.prepare(`
+      INSERT INTO context_cache (id, hash, original, compressed, method)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(hash) DO UPDATE SET original = excluded.original, compressed = excluded.compressed, method = excluded.method
+    `).run(hash, hash, content, compressed, result.method);
 
     // Evict old cache entries if too large
     if (this.cache.size > 1000) {

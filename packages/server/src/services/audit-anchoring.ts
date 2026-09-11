@@ -3,8 +3,11 @@
  *
  * Provides tamper-evident audit trail anchoring to external systems:
  * - Merkle tree root computation from compliance_audit_log hash chain
- * - Periodic export to WORM storage, SIEM, or transparency log
- * - Webhook notification for critical security events
+ * - Explicit export to a configured webhook or SIEM endpoint
+ * - Durable delivery state; automatic retry timers are process-local only
+ *
+ * A confirmed delivery means HTTP acceptance, not independent WORM retention or
+ * remote Merkle verification. Construction does not restart pending deliveries.
  */
 
 import { createHash, randomUUID } from 'crypto';
@@ -59,8 +62,6 @@ export interface AuditEvent {
 }
 
 export class AuditAnchoringService {
-  private anchors: AuditAnchor[] = [];
-  private deadLetterQueue: AuditAnchor[] = [];
   private retryConfig: RetryConfig;
   private retryTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
@@ -108,14 +109,14 @@ export class AuditAnchoringService {
    * Implements exponential backoff retry with dead letter queue.
    */
   async anchorToExternal(destination: string, type: 'webhook' | 'siem'): Promise<AuditAnchor> {
-    const { root, eventCount } = this.computeMerkleRoot();
+    const { root, events, eventCount } = this.computeMerkleRoot();
     const now = new Date().toISOString();
 
     const anchor: AuditAnchor = {
-      anchor_id: `anchor-${Date.now()}-${randomUUID().slice(0, 4)}`,
+      anchor_id: `anchor-${randomUUID()}`,
       merkle_root: root,
-      chain_start: now,
-      chain_end: now,
+      chain_start: events[0]?.timestamp || now,
+      chain_end: events[events.length - 1]?.timestamp || now,
       event_count: eventCount,
       anchored_at: now,
       anchor_type: type,
@@ -124,8 +125,9 @@ export class AuditAnchoringService {
       retry_count: 0,
     };
 
+    this.persistAnchor(anchor);
     await this.attemptAnchor(anchor);
-    return anchor;
+    return { ...anchor };
   }
 
   /**
@@ -133,31 +135,33 @@ export class AuditAnchoringService {
    */
   private async attemptAnchor(anchor: AuditAnchor): Promise<void> {
     try {
-      if (anchor.anchor_type === 'webhook' && this.siemConfig?.webhook_url) {
+      if (anchor.anchor_type === 'webhook') {
         await this.sendWebhook(anchor);
-      } else if (anchor.anchor_type === 'siem' && this.siemConfig) {
+      } else if (anchor.anchor_type === 'siem') {
         await this.sendToSIEM(anchor);
+      } else {
+        throw new Error('External anchor delivery type not configured');
       }
 
       anchor.status = 'confirmed';
-      this.anchors.push(anchor);
-      this.persistAnchor(anchor);
+      delete anchor.last_error;
+      delete anchor.next_retry_at;
     } catch (error) {
       anchor.last_error = error instanceof Error ? error.message : String(error);
       anchor.retry_count++;
 
       if (anchor.retry_count > this.retryConfig.max_retries) {
         anchor.status = 'dead_letter';
-        this.deadLetterQueue.push(anchor);
-        this.persistAnchor(anchor);
+        delete anchor.next_retry_at;
       } else {
         anchor.status = 'failed';
         const delay = this.calculateBackoff(anchor.retry_count);
         anchor.next_retry_at = new Date(Date.now() + delay).toISOString();
-        this.scheduleRetry(anchor);
-        this.persistAnchor(anchor);
       }
     }
+    // Storage failure is not a delivery failure and must not trigger another send.
+    this.persistAnchor(anchor);
+    if (anchor.status === 'failed') this.scheduleRetry(anchor);
   }
 
   /**
@@ -175,7 +179,7 @@ export class AuditAnchoringService {
     const delay = this.calculateBackoff(anchor.retry_count);
     const timer = setTimeout(() => {
       this.retryTimers.delete(anchor.anchor_id);
-      this.attemptAnchor(anchor);
+      void this.attemptAnchor(anchor).catch(error => console.error('Audit anchor retry persistence failed:', error));
     }, delay);
     this.retryTimers.set(anchor.anchor_id, timer);
   }
@@ -184,13 +188,14 @@ export class AuditAnchoringService {
    * Retry all dead letter anchors (manual intervention).
    */
   async retryDeadLetters(): Promise<{ retried: number; succeeded: number; }> {
-    const letters = [...this.deadLetterQueue];
-    this.deadLetterQueue = [];
+    const letters = this.getDeadLetterQueue();
 
     let succeeded = 0;
     for (const anchor of letters) {
       anchor.retry_count = 0;
       anchor.status = 'pending' as AuditAnchor['status'];
+      delete anchor.next_retry_at;
+      this.persistAnchor(anchor);
       await this.attemptAnchor(anchor);
       if (anchor.status === 'confirmed') succeeded++;
     }
@@ -202,7 +207,7 @@ export class AuditAnchoringService {
    * Get dead letter queue contents.
    */
   getDeadLetterQueue(): AuditAnchor[] {
-    return [...this.deadLetterQueue];
+    return this.getAnchors().filter(anchor => anchor.status === 'dead_letter');
   }
 
   /**
@@ -335,22 +340,37 @@ export class AuditAnchoringService {
    * Get all anchors.
    */
   getAnchors(): AuditAnchor[] {
-    return [...this.anchors];
+    return (this.db.prepare('SELECT * FROM audit_anchors ORDER BY anchored_at, id').all() as Array<AuditAnchor & { id: number }>)
+      .map(row => ({
+        anchor_id: row.anchor_id, merkle_root: row.merkle_root,
+        chain_start: row.chain_start, chain_end: row.chain_end, event_count: row.event_count,
+        anchored_at: row.anchored_at, anchor_type: row.anchor_type,
+        ...(row.destination ? { destination: row.destination } : {}),
+        status: row.status, retry_count: row.retry_count,
+        ...(row.next_retry_at ? { next_retry_at: row.next_retry_at } : {}),
+        ...(row.last_error ? { last_error: row.last_error } : {}),
+      }));
   }
 
   /**
    * Get the latest confirmed anchor.
    */
   getLatestAnchor(): AuditAnchor | null {
-    const confirmed = this.anchors.filter(a => a.status === 'confirmed');
+    const confirmed = this.getAnchors().filter(a => a.status === 'confirmed');
     if (confirmed.length === 0) return null;
     return confirmed[confirmed.length - 1];
   }
 
   private persistAnchor(anchor: AuditAnchor): void {
-    this.db.prepare(`
-      INSERT INTO audit_anchors (anchor_id, merkle_root, chain_start, chain_end, event_count, anchored_at, anchor_type, destination, status, retry_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const result = this.db.prepare(`
+      INSERT INTO audit_anchors (anchor_id, merkle_root, chain_start, chain_end, event_count, anchored_at, anchor_type, destination, status, retry_count, next_retry_at, last_error)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(anchor_id) DO UPDATE SET status=excluded.status, retry_count=excluded.retry_count,
+        next_retry_at=excluded.next_retry_at, last_error=excluded.last_error
+      WHERE audit_anchors.merkle_root=excluded.merkle_root AND audit_anchors.chain_start=excluded.chain_start
+        AND audit_anchors.chain_end=excluded.chain_end AND audit_anchors.event_count=excluded.event_count
+        AND audit_anchors.anchored_at=excluded.anchored_at AND audit_anchors.anchor_type=excluded.anchor_type
+        AND audit_anchors.destination IS excluded.destination
     `).run(
       anchor.anchor_id,
       anchor.merkle_root,
@@ -362,7 +382,10 @@ export class AuditAnchoringService {
       anchor.destination || null,
       anchor.status,
       anchor.retry_count,
+      anchor.next_retry_at || null,
+      anchor.last_error || null,
     );
+    if (!result.changes) throw new Error('Audit anchor immutable identity mismatch');
   }
 
   private ensureTables(): void {
@@ -378,11 +401,17 @@ export class AuditAnchoringService {
         anchor_type TEXT NOT NULL,
         destination TEXT,
         status TEXT NOT NULL DEFAULT 'pending',
-        retry_count INTEGER NOT NULL DEFAULT 0
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TEXT,
+        last_error TEXT
       );
 
       CREATE INDEX IF NOT EXISTS idx_audit_anchors_status ON audit_anchors(status);
       CREATE INDEX IF NOT EXISTS idx_audit_anchors_anchored ON audit_anchors(anchored_at);
     `);
+    const columns = new Set((this.db.prepare('PRAGMA table_info(audit_anchors)').all() as Array<{ name: string }>).map(column => column.name));
+    for (const column of ['next_retry_at', 'last_error']) {
+      if (!columns.has(column)) this.db.exec(`ALTER TABLE audit_anchors ADD COLUMN ${column} TEXT`);
+    }
   }
 }

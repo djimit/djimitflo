@@ -1,0 +1,67 @@
+{
+  "status": "PASS",
+  "evidence_class": "actual-browser-rest-sqlite-restart-governance-with-explicit-synthetic-mock-fixtures",
+  "at": "2026-09-09T12:05:17.056Z",
+  "fixture_repository": "/private/tmp/djimitflo-g54-browser-p86vLa",
+  "proofs": {
+    "blank_repository_start_disabled": true,
+    "manual_continue_preserves_manual_without_mock_fallback": true,
+    "regular_checker_disabled_before_maker_completion": true,
+    "security_checker_disabled_manual_enabled_explicit_codex_after_completed_mock_maker": true,
+    "security_dispatch_returns_409_visible_and_refreshes_runtime_owned_lease": true,
+    "held_runtime_mismatch_disabled": true,
+    "complete_cancel_no_post": true,
+    "complete_confirm_exact_body_and_persisted_server_identity": true,
+    "completed_survives_restart": true,
+    "held_task_not_executed_and_approval_pending_after_restart": true,
+    "no_git_merge_push_or_remote": true
+  },
+  "limits": [
+    "Synthetic mock makers and fixture checks do not prove provider execution, code implementation, review quality or genuine human independence.",
+    "Security-checker pre-maker disabled branch is covered by product component tests; browser pre-maker probe exercised the regular checker sharing that guard.",
+    "First completion capture yielded at native dialog; original logs retained as incomplete instrumentation evidence; repeated explicit CLI dialog handling provides full proof.",
+    "Restart correctly relabelled in-flight loop rows interrupted; prepared leases and awaiting-approval task persisted without execution.",
+    "Known Playwright data:, CSP probes remain blocked; expected409 was visible; no newly observed application crash.",
+    "Production, mobile layout, and exhaustive loop controls are not covered."
+  ],
+  "run_ids": [
+    {
+      "id": "780bbbef-620c-4d9f-b91b-01d1f73f6b6b",
+      "status": "interrupted"
+    },
+    {
+      "id": "6d65eb46-03ea-4d4b-9aad-b3ac75ec4151",
+      "status": "interrupted"
+    },
+    {
+      "id": "3b83a611-881b-4640-9153-c1cabd6f7e44",
+      "status": "completed"
+    },
+    {
+      "id": "678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b",
+      "status": "completed"
+    }
+  ],
+  "completion_identity": "operator:f0997a41-1d2c-4833-8102-86ea30f33ead",
+  "held_execution_events": [
+    "approval.requested"
+  ],
+  "git": {
+    "head": "952bc0551c135d380ed847bc923542d6fa24896b",
+    "main": "952bc0551c135d380ed847bc923542d6fa24896b",
+    "status": "",
+    "remotes": ""
+  },
+  "artifacts": [
+    "g54-dialog-cancel-proof.log",
+    "g54-dialog-confirm-proof.log",
+    "g54-security-hold.log",
+    "g54-security-ownership.log",
+    "g54-persistence-before-restart.json",
+    "g54-persistence-after-restart.json",
+    "g54-completed-after-restart.log",
+    "g54-held-after-restart.log",
+    "output/playwright/g54-held-controls-after-restart.png",
+    "output/playwright/g54-completed-after-restart.png"
+  ]
+}

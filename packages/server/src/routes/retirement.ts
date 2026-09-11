@@ -13,12 +13,12 @@ export function createRetirementRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   router.post('/retire/:agentId', requirePermission('write:governance'), async (req, res) => {
-    const { reason } = req.body;
-    if (!reason?.trim()) {
+    const { reason } = req.body ?? {};
+    if (typeof reason !== 'string' || !reason.trim()) {
       res.status(400).json({ error: { message: 'reason is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    const plan = await service.retireAgent(req.params.agentId, reason);
+    const plan = await service.retireAgent(req.params.agentId, reason, req.user!.sub);
     res.json(plan);
   });
 

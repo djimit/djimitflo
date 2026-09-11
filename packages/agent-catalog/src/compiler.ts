@@ -10,9 +10,9 @@ export function compile(profile: Profile, target: Target): CompiledArtifact {
   switch (target) {
     case 'openclaw': return compileOpenClaw(profile);
     case 'codex': return compileCodex(profile);
-    case 'claude-code': return { target, files: { [`${profile.id}.md`]: stub(profile, 'Claude Code .md agent') }, stub: true };
-    case 'cursor': return { target, files: { [`${profile.id}.mdc`]: stub(profile, 'Cursor .mdc rule') }, stub: true };
-    case 'gemini-cli': return { target, files: { 'SKILL.md': stub(profile, 'Gemini CLI SKILL.md') }, stub: true };
+    case 'claude-code': return compileClaudeCode(profile);
+    case 'cursor': return compileCursor(profile);
+    case 'gemini-cli': return compileGeminiCli(profile);
     case 'djimit-native': return { target, files: { 'djimit-agent.yaml': `id: ${profile.id}\nname: ${profile.name}\ndivision: ${profile.division}\nmission: ${JSON.stringify(profile.mission)}\nruntime_targets: [${profile.runtime_targets.join(', ')}]\n` } };
   }
 }
@@ -45,4 +45,44 @@ function compileCodex(p: Profile): CompiledArtifact {
   return { target: 'codex', files: { 'agent.toml': `[agent]\nname = ${JSON.stringify(p.name)}\nmodel = "gpt-4o"\ninstructions = ${JSON.stringify(instructions)}\n` } };
 }
 
-function stub(p: Profile, label: string): string { return `# ${p.name} — ${label} (F5 stub, not implemented)\n\nMission: ${p.mission}\n`; }
+function fileStem(id: string): string { return id.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent'; }
+function yamlString(value: string): string { return JSON.stringify(clamp(value)); }
+function markdownBody(p: Profile): string {
+  return [
+    `# ${p.name}`,
+    '',
+    `## Mission\n${clamp(p.mission) || 'Mission not specified.'}`,
+    '',
+    `## Persona\n${clamp(p.persona) || 'Persona not specified.'}`,
+    '',
+    '## Rules', ...(p.rules.length ? p.rules.map(rule => `- ${rule}`) : ['- None specified.']),
+    '',
+    '## Workflow', ...(p.workflows.length ? p.workflows.map(step => `- ${step}`) : ['- None specified.']),
+    '',
+    '## Deliverables', ...(p.deliverables.length ? p.deliverables.map(item => `- ${item}`) : ['- None specified.']),
+    '',
+    '## Success Metrics', ...(p.success_metrics.length ? p.success_metrics.map(metric => `- ${metric}`) : ['- None specified.']),
+    '',
+    `## Memory Policy\n${clamp(p.memory_policy) || 'Retain task-relevant context only.'}`,
+    '',
+    '## Tools Required', ...(p.tools_required.length ? p.tools_required.map(tool => `- ${tool}`) : ['- None specified.']),
+    '',
+  ].join('\n');
+}
+
+function compileClaudeCode(p: Profile): CompiledArtifact {
+  const description = clamp(p.mission) || `Agent for ${p.division}`;
+  const tools = p.tools_required.length ? p.tools_required.join(', ') : 'Read, Edit, Bash';
+  const content = [`---`, `name: ${yamlString(p.name)}`, `description: ${yamlString(description)}`, `tools: ${yamlString(tools)}`, `---`, '', markdownBody(p)].join('\n');
+  return { target: 'claude-code', files: {[`${fileStem(p.id)}.md`]: content} };
+}
+
+function compileCursor(p: Profile): CompiledArtifact {
+  const content = [`---`, `description: ${yamlString(clamp(p.mission) || `Agent for ${p.division}`)}`, 'globs: **/*', 'alwaysApply: false', `---`, '', markdownBody(p)].join('\n');
+  return { target: 'cursor', files: {[`${fileStem(p.id)}.mdc`]: content} };
+}
+
+function compileGeminiCli(p: Profile): CompiledArtifact {
+  const content = [`---`, `name: ${yamlString(fileStem(p.id))}`, `description: ${yamlString(clamp(p.mission) || `Agent for ${p.division}`)}`, '---', '', markdownBody(p)].join('\n');
+  return { target: 'gemini-cli', files: {'SKILL.md': content} };
+}

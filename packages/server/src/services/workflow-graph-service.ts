@@ -126,6 +126,7 @@ export class WorkflowGraphService {
    * Approve a gate node.
    */
   approveGate(workflowId: string, nodeId: string, approvedBy: string): void {
+    this.assertNodeExists(workflowId, nodeId);
     this.db.prepare(`
       UPDATE workflow_nodes SET status = 'completed', approved_by = ?, approved_at = ?
       WHERE workflow_id = ? AND id = ?
@@ -136,6 +137,7 @@ export class WorkflowGraphService {
    * Reject a gate node.
    */
   rejectGate(workflowId: string, nodeId: string): void {
+    this.assertNodeExists(workflowId, nodeId);
     this.db.prepare(`
       UPDATE workflow_nodes SET status = 'failed'
       WHERE workflow_id = ? AND id = ?
@@ -174,6 +176,7 @@ export class WorkflowGraphService {
    * Update node status.
    */
   updateNodeStatus(workflowId: string, nodeId: string, status: NodeStatus, outputs?: Record<string, unknown>): void {
+    this.assertNodeExists(workflowId, nodeId);
     this.db.prepare(`
       UPDATE workflow_nodes SET status = ?, outputs_json = ?
       WHERE workflow_id = ? AND id = ?
@@ -191,6 +194,11 @@ export class WorkflowGraphService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private assertNodeExists(workflowId: string, nodeId: string): void {
+    const row = this.db.prepare('SELECT 1 FROM workflow_nodes WHERE workflow_id = ? AND id = ?').get(workflowId, nodeId);
+    if (!row) throw new Error('WORKFLOW_NODE_NOT_FOUND');
+  }
 
   createWorkflow(input: {
     name: string;

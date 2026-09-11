@@ -5,6 +5,7 @@ export class ActivationRegistry {
   constructor(private db: CatalogDB) {}
 
   activate(profileId: string, target: Target) {
+    return this.db.transaction(() => {
     const profile = this.db.getProfile(profileId);
     if (!profile) throw new Error(`profile not found: ${profileId}`);
     const ev = this.db.getEvaluation(profileId);
@@ -16,14 +17,17 @@ export class ActivationRegistry {
     this.db.setActivation(profileId, 'active', target, JSON.stringify(artifact));
     this.db.audit(profileId, 'activate', JSON.stringify({ target, evaluation: ev.id }));
     return { profileId, status: 'active' as const, target, artifact };
+    });
   }
 
   deactivate(profileId: string) {
+    return this.db.transaction(() => {
     const act = this.db.getActivation(profileId);
     if (!act) throw new Error(`no activation for ${profileId}`);
     this.db.setActivation(profileId, 'deactivated', null, null);
     this.db.audit(profileId, 'deactivate', JSON.stringify({ prior: act.status, target: act.target }));
     return { profileId, status: 'deactivated' as const };
+    });
   }
 
   status(profileId: string) {

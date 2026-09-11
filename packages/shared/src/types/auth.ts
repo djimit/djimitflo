@@ -103,6 +103,7 @@ export interface LoginResponse {
 
 export interface AuthTokenPayload {
   sub: string;
+  sid?: string;
   email: string;
   role: UserRole;
   organization_id?: string;

@@ -1,0 +1,79 @@
+{
+  "source": "read-only local audit.sqlite after browser denial",
+  "rows": [
+    {
+      "task": {
+        "id": "65db4507-0844-4cf3-8884-9851c50eadd6",
+        "status": "pending",
+        "execution_mode": "review_only",
+        "started_at": null,
+        "completed_at": null
+      },
+      "approval": {
+        "id": "8201c306-d503-45a4-9cda-432eba45b13c",
+        "status": "denied",
+        "requested_by": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+        "decided_by": "3d073bca-f8e6-42f1-bee2-bed20ec6119e",
+        "decision_reason": "Independent fixture denial: missing execution evidence; no dispatch authorized.",
+        "denied_at": "2026-09-09T10:19:39.740Z"
+      },
+      "executionEvents": {
+        "n": 0
+      },
+      "audit": [
+        {
+          "event_type": "task.created",
+          "action": "task_created",
+          "metadata": "{}"
+        },
+        {
+          "event_type": "approval.requested",
+          "action": "approval_requested",
+          "metadata": "{\"actionType\":\"unknown\",\"policyId\":null}"
+        },
+        {
+          "event_type": "approval.denied",
+          "action": "approval_denied",
+          "metadata": "{\"reason\":\"Independent fixture denial: missing execution evidence; no dispatch authorized.\"}"
+        }
+      ]
+    },
+    {
+      "task": {
+        "id": "8a2d3a03-e61f-43a9-ac4c-e6654a47347c",
+        "status": "pending",
+        "execution_mode": "review_only",
+        "started_at": null,
+        "completed_at": null
+      },
+      "approval": {
+        "id": "757c976c-604f-4f88-ba57-51ee2a184bbe",
+        "status": "denied",
+        "requested_by": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+        "decided_by": "3d073bca-f8e6-42f1-bee2-bed20ec6119e",
+        "decision_reason": "Retry fixture denied after error recovery.",
+        "denied_at": "2026-09-09T10:23:30.492Z"
+      },
+      "executionEvents": {
+        "n": 0
+      },
+      "audit": [
+        {
+          "event_type": "task.created",
+          "action": "task_created",
+          "metadata": "{}"
+        },
+        {
+          "event_type": "approval.requested",
+          "action": "approval_requested",
+          "metadata": "{\"actionType\":\"unknown\",\"policyId\":null}"
+        },
+        {
+          "event_type": "approval.denied",
+          "action": "approval_denied",
+          "metadata": "{\"reason\":\"Retry fixture denied after error recovery.\"}"
+        }
+      ]
+    }
+  ]
+}

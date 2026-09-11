@@ -28,6 +28,7 @@ async function startApp() {
   app.use(express.json());
   app.use('/work-items', createWorkItemRoutes(db, auth));
   app.use('/swarms', createSwarmRoutes(db, auth));
+  app.use('/api/swarms', createSwarmRoutes(db, auth));
   app.use(errorHandler);
   server = await new Promise<Server>((resolve) => {
     const listening = app.listen(0, () => resolve(listening));
@@ -242,5 +243,40 @@ describe('agentic OS integration spine smoke', () => {
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
+  });
+
+  it('exercises canonical worker and knowledge route boundaries', async () => {
+    const readiness = await fetch(`${baseUrl}/api/swarms/runtime-readiness?runtime=mock`);
+    expect(readiness.status).toBe(200);
+    expect((await readiness.json() as any).runtimes[0]).toMatchObject({ runtime: 'mock', ready: false, start_allowed: false });
+
+    const runtime = await fetch(`${baseUrl}/api/swarms/knowledge/runtime`);
+    expect(runtime.status).toBe(200);
+    expect((await runtime.json() as any)).toMatchObject({ exists: true, valid: expect.any(Boolean) });
+    const sync = await fetch(`${baseUrl}/api/swarms/knowledge/sync`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ dry_run: true }),
+    });
+    expect(sync.status).toBe(200);
+    expect((await sync.json() as any).dry_run).toBe(true);
+
+    const json = (method: string, path: string, body?: unknown) => fetch(`${baseUrl}/api/swarms${path}`, {
+      method, headers: { 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    for (const [path, body] of [
+      ['/scheduler/tick', { max_items: 1 }], ['/backlog/sync', {}], ['/worker-pool/plan', {}],
+      ['/worker-pool/start-next', {}], ['/worker-pool/drain', {}], ['/handoffs/drain', {}],
+    ] as const) {
+      const response = await json('POST', path, body);
+      expect(response.status, path).toBe(200);
+    }
+    const stop = await json('POST', '/worker-pool/stop/missing-lease');
+    expect(stop.status).toBe(404);
+    expect((await stop.json() as any).error.code).toBe('WORKER_LEASE_NOT_FOUND');
+    const handoff = await json('POST', '/handoffs', {});
+    expect(handoff.status).toBe(400);
+    expect((await handoff.json() as any).error.code).toBe('SWARM_HANDOFF_REQUIRED');
+    const accept = await json('POST', '/handoffs/missing-handoff/accept');
+    expect(accept.status).toBe(404);
+    expect((await accept.json() as any).error.code).toBe('SWARM_HANDOFF_NOT_FOUND');
   });
 });

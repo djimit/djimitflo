@@ -394,6 +394,21 @@ describe('OpenCodeExecutor', () => {
       expect(result).not.toBeNull();
       expect(result.event_type).toBe('task.failed');
     });
+
+    it('maps a flattened step_finish event without crashing', () => {
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'step_finish', reason: 'stop' });
+      expect(result).toMatchObject({ event_type: 'task.completed', message: 'OpenCode step finished: stop' });
+    });
+
+    it('records malformed tool events instead of throwing', () => {
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'tool_use', sessionID: 'ses_123' });
+      expect(result).toMatchObject({ event_type: 'log', level: 'warning', metadata: { malformed: true } });
+    });
+
+    it('maps a step_finish event with no reason as a failed unknown outcome', () => {
+      const result = (executor as any).mapJsonEventToExecutionEvent('task-1', { type: 'step_finish', part: { type: 'step-finish' } });
+      expect(result).toMatchObject({ event_type: 'task.failed', message: 'OpenCode step finished: unknown' });
+    });
   });
 
   describe('mapJsonEventToExecutionEvent — unknown event type', () => {

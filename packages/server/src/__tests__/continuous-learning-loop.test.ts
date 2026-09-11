@@ -24,6 +24,17 @@ describe('G127: Continuous Learning Loop', () => {
     expect(result.timestamp).toBeDefined();
   });
 
+  it('counts one social exchange even though it emits two peer messages', async () => {
+    const heartbeat = new Date().toISOString();
+    const metadata = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: heartbeat } });
+    db.prepare('INSERT INTO agents (id, name, description, status, capabilities_json, metadata) VALUES (?, ?, ?, ?, ?, ?)').run('social-a', 'Social A', 'Social fixture', 'active', '["research"]', metadata);
+    db.prepare('INSERT INTO agents (id, name, description, status, capabilities_json, metadata) VALUES (?, ?, ?, ?, ?, ?)').run('social-b', 'Social B', 'Social fixture', 'active', '["engineering"]', metadata);
+
+    const result = await loop.runCycle();
+    expect(result.socialExchangesStarted).toBe(1);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
+  });
+
   it('tracks history', async () => {
     await loop.runCycle();
     await loop.runCycle();

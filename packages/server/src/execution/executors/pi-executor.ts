@@ -37,6 +37,7 @@ import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@
 import { buildPiArgs, type PiExecutorOptions } from './pi-shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -129,11 +130,14 @@ export class PiExecutor implements TaskExecutor {
 
     const emitter = new EventEmitter();
     let childProcess: ChildProcess | null = null;
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
     // Shared metrics accumulator: the event stream writes, the result promise reads.
     const metrics = { tokenUsage: 0, toolCalls: 0, approvalsRequested: 0 };
 
     const spawnProcess = () => {
+      if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
 
@@ -143,14 +147,10 @@ export class PiExecutor implements TaskExecutor {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       childProcess = child;
+      void runtimeProcessClosed(child).then(resolveClosed);
 
       const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) child.kill('SIGKILL');
-          }, 5000);
-        }
+        stopRuntimeProcess(child);
         emitter.emit('error', new Error(`Pi execution timed out after ${this.executionTimeoutMs}ms`));
       }, options?.timeout ?? this.executionTimeoutMs);
 
@@ -174,14 +174,11 @@ export class PiExecutor implements TaskExecutor {
       startedAt,
       events,
       result,
+      closed,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) childProcess.kill('SIGKILL');
-          }, 5000);
-        }
         session.status = 'cancelled';
+        await stopRuntimeProcess(childProcess);
+        if (!childProcess) resolveClosed();
         session.completedAt = new Date();
       },
     };
@@ -462,7 +459,7 @@ export class PiExecutor implements TaskExecutor {
     let buffer = '';
     const outputQueue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const errorQueue: Error[] = [];
-    let exitCode: number | null = null;
+    let exitCode: number | null | undefined;
     let resolver: ((value: boolean) => void) | null = null;
 
     emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
@@ -473,12 +470,12 @@ export class PiExecutor implements TaskExecutor {
       errorQueue.push(error);
       if (resolver) { resolver(true); resolver = null; }
     });
-    emitter.on('exit', (code: number) => {
+    emitter.on('exit', (code: number | null) => {
       exitCode = code;
       if (resolver) { resolver(false); resolver = null; }
     });
 
-    while (exitCode === null) {
+    while (exitCode === undefined) {
       if (outputQueue.length === 0 && errorQueue.length === 0) {
         await new Promise<boolean>((resolve) => { resolver = resolve; });
       }

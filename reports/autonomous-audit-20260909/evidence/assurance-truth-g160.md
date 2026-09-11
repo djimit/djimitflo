@@ -1,0 +1,3 @@
+# G160 — fail-closed assurance recheck
+
+`npm run assurance:truth` was rerun with the G159 route inventory and isolated report outputs. Dependency audit, contract inventory (**581 routes / 267 tested / 0 critical unclassified**), integration probes and diff check pass. OpenMythos remains **BLOCKED**: corpus structure and repeatability pass, but certification readiness is false and held-out policy discrimination is `reject` with three paired regressions. Live identity remains **FAIL** because no healthy authenticated runtime is serving the intended dirty revision on `127.0.0.1:3001`. Aggregate assurance correctly exits 1; no deployment or external mutation was attempted.

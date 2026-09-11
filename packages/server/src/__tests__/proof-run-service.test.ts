@@ -22,15 +22,10 @@ let db: Database.Database;
 let server: Server;
 let baseUrl: string;
 let runtimeBinDir = '';
-// Isolation for the loop filesystem. ProofRunService hardcodes
-// `repository_path = process.cwd()` (proof-run-service.ts insertLoopRun), so a
-// proof run's `git worktree add` locks the source repo's .git/worktree.lock.
-// Under parallel vitest forks that share the real monorepo this races and
-// surfaces as WORKTREE_CREATE_FAILED -> 500. Chdir into a per-test temp git
-// repo (unique git dir) + per-test LOOP_WORKTREE_ROOT/LOOP_EVIDENCE_ROOT removes
-// the shared-monorepo lock race deterministically.
+// Isolation for the loop filesystem. ProofRunService reads
+// PROOF_RUN_REPOSITORY_PATH so each proof run uses a unique git directory
+// without changing process cwd shared by parallel Vitest workers.
 let tempRepoDir = '';
-let originalCwd = '';
 let worktreeRoot = '';
 let evidenceRoot = '';
 
@@ -123,14 +118,13 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
     db.exec(schema);
     runMigrations(db);
     // Isolate the loop filesystem BEFORE startApp/proof-run: chdir to a fresh
-    // temp git repo so `repository_path = process.cwd()` points at a repo with a
-    // unique git dir (no shared-monorepo worktree.lock race), and give the loop
-    // its own per-test worktree + evidence roots.
-    originalCwd = process.cwd();
+    // temp git repo so the explicit repository_path points at a unique git dir
+    // (no shared-monorepo worktree.lock race), and give the loop its own
+    // per-test worktree + evidence roots.
     tempRepoDir = makeTempRepo();
     worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-proof-worktrees-'));
     evidenceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-proof-evidence-'));
-    process.chdir(tempRepoDir);
+    process.env.PROOF_RUN_REPOSITORY_PATH = tempRepoDir;
     process.env.LOOP_WORKTREE_ROOT = worktreeRoot;
     process.env.LOOP_EVIDENCE_ROOT = evidenceRoot;
     // The learning-flywheel vector write-back hits real ollama+qdrant; disable it in tests
@@ -152,9 +146,7 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
       runtimeBinDir = '';
     }
     db.close();
-    if (originalCwd) {
-      try { process.chdir(originalCwd); } catch { /* original cwd may be gone */ }
-    }
+    delete process.env.PROOF_RUN_REPOSITORY_PATH;
     delete process.env.LOOP_WORKTREE_ROOT;
     delete process.env.LOOP_EVIDENCE_ROOT;
     if (tempRepoDir) { fs.rmSync(tempRepoDir, { recursive: true, force: true }); tempRepoDir = ''; }
@@ -293,11 +285,12 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
   });
 
   it('returns a deterministic 503 PROOF_RUN_RUNTIME_FAILED when worktree creation fails', async () => {
-    // Point cwd at a non-git dir so createWorktree's `git rev-parse`/`git worktree add`
-    // fails. createRuntimeProofRun wraps that as PROOF_RUN_RUNTIME_FAILED; the route
+    // Point the explicit repository path at a non-git dir so createWorktree's
+    // `git rev-parse`/`git worktree add` fails. createRuntimeProofRun wraps that
+    // as PROOF_RUN_RUNTIME_FAILED; the route
     // must map it to a stable 503 (not a bare 500 INTERNAL_ERROR).
     const nonGitDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-proof-nongit-'));
-    process.chdir(nonGitDir);
+    process.env.PROOF_RUN_REPOSITORY_PATH = nonGitDir;
     try {
       const res = await fetch(`${baseUrl}/swarms/proof-runs`, {
         method: 'POST',
@@ -308,7 +301,7 @@ describeOrSkip('swarm proof runs', { hookTimeout: 30_000, testTimeout: 30_000 },
       const body = await res.json() as any;
       expect(body.error.code).toBe('PROOF_RUN_RUNTIME_FAILED');
     } finally {
-      process.chdir(tempRepoDir);
+      process.env.PROOF_RUN_REPOSITORY_PATH = tempRepoDir;
       fs.rmSync(nonGitDir, { recursive: true, force: true });
     }
   });

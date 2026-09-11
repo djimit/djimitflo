@@ -165,7 +165,7 @@ export class NestedSpawnService {
     this.assertRole(input.role);
     if (!input.prompt?.trim()) throw new Error('SPAWN_PROMPT_REQUIRED');
     // Confirm the loop run exists (prepareNestedLease will read it again).
-    this.loops.getLoopRun(input.loop_run_id);
+    this.loops.assertOperatorNotPaused(this.loops.getLoopRun(input.loop_run_id));
 
     const depthBudget = input.depth_budget ?? this.envInt('SPAWN_DEPTH_BUDGET', DEFAULT_DEPTH_BUDGET);
     const totalTokenBudget = input.total_token_budget ?? this.envInt('SPAWN_TREE_TOKEN_BUDGET', DEFAULT_TOKEN_BUDGET);
@@ -290,6 +290,12 @@ export class NestedSpawnService {
     if (parent.spawn_tree_id !== input.spawn_tree_id) throw new Error('SPAWN_TREE_MISMATCH');
 
     const depth = (parent.depth ?? 0) + 1;
+    try {
+      this.loops.assertOperatorNotPaused(this.loops.getLoopRun(parent.loop_run_id));
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'LOOP_OPERATOR_PAUSED') throw error;
+      return this.gateOut(spawnId, input, depth, promptDigest, 'operator_paused', now);
+    }
 
     // 2. Depth budget gate.
     if (depth > tree.depth_budget) {

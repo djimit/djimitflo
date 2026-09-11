@@ -13,6 +13,7 @@ import { execSync } from 'child_process';
 import { readdirSync, readFileSync } from 'fs';
 import { basename, join } from 'path';
 import type { Database } from 'better-sqlite3';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 interface ImprovementOpportunity {
   id: string;
@@ -48,7 +49,7 @@ interface PlannedChange {
 export class SelfModificationPipeline {
   private readonly repoRoot: string;
 
-  constructor(private db: Database, repoRoot = process.cwd()) {
+  constructor(private db: Database, repoRoot = resolveRepositoryRoot(process.cwd())) {
     this.repoRoot = repoRoot;
     this.ensureTables();
   }

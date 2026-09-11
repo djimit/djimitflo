@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import type { Database } from 'better-sqlite3';
 import type { MemoryStore } from './memory-candidate-service';
@@ -47,6 +48,14 @@ export interface ContextResult {
   store?: MemoryStore;
 }
 
+export interface ContextSnapshot {
+  text: string;
+  sha256: string;
+  sources: string[];
+  advisory: true;
+  independently_reviewed: false;
+}
+
 export class ContextInjectionService {
   private sanitizer = new ContextSanitizer();
   private experienceRetrieval: ExperienceRetrievalService | null = null;
@@ -55,7 +64,16 @@ export class ContextInjectionService {
   }
 
   async injectContext(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<string> {
-    if (!useSwarmContext) return '';
+    return (await this.injectContextSnapshot(taskDescription, useSwarmContext, storeFilter)).text;
+  }
+
+  /**
+   * Produce the exact context that will be persisted into executor input.
+   * The hash is server-owned provenance; retrieved episodes remain advisory and
+   * must not be presented as independently reviewed or causal evidence.
+   */
+  async injectContextSnapshot(taskDescription: string, useSwarmContext: boolean = true, storeFilter?: MemoryStore): Promise<ContextSnapshot> {
+    if (!useSwarmContext) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false };
 
     const results: ContextResult[] = [];
 
@@ -82,7 +100,7 @@ export class ContextInjectionService {
     const ranked = this.rankByTrust(results);
     const truncated = this.truncateToTokenBudget(ranked, MAX_CONTEXT_TOKENS);
 
-    if (truncated.length === 0) return '';
+    if (truncated.length === 0) return { text: '', sha256: createHash('sha256').update('').digest('hex'), sources: [], advisory: true, independently_reviewed: false };
 
     const lines = ['## Context (Swarm + Knowledge)', ''];
     for (const r of truncated) {
@@ -103,7 +121,14 @@ export class ContextInjectionService {
     const result = lines.join('\n');
     // G25: sanitize retrieved context before injection (prompt injection defense).
     const sanitized = this.sanitizer.sanitize(result);
-    return sanitized.sanitized;
+    const text = sanitized.sanitized;
+    return {
+      text,
+      sha256: createHash('sha256').update(text).digest('hex'),
+      sources: [...new Set(truncated.map((result) => result.source))],
+      advisory: true,
+      independently_reviewed: false,
+    };
   }
 
   private async searchQdrantSwarm(query: string, storeFilter?: MemoryStore): Promise<ContextResult[]> {

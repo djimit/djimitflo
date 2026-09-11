@@ -1,0 +1,62 @@
+{
+  "state": "PASS",
+  "recorded_at": "2026-09-09T18:14:35.763Z",
+  "tests": 2696,
+  "skipped": 20,
+  "registered_api_routes": 610,
+  "anonymous_auth_denials": 604,
+  "goal_statuses": [
+    [
+      "4ee661ca-47cd-4add-b9f1-7d23ba32052f",
+      "created"
+    ],
+    [
+      "e41eb751-876e-49f9-9e52-483ad48889e1",
+      "created"
+    ],
+    [
+      "7371f30d-8316-4768-b763-3d42c721ba9e",
+      "running"
+    ],
+    [
+      "c9aa17af-059d-433d-a9fd-99d28a241b64",
+      "running"
+    ],
+    [
+      "29fae050-ba37-4435-aca8-277171ee2972",
+      "running"
+    ],
+    [
+      "1d36485d-d3b1-44fa-b753-642b2c16efd2",
+      "completed"
+    ]
+  ],
+  "persisted": {
+    "episodes": {
+      "n": 10,
+      "distinct_n": 10,
+      "rate": 0.5
+    },
+    "negative_loop_status": "blocked",
+    "maker_status": "failed",
+    "learning_closures": 0
+  },
+  "console_noise": "Only retained automation-origin data: CSP messages; no page exceptions or failing cognitive requests in final capture",
+  "hashes": {
+    "evolution-tests-frozen.log": "7511c39d8549f88836e6d2b67a0d20e286b603aee802bcedbc64816948e58c6e",
+    "evolution-build-final.log": "1caaa8afe362bb36b013d0508a0e1d5ecd922b9f293f88d9d1c637e57fca4b63",
+    "evolution-server-build-integrated.log": "cf1bfc893daf9b124412f90f2635109ec0e976ba39467d26dc54a1d936629a60",
+    "evolution-typecheck-frozen.log": "c8fcbd87467c6ec584ffce547a463892f6ac35f0af3e6bd64aefa5ff504a2ec9",
+    "evolution-lint-frozen.log": "e1b106b7f03e2cf7bf9f5bbc2f819de4b3ac4c6a1a26f87e3227f127cf78c038",
+    "evolution-mutation.log": "c62975368d79c83c80d7b0eb397dfd8855ccacea217bdde0e3bd7e730775ccc6",
+    "route-runtime-registration-all-auth.json": "1467d272405c9ba13a5ba56cdfac24fd9de0f0b4be5ab8d2da2279f53da12746",
+    "evolution-http-before.json": "3279cd4e764b270bbaacdcd48c50babc69f63b8a987dd43166d1bee019c48a4f",
+    "evolution-http-after-restart.json": "3f2b9a92576ac4409dc1161a4d1c014be4a2c6f04d540cc92d7b55973955d413",
+    "evolution-loop-negative-control-final.json": "52720b5ed52e040af01f43814d3f84362aeb515903116e8332f42a36e097906c",
+    "browser-evolution-cognitive-network-revalidated.log": "b7cfafeaa8d76586ea2085a3b0fb848d16baa56b782a98e17bde612b12ba7d1c"
+  },
+  "mission_complete": false,
+  "unseen_task_improvement_proven": false,
+  "strategy_applied": false,
+  "background_monitor_active": false
+}

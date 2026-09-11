@@ -60,18 +60,33 @@ export class AuthService {
     return bcrypt.compareSync(plain, hash);
   }
 
-  generateToken(user: User & { organization_id?: string }): string {
+  generateToken(user: User & { organization_id?: string }, sessionId?: string): string {
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       organization_id: (user as any).organization_id ?? 'default',
+      ...(sessionId === undefined ? {} : { sid: sessionId }),
     };
     return jwt.sign(payload, this.jwtSecret, { expiresIn: this.jwtExpiresIn as any });
   }
 
   verifyToken(token: string): AuthTokenPayload | null {
-    return verifyHs256Jwt(token, this.jwtSecret);
+    const payload = verifyHs256Jwt(token, this.jwtSecret);
+    if (payload?.sid !== undefined && !this.isSessionActive(payload.sub, payload.sid)) return null;
+    return payload;
+  }
+
+  isSessionActive(userId: string, sessionId: string): boolean {
+    if (typeof sessionId !== 'string' || !sessionId) return false;
+    return !!this.db.prepare(`
+      SELECT 1 FROM refresh_tokens WHERE user_id = ? AND session_id = ?
+      AND revoked = 0 AND julianday(expires_at) > julianday(?) LIMIT 1
+    `).get(userId, sessionId, new Date().toISOString());
+  }
+
+  withSessionTransaction<T>(operation: () => T): T {
+    return this.db.transaction(operation).immediate();
   }
 
   sanitizeUser(row: Record<string, unknown>): User {
@@ -149,9 +164,17 @@ export class AuthService {
    * Generate a token pair: short-lived access token + long-lived refresh token.
    */
   generateTokenPair(user: User): TokenPair {
-    const accessToken = this.generateToken(user);
+    return this.issueTokenPair(user, randomUUID(), null);
+  }
+
+  private issueTokenPair(user: User, sessionId: string, rotatedFrom: string | null): TokenPair {
+    const accessToken = this.generateToken(user, sessionId);
+    // Read our freshly signed claims so configuration and response cannot drift.
+    const claims = jwt.decode(accessToken) as jwt.JwtPayload;
+    if (!Number.isFinite(claims?.exp) || !Number.isFinite(claims?.iat)) {
+      throw new Error('Generated access token lacks a valid lifetime');
+    }
     const refreshToken = randomUUID() + randomUUID();
-    const sessionId = randomUUID();
 
     const refreshTokenHash = this.hashToken(refreshToken);
     const now = new Date();
@@ -159,13 +182,13 @@ export class AuthService {
 
     this.db.prepare(`
       INSERT INTO refresh_tokens (token_hash, user_id, session_id, issued_at, expires_at, rotated_from, revoked)
-      VALUES (?, ?, ?, ?, ?, NULL, 0)
-    `).run(refreshTokenHash, user.id, sessionId, now.toISOString(), expiresAt.toISOString());
+      VALUES (?, ?, ?, ?, ?, ?, 0)
+    `).run(refreshTokenHash, user.id, sessionId, now.toISOString(), expiresAt.toISOString(), rotatedFrom);
 
     return {
       access_token: accessToken,
       refresh_token: refreshToken,
-      expires_in: 900,
+      expires_in: claims.exp! - claims.iat!,
       token_type: 'Bearer',
     };
   }
@@ -174,32 +197,37 @@ export class AuthService {
    * Rotate a refresh token: validate the old token, issue a new pair,
    * revoke the old token. Detects token reuse (replay attack).
    */
-  rotateRefreshToken(refreshToken: string): TokenPair | null {
+  rotateRefreshToken(refreshToken: string, organizationId?: string): TokenPair | null {
     const tokenHash = this.hashToken(refreshToken);
+    // Acquire the SQLite write lock before reading: revoke and replacement are
+    // one commit, and signing/insertion failure leaves the old token usable.
+    return this.db.transaction(() => {
+      const record = this.db.prepare(`
+        SELECT * FROM refresh_tokens
+        WHERE token_hash = ? AND revoked = 0 AND julianday(expires_at) > julianday(?)
+      `).get(tokenHash, new Date().toISOString()) as RefreshTokenRecord | undefined;
 
-    const record = this.db.prepare(`
-      SELECT * FROM refresh_tokens
-      WHERE token_hash = ? AND revoked = 0 AND expires_at > datetime('now')
-    `).get(tokenHash) as RefreshTokenRecord | undefined;
+      if (!record) {
+        const reused = this.db.prepare(`
+          SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 1
+        `).get(tokenHash) as RefreshTokenRecord | undefined;
 
-    if (!record) {
-      const reused = this.db.prepare(`
-        SELECT * FROM refresh_tokens WHERE token_hash = ? AND revoked = 1
-      `).get(tokenHash) as RefreshTokenRecord | undefined;
+        if (reused) {
+          this.revokeAllUserTokens(reused.user_id);
+        }
 
-      if (reused) {
-        this.revokeAllUserTokens(reused.user_id);
+        return null;
       }
 
-      return null;
-    }
+      const user = this.findUserById(record.user_id);
+      if (user && organizationId !== undefined && organizationId !== 'default'
+        && organizationId !== (user as User & { organization_id?: string }).organization_id) return null;
+      this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+      if (!user || !user.isActive) return null;
 
-    this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
-
-    const user = this.findUserById(record.user_id);
-    if (!user || !user.isActive) return null;
-
-    return this.generateTokenPair(user);
+      const selectedUser = organizationId === undefined ? user : { ...user, organization_id: organizationId };
+      return this.issueTokenPair(selectedUser, record.session_id, record.token_hash);
+    }).immediate();
   }
 
   /**
@@ -216,6 +244,19 @@ export class AuthService {
   revokeRefreshToken(refreshToken: string): void {
     const tokenHash = this.hashToken(refreshToken);
     this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?').run(tokenHash);
+  }
+
+  revokeSessionFamily(refreshToken: string): { user_id: string; session_id: string } | null {
+    const record = this.db.prepare('SELECT user_id, session_id FROM refresh_tokens WHERE token_hash = ?')
+      .get(this.hashToken(refreshToken)) as { user_id: string; session_id: string } | undefined;
+    if (!record) return null;
+    this.revokeAuthenticatedSession(record.user_id, record.session_id);
+    return record;
+  }
+
+  revokeAuthenticatedSession(userId: string, sessionId: string): boolean {
+    return this.db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND session_id = ?')
+      .run(userId, sessionId).changes > 0;
   }
 
   private hashToken(token: string): string {
@@ -243,6 +284,7 @@ export class AuthService {
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens(user_id);
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens(expires_at);
       CREATE INDEX IF NOT EXISTS idx_refresh_tokens_revoked ON refresh_tokens(revoked);
+      CREATE INDEX IF NOT EXISTS idx_refresh_tokens_session ON refresh_tokens(user_id, session_id);
     `);
   }
 

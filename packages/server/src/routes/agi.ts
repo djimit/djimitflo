@@ -61,6 +61,10 @@ export function createAgiRoutes(db: Database, auth?: AuthMiddleware): Router {
   });
 
   router.post('/consensus/debates/:debateId/resolve', requirePermission('write:governance'), (req, res) => {
+    if (!consensus.getDebate(req.params.debateId)) {
+      res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Debate not found' } });
+      return;
+    }
     res.json(consensus.resolve(req.params.debateId));
   });
 

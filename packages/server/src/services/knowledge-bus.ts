@@ -1,5 +1,4 @@
 import { EventEmitter } from 'events';
-import type { Database } from 'better-sqlite3';
 
 /**
  * G15: KnowledgeBus — in-process pub/sub on typed claims.
@@ -8,9 +7,9 @@ import type { Database } from 'better-sqlite3';
  * can act (e.g., a planner subscribed to `debugging` claims gets notified when a
  * new debugging claim is verified).
  *
- * HTTP transport scaffold: POST /api/knowledge/publish + GET /api/knowledge/subscribe/:capabilityId
- * are the endpoints a remote DjimFlo instance would use to join the bus. In this
- * change, they're scaffolded but the bus is in-process first.
+ * HTTP transport: POST /api/knowledge/publish + GET
+ * /api/knowledge/subscribe/:capabilityId let an authenticated remote DjimFlo
+ * instance publish and subscribe while this process remains the local bus.
  */
 
 export interface KnowledgeBusClaim {
@@ -82,14 +81,3 @@ class KnowledgeBus extends EventEmitter {
 
 // Singleton — shared across the process.
 export const knowledgeBus = new KnowledgeBus();
-
-/**
- * Wire the knowledge bus to SwarmIntelligenceService.createClaim.
- * Called at server composition time.
- */
-export function wireKnowledgeBusToDB(_db: Database): void {
-  // Hook into claim creation by listening to the swarm_claims table insert trigger.
-  // Since better-sqlite3 is synchronous, we use a post-insert hook approach:
-  // the SwarmIntelligenceService calls knowledgeBus.publish directly in createClaim.
-  // This function is a no-op placeholder for future DB-level hook wiring.
-}

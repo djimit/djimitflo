@@ -124,16 +124,19 @@ export class AgentInteractionLedgerService {
     return this.query(`SELECT id, from_agent, to_agent, type, priority, payload_json, timestamp, status FROM agent_messages ORDER BY timestamp DESC LIMIT ?`, limit)
       .map((row) => {
         const payload = this.object(row.payload_json);
+        const params = this.object(payload.params);
+        const action = this.string(payload.action) || '';
+        const social = action.startsWith('social.');
         return this.record({
           id: `agent_messages:${row.id}`, timestamp: row.timestamp,
           correlationId: this.string(payload.thread_id) || this.string(payload.correlation_id) || row.id,
           causationId: this.string(payload.reply_to) || this.string(payload.causation_id), actorId: row.from_agent, actorType: 'agent',
-          actorRole: this.string(payload.epistemic_role) || this.string(payload.actor_role), runtime: this.string(payload.runtime), model: this.string(payload.model_id),
-          action: `message.${row.type}`, targetType: 'agent', targetId: row.to_agent,
+          actorRole: this.string(payload.epistemic_role) || this.string(payload.actor_role), runtime: this.string(params.runtime) || this.string(payload.runtime), model: this.string(params.model_id) || this.string(payload.model_id),
+          action: social ? action : `message.${row.type}`, targetType: 'agent', targetId: row.to_agent,
           capabilityId: this.string(payload.capability_id), decision: null,
           status: row.status, evidenceRefs: [...this.stringArray(payload.evidence), ...this.stringArray(payload.evidence_refs)],
-          effectScope: this.scope(payload.effect_scope, 'isolated'), source: 'agent_messages',
-          summary: `${row.from_agent} sent ${row.type} to ${row.to_agent}`,
+          effectScope: this.scope(params.effect_scope ?? payload.effect_scope, 'isolated'), source: 'agent_messages',
+          summary: social ? this.string(params.board_summary) || this.string(payload.context) || `${row.from_agent} sent ${action} to ${row.to_agent}` : `${row.from_agent} sent ${row.type} to ${row.to_agent}`,
         });
       });
   }

@@ -9,13 +9,25 @@ export interface ApiError extends Error {
   code?: string;
 }
 
+function inferredStatus(err: ApiError): number {
+  if (err.status) return err.status;
+  const code = err.code ?? '';
+  const message = err.message ?? '';
+  const marker = `${code} ${message}`;
+  if (/(^|_)(NOT_FOUND|MISSING)\b/.test(marker) || /not found/i.test(message) || /^no activation\b/i.test(message)) return 404;
+  if (/(REQUIRED|INVALID|MALFORMED|VALIDATION)/.test(marker)) return 400;
+  if (/(NOT_PENDING|NOT_ACCEPTED|CONFLICT|ALREADY)/.test(marker)) return 409;
+  if (/(UNAVAILABLE|NOT_CONFIGURED)/.test(marker)) return 503;
+  return 500;
+}
+
 export function errorHandler(
   err: ApiError,
   req: Request,
   res: Response,
   _next: NextFunction
 ) {
-  const status = err.status || 500;
+  const status = inferredStatus(err);
   const message = err.message || 'Internal Server Error';
   const code = err.code || 'INTERNAL_ERROR';
   

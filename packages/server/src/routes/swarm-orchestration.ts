@@ -8,6 +8,18 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
+import { createError } from '../middleware/error-handler';
+import { resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+
+function boundedLimit(value: unknown): number {
+  if (value === undefined) return 10;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
 
 export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -54,7 +66,15 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/swarm/sessions/:id/progress — get progress
   router.get('/sessions/:id/progress', requirePermission('read:evidence'), (req, res) => {
-    res.json(swarm.getProgress(req.params.id));
+    try {
+      res.json(swarm.getProgress(req.params.id));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'SWARM_SESSION_NOT_FOUND') {
+        res.status(404).json({ error: { message: 'swarm session not found', code: 'SWARM_SESSION_NOT_FOUND' } });
+        return;
+      }
+      throw error;
+    }
   });
 
   // ─── Agent Communication ──────────────────────────────────────────────
@@ -100,8 +120,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
       res.status(403).json({ error: { message: 'message read identity does not match authenticated principal', code: 'BOARD_READ_PRINCIPAL_INVALID' } });
       return;
     }
-    const limit = req.query.limit ? Number(req.query.limit) : 10;
-    res.json({ messages: comms.receive(req.params.agentId, limit) });
+    res.json({ messages: comms.receive(req.params.agentId, boundedLimit(req.query.limit)) });
   });
 
   // POST /api/swarm/messages/:id/acknowledge — acknowledge receipt
@@ -163,6 +182,62 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   // GET /api/swarm/comms/stats — communication statistics
   router.get('/comms/stats', requirePermission('read:evidence'), (_req, res) => {
     res.json(comms.getStats());
+  });
+
+  // POST /api/swarm-v2/socialize — bounded, evidence-linked peer exchange.
+  router.post('/socialize', requirePermission('write:swarm_action'), (_req, res) => {
+    const result = comms.socialize();
+    res.status(result.status === 'started' ? 201 : 200).json(result);
+  });
+
+  return router;
+}
+
+/** Least-privilege callback surface for signed agent-runtime pollers. */
+export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance = new RuntimeGovernanceService(db)): Router {
+  const router = Router();
+  router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
+  const comms = new AgentCommunicationService(db);
+
+  function authorized(req: any, res: any): boolean {
+    const agentId = String(req.params.agentId || '');
+    const token = req.get('X-Agent-Social-Token') || '';
+    if (!agentId || !validateSpawnToken(resolveSpawnTokenSecret(), token, agentId, 'social-runtime')) {
+      res.status(401).json({ error: { code: 'SOCIAL_TOKEN_INVALID', message: 'Social runtime token is invalid, expired, or scoped to another agent' } });
+      return false;
+    }
+    if (!runtimeGovernance.isAllowed(agentId)) {
+      res.status(403).json({ error: { code: 'SOCIAL_AGENT_BLOCKED', message: 'Agent is blocked by runtime governance' } });
+      return false;
+    }
+    return true;
+  }
+
+  function fail(res: any, error: unknown): void {
+    const code = error instanceof Error ? error.message : 'SOCIAL_RUNTIME_ERROR';
+    const status = code === 'SOCIAL_AGENT_NOT_FOUND' || code === 'SOCIAL_MESSAGE_NOT_FOUND' ? 404
+      : code.startsWith('SOCIAL_AGENT_NOT_ELIGIBLE') || code === 'SOCIAL_MESSAGE_EXPIRED' || code === 'SOCIAL_MESSAGE_NOT_ACTIONABLE' || code.startsWith('BOARD_') ? 409
+        : code.startsWith('SOCIAL_') && code.endsWith('_REQUIRED') ? 400 : 500;
+    const safeCode = status === 500 ? 'SOCIAL_RUNTIME_ERROR' : code;
+    res.status(status).json({ error: { code: safeCode, message: safeCode } });
+  }
+
+  router.post('/:agentId/heartbeat', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.json(comms.heartbeat(req.params.agentId, req.body?.runtime, req.body?.model_id)); } catch (error) { fail(res, error); }
+  });
+
+  router.get('/:agentId/messages', (req, res) => {
+    if (!authorized(req, res)) return;
+    try { res.json({ messages: comms.receiveSocial(req.params.agentId, Number(req.query.limit) || 4) }); } catch (error) { fail(res, error); }
+  });
+
+  router.post('/:agentId/messages/:messageId/respond', (req, res) => {
+    if (!authorized(req, res)) return;
+    try {
+      const result = comms.respondSocial(req.params.agentId, req.params.messageId, req.body || {});
+      res.status(result.duplicate ? 200 : 201).json(result);
+    } catch (error) { fail(res, error); }
   });
 
   return router;

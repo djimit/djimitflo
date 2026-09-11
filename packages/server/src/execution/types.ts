@@ -82,6 +82,8 @@ export interface ExecutionSession {
   status: ExecutionStatus;
   startedAt: Date;
   completedAt?: Date;
+  /** Resolves only after the owned OS child and its streams close, when applicable. */
+  closed?: Promise<void>;
   
   /**
    * Stream of execution events (AsyncIterable for streaming)
@@ -140,6 +142,8 @@ export interface ExecutorOptions {
   environment?: Record<string, string>;
   timeout?: number; // milliseconds
   model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  codexSandbox?: 'read-only' | 'workspace-write';
   agentKind?: string; // OpenCode agent: build, plan, explore, scout, or custom
   skipPermissions?: boolean; // bypass OpenCode permission prompts (requires explicit opt-in)
   format?: 'json' | 'default'; // output format (default: json for structured parsing)

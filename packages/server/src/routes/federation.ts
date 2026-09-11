@@ -5,6 +5,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { swarmEventBus } from '../services/swarm-event-bus';
 import { LoopService } from '../services/loop-service';
 import { runtimeConcurrencyLimit, runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 /**
  * G26: Federation protocol — peer discovery, registration, claim sharing,
@@ -100,7 +101,7 @@ export function createFederationRoutes(db: Database, auth: AuthMiddleware): Rout
       if (active >= Math.max(1, Number(process.env.FEDERATION_MAX_ACTIVE_WORK || 4))) return void res.status(429).json({ accepted: false, reason: 'capacity exhausted' });
       const objective = `BEGIN_EXTERNAL_CONTENT source=federated_peer trust=peer\n${JSON.stringify({ source_peer_id, goal_objective })}\nEND_EXTERNAL_CONTENT`;
       const goal = loops.createGoal({ objective, acceptance_criteria: ['Complete federated work with recorded gates'], metadata: { source_peer_id, federated: true, external_content: true } });
-      const run = loops.startLoop({ goal_id: goal.id, repository_path: process.env.FEDERATION_REPOSITORY_PATH || process.cwd(), loop_name: 'repo-maintenance-loop' });
+      const run = loops.startLoop({ goal_id: goal.id, repository_path: process.env.FEDERATION_REPOSITORY_PATH || resolveRepositoryRoot(process.cwd()), loop_name: 'repo-maintenance-loop' });
       swarmEventBus.emit('convergence', {
         federation: 'work_accepted', goal_id: goal.id, loop_run_id: run.id, source_peer_id,
       });

@@ -52,12 +52,12 @@ describe('auth middleware', () => {
 
   it('requireAuth calls next on valid token + active user', () => {
     authService.verifyToken.mockReturnValue({ sub: '1', role: 'admin' });
-    authService.findUserById.mockReturnValue({ isActive: true } as any);
+    authService.findUserById.mockReturnValue({ isActive: true, role: 'admin', email: 'admin@test' } as any);
     const req = mockReq({ authorization: 'Bearer good' });
     const next = vi.fn();
     mw.requireAuth(req, mockRes(), next);
     expect(next).toHaveBeenCalledOnce();
-    expect(req.user).toEqual({ sub: '1', role: 'admin' });
+    expect(req.user).toEqual({ sub: '1', role: 'admin', email: 'admin@test', organization_id: 'default' });
   });
 
   it('requirePermission returns 403 when role lacks permission', () => {
@@ -88,10 +88,10 @@ describe('auth middleware', () => {
 
   it('optionalAuth sets user when valid token present', () => {
     authService.verifyToken.mockReturnValue({ sub: '1', role: 'admin' });
-    authService.findUserById.mockReturnValue({ isActive: true } as any);
+    authService.findUserById.mockReturnValue({ isActive: true, role: 'admin', email: 'admin@test' } as any);
     const req = mockReq({ authorization: 'Bearer good' });
     mw.optionalAuth(req, mockRes(), vi.fn() as unknown as NextFunction);
-    expect(req.user).toEqual({ sub: '1', role: 'admin' });
+    expect(req.user).toEqual({ sub: '1', role: 'admin', email: 'admin@test', organization_id: 'default' });
   });
 
   it('requireAuthOrSpawnToken admits X-Spawn-Token without user', () => {

@@ -11,6 +11,15 @@ import { SelfImprovementService, type ImprovementStatus } from '../services/self
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { createError } from '../middleware/error-handler';
 
+function boundedLimit(value: unknown, fallback = 100): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
+
 export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -24,7 +33,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
     try {
       const status = typeof req.query.status === 'string' ? req.query.status as ImprovementStatus : undefined;
       if (status && !VALID_IMPROVEMENT_STATUSES.has(status)) throw createError(400, 'Invalid improvement status', 'VALIDATION_ERROR');
-      res.json({ proposals: improvements.listImprovements(status, Number(req.query.limit) || 100) });
+      res.json({ proposals: improvements.listImprovements(status, boundedLimit(req.query.limit)) });
     } catch (error) { next(error); }
   });
 

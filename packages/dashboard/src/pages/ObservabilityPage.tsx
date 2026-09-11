@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { Activity, AlertTriangle, CheckCircle, XCircle, Clock, Shield, BarChart3 } from 'lucide-react';
 import type { ObservabilityMetrics } from '@djimitflo/shared';
-import { API_BASE, api } from '../lib/api';
-import { useAuthStore } from '../lib/auth-store';
+import { api } from '../lib/api';
+import { authenticatedFetch, useAuthStore } from '../lib/auth-store';
 
 type LiveEvent = {
   timestamp?: string;
@@ -21,6 +21,7 @@ export function ObservabilityPage() {
   const [loading, setLoading] = useState(true);
   const [sseEvents, setSseEvents] = useState<LiveEvent[]>([]);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [metricsError, setMetricsError] = useState<string | null>(null);
   const streamActive = useRef(false);
   const token = useAuthStore((state) => state.token);
 
@@ -31,8 +32,7 @@ export function ObservabilityPage() {
     streamActive.current = true;
     void (async () => {
       try {
-        const response = await fetch(`${API_BASE}/observability/stream`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const response = await authenticatedFetch('/observability/stream', {
           signal: controller.signal,
         });
         if (!response.ok || !response.body) throw new Error(`Stream unavailable (${response.status})`);
@@ -65,8 +65,12 @@ export function ObservabilityPage() {
   }, [token]);
 
   useEffect(() => {
-    api.getObservabilityMetrics().then(setMetrics).finally(() => setLoading(false));
+    api.getObservabilityMetrics().then(setMetrics)
+      .catch(error => setMetricsError(error instanceof Error ? error.message : 'Metrics unavailable'))
+      .finally(() => setLoading(false));
   }, []);
+
+  if (metricsError) return <div role="alert" className="p-8 text-status-error">{metricsError}</div>;
 
   if (loading || !metrics) {
     return (
@@ -78,6 +82,8 @@ export function ObservabilityPage() {
       </div>
     );
   }
+
+  const totalAssessments = Object.values(metrics.risk_distribution).reduce((sum, count) => sum + count, 0);
 
   return (
     <div className="p-8 space-y-6">
@@ -97,13 +103,13 @@ export function ObservabilityPage() {
         <div className="bg-background-secondary border border-border rounded-lg p-6">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Shield className="w-5 h-5" />
-            Risk Distribution
+            Risk Assessments
           </h2>
           <div className="space-y-3">
-            <RiskBar label="Low" count={metrics.risk_distribution.low ?? 0} total={metrics.total_tasks || 1} color="green" />
-            <RiskBar label="Medium" count={metrics.risk_distribution.medium ?? 0} total={metrics.total_tasks || 1} color="yellow" />
-            <RiskBar label="High" count={metrics.risk_distribution.high ?? 0} total={metrics.total_tasks || 1} color="orange" />
-            <RiskBar label="Critical" count={metrics.risk_distribution.critical ?? 0} total={metrics.total_tasks || 1} color="red" />
+            <RiskBar label="Low" count={metrics.risk_distribution.low ?? 0} total={totalAssessments} color="green" />
+            <RiskBar label="Medium" count={metrics.risk_distribution.medium ?? 0} total={totalAssessments} color="yellow" />
+            <RiskBar label="High" count={metrics.risk_distribution.high ?? 0} total={totalAssessments} color="orange" />
+            <RiskBar label="Critical" count={metrics.risk_distribution.critical ?? 0} total={totalAssessments} color="red" />
           </div>
         </div>
 

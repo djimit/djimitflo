@@ -94,6 +94,7 @@ export function App() {
           <Route path="tasks" element={<TasksPage />} />
           <Route path="tasks/:taskId" element={<TaskDetailPage />} />
           <Route path="agents" element={<AgentsPage />} />
+          <Route path="agents/:agentId" element={<AgentsPage />} />
           <Route path="catalog" element={<AgentCatalogPage />} />
           <Route path="swarm" element={<SwarmOverviewPage />} />
           <Route path="approvals" element={<ApprovalQueuePage />} />

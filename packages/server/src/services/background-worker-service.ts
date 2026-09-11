@@ -5,13 +5,14 @@
  * Runs periodic tasks without human intervention:
  * - Health monitoring
  * - Test gap detection
- * - Memory archival
+ * - Memory TTL purge
  * - Governance re-certification
  * - Worktree cleanup
- * - Metrics aggregation
+ * - Metrics snapshot
  */
 
 import type { Database } from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 
 type WorkerStatus = 'idle' | 'running' | 'completed' | 'failed';
 
@@ -51,13 +52,13 @@ export class BackgroundWorkerService {
   private registerDefaultWorkers(): void {
     const defaults: Omit<WorkerTask, 'lastRun' | 'lastStatus' | 'lastDurationMs'>[] = [
       { id: 'health-check', name: 'Health Check', description: 'Verify all system dependencies', intervalMs: 60_000, enabled: true },
-      { id: 'test-gap-detector', name: 'Test Gap Detector', description: 'Find untested critical functions', intervalMs: 300_000, enabled: true },
-      { id: 'memory-archival', name: 'Memory Archival', description: 'Archive expired memories', intervalMs: 600_000, enabled: true },
-      { id: 'governance-recert', name: 'Governance Re-certification', description: 'Re-run governance benchmark', intervalMs: 3_600_000, enabled: true },
-      { id: 'worktree-cleanup', name: 'Worktree Cleanup', description: 'Prune orphaned worktrees', intervalMs: 1_800_000, enabled: true },
-      { id: 'metrics-aggregation', name: 'Metrics Aggregation', description: 'Aggregate and store metrics', intervalMs: 300_000, enabled: true },
+      { id: 'test-gap-detector', name: 'Test Gap Detector', description: 'Requires a configured repository and executable coverage index', intervalMs: 300_000, enabled: false },
+      { id: 'memory-archival', name: 'Memory TTL Purge', description: 'Delete memories whose explicit TTL has expired', intervalMs: 600_000, enabled: true },
+      { id: 'governance-recert', name: 'Governance Re-certification', description: 'Requires an available independent governance evaluator', intervalMs: 3_600_000, enabled: false },
+      { id: 'worktree-cleanup', name: 'Worktree Cleanup', description: 'Requires an explicitly configured repository authority', intervalMs: 1_800_000, enabled: false },
+      { id: 'metrics-aggregation', name: 'Metrics Snapshot', description: 'Report current loop and goal counts', intervalMs: 300_000, enabled: true },
       { id: 'orphan-lease-cleanup', name: 'Orphan Lease Cleanup', description: 'Clean up stale worker leases', intervalMs: 900_000, enabled: true },
-      { id: 'evidence-compaction', name: 'Evidence Compaction', description: 'Compact old evidence records', intervalMs: 3_600_000, enabled: true },
+      { id: 'evidence-compaction', name: 'Evidence Compaction', description: 'Requires a retention and compaction policy', intervalMs: 3_600_000, enabled: false },
     ];
 
     for (const worker of defaults) {
@@ -95,7 +96,8 @@ export class BackgroundWorkerService {
    */
   startWorker(id: string): void {
     const worker = this.workers.get(id);
-    if (!worker || !worker.enabled) return;
+    if (!worker) throw new Error(`Worker not found: ${id}`);
+    if (!worker.enabled) return;
 
     // Clear existing interval
     this.stopWorker(id);
@@ -111,6 +113,7 @@ export class BackgroundWorkerService {
    * Stop a specific worker.
    */
   stopWorker(id: string): void {
+    if (!this.workers.has(id)) throw new Error(`Worker not found: ${id}`);
     const interval = this.intervals.get(id);
     if (interval) {
       clearInterval(interval);
@@ -146,11 +149,7 @@ export class BackgroundWorkerService {
 
       worker.lastStatus = 'completed';
       worker.lastDurationMs = durationMs;
-      this.results.push(result);
-
-      // Keep only last 100 results per worker
-      this.results = this.results.filter((r) => r.taskId !== id).slice(-100);
-      this.results.push(result);
+      this.recordResult(result);
 
       return result;
     } catch (error) {
@@ -163,7 +162,7 @@ export class BackgroundWorkerService {
         durationMs: 0,
         output: error instanceof Error ? error.message : String(error),
       };
-      this.results.push(result);
+      this.recordResult(result);
       return result;
     }
   }
@@ -223,30 +222,29 @@ export class BackgroundWorkerService {
   }
 
   private async taskTestGapDetector(): Promise<string> {
-    // Find services without corresponding test files
-    return 'Test gap analysis complete. No critical gaps found.';
+    throw new Error('WORKER_UNAVAILABLE:test-gap-detector requires a configured repository and executable coverage index');
   }
 
   private async taskMemoryArchival(): Promise<string> {
     try {
       const result = this.db.prepare("DELETE FROM vector_memories WHERE ttl IS NOT NULL AND (julianday('now') - julianday(created_at)) * 86400 > ttl").run();
-      return `Archived ${result.changes} expired memories`;
-    } catch { return 'Memory archival skipped (no vector_memories table)'; }
+      return `Deleted ${result.changes} expired memories by explicit TTL policy`;
+    } catch { return 'Memory TTL purge skipped (no vector_memories table)'; }
   }
 
   private async taskGovernanceRecert(): Promise<string> {
-    return 'Governance re-certification scheduled. Next run in 24h.';
+    throw new Error('WORKER_UNAVAILABLE:governance-recert requires an independent governance evaluator');
   }
 
   private async taskWorktreeCleanup(): Promise<string> {
-    return 'Worktree cleanup complete. No orphaned worktrees found.';
+    throw new Error('WORKER_UNAVAILABLE:worktree-cleanup requires an explicitly configured repository authority');
   }
 
   private async taskMetricsAggregation(): Promise<string> {
     const safeCount = (sql: string): number => {
       try { return (this.db.prepare(sql).get() as any)?.c ?? 0; } catch { return 0; }
     };
-    return `Metrics aggregated: ${safeCount('SELECT COUNT(*) as c FROM loop_runs')} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
+    return `Metrics snapshot: ${safeCount('SELECT COUNT(*) as c FROM loop_runs')} loops, ${safeCount('SELECT COUNT(*) as c FROM goals')} goals`;
   }
 
   private async taskOrphanLeaseCleanup(): Promise<string> {
@@ -279,7 +277,18 @@ export class BackgroundWorkerService {
   }
 
   private async taskEvidenceCompaction(): Promise<string> {
-    return 'Evidence compaction complete.';
+    throw new Error('WORKER_UNAVAILABLE:evidence-compaction requires a retention and compaction policy');
+  }
+
+  private recordResult(result: WorkerResult): void {
+    this.db.prepare(`INSERT INTO worker_results
+      (id, task_id, status, started_at, completed_at, duration_ms, output)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(`${result.taskId}:${randomUUID()}`, result.taskId, result.status,
+        result.startedAt, result.completedAt, result.durationMs, result.output);
+    // Keep only the last 100 results per worker in memory; SQLite retains the
+    // durable history for restart/recovery inspection.
+    this.results = [...this.results.filter((entry) => entry.taskId !== result.taskId), result].slice(-100);
   }
 
   private ensureTables(): void {
@@ -298,5 +307,17 @@ export class BackgroundWorkerService {
       CREATE INDEX IF NOT EXISTS idx_worker_results_task_id ON worker_results(task_id);
       CREATE INDEX IF NOT EXISTS idx_worker_results_created_at ON worker_results(created_at);
     `);
+    const rows = this.db.prepare(`SELECT task_id, status, started_at, completed_at, duration_ms, output
+      FROM worker_results ORDER BY created_at DESC LIMIT 100`).all() as Array<Omit<WorkerResult, 'taskId' | 'startedAt' | 'completedAt' | 'durationMs'> & {
+      task_id: string; started_at: string; completed_at: string; duration_ms: number;
+    }>;
+    this.results = rows.reverse().map(row => ({
+      taskId: row.task_id,
+      status: row.status as WorkerStatus,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      durationMs: row.duration_ms,
+      output: row.output,
+    }));
   }
 }

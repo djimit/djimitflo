@@ -27,6 +27,8 @@ export interface Agent extends Timestamps {
   // State
   current_task_id: ID | null;
   last_active_at: string | null;
+  retired_at?: string | null;
+  retirement_reason?: string | null;
   
   // Metadata
   metadata: Record<string, unknown>;

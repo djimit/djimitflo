@@ -1,0 +1,13 @@
+{
+  "output": "/Users/dlandman/djimitflo-audit-20260909/openspec/changes/assurance-truth-closure/contract-inventory.json",
+  "routes": {
+    "total": 585,
+    "tested": 367,
+    "critical_unclassified": 0
+  },
+  "mcp_tools": {
+    "total": 56,
+    "tested": 56,
+    "critical_unclassified": 0
+  }
+}

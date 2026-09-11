@@ -51,7 +51,7 @@ function makeRepo(): string {
   ].join('\n'));
   fs.writeFileSync(path.join(repo, 'package.json'), JSON.stringify({
     scripts: {
-      test: 'node -e "process.exit(0)"',
+      test: 'node -e "const assert=require(\'node:assert/strict\');const text=require(\'node:fs\').readFileSync(\'README.md\',\'utf8\');assert(!text.includes(\'TODO\'));assert(/real runtime certification smoke completed/i.test(text))"',
       lint: 'node -e "process.exit(0)"',
       'type-check': 'node -e "process.exit(0)"',
       proof: 'node -e "process.exit(0)"',

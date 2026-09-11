@@ -41,9 +41,17 @@ interface SwarmSession {
   completedAt?: string;
 }
 
-export class SwarmOrchestrationService {
-  private sessions: Map<string, SwarmSession> = new Map();
+interface SessionRow {
+  id: string;
+  goal: string;
+  status: SwarmSession['status'];
+  subtasks_json: string;
+  agent_pool_json: string;
+  created_at: string;
+  completed_at: string | null;
+}
 
+export class SwarmOrchestrationService {
   constructor(private db: Database) {
     this.ensureTables();
   }
@@ -70,8 +78,6 @@ export class SwarmOrchestrationService {
       createdAt: now,
     };
 
-    this.sessions.set(id, session);
-
     // Persist
     this.db.prepare(`
       INSERT INTO swarm_sessions (id, goal, status, subtasks_json, created_at)
@@ -85,8 +91,7 @@ export class SwarmOrchestrationService {
    * Start executing a swarm session — assign sub-tasks to available agents.
    */
   executeSession(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session) throw new Error('SWARM_SESSION_NOT_FOUND');
+    this.loadSession(sessionId);
     throw new Error('SWARM_RUNTIME_EXECUTOR_NOT_CONFIGURED');
   }
 
@@ -105,8 +110,7 @@ export class SwarmOrchestrationService {
     agents: string[];
     estimatedCompletion?: string;
   } {
-    const session = this.sessions.get(sessionId);
-    if (!session) throw new Error('SWARM_SESSION_NOT_FOUND');
+    const session = this.loadSession(sessionId);
 
     const completed = session.subtasks.filter((t) => t.status === 'completed').length;
     const failed = session.subtasks.filter((t) => t.status === 'failed').length;
@@ -136,7 +140,9 @@ export class SwarmOrchestrationService {
     progress: string;
     createdAt: string;
   }> {
-    return Array.from(this.sessions.values()).map((session) => {
+    const rows = this.db.prepare('SELECT * FROM swarm_sessions ORDER BY created_at ASC, id ASC').all() as SessionRow[];
+    return rows.map(row => {
+      const session = this.decodeSession(row);
       const completed = session.subtasks.filter((t) => t.status === 'completed').length;
       const total = session.subtasks.length;
       return {
@@ -150,6 +156,20 @@ export class SwarmOrchestrationService {
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private loadSession(id: string): SwarmSession {
+    const row = this.db.prepare('SELECT * FROM swarm_sessions WHERE id = ?').get(id) as SessionRow | undefined;
+    if (!row) throw new Error('SWARM_SESSION_NOT_FOUND');
+    return this.decodeSession(row);
+  }
+
+  private decodeSession(row: SessionRow): SwarmSession {
+    return {
+      id: row.id, goal: row.goal, status: row.status,
+      subtasks: JSON.parse(row.subtasks_json), agentPool: JSON.parse(row.agent_pool_json),
+      createdAt: row.created_at, completedAt: row.completed_at ?? undefined,
+    };
+  }
 
   private decomposeGoal(goal: string, sessionId: string, priority: 1 | 2 | 3 | 4 | 5): SubTask[] {
     // Intelligent task decomposition based on goal analysis

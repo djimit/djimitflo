@@ -1,8 +1,7 @@
 /**
  * Route inventory + OpenAPI 3.1 skeleton, derived from the aggregator's
- * declarative mount table (routes/index.ts). Express 5 hides mount prefixes
- * inside matcher closures, so the prefixes come from the table, and the
- * per-router paths/methods come from each subrouter's own stack.
+ * actual router stack. Express 5 hides mount prefixes inside matcher closures;
+ * mountRoutes records them on the actual layers created by router.use.
  *
  * ponytail: paths + methods + auth flag only — no request/response schemas.
  * Upgrade path: attach zod schemas per route and render them here when a
@@ -23,6 +22,27 @@ export interface RouteEntry {
   authenticated: boolean;
 }
 
+type Handler = RequestHandler & { requiresAuth?: boolean; stack?: Layer[] };
+interface Layer {
+  handle?: Handler;
+  route?: { path: string | string[]; methods: Record<string, boolean>; stack?: Layer[] };
+}
+const mountedLayers = new WeakMap<Layer, { prefix: string; authenticated: boolean }>();
+const stackOf = (router: Router): Layer[] => (router as unknown as { stack: Layer[] }).stack;
+const requiresAuth = (handler?: Handler): boolean => handler?.requiresAuth === true;
+
+/** Register normally, retaining only metadata Express otherwise hides. */
+export function mountRoutes(router: Router, mounts: RouteMount[]): void {
+  for (const mount of mounts) {
+    router.use(mount.prefix, ...mount.middleware, mount.router);
+    const layer = stackOf(router).at(-1)!;
+    mountedLayers.set(layer, {
+      prefix: mount.prefix,
+      authenticated: mount.middleware.some(requiresAuth),
+    });
+  }
+}
+
 function joinPath(...parts: string[]): string {
   const joined = parts.join('/').replace(/\/{2,}/g, '/');
   return joined.length > 1 ? joined.replace(/\/$/, '') : joined;
@@ -33,22 +53,32 @@ function toOpenApiPath(path: string): string {
   return path.split('/').map((seg) => (seg.startsWith(':') ? `{${seg.slice(1)}}` : seg)).join('/');
 }
 
-export function collectRoutes(mounts: RouteMount[], basePath = '/api'): RouteEntry[] {
+export function collectRoutes(input: RouteMount[] | Router, basePath = '/api'): RouteEntry[] {
   const entries: RouteEntry[] = [];
-  for (const mount of mounts) {
-    const mountAuthenticated = mount.middleware.length > 0;
-    const stack: Array<{ route?: { path: string | string[]; methods: Record<string, boolean>; stack?: Array<{ handle?: RequestHandler & { requiresAuth?: boolean; name?: string } }> } }> =
-      (mount.router as unknown as { stack?: never[] }).stack ?? [];
+  function walk(stack: Layer[], prefix: string, inheritedAuth: boolean): void {
     for (const layer of stack) {
-      if (!layer.route) continue; // plain middleware; current factories don't nest routers
+      if (!layer.route) {
+        if (layer.handle?.stack) {
+          const mount = mountedLayers.get(layer);
+          if (!mount) throw new Error(`Route inventory incomplete: unrecorded nested router at ${prefix}`);
+          walk(layer.handle.stack, joinPath(prefix, mount.prefix), inheritedAuth || mount.authenticated);
+        }
+        continue;
+      }
       const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
-      const authenticated = mountAuthenticated || Boolean(layer.route.stack?.some(({ handle }) => handle?.requiresAuth || handle?.name === 'requireAuth'));
+      const authenticated = inheritedAuth || Boolean(layer.route.stack?.some(({ handle }) => requiresAuth(handle)));
       for (const path of paths) {
-        for (const method of Object.keys(layer.route.methods)) {
-          entries.push({ method: method.toUpperCase(), path: joinPath(basePath, mount.prefix, path), authenticated });
+        if (typeof path !== 'string') throw new Error('Route inventory requires an explicit string path');
+        for (const [method, enabled] of Object.entries(layer.route.methods)) {
+          if (enabled) entries.push({ method: method.toUpperCase(), path: joinPath(prefix, path), authenticated });
         }
       }
     }
+  }
+  if (Array.isArray(input)) {
+    for (const mount of input) walk(stackOf(mount.router), joinPath(basePath, mount.prefix), mount.middleware.some(requiresAuth));
+  } else {
+    walk(stackOf(input), basePath, false);
   }
   return entries.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 }

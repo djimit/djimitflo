@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useAuthStore } from '../lib/auth-store';
+import { authenticatedFetch, useAuthStore } from '../lib/auth-store';
 
 interface AuditLog {
   id: string;
-  organization_id: string;
-  entity_type: string;
-  entity_id: string;
+  resource_type: string;
+  resource_id: string;
   action: string;
   metadata: string;
-  created_at: string;
+  timestamp: string;
 }
 
 export const AuditLogViewer: React.FC = () => {
@@ -18,6 +17,7 @@ export const AuditLogViewer: React.FC = () => {
   const [offset, setOffset] = useState<number>(0);
   const [entityType, setEntityType] = useState<string>('');
   const [action, setAction] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -26,21 +26,20 @@ export const AuditLogViewer: React.FC = () => {
         limit: limit.toString(),
         offset: offset.toString(),
       });
-      if (entityType) params.append('entity_type', entityType);
+      if (entityType) params.append('resource_type', entityType);
       if (action) params.append('action', action);
 
       try {
-        const res = await fetch(`/api/audit-logs?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await authenticatedFetch(`/audit-logs?${params.toString()}`);
         if (res.ok) {
+          setError(null);
           const data = await res.json();
           if (Array.isArray(data)) {
             setLogs(data);
           }
-        }
-      } catch {
-        // ignore
+        } else throw new Error(`Audit request failed (${res.status})`);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : 'Audit request failed');
       }
     };
     fetchLogs();
@@ -49,9 +48,7 @@ export const AuditLogViewer: React.FC = () => {
   const handleExport = async (format: 'json' | 'csv') => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/audit-logs/export?format=${format}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authenticatedFetch(`/audit-logs/export?format=${format}`);
       if (res.ok) {
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
@@ -59,15 +56,17 @@ export const AuditLogViewer: React.FC = () => {
         a.href = url;
         a.download = `audit-logs.${format}`;
         a.click();
-      }
-    } catch {
-      // ignore
+        URL.revokeObjectURL(url);
+      } else throw new Error(`Audit export failed (${res.status})`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Audit export failed');
     }
   };
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">Audit Log Viewer</h1>
+      {error && <p role="alert">{error}</p>}
 
       <div className="mb-4 flex gap-4">
         <select
@@ -87,9 +86,7 @@ export const AuditLogViewer: React.FC = () => {
           className="px-3 py-1 border rounded-md"
         >
           <option value="">All Actions</option>
-          <option value="create">Create</option>
-          <option value="update">Update</option>
-          <option value="delete">Delete</option>
+          {[...new Set([...logs.map(log => log.action), ...(action ? [action] : [])])].map(value => <option key={value} value={value}>{value}</option>)}
         </select>
 
         <button
@@ -120,15 +117,15 @@ export const AuditLogViewer: React.FC = () => {
           <tbody>
             {logs.map((log) => (
               <tr key={log.id}>
-                <td className="py-2 px-4 border">{log.entity_type}</td>
-                <td className="py-2 px-4 border">{log.entity_id}</td>
+                <td className="py-2 px-4 border">{log.resource_type}</td>
+                <td className="py-2 px-4 border">{log.resource_id}</td>
                 <td className="py-2 px-4 border">{log.action}</td>
                 <td className="py-2 px-4 border">
                   <pre className="text-xs overflow-hidden">
                     {typeof log.metadata === 'string' ? log.metadata : JSON.stringify(log.metadata, null, 2)}
                   </pre>
                 </td>
-                <td className="py-2 px-4 border">{new Date(log.created_at).toLocaleString()}</td>
+                <td className="py-2 px-4 border">{new Date(log.timestamp).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>

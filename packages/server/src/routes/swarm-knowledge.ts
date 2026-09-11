@@ -6,6 +6,7 @@
  */
 
 import { Router } from 'express';
+import { spawnSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
@@ -36,7 +37,10 @@ function runtimeReadiness(db: Database, runtimeInput?: unknown) {
     if (contract.status !== 'ok') blocked.push(`runtime_contract_${contract.status || 'unknown'}`);
     if (contract.reason) blocked.push(String(contract.reason));
     const credentialConfigured = runtime === 'codex'
-      ? Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY)
+      ? Boolean(process.env.OPENAI_API_KEY || process.env.CODEX_API_KEY || (contract.available && (() => {
+          const login = spawnSync(contract.command || 'codex', ['login', 'status'], { encoding: 'utf8', timeout: 2_000, maxBuffer: 16_384 });
+          return login.status === 0 && /logged in using/i.test(`${login.stdout || ''}\n${login.stderr || ''}`);
+        })()))
       : runtime === 'opencode'
         ? Boolean(process.env.DJIMITFLO_OPENCODE_MODEL && (process.env.OPENCODE_CONFIG_CONTENT || process.env.OPENCODE_CONFIG))
         : false;
@@ -59,8 +63,8 @@ export function createKnowledgeRoutes(db: Database, auth?: AuthMiddleware): Rout
     try { res.json(knowledgeRuntime.syncCapabilities(req.body || {})); } catch (error) { try { mapKnowledgeRuntimeError(error); } catch (mapped) { next(mapped); } }
   });
 
-  router.get('/runtime-readiness', requirePermission('read:evidence'), (req, res) => {
-    try { res.json(runtimeReadiness(db, req.query.runtime)); } catch (error) { /* best-effort */ }
+  router.get('/runtime-readiness', requirePermission('read:evidence'), (req, res, next) => {
+    try { res.json(runtimeReadiness(db, req.query.runtime)); } catch (error) { next(error); }
   });
 
   return router;

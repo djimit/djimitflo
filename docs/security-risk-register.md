@@ -2,6 +2,8 @@
 
 Djimitflo v0.5.8
 
+Historical Phase 5.7 register, not current release authorization. The entries below retain their original assessment and include superseded claims about CSP, JWT expiry and runtime reachability. Current verified corrections and unresolved risks are in [Security Model](security.md) and the [2026-09-09 gap register](../reports/autonomous-audit-20260909/GAP_REGISTER.md).
+
 ## Risk Classification
 
 | ID | Risk | Severity | Exploitability | Production Impact | Blocks Release? | Mitigation | Target Phase |
@@ -36,7 +38,7 @@ Djimitflo v0.5.8
 
 ## Release Blockers
 
-None. All known risks are documented and have mitigations or accepted status.
+Historical assessment only. This statement does not authorize the current patch for release; production identity, independent review and unresolved capability boundaries remain open in the current verification report.
 
 ## Recommended Next Phase Priorities
 

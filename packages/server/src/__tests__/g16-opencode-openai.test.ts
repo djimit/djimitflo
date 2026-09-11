@@ -56,6 +56,25 @@ describe('G16.3 OpenCode health inspector', () => {
     expect(result.missing_sections).toEqual([]);
   });
 
+  it('finds the repository config when the server starts from packages/server', () => {
+    const originalCwd = process.cwd();
+    const originalContent = process.env.OPENCODE_CONFIG_CONTENT;
+    try {
+      delete process.env.OPENCODE_CONFIG_CONTENT;
+      const monorepoRoot = originalCwd.endsWith(path.join('packages', 'server'))
+        ? path.resolve(originalCwd, '../..')
+        : originalCwd;
+      process.chdir(path.join(monorepoRoot, 'packages', 'server'));
+      const result = new OpenCodeHealthService().inspectConfig();
+      expect(result.config_exists).toBe(true);
+      expect(result.config_path).toBe(path.join(monorepoRoot, 'opencode.jsonc'));
+    } finally {
+      process.chdir(originalCwd);
+      if (originalContent === undefined) delete process.env.OPENCODE_CONFIG_CONTENT;
+      else process.env.OPENCODE_CONFIG_CONTENT = originalContent;
+    }
+  });
+
   it('detects missing sections in an existing config', () => {
     const configPath = path.join(tempDir, 'opencode.jsonc');
     fs.writeFileSync(configPath, JSON.stringify({

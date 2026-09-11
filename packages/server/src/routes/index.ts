@@ -5,8 +5,10 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { hostname } from 'os';
+const execFileAsync = promisify(execFile);
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
 import { createCatalogRoutes } from './catalog';
@@ -61,13 +63,14 @@ import { createLegalRoutes } from './legal';
 import { createResearchRoutes } from './research';
 import { createCanvasRoutes } from './canvas';
 import { createTelegramRoutes } from './telegram';
+import { TelegramApiService } from '../services/telegram-api-service';
 import { createSBOMRoutes } from './sbom';
 import { createGovernanceFeedbackRoutes } from './governance-feedback';
 import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
 import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
-import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
+import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
 import { createSwarmIntelRoutes } from './swarm-intel';
 import { createAgiRoutes } from './agi';
@@ -85,7 +88,7 @@ import { createSegmlProductionRoutes } from './segml-production';
 import { createOrganizationRoutes } from './organizations';
 import { createAuditLogRoutes } from './audit-logs';
 import { limitBodySize } from '../middleware/input-validation';
-import { buildOpenApiSpec, collectRoutes, type RouteMount } from '../utils/route-inventory';
+import { buildOpenApiSpec, collectRoutes, mountRoutes, type RouteMount } from '../utils/route-inventory';
 import type { WebSocketService } from '../services/websocket-service';
 import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
@@ -139,16 +142,16 @@ export function createRoutes(
     // Auth routes (public + protected)
     { prefix: '/auth', middleware: [], router: createAuthRoutes(authService!, auth!, auditService) },
     // Protected routes
-    { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth) },
+    { prefix: '/tasks', middleware: [requireAuth], router: createTaskRoutes(db, executionEngine, auth, wsService) },
     { prefix: '/agents', middleware: [requireAuth], router: createAgentRoutes(db, auth) },
     { prefix: '/catalog', middleware: [requireAuth], router: createCatalogRoutes(db, auth) },
     { prefix: '/mcp', middleware: [requireAuth], router: createMCPRoutes(db, auth) },
-    { prefix: '/approvals', middleware: [requireAuth], router: createApprovalRoutes(db, executionEngine, auth) },
+    { prefix: '/approvals', middleware: [requireAuth], router: createApprovalRoutes(db, executionEngine, auth, wsService) },
     { prefix: '/policies', middleware: [requireAuth], router: createPolicyRoutes(db, auth) },
     { prefix: '/risk', middleware: [requireAuth], router: createRiskRoutes(db, auth) },
     { prefix: '/evidence', middleware: [requireAuth], router: createEvidenceRoutes(db, auth!) },
     { prefix: '/observability', middleware: [requireAuth], router: createObservabilityRoutes(db, auth!) },
-    // G15: knowledge bus HTTP endpoints (federation transport scaffold)
+    // G15: authenticated knowledge-bus HTTP transport endpoints
     { prefix: '/knowledge', middleware: [requireAuth], router: createKnowledgeRoutes(auth!) },
     // G26: federation protocol endpoints (peer discovery, claim sharing, work distribution)
     { prefix: '/federation', middleware: [requireAuth], router: createFederationRoutes(db, auth!) },
@@ -159,14 +162,14 @@ export function createRoutes(
   const openApiRateLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: false, legacyHeaders: false });
   let openApiSpec: Record<string, unknown> | null = null;
   router.get('/openapi.json', openApiRateLimiter, requireAuth, (_req, res) => {
-    openApiSpec ??= buildOpenApiSpec(collectRoutes(mounts), { title: 'Djimitflo API', version: getAppVersion() });
+    openApiSpec ??= buildOpenApiSpec(collectRoutes(router), { title: 'Djimitflo API', version: getAppVersion() });
     res.json(openApiSpec);
   });
 
   // D2: runtime URLs — use the host OS' native listener inventory.
-  router.get('/workstation/urls', requireAuth, (_req: any, res: any) => {
+  router.get('/workstation/urls', requireAuth, async (_req: any, res: any) => {
     try {
-      res.json({ host: hostname(), platform: process.platform, ports: scanListeningPorts() });
+      res.json({ host: hostname(), platform: process.platform, ports: await scanListeningPorts() });
     } catch (error) {
       res.status(503).json({ error: error instanceof Error ? error.message : 'Failed to scan listening ports' });
     }
@@ -181,9 +184,14 @@ export function createRoutes(
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.
     { prefix: '/swarms/spawns', middleware: [requireAuthOrSpawnToken], router: createSpawnRoutes(db, auth, wsService) },
+    // Signed runtime callbacks are scoped to an agent and mounted before the
+    // generic authenticated swarm surface; no user JWT is accepted here.
+    { prefix: '/swarm-v2/social-runtime', middleware: [], router: createAgentSocialRuntimeRoutes(db, runtimeGovernance) },
     { prefix: '/swarms', middleware: [requireAuth], router: createSwarmRoutes(db, auth, wsService) },
     { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
-    { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
+    // Each diff handler authenticates itself. A '/' mount-level guard would also
+    // intercept unrelated later public routes such as Telegram's secret webhook.
+    { prefix: '/', middleware: [], router: createDiffRoutes(db, auth) },
     { prefix: '/audit', middleware: [requireAuth], router: createAuditRoutes(db, auditService, auth) },
     { prefix: '/authority', middleware: [requireAuth], router: createAuthorityRoutes(db, auth) },
     { prefix: '/discussions', middleware: [requireAuth], router: createDiscussionRoutes(db, auth, wsService) },
@@ -193,7 +201,7 @@ export function createRoutes(
     { prefix: '/exports', middleware: [requireAuth], router: createExportRoutes(db, auth!) },
     { prefix: '/messages', middleware: [requireAuth], router: createMessageRoutes(db, wsService, auth) },
     { prefix: '/memory', middleware: [requireAuth], router: createMemoryRoutes(db, auth) },
-    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db) },
+    { prefix: '/memory-evolution', middleware: [requireAuth], router: createMemoryEvolutionRoutes(db, auth) },
     { prefix: '/skills', middleware: [requireAuth], router: createSkillRoutes(db, auth) },
     { prefix: '/openmythos', middleware: [requireAuth], router: createOpenMythosRoutes(db, auth) },
     { prefix: '/gym', middleware: [requireAuth], router: createGymRoutes(db, auth) },
@@ -211,7 +219,7 @@ export function createRoutes(
     { prefix: '/legal', middleware: [requireAuth], router: createLegalRoutes(db, auth) },
     { prefix: '/research', middleware: [requireAuth], router: createResearchRoutes(db, auth) },
     { prefix: '/canvas', middleware: [requireAuth], router: createCanvasRoutes(db, auth) },
-    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService) },
+    { prefix: '/telegram', middleware: [], router: createTelegramRoutes(db, auth, wsService, new TelegramApiService(authService!, `http://127.0.0.1:${process.env.PORT || 3001}/api`)) },
     { prefix: '/apex', middleware: [requireAuth], router: createApexRoutes(db, auth, operatorRuntime) },
     { prefix: '/swarm-v2', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
     { prefix: '/swarm', middleware: [requireAuth], router: createSwarmOrchestrationRoutes(db, auth) },
@@ -239,32 +247,30 @@ export function createRoutes(
     { prefix: '/audit-logs', middleware: [requireAuth], router: createAuditLogRoutes(db, requireAuth) },
   );
 
-  for (const mount of mounts) {
-    router.use(mount.prefix, ...mount.middleware, mount.router);
-  }
+  mountRoutes(router, mounts);
 
   return router;
 }
 
-export function scanListeningPorts(): Array<{ address: string; port: number; pid: number | null; process: string; bind: string }> {
+export async function scanListeningPorts(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
   if (process.platform === 'darwin') {
-    const output = execFileSync('lsof', ['-nP', '-iTCP', '-sTCP:LISTEN'], { encoding: 'utf8', timeout: 5_000 });
-    return output.trim().split('\n').slice(1).flatMap((line) => {
-      const columns = line.trim().split(/\s+/);
-      const match = line.match(/TCP\s+(.+):(\d+)\s+\(LISTEN\)$/);
+    // Native socket inventory avoids lsof's potentially uninterruptible device inspection.
+    const { stdout: output } = await execFileAsync('/usr/sbin/netstat', ['-anv', '-p', 'tcp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
+    return output.trim().split('\n').flatMap((line) => {
+      const match = line.match(/^tcp[46]\s+\d+\s+\d+\s+(.+)\.(\d+)\s+\S+\s+LISTEN\s+\d+\s+\d+\s+\d+\s+\d+\s+(.+?):(\d+)\s/);
       if (!match) return [];
       const address = match[1];
       return [{
         address,
         port: Number(match[2]),
-        pid: Number(columns[1]) || null,
-        process: columns[0] || 'unknown',
-        bind: address === '*' || address === '0.0.0.0' || address === '[::]' ? 'LAN' : 'Localhost',
+        pid: Number(match[4]) || null,
+        process: match[3],
+        bind: address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
       }];
     });
   }
   if (process.platform === 'linux') {
-    const output = execFileSync('ss', ['-H', '-tlnp'], { encoding: 'utf8', timeout: 5_000 });
+    const { stdout: output } = await execFileAsync('ss', ['-H', '-tlnp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
     return output.trim().split('\n').flatMap((line) => {
       const match = line.match(/\s(\S+):(\d+)\s+/);
       if (!match) return [];
@@ -275,7 +281,7 @@ export function scanListeningPorts(): Array<{ address: string; port: number; pid
         port: Number(match[2]),
         pid: Number(line.match(/pid=(\d+)/)?.[1]) || null,
         process: processName,
-        bind: address === '*' || address === '0.0.0.0' || address === '[::]' ? 'LAN' : 'Localhost',
+        bind: address === '[::1]' || address === '::1' || address.startsWith('127.') ? 'Localhost' : 'LAN',
       }];
     });
   }

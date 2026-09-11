@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "task_id": "ff387422-f75c-470f-9c48-68b8c8e9a923",
+  "scope": "actual restarted server with explicitly synthetic unknown-ownership task; no provider was started",
+  "status": "paused",
+  "outcome": "unknown",
+  "denials": [
+    {
+      "method": "POST",
+      "suffix": "/execute",
+      "status": 409,
+      "code": "EXECUTION_RECOVERY_REQUIRED"
+    },
+    {
+      "method": "PATCH",
+      "suffix": "",
+      "status": 409,
+      "code": "EXECUTION_RECOVERY_REQUIRED"
+    },
+    {
+      "method": "DELETE",
+      "suffix": "",
+      "status": 409,
+      "code": "EXECUTION_RECOVERY_REQUIRED"
+    }
+  ],
+  "html_csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests",
+  "html_x_frame_options": "DENY"
+}

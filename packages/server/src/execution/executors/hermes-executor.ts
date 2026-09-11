@@ -13,6 +13,7 @@ import { Task, ExecutionEventType, LogLevel, type ExecutionEventCreateInput } fr
 import { captureExecutorOutput } from '../executor-output';
 import type { ExecutionResult, ExecutionSession, ExecutorKind, ExecutorOptions, TaskExecutor } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 
 export class HermesExecutor implements TaskExecutor {
   readonly kind: ExecutorKind = 'hermes';
@@ -42,20 +43,23 @@ export class HermesExecutor implements TaskExecutor {
     const startedAt = new Date();
     const emitter = new EventEmitter();
     let childProcess: ChildProcess | null = null;
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
     const args = this.buildCommand(task, options).args;
 
     const spawnProcess = () => {
+      if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const child = spawn(this.hermesPath, args, {
         cwd: options?.workingDirectory || process.cwd(),
         env: buildExecutorEnv(options?.environment),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       childProcess = child;
+      void runtimeProcessClosed(child).then(resolveClosed);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
       const timeout = setTimeout(() => {
-        if (!child.killed) child.kill('SIGTERM');
+        stopRuntimeProcess(child);
         emitter.emit('error', new Error(`Hermes execution timed out after ${timeoutMs}ms`));
-        setTimeout(() => { if (!child.killed) child.kill('SIGKILL'); }, 5_000).unref();
       }, timeoutMs);
       timeout.unref();
       child.stdout?.on('data', data => emitter.emit('output', data.toString(), 'stdout'));
@@ -74,9 +78,11 @@ export class HermesExecutor implements TaskExecutor {
       startedAt,
       events,
       result,
+      closed,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) childProcess.kill('SIGTERM');
         session.status = 'cancelled';
+        await stopRuntimeProcess(childProcess);
+        if (!childProcess) resolveClosed();
         session.completedAt = new Date();
       },
     };
@@ -107,14 +113,14 @@ export class HermesExecutor implements TaskExecutor {
 
     const queue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const errors: Error[] = [];
-    let exitCode: number | null = null;
+    let exitCode: number | null | undefined;
     let wake: (() => void) | null = null;
     emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => { queue.push({ text, stream }); wake?.(); wake = null; });
     emitter.on('error', (error: Error) => { errors.push(error); wake?.(); wake = null; });
-    emitter.on('exit', (code: number) => { exitCode = code; wake?.(); wake = null; });
+    emitter.on('exit', (code: number | null) => { exitCode = code; wake?.(); wake = null; });
 
-    while (exitCode === null || queue.length > 0 || errors.length > 0) {
-      if (queue.length === 0 && errors.length === 0 && exitCode === null) {
+    while (exitCode === undefined || queue.length > 0 || errors.length > 0) {
+      if (queue.length === 0 && errors.length === 0 && exitCode === undefined) {
         await new Promise<void>(resolve => { wake = resolve; });
       }
       while (errors.length > 0) {

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { useStore } from '../lib/store';
-import { api } from '../lib/api';
+import { api, type RuntimeContract } from '../lib/api';
 import { TaskPriority, ExecutionMode } from '@djimitflo/shared';
+import type { Repository } from '@djimitflo/shared';
 
 export function TasksPage() {
   const tasks = useStore((state) => state.tasks);
@@ -77,7 +78,6 @@ export function TasksPage() {
         ) : (
           filteredTasks.map((task) => {
             const agent = agents.find((a) => a.id === task.agent_id);
-            const progress = calculateProgress(task);
             
             return (
               <TaskCard
@@ -88,7 +88,6 @@ export function TasksPage() {
                 status={task.status}
                 priority={task.priority}
                 agent={agent?.name || 'Unassigned'}
-                progress={progress}
                 owner={task.owner_user_id || task.created_by}
               />
             );
@@ -114,11 +113,10 @@ interface TaskCardProps {
   status: string;
   priority: string;
   agent: string;
-  progress: number;
   owner?: string | null;
 }
 
-function TaskCard({ id, title, description, status, priority, agent, progress, owner }: TaskCardProps) {
+function TaskCard({ id, title, description, status, priority, agent, owner }: TaskCardProps) {
   const statusColors: Record<string, string> = {
     running: 'bg-status-running/10 text-status-running border-status-running/20',
     queued: 'bg-status-paused/10 text-status-paused border-status-paused/20',
@@ -161,15 +159,6 @@ function TaskCard({ id, title, description, status, priority, agent, progress, o
         <div className="text-sm text-foreground-tertiary">
           Agent: <span className="text-foreground font-medium">{agent}</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="w-32 bg-background-elevated rounded-full h-2">
-            <div
-              className="bg-accent h-2 rounded-full transition-all"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-          <span className="text-sm text-foreground-tertiary w-12 text-right">{progress}%</span>
-        </div>
       </div>
     </Link>
   );
@@ -188,10 +177,40 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
   const [agentId, setAgentId] = useState<string>('');
   const [executionMode, setExecutionMode] = useState<ExecutionMode>(ExecutionMode.REVIEW_ONLY);
   const [loading, setLoading] = useState(false);
+  const [runtimes, setRuntimes] = useState<Record<string, RuntimeContract>>({});
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [executor, setExecutor] = useState('');
+  const [model, setModel] = useState('');
+  const [reasoningEffort, setReasoningEffort] = useState('');
+  const [repositories, setRepositories] = useState<Repository[]>([]);
+  const [repositoryId, setRepositoryId] = useState('');
+  const [repositoriesLoading, setRepositoriesLoading] = useState(true);
+  const [repositoryError, setRepositoryError] = useState<string | null>(null);
+
+  const loadRepositories = async () => {
+    setRepositoriesLoading(true);
+    setRepositoryError(null);
+    try {
+      const result = await api.getRepositories();
+      setRepositories(result.repositories);
+    } catch (error) {
+      setRepositoryError(error instanceof Error ? error.message : 'Repository discovery failed');
+    } finally {
+      setRepositoriesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    api.getRuntimeContracts().then(result => setRuntimes(result.runtimes))
+      .catch(error => setRuntimeError(error instanceof Error ? error.message : 'Runtime discovery failed'));
+    void loadRepositories();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title || !description) return;
+    const repository = repositories.find(item => item.id === repositoryId);
+    if (repositoryId && !repository) return;
 
     setLoading(true);
     try {
@@ -201,8 +220,14 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
         priority,
         execution_mode: executionMode,
         agent_id: agentId || undefined,
+        repository_id: repository?.id,
         tags: [],
-        metadata: {},
+        metadata: {
+          ...(executor ? { executor } : {}),
+          ...(model.trim() ? { model: model.trim() } : {}),
+          ...(executor === 'codex' && reasoningEffort ? { reasoningEffort } : {}),
+          ...(repository ? { workingDirectory: repository.path } : {}),
+        },
       });
       
       addTask(task);
@@ -217,7 +242,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-background-secondary border border-border rounded-lg p-6 w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-background-secondary border border-border rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-2xl font-bold text-foreground mb-6">Create New Task</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -226,6 +251,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
               Title <span className="text-accent">*</span>
             </label>
             <input
+              aria-label="Task title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -240,6 +266,7 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
               Description <span className="text-accent">*</span>
             </label>
             <textarea
+              aria-label="Task description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:border-accent h-24 resize-none"
@@ -290,13 +317,43 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
               onChange={(e) => setAgentId(e.target.value)}
               className="w-full px-4 py-2 bg-background border border-border rounded-lg text-foreground focus:outline-none focus:border-accent"
             >
-              <option value="">Auto-assign</option>
+              <option value="">No agent selected</option>
               {agents.map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agent.name}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <label className="text-sm text-foreground-secondary">Runtime
+              <select aria-label="Task runtime" value={executor} onChange={event => setExecutor(event.target.value)} className="mt-2 w-full rounded border border-border bg-background p-2">
+                <option value="">Select when executing</option>
+                {Object.entries(runtimes).filter(([name]) => name !== 'manual').map(([name, contract]) => <option key={name} value={name} disabled={!contract.available}>{name}{contract.available ? '' : ' (unavailable)'}</option>)}
+              </select>
+            </label>
+            <label className="text-sm text-foreground-secondary">Model (optional)
+              <input aria-label="Task model" value={model} maxLength={200} onChange={event => setModel(event.target.value)} placeholder="Runtime default" className="mt-2 w-full rounded border border-border bg-background p-2" />
+            </label>
+            {executor === 'codex' && <label className="text-sm text-foreground-secondary">Codex reasoning effort
+              <select aria-label="Reasoning effort" value={reasoningEffort} onChange={event => setReasoningEffort(event.target.value)} className="mt-2 w-full rounded border border-border bg-background p-2">
+                <option value="">Runtime default</option>
+                {['low', 'medium', 'high', 'xhigh', 'max'].map(effort => <option key={effort} value={effort}>{effort}</option>)}
+              </select>
+            </label>}
+          </div>
+          {runtimeError && <p role="alert" className="text-status-error">Runtime discovery: {runtimeError}</p>}
+
+          <div>
+            <label className="text-sm text-foreground-secondary">Repository / working directory
+              <select aria-label="Task repository" value={repositoryId} onChange={event => setRepositoryId(event.target.value)} disabled={repositoriesLoading} className="mt-2 w-full rounded border border-border bg-background p-2">
+                <option value="">No repository — runtime default working directory</option>
+                {repositories.map(repository => <option key={repository.id} value={repository.id}>{repository.name} — {repository.path}</option>)}
+              </select>
+            </label>
+            {!repositoryId && <p className="mt-2 text-sm text-foreground-muted">Without a repository, execution uses the server/runtime default directory. Scan and select a repository to scope file work.</p>}
+            {repositoryError && <div role="alert" className="mt-2 text-sm text-status-error">Repository discovery: {repositoryError} <button type="button" onClick={() => void loadRepositories()} disabled={repositoriesLoading} className="underline">Retry repositories</button></div>}
           </div>
 
           <div className="flex gap-3 pt-4">
@@ -319,12 +376,4 @@ function CreateTaskModal({ agents, onClose }: CreateTaskModalProps) {
       </div>
     </div>
   );
-}
-
-function calculateProgress(task: { status: string; started_at: string | null; completed_at: string | null }): number {
-  if (task.status === 'completed') return 100;
-  if (task.status === 'failed') return 0;
-  if (task.status === 'running') return 65; // Mock progress
-  if (task.status === 'awaiting_approval') return 30;
-  return 0;
 }

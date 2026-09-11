@@ -8,6 +8,7 @@ import { AgentAssuranceService } from './agent-assurance-service';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { messageBus, type SwarmMessage } from './message_bus';
 import { MemoryCandidateService, type MemoryCandidateRecord } from './memory-candidate-service';
+import { RuntimeLeaseRegistry } from './loop-recovery-service';
 
 type BacklogStatus = 'candidate' | 'triaged' | 'planned' | 'leased' | 'blocked' | 'done' | 'discarded';
 type WorkerRuntime = 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'mock' | 'manual';
@@ -1144,7 +1145,7 @@ export class SwarmStatusService {
     };
   }
 
-  stopWorkerLease(leaseId: string): { lease: WorkerLeaseRecord; event: { event_type: string; level: string; message: string } } {
+  async stopWorkerLease(leaseId: string): Promise<{ lease: WorkerLeaseRecord; event: { event_type: string; level: string; message: string } }> {
     const row = this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(leaseId) as any;
     if (!row) {
       throw new Error('WORKER_LEASE_NOT_FOUND');
@@ -1161,7 +1162,9 @@ export class SwarmStatusService {
     };
     let stopResult: { stopMode: 'kill' | 'stop' | 'best_effort_no_process_handle'; killAttempted: boolean } | null = null;
     if (row.status === 'running') {
-      stopResult = this.loops.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
+      stopResult = await RuntimeLeaseRegistry.stop(leaseId)
+        ? { stopMode: 'stop', killAttempted: true }
+        : this.loops.runtimeCommand.stopWorkerLeaseRuntime(leaseId);
       metadata.stop_mode = stopResult.stopMode;
       metadata.runtime_stop_attempted = stopResult.killAttempted;
       metadata.runtime_stop_requested_at = now;

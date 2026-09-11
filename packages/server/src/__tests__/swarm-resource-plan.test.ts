@@ -476,6 +476,30 @@ describe('workstation swarm resource plan', () => {
     expect(status.worker_lease_count).toBe(0);
   });
 
+  it('returns the dashboard memory-candidate envelope for empty and persisted lists', async () => {
+    const emptyResponse = await fetch(`${baseUrl}/swarms/memory/candidates?limit=25`);
+    expect(emptyResponse.status).toBe(200);
+    expect(await emptyResponse.json()).toEqual({ candidates: [] });
+
+    const createResponse = await fetch(`${baseUrl}/swarms/memory/candidates`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Dashboard contract fixture',
+        content: 'Memory candidates remain visible after the dashboard refreshes.',
+        memory_type: 'operational_memory',
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+    const created = await createResponse.json();
+
+    for (let refresh = 0; refresh < 2; refresh++) {
+      const listResponse = await fetch(`${baseUrl}/swarms/memory/candidates?limit=25`);
+      expect(listResponse.status).toBe(200);
+      expect(await listResponse.json()).toEqual({ candidates: [created] });
+    }
+  });
+
   it('classifies memory candidates without promoting secrets or policy changes', async () => {
     const fakeKeyName = ['OPENAI', 'API', 'KEY'].join('_');
     const fakeKeyValue = `${['s', 'k'].join('')}-${'1234567890abcdef'}`;

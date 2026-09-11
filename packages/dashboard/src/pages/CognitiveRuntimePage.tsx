@@ -33,17 +33,25 @@ export function CognitiveRuntimePage() {
   const [stats, setStats] = useState<CognitiveStats | null>(null);
   const [metaLearning, setMetaLearning] = useState<MetaLearningRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
     Promise.all([
-      api.getCognitiveStats().catch(() => null),
-      api.getCognitiveMetaLearning().catch(() => []),
+      api.getCognitiveStats(),
+      api.getCognitiveMetaLearning(),
     ]).then(([s, ml]: any) => {
+      if (!active) return;
       setStats(s);
       setMetaLearning(Array.isArray(ml?.records) ? ml.records : ml || []);
-      setLoading(false);
-    });
-  }, []);
+    }).catch((failure: unknown) => {
+      if (active) setError(failure instanceof Error ? failure.message : 'Cognitive evidence could not be loaded');
+    }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reload]);
 
   if (loading) {
     return (
@@ -53,12 +61,21 @@ export function CognitiveRuntimePage() {
     );
   }
 
+  if (error) return (
+    <div className="space-y-3">
+      <h1 className="text-2xl font-bold">Cognitive Runtime</h1>
+      <p role="alert">{error}</p>
+      <button type="button" className="underline" onClick={() => setReload(value => value + 1)}>Retry</button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <Brain className="w-7 h-7 text-purple-600" />
         <h1 className="text-2xl font-bold text-foreground">Cognitive Runtime</h1>
       </div>
+      <p className="text-sm text-foreground-secondary">Observations and self-reported lessons provide advice only. They do not prove causal improvement, and strategy actions are not automatically applied to future loops.</p>
 
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -74,7 +91,7 @@ export function CognitiveRuntimePage() {
         <h2 className="text-lg font-semibold text-foreground mb-4">Meta-Learning Status</h2>
         {metaLearning.length === 0 ? (
           <p className="text-foreground-tertiary text-sm">
-            No learned strategies yet. Complete 3+ loop runs per goal type to build cognitive memory.
+            No strategy evidence yet. Record at least 3 episodes per goal type; strategy eligibility also depends on the evidence source.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -111,19 +128,19 @@ export function CognitiveRuntimePage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-foreground-secondary">
           <div className="space-y-1">
             <div className="font-medium text-foreground">1. Record</div>
-            <p>Every completed loop run is recorded as an episode with outcome, cost, and duration.</p>
+            <p>Received terminal loop events and manual observations are stored as episodes. Replayed loop IDs do not add evidence.</p>
           </div>
           <div className="space-y-1">
             <div className="font-medium text-foreground">2. Extract</div>
-            <p>Patterns are mined from episode buffers — goal type correlations, strategy effectiveness, anomalies.</p>
+            <p>Patterns are recomputed from distinct durable episodes, including after restart.</p>
           </div>
           <div className="space-y-1">
             <div className="font-medium text-foreground">3. Evolve</div>
-            <p>Strategies are scored by success rate (70%) and cost efficiency (30%).</p>
+            <p>Strategy statistics are recomputed from current evidence. Repeating this step does not increase the sample size.</p>
           </div>
           <div className="space-y-1">
-            <div className="font-medium text-foreground">4. Apply</div>
-            <p>The best strategy for each goal type is pre-selected for future loops.</p>
+            <div className="font-medium text-foreground">4. Review advice</div>
+            <p>Advice is available for review. Applying strategy actions and proving better held-out outcomes remain separate, unverified steps.</p>
           </div>
         </div>
       </div>

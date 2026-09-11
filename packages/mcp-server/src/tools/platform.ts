@@ -1,16 +1,17 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { DbHandle } from '../db.js';
+import { currentMcpAuth } from '../auth-context.js';
 
 const apiBase = () => (process.env.DJIMITFLO_API_URL || 'http://127.0.0.1:3001/api').replace(/\/$/, '');
 
-async function api(path: string, init: RequestInit = {}) {
+export async function api(path: string, init: RequestInit = {}) {
   const response = await fetch(`${apiBase()}${path}`, {
     ...init,
     headers: {
       'content-type': 'application/json',
-      ...(process.env.DJIMITFLO_API_TOKEN ? { authorization: `Bearer ${process.env.DJIMITFLO_API_TOKEN}` } : {}),
       ...init.headers,
+      authorization: `Bearer ${currentMcpAuth().token}`,
     },
   });
   if (!response.ok) throw new Error(`DJIMITFLO_API_ERROR:${response.status}:${await response.text()}`);

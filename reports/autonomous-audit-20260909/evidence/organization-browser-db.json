@@ -1,0 +1,35 @@
+{
+  "observations": [
+    {
+      "selected": "default",
+      "stored_token_organization": "default",
+      "options": [
+        "audit-org-20260909",
+        "default"
+      ]
+    },
+    {
+      "selected": "audit-org-20260909",
+      "stored_token_organization": "audit-org-20260909",
+      "options": [
+        "audit-org-20260909",
+        "default"
+      ]
+    }
+  ],
+  "durable_membership": "audit-org-20260909",
+  "audit": [
+    {
+      "action": "organization.switch",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "metadata": "{\"from\":\"audit-org-20260909\",\"to\":\"default\"}"
+    },
+    {
+      "action": "organization.switch",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "metadata": "{\"from\":\"default\",\"to\":\"audit-org-20260909\"}"
+    }
+  ],
+  "proof": "actual browser switch and return, full reload, replacement token scope and canonical audit",
+  "tenant_row_isolation_verified": false
+}

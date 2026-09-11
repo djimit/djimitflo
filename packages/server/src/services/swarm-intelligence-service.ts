@@ -985,8 +985,8 @@ export class SwarmIntelligenceService {
     }
     // G15: publish the claim to the knowledge bus so subscribers (other loop runs,
     // other capabilities) receive it in real-time. In-process first; the HTTP
-    // transport scaffold (/api/knowledge/publish + /api/knowledge/subscribe) is
-    // for future cross-fleet federation.
+    // authenticated HTTP transport (/api/knowledge/publish +
+    // /api/knowledge/subscribe) is available for cross-fleet federation.
     try {
       const publishedClaim = this.getClaim(id);
       knowledgeBus.publish({

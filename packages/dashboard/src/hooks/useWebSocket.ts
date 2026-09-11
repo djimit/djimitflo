@@ -1,8 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import type { WebSocketMessage, WebSocketEventType } from '@djimitflo/shared';
 import { WS_CLOSE_CODES } from '@djimitflo/shared';
-
-const AUTH_SESSION_KEY = 'djimitflo_auth_session';
+import { AUTH_SESSION_KEY, refreshSession, useAuthStore } from '../lib/auth-store';
 
 function getDefaultWsUrl(): string {
   if (!import.meta.env.PROD && import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
@@ -22,14 +21,18 @@ const AUTH_CLOSE_CODES: Set<number> = new Set([
 ]);
 
 export function useWebSocket(isAuthenticated: boolean) {
+  const sessionToken = useAuthStore((state) => state.token);
   const ws = useRef<WebSocket | null>(null);
   const handlers = useRef<Map<WebSocketEventType | 'all', Set<MessageHandler>>>(new Map());
   const reconnectTimeout = useRef<number | undefined>(undefined);
   const isConnecting = useRef(false);
   const authFailed = useRef(false);
+  const authRefreshUsed = useRef(false);
+  const enabled = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
 
   const connect = useCallback(() => {
+    if (!enabled.current) return;
     if (isConnecting.current || (ws.current && ws.current.readyState === WebSocket.OPEN)) {
       return;
     }
@@ -51,14 +54,18 @@ export function useWebSocket(isAuthenticated: boolean) {
 
     try {
       const socket = new WebSocket(WS_BASE_URL, socketProtocol);
+      ws.current = socket;
 
       socket.onopen = () => {
+        if (ws.current !== socket) return;
         isConnecting.current = false;
         ws.current = socket;
+        authRefreshUsed.current = false;
         setIsConnected(true);
       };
 
       socket.onmessage = (event) => {
+        if (ws.current !== socket) return;
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
           const dispatch = (item: WebSocketMessage) => {
@@ -74,22 +81,32 @@ export function useWebSocket(isAuthenticated: boolean) {
       };
 
       socket.onerror = () => {
+        if (ws.current !== socket) return;
         isConnecting.current = false;
       };
 
       socket.onclose = (event) => {
+        if (ws.current !== socket) return;
         isConnecting.current = false;
         ws.current = null;
         setIsConnected(false);
 
         if (AUTH_CLOSE_CODES.has(event.code as number)) {
           authFailed.current = true;
+          if (event.code === WS_CLOSE_CODES.AUTH_EXPIRED && !authRefreshUsed.current) {
+            authRefreshUsed.current = true;
+            void refreshSession(token).then(() => {
+              if (!enabled.current) return;
+              authFailed.current = false;
+              connect();
+            }).catch(() => { /* Refresh rejection leaves the socket closed; no reconnect loop. */ });
+          }
           return;
         }
 
-        reconnectTimeout.current = window.setTimeout(() => {
-          connect();
-        }, 3000);
+        if (enabled.current) {
+          reconnectTimeout.current = window.setTimeout(connect, 3000);
+        }
       };
     } catch (_error) {
       isConnecting.current = false;
@@ -97,13 +114,16 @@ export function useWebSocket(isAuthenticated: boolean) {
   }, []);
 
   const disconnect = useCallback(() => {
+    enabled.current = false;
+    isConnecting.current = false;
     authFailed.current = false;
     if (reconnectTimeout.current) {
       clearTimeout(reconnectTimeout.current);
     }
     if (ws.current) {
-      ws.current.close();
+      const socket = ws.current;
       ws.current = null;
+      socket.close();
     }
     setIsConnected(false);
   }, []);
@@ -128,6 +148,7 @@ export function useWebSocket(isAuthenticated: boolean) {
 
   useEffect(() => {
     if (isAuthenticated) {
+      enabled.current = true;
       resetAuthFailure();
       connect();
     } else {
@@ -136,7 +157,7 @@ export function useWebSocket(isAuthenticated: boolean) {
     return () => {
       disconnect();
     };
-  }, [isAuthenticated, connect, disconnect, resetAuthFailure]);
+  }, [isAuthenticated, sessionToken, connect, disconnect, resetAuthFailure]);
 
   return {
     subscribe,

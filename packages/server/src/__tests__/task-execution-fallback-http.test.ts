@@ -65,11 +65,13 @@ describe('task execution provider fallback HTTP chain', () => {
       broadcastTaskEventById: () => {},
     } as any);
     const attempts: string[] = [];
+    const runtimeOptions: Array<Record<string, unknown>> = [];
     const executor = (kind: 'claude' | 'codex', result: Record<string, unknown>): TaskExecutor => ({
       kind,
       canExecute: () => true,
-      start: async (task) => {
+      start: async (task, options) => {
         attempts.push(kind);
+        if (kind === 'codex') runtimeOptions.push({ ...(options as Record<string, unknown> || {}) });
         return {
           id: `session-${kind}`,
           taskId: task.id,
@@ -110,6 +112,7 @@ describe('task execution provider fallback HTTP chain', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     (server as any).attempts = attempts;
+    (server as any).runtimeOptions = runtimeOptions;
   });
 
   afterEach(async () => {
@@ -144,6 +147,21 @@ describe('task execution provider fallback HTTP chain', () => {
       WHERE task_id = 'task-http-fallback' AND message = 'Retrying with fallback executor codex'
     `).get()).toEqual({ count: 1 });
     expect((db.prepare("SELECT COUNT(*) AS count FROM execution_evidence WHERE task_id = 'task-http-fallback'").get() as { count: number }).count).toBeGreaterThan(0);
+  });
+
+  it('uses the persisted runtime when the execute request omits an override', async () => {
+    db.prepare(`
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata)
+      VALUES ('task-http-persisted-runtime', 'Persisted runtime', 'Exercise persisted executor', 'pending', 'medium', 'low', 'local', ?)
+    `).run(JSON.stringify({ executor: 'codex', model: 'gpt-6-astra', reasoningEffort: 'max' }));
+
+    const response = await fetch(`${baseUrl}/api/tasks/task-http-persisted-runtime/execute`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 'started', executor: 'codex', task_id: 'task-http-persisted-runtime' });
+    expect((server as any).attempts).toEqual(['codex']);
+    expect((server as any).runtimeOptions).toEqual([expect.objectContaining({ model: 'gpt-6-astra', reasoningEffort: 'max' })]);
   });
 
   it('preserves server-owned Deep Agent assurance metadata on task updates', async () => {

@@ -13,6 +13,7 @@ import { getDatabaseProvenance } from '../database/provenance';
 export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
   // GET /api/health — basic health check (public)
   router.get('/', (_req, res) => {
@@ -27,7 +28,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/health/deep — deep health check with dependency verification
-  router.get('/deep', requirePermission('read:evidence'), async (_req, res) => {
+  router.get('/deep', requireAuth, requirePermission('read:evidence'), async (_req, res) => {
     const checks: Record<string, { status: 'ok' | 'error' | 'disabled'; message?: string }> = {};
 
     // DB check
@@ -92,14 +93,14 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   });
 
   // GET /api/metrics — Prometheus-format metrics
-  router.get('/metrics', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/metrics', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     const service = new MetricsService(db);
     res.setHeader('Content-Type', 'text/plain');
     res.send(service.getPrometheusMetrics());
   });
 
   // GET /api/metrics/json — JSON-format metrics
-  router.get('/metrics/json', requirePermission('read:evidence'), (_req, res) => {
+  router.get('/metrics/json', requireAuth, requirePermission('read:evidence'), (_req, res) => {
     const service = new MetricsService(db);
     res.json(service.getSnapshot());
   });

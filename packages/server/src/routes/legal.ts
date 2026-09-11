@@ -13,6 +13,9 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { LegalRuleService } from '../services/legal-ruleops/rule-service';
 
+const RECHTSGEBIEDEN = new Set(['civiel', 'straf', 'bestuursrecht', 'familierecht', 'arbeidsrecht', 'cassatie', 'onbekend']);
+const ACTIES = new Set(['pseudonimiseer', 'niet_pseudonimiseer', 'handmatige_controle']);
+
 export function createLegalRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -22,7 +25,8 @@ export function createLegalRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.post('/check-pii', requirePermission('read:evidence'), (req, res, next) => {
     try {
       const { ecli, bodyText, rechtsgebied } = req.body;
-      if (!ecli || !bodyText) {
+      if (typeof ecli !== 'string' || !ecli.trim() || typeof bodyText !== 'string' || !bodyText.trim()
+        || (rechtsgebied !== undefined && (typeof rechtsgebied !== 'string' || !RECHTSGEBIEDEN.has(rechtsgebied)))) {
         res.status(400).json({ error: { message: 'ecli and bodyText are required', code: 'VALIDATION_ERROR' } });
         return;
       }
@@ -36,7 +40,8 @@ export function createLegalRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.post('/classify', requirePermission('read:evidence'), (req, res, next) => {
     try {
       const { text, rechtsgebied } = req.body;
-      if (!text) {
+      if (typeof text !== 'string' || !text.trim()
+        || (rechtsgebied !== undefined && (typeof rechtsgebied !== 'string' || !RECHTSGEBIEDEN.has(rechtsgebied)))) {
         res.status(400).json({ error: { message: 'text is required', code: 'VALIDATION_ERROR' } });
         return;
       }
@@ -55,11 +60,16 @@ export function createLegalRoutes(db: Database, auth?: AuthMiddleware): Router {
   router.post('/feedback', requirePermission('write:governance'), (req, res, next) => {
     try {
       const { ecli, detection_index, original_action, corrected_action, reason, corrected_by } = req.body;
-      if (!ecli || !corrected_action || !reason) {
+      if (typeof ecli !== 'string' || !ecli.trim()
+        || (detection_index !== undefined && (!Number.isInteger(detection_index) || detection_index < 0))
+        || (original_action !== undefined && (typeof original_action !== 'string' || !ACTIES.has(original_action)))
+        || (typeof corrected_action !== 'string' || !ACTIES.has(corrected_action))
+        || (typeof reason !== 'string' || !reason.trim())
+        || (corrected_by !== undefined && (typeof corrected_by !== 'string' || !corrected_by.trim()))) {
         res.status(400).json({ error: { message: 'ecli, corrected_action, and reason are required', code: 'VALIDATION_ERROR' } });
         return;
       }
-      const entry = service.submitFeedback({ ecli, detection_index, original_action, corrected_action, reason, corrected_by: corrected_by || 'anonymous' });
+      const entry = service.submitFeedback({ ecli, detection_index: detection_index ?? 0, original_action: original_action ?? 'pseudonimiseer', corrected_action, reason, corrected_by: corrected_by || 'anonymous' });
       res.status(201).json(entry);
     } catch (error) {
       next(error);

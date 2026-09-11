@@ -33,6 +33,7 @@ import { randomUUID } from 'crypto';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { swarmEventBus } from './swarm-event-bus';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,9 @@ interface ProductionCycleResult {
   baselineScore: number;
   finetunedScore: number;
   improvement: number;
+  promotionEligible: boolean;
   deployed: boolean;
+  deploymentReason: string;
   timestamp: string;
 }
 
@@ -116,7 +119,7 @@ export class SegmlProductionBridge {
 
   constructor(private db: Database) {
     this.ensureTables();
-    this.trainingDir = join(process.cwd(), '.data', 'segml-training');
+    this.trainingDir = join(resolveRepositoryRoot(process.cwd()), '.data', 'segml-training');
     if (!existsSync(this.trainingDir)) {
       mkdirSync(this.trainingDir, { recursive: true });
     }
@@ -380,8 +383,8 @@ PARAMETER num_ctx 4096
 
       // Persist adapter
       this.db.prepare(`
-        INSERT INTO segml_prod_adapters (id, name, base_model, dataset_id, ollama_created, status)
-        VALUES (?, ?, ?, ?, 1, 'trained')
+        INSERT INTO segml_prod_adapters (id, name, base_model, dataset_id, ollama_created)
+        VALUES (?, ?, ?, ?, 1)
       `).run(randomUUID(), adapterName, 'ollama-cloud/deepseek-v4-flash', datasetId);
 
       this.db.prepare("UPDATE segml_prod_datasets SET status = 'trained' WHERE id = ?").run(datasetId);
@@ -544,20 +547,28 @@ PARAMETER num_ctx 4096
     }
 
     const improvement = baselineScore > 0 ? (finetunedScore - baselineScore) / baselineScore : 0;
-    const deployed = improvement > this.deployThreshold;
+    const promotionEligible = adapterCreated && improvement > this.deployThreshold;
+    // ponytail: no deployment executor exists in this service; keep promotion eligibility
+    // separate from deployment state until an approved, observable deployer is wired.
+    const deployed = false;
+    const deploymentReason = promotionEligible
+      ? 'PROMOTION_ELIGIBLE_NO_DEPLOYER'
+      : adapterCreated ? 'IMPROVEMENT_THRESHOLD_NOT_MET' : 'ADAPTER_NOT_CREATED';
 
     // Persist cycle
     this.db.prepare(`
       INSERT INTO segml_prod_cycles (id, dataset_id, adapter_id, baseline_score, finetuned_score, improvement_ratio, deployed)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(cycleId, dataset.id, adapterName, baselineScore, finetunedScore, improvement, deployed ? 1 : 0);
+    `).run(cycleId, dataset.id, adapterCreated ? adapterName : null, baselineScore, finetunedScore, improvement, deployed ? 1 : 0);
 
     swarmEventBus.emit('segml:prod:cycle_complete', {
       cycleId,
       baselineScore,
       finetunedScore,
       improvement,
+      promotionEligible,
       deployed,
+      deploymentReason,
     });
 
     return {
@@ -567,7 +578,9 @@ PARAMETER num_ctx 4096
       baselineScore,
       finetunedScore,
       improvement,
+      promotionEligible,
       deployed,
+      deploymentReason,
       timestamp: new Date().toISOString(),
     };
   }

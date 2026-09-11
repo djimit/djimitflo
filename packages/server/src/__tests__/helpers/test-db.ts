@@ -171,17 +171,18 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS capability_tokens (
     id TEXT PRIMARY KEY,
-    token_hash TEXT NOT NULL UNIQUE,
-    capability_id TEXT NOT NULL,
-    scope TEXT NOT NULL,
-    risk_level TEXT NOT NULL,
-    issued_by TEXT NOT NULL,
-    evidence_refs_json TEXT NOT NULL DEFAULT '[]',
-    constraints_json TEXT NOT NULL DEFAULT '{}',
-    valid_until TEXT,
-    status TEXT NOT NULL DEFAULT 'active',
+    token_ref TEXT NOT NULL UNIQUE,
+    subject_agent_id TEXT,
+    scopes_json TEXT NOT NULL DEFAULT '[]',
+    allowed_actions_json TEXT NOT NULL DEFAULT '[]',
+    denied_actions_json TEXT NOT NULL DEFAULT '[]',
+    risk_class TEXT NOT NULL CHECK(risk_class IN ('low', 'medium', 'high', 'critical')),
+    status TEXT NOT NULL CHECK(status IN ('active', 'pending_approval', 'revoked', 'expired')),
+    approved_by TEXT,
+    expires_at TEXT NOT NULL,
     metadata TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS swarm_capabilities (
@@ -1031,6 +1032,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS repository_health_findings (
     id TEXT PRIMARY KEY,
     repository_id TEXT NOT NULL,
+    scan_id TEXT,
     severity TEXT NOT NULL,
     category TEXT NOT NULL,
     title TEXT NOT NULL,

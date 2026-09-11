@@ -131,7 +131,7 @@ describe('Security Invariant: OIDC Provider', () => {
     delete process.env.AUTH0_DOMAIN;
   });
 
-  it('rejects invalid state in code exchange', () => {
+  it('rejects invalid state in code exchange', async () => {
     const config = {
       provider_name: 'test',
       client_id: 'test-client',
@@ -148,7 +148,7 @@ describe('Security Invariant: OIDC Provider', () => {
 
     const oidc = new OIDCAbstraction(config);
 
-    expect(oidc.exchangeCode('code', 'invalid-state')).rejects.toThrow(OIDCError);
+    await expect(oidc.exchangeCode('code', 'invalid-state')).rejects.toThrow(OIDCError);
   });
 });
 

@@ -4,7 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/auth-service';
-import { ROLE_PERMISSIONS, type UserRole, type AuthTokenPayload } from '@djimitflo/shared';
+import { ROLE_PERMISSIONS, type User, type UserRole, type AuthTokenPayload } from '@djimitflo/shared';
 
 declare global {
   namespace Express {
@@ -15,6 +15,15 @@ declare global {
 }
 
 export function createAuthMiddleware(authService: AuthService) {
+  function currentPrincipal(payload: AuthTokenPayload, user: User): AuthTokenPayload | undefined {
+    // A valid signature proves identity, not that old role/tenant claims still apply.
+    const membership = (user as User & { organization_id?: string }).organization_id ?? 'default';
+    const selected = payload.organization_id ?? 'default';
+    // Organization switching explicitly allows the assigned organization or default.
+    if (selected !== 'default' && selected !== membership) return undefined;
+    return { ...payload, role: user.role, email: user.email, organization_id: selected };
+  }
+
   function requireAuth(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -35,7 +44,11 @@ export function createAuthMiddleware(authService: AuthService) {
       return;
     }
 
-    req.user = payload;
+    req.user = currentPrincipal(payload, user);
+    if (!req.user) {
+      res.status(401).json({ error: { message: 'Organization membership changed', code: 'AUTH_INVALID' } });
+      return;
+    }
     next();
   }
 
@@ -66,7 +79,7 @@ export function createAuthMiddleware(authService: AuthService) {
       if (payload) {
         const user = authService.findUserById(payload.sub);
         if (user && user.isActive) {
-          req.user = payload;
+          req.user = currentPrincipal(payload, user);
         }
       }
     }
@@ -105,7 +118,11 @@ export function createAuthMiddleware(authService: AuthService) {
         res.status(401).json({ error: { message: 'User account disabled', code: 'AUTH_DISABLED' } });
         return;
       }
-      req.user = payload;
+      req.user = currentPrincipal(payload, user);
+      if (!req.user) {
+        res.status(401).json({ error: { message: 'Organization membership changed', code: 'AUTH_INVALID' } });
+        return;
+      }
       next();
       return;
     }

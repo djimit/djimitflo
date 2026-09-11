@@ -65,6 +65,136 @@ describe('catalog e2e', () => {
 });
 
 describe('activation', () => {
+  it('preserves a manual rejection and exact score on same-version reimport but assesses changed versions freshly', () => {
+    const cat = new AgentCatalog();
+    const options = { sourceRepo: 'fixture', sourcePath: 'engineering/secure.md' };
+    try {
+      const first = cat.importText(FIX('secure-coder.md'), options);
+      cat.db.setEvaluation({ ...first.evaluation, status: 'rejected', score: 32.25, flags: ['manual-evaluation:fixture-reviewer'] }, first.profile.version_hash);
+      const repeated = cat.importText(FIX('secure-coder.md'), options);
+      expect(repeated.profile.version_hash).toBe(first.profile.version_hash);
+      expect(repeated.evaluation).toMatchObject({ status: 'rejected', score: 32.25 });
+      expect(repeated.evaluation.flags).toContain('manual-evaluation:fixture-reviewer');
+      expect(cat.db.getEvaluation(first.profile.id)).toMatchObject({ status: 'rejected', score: 32.25 });
+      expect(() => cat.registry.activate(first.profile.id, 'codex')).toThrow(/evaluation not passed/);
+      const changed = cat.importText(FIX('secure-coder.md').replace('Deliver code that is correct', 'Deliver newly scoped fixture code that is correct'), options);
+      expect(changed.profile.version_hash).not.toBe(first.profile.version_hash);
+      expect(changed.evaluation.status).toBe('passed');
+      expect(changed.evaluation.score).toBeUndefined();
+      expect(changed.evaluation.flags).not.toContain('manual-evaluation:fixture-reviewer');
+    } finally { cat.close(); }
+  });
+
+  it('preserves both the active artifact and stored profile activation status on unchanged manual-approved reimport', () => {
+    const cat = new AgentCatalog();
+    const options = { sourceRepo: 'fixture', sourcePath: 'engineering/secure.md' };
+    try {
+      const first = cat.importText(FIX('secure-coder.md'), options);
+      cat.db.setEvaluation({ ...first.evaluation, status: 'passed', score: 87.5, flags: ['manual-evaluation:fixture-reviewer'] }, first.profile.version_hash);
+      cat.registry.activate(first.profile.id, 'codex');
+      const repeated = cat.importText(FIX('secure-coder.md'), options);
+      expect(repeated.evaluation).toMatchObject({ status: 'passed', score: 87.5 });
+      expect(repeated.profile.activation_status).toBe('active');
+      expect(cat.db.getProfile(first.profile.id)?.activation_status).toBe('active');
+      expect(cat.registry.status(first.profile.id).status).toBe('active');
+    } finally { cat.close(); }
+  });
+
+  it('lets a newly failing static gate block a same-version manual approval without erasing its provenance', () => {
+    const cat = new AgentCatalog();
+    const options = { sourceRepo: 'fixture', sourcePath: 'engineering/secure.md' };
+    try {
+      const first = cat.importText(FIX('secure-coder.md'), options);
+      cat.db.setEvaluation({ ...first.evaluation, status: 'passed', score: 87.5, flags: ['manual-evaluation:fixture-reviewer'] }, first.profile.version_hash);
+      cat.registry.activate(first.profile.id, 'codex');
+      cat.importText(FIX('dup-secure-coder.md'), { ...options, sourcePath: 'engineering/duplicate.md' });
+      const repeated = cat.importText(FIX('secure-coder.md'), options);
+      expect(repeated.profile.version_hash).toBe(first.profile.version_hash);
+      expect(repeated.evaluation).toMatchObject({ status: 'rejected', score: 87.5 });
+      expect(repeated.evaluation.flags).toEqual(expect.arrayContaining(['manual-evaluation:fixture-reviewer', 'manual-verdict:passed', 'near-duplicate']));
+      expect(repeated.profile.activation_status).toBe('deactivated');
+      expect(cat.registry.status(first.profile.id).status).toBe('deactivated');
+      expect(() => cat.registry.activate(first.profile.id, 'codex')).toThrow(/evaluation not passed/);
+      const again = cat.importText(FIX('secure-coder.md'), options);
+      expect(again.evaluation).toMatchObject({ status: 'rejected', score: 87.5 });
+      expect(again.evaluation.flags).toContain('manual-verdict:passed');
+    } finally { cat.close(); }
+  });
+
+  it('replaces duplicate edges when a formerly overlapping profile becomes unique', () => {
+    const cat = new AgentCatalog();
+    const options = { sourceRepo: 'fixture', sourcePath: 'engineering/duplicate.md' };
+    try {
+      cat.importText(FIX('secure-coder.md'), { ...options, sourcePath: 'engineering/secure.md' });
+      const duplicate = cat.importText(FIX('dup-secure-coder.md'), options);
+      expect(cat.counts()).toMatchObject({ duplicate: 1, rejected: 1 });
+      const unique = cat.importText('---\nname: Security Coder\ndescription: We catalogue ocean tides and seasonal plankton migration.\nvibe: Marine scientist collecting habitat observations.\n---\n## Mission\nEstimate water salinity using independent marine instruments.\n', options);
+      expect(unique.profile.id).toBe(duplicate.profile.id);
+      expect(unique.evaluation).toMatchObject({ overlap_score: 0, status: 'passed' });
+      expect(cat.counts()).toMatchObject({ total: 2, passed: 2, rejected: 0, duplicate: 0 });
+    } finally { cat.close(); }
+  });
+
+  it('rolls back the profile, evaluation and overlap snapshot if replacement edges cannot be stored', () => {
+    const cat = new AgentCatalog();
+    const options = { sourceRepo: 'fixture', sourcePath: 'engineering/duplicate.md' };
+    try {
+      cat.importText(FIX('secure-coder.md'), { ...options, sourcePath: 'engineering/secure.md' });
+      const duplicate = cat.importText(FIX('dup-secure-coder.md'), options);
+      const before = cat.db.getEvaluation(duplicate.profile.id);
+      (cat.db as any).db.exec("CREATE TRIGGER fail_overlap_insert BEFORE INSERT ON overlaps BEGIN SELECT RAISE(ABORT,'overlap storage unavailable'); END");
+      expect(() => cat.importText(FIX('dup-secure-coder.md').replace('Writes defensive', 'Writes thoroughly defensive'), options)).toThrow('overlap storage unavailable');
+      expect(cat.db.getProfile(duplicate.profile.id)?.version_hash).toBe(duplicate.profile.version_hash);
+      expect(cat.db.getEvaluation(duplicate.profile.id)).toEqual(before);
+      expect(cat.counts()).toMatchObject({ total: 2, passed: 1, rejected: 1, duplicate: 1 });
+    } finally { cat.close(); }
+  });
+
+  it('enforces the declared profile foreign keys at the storage boundary', () => {
+    const cat = new AgentCatalog();
+    try {
+      const {profile,evaluation} = cat.importText(FIX('secure-coder.md'), {sourceRepo:'fixture',sourcePath:'engineering/secure.md'});
+      expect(() => cat.db.setEvaluation({...evaluation,profile_id:'missing-profile'}, profile.version_hash)).toThrow(/FOREIGN KEY/);
+      expect(() => cat.db.setActivation('missing-profile','active','codex','{}')).toThrow(/FOREIGN KEY/);
+      expect(cat.counts()).toMatchObject({total:1,evaluated:1,active:0});
+    } finally { cat.close(); }
+  });
+  it('invalidates active artifacts when the profile changes and selects the current evaluation', () => {
+    const cat = new AgentCatalog();
+    try {
+      const first = cat.importText(FIX('secure-coder.md'), { sourceRepo:'fixture', sourcePath:'engineering/secure.md' });
+      cat.registry.activate(first.profile.id, 'codex');
+      const second = cat.importText(FIX('secure-coder.md').replace('Deliver code that is correct', 'Deliver bounded fixture code that is correct'), {sourceRepo:'fixture',sourcePath:'engineering/secure.md'});
+      expect(second.profile.version_hash).not.toBe(first.profile.version_hash);
+      expect(cat.registry.status(first.profile.id).status).not.toBe('active');
+      expect(cat.counts().active).toBe(0);
+      expect(cat.db.getEvaluation(first.profile.id).version_hash).toBe(second.profile.version_hash);
+      expect(cat.registry.activate(first.profile.id, 'codex').status).toBe('active');
+    } finally { cat.close(); }
+  });
+
+  it('revokes active artifact on failed reevaluation and counts only the current version', () => {
+    const cat = new AgentCatalog();
+    try {
+      const {profile,evaluation} = cat.importText(FIX('secure-coder.md'), {sourceRepo:'fixture',sourcePath:'engineering/secure.md'});
+      cat.registry.activate(profile.id, 'codex');
+      cat.db.setEvaluation({...evaluation,status:'rejected'}, profile.version_hash);
+      expect(cat.registry.status(profile.id).status).not.toBe('active');
+      cat.db.upsertProfile({...profile,version_hash:'new-version',evaluation_status:'passed'});
+      cat.db.setEvaluation({...evaluation,status:'passed'}, 'new-version');
+      expect(cat.counts()).toMatchObject({evaluated:1,passed:1,rejected:0});
+    } finally { cat.close(); }
+  });
+
+  it('rolls back activation if its audit record cannot be stored', () => {
+    const cat = new AgentCatalog();
+    try {
+      const {profile} = cat.importText(FIX('secure-coder.md'), {sourceRepo:'fixture',sourcePath:'engineering/secure.md'});
+      (cat.db as any).db.exec("CREATE TRIGGER fail_activation_audit BEFORE INSERT ON audit_ledger WHEN NEW.action='activate' BEGIN SELECT RAISE(ABORT,'audit unavailable'); END");
+      expect(() => cat.registry.activate(profile.id,'codex')).toThrow('audit unavailable');
+      expect(cat.registry.status(profile.id).status).not.toBe('active');
+    } finally { cat.close(); }
+  });
   it('blocks activation without a passing evaluation', () => {
     const cat = new AgentCatalog();
     cat.importDir(join(process.cwd(), 'fixtures/agents'), 'r');
@@ -110,8 +240,13 @@ describe('compile', () => {
     expect(cx.files['agent.toml']).toContain('[agent]');
     expect(cx.files['agent.toml']).toContain('Secure Coder');
   });
-  it('stub targets flagged', () => {
+  it('all declared targets compile usable instruction artifacts', () => {
     const prof = normalizeAgent(parseAgentMarkdown(FIX('secure-coder.md'), { sourceRepo: 'r', sourcePath: 'engineering/a.md' }));
-    for (const t of ['claude-code', 'cursor', 'gemini-cli'] as const) expect(compile(prof, t).stub).toBe(true);
+    for (const t of ['claude-code', 'cursor', 'gemini-cli'] as const) {
+      const artifact = compile(prof, t);
+      expect(artifact.stub).toBeUndefined();
+      expect(Object.values(artifact.files).join('\n')).toContain('Deliver code that is correct');
+      expect(Object.values(artifact.files).join('\n')).not.toContain('F5 stub');
+    }
   });
 });

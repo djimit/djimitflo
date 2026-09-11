@@ -1,0 +1,68 @@
+{
+  "state": "PASS",
+  "phase": "after",
+  "recorded_at": "2026-09-09T18:05:42.887Z",
+  "goalType": "evolution-fixed-outcomes-20260909",
+  "strategy": {
+    "id": "9e69635a-1f11-4106-92b5-b3617547f480",
+    "name": "learned_from_evolution-fixed-outcomes-20260909_outcome_correlation",
+    "description": "Observational advice from evolution-fixed-outcomes-20260909_outcome_correlation",
+    "goalType": "evolution-fixed-outcomes-20260909",
+    "conditions": {
+      "goalType": "evolution-fixed-outcomes-20260909",
+      "evidence_basis": "recorded_outcomes",
+      "confidence_basis": "sample_count_heuristic",
+      "causal_support": false,
+      "selection_eligible": true,
+      "pattern_ids": [
+        "bc734ada-2005-411d-8795-1c064c1506ea"
+      ]
+    },
+    "actions": [],
+    "successRate": 0.5,
+    "episodeCount": 10,
+    "avgDurationMs": 0,
+    "avgCostDollars": 0,
+    "lastUsedAt": null,
+    "createdAt": "2026-09-09T18:00:34.582Z"
+  },
+  "metaLearning": {
+    "goalType": "evolution-fixed-outcomes-20260909",
+    "bestStrategy": "9e69635a-1f11-4106-92b5-b3617547f480",
+    "bestSuccessRate": 0.5,
+    "totalEpisodes": 10,
+    "totalStrategies": 2,
+    "lastUpdated": "2026-09-09T18:05:42.876Z"
+  },
+  "goals": [
+    [
+      "4ee661ca-47cd-4add-b9f1-7d23ba32052f",
+      "created"
+    ],
+    [
+      "e41eb751-876e-49f9-9e52-483ad48889e1",
+      "created"
+    ],
+    [
+      "7371f30d-8316-4768-b763-3d42c721ba9e",
+      "running"
+    ],
+    [
+      "c9aa17af-059d-433d-a9fd-99d28a241b64",
+      "running"
+    ],
+    [
+      "29fae050-ba37-4435-aca8-277171ee2972",
+      "running"
+    ],
+    [
+      "1d36485d-d3b1-44fa-b753-642b2c16efd2",
+      "completed"
+    ]
+  ],
+  "replays": 9,
+  "actualOutcomeImprovement": 0,
+  "providerExecuted": false,
+  "strategyApplied": false,
+  "scope": "Actual authenticated HTTP and durable synthetic observations; not loop execution or causal improvement"
+}

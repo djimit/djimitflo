@@ -1,0 +1,5 @@
+# G387 authenticated local SPA crawl
+
+An isolated server on `127.0.0.1:3002` with a temporary SQLite database and bootstrap admin was logged into through Playwright. The dashboard navigation exposed and rendered 32 distinct routes: `/`, `/tasks`, `/agents`, `/catalog`, `/swarm`, `/approvals`, `/policies`, `/governance`, `/compliance`, `/mcp-permissions`, `/observability`, `/audit`, `/repositories`, `/goals-loops`, `/fleet-cockpit`, `/usage`, `/workstation-urls`, `/economy`, `/federation`, `/swarm-resources`, `/swarm-mission-control`, `/interaction-board`, `/cognitive`, `/self-driving`, `/authority`, `/audit/logs`, `/pipeline-builder`, `/agi-reasoning`, `/consensus-debates`, `/predictive-analytics`, `/self-healing`, and `/explainers`.
+
+Every route rendered an `h1`. One expected unavailable dependency returned 503 on `/authority` (UI states that the canonical authority ledger is not provisioned). One observability SSE request was aborted on route change, which is expected cleanup. No other console errors or failed requests occurred in the SPA crawl. The temporary server/database were stopped/isolated; no production credentials or mutations were used.

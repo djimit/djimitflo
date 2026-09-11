@@ -1,0 +1,2056 @@
+{
+  "evidence_class": "synthetic-mock-UI-governance-only",
+  "at": "2026-09-09T12:03:55.022Z",
+  "runs": [
+    {
+      "id": "780bbbef-620c-4d9f-b91b-01d1f73f6b6b",
+      "status": "interrupted",
+      "repository_path": "/private/tmp/djimitflo-g54-browser-p86vLa",
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "interrupted_reason": "server_restart",
+        "interrupted_at": "2026-09-09T12:03:21.244Z"
+      },
+      "completed_at": null,
+      "leases": [
+        {
+          "id": "b54001d6-d9c8-4f38-8639-c6141a308e8b",
+          "role": "maker",
+          "runtime": "manual",
+          "status": "prepared",
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/780bbbef-620c-4d9f-b91b-01d1f73f6b6b/b3441b9a-17d1-4ac2-8aca-7f8fc3c549ee/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/780bbbef-620c-4d9f-b91b-01d1f73f6b6b/b3441b9a-17d1-4ac2-8aca-7f8fc3c549ee/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "manual",
+            "effective_runtime": "manual"
+          }
+        },
+        {
+          "id": "0631fa4d-4899-4557-880f-39beedbf4fb0",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "prepared",
+          "metadata": {
+            "maker_lease_id": "b54001d6-d9c8-4f38-8639-c6141a308e8b",
+            "requires_independent_review": true
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_type": "loop_planned",
+          "message": "doc-drift-and-small-fix-loop produced 1 finding(s) for review.",
+          "metadata": {
+            "loop_name": "doc-drift-and-small-fix-loop",
+            "finding_count": 1,
+            "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/780bbbef-620c-4d9f-b91b-01d1f73f6b6b/LOOP_STATE.md",
+            "outcome": "plan_ready"
+          },
+          "created_at": "2026-09-09T11:56:55.100Z"
+        },
+        {
+          "event_type": "worker_leases_prepared",
+          "message": "Prepared 1 maker/checker assignment(s) with strategy \"maker-checker-v1\".",
+          "metadata": {
+            "finding_ids": [
+              "b3441b9a-17d1-4ac2-8aca-7f8fc3c549ee"
+            ],
+            "runtime": "manual",
+            "budget": {
+              "maxMakerWorkers": 5,
+              "source": "default"
+            },
+            "strategy": "maker-checker-v1",
+            "strategyConfidence": 0
+          },
+          "created_at": "2026-09-09T11:57:09.876Z"
+        }
+      ],
+      "tasks": [],
+      "approvals": [],
+      "execution_events": []
+    },
+    {
+      "id": "6d65eb46-03ea-4d4b-9aad-b3ac75ec4151",
+      "status": "interrupted",
+      "repository_path": "/private/tmp/djimitflo-g54-browser-p86vLa",
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "high",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null,
+        "interrupted_reason": "server_restart",
+        "interrupted_at": "2026-09-09T12:03:21.244Z"
+      },
+      "completed_at": null,
+      "leases": [
+        {
+          "id": "da15eae8-e1d4-4efe-9d15-9584a5a25437",
+          "role": "maker",
+          "runtime": "mock",
+          "status": "completed",
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/1642d57a-3ee3-4a8c-a593-8dfbf103d272/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/1642d57a-3ee3-4a8c-a593-8dfbf103d272/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "mock",
+            "effective_runtime": "mock",
+            "started_at": "2026-09-09T11:57:55.791Z",
+            "completed_at": "2026-09-09T11:57:55.822Z",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/worker-output/da15eae8-e1d4-4efe-9d15-9584a5a25437/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/worker-output/da15eae8-e1d4-4efe-9d15-9584a5a25437/stderr.log",
+            "diff_lines": 0,
+            "diff_max_lines": 200,
+            "exit_status": 0,
+            "timed_out": false,
+            "runtime_adapter": "mock",
+            "runtime_contract": {
+              "runtime": "mock",
+              "available": true,
+              "command": "/Users/dlandman/.hermes/node/bin/node",
+              "version": "mock-runtime",
+              "status": "ok",
+              "cwd_flag": "argv",
+              "json_flag": "stdout-json",
+              "supports_json_events": true,
+              "supports_usage_parsing": true,
+              "supports_timeout_kill": true,
+              "evidence": [
+                "deterministic in-process mock runtime"
+              ],
+              "conformance": {
+                "status": "pass",
+                "proof_class": "static",
+                "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+                "checks": [
+                  {
+                    "name": "runtime_available",
+                    "passed": true,
+                    "evidence": "Runtime binary is available."
+                  },
+                  {
+                    "name": "contract_not_drifted",
+                    "passed": true,
+                    "evidence": "Runtime contract status is ok."
+                  },
+                  {
+                    "name": "structured_events",
+                    "passed": true,
+                    "evidence": "Structured output flag: \"stdout-json\"."
+                  },
+                  {
+                    "name": "usage_accounting",
+                    "passed": true,
+                    "evidence": "Runtime output supports usage parsing."
+                  },
+                  {
+                    "name": "bounded_lifecycle",
+                    "passed": true,
+                    "evidence": "Timeout and kill are supported."
+                  }
+                ]
+              }
+            },
+            "runtime_pid": 21057,
+            "runtime_signal": null,
+            "runtime_timed_out": false,
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "deterministic_checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/type-check.stderr.log"
+              }
+            ],
+            "checks_completed_at": "2026-09-09T11:57:56.121Z"
+          }
+        },
+        {
+          "id": "629869d0-6ec7-4388-81cb-ac9a8f255f52",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "prepared",
+          "metadata": {
+            "maker_lease_id": "da15eae8-e1d4-4efe-9d15-9584a5a25437",
+            "requires_independent_review": true
+          }
+        },
+        {
+          "id": "2b5fe76d-8741-40ac-9e7a-9c9a36326a4b",
+          "role": "security_checker",
+          "runtime": "codex",
+          "status": "prepared",
+          "metadata": {
+            "maker_lease_id": "da15eae8-e1d4-4efe-9d15-9584a5a25437",
+            "requires_security_review": true,
+            "high_risk_reason": "loop_risk_class:high",
+            "checkpoint_before_id": "c401014f-dad5-4305-b353-4065dab66346",
+            "trace_id": "loop-6d65eb46-03ea-4d4b-9aad-b3ac75ec4151-checker-2b5fe76d-8741-40ac-9e7a-9c9a36326a4b",
+            "runtime_adapter": "codex",
+            "started_at": "2026-09-09T11:58:36.549Z",
+            "execution_task_id": "loop-worker-2b5fe76d-8741-40ac-9e7a-9c9a36326a4b-0ad18d57",
+            "approval_id": "8fcdd089-f911-4b22-88b7-518545f43128"
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_type": "loop_planned",
+          "message": "doc-drift-and-small-fix-loop produced 1 finding(s) for review.",
+          "metadata": {
+            "loop_name": "doc-drift-and-small-fix-loop",
+            "finding_count": 1,
+            "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/LOOP_STATE.md",
+            "outcome": "plan_ready"
+          },
+          "created_at": "2026-09-09T11:57:55.715Z"
+        },
+        {
+          "event_type": "worker_leases_prepared",
+          "message": "Prepared 1 maker/checker assignment(s) with strategy \"maker-checker-v1\".",
+          "metadata": {
+            "finding_ids": [
+              "1642d57a-3ee3-4a8c-a593-8dfbf103d272"
+            ],
+            "runtime": "mock",
+            "budget": {
+              "maxMakerWorkers": 5,
+              "source": "default"
+            },
+            "strategy": "maker-checker-v1",
+            "strategyConfidence": 0
+          },
+          "created_at": "2026-09-09T11:57:55.787Z"
+        },
+        {
+          "event_type": "maker_executed",
+          "message": "Maker lease da15eae8-e1d4-4efe-9d15-9584a5a25437 completed.",
+          "metadata": {
+            "lease_id": "da15eae8-e1d4-4efe-9d15-9584a5a25437",
+            "gates": [
+              {
+                "name": "maker_runtime_exit_zero",
+                "status": "pass",
+                "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+              },
+              {
+                "name": "diff_under_threshold",
+                "status": "pass",
+                "evidence": "0 changed diff line(s), threshold 200."
+              },
+              {
+                "name": "token_budget",
+                "status": "skipped",
+                "evidence": "No token budget configured for this goal."
+              },
+              {
+                "name": "runtime_warning_gate",
+                "status": "pass",
+                "evidence": "No runtime warnings detected."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Maker execution did not merge, push, or deploy."
+              }
+            ],
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/worker-output/da15eae8-e1d4-4efe-9d15-9584a5a25437/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/worker-output/da15eae8-e1d4-4efe-9d15-9584a5a25437/stderr.log",
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_cancelled": false
+          },
+          "created_at": "2026-09-09T11:57:55.822Z"
+        },
+        {
+          "event_type": "deterministic_checks_completed",
+          "message": "Deterministic checks passed/skipped for maker lease da15eae8-e1d4-4efe-9d15-9584a5a25437.",
+          "metadata": {
+            "lease_id": "da15eae8-e1d4-4efe-9d15-9584a5a25437",
+            "checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/checks/da15eae8-e1d4-4efe-9d15-9584a5a25437/type-check.stderr.log"
+              }
+            ]
+          },
+          "created_at": "2026-09-09T11:57:56.121Z"
+        }
+      ],
+      "tasks": [
+        {
+          "id": "loop-worker-2b5fe76d-8741-40ac-9e7a-9c9a36326a4b-0ad18d57",
+          "status": "awaiting_approval",
+          "risk_level": "high",
+          "execution_mode": "local",
+          "started_at": null,
+          "completed_at": null,
+          "token_usage": null,
+          "metadata": "{\"loop_run_id\":\"6d65eb46-03ea-4d4b-9aad-b3ac75ec4151\",\"lease_id\":\"2b5fe76d-8741-40ac-9e7a-9c9a36326a4b\",\"workingDirectory\":\"/private/tmp/.djimitflo-loop-worktrees/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/.djimitflo-loop-worktrees/6d65eb46-03ea-4d4b-9aad-b3ac75ec4151/1642d57a-3ee3-4a8c-a593-8dfbf103d272-security_checker-2b5fe76d\",\"timeoutMs\":120000,\"skipPermissions\":false,\"environment\":{},\"codexSandbox\":\"read-only\"}"
+        }
+      ],
+      "approvals": [
+        {
+          "id": "8fcdd089-f911-4b22-88b7-518545f43128",
+          "task_id": "loop-worker-2b5fe76d-8741-40ac-9e7a-9c9a36326a4b-0ad18d57",
+          "status": "pending",
+          "approved_by": null,
+          "approved_at": null,
+          "decided_by": null,
+          "decided_at": null
+        }
+      ],
+      "execution_events": [
+        {
+          "event_type": "approval.requested",
+          "message": "Matched policy: Require approval for medium+ task execution",
+          "timestamp": "2026-09-09T11:58:36.560Z",
+          "metadata": "{\"assessment\":{\"action_type\":\"task_execution\",\"risk_level\":\"high\",\"matched_rules\":[\"sensitive-keywords\"],\"explanation\":\"Task description contains sensitive or destructive keywords.\",\"recommended_decision\":\"require_approval\",\"metadata\":{\"executorKind\":\"codex\",\"executionMode\":\"local\",\"workspacePath\":\"/Users/dlandman/djimitflo-audit-20260909\",\"requestedCommand\":null}},\"policyId\":\"policy-medium-task-approval\"}"
+        }
+      ]
+    },
+    {
+      "id": "3b83a611-881b-4640-9153-c1cabd6f7e44",
+      "status": "completed",
+      "repository_path": "/private/tmp/djimitflo-g54-browser-p86vLa",
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null,
+        "human_approval_ref": "operator:f0997a41-1d2c-4833-8102-86ea30f33ead"
+      },
+      "completed_at": "2026-09-09T11:59:44.830Z",
+      "leases": [
+        {
+          "id": "782f38ca-6b99-4b2f-b140-7a40efabb903",
+          "role": "maker",
+          "runtime": "mock",
+          "status": "completed",
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/3b83a611-881b-4640-9153-c1cabd6f7e44/fa1e726e-6d19-466d-89e5-ada40fe46395/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/3b83a611-881b-4640-9153-c1cabd6f7e44/fa1e726e-6d19-466d-89e5-ada40fe46395/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "mock",
+            "effective_runtime": "mock",
+            "started_at": "2026-09-09T11:57:56.200Z",
+            "completed_at": "2026-09-09T11:57:56.230Z",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/worker-output/782f38ca-6b99-4b2f-b140-7a40efabb903/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/worker-output/782f38ca-6b99-4b2f-b140-7a40efabb903/stderr.log",
+            "diff_lines": 0,
+            "diff_max_lines": 200,
+            "exit_status": 0,
+            "timed_out": false,
+            "runtime_adapter": "mock",
+            "runtime_contract": {
+              "runtime": "mock",
+              "available": true,
+              "command": "/Users/dlandman/.hermes/node/bin/node",
+              "version": "mock-runtime",
+              "status": "ok",
+              "cwd_flag": "argv",
+              "json_flag": "stdout-json",
+              "supports_json_events": true,
+              "supports_usage_parsing": true,
+              "supports_timeout_kill": true,
+              "evidence": [
+                "deterministic in-process mock runtime"
+              ],
+              "conformance": {
+                "status": "pass",
+                "proof_class": "static",
+                "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+                "checks": [
+                  {
+                    "name": "runtime_available",
+                    "passed": true,
+                    "evidence": "Runtime binary is available."
+                  },
+                  {
+                    "name": "contract_not_drifted",
+                    "passed": true,
+                    "evidence": "Runtime contract status is ok."
+                  },
+                  {
+                    "name": "structured_events",
+                    "passed": true,
+                    "evidence": "Structured output flag: \"stdout-json\"."
+                  },
+                  {
+                    "name": "usage_accounting",
+                    "passed": true,
+                    "evidence": "Runtime output supports usage parsing."
+                  },
+                  {
+                    "name": "bounded_lifecycle",
+                    "passed": true,
+                    "evidence": "Timeout and kill are supported."
+                  }
+                ]
+              }
+            },
+            "runtime_pid": 21165,
+            "runtime_signal": null,
+            "runtime_timed_out": false,
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "deterministic_checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/type-check.stderr.log"
+              }
+            ],
+            "checks_completed_at": "2026-09-09T11:57:56.499Z"
+          }
+        },
+        {
+          "id": "9c3d6d98-cc10-4a96-bee4-b0b834c04230",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "completed",
+          "metadata": {
+            "maker_lease_id": "782f38ca-6b99-4b2f-b140-7a40efabb903",
+            "requires_independent_review": true,
+            "verdict": "accepted",
+            "notes": "Accepted from dashboard",
+            "completed_at": "2026-09-09T11:59:00.937Z"
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_type": "loop_planned",
+          "message": "doc-drift-and-small-fix-loop produced 1 finding(s) for review.",
+          "metadata": {
+            "loop_name": "doc-drift-and-small-fix-loop",
+            "finding_count": 1,
+            "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/LOOP_STATE.md",
+            "outcome": "plan_ready"
+          },
+          "created_at": "2026-09-09T11:57:56.127Z"
+        },
+        {
+          "event_type": "worker_leases_prepared",
+          "message": "Prepared 1 maker/checker assignment(s) with strategy \"maker-checker-v1\".",
+          "metadata": {
+            "finding_ids": [
+              "fa1e726e-6d19-466d-89e5-ada40fe46395"
+            ],
+            "runtime": "mock",
+            "budget": {
+              "maxMakerWorkers": 5,
+              "source": "default"
+            },
+            "strategy": "maker-checker-v1",
+            "strategyConfidence": 0
+          },
+          "created_at": "2026-09-09T11:57:56.196Z"
+        },
+        {
+          "event_type": "maker_executed",
+          "message": "Maker lease 782f38ca-6b99-4b2f-b140-7a40efabb903 completed.",
+          "metadata": {
+            "lease_id": "782f38ca-6b99-4b2f-b140-7a40efabb903",
+            "gates": [
+              {
+                "name": "maker_runtime_exit_zero",
+                "status": "pass",
+                "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+              },
+              {
+                "name": "diff_under_threshold",
+                "status": "pass",
+                "evidence": "0 changed diff line(s), threshold 200."
+              },
+              {
+                "name": "token_budget",
+                "status": "skipped",
+                "evidence": "No token budget configured for this goal."
+              },
+              {
+                "name": "runtime_warning_gate",
+                "status": "pass",
+                "evidence": "No runtime warnings detected."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Maker execution did not merge, push, or deploy."
+              }
+            ],
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/worker-output/782f38ca-6b99-4b2f-b140-7a40efabb903/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/worker-output/782f38ca-6b99-4b2f-b140-7a40efabb903/stderr.log",
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_cancelled": false
+          },
+          "created_at": "2026-09-09T11:57:56.230Z"
+        },
+        {
+          "event_type": "deterministic_checks_completed",
+          "message": "Deterministic checks passed/skipped for maker lease 782f38ca-6b99-4b2f-b140-7a40efabb903.",
+          "metadata": {
+            "lease_id": "782f38ca-6b99-4b2f-b140-7a40efabb903",
+            "checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/3b83a611-881b-4640-9153-c1cabd6f7e44/checks/782f38ca-6b99-4b2f-b140-7a40efabb903/type-check.stderr.log"
+              }
+            ]
+          },
+          "created_at": "2026-09-09T11:57:56.499Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T11:59:00.938Z"
+        },
+        {
+          "event_type": "checker_verdict_submitted",
+          "message": "Checker verdict submitted: accepted.",
+          "metadata": {
+            "checker_lease_id": "9c3d6d98-cc10-4a96-bee4-b0b834c04230",
+            "maker_lease_id": "782f38ca-6b99-4b2f-b140-7a40efabb903",
+            "verdict": "accepted"
+          },
+          "created_at": "2026-09-09T11:59:00.938Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T11:59:17.371Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T11:59:44.830Z"
+        },
+        {
+          "event_type": "loop_completed",
+          "message": "Loop run completed after verification gates passed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "human_approval_ref": "operator:f0997a41-1d2c-4833-8102-86ea30f33ead"
+          },
+          "created_at": "2026-09-09T11:59:44.831Z"
+        }
+      ],
+      "tasks": [],
+      "approvals": [],
+      "execution_events": []
+    },
+    {
+      "id": "678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b",
+      "status": "completed",
+      "repository_path": "/private/tmp/djimitflo-g54-browser-p86vLa",
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null,
+        "human_approval_ref": "operator:f0997a41-1d2c-4833-8102-86ea30f33ead"
+      },
+      "completed_at": "2026-09-09T12:01:56.178Z",
+      "leases": [
+        {
+          "id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+          "role": "maker",
+          "runtime": "mock",
+          "status": "completed",
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/291e1a1a-c94a-4f01-9751-19ea8728a24a/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/291e1a1a-c94a-4f01-9751-19ea8728a24a/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "mock",
+            "effective_runtime": "mock",
+            "started_at": "2026-09-09T12:00:46.109Z",
+            "completed_at": "2026-09-09T12:00:46.139Z",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stderr.log",
+            "diff_lines": 0,
+            "diff_max_lines": 200,
+            "exit_status": 0,
+            "timed_out": false,
+            "runtime_adapter": "mock",
+            "runtime_contract": {
+              "runtime": "mock",
+              "available": true,
+              "command": "/Users/dlandman/.hermes/node/bin/node",
+              "version": "mock-runtime",
+              "status": "ok",
+              "cwd_flag": "argv",
+              "json_flag": "stdout-json",
+              "supports_json_events": true,
+              "supports_usage_parsing": true,
+              "supports_timeout_kill": true,
+              "evidence": [
+                "deterministic in-process mock runtime"
+              ],
+              "conformance": {
+                "status": "pass",
+                "proof_class": "static",
+                "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+                "checks": [
+                  {
+                    "name": "runtime_available",
+                    "passed": true,
+                    "evidence": "Runtime binary is available."
+                  },
+                  {
+                    "name": "contract_not_drifted",
+                    "passed": true,
+                    "evidence": "Runtime contract status is ok."
+                  },
+                  {
+                    "name": "structured_events",
+                    "passed": true,
+                    "evidence": "Structured output flag: \"stdout-json\"."
+                  },
+                  {
+                    "name": "usage_accounting",
+                    "passed": true,
+                    "evidence": "Runtime output supports usage parsing."
+                  },
+                  {
+                    "name": "bounded_lifecycle",
+                    "passed": true,
+                    "evidence": "Timeout and kill are supported."
+                  }
+                ]
+              }
+            },
+            "runtime_pid": 23208,
+            "runtime_signal": null,
+            "runtime_timed_out": false,
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "deterministic_checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stderr.log"
+              }
+            ],
+            "checks_completed_at": "2026-09-09T12:00:46.414Z"
+          }
+        },
+        {
+          "id": "7e833e7c-d970-4641-9930-0bd85bd81b17",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "completed",
+          "metadata": {
+            "maker_lease_id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+            "requires_independent_review": true,
+            "verdict": "accepted",
+            "notes": "Accepted from dashboard",
+            "completed_at": "2026-09-09T12:00:59.137Z"
+          }
+        }
+      ],
+      "events": [
+        {
+          "event_type": "loop_planned",
+          "message": "doc-drift-and-small-fix-loop produced 1 finding(s) for review.",
+          "metadata": {
+            "loop_name": "doc-drift-and-small-fix-loop",
+            "finding_count": 1,
+            "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/LOOP_STATE.md",
+            "outcome": "plan_ready"
+          },
+          "created_at": "2026-09-09T12:00:46.030Z"
+        },
+        {
+          "event_type": "worker_leases_prepared",
+          "message": "Prepared 1 maker/checker assignment(s) with strategy \"maker-checker-v1\".",
+          "metadata": {
+            "finding_ids": [
+              "291e1a1a-c94a-4f01-9751-19ea8728a24a"
+            ],
+            "runtime": "mock",
+            "budget": {
+              "maxMakerWorkers": 5,
+              "source": "default"
+            },
+            "strategy": "maker-checker-v1",
+            "strategyConfidence": 0
+          },
+          "created_at": "2026-09-09T12:00:46.106Z"
+        },
+        {
+          "event_type": "maker_executed",
+          "message": "Maker lease 38b8e77f-0564-46b1-926a-3f7d47108a26 completed.",
+          "metadata": {
+            "lease_id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+            "gates": [
+              {
+                "name": "maker_runtime_exit_zero",
+                "status": "pass",
+                "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+              },
+              {
+                "name": "diff_under_threshold",
+                "status": "pass",
+                "evidence": "0 changed diff line(s), threshold 200."
+              },
+              {
+                "name": "token_budget",
+                "status": "skipped",
+                "evidence": "No token budget configured for this goal."
+              },
+              {
+                "name": "runtime_warning_gate",
+                "status": "pass",
+                "evidence": "No runtime warnings detected."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Maker execution did not merge, push, or deploy."
+              }
+            ],
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stderr.log",
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            },
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_cancelled": false
+          },
+          "created_at": "2026-09-09T12:00:46.139Z"
+        },
+        {
+          "event_type": "deterministic_checks_completed",
+          "message": "Deterministic checks passed/skipped for maker lease 38b8e77f-0564-46b1-926a-3f7d47108a26.",
+          "metadata": {
+            "lease_id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+            "checks": [
+              {
+                "name": "test",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stderr.log"
+              },
+              {
+                "name": "lint",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stderr.log"
+              },
+              {
+                "name": "type-check",
+                "status": "pass",
+                "exit_status": 0,
+                "timed_out": false,
+                "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stdout.log",
+                "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stderr.log"
+              }
+            ]
+          },
+          "created_at": "2026-09-09T12:00:46.415Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T12:00:59.137Z"
+        },
+        {
+          "event_type": "checker_verdict_submitted",
+          "message": "Checker verdict submitted: accepted.",
+          "metadata": {
+            "checker_lease_id": "7e833e7c-d970-4641-9930-0bd85bd81b17",
+            "maker_lease_id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+            "verdict": "accepted"
+          },
+          "created_at": "2026-09-09T12:00:59.137Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T12:00:59.178Z"
+        },
+        {
+          "event_type": "loop_verified",
+          "message": "Verification status: ready_for_human_merge; 0 gate(s) incomplete or failed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "block_metadata": {
+              "dry_run": true,
+              "workers_leased": 0,
+              "mutating_actions": false,
+              "outcome": "plan_ready",
+              "risk_class": "low",
+              "contract": {
+                "name": "doc-drift-and-small-fix-loop",
+                "title": "Doc Drift And Small Fix",
+                "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+                "mode": "closed",
+                "risk_class": "low",
+                "trigger": [
+                  "manual",
+                  "scheduled"
+                ],
+                "context_sources": [
+                  "markdown",
+                  "package_scripts",
+                  "loop_skills"
+                ],
+                "actions_allowed": [
+                  "read_repo",
+                  "read_docs",
+                  "propose_tasks",
+                  "write_loop_state",
+                  "prepare_worktree",
+                  "execute_maker",
+                  "run_checks",
+                  "submit_checker_verdict",
+                  "retry",
+                  "split"
+                ],
+                "actions_forbidden": [
+                  "merge",
+                  "deploy",
+                  "modify_secrets",
+                  "modify_policy",
+                  "delete_data"
+                ],
+                "verification": [
+                  "read_only_discovery",
+                  "diff_threshold",
+                  "tests_lint_typecheck",
+                  "checker_verdict",
+                  "no_automatic_merge"
+                ],
+                "state": [
+                  "sqlite:loop_runs",
+                  "sqlite:loop_events",
+                  "markdown:LOOP_STATE.md"
+                ],
+                "escalation": [
+                  "failed_gate",
+                  "retry_budget_exhausted",
+                  "wall_clock_budget_exhausted",
+                  "token_budget_exhausted"
+                ],
+                "stop_conditions": [
+                  "scan_budget_exhausted",
+                  "no_findings",
+                  "findings_planned",
+                  "all_gates_passed_or_human_required"
+                ]
+              },
+              "sovereign": false,
+              "strategy": "maker-checker-v1",
+              "budget_risk": null
+            }
+          },
+          "created_at": "2026-09-09T12:01:56.178Z"
+        },
+        {
+          "event_type": "loop_completed",
+          "message": "Loop run completed after verification gates passed.",
+          "metadata": {
+            "gates": [
+              {
+                "name": "run_not_cancelled",
+                "status": "pass",
+                "evidence": "Verification cannot resume or certify an operator-cancelled run."
+              },
+              {
+                "name": "maker_completion",
+                "status": "pass",
+                "evidence": "1/1 active maker lease(s) completed; every non-superseded maker must complete."
+              },
+              {
+                "name": "maker_checker_separation",
+                "status": "pass",
+                "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+              },
+              {
+                "name": "worktree_isolation",
+                "status": "pass",
+                "evidence": "Every maker lease must have an existing isolated worktree."
+              },
+              {
+                "name": "assignment_file_present",
+                "status": "pass",
+                "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+              },
+              {
+                "name": "diff_threshold_all_makers",
+                "status": "pass",
+                "evidence": "All completed maker leases must stay under their configured diff threshold."
+              },
+              {
+                "name": "checker_verdict",
+                "status": "pass",
+                "evidence": "Every completed maker lease requires an accepted checker verdict."
+              },
+              {
+                "name": "tests_lint_typecheck",
+                "status": "pass",
+                "evidence": "Each completed maker lease requires passing or skipped deterministic checks."
+              },
+              {
+                "name": "security_checker_verdict",
+                "status": "skipped",
+                "evidence": "Run is not high-risk."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+              }
+            ],
+            "human_approval_ref": "operator:f0997a41-1d2c-4833-8102-86ea30f33ead"
+          },
+          "created_at": "2026-09-09T12:01:56.179Z"
+        }
+      ],
+      "tasks": [],
+      "approvals": [],
+      "execution_events": []
+    }
+  ],
+  "git": {
+    "head": "952bc0551c135d380ed847bc923542d6fa24896b",
+    "main": "952bc0551c135d380ed847bc923542d6fa24896b",
+    "status": "",
+    "remotes": ""
+  }
+}

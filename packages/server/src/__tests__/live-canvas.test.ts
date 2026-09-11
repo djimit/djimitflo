@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import express from 'express';
+import type { Server } from 'node:http';
 import Database from 'better-sqlite3';
 import { LiveCanvasService } from '../services/live-canvas-service';
 import { TelegramBotService } from '../services/telegram-bot-service';
@@ -6,8 +8,13 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { DENNIS_AGENT_ID } from '../services/dennis-agent-service';
 import { parseTelegramAllowedUsers, parseTelegramUserMap, telegramConfigStatus } from '../routes/telegram';
-import { ApprovalService } from '../services/approval-service';
-import { AuditService } from '../services/audit-service';
+import { TelegramApiService } from '../services/telegram-api-service';
+import { AuthService } from '../services/auth-service';
+import { createAuthMiddleware } from '../middleware/auth';
+import { createTaskRoutes } from '../routes/tasks';
+import { createApprovalRoutes } from '../routes/approvals';
+import { ExecutionEngine } from '../execution/execution-engine';
+import { errorHandler } from '../middleware/error-handler';
 
 describe('LiveCanvasService', () => {
   let db: Database.Database;
@@ -84,15 +91,28 @@ describe('LiveCanvasService', () => {
 describe('TelegramBotService', () => {
   let db: Database.Database;
   let service: TelegramBotService;
+  let server: Server;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     db.exec(schema);
     runMigrations(db);
     db.prepare("INSERT INTO users (id,email,password_hash,role) VALUES ('user-1','operator@example.test','x','admin')").run();
-    service = new TelegramBotService(db, new ApprovalService(db, { broadcastTaskEventById: () => undefined } as any, new AuditService(db)));
+    const authService = new AuthService(db);
+    const auth = createAuthMiddleware(authService);
+    const engine = new ExecutionEngine(db);
+    const app = express().use(express.json());
+    app.use('/tasks', auth.requireAuth, createTaskRoutes(db, engine, auth));
+    app.use('/approvals', auth.requireAuth, createApprovalRoutes(db, engine, auth));
+    app.use(errorHandler);
+    server = app.listen(0, '127.0.0.1');
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const port = (server.address() as import('net').AddressInfo).port;
+    service = new TelegramBotService(db, new TelegramApiService(authService, `http://127.0.0.1:${port}`));
+    vi.spyOn(service, 'sendMessage').mockResolvedValue();
   });
+  afterEach(async () => { await new Promise<void>(resolve => server.close(() => resolve())); db.close(); vi.restoreAllMocks(); });
 
   it('is not configured by default', () => {
     expect(service.isConfigured()).toBe(false);
@@ -128,7 +148,7 @@ describe('TelegramBotService', () => {
 
   it('broadcasts alerts to configured users', async () => {
     service.configure({ botToken: 'mock-token', allowedUsers: [123, 456] });
-    // Will fail to actually send but should not throw
+    // Outbound delivery is stubbed: no real Telegram request is authorized.
     await expect(service.broadcastAlert('Test alert')).resolves.not.toThrow();
   });
 
@@ -200,7 +220,7 @@ describe('TelegramBotService', () => {
 
     await service.handleWebhook({ message: { chat: { id: 123 }, from: { id: 123 }, text: `/approve ${approvalId}`, message_id: 1 } });
 
-    expect(replies[0]).toContain('Approved and materialized Dennis dry\\-run');
+    expect(replies[0]).toContain('Approved:');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(approvalId) as any).status).toBe('approved');
     const event = db.prepare("SELECT * FROM execution_events WHERE task_id = ? AND event_type = 'dennis_approved_dry_run_materialized'").get(taskId) as any;
     expect(JSON.parse(event.tool_output).executed_mutations).toEqual([]);

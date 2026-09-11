@@ -60,8 +60,8 @@ export function createWorkerRoutes(db: Database, auth?: AuthMiddleware): Router 
     try { res.json(await service.drainWorkerPool(req.body || {})); } catch (error) { try { mapWorkerPoolError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
-  router.post('/worker-pool/stop/:leaseId', requirePermission('write:swarm_action'), (req, res, next) => {
-    try { res.json(service.stopWorkerLease(req.params.leaseId)); } catch (error) { try { mapWorkerPoolError(error); } catch (mapped) { next(mapped); } next(error); }
+  router.post('/worker-pool/stop/:leaseId', requirePermission('write:swarm_action'), async (req, res, next) => {
+    try { res.json(await service.stopWorkerLease(req.params.leaseId)); } catch (error) { try { mapWorkerPoolError(error); } catch (mapped) { next(mapped); } next(error); }
   });
 
   router.post('/handoffs', requirePermission('write:swarm_action'), async (req, res, next) => {

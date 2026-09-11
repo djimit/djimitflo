@@ -153,7 +153,7 @@ export function SwarmOverviewPage() {
 
     const unsubTaskCreated = subscribe(WebSocketEventType.TASK_CREATED, (message) => {
       const { task } = message.payload as { task: Task };
-      setLocalTasks(prevTasks => [task, ...prevTasks]);
+      useStore.getState().addTask(task);
     });
 
     const unsubTaskCompleted = subscribe(WebSocketEventType.TASK_COMPLETED, (message) => {
@@ -171,19 +171,19 @@ export function SwarmOverviewPage() {
     });
 
     // Discussion WebSocket subscriptions
-    const unsubDiscussionCreated = subscribe("DISCUSSION_CREATED" as WebSocketEventType, (message) => {
+    const unsubDiscussionCreated = subscribe(WebSocketEventType.DISCUSSION_CREATED, (message) => {
       const discussion = message.payload as unknown as Discussion;
       setDiscussions(prev => [discussion, ...prev]);
     });
 
-    const unsubProposalAdded = subscribe("PROPOSAL_ADDED" as WebSocketEventType, (message) => {
+    const unsubProposalAdded = subscribe(WebSocketEventType.PROPOSAL_ADDED, (message) => {
       const { discussion_id } = message.payload as unknown as { discussion_id: string };
       setDiscussions(prev =>
         prev.map(d => d.id === discussion_id ? { ...d, proposal_count: (d.proposal_count || 0) + 1 } : d)
       );
     });
 
-    const unsubVoteCast = subscribe("VOTE_CAST" as WebSocketEventType, (message) => {
+    const unsubVoteCast = subscribe(WebSocketEventType.VOTE_CAST, (message) => {
       const { discussion_id } = message.payload as unknown as { discussion_id: string };
       setDiscussions(prev =>
         prev.map(d => d.id === discussion_id ? { ...d, vote_count: (d.vote_count || 0) + 1 } : d)
@@ -203,21 +203,17 @@ export function SwarmOverviewPage() {
 
   // Sync with store when it updates
   useEffect(() => {
-    if (agents.length > 0) {
-      setLocalAgents(agents);
-    }
+    setLocalAgents(agents);
   }, [agents]);
 
   useEffect(() => {
-    if (tasks.length > 0) {
-      setLocalTasks(tasks);
-    }
+    setLocalTasks(tasks);
   }, [tasks]);
 
   const activeAgents = localAgents.filter(a => a.status === "active");
   const idleAgents = localAgents.filter(a => a.status === "idle");
   const errorAgents = localAgents.filter(a => a.status === "error");
-  const totalTasks = localAgents.reduce((sum, a) => sum + (a.total_tasks || 0), 0);
+  const totalTasks = localTasks.length;
   const totalTokens = localAgents.reduce((sum, a) => sum + (a.total_token_usage || 0), 0);
   const totalExecTime = localAgents.reduce((sum, a) => sum + (a.total_execution_time_ms || 0), 0);
   const completedTasks = localTasks.filter(t => t.status === "completed");

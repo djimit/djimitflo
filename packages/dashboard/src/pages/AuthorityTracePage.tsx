@@ -32,6 +32,7 @@ export function AuthorityTracePage() {
   const [events, setEvents] = useState<AuthorityEvent[]>([]);
   const [decision, setDecision] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -39,15 +40,26 @@ export function AuthorityTracePage() {
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const s = await api.getAuthorityStats() as unknown as AuthorityStats;
       const e = await api.getAuthorityEvents(decision === 'ALL' ? undefined : decision);
       setStats(s);
       setEvents(e.events as unknown as AuthorityEvent[]);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Authority ledger unavailable');
     } finally {
       setLoading(false);
     }
   };
+
+  if (error) return (
+    <div className="p-8 space-y-4">
+      <h1 className="text-3xl font-bold text-foreground">Authority Ledger</h1>
+      <p role="alert" className="text-status-error">{error}</p>
+      <button onClick={() => void load()} className="rounded border border-border px-3 py-2 text-foreground">Retry</button>
+    </div>
+  );
 
   const total = stats?.total ?? 0;
   const decisionColor = (d: string) =>

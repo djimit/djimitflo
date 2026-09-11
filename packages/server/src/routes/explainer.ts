@@ -13,6 +13,16 @@ import { RepoExplainerScheduler, type SchedulerStatus } from "../services/repo-e
 import { ExplainerProvider } from "@djimitflo/shared";
 import { ExplainerKnowledgeService } from "../services/explainer-knowledge-service";
 import { ExplainerAskService } from "../services/explainer-ask-service";
+import { createError } from "../middleware/error-handler";
+
+function boundedLimit(value: unknown, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+    throw createError(400, `limit must be an integer between 1 and ${maximum}`, "VALIDATION_ERROR");
+  }
+  return limit;
+}
 
 export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -30,8 +40,8 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   // GET /api/explainer/tasks — list tasks
   router.get("/tasks", requirePermission("read:repository"), (req, res) => {
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
-    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
-    const tasks = service.listTasks(Number.isFinite(limit) ? limit : 100, status);
+    const limit = boundedLimit(req.query.limit, 100, 500);
+    const tasks = service.listTasks(limit, status);
     res.json({ tasks, count: tasks.length });
   });
 
@@ -59,7 +69,8 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       const bundlePath = await service.runPipeline(req.params.id, { skipGraph, skipEval, dryRun });
       res.json({ task_id: req.params.id, bundle_path: bundlePath });
     } catch (error) {
-      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error) } });
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(/^Task not found:/.test(message) ? 404 : 500).json({ error: { message, code: /^Task not found:/.test(message) ? 'TASK_NOT_FOUND' : 'EXPLAINER_PIPELINE_ERROR' } });
     }
   });
 
@@ -96,8 +107,8 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   // GET /api/explainer/fleet/repos — list discovered repositories
   router.get("/fleet/repos", publicReadLimiter, requirePermission("read:repository"), (req, res) => {
     const owner = typeof req.query.owner === "string" ? req.query.owner : undefined;
-    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 1000;
-    const repos = discovery.listDiscoveredRepositories(owner, Number.isFinite(limit) ? limit : 1000);
+    const limit = boundedLimit(req.query.limit, 1000, 1000);
+    const repos = discovery.listDiscoveredRepositories(owner, limit);
     res.json({ repositories: repos });
   });
 
@@ -228,10 +239,10 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
         return;
       }
       const repo = typeof req.query.repo === "string" ? req.query.repo : undefined;
-      const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 10;
+      const limit = boundedLimit(req.query.limit, 10, 50);
       const { results, degraded } = await knowledge.search(query, {
         repo,
-        limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 50) : 10,
+        limit,
       });
       res.json({
         query,
@@ -252,7 +263,9 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
         })),
       });
     } catch (error) {
-      res.status(500).json({ error: { message: error instanceof Error ? error.message : String(error), code: "KNOWLEDGE_SEARCH_ERROR" } });
+      const status = typeof (error as any)?.status === "number" ? (error as any).status : 500;
+      const code = typeof (error as any)?.code === "string" ? (error as any).code : "KNOWLEDGE_SEARCH_ERROR";
+      res.status(status).json({ error: { message: error instanceof Error ? error.message : String(error), code } });
     }
   });
 
@@ -367,10 +380,10 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // GET /api/explainer/audit — recent audit log entries (auth read)
   router.get("/audit", heavyReadLimiter, requirePermission("read:repository"), (req, res) => {
-    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 100;
+    const limit = boundedLimit(req.query.limit, 100, 500);
     const rows = db.prepare(
       "SELECT * FROM explainer_audit_log ORDER BY created_at DESC LIMIT ?",
-    ).all(Number.isFinite(limit) ? Math.min(limit, 500) : 100) as any[];
+    ).all(limit) as any[];
     res.json({ entries: rows, count: rows.length });
   });
 
@@ -424,7 +437,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   // GET /api/explainer/fleet/calibration-sample — export published bundles with
   // critic dimensions for human eval (MCR-Bench-style calibration of the 85 threshold).
   router.get("/fleet/calibration-sample", publicReadLimiter, requirePermission("read:repository"), (req, res) => {
-    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 10;
+    const limit = boundedLimit(req.query.limit, 10, 50);
     const rows = db.prepare(
       `SELECT b.id AS bundle_id, b.openmythos_score, b.openmythos_rationale, b.created_at,
               COALESCE(dr.full_name, t.remote_url) AS full_name, b.markdown_path
@@ -433,7 +446,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
        LEFT JOIN discovered_repositories dr ON dr.id = t.discovered_repository_id
        WHERE b.status = 'published' AND dr.full_name IS NOT NULL
        ORDER BY b.created_at DESC LIMIT ?`,
-    ).all(Number.isFinite(limit) ? Math.min(limit, 50) : 10) as any[];
+    ).all(limit) as any[];
     const origin = process.env.DJIMITFLO_PUBLIC_ORIGIN || `http://localhost:${process.env.PORT || 3001}`;
     const sample = rows.map((row) => {
       const dimensions: Record<string, number> = {};

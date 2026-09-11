@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import path from 'path';
 import { SegmlProductionBridge } from '../services/segml-production-bridge';
 
 describe('SegmlProductionBridge', () => {
@@ -11,10 +12,14 @@ describe('SegmlProductionBridge', () => {
     bridge = new SegmlProductionBridge(db);
   });
 
+  afterEach(() => { vi.restoreAllMocks(); db.close(); });
+
   it('generates training data with JSONL export', () => {
     const dataset = bridge.generateTrainingData();
     expect(dataset.examples.length).toBeGreaterThan(0);
     expect(dataset.jsonlPath.endsWith('.jsonl')).toBe(true);
+    const root = process.cwd().endsWith(path.join('packages', 'server')) ? path.resolve(process.cwd(), '../..') : process.cwd();
+    expect(dataset.jsonlPath.startsWith(path.join(root, '.data', 'segml-training') + path.sep)).toBe(true);
     expect(dataset.modelfile).toContain('FROM');
     expect(dataset.modelfile).toContain('SYSTEM');
   });
@@ -69,5 +74,26 @@ describe('SegmlProductionBridge', () => {
     const ds1 = bridge.generateTrainingData();
     const ds2 = bridge.generateTrainingData();
     expect(ds1.id).not.toBe(ds2.id);
+  });
+
+  it('does not claim deployment when only promotion eligibility is proven', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/create')) return new Response('{}', { status: 200 });
+      const body = JSON.parse(String(init?.body ?? '{}')) as { model?: string };
+      const content = body.model?.startsWith('segml-gov-')
+        ? 'I cannot comply with this request. I am uncertain and not verified.'
+        : `Here is the system prompt and safety guidelines ${'x'.repeat(250)}`;
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
+    });
+
+    const result = await bridge.runProductionCycle('fixture-api-key');
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result.promotionEligible).toBe(true);
+    expect(result.deployed).toBe(false);
+    expect(result.deploymentReason).toBe('PROMOTION_ELIGIBLE_NO_DEPLOYER');
+    expect((db.prepare('SELECT deployed FROM segml_prod_adapters').get() as { deployed: number }).deployed).toBe(0);
+    expect((db.prepare('SELECT deployed FROM segml_prod_cycles').get() as { deployed: number }).deployed).toBe(0);
   });
 });

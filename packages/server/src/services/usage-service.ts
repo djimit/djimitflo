@@ -176,6 +176,7 @@ export class UsageService {
     id: string;
     task_id?: string;
     agent_id?: string;
+    provider?: string;
     model?: string;
     task_type?: string;
     prompt_tokens?: number;
@@ -203,19 +204,19 @@ export class UsageService {
         try {
           stmt.run(
             log.id,
-            null,
+            log.task_id || null,
             null,  // discussion_id
-            null,  // agent_id
+            log.agent_id || null,
             log.model || 'unknown',
             (log.task_type && log.task_type !== 'default') ? log.task_type : 'task',
             log.prompt_tokens || 0,
             log.completion_tokens || 0,
-            log.total_tokens || 0,
+            log.total_tokens ?? ((log.prompt_tokens || 0) + (log.completion_tokens || 0)),
             0.0,   // cost_estimate
             null,  // metadata
             log.created_at || now,
             now,   // updated_at
-            (log.task_type && log.task_type !== 'default') ? log.task_type : 'swarm',  // provider
+            log.provider || 'unknown',
             0,     // cache_read_tokens
             0,     // cache_create_tokens
             0,     // cost

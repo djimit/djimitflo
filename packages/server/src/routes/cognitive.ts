@@ -38,7 +38,27 @@ export function createCognitiveRoutes(
 
   // POST /api/cognitive/episodes — record a manual episode
   router.post('/episodes', requirePermission('write:governance'), (req, res) => {
-    const episode = service.recordEpisode(req.body);
+    const input = req.body || {};
+    const loopRunId = input.loopRunId ?? input.loop_run_id;
+    if (typeof loopRunId !== 'string' || !loopRunId.trim()) {
+      res.status(400).json({ error: { message: 'loopRunId is required', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    const outcome = input.outcome || 'partial';
+    if (!['success', 'failure', 'partial', 'cancelled'].includes(outcome)) {
+      res.status(400).json({ error: { message: 'outcome is invalid', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    const now = new Date().toISOString();
+    const episode = service.recordEpisode({
+      loopRunId: loopRunId.trim(), goalId: String(input.goalId ?? input.goal_id ?? ''),
+      goalType: String(input.goalType ?? input.goal_type ?? 'general'), mode: String(input.mode ?? 'closed'),
+      startedAt: String(input.startedAt ?? input.started_at ?? now), completedAt: String(input.completedAt ?? input.completed_at ?? now),
+      durationMs: Number(input.durationMs ?? input.duration_ms ?? 0), outcome,
+      strategy: String(input.strategy ?? 'default'), actions: Array.isArray(input.actions) ? input.actions : [],
+      metrics: input.metrics && typeof input.metrics === 'object' ? input.metrics : {},
+      metadata: input.metadata && typeof input.metadata === 'object' ? input.metadata : {},
+    });
     res.status(201).json(episode);
   });
 

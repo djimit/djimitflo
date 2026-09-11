@@ -74,6 +74,17 @@ describe('DennisAgentService', () => {
     expect(snapshot.self_context.ecosystem_contract.rules).toContain('openmythos_gate_before_skill_or_behavior_promotion');
   });
 
+  it.each(['paused', 'offline', 'pending_approval'])('heartbeat does not reactivate %s Dennis or consume pending work', status => {
+    const service = new DennisAgentService(db, { okfBase });
+    service.heartbeat();
+    db.prepare('UPDATE agents SET status=?,retired_at=? WHERE id=?').run(status, status === 'offline' ? '2026-09-09T00:00:00Z' : null, DENNIS_AGENT_ID);
+    const importer = vi.spyOn(service, 'importPaperclipPending');
+    const result = service.heartbeat();
+    expect(result.status).toBe(status);
+    expect(db.prepare('SELECT status FROM agents WHERE id=?').get(DENNIS_AGENT_ID)).toEqual({ status });
+    expect(importer).not.toHaveBeenCalled();
+  });
+
   it('upserts without duplicating the agent row', () => {
     const service = new DennisAgentService(db, { okfBase });
 

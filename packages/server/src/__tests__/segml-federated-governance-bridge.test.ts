@@ -1,7 +1,10 @@
 import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import express from 'express';
+import request from 'supertest';
 import { SegmlFederatedGovernanceBridge } from '../services/segml-federated-governance-bridge';
 import { createSegmlFederationRoutes } from '../routes/segml-federation';
+import { errorHandler } from '../middleware/error-handler';
 
 describe('SegmlFederatedGovernanceBridge', () => {
   let db: Database.Database;
@@ -72,6 +75,20 @@ describe('SegmlFederatedGovernanceBridge', () => {
     const history = bridge.getSyncHistory();
     expect(history.length).toBe(1);
     expect(history[0].peerId).toBe('peer-1');
+  });
+
+  it('executes the canonical federation HTTP projections and receive path', async () => {
+    const app = express().use(express.json());
+    app.use('/api/segml/federation', createSegmlFederationRoutes(db, { requirePermission: () => (_req: any, _res: any, next: any) => next() } as any));
+    app.use(errorHandler);
+    const summary = await request(app).get('/api/segml/federation/summary');
+    expect(summary.status).toBe(200); expect(summary.body).toMatchObject({ localPatterns: 0, federatedPatterns: 0, peersSynced: 0 });
+    const extracted = await request(app).post('/api/segml/federation/extract').send({});
+    expect(extracted.status).toBe(200); expect(extracted.body.patterns).toEqual([]);
+    const received = await request(app).post('/api/segml/federation/receive').send({ peerId: 'peer-1', patterns: [{ category: 'injection', avgScore: 2, agentCount: 3, trendDirection: 'stable', confidence: 0.7 }] });
+    expect(received.status).toBe(200); expect(received.body).toMatchObject({ peerId: 'peer-1', patternsReceived: 1 });
+    const history = await request(app).get('/api/segml/federation/sync-history');
+    expect(history.status).toBe(200); expect(history.body.history).toHaveLength(1);
   });
 
   it('enforces max federated patterns cap', () => {

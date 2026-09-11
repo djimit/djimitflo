@@ -2,7 +2,7 @@
  * Evidence, observability, and review-readiness types
  */
 
-import { ID, Timestamps, RiskLevel, PolicyDecision } from './common';
+import { ID, Timestamps, RiskLevel, PolicyDecision, TaskStatus } from './common';
 
 export enum EvidenceType {
   EXECUTION_SUMMARY = 'execution_summary',
@@ -31,7 +31,7 @@ export enum EvidenceSeverity {
   CRITICAL = 'critical',
 }
 
-export type EvidenceSource = 'system' | 'executor' | 'policy' | 'approval' | 'user' | 'mcp' | 'governance-gate';
+export type EvidenceSource = 'system' | 'executor' | 'policy' | 'approval' | 'user' | 'mcp' | 'governance-gate' | 'queue-admission';
 
 export interface ExecutionEvidence extends Timestamps {
   id: ID;
@@ -52,12 +52,12 @@ export interface ExecutionSummary extends Timestamps {
   id: ID;
   task_id: ID;
   executor_kind: string;
-  started_at: string;
+  started_at: string | null;
   completed_at: string | null;
   duration_ms: number | null;
-  final_status: 'completed' | 'failed' | 'cancelled' | 'denied';
+  final_status: `${TaskStatus}` | 'denied';
   risk_level: RiskLevel;
-  policy_decision: PolicyDecision;
+  policy_decision: PolicyDecision | 'unknown';
   approval_required: boolean;
   approval_granted: boolean | null;
   event_count: number;

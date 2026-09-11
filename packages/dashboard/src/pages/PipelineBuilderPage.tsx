@@ -3,7 +3,7 @@
  *
  * Uses @xyflow/react for the canvas. Users can drag Goal, Loop, Worker,
  * Checker, and Learning nodes onto the canvas, connect them, and export
- * the pipeline as an OpenSpec change or trigger it via API.
+ * the design as JSON. Drafts are local to this browser; execution is not supported.
  */
 
 import { useCallback, useState } from 'react';
@@ -72,16 +72,45 @@ function PipelineNode({ data }: NodeProps) {
 
 const nodeTypes = { pipeline: PipelineNode };
 
-let nodeId = 0;
-const getNextId = () => `node_${++nodeId}`;
+const DRAFT_KEY = 'djimitflo_pipeline_draft';
 
-const initialNodes: Node[] = [];
-const initialEdges: Edge[] = [];
+function loadDraft(): { name: string; nodes: Node[]; edges: Edge[]; error: string | null } {
+  try {
+    const saved = localStorage.getItem(DRAFT_KEY);
+    if (saved) {
+      const draft = JSON.parse(saved);
+      if (typeof draft?.name !== 'string' || !Array.isArray(draft.nodes) || !Array.isArray(draft.edges)
+        || !draft.nodes.every((node: Node) => node && typeof node.id === 'string' && node.type === 'pipeline'
+          && Number.isFinite(node.position?.x) && Number.isFinite(node.position?.y)
+          && typeof node.data?.label === 'string' && PALETTE.some(item => item.type === node.data?.nodeType))
+        || new Set(draft.nodes.map((node: Node) => node.id)).size !== draft.nodes.length
+        || !draft.edges.every((edge: Edge) => edge && typeof edge.id === 'string'
+          && draft.nodes.some((node: Node) => node.id === edge.source) && draft.nodes.some((node: Node) => node.id === edge.target))) {
+        throw new Error('Invalid draft');
+      }
+      return { ...draft, error: null };
+    }
+  } catch {
+    return { name: 'Untitled Pipeline', nodes: [], edges: [], error: 'Saved draft could not be loaded. The original remains in browser storage until you save a replacement.' };
+  }
+  return { name: 'Untitled Pipeline', nodes: [], edges: [], error: null };
+}
 
 export function PipelineBuilderPage() {
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
-  const [pipelineName, setPipelineName] = useState('Untitled Pipeline');
+  const [draft] = useState(loadDraft);
+  const [nodes, setNodes] = useState<Node[]>(draft.nodes);
+  const [edges, setEdges] = useState<Edge[]>(draft.edges);
+  const [pipelineName, setPipelineName] = useState(draft.name);
+  const [message, setMessage] = useState<string | null>(draft.error);
+
+  const saveDraft = () => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ name: pipelineName, nodes, edges }));
+      setMessage('Draft saved in this browser.');
+    } catch {
+      setMessage('Draft could not be saved. Export JSON to keep your work.');
+    }
+  };
 
   const onNodesChange: OnNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -101,7 +130,7 @@ export function PipelineBuilderPage() {
   const addNode = useCallback((type: NodeType) => {
     const item = PALETTE.find((p) => p.type === type)!;
     const newNode: Node = {
-      id: getNextId(),
+      id: crypto.randomUUID(),
       type: 'pipeline',
       position: { x: 100 + Math.random() * 300, y: 100 + Math.random() * 200 },
       data: { label: item.label, nodeType: type },
@@ -133,52 +162,57 @@ export function PipelineBuilderPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: '#0f172a', borderBottom: '1px solid #334155' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: '#0f172a', borderBottom: '1px solid #334155' }}>
+        <div style={{ display: 'flex', minWidth: 0, maxWidth: '100%', alignItems: 'center', gap: '12px' }}>
           <GitBranch size={20} color="#6366f1" />
           <input
             value={pipelineName}
             onChange={(e) => setPipelineName(e.target.value)}
-            style={{ background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: '16px', fontWeight: 600, outline: 'none' }}
+            aria-label="Pipeline name"
+            style={{ minWidth: 0, width: '100%', background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: '16px', fontWeight: 600, outline: 'none' }}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
           <button onClick={clearCanvas} style={btnStyle('#ef4444')}>
             <Trash2 size={14} /> Clear
           </button>
           <button onClick={exportPipeline} style={btnStyle('#6366f1')}>
             <Download size={14} /> Export
           </button>
-          <button onClick={() => alert('Pipeline saved!')} style={btnStyle('#10b981')}>
-            <Save size={14} /> Save
+          <button onClick={saveDraft} style={btnStyle('#10b981')}>
+            <Save size={14} /> Save draft locally
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flex: 1 }}>
+      <p role="status" className="px-5 py-2 text-sm text-foreground-secondary">{message || 'Design and export a pipeline. Drafts stay in this browser; this canvas does not execute agents.'}</p>
+
+      <div className="flex flex-1 min-h-0 flex-col sm:flex-row">
         {/* Palette */}
-        <div style={{ width: '180px', background: '#0f172a', borderRight: '1px solid #334155', padding: '16px' }}>
+        <div className="w-full sm:w-44 shrink-0" style={{ background: '#0f172a', borderRight: '1px solid #334155', padding: '16px' }}>
           <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: '12px' }}>
             Nodes
           </div>
+          <div className="flex gap-2 overflow-x-auto sm:block">
           {PALETTE.map((item) => (
             <button
               key={item.type}
               onClick={() => addNode(item.type)}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '8px 12px', marginBottom: '6px', background: '#1e293b', border: `1px solid ${item.color}33`, borderRadius: '6px', color: '#e2e8f0', cursor: 'pointer', fontSize: '13px' }}
+              style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '8px', padding: '8px 12px', marginBottom: '6px', background: '#1e293b', border: `1px solid ${item.color}33`, borderRadius: '6px', color: '#e2e8f0', cursor: 'pointer', fontSize: '13px' }}
             >
               <Plus size={12} />
               <item.icon size={14} color={item.color} />
               {item.label}
             </button>
           ))}
+          </div>
           <div style={{ marginTop: '20px', fontSize: '11px', color: '#64748b' }}>
             Drag nodes onto the canvas and connect them to build your pipeline.
           </div>
         </div>
 
         {/* Canvas */}
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minHeight: '250px', minWidth: 0 }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}

@@ -40,6 +40,15 @@ const RISKS = new Set(['low', 'medium', 'high', 'critical']);
 const MODEL_STATUSES = new Set(['active', 'inactive', 'deprecated']);
 const AGGREGATION_METHODS = new Set(['borda', 'weighted_borda', 'reciprocal_rank_fusion']);
 
+function boundedLimit(value: unknown, fallback = 50): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
+
 export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -100,7 +109,7 @@ export function createCouncilRoutes(db: Database, auth?: AuthMiddleware): Router
 
   // GET /api/council/sessions — List council sessions
   router.get('/sessions', requirePermission('read:evidence'), route((_req, res) => {
-    const limit = Math.max(1, Math.min(Number(_req.query.limit) || 50, 100));
+    const limit = boundedLimit(_req.query.limit);
     const sessions = orchestrator.listSessions(limit);
     res.json(sessions);
   }));

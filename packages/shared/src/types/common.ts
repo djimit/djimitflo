@@ -50,6 +50,7 @@ export enum ExecutionEventType {
 
 // Agent-related enums
 export enum AgentStatus {
+  PENDING_APPROVAL = 'pending_approval',
   IDLE = 'idle',
   ACTIVE = 'active',
   PAUSED = 'paused',
@@ -129,6 +130,7 @@ export enum AuditEventType {
   SHELL_EXECUTED = 'shell.executed',
   EXECUTION_PAUSED = 'execution.paused',
   EXECUTION_RESUMED = 'execution.resumed',
+  EXECUTION_FAILED = 'execution.failed',
   EXECUTION_DENIED = 'execution.denied',
   POLICY_CREATED = 'policy.created',
   POLICY_VIOLATION = 'policy.violation',

@@ -29,7 +29,7 @@ export function Layout() {
       <aside className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 flex-col border-r border-border bg-background-secondary transition-transform md:static md:translate-x-0 ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo */}
         <div className="flex items-start justify-between border-b border-border p-6">
-           <div className="flex items-center justify-between w-full">
+           <div className="flex min-w-0 w-full flex-col gap-2">
              <div>
                <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
                  <Activity className="w-6 h-6 text-accent" />
@@ -194,6 +194,17 @@ export function Layout() {
             label="Self-Driving"
             active={isActive('/self-driving')}
           />
+          <details className="pt-2">
+            <summary className="cursor-pointer px-3 py-2 text-sm text-foreground-secondary">Research &amp; evidence</summary>
+            <NavLink to="/authority" icon={<ShieldCheck className="w-5 h-5" />} label="Authority ledger" active={isActive('/authority')} />
+            <NavLink to="/audit/logs" icon={<ScrollText className="w-5 h-5" />} label="Audit logs" active={isActive('/audit/logs')} />
+            <NavLink to="/pipeline-builder" icon={<Workflow className="w-5 h-5" />} label="Pipeline drafts" active={isActive('/pipeline-builder')} />
+            <NavLink to="/agi-reasoning" icon={<Brain className="w-5 h-5" />} label="Goal reasoning" active={isActive('/agi-reasoning')} />
+            <NavLink to="/consensus-debates" icon={<MessageSquare className="w-5 h-5" />} label="Consensus debates" active={isActive('/consensus-debates')} />
+            <NavLink to="/predictive-analytics" icon={<BarChart3 className="w-5 h-5" />} label="Predictive analytics" active={isActive('/predictive-analytics')} />
+            <NavLink to="/self-healing" icon={<Activity className="w-5 h-5" />} label="Health checks" active={isActive('/self-healing')} />
+            <NavLink to="/explainers" icon={<BookUser className="w-5 h-5" />} label="Repository explainers" active={isActive('/explainers')} />
+          </details>
         </nav>
         
         {/* Footer */}

@@ -1,0 +1,27 @@
+{
+  "phase": "codex-active",
+  "activation": {
+    "profile_id": "engineering-secure-coder",
+    "status": "active",
+    "target": "codex",
+    "compiled_artifact": "{\"target\":\"codex\",\"files\":{\"agent.toml\":\"[agent]\\nname = \\\"Secure Coder\\\"\\nmodel = \\\"gpt-4o\\\"\\ninstructions = \\\"You are Secure Coder (engineering).\\\\n\\\\nPersona: Ships code that is correct, tested, and free of common vulnerability classes.\\\\n\\\\nMission: - Deliver code that is correct, tested, and free of common vulnerability classes before it reaches review\\\\n\\\\nRules:\\\\n- Never disable linters or tests to make a build pass\\\\n- Validate all external input at trust boundaries\\\\n- Prefer the smallest change that fixes the root cause\\\\n- Never commit secrets or credentials\\\\n\\\\nTools: Static analysis tooling, Dependency audit tooling\\\"\\n\"}}",
+    "activated_at": "2026-09-09T10:50:36.416Z",
+    "deactivated_at": null
+  },
+  "audit": [
+    {
+      "seq": 1,
+      "profile_id": "engineering-secure-coder",
+      "action": "import",
+      "detail": "{\"sourcePath\":\"engineering/audit-secure.md\",\"status\":\"passed\"}",
+      "at": "2026-09-09 10:45:14"
+    },
+    {
+      "seq": 3,
+      "profile_id": "engineering-secure-coder",
+      "action": "activate",
+      "detail": "{\"target\":\"codex\",\"evaluation\":\"engineering-secure-coder:6e9037db2a367c67\"}",
+      "at": "2026-09-09 10:50:36"
+    }
+  ]
+}

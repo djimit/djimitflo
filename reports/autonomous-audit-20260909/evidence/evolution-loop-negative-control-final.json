@@ -1,0 +1,2542 @@
+{
+  "state": "PASS",
+  "recorded_at": "2026-09-09T18:01:47.859Z",
+  "runId": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+  "repository": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+  "maker": {
+    "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+    "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+    "role": "maker",
+    "runtime": "mock",
+    "status": "prepared",
+    "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+    "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+    "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+    "budget": {
+      "max_runtime_minutes": 30,
+      "max_retries": 1
+    },
+    "metadata": {
+      "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+      "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+      "requested_runtime": "mock",
+      "effective_runtime": "mock",
+      "routing_recommendation": {
+        "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "runtime": "manual",
+        "capabilityId": ""
+      }
+    },
+    "created_at": "2026-09-09T18:00:34.860Z",
+    "updated_at": "2026-09-09T18:00:34.860Z",
+    "parent_lease_id": null,
+    "spawn_tree_id": null,
+    "depth": 0,
+    "spawned_by_agent_id": null
+  },
+  "step": {
+    "run": {
+      "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "goal_id": null,
+      "loop_name": "doc-drift-and-small-fix-loop",
+      "mode": "closed",
+      "status": "running",
+      "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+      "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "plan": {
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "risk_class": "low",
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "proposed_tasks": [
+          {
+            "title": "Resolve loop finding in README.md",
+            "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "file": "README.md",
+            "line": 3,
+            "risk_class": "low",
+            "parent_finding_id": null,
+            "requires_human_approval_before_merge": true,
+            "maker_role": "doc-drift-and-small-fix-loop-maker",
+            "checker_role": "doc-drift-and-small-fix-loop-checker",
+            "security_checker_required": false,
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ]
+      },
+      "gates": [
+        {
+          "name": "read_only_discovery",
+          "status": "pass",
+          "evidence": "Loop scanned files without editing repository content."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Loop does not merge, deploy, or push changes."
+        },
+        {
+          "name": "maker_checker_separation",
+          "status": "skipped",
+          "evidence": "No maker worker was leased in this read-only first slice."
+        },
+        {
+          "name": "tests_lint_typecheck",
+          "status": "skipped",
+          "evidence": "No patch was created, so code gates are deferred until execution slice."
+        }
+      ],
+      "next_actions": [
+        "Run maker in prepared worktree",
+        "Run checker after maker output",
+        "Call verify before completion"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1"
+      },
+      "created_at": "2026-09-09T18:00:34.853Z",
+      "updated_at": "2026-09-09T18:00:34.860Z",
+      "completed_at": null
+    },
+    "leases": [
+      {
+        "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "maker",
+        "runtime": "mock",
+        "status": "prepared",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+          "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+          "requested_runtime": "mock",
+          "effective_runtime": "mock",
+          "routing_recommendation": {
+            "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "runtime": "manual",
+            "capabilityId": ""
+          }
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:00:34.860Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      },
+      {
+        "id": "ac31c0e6-3d4e-45fe-9964-7f908b653946",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "checker",
+        "runtime": "manual",
+        "status": "prepared",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": null,
+        "branch_name": null,
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "maker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "requires_independent_review": true
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:00:34.860Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      }
+    ],
+    "decision": "execute_maker",
+    "next_actions": [
+      "Run maker in prepared worktree",
+      "Run checker after maker output",
+      "Call verify before completion"
+    ]
+  },
+  "execution": {
+    "run": {
+      "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "goal_id": null,
+      "loop_name": "doc-drift-and-small-fix-loop",
+      "mode": "closed",
+      "status": "verifying",
+      "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+      "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "plan": {
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "risk_class": "low",
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "proposed_tasks": [
+          {
+            "title": "Resolve loop finding in README.md",
+            "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "file": "README.md",
+            "line": 3,
+            "risk_class": "low",
+            "parent_finding_id": null,
+            "requires_human_approval_before_merge": true,
+            "maker_role": "doc-drift-and-small-fix-loop-maker",
+            "checker_role": "doc-drift-and-small-fix-loop-checker",
+            "security_checker_required": false,
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ]
+      },
+      "gates": [
+        {
+          "name": "maker_runtime_exit_zero",
+          "status": "pass",
+          "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+        },
+        {
+          "name": "diff_under_threshold",
+          "status": "pass",
+          "evidence": "0 changed diff line(s), threshold 200."
+        },
+        {
+          "name": "token_budget",
+          "status": "skipped",
+          "evidence": "No token budget configured for this goal."
+        },
+        {
+          "name": "runtime_warning_gate",
+          "status": "pass",
+          "evidence": "No runtime warnings detected."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Maker execution did not merge, push, or deploy."
+        }
+      ],
+      "next_actions": [
+        "Run checker review",
+        "Run verify gates before completion"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null
+      },
+      "created_at": "2026-09-09T18:00:34.853Z",
+      "updated_at": "2026-09-09T18:01:47.696Z",
+      "completed_at": null
+    },
+    "lease": {
+      "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+      "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "role": "maker",
+      "runtime": "mock",
+      "status": "completed",
+      "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "budget": {
+        "max_runtime_minutes": 30,
+        "max_retries": 1
+      },
+      "metadata": {
+        "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+        "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+        "requested_runtime": "mock",
+        "effective_runtime": "mock",
+        "routing_recommendation": {
+          "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "runtime": "manual",
+          "capabilityId": ""
+        },
+        "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+        "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "runtime_adapter": "mock",
+        "started_at": "2026-09-09T18:01:47.660Z",
+        "completed_at": "2026-09-09T18:01:47.696Z",
+        "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+        "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+        "diff_lines": 0,
+        "diff_max_lines": 200,
+        "exit_status": 0,
+        "timed_out": false,
+        "runtime_contract": {
+          "runtime": "mock",
+          "available": true,
+          "command": "/Users/dlandman/.hermes/node/bin/node",
+          "version": "mock-runtime",
+          "status": "ok",
+          "cwd_flag": "argv",
+          "json_flag": "stdout-json",
+          "supports_json_events": true,
+          "supports_usage_parsing": true,
+          "supports_timeout_kill": true,
+          "evidence": [
+            "deterministic in-process mock runtime"
+          ],
+          "conformance": {
+            "status": "pass",
+            "proof_class": "static",
+            "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+            "checks": [
+              {
+                "name": "runtime_available",
+                "passed": true,
+                "evidence": "Runtime binary is available."
+              },
+              {
+                "name": "contract_not_drifted",
+                "passed": true,
+                "evidence": "Runtime contract status is ok."
+              },
+              {
+                "name": "structured_events",
+                "passed": true,
+                "evidence": "Structured output flag: \"stdout-json\"."
+              },
+              {
+                "name": "usage_accounting",
+                "passed": true,
+                "evidence": "Runtime output supports usage parsing."
+              },
+              {
+                "name": "bounded_lifecycle",
+                "passed": true,
+                "evidence": "Timeout and kill are supported."
+              }
+            ]
+          }
+        },
+        "runtime_pid": 20051,
+        "runtime_signal": null,
+        "runtime_timed_out": false,
+        "runtime_warnings": [],
+        "token_efficiency": {
+          "total_tokens": 3,
+          "diff_lines": 0,
+          "tokens_per_diff_line": null,
+          "tokens_per_successful_worker": 3
+        },
+        "runtime_usage": {
+          "prompt_tokens": 1,
+          "completion_tokens": 2,
+          "total_tokens": 3,
+          "usage_source": "runtime_stdout"
+        },
+        "checkpoint_after_id": "ca6b7aac-3313-4f85-945c-28b694d621e4"
+      },
+      "created_at": "2026-09-09T18:00:34.860Z",
+      "updated_at": "2026-09-09T18:01:47.697Z",
+      "parent_lease_id": null,
+      "spawn_tree_id": null,
+      "depth": 0,
+      "spawned_by_agent_id": null
+    },
+    "gates": [
+      {
+        "name": "maker_runtime_exit_zero",
+        "status": "pass",
+        "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+      },
+      {
+        "name": "diff_under_threshold",
+        "status": "pass",
+        "evidence": "0 changed diff line(s), threshold 200."
+      },
+      {
+        "name": "token_budget",
+        "status": "skipped",
+        "evidence": "No token budget configured for this goal."
+      },
+      {
+        "name": "runtime_warning_gate",
+        "status": "pass",
+        "evidence": "No runtime warnings detected."
+      },
+      {
+        "name": "no_automatic_merge",
+        "status": "pass",
+        "evidence": "Maker execution did not merge, push, or deploy."
+      }
+    ],
+    "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+    "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+    "checkpoint_before": {
+      "id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+      "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "label": "before worker 6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+      "state": {
+        "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "goal_id": null,
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "status": "running",
+        "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+        "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+        "findings": [
+          {
+            "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "type": "doc_todo",
+            "severity": "info",
+            "file": "README.md",
+            "line": 3,
+            "message": "Documentation contains an explicit TODO/FIXME marker.",
+            "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ],
+        "plan": {
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "mode": "closed",
+          "risk_class": "low",
+          "workers_leased": 0,
+          "mutating_actions": false,
+          "proposed_tasks": [
+            {
+              "title": "Resolve loop finding in README.md",
+              "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+              "file": "README.md",
+              "line": 3,
+              "risk_class": "low",
+              "parent_finding_id": null,
+              "requires_human_approval_before_merge": true,
+              "maker_role": "doc-drift-and-small-fix-loop-maker",
+              "checker_role": "doc-drift-and-small-fix-loop-checker",
+              "security_checker_required": false,
+              "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+            }
+          ]
+        },
+        "gates": [
+          {
+            "name": "read_only_discovery",
+            "status": "pass",
+            "evidence": "Loop scanned files without editing repository content."
+          },
+          {
+            "name": "no_automatic_merge",
+            "status": "pass",
+            "evidence": "Loop does not merge, deploy, or push changes."
+          },
+          {
+            "name": "maker_checker_separation",
+            "status": "skipped",
+            "evidence": "No maker worker was leased in this read-only first slice."
+          },
+          {
+            "name": "tests_lint_typecheck",
+            "status": "skipped",
+            "evidence": "No patch was created, so code gates are deferred until execution slice."
+          }
+        ],
+        "next_actions": [
+          "Run maker in prepared worktree",
+          "Run checker after maker output",
+          "Call verify before completion"
+        ],
+        "metadata": {
+          "dry_run": true,
+          "workers_leased": 0,
+          "mutating_actions": false,
+          "outcome": "plan_ready",
+          "risk_class": "low",
+          "contract": {
+            "name": "doc-drift-and-small-fix-loop",
+            "title": "Doc Drift And Small Fix",
+            "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+            "mode": "closed",
+            "risk_class": "low",
+            "trigger": [
+              "manual",
+              "scheduled"
+            ],
+            "context_sources": [
+              "markdown",
+              "package_scripts",
+              "loop_skills"
+            ],
+            "actions_allowed": [
+              "read_repo",
+              "read_docs",
+              "propose_tasks",
+              "write_loop_state",
+              "prepare_worktree",
+              "execute_maker",
+              "run_checks",
+              "submit_checker_verdict",
+              "retry",
+              "split"
+            ],
+            "actions_forbidden": [
+              "merge",
+              "deploy",
+              "modify_secrets",
+              "modify_policy",
+              "delete_data"
+            ],
+            "verification": [
+              "read_only_discovery",
+              "diff_threshold",
+              "tests_lint_typecheck",
+              "checker_verdict",
+              "no_automatic_merge"
+            ],
+            "state": [
+              "sqlite:loop_runs",
+              "sqlite:loop_events",
+              "markdown:LOOP_STATE.md"
+            ],
+            "escalation": [
+              "failed_gate",
+              "retry_budget_exhausted",
+              "wall_clock_budget_exhausted",
+              "token_budget_exhausted"
+            ],
+            "stop_conditions": [
+              "scan_budget_exhausted",
+              "no_findings",
+              "findings_planned",
+              "all_gates_passed_or_human_required"
+            ]
+          },
+          "sovereign": false,
+          "strategy": "maker-checker-v1"
+        },
+        "created_at": "2026-09-09T18:00:34.853Z",
+        "updated_at": "2026-09-09T18:00:34.860Z",
+        "completed_at": null
+      },
+      "gates": [
+        {
+          "name": "read_only_discovery",
+          "status": "pass",
+          "evidence": "Loop scanned files without editing repository content."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Loop does not merge, deploy, or push changes."
+        },
+        {
+          "name": "maker_checker_separation",
+          "status": "skipped",
+          "evidence": "No maker worker was leased in this read-only first slice."
+        },
+        {
+          "name": "tests_lint_typecheck",
+          "status": "skipped",
+          "evidence": "No patch was created, so code gates are deferred until execution slice."
+        }
+      ],
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "leases": [
+        {
+          "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "role": "maker",
+          "runtime": "mock",
+          "status": "prepared",
+          "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "budget": {
+            "max_runtime_minutes": 30,
+            "max_retries": 1
+          },
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "mock",
+            "effective_runtime": "mock",
+            "routing_recommendation": {
+              "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+              "runtime": "manual",
+              "capabilityId": ""
+            }
+          },
+          "created_at": "2026-09-09T18:00:34.860Z",
+          "updated_at": "2026-09-09T18:00:34.860Z"
+        },
+        {
+          "id": "ac31c0e6-3d4e-45fe-9964-7f908b653946",
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "prepared",
+          "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "worktree_path": null,
+          "branch_name": null,
+          "budget": {
+            "max_runtime_minutes": 30,
+            "max_retries": 1
+          },
+          "metadata": {
+            "maker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "requires_independent_review": true
+          },
+          "created_at": "2026-09-09T18:00:34.860Z",
+          "updated_at": "2026-09-09T18:00:34.860Z"
+        }
+      ],
+      "metadata": {
+        "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "worker_role": "maker",
+        "worker_runtime": "mock",
+        "phase": "before_worker_execution",
+        "replay_safe": true,
+        "copied_worker_leases": 0
+      },
+      "created_at": "2026-09-09T18:01:47.659Z"
+    },
+    "checkpoint_after": {
+      "id": "ca6b7aac-3313-4f85-945c-28b694d621e4",
+      "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "label": "after worker 6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+      "state": {
+        "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "goal_id": null,
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "status": "verifying",
+        "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+        "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+        "findings": [
+          {
+            "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "type": "doc_todo",
+            "severity": "info",
+            "file": "README.md",
+            "line": 3,
+            "message": "Documentation contains an explicit TODO/FIXME marker.",
+            "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ],
+        "plan": {
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "mode": "closed",
+          "risk_class": "low",
+          "workers_leased": 0,
+          "mutating_actions": false,
+          "proposed_tasks": [
+            {
+              "title": "Resolve loop finding in README.md",
+              "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+              "file": "README.md",
+              "line": 3,
+              "risk_class": "low",
+              "parent_finding_id": null,
+              "requires_human_approval_before_merge": true,
+              "maker_role": "doc-drift-and-small-fix-loop-maker",
+              "checker_role": "doc-drift-and-small-fix-loop-checker",
+              "security_checker_required": false,
+              "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+            }
+          ]
+        },
+        "gates": [
+          {
+            "name": "maker_runtime_exit_zero",
+            "status": "pass",
+            "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+          },
+          {
+            "name": "diff_under_threshold",
+            "status": "pass",
+            "evidence": "0 changed diff line(s), threshold 200."
+          },
+          {
+            "name": "token_budget",
+            "status": "skipped",
+            "evidence": "No token budget configured for this goal."
+          },
+          {
+            "name": "runtime_warning_gate",
+            "status": "pass",
+            "evidence": "No runtime warnings detected."
+          },
+          {
+            "name": "no_automatic_merge",
+            "status": "pass",
+            "evidence": "Maker execution did not merge, push, or deploy."
+          }
+        ],
+        "next_actions": [
+          "Run checker review",
+          "Run verify gates before completion"
+        ],
+        "metadata": {
+          "dry_run": true,
+          "workers_leased": 0,
+          "mutating_actions": false,
+          "outcome": "plan_ready",
+          "risk_class": "low",
+          "contract": {
+            "name": "doc-drift-and-small-fix-loop",
+            "title": "Doc Drift And Small Fix",
+            "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+            "mode": "closed",
+            "risk_class": "low",
+            "trigger": [
+              "manual",
+              "scheduled"
+            ],
+            "context_sources": [
+              "markdown",
+              "package_scripts",
+              "loop_skills"
+            ],
+            "actions_allowed": [
+              "read_repo",
+              "read_docs",
+              "propose_tasks",
+              "write_loop_state",
+              "prepare_worktree",
+              "execute_maker",
+              "run_checks",
+              "submit_checker_verdict",
+              "retry",
+              "split"
+            ],
+            "actions_forbidden": [
+              "merge",
+              "deploy",
+              "modify_secrets",
+              "modify_policy",
+              "delete_data"
+            ],
+            "verification": [
+              "read_only_discovery",
+              "diff_threshold",
+              "tests_lint_typecheck",
+              "checker_verdict",
+              "no_automatic_merge"
+            ],
+            "state": [
+              "sqlite:loop_runs",
+              "sqlite:loop_events",
+              "markdown:LOOP_STATE.md"
+            ],
+            "escalation": [
+              "failed_gate",
+              "retry_budget_exhausted",
+              "wall_clock_budget_exhausted",
+              "token_budget_exhausted"
+            ],
+            "stop_conditions": [
+              "scan_budget_exhausted",
+              "no_findings",
+              "findings_planned",
+              "all_gates_passed_or_human_required"
+            ]
+          },
+          "sovereign": false,
+          "strategy": "maker-checker-v1",
+          "budget_risk": null
+        },
+        "created_at": "2026-09-09T18:00:34.853Z",
+        "updated_at": "2026-09-09T18:01:47.696Z",
+        "completed_at": null
+      },
+      "gates": [
+        {
+          "name": "maker_runtime_exit_zero",
+          "status": "pass",
+          "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+        },
+        {
+          "name": "diff_under_threshold",
+          "status": "pass",
+          "evidence": "0 changed diff line(s), threshold 200."
+        },
+        {
+          "name": "token_budget",
+          "status": "skipped",
+          "evidence": "No token budget configured for this goal."
+        },
+        {
+          "name": "runtime_warning_gate",
+          "status": "pass",
+          "evidence": "No runtime warnings detected."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Maker execution did not merge, push, or deploy."
+        }
+      ],
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "leases": [
+        {
+          "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "role": "maker",
+          "runtime": "mock",
+          "status": "completed",
+          "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "budget": {
+            "max_runtime_minutes": 30,
+            "max_retries": 1
+          },
+          "metadata": {
+            "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+            "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+            "requested_runtime": "mock",
+            "effective_runtime": "mock",
+            "routing_recommendation": {
+              "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+              "runtime": "manual",
+              "capabilityId": ""
+            },
+            "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+            "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "runtime_adapter": "mock",
+            "started_at": "2026-09-09T18:01:47.660Z",
+            "completed_at": "2026-09-09T18:01:47.696Z",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+            "diff_lines": 0,
+            "diff_max_lines": 200,
+            "exit_status": 0,
+            "timed_out": false,
+            "runtime_contract": {
+              "runtime": "mock",
+              "available": true,
+              "command": "/Users/dlandman/.hermes/node/bin/node",
+              "version": "mock-runtime",
+              "status": "ok",
+              "cwd_flag": "argv",
+              "json_flag": "stdout-json",
+              "supports_json_events": true,
+              "supports_usage_parsing": true,
+              "supports_timeout_kill": true,
+              "evidence": [
+                "deterministic in-process mock runtime"
+              ],
+              "conformance": {
+                "status": "pass",
+                "proof_class": "static",
+                "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+                "checks": [
+                  {
+                    "name": "runtime_available",
+                    "passed": true,
+                    "evidence": "Runtime binary is available."
+                  },
+                  {
+                    "name": "contract_not_drifted",
+                    "passed": true,
+                    "evidence": "Runtime contract status is ok."
+                  },
+                  {
+                    "name": "structured_events",
+                    "passed": true,
+                    "evidence": "Structured output flag: \"stdout-json\"."
+                  },
+                  {
+                    "name": "usage_accounting",
+                    "passed": true,
+                    "evidence": "Runtime output supports usage parsing."
+                  },
+                  {
+                    "name": "bounded_lifecycle",
+                    "passed": true,
+                    "evidence": "Timeout and kill are supported."
+                  }
+                ]
+              }
+            },
+            "runtime_pid": 20051,
+            "runtime_signal": null,
+            "runtime_timed_out": false,
+            "runtime_warnings": [],
+            "token_efficiency": {
+              "total_tokens": 3,
+              "diff_lines": 0,
+              "tokens_per_diff_line": null,
+              "tokens_per_successful_worker": 3
+            },
+            "runtime_usage": {
+              "prompt_tokens": 1,
+              "completion_tokens": 2,
+              "total_tokens": 3,
+              "usage_source": "runtime_stdout"
+            }
+          },
+          "created_at": "2026-09-09T18:00:34.860Z",
+          "updated_at": "2026-09-09T18:01:47.696Z"
+        },
+        {
+          "id": "ac31c0e6-3d4e-45fe-9964-7f908b653946",
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "role": "checker",
+          "runtime": "manual",
+          "status": "prepared",
+          "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "worktree_path": null,
+          "branch_name": null,
+          "budget": {
+            "max_runtime_minutes": 30,
+            "max_retries": 1
+          },
+          "metadata": {
+            "maker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "requires_independent_review": true
+          },
+          "created_at": "2026-09-09T18:00:34.860Z",
+          "updated_at": "2026-09-09T18:00:34.860Z"
+        }
+      ],
+      "metadata": {
+        "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "worker_role": "maker",
+        "worker_runtime": "mock",
+        "phase": "after_worker_execution",
+        "replay_safe": true,
+        "copied_worker_leases": 0
+      },
+      "created_at": "2026-09-09T18:01:47.697Z"
+    },
+    "trace": {
+      "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+      "spans": [
+        {
+          "id": "764995ed-1fb4-41cd-a187-af3ff820cdb7",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "parent_span_id": null,
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "work_item_id": null,
+          "span_type": "worker",
+          "name": "maker:mock:spawn",
+          "status": "running",
+          "evidence_ref": "loop:f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker:6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "started_at": "2026-09-09T18:01:47.659Z",
+          "ended_at": null,
+          "metadata": {
+            "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "role": "maker",
+            "runtime": "mock",
+            "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c"
+          },
+          "created_at": "2026-09-09T18:01:47.659Z"
+        },
+        {
+          "id": "5ee0be2d-7fbe-4a07-bd9a-07aaffc19e21",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "parent_span_id": null,
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "work_item_id": null,
+          "span_type": "worker",
+          "name": "maker:mock:completion",
+          "status": "ok",
+          "evidence_ref": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+          "started_at": "2026-09-09T18:01:47.697Z",
+          "ended_at": null,
+          "metadata": {
+            "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "role": "maker",
+            "runtime": "mock",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+            "gates": [
+              {
+                "name": "maker_runtime_exit_zero",
+                "status": "pass",
+                "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+              },
+              {
+                "name": "diff_under_threshold",
+                "status": "pass",
+                "evidence": "0 changed diff line(s), threshold 200."
+              },
+              {
+                "name": "token_budget",
+                "status": "skipped",
+                "evidence": "No token budget configured for this goal."
+              },
+              {
+                "name": "runtime_warning_gate",
+                "status": "pass",
+                "evidence": "No runtime warnings detected."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Maker execution did not merge, push, or deploy."
+              }
+            ]
+          },
+          "created_at": "2026-09-09T18:01:47.697Z"
+        }
+      ],
+      "edges": [],
+      "roots": [
+        {
+          "id": "764995ed-1fb4-41cd-a187-af3ff820cdb7",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "parent_span_id": null,
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "work_item_id": null,
+          "span_type": "worker",
+          "name": "maker:mock:spawn",
+          "status": "running",
+          "evidence_ref": "loop:f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker:6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "started_at": "2026-09-09T18:01:47.659Z",
+          "ended_at": null,
+          "metadata": {
+            "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "role": "maker",
+            "runtime": "mock",
+            "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c"
+          },
+          "created_at": "2026-09-09T18:01:47.659Z"
+        },
+        {
+          "id": "5ee0be2d-7fbe-4a07-bd9a-07aaffc19e21",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "parent_span_id": null,
+          "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+          "work_item_id": null,
+          "span_type": "worker",
+          "name": "maker:mock:completion",
+          "status": "ok",
+          "evidence_ref": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+          "started_at": "2026-09-09T18:01:47.697Z",
+          "ended_at": null,
+          "metadata": {
+            "worker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+            "role": "maker",
+            "runtime": "mock",
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+            "gates": [
+              {
+                "name": "maker_runtime_exit_zero",
+                "status": "pass",
+                "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+              },
+              {
+                "name": "diff_under_threshold",
+                "status": "pass",
+                "evidence": "0 changed diff line(s), threshold 200."
+              },
+              {
+                "name": "token_budget",
+                "status": "skipped",
+                "evidence": "No token budget configured for this goal."
+              },
+              {
+                "name": "runtime_warning_gate",
+                "status": "pass",
+                "evidence": "No runtime warnings detected."
+              },
+              {
+                "name": "no_automatic_merge",
+                "status": "pass",
+                "evidence": "Maker execution did not merge, push, or deploy."
+              }
+            ]
+          },
+          "created_at": "2026-09-09T18:01:47.697Z"
+        }
+      ]
+    }
+  },
+  "checks": {
+    "run": {
+      "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "goal_id": null,
+      "loop_name": "doc-drift-and-small-fix-loop",
+      "mode": "closed",
+      "status": "blocked",
+      "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+      "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "plan": {
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "risk_class": "low",
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "proposed_tasks": [
+          {
+            "title": "Resolve loop finding in README.md",
+            "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "file": "README.md",
+            "line": 3,
+            "risk_class": "low",
+            "parent_finding_id": null,
+            "requires_human_approval_before_merge": true,
+            "maker_role": "doc-drift-and-small-fix-loop-maker",
+            "checker_role": "doc-drift-and-small-fix-loop-checker",
+            "security_checker_required": false,
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ]
+      },
+      "gates": [
+        {
+          "name": "maker_runtime_exit_zero",
+          "status": "pass",
+          "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+        },
+        {
+          "name": "diff_under_threshold",
+          "status": "pass",
+          "evidence": "0 changed diff line(s), threshold 200."
+        },
+        {
+          "name": "token_budget",
+          "status": "skipped",
+          "evidence": "No token budget configured for this goal."
+        },
+        {
+          "name": "runtime_warning_gate",
+          "status": "pass",
+          "evidence": "No runtime warnings detected."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Maker execution did not merge, push, or deploy."
+        }
+      ],
+      "next_actions": [
+        "Inspect deterministic check failure before checker acceptance"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null
+      },
+      "created_at": "2026-09-09T18:00:34.853Z",
+      "updated_at": "2026-09-09T18:01:47.845Z",
+      "completed_at": null
+    },
+    "lease": {
+      "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+      "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "role": "maker",
+      "runtime": "mock",
+      "status": "failed",
+      "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+      "budget": {
+        "max_runtime_minutes": 30,
+        "max_retries": 1
+      },
+      "metadata": {
+        "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+        "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+        "requested_runtime": "mock",
+        "effective_runtime": "mock",
+        "routing_recommendation": {
+          "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "runtime": "manual",
+          "capabilityId": ""
+        },
+        "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+        "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "runtime_adapter": "mock",
+        "started_at": "2026-09-09T18:01:47.660Z",
+        "completed_at": "2026-09-09T18:01:47.696Z",
+        "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+        "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+        "diff_lines": 0,
+        "diff_max_lines": 200,
+        "exit_status": 0,
+        "timed_out": false,
+        "runtime_contract": {
+          "runtime": "mock",
+          "available": true,
+          "command": "/Users/dlandman/.hermes/node/bin/node",
+          "version": "mock-runtime",
+          "status": "ok",
+          "cwd_flag": "argv",
+          "json_flag": "stdout-json",
+          "supports_json_events": true,
+          "supports_usage_parsing": true,
+          "supports_timeout_kill": true,
+          "evidence": [
+            "deterministic in-process mock runtime"
+          ],
+          "conformance": {
+            "status": "pass",
+            "proof_class": "static",
+            "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+            "checks": [
+              {
+                "name": "runtime_available",
+                "passed": true,
+                "evidence": "Runtime binary is available."
+              },
+              {
+                "name": "contract_not_drifted",
+                "passed": true,
+                "evidence": "Runtime contract status is ok."
+              },
+              {
+                "name": "structured_events",
+                "passed": true,
+                "evidence": "Structured output flag: \"stdout-json\"."
+              },
+              {
+                "name": "usage_accounting",
+                "passed": true,
+                "evidence": "Runtime output supports usage parsing."
+              },
+              {
+                "name": "bounded_lifecycle",
+                "passed": true,
+                "evidence": "Timeout and kill are supported."
+              }
+            ]
+          }
+        },
+        "runtime_pid": 20051,
+        "runtime_signal": null,
+        "runtime_timed_out": false,
+        "runtime_warnings": [],
+        "token_efficiency": {
+          "total_tokens": 3,
+          "diff_lines": 0,
+          "tokens_per_diff_line": null,
+          "tokens_per_successful_worker": 3
+        },
+        "runtime_usage": {
+          "prompt_tokens": 1,
+          "completion_tokens": 2,
+          "total_tokens": 3,
+          "usage_source": "runtime_stdout"
+        },
+        "checkpoint_after_id": "ca6b7aac-3313-4f85-945c-28b694d621e4",
+        "deterministic_checks": [
+          {
+            "name": "test",
+            "status": "fail",
+            "exit_status": 1,
+            "timed_out": false,
+            "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stdout.log",
+            "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stderr.log"
+          }
+        ],
+        "checks_completed_at": "2026-09-09T18:01:47.845Z"
+      },
+      "created_at": "2026-09-09T18:00:34.860Z",
+      "updated_at": "2026-09-09T18:01:47.845Z",
+      "parent_lease_id": null,
+      "spawn_tree_id": null,
+      "depth": 0,
+      "spawned_by_agent_id": null
+    },
+    "checks": [
+      {
+        "name": "test",
+        "status": "fail",
+        "exit_status": 1,
+        "timed_out": false,
+        "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stdout.log",
+        "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stderr.log"
+      }
+    ]
+  },
+  "verification": {
+    "run": {
+      "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "goal_id": null,
+      "loop_name": "doc-drift-and-small-fix-loop",
+      "mode": "closed",
+      "status": "blocked",
+      "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+      "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "plan": {
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "risk_class": "low",
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "proposed_tasks": [
+          {
+            "title": "Resolve loop finding in README.md",
+            "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "file": "README.md",
+            "line": 3,
+            "risk_class": "low",
+            "parent_finding_id": null,
+            "requires_human_approval_before_merge": true,
+            "maker_role": "doc-drift-and-small-fix-loop-maker",
+            "checker_role": "doc-drift-and-small-fix-loop-checker",
+            "security_checker_required": false,
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ]
+      },
+      "gates": [
+        {
+          "name": "run_not_cancelled",
+          "status": "pass",
+          "evidence": "Verification cannot resume or certify an operator-cancelled run."
+        },
+        {
+          "name": "maker_completion",
+          "status": "fail",
+          "evidence": "0/1 active maker lease(s) completed; every non-superseded maker must complete."
+        },
+        {
+          "name": "maker_checker_separation",
+          "status": "pass",
+          "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+        },
+        {
+          "name": "worktree_isolation",
+          "status": "pass",
+          "evidence": "Every maker lease must have an existing isolated worktree."
+        },
+        {
+          "name": "assignment_file_present",
+          "status": "pass",
+          "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+        },
+        {
+          "name": "diff_threshold_all_makers",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "checker_verdict",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "tests_lint_typecheck",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "security_checker_verdict",
+          "status": "skipped",
+          "evidence": "Run is not high-risk."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+        }
+      ],
+      "next_actions": [
+        "Inspect deterministic check failure before checker acceptance"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null,
+        "block_reason": "gate_failed",
+        "failed_gates": [
+          "maker_completion: 0/1 active maker lease(s) completed; every non-superseded maker must complete."
+        ],
+        "recommendations": [
+          "Review failed gates and address issues before re-verifying"
+        ],
+        "blocked_at": "2026-09-09T18:01:47.849Z"
+      },
+      "created_at": "2026-09-09T18:00:34.853Z",
+      "updated_at": "2026-09-09T18:01:47.849Z",
+      "completed_at": null
+    },
+    "gates": [
+      {
+        "name": "run_not_cancelled",
+        "status": "pass",
+        "evidence": "Verification cannot resume or certify an operator-cancelled run."
+      },
+      {
+        "name": "maker_completion",
+        "status": "fail",
+        "evidence": "0/1 active maker lease(s) completed; every non-superseded maker must complete."
+      },
+      {
+        "name": "maker_checker_separation",
+        "status": "pass",
+        "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+      },
+      {
+        "name": "worktree_isolation",
+        "status": "pass",
+        "evidence": "Every maker lease must have an existing isolated worktree."
+      },
+      {
+        "name": "assignment_file_present",
+        "status": "pass",
+        "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+      },
+      {
+        "name": "diff_threshold_all_makers",
+        "status": "pass",
+        "evidence": "No completed maker leases yet."
+      },
+      {
+        "name": "checker_verdict",
+        "status": "pass",
+        "evidence": "No completed maker leases yet."
+      },
+      {
+        "name": "tests_lint_typecheck",
+        "status": "pass",
+        "evidence": "No completed maker leases yet."
+      },
+      {
+        "name": "security_checker_verdict",
+        "status": "skipped",
+        "evidence": "Run is not high-risk."
+      },
+      {
+        "name": "no_automatic_merge",
+        "status": "pass",
+        "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+      }
+    ],
+    "leases": [
+      {
+        "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "maker",
+        "runtime": "mock",
+        "status": "failed",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+          "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+          "requested_runtime": "mock",
+          "effective_runtime": "mock",
+          "routing_recommendation": {
+            "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "runtime": "manual",
+            "capabilityId": ""
+          },
+          "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "runtime_adapter": "mock",
+          "started_at": "2026-09-09T18:01:47.660Z",
+          "completed_at": "2026-09-09T18:01:47.696Z",
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+          "diff_lines": 0,
+          "diff_max_lines": 200,
+          "exit_status": 0,
+          "timed_out": false,
+          "runtime_contract": {
+            "runtime": "mock",
+            "available": true,
+            "command": "/Users/dlandman/.hermes/node/bin/node",
+            "version": "mock-runtime",
+            "status": "ok",
+            "cwd_flag": "argv",
+            "json_flag": "stdout-json",
+            "supports_json_events": true,
+            "supports_usage_parsing": true,
+            "supports_timeout_kill": true,
+            "evidence": [
+              "deterministic in-process mock runtime"
+            ],
+            "conformance": {
+              "status": "pass",
+              "proof_class": "static",
+              "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+              "checks": [
+                {
+                  "name": "runtime_available",
+                  "passed": true,
+                  "evidence": "Runtime binary is available."
+                },
+                {
+                  "name": "contract_not_drifted",
+                  "passed": true,
+                  "evidence": "Runtime contract status is ok."
+                },
+                {
+                  "name": "structured_events",
+                  "passed": true,
+                  "evidence": "Structured output flag: \"stdout-json\"."
+                },
+                {
+                  "name": "usage_accounting",
+                  "passed": true,
+                  "evidence": "Runtime output supports usage parsing."
+                },
+                {
+                  "name": "bounded_lifecycle",
+                  "passed": true,
+                  "evidence": "Timeout and kill are supported."
+                }
+              ]
+            }
+          },
+          "runtime_pid": 20051,
+          "runtime_signal": null,
+          "runtime_timed_out": false,
+          "runtime_warnings": [],
+          "token_efficiency": {
+            "total_tokens": 3,
+            "diff_lines": 0,
+            "tokens_per_diff_line": null,
+            "tokens_per_successful_worker": 3
+          },
+          "runtime_usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "usage_source": "runtime_stdout"
+          },
+          "checkpoint_after_id": "ca6b7aac-3313-4f85-945c-28b694d621e4",
+          "deterministic_checks": [
+            {
+              "name": "test",
+              "status": "fail",
+              "exit_status": 1,
+              "timed_out": false,
+              "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stdout.log",
+              "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stderr.log"
+            }
+          ],
+          "checks_completed_at": "2026-09-09T18:01:47.845Z"
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:01:47.845Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      },
+      {
+        "id": "ac31c0e6-3d4e-45fe-9964-7f908b653946",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "checker",
+        "runtime": "manual",
+        "status": "prepared",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": null,
+        "branch_name": null,
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "maker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "requires_independent_review": true
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:00:34.860Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      }
+    ]
+  },
+  "rejection": {
+    "error": {
+      "message": "failed gates block continuation",
+      "code": "LOOP_FAILED_GATES_BLOCK_CONTINUE",
+      "status": 409
+    }
+  },
+  "closure": {
+    "action": "closed_loop_learning",
+    "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+    "status": "blocked",
+    "blocked_reasons": [
+      "run_not_reviewed_terminal",
+      "maker_not_completed",
+      "active_worker_not_completed",
+      "checker_not_accepted",
+      "review_evidence_invalid",
+      "gate_not_passed"
+    ],
+    "eval_run": null,
+    "previous_score": null,
+    "score_delta": null,
+    "reflection": null,
+    "memory_candidate": null,
+    "follow_up_work_item": null,
+    "skill_improvement_work_item": null
+  },
+  "bundle": {
+    "run": {
+      "id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "goal_id": null,
+      "loop_name": "doc-drift-and-small-fix-loop",
+      "mode": "closed",
+      "status": "blocked",
+      "repository_path": "/private/tmp/djimitflo-evolution-loop.I7u89r",
+      "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+      "findings": [
+        {
+          "id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+          "type": "doc_todo",
+          "severity": "info",
+          "file": "README.md",
+          "line": 3,
+          "message": "Documentation contains an explicit TODO/FIXME marker.",
+          "evidence": "TODO: Correct the deliberately inflated outcome fraction only after DjimFlo records the failing test.",
+          "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+        }
+      ],
+      "plan": {
+        "loop_name": "doc-drift-and-small-fix-loop",
+        "mode": "closed",
+        "risk_class": "low",
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "proposed_tasks": [
+          {
+            "title": "Resolve loop finding in README.md",
+            "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "file": "README.md",
+            "line": 3,
+            "risk_class": "low",
+            "parent_finding_id": null,
+            "requires_human_approval_before_merge": true,
+            "maker_role": "doc-drift-and-small-fix-loop-maker",
+            "checker_role": "doc-drift-and-small-fix-loop-checker",
+            "security_checker_required": false,
+            "suggested_fix": "Resolve the marker or convert it to a tracked issue with owner and acceptance criteria."
+          }
+        ]
+      },
+      "gates": [
+        {
+          "name": "run_not_cancelled",
+          "status": "pass",
+          "evidence": "Verification cannot resume or certify an operator-cancelled run."
+        },
+        {
+          "name": "maker_completion",
+          "status": "fail",
+          "evidence": "0/1 active maker lease(s) completed; every non-superseded maker must complete."
+        },
+        {
+          "name": "maker_checker_separation",
+          "status": "pass",
+          "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+        },
+        {
+          "name": "worktree_isolation",
+          "status": "pass",
+          "evidence": "Every maker lease must have an existing isolated worktree."
+        },
+        {
+          "name": "assignment_file_present",
+          "status": "pass",
+          "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+        },
+        {
+          "name": "diff_threshold_all_makers",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "checker_verdict",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "tests_lint_typecheck",
+          "status": "pass",
+          "evidence": "No completed maker leases yet."
+        },
+        {
+          "name": "security_checker_verdict",
+          "status": "skipped",
+          "evidence": "Run is not high-risk."
+        },
+        {
+          "name": "no_automatic_merge",
+          "status": "pass",
+          "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+        }
+      ],
+      "next_actions": [
+        "Inspect deterministic check failure before checker acceptance"
+      ],
+      "metadata": {
+        "dry_run": true,
+        "workers_leased": 0,
+        "mutating_actions": false,
+        "outcome": "plan_ready",
+        "risk_class": "low",
+        "contract": {
+          "name": "doc-drift-and-small-fix-loop",
+          "title": "Doc Drift And Small Fix",
+          "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+          "mode": "closed",
+          "risk_class": "low",
+          "trigger": [
+            "manual",
+            "scheduled"
+          ],
+          "context_sources": [
+            "markdown",
+            "package_scripts",
+            "loop_skills"
+          ],
+          "actions_allowed": [
+            "read_repo",
+            "read_docs",
+            "propose_tasks",
+            "write_loop_state",
+            "prepare_worktree",
+            "execute_maker",
+            "run_checks",
+            "submit_checker_verdict",
+            "retry",
+            "split"
+          ],
+          "actions_forbidden": [
+            "merge",
+            "deploy",
+            "modify_secrets",
+            "modify_policy",
+            "delete_data"
+          ],
+          "verification": [
+            "read_only_discovery",
+            "diff_threshold",
+            "tests_lint_typecheck",
+            "checker_verdict",
+            "no_automatic_merge"
+          ],
+          "state": [
+            "sqlite:loop_runs",
+            "sqlite:loop_events",
+            "markdown:LOOP_STATE.md"
+          ],
+          "escalation": [
+            "failed_gate",
+            "retry_budget_exhausted",
+            "wall_clock_budget_exhausted",
+            "token_budget_exhausted"
+          ],
+          "stop_conditions": [
+            "scan_budget_exhausted",
+            "no_findings",
+            "findings_planned",
+            "all_gates_passed_or_human_required"
+          ]
+        },
+        "sovereign": false,
+        "strategy": "maker-checker-v1",
+        "budget_risk": null,
+        "block_reason": "gate_failed",
+        "failed_gates": [
+          "maker_completion: 0/1 active maker lease(s) completed; every non-superseded maker must complete."
+        ],
+        "recommendations": [
+          "Review failed gates and address issues before re-verifying"
+        ],
+        "blocked_at": "2026-09-09T18:01:47.849Z"
+      },
+      "created_at": "2026-09-09T18:00:34.853Z",
+      "updated_at": "2026-09-09T18:01:47.849Z",
+      "completed_at": null
+    },
+    "leases": [
+      {
+        "id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "maker",
+        "runtime": "mock",
+        "status": "failed",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "branch_name": "agent/loop/f7c21f53-b8a1-4750-8a65-f54a804c91d4-5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/LOOP_WORK.md",
+          "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/.djimitflo/ASSIGNMENT_PACKET.json",
+          "requested_runtime": "mock",
+          "effective_runtime": "mock",
+          "routing_recommendation": {
+            "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+            "runtime": "manual",
+            "capabilityId": ""
+          },
+          "checkpoint_before_id": "4624d836-fd11-48c5-9dc0-81cd6dadfa0c",
+          "trace_id": "loop-f7c21f53-b8a1-4750-8a65-f54a804c91d4-worker-6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "runtime_adapter": "mock",
+          "started_at": "2026-09-09T18:01:47.660Z",
+          "completed_at": "2026-09-09T18:01:47.696Z",
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+          "diff_lines": 0,
+          "diff_max_lines": 200,
+          "exit_status": 0,
+          "timed_out": false,
+          "runtime_contract": {
+            "runtime": "mock",
+            "available": true,
+            "command": "/Users/dlandman/.hermes/node/bin/node",
+            "version": "mock-runtime",
+            "status": "ok",
+            "cwd_flag": "argv",
+            "json_flag": "stdout-json",
+            "supports_json_events": true,
+            "supports_usage_parsing": true,
+            "supports_timeout_kill": true,
+            "evidence": [
+              "deterministic in-process mock runtime"
+            ],
+            "conformance": {
+              "status": "pass",
+              "proof_class": "static",
+              "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+              "checks": [
+                {
+                  "name": "runtime_available",
+                  "passed": true,
+                  "evidence": "Runtime binary is available."
+                },
+                {
+                  "name": "contract_not_drifted",
+                  "passed": true,
+                  "evidence": "Runtime contract status is ok."
+                },
+                {
+                  "name": "structured_events",
+                  "passed": true,
+                  "evidence": "Structured output flag: \"stdout-json\"."
+                },
+                {
+                  "name": "usage_accounting",
+                  "passed": true,
+                  "evidence": "Runtime output supports usage parsing."
+                },
+                {
+                  "name": "bounded_lifecycle",
+                  "passed": true,
+                  "evidence": "Timeout and kill are supported."
+                }
+              ]
+            }
+          },
+          "runtime_pid": 20051,
+          "runtime_signal": null,
+          "runtime_timed_out": false,
+          "runtime_warnings": [],
+          "token_efficiency": {
+            "total_tokens": 3,
+            "diff_lines": 0,
+            "tokens_per_diff_line": null,
+            "tokens_per_successful_worker": 3
+          },
+          "runtime_usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "usage_source": "runtime_stdout"
+          },
+          "checkpoint_after_id": "ca6b7aac-3313-4f85-945c-28b694d621e4",
+          "deterministic_checks": [
+            {
+              "name": "test",
+              "status": "fail",
+              "exit_status": 1,
+              "timed_out": false,
+              "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stdout.log",
+              "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stderr.log"
+            }
+          ],
+          "checks_completed_at": "2026-09-09T18:01:47.845Z"
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:01:47.845Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      },
+      {
+        "id": "ac31c0e6-3d4e-45fe-9964-7f908b653946",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "role": "checker",
+        "runtime": "manual",
+        "status": "prepared",
+        "finding_id": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+        "worktree_path": null,
+        "branch_name": null,
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "maker_lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "requires_independent_review": true
+        },
+        "created_at": "2026-09-09T18:00:34.860Z",
+        "updated_at": "2026-09-09T18:00:34.860Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      }
+    ],
+    "events": [
+      {
+        "id": "9a144041-7453-44ac-86b4-fe85b7841c6f",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "event_type": "loop_planned",
+        "level": "info",
+        "message": "doc-drift-and-small-fix-loop produced 1 finding(s) for review.",
+        "metadata": {
+          "loop_name": "doc-drift-and-small-fix-loop",
+          "finding_count": 1,
+          "state_file": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/LOOP_STATE.md",
+          "outcome": "plan_ready"
+        },
+        "created_at": "2026-09-09T18:00:34.854Z"
+      },
+      {
+        "id": "10ea6f9b-8e30-4901-b47f-739e37f2f69c",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "event_type": "worker_leases_prepared",
+        "level": "info",
+        "message": "Prepared 1 maker/checker assignment(s) with strategy \"maker-checker-v1\".",
+        "metadata": {
+          "finding_ids": [
+            "5aa7b969-20f3-41eb-be47-b034cd75a632"
+          ],
+          "runtime": "mock",
+          "routing_recommendations": [
+            {
+              "findingId": "5aa7b969-20f3-41eb-be47-b034cd75a632",
+              "runtime": "manual",
+              "capabilityId": ""
+            }
+          ],
+          "budget": {
+            "maxMakerWorkers": 5,
+            "source": "default"
+          },
+          "strategy": "maker-checker-v1",
+          "strategyConfidence": 0
+        },
+        "created_at": "2026-09-09T18:00:34.932Z"
+      },
+      {
+        "id": "f5ae1da3-a13e-47ca-8a23-ade0b71de795",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "event_type": "maker_executed",
+        "level": "info",
+        "message": "Maker lease 6e76fa4f-c698-4fa4-96b4-d0d57f812e8c completed.",
+        "metadata": {
+          "lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "gates": [
+            {
+              "name": "maker_runtime_exit_zero",
+              "status": "pass",
+              "evidence": "runtime=mock, exit=0, timed_out=false, skip_permissions=false"
+            },
+            {
+              "name": "diff_under_threshold",
+              "status": "pass",
+              "evidence": "0 changed diff line(s), threshold 200."
+            },
+            {
+              "name": "token_budget",
+              "status": "skipped",
+              "evidence": "No token budget configured for this goal."
+            },
+            {
+              "name": "runtime_warning_gate",
+              "status": "pass",
+              "evidence": "No runtime warnings detected."
+            },
+            {
+              "name": "no_automatic_merge",
+              "status": "pass",
+              "evidence": "Maker execution did not merge, push, or deploy."
+            }
+          ],
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/worker-output/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/stderr.log",
+          "runtime_usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "usage_source": "runtime_stdout"
+          },
+          "runtime_warnings": [],
+          "token_efficiency": {
+            "total_tokens": 3,
+            "diff_lines": 0,
+            "tokens_per_diff_line": null,
+            "tokens_per_successful_worker": 3
+          },
+          "runtime_cancelled": false
+        },
+        "created_at": "2026-09-09T18:01:47.697Z"
+      },
+      {
+        "id": "7b44b52a-c09e-423f-b092-6287f7999ac2",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "event_type": "deterministic_checks_completed",
+        "level": "warning",
+        "message": "Deterministic checks failed for maker lease 6e76fa4f-c698-4fa4-96b4-d0d57f812e8c.",
+        "metadata": {
+          "lease_id": "6e76fa4f-c698-4fa4-96b4-d0d57f812e8c",
+          "checks": [
+            {
+              "name": "test",
+              "status": "fail",
+              "exit_status": 1,
+              "timed_out": false,
+              "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stdout.log",
+              "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/f7c21f53-b8a1-4750-8a65-f54a804c91d4/checks/6e76fa4f-c698-4fa4-96b4-d0d57f812e8c/test.stderr.log"
+            }
+          ]
+        },
+        "created_at": "2026-09-09T18:01:47.845Z"
+      },
+      {
+        "id": "f122e794-4021-4838-bc99-9dd360b1a203",
+        "loop_run_id": "f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+        "event_type": "loop_verified",
+        "level": "warning",
+        "message": "Verification status: blocked; 1 gate(s) incomplete or failed.",
+        "metadata": {
+          "gates": [
+            {
+              "name": "run_not_cancelled",
+              "status": "pass",
+              "evidence": "Verification cannot resume or certify an operator-cancelled run."
+            },
+            {
+              "name": "maker_completion",
+              "status": "fail",
+              "evidence": "0/1 active maker lease(s) completed; every non-superseded maker must complete."
+            },
+            {
+              "name": "maker_checker_separation",
+              "status": "pass",
+              "evidence": "1 active maker lease(s), 1 active checker lease(s), 0 superseded maker lease(s)."
+            },
+            {
+              "name": "worktree_isolation",
+              "status": "pass",
+              "evidence": "Every maker lease must have an existing isolated worktree."
+            },
+            {
+              "name": "assignment_file_present",
+              "status": "pass",
+              "evidence": "Every maker worktree must contain .djimitflo/LOOP_WORK.md or a readable historical LOOP_WORK.md."
+            },
+            {
+              "name": "diff_threshold_all_makers",
+              "status": "pass",
+              "evidence": "No completed maker leases yet."
+            },
+            {
+              "name": "checker_verdict",
+              "status": "pass",
+              "evidence": "No completed maker leases yet."
+            },
+            {
+              "name": "tests_lint_typecheck",
+              "status": "pass",
+              "evidence": "No completed maker leases yet."
+            },
+            {
+              "name": "security_checker_verdict",
+              "status": "skipped",
+              "evidence": "Run is not high-risk."
+            },
+            {
+              "name": "no_automatic_merge",
+              "status": "pass",
+              "evidence": "Loop only prepared worktrees and did not merge, push, or deploy."
+            }
+          ],
+          "block_metadata": {
+            "dry_run": true,
+            "workers_leased": 0,
+            "mutating_actions": false,
+            "outcome": "plan_ready",
+            "risk_class": "low",
+            "contract": {
+              "name": "doc-drift-and-small-fix-loop",
+              "title": "Doc Drift And Small Fix",
+              "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+              "mode": "closed",
+              "risk_class": "low",
+              "trigger": [
+                "manual",
+                "scheduled"
+              ],
+              "context_sources": [
+                "markdown",
+                "package_scripts",
+                "loop_skills"
+              ],
+              "actions_allowed": [
+                "read_repo",
+                "read_docs",
+                "propose_tasks",
+                "write_loop_state",
+                "prepare_worktree",
+                "execute_maker",
+                "run_checks",
+                "submit_checker_verdict",
+                "retry",
+                "split"
+              ],
+              "actions_forbidden": [
+                "merge",
+                "deploy",
+                "modify_secrets",
+                "modify_policy",
+                "delete_data"
+              ],
+              "verification": [
+                "read_only_discovery",
+                "diff_threshold",
+                "tests_lint_typecheck",
+                "checker_verdict",
+                "no_automatic_merge"
+              ],
+              "state": [
+                "sqlite:loop_runs",
+                "sqlite:loop_events",
+                "markdown:LOOP_STATE.md"
+              ],
+              "escalation": [
+                "failed_gate",
+                "retry_budget_exhausted",
+                "wall_clock_budget_exhausted",
+                "token_budget_exhausted"
+              ],
+              "stop_conditions": [
+                "scan_budget_exhausted",
+                "no_findings",
+                "findings_planned",
+                "all_gates_passed_or_human_required"
+              ]
+            },
+            "sovereign": false,
+            "strategy": "maker-checker-v1",
+            "budget_risk": null,
+            "block_reason": "gate_failed",
+            "failed_gates": [
+              "maker_completion: 0/1 active maker lease(s) completed; every non-superseded maker must complete."
+            ],
+            "recommendations": [
+              "Review failed gates and address issues before re-verifying"
+            ],
+            "blocked_at": "2026-09-09T18:01:47.849Z"
+          }
+        },
+        "created_at": "2026-09-09T18:01:47.849Z"
+      }
+    ],
+    "state_content": "# doc-drift-and-small-fix-loop\n\nRun ID: f7c21f53-b8a1-4750-8a65-f54a804c91d4\nCreated: 2026-09-09T18:00:34.853Z\nRepository: /private/tmp/djimitflo-evolution-loop.I7u89r\nGoal: ad-hoc doc-drift-and-small-fix-loop scan\n\n## Gates\n\n- read_only_discovery: pass - Loop scanned files without editing repository content.\n- no_automatic_merge: pass - Loop does not merge, deploy, or push changes.\n- maker_checker_separation: skipped - No maker worker was leased in this read-only first slice.\n- tests_lint_typecheck: skipped - No patch was created, so code gates are deferred until execution slice.\n\n## Findings\n\n- doc_todo README.md:3 - Documentation contains an explicit TODO/FIXME marker.\n\n## Next Actions\n\n- Review proposed small-fix tasks\n- Approve maker/checker worker execution for selected low-risk findings\n\n## Plan\n\n```json\n{\n  \"loop_name\": \"doc-drift-and-small-fix-loop\",\n  \"mode\": \"closed\",\n  \"risk_class\": \"low\",\n  \"workers_leased\": 0,\n  \"mutating_actions\": false,\n  \"proposed_tasks\": [\n    {\n      \"title\": \"Resolve loop finding in README.md\",\n      \"finding_id\": \"5aa7b969-20f3-41eb-be47-b034cd75a632\",\n      \"file\": \"README.md\",\n      \"line\": 3,\n      \"risk_class\": \"low\",\n      \"parent_finding_id\": null,\n      \"requires_human_approval_before_merge\": true,\n      \"maker_role\": \"doc-drift-and-small-fix-loop-maker\",\n      \"checker_role\": \"doc-drift-and-small-fix-loop-checker\",\n      \"security_checker_required\": false,\n      \"suggested_fix\": \"Resolve the marker or convert it to a tracked issue with owner and acceptance criteria.\"\n    }\n  ]\n}\n```\n"
+  },
+  "requests": [
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/step",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/review-bundle",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/execute-worker",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/run-checks",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/verify",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/continue",
+      "method": "POST",
+      "status": 409
+    },
+    {
+      "path": "/loops/runs/f7c21f53-b8a1-4750-8a65-f54a804c91d4/review-bundle",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "path": "/swarms/evolution/close-loop",
+      "method": "POST",
+      "status": 201
+    }
+  ],
+  "test_log_sha256": "a097d51d65f08bc666f697220f47388c39f00f4f47b87bde365c084c98cbc9ad",
+  "test_stdout": "\n> test\n> node --test outcome.test.js\n\nTAP version 13\n# Subtest: fixed observations cannot gain an invented success fraction\nnot ok 1 - fixed observations cannot gain an invented success fraction\n  ---\n  duration_ms: 0.490875\n  type: 'test'\n  location: '/private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/outcome.test.js:4:1'\n  failureType: 'testCodeFailure'\n  error: |-\n    Expected values to be strictly equal:\n    \n    1 !== 0.5\n    \n  code: 'ERR_ASSERTION'\n  name: 'AssertionError'\n  expected: 0.5\n  actual: 1\n  operator: 'strictEqual'\n  stack: |-\n    TestContext.<anonymous> (file:///private/tmp/.djimitflo-loop-worktrees/f7c21f53-b8a1-4750-8a65-f54a804c91d4/5aa7b969-20f3-41eb-be47-b034cd75a632/outcome.test.js:5:10)\n    Test.runInAsyncScope (node:async_hooks:214:14)\n    Test.run (node:internal/test_runner/test:1047:25)\n    Test.start (node:internal/test_runner/test:944:17)\n    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)\n  ...\n1..1\n# tests 1\n# suites 0\n# pass 0\n# fail 1\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 34.961042\n",
+  "providerExecuted": false,
+  "codeRepaired": false,
+  "checkerExecuted": false,
+  "approvalForged": false,
+  "causalImprovementClaimed": false,
+  "scope": "Actual scanner, worktree, explicit mock echo child and npm failure; durable blocked verification and refused learning closure, not autonomous engineering improvement"
+}

@@ -1,0 +1,307 @@
+{
+  "status": "PASS",
+  "scope": "Start Loop form only at desktop widths1200and1440; no mobile/fullpage visual-completeness claim",
+  "before": [
+    {
+      "viewport": 1200,
+      "card": {
+        "left": 288,
+        "right": 1168,
+        "width": 880,
+        "top": 512,
+        "bottom": 646
+      },
+      "row": {
+        "left": 305,
+        "right": 1151,
+        "width": 846,
+        "top": 561,
+        "bottom": 601
+      },
+      "rowClass": "flex flex-col lg:flex-row gap-3",
+      "controls": [
+        {
+          "tag": "INPUT",
+          "text": "/path/to/repository on workstation",
+          "left": 305,
+          "right": 487,
+          "width": 182,
+          "top": 561,
+          "bottom": 601
+        },
+        {
+          "tag": "SELECT",
+          "text": "ad-hoc goalG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC high browser/governance fixture; no provider",
+          "left": 499,
+          "right": 723,
+          "width": 224,
+          "top": 561,
+          "bottom": 601
+        },
+        {
+          "tag": "SELECT",
+          "text": "Doc Drift And Small FixRepo MaintenanceSkill QualityMCP Connector ValidationSecurity RegressionOKF SynchronizationOverwatch Policy Drift",
+          "left": 735,
+          "right": 950.5,
+          "width": 215.5,
+          "top": 561,
+          "bottom": 601
+        },
+        {
+          "tag": "SELECT",
+          "text": "Worker runtime",
+          "left": 962.5,
+          "right": 1090.5,
+          "width": 128,
+          "top": 561,
+          "bottom": 601
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Start",
+          "left": 1102.5,
+          "right": 1193.8359375,
+          "width": 91.3359375,
+          "top": 561,
+          "bottom": 601
+        }
+      ],
+      "document": {
+        "width": 1200,
+        "scrollWidth": 1200
+      },
+      "main": {
+        "width": 944,
+        "scrollWidth": 944
+      }
+    },
+    {
+      "viewport": 1440,
+      "card": {
+        "left": 718,
+        "right": 1408,
+        "width": 690,
+        "top": 242,
+        "bottom": 496
+      },
+      "row": {
+        "left": 735,
+        "right": 1391,
+        "width": 656,
+        "top": 291,
+        "bottom": 331
+      },
+      "rowClass": "flex flex-col lg:flex-row gap-3",
+      "controls": [
+        {
+          "tag": "INPUT",
+          "text": "/path/to/repository on workstation",
+          "left": 735,
+          "right": 917,
+          "width": 182,
+          "top": 291,
+          "bottom": 331
+        },
+        {
+          "tag": "SELECT",
+          "text": "ad-hoc goalG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC high browser/governance fixture; no provider",
+          "left": 929,
+          "right": 1153,
+          "width": 224,
+          "top": 291,
+          "bottom": 331
+        },
+        {
+          "tag": "SELECT",
+          "text": "Doc Drift And Small FixRepo MaintenanceSkill QualityMCP Connector ValidationSecurity RegressionOKF SynchronizationOverwatch Policy Drift",
+          "left": 1165,
+          "right": 1380.5,
+          "width": 215.5,
+          "top": 291,
+          "bottom": 331
+        },
+        {
+          "tag": "SELECT",
+          "text": "Worker runtime",
+          "left": 1392.5,
+          "right": 1520.5,
+          "width": 128,
+          "top": 291,
+          "bottom": 331
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Start",
+          "left": 1532.5,
+          "right": 1623.8359375,
+          "width": 91.3359375,
+          "top": 291,
+          "bottom": 331
+        }
+      ],
+      "document": {
+        "width": 1440,
+        "scrollWidth": 1440
+      },
+      "main": {
+        "width": 1184,
+        "scrollWidth": 1368
+      }
+    }
+  ],
+  "after": [
+    {
+      "viewport": 1200,
+      "card": {
+        "left": 288,
+        "right": 1168,
+        "width": 880,
+        "top": 512,
+        "bottom": 696
+      },
+      "row": {
+        "left": 305,
+        "right": 1151,
+        "width": 846,
+        "top": 561,
+        "bottom": 651
+      },
+      "rowClass": "flex flex-col lg:flex-row lg:flex-wrap gap-3",
+      "controls": [
+        {
+          "tag": "INPUT",
+          "text": "/path/to/repository on workstation",
+          "left": 305,
+          "right": 507,
+          "width": 202,
+          "top": 561,
+          "bottom": 599
+        },
+        {
+          "tag": "SELECT",
+          "text": "ad-hoc goalG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC high browser/governance fixture; no provider",
+          "left": 519,
+          "right": 743,
+          "width": 224,
+          "top": 561,
+          "bottom": 599
+        },
+        {
+          "tag": "SELECT",
+          "text": "Doc Drift And Small FixRepo MaintenanceSkill QualityMCP Connector ValidationSecurity RegressionOKF SynchronizationOverwatch Policy Drift",
+          "left": 755,
+          "right": 1011,
+          "width": 256,
+          "top": 561,
+          "bottom": 599
+        },
+        {
+          "tag": "SELECT",
+          "text": "Worker runtime",
+          "left": 1023,
+          "right": 1151,
+          "width": 128,
+          "top": 561,
+          "bottom": 599
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Start",
+          "left": 305,
+          "right": 396.3359375,
+          "width": 91.3359375,
+          "top": 611,
+          "bottom": 651
+        }
+      ],
+      "document": {
+        "width": 1200,
+        "scrollWidth": 1200
+      },
+      "main": {
+        "width": 944,
+        "scrollWidth": 944
+      }
+    },
+    {
+      "viewport": 1440,
+      "card": {
+        "left": 718,
+        "right": 1408,
+        "width": 690,
+        "top": 242,
+        "bottom": 496
+      },
+      "row": {
+        "left": 735,
+        "right": 1391,
+        "width": 656,
+        "top": 291,
+        "bottom": 381
+      },
+      "rowClass": "flex flex-col lg:flex-row lg:flex-wrap gap-3",
+      "controls": [
+        {
+          "tag": "INPUT",
+          "text": "/path/to/repository on workstation",
+          "left": 735,
+          "right": 1155,
+          "width": 420,
+          "top": 291,
+          "bottom": 329
+        },
+        {
+          "tag": "SELECT",
+          "text": "ad-hoc goalG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC low browser/governance fixture; no providerG54 SYNTHETIC high browser/governance fixture; no provider",
+          "left": 1167,
+          "right": 1391,
+          "width": 224,
+          "top": 291,
+          "bottom": 329
+        },
+        {
+          "tag": "SELECT",
+          "text": "Doc Drift And Small FixRepo MaintenanceSkill QualityMCP Connector ValidationSecurity RegressionOKF SynchronizationOverwatch Policy Drift",
+          "left": 735,
+          "right": 991,
+          "width": 256,
+          "top": 341,
+          "bottom": 381
+        },
+        {
+          "tag": "SELECT",
+          "text": "Worker runtime",
+          "left": 1003,
+          "right": 1131,
+          "width": 128,
+          "top": 341,
+          "bottom": 381
+        },
+        {
+          "tag": "BUTTON",
+          "text": "Start",
+          "left": 1143,
+          "right": 1234.3359375,
+          "width": 91.3359375,
+          "top": 341,
+          "bottom": 381
+        }
+      ],
+      "document": {
+        "width": 1440,
+        "scrollWidth": 1440
+      },
+      "main": {
+        "width": 1184,
+        "scrollWidth": 1184
+      }
+    }
+  ],
+  "domain_mutations": false,
+  "screenshots": [
+    "output/playwright/g54-layout-before-1200.png",
+    "output/playwright/g54-layout-before-1440.png",
+    "output/playwright/g54-layout-after-1200.png",
+    "output/playwright/g54-layout-after-1440.png"
+  ]
+}

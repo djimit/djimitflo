@@ -1,0 +1,146 @@
+{
+  "fixtures": [
+    {
+      "evidence_class": "synthetic-mock-UI-governance-only",
+      "risk": "low",
+      "goal_id": "6625fabc-e710-4f1c-ab2b-8f629300ee1b",
+      "run_id": "678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b",
+      "leases": [
+        {
+          "id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+          "role": "maker",
+          "runtime": "mock"
+        },
+        {
+          "id": "7e833e7c-d970-4641-9930-0bd85bd81b17",
+          "role": "checker",
+          "runtime": "manual"
+        }
+      ],
+      "maker": {
+        "id": "38b8e77f-0564-46b1-926a-3f7d47108a26",
+        "loop_run_id": "678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b",
+        "role": "maker",
+        "runtime": "mock",
+        "status": "completed",
+        "finding_id": "291e1a1a-c94a-4f01-9751-19ea8728a24a",
+        "worktree_path": "/private/tmp/.djimitflo-loop-worktrees/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/291e1a1a-c94a-4f01-9751-19ea8728a24a",
+        "branch_name": "agent/loop/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b-291e1a1a-c94a-4f01-9751-19ea8728a24a",
+        "budget": {
+          "max_runtime_minutes": 30,
+          "max_retries": 1
+        },
+        "metadata": {
+          "assignment_file": "/private/tmp/.djimitflo-loop-worktrees/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/291e1a1a-c94a-4f01-9751-19ea8728a24a/.djimitflo/LOOP_WORK.md",
+          "assignment_packet_file": "/private/tmp/.djimitflo-loop-worktrees/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/291e1a1a-c94a-4f01-9751-19ea8728a24a/.djimitflo/ASSIGNMENT_PACKET.json",
+          "requested_runtime": "mock",
+          "effective_runtime": "mock",
+          "started_at": "2026-09-09T12:00:46.109Z",
+          "completed_at": "2026-09-09T12:00:46.139Z",
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/worker-output/38b8e77f-0564-46b1-926a-3f7d47108a26/stderr.log",
+          "diff_lines": 0,
+          "diff_max_lines": 200,
+          "exit_status": 0,
+          "timed_out": false,
+          "runtime_adapter": "mock",
+          "runtime_contract": {
+            "runtime": "mock",
+            "available": true,
+            "command": "/Users/dlandman/.hermes/node/bin/node",
+            "version": "mock-runtime",
+            "status": "ok",
+            "cwd_flag": "argv",
+            "json_flag": "stdout-json",
+            "supports_json_events": true,
+            "supports_usage_parsing": true,
+            "supports_timeout_kill": true,
+            "evidence": [
+              "deterministic in-process mock runtime"
+            ],
+            "conformance": {
+              "status": "pass",
+              "proof_class": "static",
+              "contract_hash": "27e93413aeeea57e132cfabfc8498c8a1618ac57a28158152ac014c3164edfdf",
+              "checks": [
+                {
+                  "name": "runtime_available",
+                  "passed": true,
+                  "evidence": "Runtime binary is available."
+                },
+                {
+                  "name": "contract_not_drifted",
+                  "passed": true,
+                  "evidence": "Runtime contract status is ok."
+                },
+                {
+                  "name": "structured_events",
+                  "passed": true,
+                  "evidence": "Structured output flag: \"stdout-json\"."
+                },
+                {
+                  "name": "usage_accounting",
+                  "passed": true,
+                  "evidence": "Runtime output supports usage parsing."
+                },
+                {
+                  "name": "bounded_lifecycle",
+                  "passed": true,
+                  "evidence": "Timeout and kill are supported."
+                }
+              ]
+            }
+          },
+          "runtime_pid": 23208,
+          "runtime_signal": null,
+          "runtime_timed_out": false,
+          "runtime_warnings": [],
+          "token_efficiency": {
+            "total_tokens": 3,
+            "diff_lines": 0,
+            "tokens_per_diff_line": null,
+            "tokens_per_successful_worker": 3
+          },
+          "runtime_usage": {
+            "prompt_tokens": 1,
+            "completion_tokens": 2,
+            "total_tokens": 3,
+            "usage_source": "runtime_stdout"
+          }
+        },
+        "created_at": "2026-09-09T12:00:46.032Z",
+        "updated_at": "2026-09-09T12:00:46.139Z",
+        "parent_lease_id": null,
+        "spawn_tree_id": null,
+        "depth": 0,
+        "spawned_by_agent_id": null
+      },
+      "checks": [
+        {
+          "name": "test",
+          "status": "pass",
+          "exit_status": 0,
+          "timed_out": false,
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/test.stderr.log"
+        },
+        {
+          "name": "lint",
+          "status": "pass",
+          "exit_status": 0,
+          "timed_out": false,
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/lint.stderr.log"
+        },
+        {
+          "name": "type-check",
+          "status": "pass",
+          "exit_status": 0,
+          "timed_out": false,
+          "stdout_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stdout.log",
+          "stderr_path": "/Users/dlandman/djimitflo-audit-20260909/.data/agent-evidence/agentic-control-loop-fleet/678dd411-f3e8-4b5f-8439-e1e9c8ec3f3b/checks/38b8e77f-0564-46b1-926a-3f7d47108a26/type-check.stderr.log"
+        }
+      ]
+    }
+  ]
+}

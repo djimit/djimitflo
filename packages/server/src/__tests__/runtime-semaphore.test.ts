@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { ConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { ConcurrencySemaphore, runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
+import { RuntimeLeaseRegistry } from '../services/loop-recovery-service';
 import { createTestDb } from './helpers/test-db';
 
 /**
@@ -70,5 +71,27 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     const runtimeCommand = new RuntimeCommandService(db, loopService);
     const result = await runtimeCommand.executeRuntimeCommand('lease-events', process.execPath, ['-e', "console.log(JSON.stringify({part:{type:'tool',tool:'read',input:{path:'a.ts'}}}))"], { runtime: 'opencode' });
     expect(result.events).toEqual([expect.objectContaining({ event_type: 'tool.call', tool_name: 'read' })]);
+  });
+
+  it('releases a failed spawn only after close without leaking its lease', async () => {
+    const db = createTestDb();
+    const { LoopService } = await import('../services/loop-service');
+    const { RuntimeCommandService } = await import('../services/runtime-command-service');
+    const runtime = new RuntimeCommandService(db, new LoopService(db));
+    const before = runtimeConcurrencySemaphore.activeCount;
+    try {
+      await expect(runtime.executeRuntimeCommand('missing-runtime-fixture', '/nonexistent/djimitflo-runtime-fixture', [])).rejects.toThrow('ENOENT');
+      expect(runtimeConcurrencySemaphore.activeCount).toBe(before);
+      expect(RuntimeLeaseRegistry.isLive('missing-runtime-fixture')).toBe(false);
+    } finally { db.close(); }
+  });
+
+  it('makes stale registration cleanup harmless after the same lease is re-owned', () => {
+    const oldCleanup = RuntimeLeaseRegistry.register('registry-owner-fixture');
+    const newCleanup = RuntimeLeaseRegistry.register('registry-owner-fixture');
+    oldCleanup();
+    expect(RuntimeLeaseRegistry.isLive('registry-owner-fixture')).toBe(true);
+    newCleanup();
+    expect(RuntimeLeaseRegistry.isLive('registry-owner-fixture')).toBe(false);
   });
 });

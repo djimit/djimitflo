@@ -1,0 +1,3 @@
+# G136 authenticated local health evidence
+
+The local production entry point started successfully on port 3001 with all configured executor registrations and the dashboard served. Public `/health` and `/api/version` returned 200. A temporary bootstrap admin was used only to exercise the protected deep-health route and was removed from SQLite immediately afterward. Authenticated `/api/health/deep` returned 503 (fail-closed) because the canonical OKF bundle lacks the trusted `validate_okf.py`; database, memory, active leases and Qdrant checks were healthy. No production credential or external system was changed.

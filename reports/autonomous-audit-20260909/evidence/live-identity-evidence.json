@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-09T08:46:21.918Z",
+  "status": "fail",
+  "intended": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "960c5068e7dc972c84401840bcec448998119082e55952a800b97f882fb15a76",
+    "database": "/Users/dlandman/djimitflo-audit-20260909/.data/djimitflo.sqlite"
+  },
+  "observed": {
+    "base_url": "http://127.0.0.1:3001",
+    "health": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "version": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "authenticated_provenance": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "database_integrity": {
+      "ok": true,
+      "exit_code": 0,
+      "output": "ok"
+    }
+  },
+  "identity_verified": false,
+  "reason": "Health is not deployment identity: authenticated provenance and a clean intended revision are required.",
+  "next_safe_action": "Reconcile observed and intended runtime identity."
+}

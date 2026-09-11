@@ -2,51 +2,28 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { Brain, Zap, Shield, Database, TrendingUp, Activity, CheckCircle } from "lucide-react";
 
-interface DashboardStats {
-  cognitive: {
-    totalEpisodes: number;
-    totalPatterns: number;
-    totalStrategies: number;
-    overallSuccessRate: number;
-  };
-  memory: {
-    total: number;
-    active: number;
-    candidates: number;
-    avgRelevance: number;
-    totalRelations: number;
-  };
-  meta: {
-    totalDecisions: number;
-    failuresPredicted: number;
-    costSavingsDollars: number;
-  };
-  compliance: {
-    totalAuditEntries: number;
-    chainIntegrity: boolean;
-    lastReportScore: number;
-    lastReportStatus: string | null;
-  };
-}
+type DashboardStats = {
+  cognitive: Awaited<ReturnType<typeof api.getCognitiveStats>> | null;
+  memory: Awaited<ReturnType<typeof api.getMemoryStats>> | null;
+  meta: Awaited<ReturnType<typeof api.getMetaStats>> | null;
+  compliance: Awaited<ReturnType<typeof api.getComplianceStatus>> | null;
+};
 
 export function SelfDrivingDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [tuningResult, setTuningResult] = useState<string>('');
+  const [tuning, setTuning] = useState(false);
+  const [tuningError, setTuningError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      api.getCognitiveStats?.().catch(() => null),
-      api.getMemoryStats?.().catch(() => null),
-      api.getMetaStats?.().catch(() => null),
-      api.getComplianceStatus?.().catch(() => null),
-    ]).then(([cognitive, memory, meta, compliance]: any) => {
-      setStats({
-        cognitive: cognitive || { totalEpisodes: 0, totalPatterns: 0, totalStrategies: 0, overallSuccessRate: 0 },
-        memory: memory || { total: 0, active: 0, candidates: 0, avgRelevance: 0, totalRelations: 0 },
-        meta: meta || { totalDecisions: 0, failuresPredicted: 0, costSavingsDollars: 0 },
-        compliance: compliance || { totalAuditEntries: 0, chainIntegrity: true, lastReportScore: 0, lastReportStatus: null },
-      });
+      api.getCognitiveStats().catch(() => null),
+      api.getMemoryStats().catch(() => null),
+      api.getMetaStats().catch(() => null),
+      api.getComplianceStatus().catch(() => null),
+    ]).then(([cognitive, memory, meta, compliance]) => {
+      setStats({ cognitive, memory, meta, compliance });
       setLoading(false);
     });
   }, []);
@@ -60,7 +37,7 @@ export function SelfDrivingDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-8 space-y-6">
       <div className="flex items-center gap-3">
         <Activity className="w-7 h-7 text-blue-600" />
         <h1 className="text-2xl font-bold text-foreground">Self-Driving Control Plane</h1>
@@ -68,44 +45,54 @@ export function SelfDrivingDashboard() {
 
       {stats && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {stats.cognitive ? <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <StatCard icon={<Brain className="w-5 h-5" />} label="Episodes" value={stats.cognitive.totalEpisodes} color="purple" />
             <StatCard icon={<TrendingUp className="w-5 h-5" />} label="Patterns" value={stats.cognitive.totalPatterns} color="blue" />
             <StatCard icon={<Zap className="w-5 h-5" />} label="Strategies" value={stats.cognitive.totalStrategies} color="amber" />
             <StatCard icon={<CheckCircle className="w-5 h-5" />} label="Success Rate" value={`${(stats.cognitive.overallSuccessRate * 100).toFixed(0)}%`} color="emerald" />
-          </div>
+          </div> : <p>Cognitive metrics unavailable.</p>}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Panel title="Meta Orchestration" icon={<Activity className="w-5 h-5 text-purple-600" />}>
-              <div className="grid grid-cols-3 gap-4 text-sm mb-4">
+              {stats.meta?.enabled ? <div className="grid grid-cols-3 gap-4 text-sm mb-4">
                 <Metric label="Decisions" value={stats.meta.totalDecisions} />
                 <Metric label="Predicted failures" value={stats.meta.failuresPredicted} />
                 <Metric label="Cost savings" value={`$${stats.meta.costSavingsDollars.toFixed(2)}`} />
-              </div>
-              <button className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white" onClick={async () => {
-                const result = await api.post<{ evaluated: number; applied: number }>('/meta/tuning/run');
-                setTuningResult(`${result.applied}/${result.evaluated} recommendations applied`);
-              }}>Run bounded tuning</button>
+              </div> : <p className="mb-4 text-sm text-foreground-secondary">{stats.meta ? 'Meta orchestration is disabled on this instance.' : 'Meta orchestration metrics unavailable.'}</p>}
+              <button disabled={!stats.meta?.enabled || tuning} className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-50" onClick={async () => {
+                setTuning(true);
+                setTuningError(null);
+                try {
+                  const result = await api.post<{ enabled: false } | { evaluated: number; applied: number }>('/meta/tuning/run');
+                  if ('enabled' in result) throw new Error('Meta orchestration is disabled on this instance.');
+                  setTuningResult(`${result.applied}/${result.evaluated} recommendations applied`);
+                } catch (error) {
+                  setTuningError(error instanceof Error ? error.message : 'Tuning failed');
+                } finally {
+                  setTuning(false);
+                }
+              }}>{tuning ? 'Tuning...' : 'Run bounded tuning'}</button>
               {tuningResult && <p className="mt-2 text-xs text-foreground-secondary">{tuningResult}</p>}
+              {tuningError && <p role="alert" className="mt-2 text-sm text-status-error">{tuningError}</p>}
             </Panel>
 
             <Panel title="Proactive Memory" icon={<Database className="w-5 h-5 text-blue-600" />}>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              {stats.memory ? <div className="grid grid-cols-2 gap-4 text-sm">
                 <Metric label="Total Memories" value={stats.memory.total} />
                 <Metric label="Active" value={stats.memory.active} />
                 <Metric label="Candidates" value={stats.memory.candidates} />
                 <Metric label="Avg Relevance" value={stats.memory.avgRelevance.toFixed(2)} />
                 <Metric label="Relations" value={stats.memory.totalRelations} />
-              </div>
+              </div> : <p>Memory metrics unavailable.</p>}
             </Panel>
 
             <Panel title="Compliance" icon={<Shield className="w-5 h-5 text-green-600" />}>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              {stats.compliance ? <div className="grid grid-cols-2 gap-4 text-sm">
                 <Metric label="Audit Entries" value={stats.compliance.totalAuditEntries} />
                 <Metric label="Chain Integrity" value={stats.compliance.chainIntegrity ? "✓ Valid" : "✗ Broken"} />
                 <Metric label="Last Score" value={`${(stats.compliance.lastReportScore * 100).toFixed(0)}%`} />
                 <Metric label="Status" value={stats.compliance.lastReportStatus || "—"} />
-              </div>
+              </div> : <p>Compliance metrics unavailable.</p>}
             </Panel>
           </div>
         </>

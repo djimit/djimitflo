@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ApprovalRequest } from '@djimitflo/shared';
-import { ApprovalStatus } from '@djimitflo/shared';
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 
@@ -9,19 +8,22 @@ interface ApprovalCardProps {
   onUpdated?: (approval: ApprovalRequest) => void;
 }
 
-export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
-  const [status, setStatus] = useState(approval.status);
+export function ApprovalCard({ approval: incomingApproval, onUpdated }: ApprovalCardProps) {
+  const [approval, setApproval] = useState(incomingApproval);
+  const status = approval.status;
   const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setApproval(incomingApproval), [incomingApproval]);
 
   const handleApprove = async () => {
     setProcessing(true);
+    setError(null);
     try {
       const updated = await api.approveRequestExplicit(approval.id);
-      setStatus(ApprovalStatus.APPROVED);
+      setApproval(updated);
       onUpdated?.(updated);
     } catch (error) {
-      console.error('Failed to approve:', error);
-      alert('Failed to approve request');
+      setError(error instanceof Error ? error.message : 'Failed to approve request');
     } finally {
       setProcessing(false);
     }
@@ -29,16 +31,17 @@ export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
 
   const handleDeny = async () => {
     const reason = prompt('Reason for denial:');
-    if (!reason) return;
+    if (reason === null) return;
+    if (!reason.trim()) { setError('A denial reason is required.'); return; }
 
     setProcessing(true);
+    setError(null);
     try {
-      const updated = await api.denyRequestExplicit(approval.id, reason);
-      setStatus(ApprovalStatus.DENIED);
+      const updated = await api.denyRequestExplicit(approval.id, reason.trim());
+      setApproval(updated);
       onUpdated?.(updated);
     } catch (error) {
-      console.error('Failed to deny:', error);
-      alert('Failed to deny request');
+      setError(error instanceof Error ? error.message : 'Failed to deny request');
     } finally {
       setProcessing(false);
     }
@@ -61,7 +64,7 @@ export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
           {typeConfig.icon}
           <div>
             <div className="text-sm font-semibold text-foreground">
-              {formatRequestType(approval.request_type)}
+              {approval.title || formatRequestType(approval.request_type)}
             </div>
             <div className="flex items-center gap-2 mt-1">
               <span className={`px-2 py-0.5 text-xs font-medium rounded border ${riskConfig.color}`}>
@@ -99,6 +102,7 @@ export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
       )}
 
       {/* Action Buttons (only for pending) */}
+      {error && <p role="alert" className="mb-3 text-sm text-status-error">{error}</p>}
       {status === 'pending' && (
         <div className="flex gap-2 pt-3 border-t border-border">
           <button
@@ -130,9 +134,9 @@ export function ApprovalCard({ approval, onUpdated }: ApprovalCardProps) {
         <div className="pt-3 border-t border-border">
           <div className="text-xs text-status-error font-medium mb-1">Denial Reason:</div>
           <div className="text-xs text-foreground-secondary">{approval.denial_reason}</div>
-          {approval.approved_by && (
+          {(approval.decided_by || approval.approved_by) && (
             <div className="text-xs text-foreground-tertiary mt-1">
-              Denied by {approval.approved_by} at {new Date(approval.denied_at!).toLocaleString()}
+              Denied by {approval.decided_by || approval.approved_by} at {new Date(approval.decided_at || approval.denied_at!).toLocaleString()}
             </div>
           )}
         </div>

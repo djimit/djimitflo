@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import Database from 'better-sqlite3';
+const root=resolve(import.meta.dirname,'../../..');
+const db=new Database(resolve(root,'.data/audit.sqlite'),{readonly:true});
+const result=name=>JSON.parse(readFileSync(resolve(import.meta.dirname,name),'utf8').split('\n')[1]);
+const created=result('intervention-browser-start.log').body;
+const goal=db.prepare('SELECT * FROM goals WHERE id=?').get(created.goal_id);
+const run=db.prepare('SELECT * FROM loop_runs WHERE id=?').get(created.id);
+goal.metadata=JSON.parse(goal.metadata);run.metadata=JSON.parse(run.metadata);
+const gates=JSON.parse(run.gates_json);
+const claim=db.prepare("SELECT * FROM swarm_claims WHERE json_extract(metadata,'$.goal_id')=? AND created_from='operator_intervention'").get(goal.id);
+claim.metadata=JSON.parse(claim.metadata);
+const audit=db.prepare("SELECT id,action,user_id,metadata FROM audit_events WHERE resource_id=? AND action LIKE 'operator.%' ORDER BY timestamp,rowid").all(goal.id);
+const tasks=db.prepare("SELECT id,status FROM tasks WHERE json_extract(metadata,'$.loop_run_id')=?").all(run.id);
+const leases=db.prepare('SELECT id,status FROM worker_leases WHERE loop_run_id=?').all(run.id);
+assert.equal(tasks.length,0);assert.equal(leases.length,0);
+assert.equal(claim.status,'proposed');assert.equal(claim.verified_by_gate,null);
+assert.ok(result('intervention-browser-inject.log').notice.includes(claim.id));
+assert.ok(audit.some(event=>event.id===claim.metadata.audit_event_id));
+assert.ok(audit.every(event=>event.user_id==='f0997a41-1d2c-4833-8102-86ea30f33ead'));
+assert.deepEqual(gates,created.gates);
+assert.equal(run.metadata.risk_class,created.metadata.risk_class);
+assert.deepEqual(run.metadata.contract,created.metadata.contract);
+assert.equal(run.metadata.operator_gate_decisions.length,1);
+assert.equal(run.metadata.operator_gate_decisions[0].advisory_only,true);
+const stage=process.argv[2]||'paused';
+if(stage.startsWith('paused')){assert.equal(goal.metadata.operator_paused,true);assert.equal(run.status,'interrupted');}
+else {assert.equal(goal.metadata.operator_paused,false);assert.equal(run.status,'planning');assert.ok(audit.some(event=>event.action==='operator.resume'));}
+console.log(JSON.stringify({status:'PASS',stage,at:new Date().toISOString(),goal:{id:goal.id,status:goal.status,metadata:goal.metadata},run:{id:run.id,status:run.status,metadata:run.metadata,gates},claim:{id:claim.id,status:claim.status,verified_by_gate:claim.verified_by_gate,metadata:claim.metadata},audit,tasks,leases,scope:'Actual browser REST SQLite fixture; no provider dispatch, no worker checkpoint/drain, advice never overrides verification'},null,2));
+db.close();

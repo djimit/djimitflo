@@ -13,6 +13,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { randomUUID } from 'node:crypto';
 import { ComplianceAuditService } from './compliance-audit-service';
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -174,18 +175,9 @@ export class MetaOrchestrationService {
    * Called periodically and on-demand before loop starts.
    */
   getLoopTuning(goalType: string): LoopTuning {
-    // Analyze last 20 episodes for this goal type
-    let episodes: any[] = [];
-    try {
-      episodes = this.db.prepare(`
-        SELECT * FROM cognitive_episodes
-        WHERE goal_type = ?
-        ORDER BY recorded_at DESC
-        LIMIT 20
-      `).all(goalType) as any[];
-    } catch {
-      // Table may not exist yet
-    }
+    // Read the actual cognitive writer contract. Historical duplicate deliveries
+    // are not independent evidence; retain the same first-row identity it uses.
+    const episodes = this.getTuningEpisodes(goalType);
 
     if (episodes.length < 3) {
       return {
@@ -197,22 +189,20 @@ export class MetaOrchestrationService {
       };
     }
 
-    const successRate = episodes.filter((e: any) => e.status === 'success').length / episodes.length;
-    const avgDuration = episodes.reduce((sum: number, e: any) => sum + (e.duration_ms || 0), 0) / episodes.length;
-    const avgCost = episodes.reduce((sum: number, e: any) => sum + (e.cost_dollars || 0), 0) / episodes.length;
+    const successRate = episodes.filter(e => e.outcome === 'success').length / episodes.length;
+    const avgDuration = episodes.reduce((sum, e) => sum + e.durationMs, 0) / episodes.length;
 
     // Tune concurrency: if success rate is high, can increase
     let concurrency = 2;
     if (successRate > 0.8) concurrency = 3;
     else if (successRate < 0.4) concurrency = 1;
 
-    // Tune budget: based on average cost of successful episodes
-    const successfulEpisodes = episodes.filter((e: any) => e.status === 'success');
-    const avgSuccessCost = successfulEpisodes.length > 0
-      ? successfulEpisodes.reduce((sum: number, e: any) => sum + (e.cost_dollars || 0), 0) / successfulEpisodes.length
-      : avgCost;
-
-    const maxTokens = Math.round(avgSuccessCost * 1.5 * 1000); // 1.5x safety margin
+    // Token budgets use recorded tokens, never a fabricated dollars-to-tokens
+    // conversion. This remains bounded observational tuning, not causal proof.
+    const successfulEpisodes = episodes.filter(e => e.outcome === 'success');
+    const budgetEpisodes = successfulEpisodes.length > 0 ? successfulEpisodes : episodes;
+    const avgTokens = budgetEpisodes.reduce((sum, e) => sum + e.totalTokens, 0) / budgetEpisodes.length;
+    const maxTokens = Math.round(avgTokens * 1.5);
     const maxRuntimeMs = Math.max(600000, Math.round(avgDuration * 2));
 
     // Tune gate thresholds: tighten if too many failures, loosen if too conservative
@@ -225,8 +215,51 @@ export class MetaOrchestrationService {
       recommendedConcurrency: concurrency,
       recommendedBudget: { maxTokens, maxRuntimeMs },
       recommendedGateThresholds: { diffMaxLines, minSuccessRate: Math.max(0.5, successRate - 0.1) },
-      confidence: Math.min(0.9, 0.3 + episodes.length * 0.03),
+      confidence: Number(Math.min(0.9, 0.3 + episodes.length * 0.03).toFixed(3)),
     };
+  }
+
+  private getTuningEpisodes(goalType: string): Array<{ outcome: string; durationMs: number; totalTokens: number }> {
+    if (!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_episodes'").get()) return [];
+    const columns = new Set((this.db.prepare('PRAGMA table_info(cognitive_episodes)').all() as Array<{ name: string }>).map(column => column.name));
+    // Older isolated databases predate the canonical outcome/metrics contract.
+    // Read them as legacy observations so upgrades do not silently erase tuning
+    // history; new writes and production migrations use the canonical branch.
+    if (!columns.has('outcome') || !columns.has('metrics_json') || !columns.has('completed_at')) {
+      if (!columns.has('status') || !columns.has('recorded_at')) return [];
+      const legacyRows = this.db.prepare(`
+        SELECT status AS outcome, duration_ms, cost_dollars, recorded_at
+        FROM cognitive_episodes
+        WHERE goal_type = ? AND rowid IN (SELECT MIN(rowid) FROM cognitive_episodes GROUP BY loop_run_id)
+        ORDER BY recorded_at DESC, rowid DESC LIMIT 20
+      `).all(goalType) as Array<{ outcome: string; duration_ms: number; cost_dollars: number; recorded_at: string }>;
+      return legacyRows.map(row => ({
+        outcome: row.outcome === 'success' ? 'success' : 'failure',
+        durationMs: Number(row.duration_ms) || 0,
+        // Legacy records have no token count; preserve the historical bounded
+        // cost signal only for this compatibility path.
+        totalTokens: Math.max(0, Math.round((Number(row.cost_dollars) || 0) * 1000)),
+      }));
+    }
+    const rows = this.db.prepare(`
+      SELECT outcome, duration_ms, metrics_json, completed_at
+      FROM cognitive_episodes
+      WHERE goal_type = ? AND rowid IN (SELECT MIN(rowid) FROM cognitive_episodes GROUP BY loop_run_id)
+      ORDER BY completed_at DESC, rowid DESC LIMIT 20
+    `).all(goalType) as Array<{ outcome: string; duration_ms: number; metrics_json: string; completed_at: string }>;
+    return rows.map(row => {
+      let metrics: Record<string, unknown>;
+      try { metrics = JSON.parse(row.metrics_json); }
+      catch { throw new Error('META_TUNING_INVALID_EPISODE_EVIDENCE'); }
+      if (!metrics || Array.isArray(metrics) || typeof metrics !== 'object'
+        || typeof metrics.totalTokens !== 'number' || !Number.isFinite(metrics.totalTokens) || metrics.totalTokens < 0
+        || !Number.isFinite(row.duration_ms) || row.duration_ms < 0
+        || !Number.isFinite(Date.parse(row.completed_at))
+        || !['success', 'failure', 'partial', 'cancelled'].includes(row.outcome)) {
+        throw new Error('META_TUNING_INVALID_EPISODE_EVIDENCE');
+      }
+      return { outcome: row.outcome, durationMs: row.duration_ms, totalTokens: metrics.totalTokens };
+    });
   }
 
   // ─── Routing Optimization ──────────────────────────────────────────
@@ -359,10 +392,17 @@ export class MetaOrchestrationService {
 
   async runAutoTuning(): Promise<{ evaluated: number; applied: number }> {
 
+    // A freshly provisioned database may not have cognitive episodes yet.
+    // Treat that as an empty learning window instead of leaking SQLite's
+    // missing-table error through the operator endpoint.
+    const hasEpisodes = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_episodes'").get();
+    if (!hasEpisodes) return { evaluated: 0, applied: 0 };
+
     // Get all goal types with enough data
     const goalTypes = this.db.prepare(`
       SELECT goal_type, COUNT(*) as cnt
       FROM cognitive_episodes
+      WHERE rowid IN (SELECT MIN(rowid) FROM cognitive_episodes GROUP BY loop_run_id)
       GROUP BY goal_type
       HAVING cnt >= 5
     `).all() as any[];
@@ -380,7 +420,7 @@ export class MetaOrchestrationService {
             (id, goal_type, tuning_type, recommended_value, previous_value, confidence, applied, applied_at, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
-          `tune-${goal_type}-${Date.now()}`, goal_type, 'loop_parameters', JSON.stringify(tuning),
+          `tune-${goal_type}-${randomUUID()}`, goal_type, 'loop_parameters', JSON.stringify(tuning),
           previous ? JSON.stringify(previous) : null, tuning.confidence, shouldApply ? 1 : 0,
           shouldApply ? now : null, now,
         );

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
-import { runPreSchemaMigrations } from '../database/migrate';
+import { runMigrations, runPreSchemaMigrations } from '../database/migrate';
 import { ExternalEventIngestService } from '../services/external-event-ingest-service';
 
 describe('ExternalEventIngestService', () => {
@@ -11,6 +11,7 @@ describe('ExternalEventIngestService', () => {
     const db = new Database(':memory:');
     runPreSchemaMigrations(db);
     db.exec(schema);
+    runMigrations(db);
     return db;
   }
 

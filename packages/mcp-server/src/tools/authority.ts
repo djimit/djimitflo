@@ -12,10 +12,18 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import type { DbHandle } from '../db.js';
+import { requireLiveMode, type DbHandle } from '../db.js';
+import { currentMcpAuth } from '../auth-context.js';
+import { ROLE_PERMISSIONS } from '@djimitflo/shared';
 
 const DECISIONS = ['ALLOW', 'DENY', 'HOLD'] as const;
 const ACTOR_TYPES = ['human', 'agent', 'service', 'ci'] as const;
+
+function requirePermission(permission: string) {
+  const principal = currentMcpAuth().payload;
+  if (!ROLE_PERMISSIONS[principal.role]?.includes(permission)) throw new Error(`MCP_PERMISSION_DENIED: ${permission}`);
+  return principal;
+}
 
 function rows(dbHandle: DbHandle, sql: string, ...params: unknown[]) {
   return dbHandle.db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
@@ -42,13 +50,15 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
       },
     },
     async ({ correlationId, includePayload = false }) => {
+      requirePermission('read:audit');
       if (!tableExists(dbHandle, 'authority_events')) {
         return {
+          isError: true,
           content: [{
             type: 'text' as const,
             text: JSON.stringify({
-              error: 'authority_events_table_missing',
-              hint: 'run migrations first (npm run migrate in packages/server)',
+              error: 'AUTHORITY_LEDGER_UNAVAILABLE',
+              hint: 'The canonical authority ledger has not been provisioned on this instance.',
             }, null, 2),
           }],
         };
@@ -151,13 +161,13 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
     'djimitflo_authority_emit',
     {
       description:
-        'Append a LifecycleEvent to the Authority Ledger (djimit.io/v1alpha1). Sequence is strictly increasing per correlation_id (fail-closed on conflict).',
+        'Append an authenticated observational HOLD/DENY event to a provisioned Authority Ledger. ALLOW decisions require the external authority producer and cannot be issued by this tool.',
       inputSchema: {
         correlationId: z.string().min(1),
         previousState: z.string().optional(),
         requestedState: z.string().min(1),
         policyDecision: z.enum(DECISIONS),
-        actorSubject: z.string().min(1),
+        actorSubject: z.string().min(1).optional().describe('Legacy input; authenticated identity is always used'),
         actorType: z.enum(ACTOR_TYPES).default('agent'),
         actorIssuer: z.string().default('djimitflo'),
         artifactId: z.string().min(1),
@@ -168,11 +178,13 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
     },
     async ({
       correlationId, previousState, requestedState, policyDecision,
-      actorSubject, actorType, actorIssuer, artifactId,
+      artifactId,
       evidenceRefs = [],
-      sourceSystem = 'djimitflo',
       payload,
     }) => {
+      requireLiveMode(dbHandle);
+      const principal = requirePermission('write:evidence');
+      if (policyDecision === 'ALLOW') throw new Error('AUTHORITY_EMISSION_UNSUPPORTED: ALLOW decisions require the external authority producer.');
       const { createHash, randomUUID } = await import('node:crypto');
       const payloadJson = JSON.stringify(payload ?? {});
       const payloadDigest =
@@ -203,9 +215,9 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
           correlationId,
           sequence,
           occurredAt,
-          actorSubject,
-          actorType || 'agent',
-          actorIssuer || 'djimitflo',
+          principal.sub,
+          'service',
+          'djimitflo-mcp',
           artifactId,
           previousState ?? null,
           requestedState,
@@ -213,7 +225,7 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
           payloadDigest,
           payloadJson,
           JSON.stringify(evidenceRefs ?? []),
-          sourceSystem,
+          'djimitflo-mcp',
         );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -252,11 +264,13 @@ export function registerAuthorityTools(server: McpServer, dbHandle: DbHandle) {
       },
     },
     async ({ limit = 20 }) => {
+      requirePermission('read:audit');
       if (!tableExists(dbHandle, 'authority_events')) {
         return {
+          isError: true,
           content: [{
             type: 'text' as const,
-            text: JSON.stringify({ total: 0, note: 'authority_events nog niet gemigreerd' }, null, 2),
+            text: JSON.stringify({ error: 'AUTHORITY_LEDGER_UNAVAILABLE', hint: 'The canonical authority ledger has not been provisioned on this instance.' }, null, 2),
           }],
         };
       }

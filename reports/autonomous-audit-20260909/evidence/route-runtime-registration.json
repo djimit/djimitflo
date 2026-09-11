@@ -1,0 +1,3100 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-09T17:55:18.090Z",
+  "scope": "instantiated_api_router",
+  "source_sha256": "40046b5432e8e7a6f5abad476c4ef698dd04a591a6e2503a3225aa0bb6357ee3",
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/advanced/compression/compress",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/compression/retrieve/:hash",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/compression/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/feedback",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/feedback/analyze",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/feedback/apply",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/feedback/recent",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/feedback/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/workflows",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/workflows/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/advanced/workflows/:id/next",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/workflows/:id/nodes/:nodeId/approve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/workflows/:id/nodes/:nodeId/reject",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/advanced/workflows/:id/nodes/:nodeId/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/agents/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agents/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/:id/approve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/:id/heartbeat",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/agents/:id/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agents/create-from-description",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agi/consensus/debates",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agi/consensus/debates/:debateId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agi/consensus/debates/:debateId/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agi/consensus/debates/:debateId/resolve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agi/consensus/debates/:debateId/vote",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agi/consensus/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agi/observe",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/agi/reason",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/agi/reasoning/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/llm/performance",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/llm/providers",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/llm/route",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/llm/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/memory/clusters",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/memory/search",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/memory/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/memory/store",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/plugins",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/plugins/:id/disable",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/plugins/:id/enable",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/plugins/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/workers/:id/run",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/workers/:id/start",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/workers/:id/stop",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/apex/workers/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/approvals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/approvals",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/approvals/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/approvals/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/approvals/:id/approve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/approvals/:id/cancel",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/approvals/:id/deny",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit-logs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit-logs/export",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "authenticated": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "authenticated": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "authenticated": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/authority/events",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/authority/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/authority/trace/:correlationId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/:filename",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/backups/:filename/download",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups/:filename/restore",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups/:filename/validate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/canvas/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/canvas/sessions/:runId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/complete",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/diff",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/progress",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/thinking",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/tool-call",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/canvas/sessions/:runId/tool-result",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/catalog/activate/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/agents",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/agents/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/compile/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/counts",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/catalog/deactivate/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/catalog/evaluate/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/catalog/evaluate/batch",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/evaluate/summary",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/catalog/search",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/cognitive/episodes",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/cognitive/evolve-strategies",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/cognitive/extract-patterns",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/cognitive/meta-learning",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/cognitive/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/cognitive/strategy/:goalType",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/compliance/audit/append",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/audit/log",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/audit/verify",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/export",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/reports/export",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/compliance/reports/generate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/specs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/compliance/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/audit",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/gates",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/improvements",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/memory",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/models",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/console/overview",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/council/classify",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/models",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/council/models",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/council/models/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/models/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/council/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/sessions/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/sessions/:id/aggregate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/sessions/:id/evaluations",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/council/sessions/:id/execute",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/sessions/:id/outputs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/council/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/discussions/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions/:id/consensus",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions/:id/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions/:id/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions/:id/tick",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions/:id/timeline",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions/:id/turns",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions/:id/turns",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/discussions/:id/turns/:turnId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/discussions/:id/votes",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/discussions/:id/votes",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence/audit-trail/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence/file-changes/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence/review/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence/summary/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/evidence/task/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/ask",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/audit",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/bundles/:id/unpublish",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/calibration-rate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/calibration-sample",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/calibration-stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/health-drift",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/kill-switch",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/overview",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/pause",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/refresh-stale",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/regenerate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/repos",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/resume",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/fleet/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/sync",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/knowledge/fact/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/knowledge/manifest/:owner/:repo",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/knowledge/repos",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/knowledge/search",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/knowledge/sync",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/review-queue",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/review-queue/:id/resolve",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/tasks/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/explainer/tasks/:id/bundles",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/tasks/:id/run",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/audit",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/evidence/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/report/summary",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/repository/:repositoryId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/exports/stream/audit",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/task/:taskId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/exports/training",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/federation/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/federation/capacity",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/federation/inbox/work",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/federation/peers",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/federation/register",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/federation/work",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/distribute",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/handoff",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/handoff/:id/accept",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/handoff/:id/complete",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/fleet/nodes",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/nodes",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/fleet/nodes/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/fleet/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/fleet/sync-capability",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/goals/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/goals/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals/:id/decompose",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals/batch/apply",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/goals/batch/preview",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/governance-feedback/analyze",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/governance-feedback/dormant-capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/governance-feedback/health",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/governance-feedback/history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/governance-feedback/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/governance-feedback/propose",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/governance-feedback/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/gym/governance/:skillId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/gym/governance/:skillId/curriculum",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/gym/governance/:skillId/history",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/gym/governance/:skillId/retest",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/gym/governance/:skillId/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "authenticated": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/deep",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/metrics",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/metrics/json",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/data-quality",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intelligence/heal",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/healing/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/health",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/incidents",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/patterns",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intelligence/predict",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/intelligence/predictive/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intervention/:goalId/inject",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intervention/:goalId/override",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intervention/:goalId/pause",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/intervention/:goalId/resume",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge/events",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/knowledge/publish",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/knowledge/subscribe/:capabilityId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/learning",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/learning",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/learning/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/legal/check-pii",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/legal/classify",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/legal/feedback",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/legal/rechtsgebied/:ecli",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/legal/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/loops/catalog",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/doc-drift-and-small-fix/start",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/loops/runs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/loops/runs/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/checker-verdict",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/complete",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/continue",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/execute-checker",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/execute-maker",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/execute-worker",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/retry",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/loops/runs/:id/review-bundle",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/run-checks",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/security-verdict",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/split",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/step",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/stop",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/runs/:id/verify",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/loops/runtime-contracts",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/start",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/mcp/permissions",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/mcp/permissions/:toolId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/mcp/servers",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/mcp/tools",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory-evolution/evolve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory-evolution/ingest",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory-evolution/leases",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory-evolution/leases",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory-evolution/promote/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory-evolution/quality/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory-evolution/retrieve",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/:id/related",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/consolidate",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/discover-relations",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/maintenance",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/relations",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/search",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/store",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/memory/top",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/messages/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/messages/:id/read",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/agent/:agent_id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/meta/predict",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/routing/:taskType",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/strategy/:goalType",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/tuning-history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/meta/tuning/:goalType",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/meta/tuning/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/models/best/:taskType",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/outcome",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/register",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/models/route",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/models/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/observability/execution-activity",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/observability/metrics",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/observability/policy-stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/observability/risk-trends",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/observability/stream",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openapi.json",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/apex/reports",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/apex/reports/:round",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/openmythos/eval/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/guard/certified/:skillId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/openmythos/guard/check/:skillId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/leaderboard",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/report/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/runs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/score/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/status/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/trend/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/organizations",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/organizations/switch",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/cycle",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/platform/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/policies",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/policies",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/policies/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/policies/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/policies/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/red-team/assess",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/red-team/history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/red-team/latest",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/repo-index/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repo-index/:id/index",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repo-index/:id/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repo-index/register",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repo-index/repositories",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repo-index/search",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories/:id/agents-md",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories/:id/agents-md/effective",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repositories/:id/agents-md/validate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories/:id/file-changes",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/repositories/:id/health",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repositories/:id/rescan",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/repositories/scan",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/claims",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/contradictions/detect",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/reports/generate",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/sources",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/sources/trusted",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/research/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/retirement/list",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/retirement/plan/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/retirement/retire/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/retirement/status/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/risk/command",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/risk/task",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-governance/agents/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-governance/agents/:agentId/check",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-governance/agents/:agentId/register",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-governance/agents/:agentId/release",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-governance/agents/:agentId/reset",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-governance/alerts",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/runtime-governance/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/sbom/generate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/sbom/summary",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/blind-spots/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/curriculum",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/federation/extract",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/federation/receive",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/federation/summary",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/federation/sync-history",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/finetuning/ab-test",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/finetuning/generate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/finetuning/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/finetuning/train",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/generated-cases",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/judge-rubrics",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l3/generate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/l3/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l3/synthesize-tool",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l3/train",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/l3/world-model/scenarios",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l3/world-model/update",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/coevolution",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/evolve",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/l4/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/tournament",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/ttsi",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l5/revert/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l5/self-improve",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/l5/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/latest",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/literature/approve/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/literature/proposed",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/literature/scan",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/literature/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/cycle",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/evaluate",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/generate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/segml/production/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/train",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/run/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-improve/docs/scan",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-improve/docs/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-improve/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-improve/proposals/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-improve/proposals/:id/approve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-improve/proposals/:id/reject",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-improve/reconcile",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-improve/reconciliation",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-modification/analyze",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-modification/execute",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-modification/plan",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/self-modification/status",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/:id",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/skills/:id/assign/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/:id/assign/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/:id/disable",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/:id/enable",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/agent/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/reload",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/skills/trigger/:trigger",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/decompose",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/evolution/evolve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/evolution/outcome",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/evolution/register",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/evolution/stats",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/capabilities/:id/evaluate",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/capabilities/:id/promote",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/capacity/plan",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/claims",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/claims",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/governance/evaluate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/interaction-digest",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/interaction-handoff/reconcile",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/interactions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/mission-control",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/okf-drift",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/outcome-learning",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/outcome-learning/capabilities/:id/release",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/reviewer-independence",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/intelligence/runner-manifests",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/intelligence/specialists",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/knowledge/contradictions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/knowledge/publish",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/knowledge/query",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/knowledge/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/knowledge/subscribe",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-intel/knowledge/vote",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/plans",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/plans/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-intel/specialists/catalog",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-v2/broadcast",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-v2/comms/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-v2/messages",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-v2/messages/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-v2/messages/:id/acknowledge",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-v2/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-v2/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm-v2/sessions/:id/execute",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm-v2/sessions/:id/progress",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm/broadcast",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm/comms/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm/messages",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm/messages/:agentId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm/messages/:id/acknowledge",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm/sessions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarm/sessions/:id/execute",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarm/sessions/:id/progress",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/assurance/capability-tokens",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/capability-tokens",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/checkpoints",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/checkpoints/:id/branch",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/evals/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/assurance/reflections",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/reflections",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/assurance/summary",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/assurance/trace-spans",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/assurance/traces/:traceId",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/backlog/sync",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/cs-skill-intelligence/run",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/decompose",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/economy",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/close-loop",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/evolve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/outcome",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/register",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/run",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/evolution/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/expert/dispatch",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/expert/history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/expert/sources",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/expert/updates",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/fix",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/fix/batch",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/fix/history",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/handoffs",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/handoffs/:id/accept",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/handoffs/drain",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/capabilities",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/capabilities/:id/evaluate",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/capabilities/:id/promote",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/capacity/plan",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/circuit-breaker/:scope",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/circuit-breaker/:scope/failure",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/circuit-breaker/:scope/reset",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/claims",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/claims",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/decisions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/governance/evaluate",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/hypotheses",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/hypotheses",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/hypotheses/:id/transition",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/interaction-digest",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/interaction-handoff/reconcile",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/interactions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/mission-control",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/missions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/missions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/missions/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/missions/:id/decisions",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/missions/:id/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/missions/:id/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/missions/:id/transition",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/okf-drift",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/outcome-learning",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/outcome-learning/capabilities/:id/release",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/reviewer-independence",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/runner-manifests",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/intelligence/specialists",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/tasks/:id/transition",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/knowledge/contradictions",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/knowledge/publish",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/knowledge/query",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/knowledge/runtime",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/knowledge/stats",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/knowledge/subscribe",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/knowledge/sync",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/knowledge/vote",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/learning-curve",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/learning/cycle",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/learning/history",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/learning/last",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/memory/candidates",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/memory/candidates",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/memory/candidates/:id/promote",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/opencode/health",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/plans",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/plans/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/proof-runs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/proof-runs/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/proof-runs/:id/rollback",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/proof-runs/latest",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/rsi/analyze",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/rsi/proposals",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/rsi/safety",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/rsi/safety/toggle",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/rsi/specializations",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/runtime-readiness",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/scheduler/tick",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/spawns",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/spawns/:id/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/spawns/root",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/specialist-panels",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/specialist-panels",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/specialist-panels/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/specialist-panels/:id/backlog",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/specialist-panels/:id/reviews",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/specialists/catalog",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/swarms/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/drain",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/plan",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/start-next",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/stop/:leaseId",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks",
+      "authenticated": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/tasks/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/tasks/:id",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:id/approvals",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:id/cancel",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:id/events",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/tasks/:id/execute",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:taskId/diff",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:taskId/file-changes",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks/:taskId/snapshots",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/telegram/status",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/webhook",
+      "authenticated": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/traceability/matrix",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/available-models",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/costs",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/quotas",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/recent",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/usage/tokens",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/usage/tokens",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/version",
+      "authenticated": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/work-items",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-items",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/work-items/:id",
+      "authenticated": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/work-items/:id",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-items/:id/convert-to-goal",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-items/integrations/import",
+      "authenticated": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/work-items/integrations/preview",
+      "authenticated": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/workstation/urls",
+      "authenticated": true
+    }
+  ],
+  "comparison": {
+    "declared_not_registered": [],
+    "registered_not_declared": [],
+    "unsupported_source": []
+  },
+  "auth_http_probes": [
+    {
+      "method": "GET",
+      "path": "/api/openapi.json",
+      "status": 401,
+      "scope": "anonymous_auth_boundary_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health/deep",
+      "status": 401,
+      "scope": "anonymous_auth_boundary_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/openmythos/status",
+      "status": 401,
+      "scope": "anonymous_auth_boundary_only"
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/scheduler/tick",
+      "status": 401,
+      "scope": "anonymous_auth_boundary_only"
+    },
+    {
+      "method": "GET",
+      "path": "/api/tasks",
+      "status": 401,
+      "scope": "anonymous_auth_boundary_only"
+    }
+  ],
+  "limits": [
+    "Registration only, not domain execution.",
+    "Auth markers are declarations; only listed HTTP probes executed.",
+    "Explicit API routes only; no implicit HEAD/OPTIONS or startup health/metrics/explore/static SPA coverage."
+  ]
+}

@@ -60,6 +60,15 @@ describe('ContextCompressionService', () => {
     expect(stats).toBeDefined();
     expect(stats.cacheSize).toBeDefined();
   });
+
+  it('retrieves compressed originals after a service restart', () => {
+    const db = new Database(':memory:');
+    const first = new ContextCompressionService(db);
+    const result = first.compress('persisted context '.repeat(20), 'text');
+    const restarted = new ContextCompressionService(db);
+    expect(restarted.retrieve(result.hash)).toBe('persisted context '.repeat(20));
+    db.close();
+  });
 });
 
 describe('WorkflowGraphService', () => {

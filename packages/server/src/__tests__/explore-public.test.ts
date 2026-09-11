@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import express from "express";
+import request from "supertest";
 import { createServer, type Server } from "http";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -144,5 +145,164 @@ describe("public explore boundary", () => {
     expect(card.status).toBe(200);
     expect(card.headers.get("content-type")).toContain("image/svg+xml");
     expect(await card.text()).toContain("DJIMIT EXPLORE");
+  });
+
+  it("serves crawler metadata and explicit empty leaderboard state", async () => {
+    const db = createTestDb();
+    const app = express().use("/explore", createExplorePublicRoutes(db));
+    expect((await request(app).get("/explore/sitemap.xml")).status).toBe(200);
+    expect((await request(app).get("/explore/robots.txt")).status).toBe(200);
+    expect((await request(app).get("/explore/leaderboard")).status).toBe(404);
+    expect((await request(app).get("/explore/djimit/missing/llms.txt")).status).toBe(404);
+    expect((await request(app).get("/explore/djimit/missing/badge.svg")).status).toBe(404);
+    db.close();
+  });
+
+  // contract:explore-public:GET:/leaderboard
+  describe("public governance leaderboard", () => {
+    function startApp(env: Record<string, string> = {}, db?: ReturnType<typeof createTestDb>) {
+      const previous: Record<string, string | undefined> = {};
+      const envWithOrigin = { DJIMITFLO_PUBLIC_ORIGIN: "https://explore.djimit.nl", ...env };
+      for (const [key, value] of Object.entries(envWithOrigin)) {
+        previous[key] = process.env[key];
+        process.env[key] = value;
+      }
+      const app = express().use("/explore", createExplorePublicRoutes(db ?? createTestDb()));
+      const server = createServer(app);
+      servers.push(server);
+      return new Promise<{ url: string; restore: () => void }>((resolve) => {
+        server.listen(0, "127.0.0.1", () => {
+          const address = server.address();
+          if (!address || typeof address === "string") throw new Error("missing test listener");
+          resolve({
+            url: `http://127.0.0.1:${address.port}`,
+            restore: () => {
+              for (const [key, value] of Object.entries(previous)) {
+                if (value === undefined) delete process.env[key];
+                else process.env[key] = value;
+              }
+            },
+          });
+        });
+      });
+    }
+
+    it("is off by default (404 without OPENMYTHOS_LEADERBOARD_PUBLIC)", async () => {
+      // Kilo P2: explicitly clear the gate so the test establishes the true
+      // "unset" condition regardless of the host environment, and restore.
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "" });
+      const response = await fetch(`${url}/explore/leaderboard`);
+      expect(response.status).toBe(404);
+      expect(await response.text()).toContain("not published");
+      restore();
+    });
+
+    it("returns 404 when explicitly disabled", async () => {
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "false" });
+      const response = await fetch(`${url}/explore/leaderboard`);
+      expect(response.status).toBe(404);
+      restore();
+    });
+
+    it("serves model-only scores sorted best-first with no case content", async () => {
+      const db = createTestDb();
+      const corpus = "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9";
+      const caseIds = Array.from({ length: 78 }, (_, i) => `case-${i}`);
+      // two eligible model-only runs + one eligible-but-older pair for trend
+      const insert = (id: string, agent: string, score: number, finishedAt: string, mode = "model_only") =>
+        db.prepare(`
+          INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
+          VALUES (?, ?, ?, ?, 78, 78, ?, 'completed', ?)
+        `).run(id, agent, finishedAt, finishedAt, score, JSON.stringify({
+          evaluation_mode: mode,
+          oracle_anchors_configured: 1,
+          case_ids: caseIds,
+          corpus_sha256: corpus,
+        }));
+
+      insert("run-1", "nightly:qwen2.5-coder:3b", 2.69, "2026-09-07T03:10:00Z");
+      insert("run-2", "nightly:llama3.2:1b", 1.92, "2026-09-07T03:15:00Z");
+      insert("run-3", "nightly:qwen2.5:3b", 2.33, "2026-09-07T03:20:00Z");
+      // excluded: explainer-critic (0-100 scale) and a skill-conditioned run
+      insert("run-4", "explainer-critic", 87, "2026-09-07T03:25:00Z", "critic");
+      insert("run-5", "skill-conditioned", 4.8, "2026-09-07T03:30:00Z", "skill_conditioned");
+
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" }, db);
+      const response = await fetch(`${url}/explore/leaderboard`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/json");
+      const payload = await response.json();
+
+      expect(payload.leaderboard.map((r: any) => r.agent_id)).toEqual([
+        "nightly:qwen2.5-coder:3b",
+        "nightly:qwen2.5:3b",
+        "nightly:llama3.2:1b",
+      ]);
+      const keys = new Set(payload.leaderboard.flatMap((r: any) => Object.keys(r)));
+      expect(keys.has("prompt")).toBe(false);
+      expect(keys.has("case_content")).toBe(false);
+      expect(payload.leaderboard[0].overall_score).toBe(2.69);
+      expect(payload.leaderboard[0].total_cases).toBe(78);
+      restore();
+    });
+
+    it("filters malformed metadata rows instead of crashing", async () => {
+      const db = createTestDb();
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
+        VALUES ('run-bad', 'nightly:broken', '2026-09-07T03:00:00Z', '2026-09-07T03:00:00Z', 78, 78, 3.0, 'completed', '{malformed json')
+      `).run();
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" });
+      const response = await fetch(`${url}/explore/leaderboard`);
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      expect(payload.leaderboard).toEqual([]);
+      restore();
+    });
+
+    it("pins the snapshot to a single corpus revision", async () => {
+      const db = createTestDb();
+      const caseIds = Array.from({ length: 78 }, (_, i) => `case-${i}`);
+      const insert = (id: string, agent: string, score: number, corpus: string, finishedAt: string) =>
+        db.prepare(`
+          INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
+          VALUES (?, ?, ?, ?, 78, 78, ?, 'completed', ?)
+        `).run(id, agent, finishedAt, finishedAt, score, JSON.stringify({
+          evaluation_mode: "model_only",
+          oracle_anchors_configured: 1,
+          case_ids: caseIds,
+          corpus_sha256: corpus,
+        }));
+
+      // nieuwste run = corpus-B; agent op corpus-A moet niet meedoen
+      insert("run-newest", "nightly:new-model", 4.0, "corpus-B", "2026-09-07T04:00:00Z");
+      insert("run-old", "nightly:old-model", 3.0, "corpus-A", "2026-09-07T01:00:00Z");
+
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" }, db);
+      const payload = await (await fetch(`${url}/explore/leaderboard`)).json();
+      expect(payload.leaderboard.map((r: any) => r.agent_id)).toEqual(["nightly:new-model"]);
+      restore();
+    });
+
+    it("excludes subset evaluations (case_ids span != completed_cases)", async () => {
+      const db = createTestDb();
+      // Een operator/debug subset-eval draait op 2 van de 78 cases maar telt
+      // alle 78 als completed (metadata case_ids bevat alleen de subset).
+      // De predicate vergelijkt de case_ids-span met completed_cases, dus
+      // deze run mag niet op de publieke ranking verschijnen.
+      db.prepare(`
+        INSERT INTO openmythos_eval_runs (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
+        VALUES ('run-subset', 'nightly:subset', '2026-09-07T03:00:00Z', '2026-09-07T03:00:00Z', 78, 78, 5.0, 'completed', ?)
+      `).run(JSON.stringify({
+        evaluation_mode: "model_only",
+        oracle_anchors_configured: 1,
+        case_ids: ["case-0", "case-1"],
+        corpus_sha256: "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
+      }));
+      const { url, restore } = await startApp({ OPENMYTHOS_LEADERBOARD_PUBLIC: "true" }, db);
+      const payload = await (await fetch(`${url}/explore/leaderboard`)).json();
+      expect(payload.leaderboard).toEqual([]);
+      restore();
+    });
   });
 });
