@@ -5,6 +5,9 @@ import { runMigrations } from '../database/migrate';
 import { schema } from '../database/schema';
 import { AuthService } from '../services/auth-service';
 import { createAuthMiddleware } from '../middleware/auth';
+import express from 'express';
+import request from 'supertest';
+import { mintSpawnToken, resolveSpawnTokenSecret } from '../services/spawn-token';
 
 /**
  * Integration test: verifies all route factories mount without import errors.
@@ -75,5 +78,22 @@ describe('Server route wiring', () => {
     expect(routerLayers.length).toBeGreaterThan(10); // Many sub-routers mounted
     // Verify total layer count (routes + middleware + sub-routers)
     expect(router.stack.length).toBeGreaterThan(20);
+  });
+
+  it('routes scoped social-runtime tokens before the catch-all auth mount', async () => {
+    const authService = new AuthService(db);
+    authService.bootstrapAdmin();
+    const auth = createAuthMiddleware(authService);
+    db.prepare("INSERT INTO agents (id, name, description, status, capabilities) VALUES ('social-agent', 'Social Agent', '', 'idle', '[]')").run();
+    const app = express();
+    app.use(express.json());
+    app.use('/api', createRoutes(db, undefined, authService, auth));
+    const token = mintSpawnToken(resolveSpawnTokenSecret(), 'social-agent', 'social-runtime', 60_000);
+    const response = await request(app)
+      .post('/api/swarm-v2/social-runtime/social-agent/heartbeat')
+      .set('X-Agent-Social-Token', token)
+      .send({ runtime: 'test-runtime' });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ agent_id: 'social-agent', status: 'active' });
   });
 });

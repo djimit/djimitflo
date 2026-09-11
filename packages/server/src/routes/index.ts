@@ -67,7 +67,7 @@ import { createRepositoryIndexRoutes } from './repository-index';
 import { createExplainerRoutes } from './explainer';
 import { createConsoleRoutes } from './console';
 import { createApexRoutes } from './apex';
-import { createSwarmOrchestrationRoutes } from './swarm-orchestration';
+import { createAgentSocialRuntimeRoutes, createSwarmOrchestrationRoutes } from './swarm-orchestration';
 import { createSelfImprovementRoutes } from './self-improvement';
 import { createSwarmIntelRoutes } from './swarm-intel';
 import { createAgiRoutes } from './agi';
@@ -181,6 +181,7 @@ export function createRoutes(
     // Nested spawn control: mount the specific /swarms/spawns path BEFORE the
     // generic /swarms requireAuth mount so children can reach it with a spawn token.
     { prefix: '/swarms/spawns', middleware: [requireAuthOrSpawnToken], router: createSpawnRoutes(db, auth, wsService) },
+    { prefix: '/swarm-v2/social-runtime', middleware: [], router: createAgentSocialRuntimeRoutes(db, runtimeGovernance) },
     { prefix: '/swarms', middleware: [requireAuth], router: createSwarmRoutes(db, auth, wsService) },
     { prefix: '/repositories', middleware: [requireAuth], router: createRepositoryRoutes(db, auth) },
     { prefix: '/', middleware: [requireAuth], router: createDiffRoutes(db, auth) },
