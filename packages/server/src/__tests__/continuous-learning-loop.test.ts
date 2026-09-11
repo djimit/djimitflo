@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { ContinuousLearningLoop } from '../services/continuous-learning-loop';
 import { createTestDb } from './helpers/test-db';
+import { AgentCommunicationService } from '../services/agent-communication-service';
 
 
 let db: Database.Database;
@@ -44,6 +45,16 @@ describe('G127: Continuous Learning Loop', () => {
   it('gets last cycle', async () => {
     await loop.runCycle();
     expect(loop.getLastCycle()).not.toBeNull();
+  });
+
+  it('opens one bounded social round for connected runtimes', async () => {
+    db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-a', 'Agent A', 'active', '[\"analysis\"]'), ('agent-b', 'Agent B', 'active', '[\"research\"]')").run();
+    const communication = new AgentCommunicationService(db);
+    communication.heartbeat('agent-a', 'runtime-a', 'model-a');
+    communication.heartbeat('agent-b', 'runtime-b', 'model-b');
+    const result = await loop.runCycle();
+    expect(result.socialExchangesStarted).toBe(2);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
   });
 
   it('ignores foreign cycle records in history and watermarks', async () => {
