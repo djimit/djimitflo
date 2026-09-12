@@ -264,6 +264,21 @@ describe('critical HTTP contracts', () => {
     expect(await disabledSafety.json()).toMatchObject({ enabled: false });
     expect(await (await request('/swarms/rsi/safety')).json()).toMatchObject({ enabled: false });
     expect((db.prepare("SELECT value FROM system_state WHERE key = 'rsi_safety_enabled'").get() as any).value).toBe('false');
+    const loopRunsBeforeBlockedBatch = (db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get() as { count: number }).count;
+    const blockedBatch = await request('/swarms/fix/batch', {
+      method: 'POST',
+      body: JSON.stringify({ requests: [{
+        repository_path: join(dataDir, 'missing-fix-repository'),
+        file_path: 'README.md',
+        description: 'Must be blocked before repository dispatch.',
+        category: 'bug',
+      }] }),
+    });
+    expect(blockedBatch.status).toBe(200);
+    expect(await blockedBatch.json()).toMatchObject({
+      results: [{ success: false, status: 'blocked', gates: ['rsi_safety_guard:blocked'] }],
+    });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get() as { count: number }).count).toBe(loopRunsBeforeBlockedBatch);
     const enabledSafety = await request('/swarms/rsi/safety/toggle', { method: 'POST', body: JSON.stringify({ enabled: true }) });
     expect(await enabledSafety.json()).toMatchObject({ enabled: true });
     expect((await request('/swarms/rsi/analyze', { method: 'POST', body: '{}' })).status).toBe(200);
