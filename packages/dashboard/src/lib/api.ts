@@ -320,6 +320,15 @@ export type SwarmRealityStatus = {
   };
 };
 
+export type RsiSafetyStatus = {
+  enabled: boolean;
+  mutationsToday: number;
+  mutationsLimit: number;
+  lastMutation: string | null;
+  frozenComponents: string[];
+  auditLogEntries: number;
+};
+
 export type SchedulerTickResult = {
   created_work_items: WorkItemRecord[];
   planned_work_items: WorkItemRecord[];
@@ -1343,6 +1352,17 @@ class ApiClient {
   // Workstation swarm resources
   async getSwarmStatus(): Promise<SwarmRealityStatus> {
     return this.request('/swarms/status');
+  }
+
+  async getRsiSafetyStatus(): Promise<RsiSafetyStatus> {
+    return this.request('/swarms/rsi/safety');
+  }
+
+  async setRsiSafetyEnabled(enabled: boolean): Promise<RsiSafetyStatus> {
+    return this.request('/swarms/rsi/safety/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
   }
 
   async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: WorkerRuntime; repository_path?: string; max_assignments_per_item?: number; work_item_ids?: string[] } = {}): Promise<SchedulerTickResult> {
