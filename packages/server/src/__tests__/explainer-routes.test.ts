@@ -70,7 +70,7 @@ describe("Explainer routes", () => {
         local_path: repo.path,
       });
       expect(local.status).toBe(201);
-      const run = await request(app).post(`/api/explainer/tasks/${local.body.id}/run`).send({ skipGraph: true });
+      const run = await request(app).post(`/api/explainer/tasks/${local.body.id}/run`).send({ skipGraph: true, dryRun: true });
       expect(run.status).toBe(200);
       expect(run.body).toMatchObject({ task_id: local.body.id });
       const completed = await request(app).get(`/api/explainer/tasks/${local.body.id}`);
