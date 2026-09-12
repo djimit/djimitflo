@@ -7,6 +7,7 @@ import {
   OkfAdapter,
   AdapterCache,
 } from '../services/knowledge-adapters';
+import { toArxivQuery } from '../services/knowledge-adapters/arxiv-adapter';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 
@@ -164,5 +165,20 @@ describe('G94: Knowledge Adapters', () => {
       const available = await adapter.isAvailable();
       expect(typeof available).toBe('boolean');
     });
+  });
+});
+
+describe('toArxivQuery', () => {
+  it('requires every term instead of arXiv implicit OR', () => {
+    expect(toArxivQuery('automated scientific research AI agents')).toBe(
+      'all:automated AND all:scientific AND all:research AND all:AI AND all:agents',
+    );
+  });
+
+  it('strips query-syntax characters and drops one-character fragments', () => {
+    expect(toArxivQuery('Given this procedure:\n- x\nResearch: agents')).toBe(
+      'all:Given AND all:this AND all:procedure AND all:Research AND all:agents',
+    );
+    expect(toArxivQuery('open-ended agents')).toBe('all:open-ended AND all:agents');
   });
 });
