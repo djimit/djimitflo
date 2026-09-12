@@ -64,12 +64,12 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/release — release from quarantine
   router.post('/agents/:agentId/release', requirePermission('write:governance'), (req, res) => {
     const { reason } = req.body || {};
-    if (!reason?.trim()) {
+    if (typeof reason !== 'string' || !reason.trim()) {
       res.status(400).json({ error: { message: 'reason is required', code: 'VALIDATION_ERROR' } });
       return;
     }
     try {
-      service.releaseFromQuarantine(req.params.agentId, reason);
+      service.releaseFromQuarantine(req.params.agentId, reason.trim());
       res.json({ released: true, agentId: req.params.agentId });
     } catch (error) {
       if (error instanceof Error && /^Agent not found:/.test(error.message)) {
