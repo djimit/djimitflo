@@ -620,7 +620,7 @@ export class SpecialistPanelService {
       risk_class: row.risk_class,
       panel: JSON.parse(row.panel_json || '[]'),
       context: JSON.parse(row.context_json || '{}'),
-      consensus: JSON.parse(row.consensus_json || '{}'),
+      consensus: { ...this.emptyConsensus(JSON.parse(row.panel_json || '[]').length), ...JSON.parse(row.consensus_json || '{}') },
       metadata: JSON.parse(row.metadata || '{}'),
       created_at: row.created_at,
       updated_at: row.updated_at,

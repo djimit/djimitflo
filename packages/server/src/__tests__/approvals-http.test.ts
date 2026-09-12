@@ -99,14 +99,17 @@ describe('approval HTTP role visibility and independent decision', () => {
     }
   });
 
-  it('authenticates protected health routes and grants authority reads to audit roles', async () => {
+  it('authenticates protected health routes and grants authority reads to every evidence-reading role', async () => {
+    // Authority Ledger gates on read:evidence (same audience as Compliance/
+    // Governance), which every role holds — so every role clears the
+    // permission check and reaches requireLedger, which 503s here since
+    // this test DB has no authority_events table.
     for (const role of Object.values(UserRole)) {
       const headers = { authorization: `Bearer ${tokens.get(role)}` };
-      const canAudit = [UserRole.ADMIN, UserRole.PLATFORM_ADMIN, UserRole.AUDITOR].includes(role);
       for (const path of ['/authority/stats', '/authority/trace/test', '/authority/events']) {
         const response = await fetch(`${base}${path}`, { headers });
-        expect(response.status, role).toBe(canAudit ? 503 : 403);
-        if (canAudit) expect((await response.json() as any).error.code).toBe('AUTHORITY_LEDGER_UNAVAILABLE');
+        expect(response.status, role).toBe(503);
+        expect((await response.json() as any).error.code, role).toBe('AUTHORITY_LEDGER_UNAVAILABLE');
       }
       expect((await fetch(`${base}/health/metrics/json`, { headers })).status, role).toBe(200);
       expect((await fetch(`${base}/api/health/metrics/json`, { headers })).status, role).toBe(200);

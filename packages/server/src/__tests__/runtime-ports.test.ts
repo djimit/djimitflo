@@ -20,8 +20,11 @@ it('bounds native inventory and yields while waiting for the child process', asy
     { address: '127.0.0.1', port: 3187, pid: 123, process: 'node', bind: 'Localhost' },
     ...(process.platform === 'darwin' ? [{ address: '*', port: 8080, pid: 456, process: 'Google Chrome He', bind: 'LAN' }] : []),
   ]);
+  // Best-effort local introspection: a scan failure (missing binary, timeout,
+  // unsupported platform) degrades to an empty list instead of rejecting, so
+  // a slim production container without netstat/ss doesn't 503 the route.
   mock.mockImplementation(((_command: string, _args: string[], _options: unknown, callback: (error: Error | null, result?: { stdout: string; stderr: string }) => void) => {
     setImmediate(() => callback(new Error('scan timed out')));
   }) as any);
-  await expect(scanListeningPorts()).rejects.toThrow('scan timed out');
+  await expect(scanListeningPorts()).resolves.toEqual([]);
 });
