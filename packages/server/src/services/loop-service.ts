@@ -1207,17 +1207,18 @@ export class LoopService {
     const requestedPath = target.file_path.trim();
     if (!requestedPath || path.isAbsolute(requestedPath)) throw createError(400, 'file_path must be a non-empty relative path', 'FIX_FILE_PATH_INVALID');
     const repositoryRealPath = fs.realpathSync(repositoryPath);
-    const absolutePath = path.resolve(repositoryRealPath, requestedPath);
-    if (absolutePath !== repositoryRealPath && !absolutePath.startsWith(repositoryRealPath + path.sep)) {
+    const repositoryPathPrefix = repositoryRealPath.endsWith(path.sep) ? repositoryRealPath : `${repositoryRealPath}${path.sep}`;
+    const resolvedPath = path.resolve(repositoryRealPath, requestedPath);
+    if (!resolvedPath.startsWith(repositoryPathPrefix)) {
       throw createError(403, 'file_path must remain inside repository_path', 'FIX_FILE_PATH_OUTSIDE_REPOSITORY');
     }
     let realPath: string;
     try {
-      realPath = fs.realpathSync(absolutePath);
+      realPath = fs.realpathSync(resolvedPath);
     } catch {
       throw createError(404, 'file_path was not found in repository_path', 'FIX_FILE_NOT_FOUND');
     }
-    if (realPath !== repositoryRealPath && !realPath.startsWith(repositoryRealPath + path.sep)) {
+    if (!realPath.startsWith(repositoryPathPrefix)) {
       throw createError(403, 'file_path must remain inside repository_path', 'FIX_FILE_PATH_OUTSIDE_REPOSITORY');
     }
     if (!fs.statSync(realPath).isFile()) {
