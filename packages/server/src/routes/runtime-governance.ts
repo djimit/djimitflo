@@ -17,6 +17,10 @@ function boundedLimit(value: unknown, fallback = 50): number {
   return limit;
 }
 
+function isGovernanceScore(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 10;
+}
+
 export function createRuntimeGovernanceRoutes(
   db: Database,
   auth?: AuthMiddleware,
@@ -46,8 +50,12 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/register — register baseline
   router.post('/agents/:agentId/register', requirePermission('write:governance'), (req, res) => {
     const { overallScore, categoryScores, certifiedAt } = req.body ?? {};
-    if (!Number.isFinite(overallScore) || !categoryScores || typeof categoryScores !== 'object' || Array.isArray(categoryScores) || typeof certifiedAt !== 'string' || !certifiedAt.trim()) {
-      res.status(400).json({ error: { message: 'overallScore, categoryScores and certifiedAt are required', code: 'VALIDATION_ERROR' } });
+    const validCategoryScores = categoryScores !== null
+      && typeof categoryScores === 'object'
+      && !Array.isArray(categoryScores)
+      && Object.values(categoryScores as Record<string, unknown>).every(isGovernanceScore);
+    if (!isGovernanceScore(overallScore) || !validCategoryScores || typeof certifiedAt !== 'string' || !certifiedAt.trim()) {
+      res.status(400).json({ error: { message: 'scores must be between 0 and 10, and certifiedAt is required', code: 'VALIDATION_ERROR' } });
       return;
     }
     service.registerBaseline(req.params.agentId, req.body);

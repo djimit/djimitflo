@@ -88,4 +88,34 @@ describe('runtime governance release HTTP contract', () => {
       evidence: { reason: 'independent review completed' },
     }));
   });
+
+  it('rejects invalid baseline scores without writing and persists an in-range baseline', async () => {
+    const path = '/runtime-governance/agents/register-fixture/register';
+    const invalidBaselines = [
+      { overallScore: 10.1, categoryScores: {}, certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: { governance: -0.1 }, certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: { governance: '4' }, certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: [], certifiedAt: new Date().toISOString() },
+    ];
+
+    for (const baseline of invalidBaselines) {
+      const response = await request(app)
+        .post(path)
+        .set('Authorization', `Bearer ${tokens.get(UserRole.ADMIN)}`)
+        .send(baseline);
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      expect(service.getQuarantineStatus('register-fixture').baseline).toBeNull();
+    }
+
+    const registered = await request(app)
+      .post(path)
+      .set('Authorization', `Bearer ${tokens.get(UserRole.ADMIN)}`)
+      .send({ overallScore: 10, categoryScores: { governance: 0, injection: 10 }, certifiedAt: new Date().toISOString() });
+    expect(registered.status).toBe(200);
+    expect(service.getQuarantineStatus('register-fixture').baseline).toMatchObject({
+      certifiedScore: 10,
+      categoryScores: { governance: 0, injection: 10 },
+    });
+  });
 });
