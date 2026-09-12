@@ -1,7 +1,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import { UserRole } from '@djimitflo/shared';
 import { createTestDb } from './helpers/test-db';
@@ -12,7 +12,6 @@ import { errorHandler } from '../middleware/error-handler';
 import { createRuntimeGovernanceRoutes } from '../routes/runtime-governance';
 
 describe('runtime governance release HTTP contract', () => {
-  const originalSecret = process.env.JWT_SECRET;
   const db = createTestDb();
   const tokens = new Map<UserRole, string>();
   const service = new RuntimeGovernanceService(db);
@@ -20,8 +19,9 @@ describe('runtime governance release HTTP contract', () => {
   let app: express.Express;
 
   beforeAll(async () => {
-    vi.stubEnv('JWT_SECRET', 'runtime-governance-release-http-fixture-secret');
     const authService = new AuthService(db);
+    // Keep these tokens independent from other HTTP fixtures that mutate JWT_SECRET concurrently.
+    (authService as unknown as { jwtSecret: string }).jwtSecret = 'runtime-governance-release-http-fixture-secret';
     for (const role of [UserRole.ADMIN, UserRole.VIEWER]) {
       const user = authService.createUser(`${role}@runtime-governance.test`, 'Fixture-password-123!', role);
       tokens.set(role, authService.generateToken(user));
@@ -41,8 +41,6 @@ describe('runtime governance release HTTP contract', () => {
     if (server) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     service.stop();
     db.close();
-    if (originalSecret === undefined) delete process.env.JWT_SECRET;
-    else process.env.JWT_SECRET = originalSecret;
   });
 
   it('enforces operator auth, rejects malformed reasons, translates missing agents, and persists an approved release', async () => {

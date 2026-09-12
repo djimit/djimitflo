@@ -30,6 +30,28 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
   const service = new ExplainerGenerationService(db);
   const discovery = new ExplainerDiscoveryService(db);
   const scheduler = new RepoExplainerScheduler(db);
+  const admitPipelineRun = (taskId: string, actor: string, cancelIfPaused = false): "paused" | "missing" | "already_running" | "admitted" => db.transaction(() => {
+    const auditBlocked = (reason: string) => db.prepare(
+      "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(randomUUID(), actor, "pipeline_run", "explainer_task", taskId, "blocked", reason, new Date().toISOString());
+    if (scheduler.isPaused()) {
+      auditBlocked("Fleet paused");
+      if (cancelIfPaused) {
+        db.prepare("UPDATE explainer_tasks SET status = 'cancelled', updated_at = ? WHERE id = ? AND status = 'pending'")
+          .run(new Date().toISOString(), taskId);
+      }
+      return "paused";
+    }
+    const task = db.prepare("SELECT status FROM explainer_tasks WHERE id = ?").get(taskId) as { status: string } | undefined;
+    if (!task) return "missing";
+    if (task.status === "running") {
+      auditBlocked("Task already running");
+      return "already_running";
+    }
+    db.prepare("UPDATE explainer_tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?")
+      .run("running", new Date().toISOString(), taskId, task.status);
+    return "admitted";
+  })();
 
   // Public read rate limit for fleet status and published bundle listings.
   const publicReadLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false });
@@ -64,6 +86,19 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
 
   // POST /api/explainer/tasks/:id/run — run the pipeline
   router.post("/tasks/:id/run", requirePermission("write:governance"), async (req, res) => {
+    const admission = admitPipelineRun(req.params.id, (req as any).user?.sub ?? "operator");
+    if (admission === "paused") {
+      res.status(409).json({ error: { message: "Explainer fleet is paused", code: "FLEET_PAUSED" } });
+      return;
+    }
+    if (admission === "missing") {
+      res.status(404).json({ error: { message: "Task not found", code: "TASK_NOT_FOUND" } });
+      return;
+    }
+    if (admission === "already_running") {
+      res.status(409).json({ error: { message: "Task is already running", code: "TASK_ALREADY_RUNNING" } });
+      return;
+    }
     try {
       const { skipGraph, skipEval, dryRun } = req.body || {};
       const bundlePath = await service.runPipeline(req.params.id, { skipGraph, skipEval, dryRun });
@@ -199,6 +234,16 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
         remote_url: `https://github.com/${fullName}.git`,
         discovered_repository_id: discovered.id,
       });
+      const admission = admitPipelineRun(task.id, (req as any).user?.sub ?? "operator", true);
+      if (admission !== "admitted") {
+        res.status(admission === "missing" ? 404 : 409).json({
+          error: {
+            message: admission === "paused" ? "Explainer fleet is paused" : admission === "missing" ? "Task not found" : "Task is already running",
+            code: admission === "paused" ? "FLEET_PAUSED" : admission === "missing" ? "TASK_NOT_FOUND" : "TASK_ALREADY_RUNNING",
+          },
+        });
+        return;
+      }
       const bundlePath = await service.runPipeline(task.id);
       res.json({ task_id: task.id, bundle_path: bundlePath });
     } catch (error) {
@@ -357,25 +402,48 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
     res.json({ id: bundleId, status: "unpublished", qdrant_purged: qdrantPurged });
   });
 
-  // POST /api/explainer/fleet/kill-switch — halt all scheduling + pause workers
+  // Pause new admissions and cancel queued work. In-flight pipelines are not interruptible.
   router.post("/fleet/kill-switch", mutationLimiter, requirePermission("write:governance"), (req, res) => {
-    scheduler.setPaused(true);
-    db.prepare("UPDATE explainer_jobs SET status = 'cancelled', updated_at = ? WHERE status IN ('pending', 'queued')").run(
-      new Date().toISOString(),
-    );
-    db.prepare(
-      "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    ).run(
-      randomUUID(),
-      (req as any).user?.sub ?? "operator",
-      "fleet_kill_switch",
-      "explainer_fleet",
-      "all",
-      "success",
-      typeof req.body?.reason === "string" ? req.body.reason.slice(0, 500) : "Kill switch engaged",
-      new Date().toISOString(),
-    );
-    res.json({ paused: true, pending_cancelled: true });
+    const now = new Date().toISOString();
+    const result = db.transaction(() => {
+      scheduler.setPaused(true);
+      const cancelledTasks = db.prepare(`
+        UPDATE explainer_tasks SET status = 'cancelled', updated_at = ?
+        WHERE status = 'pending' AND id IN (
+          SELECT task_id FROM explainer_jobs WHERE status IN ('pending', 'queued')
+        )
+      `).run(now).changes;
+      const cancelledJobs = db.prepare(
+        "UPDATE explainer_jobs SET status = 'cancelled', updated_at = ? WHERE status IN ('pending', 'queued')",
+      ).run(now).changes;
+      const running = db.prepare(`
+        SELECT COUNT(*) AS count FROM (
+          SELECT task_id FROM explainer_jobs WHERE status = 'running'
+          UNION
+          SELECT id AS task_id FROM explainer_tasks WHERE status = 'running'
+        )
+      `).get() as { count: number };
+      db.prepare(
+        "INSERT INTO explainer_audit_log (id, actor, action, resource_type, resource_id, outcome, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        randomUUID(),
+        (req as any).user?.sub ?? "operator",
+        "fleet_kill_switch",
+        "explainer_fleet",
+        "all",
+        "success",
+        typeof req.body?.reason === "string" ? req.body.reason.slice(0, 500) : "Kill switch engaged",
+        now,
+      );
+      return { cancelledTasks, cancelledJobs, runningJobs: running.count };
+    })();
+    res.json({
+      paused: scheduler.isPaused(),
+      pending_cancelled: result.cancelledJobs > 0,
+      cancelled_job_count: result.cancelledJobs,
+      cancelled_task_count: result.cancelledTasks,
+      running_jobs_uninterrupted: result.runningJobs,
+    });
   });
 
   // GET /api/explainer/audit — recent audit log entries (auth read)
