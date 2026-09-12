@@ -69,6 +69,11 @@ describe('GitHub pull_request review webhook (Phase 2: real LLM checker path)', 
     repoPath = mkdtempSync(join(tmpdir(), 'djimitflo-pr-llm-clone-'));
     rmSync(repoPath, { recursive: true, force: true });
     execFileSync('git', ['clone', originRepo, repoPath], { encoding: 'utf8' });
+    // clone does not carry over local (non---global) author identity, and a
+    // CI runner may have no --global identity configured at all — set it
+    // locally so createWorktree()'s internal commit doesn't fail there.
+    git(repoPath, ['config', 'user.email', 'test@example.local']);
+    git(repoPath, ['config', 'user.name', 'Test']);
     worktreeRoot = mkdtempSync(join(tmpdir(), 'djimitflo-pr-llm-worktrees-'));
 
     process.env.GITHUB_WEBHOOK_SECRET = 'test-secret';
