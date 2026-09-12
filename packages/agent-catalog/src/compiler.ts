@@ -45,7 +45,14 @@ function compileCodex(p: Profile): CompiledArtifact {
   return { target: 'codex', files: { 'agent.toml': `[agent]\nname = ${JSON.stringify(p.name)}\nmodel = "gpt-4o"\ninstructions = ${JSON.stringify(instructions)}\n` } };
 }
 
-function fileStem(id: string): string { return id.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'agent'; }
+function fileStem(id: string): string {
+  const cleaned = id.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  let start = 0;
+  let end = cleaned.length;
+  while (start < end && cleaned[start] === '-') start++;
+  while (end > start && cleaned[end - 1] === '-') end--;
+  return cleaned.slice(start, end) || 'agent';
+}
 function yamlString(value: string): string { return JSON.stringify(clamp(value)); }
 function markdownBody(p: Profile): string {
   return [
