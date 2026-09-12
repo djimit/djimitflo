@@ -127,7 +127,8 @@ export class LoopWorkerExecutorService {
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const result = makerLease.runtime === 'mock'
       ? await this.executeMockWorker(makerLease, prompt, timeoutMs, skipPermissions)
-      : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions);
+      : await this.executeViaEngine(run, makerLease, makerLease.runtime, prompt, makerLease.worktree_path!, timeoutMs, skipPermissions,
+        this.riskAssessmentText(makerLease, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
     const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
@@ -263,7 +264,8 @@ export class LoopWorkerExecutorService {
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);
     const result = runtime === 'mock'
       ? await this.executeMockChecker(checker, checkerWorktree, prompt, timeoutMs)
-      : await this.executeViaEngine(run, checker, runtime, prompt, checkerWorktree, timeoutMs, skipPermissions);
+      : await this.executeViaEngine(run, checker, runtime, prompt, checkerWorktree, timeoutMs, skipPermissions,
+        this.riskAssessmentText(maker, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, checker.id, 'checker-output', result.stdout || '', result.stderr || '');
     if (this.loopService.isWorkerLeaseCancelled(checker.id)) {
@@ -362,6 +364,7 @@ export class LoopWorkerExecutorService {
     cwd: string,
     timeoutMs: number,
     skipPermissions: boolean,
+    riskAssessmentText: string,
   ): Promise<RuntimeExecutionResult> {
     const previousTaskId = lease.metadata.execution_task_id as string | undefined;
     if (previousTaskId) {
@@ -406,7 +409,9 @@ export class LoopWorkerExecutorService {
     );
     this.loopService.patchWorkerLeaseMetadata(lease.id, { execution_task_id: taskId });
 
-    const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(taskId, runtime as ExecutorKind);
+    const execution = await (this.executionEngine ||= new ExecutionEngine(this.db)).executeTask(
+      taskId, runtime as ExecutorKind, undefined, { riskAssessmentText },
+    );
     if (execution.status === 'awaiting_approval') {
       this.loopService.updateWorkerLeaseStatus(lease.id, 'prepared', { execution_task_id: taskId, approval_id: execution.approvalId });
       throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
@@ -418,6 +423,27 @@ export class LoopWorkerExecutorService {
 
     const completed = await execution.completion;
     return this.toRuntimeResult(completed);
+  }
+
+  private riskAssessmentText(lease: WorkerLeaseRecord, prompt: string): string {
+    const packetPath = typeof lease.metadata.assignment_packet_file === 'string' ? lease.metadata.assignment_packet_file : '';
+    if (packetPath && fs.existsSync(packetPath)) {
+      const packet = JSON.parse(fs.readFileSync(packetPath, 'utf8')) as { finding?: Record<string, unknown> };
+      const finding = packet.finding;
+      if (!finding || !['message', 'evidence', 'suggested_fix'].some((key) => typeof finding[key] === 'string')) {
+        throw new Error('LOOP_WORKER_FINDING_NOT_FOUND');
+      }
+      return ['type', 'severity', 'file', 'message', 'evidence', 'suggested_fix']
+        .map((key) => finding[key])
+        .filter((value): value is string => typeof value === 'string')
+        .join('\n');
+    }
+
+    // Legacy assignment files include policy boilerplate that must not be
+    // mistaken for the requested work; fail closed if the finding section is absent.
+    const findingText = prompt.split('\n## Advisory Past Experience\n')[0]?.split('\n## Rules\n')[0]?.trim() || '';
+    if (!findingText) throw new Error('LOOP_WORKER_FINDING_NOT_FOUND');
+    return findingText;
   }
 
   private toRuntimeResult(completed: ExecutionResult): RuntimeExecutionResult {
