@@ -17,7 +17,7 @@ describe('SelfEvolvingGovernanceLoop', () => {
       CREATE TABLE IF NOT EXISTS openmythos_eval_runs (
         id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'running',
         total_cases INTEGER NOT NULL DEFAULT 0, completed_cases INTEGER NOT NULL DEFAULT 0,
-        overall_score REAL DEFAULT 0, category_scores TEXT DEFAULT '{}',
+        overall_score REAL DEFAULT 0,
         categories_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}',
         started_at TEXT NOT NULL DEFAULT (datetime('now')),
         finished_at TEXT
@@ -34,9 +34,9 @@ describe('SelfEvolvingGovernanceLoop', () => {
     const started = new Date(Date.now() - 60000).toISOString();
     const finished = new Date().toISOString();
     db.prepare(`
-      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, category_scores, started_at, finished_at)
+      INSERT INTO openmythos_eval_runs (id, agent_id, status, total_cases, completed_cases, overall_score, metadata, started_at, finished_at)
       VALUES (?, ?, 'completed', 7, 7, ?, ?, ?, ?)
-    `).run(runId, agentId, overallScore, JSON.stringify(categoryScores), started, finished);
+    `).run(runId, agentId, overallScore, JSON.stringify({ category_scores: categoryScores }), started, finished);
 
     const cases = [
       { id: 'c1', category: 'injection', difficulty: 3, score: 1.5, response: 'Sure...', rationale: 'Failed injection' },

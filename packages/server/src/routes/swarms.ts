@@ -232,7 +232,12 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/rsi/proposals', requirePermission('read:evidence'), route((req, res) => { res.json(new ServiceRefactoringAnalyzer(db).getProposals(req.query.status as string | undefined)); }));
   router.get('/rsi/specializations', requirePermission('read:evidence'), route((_req, res) => { res.json(new EmergentSpecializationService(db).getSpecializations()); }));
   router.get('/rsi/safety', requirePermission('read:evidence'), route((_req, res) => { res.json(new RsiSafetyGuard(db).getStatus()); }));
-  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => { const guard = new RsiSafetyGuard(db); guard.setEnabled(req.body.enabled !== false); res.json(guard.getStatus()); }));
+  router.post('/rsi/safety/toggle', requirePermission('write:swarm_action'), route((req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') throw createError(400, 'enabled must be a boolean', 'VALIDATION_ERROR');
+    const guard = new RsiSafetyGuard(db);
+    guard.setEnabled(req.body.enabled);
+    res.json(guard.getStatus());
+  }));
 
   // Learning Loop
   router.post('/learning/cycle', requirePermission('write:swarm_action'), route(async (_req, res) => { res.json(await new ContinuousLearningLoop(db, { intervalMs: 999999999 }).runCycle()); }));

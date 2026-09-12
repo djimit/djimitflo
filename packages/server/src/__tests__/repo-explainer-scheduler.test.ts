@@ -192,14 +192,17 @@ describe("RepoExplainerScheduler", () => {
 
   it("persists pause state even for an empty fleet and blocks scheduling", async () => {
     const scheduler = new RepoExplainerScheduler(db);
-    scheduler.setPaused(true);
     insertRepo(db, { full_name: "djimit/repo-a" });
+    expect((await scheduler.run()).scheduled).toBe(1);
+    scheduler.setPaused(true);
 
     expect(scheduler.isPaused()).toBe(true);
     expect((await scheduler.run()).scheduled).toBe(0);
+    expect(scheduler.claimNextJob("worker-paused")).toBeNull();
+    expect((db.prepare("SELECT status FROM explainer_jobs").get() as any).status).toBe("pending");
 
     scheduler.setPaused(false);
-    expect((await scheduler.run()).scheduled).toBe(1);
+    expect(scheduler.claimNextJob("worker-resumed")).not.toBeNull();
   });
 
   it("persists the same estimated costs used for admission", async () => {

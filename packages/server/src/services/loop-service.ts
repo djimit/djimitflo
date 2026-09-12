@@ -1206,18 +1206,29 @@ export class LoopService {
   private createTargetFinding(repositoryPath: string, target: NonNullable<StartDocDriftLoopInput['target_finding']>): LoopFinding {
     const requestedPath = target.file_path.trim();
     if (!requestedPath || path.isAbsolute(requestedPath)) throw createError(400, 'file_path must be a non-empty relative path', 'FIX_FILE_PATH_INVALID');
-    const absolutePath = path.resolve(repositoryPath, requestedPath);
-    if (absolutePath !== repositoryPath && !absolutePath.startsWith(repositoryPath + path.sep)) {
+    const repositoryRealPath = fs.realpathSync(repositoryPath);
+    const repositoryPathPrefix = repositoryRealPath.endsWith(path.sep) ? repositoryRealPath : `${repositoryRealPath}${path.sep}`;
+    const resolvedPath = path.resolve(repositoryRealPath, requestedPath);
+    if (!resolvedPath.startsWith(repositoryPathPrefix)) {
       throw createError(403, 'file_path must remain inside repository_path', 'FIX_FILE_PATH_OUTSIDE_REPOSITORY');
     }
-    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+    let realPath: string;
+    try {
+      realPath = fs.realpathSync(resolvedPath);
+    } catch {
+      throw createError(404, 'file_path was not found in repository_path', 'FIX_FILE_NOT_FOUND');
+    }
+    if (!realPath.startsWith(repositoryPathPrefix)) {
+      throw createError(403, 'file_path must remain inside repository_path', 'FIX_FILE_PATH_OUTSIDE_REPOSITORY');
+    }
+    if (!fs.statSync(realPath).isFile()) {
       throw createError(404, 'file_path was not found in repository_path', 'FIX_FILE_NOT_FOUND');
     }
     const description = target.description.trim();
     if (!description) throw createError(400, 'description is required', 'FIX_DESCRIPTION_REQUIRED');
     const severity = target.category === 'security' ? 'error' : target.category === 'bug' ? 'warning' : 'info';
     return {
-      id: randomUUID(), type: `targeted_${target.category}_fix`, severity, file: path.relative(repositoryPath, absolutePath),
+      id: randomUUID(), type: `targeted_${target.category}_fix`, severity, file: path.relative(repositoryRealPath, realPath),
       message: description, evidence: 'Caller supplied a bounded fix request for this repository file.',
       suggested_fix: description, metadata: { targeted: true, category: target.category },
     };
