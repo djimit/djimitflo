@@ -31,6 +31,9 @@ interface OutcomeEvent {
   eventId: string;
   candidateId: string;
   capabilityId: string;
+  skillId: string;
+  skillVersion: string;
+  skillHash: string;
   metric: string;
   direction: OutcomeLearningAssessment['direction'];
   observationWindow: string;
@@ -57,6 +60,7 @@ interface Evaluation {
   reason: string;
 }
 
+const CAUSAL_STATUSES = new Set(['causal', 'randomized', 'experimentally_supported', 'counterfactual_supported']);
 const RISKS: RiskClass[] = ['low', 'medium', 'high', 'critical'];
 
 export class OutcomeLearningService {
@@ -101,17 +105,33 @@ export class OutcomeLearningService {
           minimum_confidence: this.minimumConfidence,
           average_confidence: this.mean(outcomes.map((outcome) => outcome.confidence)),
           causal_statuses: [...new Set(outcomes.map((outcome) => outcome.causalStatus))],
-          evidence_authority: 'reported_observations',
-          reported_causal_statuses: [...new Set(outcomes.map((outcome) => outcome.causalStatus))],
-          interval_method: 'descriptive_normal_approximation_from_reported_values',
           experiment_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.experiment_id || '')).filter(Boolean))],
           trajectory_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.trajectory_id || '')).filter(Boolean))],
           finding_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.finding_id || '')).filter(Boolean))],
+          skill_attribution: {
+            skill_id: first.skillId,
+            skill_version: first.skillVersion,
+            skill_hash: first.skillHash,
+            complete: Boolean(first.skillId && first.skillVersion && first.skillHash),
+          },
+          execution_attribution: {
+            task_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.task_id || '')).filter(Boolean))],
+            model_ids: [...new Set(outcomes.map((outcome) => String(outcome.payload.model_id || '')).filter(Boolean))],
+            runtime_identities: [...new Set(outcomes.map((outcome) => String(outcome.payload.runtime_identity || '')).filter(Boolean))],
+            cost_complete: outcomes.every((outcome) => typeof outcome.payload.cost_amount === 'number'
+              && Boolean(outcome.payload.cost_currency) && Boolean(outcome.payload.cost_basis)),
+            total_cost: outcomes.every((outcome) => typeof outcome.payload.cost_amount === 'number')
+              ? outcomes.reduce((sum, outcome) => sum + Number(outcome.payload.cost_amount), 0) : null,
+            cost_currencies: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_currency || '')).filter(Boolean))],
+            cost_bases: [...new Set(outcomes.map((outcome) => String(outcome.payload.cost_basis || '')).filter(Boolean))],
+          },
           exploratory: outcomes.some((outcome) => outcome.exploratory),
           promotion_eligible: false,
           required_next_gate: outcomes.some((outcome) => outcome.exploratory)
             ? 'confirmatory_replication'
-            : evaluation.causalSupport ? 'openmythos_targeted_retest' : 'controlled_or_counterfactual_evidence',
+            : !first.skillId || !first.skillVersion || !first.skillHash
+              ? 'skill_attribution'
+              : evaluation.causalSupport ? 'openmythos_targeted_retest' : 'controlled_or_counterfactual_evidence',
         };
         const now = new Date().toISOString();
         this.db.prepare(`
@@ -140,11 +160,7 @@ export class OutcomeLearningService {
           this.applyContainment(first.capabilityId, id, evidenceRefs, evaluation.reason, now);
         }
 
-        const existingRow = this.db.prepare('SELECT id FROM work_items WHERE source = ? AND source_ref = ?')
-          .get('outcome_observed', id) as { id: string } | undefined;
-        // An inconclusive update must refresh an existing projection, not leave a
-        // stale positive signal. It does not qualify a new candidate for creation.
-        if (!existingRow && (outcomes.length < this.minimumReplications || evaluation.signalStatus === 'UNDETERMINED')) continue;
+        if (outcomes.length < this.minimumReplications || evaluation.signalStatus === 'UNDETERMINED') continue;
         const riskClass = outcomes.reduce<RiskClass>((highest, outcome) => RISKS.indexOf(outcome.riskClass) > RISKS.indexOf(highest) ? outcome.riskClass : highest, 'low');
         const title = evaluation.status === 'SUPPORTED'
           ? `Validate supported outcome for ${first.capabilityId}`
@@ -172,9 +188,7 @@ export class OutcomeLearningService {
             result,
           },
         };
-        const existing = existingRow
-          ? { created: false, work_item: this.workItems.get(existingRow.id) }
-          : this.workItems.createIfMissingBySourceRef({
+        const existing = this.workItems.createIfMissingBySourceRef({
           title,
           description,
           source: 'outcome_observed',
@@ -183,17 +197,11 @@ export class OutcomeLearningService {
           value_score: evaluation.status === 'FALSIFIED' ? 90 : 75,
           confidence: this.mean(outcomes.map((outcome) => outcome.confidence)),
           status: 'candidate',
-          recommended_loop: 'outcome-learning-loop',
+          recommended_loop: 'research-loop',
           metadata,
         });
         if (existing.created) workItemsCreated += 1;
-        else this.workItems.update(existing.work_item.id, {
-          confidence: this.mean(outcomes.map((outcome) => outcome.confidence)),
-          risk_class: RISKS.indexOf(riskClass) > RISKS.indexOf(existing.work_item.risk_class) ? riskClass : existing.work_item.risk_class,
-          // Scope, lifecycle and operator annotations belong to the work item.
-          // Only this service's derived namespace is replaced during replay.
-          metadata: { ...existing.work_item.metadata, outcome_learning: metadata.outcome_learning },
-        });
+        else this.workItems.update(existing.work_item.id, { title, description, confidence: this.mean(outcomes.map((outcome) => outcome.confidence)), metadata });
         this.db.prepare('UPDATE outcome_learning_assessments SET work_item_id = ?, updated_at = ? WHERE id = ?')
           .run(existing.work_item.id, now, id);
       }
@@ -238,11 +246,7 @@ export class OutcomeLearningService {
   releaseContainment(capabilityId: string, input: { evidence_refs?: string[]; released_by?: string }): void {
     const evidenceRefs = [...new Set((input.evidence_refs || []).map(String).filter(Boolean))];
     if (!input.released_by?.trim()) throw new Error('OUTCOME_CONTAINMENT_RELEASE_ACTOR_REQUIRED');
-    if (!evidenceRefs.some((ref) => ref.startsWith('openmythos:'))
-      || !evidenceRefs.some((ref) => ref.startsWith('worldlab:'))
-      || !evidenceRefs.some((ref) => ref.startsWith('approval:'))) {
-      throw new Error('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_REQUIRED');
-    }
+    this.assertReleaseEvidence(capabilityId, evidenceRefs);
     const row = this.db.prepare('SELECT metadata FROM swarm_capabilities WHERE id = ?').get(capabilityId) as { metadata: string } | undefined;
     if (!row) throw new Error('SWARM_CAPABILITY_NOT_FOUND');
     const metadata = this.object(row.metadata);
@@ -255,10 +259,37 @@ export class OutcomeLearningService {
       .run(JSON.stringify(metadata), new Date().toISOString(), capabilityId);
   }
 
+  private assertReleaseEvidence(capabilityId: string, evidenceRefs: string[]): void {
+    const ref = (prefix: string) => evidenceRefs.find((candidate) => candidate.startsWith(prefix))?.slice(prefix.length) || '';
+    const openMythosId = ref('openmythos:');
+    const worldLabId = ref('worldlab:');
+    const approvalId = ref('approval:');
+    if (!openMythosId || !worldLabId || !approvalId) throw new Error('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_REQUIRED');
+
+    const openMythos = this.db.prepare(`SELECT 1 FROM openmythos_attestations
+      WHERE id = ? AND certification_eligible = 1 AND corpus_certification_ready = 1`).get(openMythosId);
+    const worldLab = (this.db.prepare("SELECT metadata FROM goals WHERE json_type(metadata, '$.worldlab_retests') = 'array'").all() as Array<{ metadata: string }>)
+      .some((row) => {
+        const retests = this.object(row.metadata).worldlab_retests;
+        return Array.isArray(retests) && retests.some((item) => {
+          const record = item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {};
+          return record.id === worldLabId && record.decision === 'PROMOTION_CANDIDATE';
+        });
+      });
+    const approval = this.db.prepare('SELECT status, requested_by, decided_by, metadata FROM approvals WHERE id = ?').get(approvalId) as {
+      status: string; requested_by: string | null; decided_by: string | null; metadata: string | null;
+    } | undefined;
+    const approvalMetadata = this.object(approval?.metadata || '{}');
+    const approvalValid = approval?.status === 'approved'
+      && Boolean(approval.decided_by) && approval.decided_by !== approval.requested_by
+      && approvalMetadata.capability_id === capabilityId
+      && approvalMetadata.action === 'release_outcome_containment';
+    if (!openMythos || !worldLab || !approvalValid) throw new Error('OUTCOME_CONTAINMENT_RELEASE_EVIDENCE_UNRESOLVED');
+  }
+
   private parse(row: { id: string; payload: string }): OutcomeEvent | null {
     let payload: Record<string, unknown>;
     try { payload = JSON.parse(row.payload) as Record<string, unknown>; } catch { return null; }
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
     const required = ['candidate_id', 'capability_id', 'metric', 'observation_window'];
     if (required.some((key) => typeof payload[key] !== 'string' || !String(payload[key]).trim())) return null;
     const direction = ['increase', 'decrease', 'maintain'].includes(String(payload.direction))
@@ -268,6 +299,9 @@ export class OutcomeLearningService {
       eventId: row.id,
       candidateId: String(payload.candidate_id),
       capabilityId: String(payload.capability_id),
+      skillId: String(payload.skill_id || '').trim(),
+      skillVersion: String(payload.skill_version || '').trim(),
+      skillHash: String(payload.skill_hash || '').trim(),
       metric: String(payload.metric),
       direction,
       observationWindow: String(payload.observation_window),
@@ -287,8 +321,9 @@ export class OutcomeLearningService {
   private groupKey(outcome: OutcomeEvent): string {
     return JSON.stringify([
       outcome.candidateId, outcome.capabilityId, outcome.metric, outcome.direction,
-      outcome.observationWindow, outcome.baseline, outcome.minimumEffect,
+      outcome.observationWindow, outcome.minimumEffect,
       String(outcome.payload.condition || ''), String(outcome.payload.experiment_id || ''),
+      outcome.skillId, outcome.skillVersion, outcome.skillHash,
     ]);
   }
 
@@ -307,11 +342,7 @@ export class OutcomeLearningService {
     const values = outcomes.map((outcome) => typeof outcome.value === 'number' ? outcome.value : Number.NaN);
     const baselines = outcomes.map((outcome) => typeof outcome.baseline === 'number' ? outcome.baseline : Number.NaN);
     const exploratory = outcomes.some((outcome) => outcome.exploratory);
-    // Sender labels, confidence and reference strings are observations, not
-    // independently verified experimental authority. Keep derived signals useful
-    // as candidates; promotion/containment requires an exact verified experiment
-    // binding that this service does not yet possess.
-    const causalSupport = false;
+    const causalSupport = !exploratory && outcomes.every((outcome) => CAUSAL_STATUSES.has(outcome.causalStatus));
     if (!outcomes[0].direction) return { status: 'UNDETERMINED', signalStatus: 'UNDETERMINED', mean: null, baseline: null, low: null, high: null, causalSupport, reason: 'direction is required for outcome interpretation' };
     if (values.some((value) => !Number.isFinite(value)) || baselines.some((value) => !Number.isFinite(value))) {
       return { status: 'UNDETERMINED', signalStatus: 'UNDETERMINED', mean: null, baseline: null, low: null, high: null, causalSupport, reason: 'numeric value and baseline are required for statistical assessment' };
