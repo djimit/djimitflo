@@ -242,7 +242,7 @@ export class RuntimeCommandService {
     options: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; maxBuffer?: number; enforceCwdBoundary?: boolean } = {}
   ): Promise<RuntimeExecutionResult> {
     const maxBuffer = options.maxBuffer || 5 * 1024 * 1024;
-    const timeoutMs = options.timeoutMs || 120_000;
+    const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs || 120_000, 600_000));
     if (options.enforceCwdBoundary && options.cwd) {
       this.loopService.assertWithinWorktreeRoot(options.cwd);
     }

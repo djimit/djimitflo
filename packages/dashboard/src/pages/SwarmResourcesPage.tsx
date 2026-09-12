@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bot, BrainCircuit, CheckCircle2, Database, Network, Play, RefreshCw, ServerCog, ShieldCheck, Workflow } from 'lucide-react';
-import { api, type AgentAssuranceSummary, type MemoryCandidateRecord, type SchedulerTickResult, type SpecialistPanelRecord, type SpecialistProfile, type SwarmRealityStatus, type WorkItemRecord, type WorkerPoolDrainResult, type WorkerPoolPlanResult, type WorkerPoolStartResult } from '../lib/api';
+import { api, type AgentAssuranceSummary, type MemoryCandidateRecord, type RsiSafetyStatus, type SchedulerTickResult, type SpecialistPanelRecord, type SpecialistProfile, type SwarmRealityStatus, type WorkItemRecord, type WorkerPoolDrainResult, type WorkerPoolPlanResult, type WorkerPoolStartResult } from '../lib/api';
 import { useAuthStore } from '../lib/auth-store';
 
 type ReviewDraft = {
@@ -15,7 +15,9 @@ type ReviewDraft = {
 
 export function SwarmResourcesPage() {
   const canApprove = useAuthStore((state) => state.hasPermission('approve:task'));
+  const canManageRsiSafety = useAuthStore((state) => state.hasPermission('write:swarm_action'));
   const [status, setStatus] = useState<SwarmRealityStatus | null>(null);
+  const [rsiSafety, setRsiSafety] = useState<RsiSafetyStatus | null>(null);
   const [workItems, setWorkItems] = useState<WorkItemRecord[]>([]);
   const [memoryCandidates, setMemoryCandidates] = useState<MemoryCandidateRecord[]>([]);
   const [specialists, setSpecialists] = useState<SpecialistProfile[]>([]);
@@ -40,8 +42,9 @@ export function SwarmResourcesPage() {
     setLoading(true);
     setError(null);
     try {
-      const [swarmStatus, backlog, memory, catalog, panels, assurance] = await Promise.all([
+      const [swarmStatus, safety, backlog, memory, catalog, panels, assurance] = await Promise.all([
         api.getSwarmStatus(),
+        api.getRsiSafetyStatus(),
         api.getWorkItems({ limit: 50 }),
         api.getMemoryCandidates(25),
         api.getSpecialistCatalog(),
@@ -49,6 +52,7 @@ export function SwarmResourcesPage() {
         api.getAssuranceSummary(),
       ]);
       setStatus(swarmStatus);
+      setRsiSafety(safety);
       setWorkItems(backlog.work_items);
       setMemoryCandidates(memory.candidates);
       setSpecialists(catalog.specialists);
@@ -194,6 +198,39 @@ export function SwarmResourcesPage() {
           {error}
         </div>
       )}
+
+      <section className="bg-background-secondary border border-border rounded-lg p-5 space-y-3" aria-labelledby="rsi-safety-heading">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 id="rsi-safety-heading" className="text-lg font-semibold text-foreground">Self-improvement mutation gate</h2>
+            <p className="mt-1 text-sm text-foreground-secondary">Controls whether the governed <code>/swarms/fix</code> workflow may create improvement work. This is not a platform-wide kill switch.</p>
+          </div>
+          {rsiSafety && (
+            <span role="status" className={`shrink-0 rounded px-2 py-1 text-sm ${rsiSafety.enabled ? 'bg-status-success/10 text-status-success' : 'bg-status-error/10 text-status-error'}`}>
+              Self-improvement mutations {rsiSafety.enabled ? 'allowed' : 'blocked'}
+            </span>
+          )}
+        </div>
+        {rsiSafety ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span className="text-foreground-secondary">Daily mutations: {rsiSafety.mutationsToday}/{rsiSafety.mutationsLimit}</span>
+            {canManageRsiSafety ? (
+              <button
+                onClick={() => void runAction('rsi-safety', () => api.setRsiSafetyEnabled(!rsiSafety.enabled))}
+                disabled={loading || actionId !== null}
+                className="inline-flex items-center gap-2 rounded-lg border border-accent/30 px-3 py-2 text-accent hover:bg-accent/10 disabled:opacity-50"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {rsiSafety.enabled ? 'Disable self-improvement mutations' : 'Enable self-improvement mutations'}
+              </button>
+            ) : (
+              <span className="text-foreground-tertiary">Changing this requires write:swarm_action.</span>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-foreground-secondary">{loading ? 'Loading mutation gate…' : 'Mutation gate status unavailable.'}</p>
+        )}
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <Metric icon={<Bot className="h-5 w-5" />} label="Registry Agents" value={status?.registry_agent_count ?? 0} />

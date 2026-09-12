@@ -301,6 +301,9 @@ export class RepoExplainerScheduler {
    */
   claimNextJob(workerId: string): { job_id: string; task_id: string; full_name: string } | null {
     return this.db.transaction(() => {
+      // The pause check must share the claim transaction so a worker cannot
+      // pass an outer check, then claim work after the operator pauses the fleet.
+      if (this.isPaused()) return null;
       const row = this.db.prepare(`
         SELECT j.id AS job_id, j.task_id, t.remote_url
         FROM explainer_jobs j

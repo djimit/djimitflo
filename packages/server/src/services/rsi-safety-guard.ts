@@ -12,18 +12,23 @@ export interface SafetyStatus {
 export class RsiSafetyGuard {
   private frozenComponents = ['auth-service', 'authorization-service', 'audit-service', 'rate-limiter', 'security-scanning-agent'];
   private mutationsLimit = 5;
-  private enabled = true;
 
   constructor(private db: Database) {
-    this.db.exec(`CREATE TABLE IF NOT EXISTS rsi_audit_log (
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS system_state (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS rsi_audit_log (
       id TEXT PRIMARY KEY, action TEXT NOT NULL, component TEXT NOT NULL,
       details_json TEXT NOT NULL DEFAULT '{}', actor TEXT NOT NULL DEFAULT 'system',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
+      );
+      INSERT OR IGNORE INTO system_state (key, value) VALUES ('rsi_safety_enabled', 'true');
+    `);
   }
 
   canMutate(component: string): { allowed: boolean; reason?: string } {
-    if (!this.enabled) return { allowed: false, reason: 'RSI is disabled via kill switch' };
+    if (!this.isEnabled()) return { allowed: false, reason: 'RSI is disabled via kill switch' };
     if (this.isFrozen(component)) return { allowed: false, reason: `Component "${component}" is frozen (security/audit boundary)` };
     const todayCount = this.getTodayMutationCount();
     if (todayCount >= this.mutationsLimit) return { allowed: false, reason: `Daily mutation budget exhausted (${todayCount}/${this.mutationsLimit})` };
@@ -32,7 +37,7 @@ export class RsiSafetyGuard {
 
   getStatus(): SafetyStatus {
     return {
-      enabled: this.enabled,
+      enabled: this.isEnabled(),
       mutationsToday: this.getTodayMutationCount(),
       mutationsLimit: this.mutationsLimit,
       lastMutation: this.getLastMutation(),
@@ -42,8 +47,16 @@ export class RsiSafetyGuard {
   }
 
   setEnabled(enabled: boolean): void {
-    this.enabled = enabled;
-    this.logAction('kill_switch', 'rsi-safety-guard', { enabled });
+    this.db.transaction(() => {
+      this.db.prepare("UPDATE system_state SET value = ?, updated_at = datetime('now') WHERE key = 'rsi_safety_enabled'")
+        .run(String(enabled));
+      this.logAction('kill_switch', 'rsi-safety-guard', { enabled });
+    })();
+  }
+
+  private isEnabled(): boolean {
+    const row = this.db.prepare("SELECT value FROM system_state WHERE key = 'rsi_safety_enabled'").get() as { value: string } | undefined;
+    return row?.value === 'true';
   }
 
   isFrozen(component: string): boolean {

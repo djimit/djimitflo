@@ -341,7 +341,6 @@ export class ExplainerGenerationService {
         : await this.buildGraph(scan.repository?.id || 'unknown', ingest.localPath, scan.scanId || null, scan.gitStatus?.headCommit || null);
       const { bundleId, retries_used } = await this.generateBundle(task, ingest, scan, graph);
       this.auditLog(bundleId, taskId, 'pipeline_run', 'success', `grade-loop retries: ${retries_used}`);
-      if (options.dryRun) return bundleId;
       this.db.prepare("UPDATE explainer_tasks SET status = ?, scan_id = ?, repository_id = ?, updated_at = ? WHERE id = ?").run(
         ExplainerStatus.COMPLETED,
         scan.scanId || null,
