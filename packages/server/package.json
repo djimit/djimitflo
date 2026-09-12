@@ -17,7 +17,8 @@
     "github:cocreate": "tsx src/scripts/github-cocreate.ts",
     "swarm:proof": "tsx src/scripts/swarm-proof-run.ts",
     "demo:proof": "tsx src/scripts/swarm-demo-proof.ts",
-    "dennis:agent": "tsx src/scripts/dennis-agent.ts"
+    "dennis:agent": "tsx src/scripts/dennis-agent.ts",
+    "social:campaign": "tsx src/scripts/social-learning-campaign.ts"
   },
   "dependencies": {
     "@djimitflo/agent-catalog": "*",
