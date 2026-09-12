@@ -416,7 +416,7 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       const cancelledJobs = db.prepare(
         "UPDATE explainer_jobs SET status = 'cancelled', updated_at = ? WHERE status IN ('pending', 'queued')",
       ).run(now).changes;
-      const running = db.prepare(`
+      const inFlightWork = db.prepare(`
         SELECT COUNT(*) AS count FROM (
           SELECT task_id FROM explainer_jobs WHERE status = 'running'
           UNION
@@ -435,14 +435,14 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
         typeof req.body?.reason === "string" ? req.body.reason.slice(0, 500) : "Kill switch engaged",
         now,
       );
-      return { cancelledTasks, cancelledJobs, runningJobs: running.count };
+      return { cancelledTasks, cancelledJobs, inFlightWork: inFlightWork.count };
     })();
     res.json({
       paused: scheduler.isPaused(),
       pending_cancelled: result.cancelledJobs > 0,
       cancelled_job_count: result.cancelledJobs,
       cancelled_task_count: result.cancelledTasks,
-      running_jobs_uninterrupted: result.runningJobs,
+      in_flight_work_uninterrupted: result.inFlightWork,
     });
   });
 

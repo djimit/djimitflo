@@ -116,7 +116,7 @@ describe("Explainer fleet routes", () => {
       pending_cancelled: true,
       cancelled_job_count: 2,
       cancelled_task_count: 2,
-      running_jobs_uninterrupted: 1,
+      in_flight_work_uninterrupted: 1,
     });
     expect(db.prepare("SELECT status FROM explainer_jobs WHERE id = 'job-kill-pending'").get()).toEqual({ status: "cancelled" });
     expect(db.prepare("SELECT status FROM explainer_jobs WHERE id = 'job-kill-queued'").get()).toEqual({ status: "cancelled" });
