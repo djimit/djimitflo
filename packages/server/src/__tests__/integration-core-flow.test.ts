@@ -139,6 +139,16 @@ describe('Integration: Core Loop Lifecycle', () => {
     })).toThrow('file_path must remain inside repository_path');
   });
 
+  it('rejects targeted fix paths whose symlink resolves outside the repository', () => {
+    fs.writeFileSync(path.join(evidenceDir, 'outside.txt'), 'outside repository');
+    fs.symlinkSync(path.join(evidenceDir, 'outside.txt'), path.join(tempDir, 'linked.txt'));
+
+    expect(() => loopService.startDocDriftAndSmallFixLoop({
+      repository_path: tempDir,
+      target_finding: { file_path: 'linked.txt', description: 'escape through symlink', category: 'security' },
+    })).toThrow('file_path must remain inside repository_path');
+  });
+
   it('routes security fix requests through a security checker lease', () => {
     const run = loopService.startDocDriftAndSmallFixLoop({
       repository_path: tempDir,
