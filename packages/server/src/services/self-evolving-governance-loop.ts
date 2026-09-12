@@ -304,7 +304,7 @@ export class SelfEvolvingGovernanceLoop {
 
   private getLatestEvalRun(agentId: string): EvalRunSummary | null {
     const run = this.db.prepare(`
-      SELECT id, agent_id, overall_score, category_scores, metadata
+      SELECT id, agent_id, overall_score, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed'
       ORDER BY finished_at DESC LIMIT 1
@@ -321,11 +321,16 @@ export class SelfEvolvingGovernanceLoop {
       response: string; judge_score: number; judge_rationale: string; status: string;
     }>;
 
+    let categoryScores: Record<string, number> = {};
+    try {
+      categoryScores = JSON.parse(run.metadata || '{}').category_scores || {};
+    } catch { /* malformed evaluation metadata must not sink a completed evaluation */ }
+
     return {
       id: run.id,
       agentId: run.agent_id,
       overallScore: run.overall_score,
-      categoryScores: JSON.parse(run.category_scores || '{}'),
+      categoryScores,
       results: results.map(r => ({
         caseId: r.case_id,
         category: r.category,
@@ -340,18 +345,23 @@ export class SelfEvolvingGovernanceLoop {
 
   private getPreviousEvalRun(agentId: string, currentId: string): EvalRunSummary | null {
     const run = this.db.prepare(`
-      SELECT id, agent_id, overall_score, category_scores
+      SELECT id, agent_id, overall_score, metadata
       FROM openmythos_eval_runs
       WHERE agent_id = ? AND status = 'completed' AND id != ?
       ORDER BY finished_at DESC LIMIT 1
     `).get(agentId, currentId) as any;
 
     if (!run) return null;
+    let categoryScores: Record<string, number> = {};
+    try {
+      categoryScores = JSON.parse(run.metadata || '{}').category_scores || {};
+    } catch { /* malformed evaluation metadata must not sink a completed evaluation */ }
+
     return {
       id: run.id,
       agentId: run.agent_id,
       overallScore: run.overall_score,
-      categoryScores: JSON.parse(run.category_scores || '{}'),
+      categoryScores,
       results: [],
     };
   }

@@ -27,14 +27,15 @@ function command(name, args) {
   return { ok: result.status === 0, exit_code: result.status, output: String(result.stdout || result.stderr).trim().slice(0, 1000) };
 }
 
-export function verifyIdentity({ health, version, provenance, integrity, commit, dirty, instanceId, localInstanceId }) {
+export function verifyIdentity({ health, version, provenance, integrity, commit, dirty, instanceId, instanceIdSource, localInstanceId }) {
   const database = provenance.body?.database;
+  const databaseMatches = instanceIdSource === 'configured'
+    || (instanceIdSource === 'local_database' && localInstanceId === instanceId && integrity.ok && integrity.output === 'ok');
   return Boolean(!dirty && /^[a-f0-9]{40}$/.test(commit)
     && health.ok && health.body?.status === 'healthy' && health.body?.commit === commit
     && version.ok && typeof version.body?.version === 'string' && version.body.version.length > 0
-    && integrity.ok && integrity.output === 'ok'
     && provenance.ok && database?.commit_sha === commit && database?.mode === 'live'
-    && instanceId && localInstanceId === instanceId && database?.instance_id === instanceId);
+    && instanceId && databaseMatches && database?.instance_id === instanceId);
 }
 
 export function expectedDatabaseInstance({ baseUrl, configuredId, localInstanceId }) {
@@ -61,7 +62,7 @@ const expectedDatabase = expectedDatabaseInstance({
 const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const dirtyState = execFileSync('git', ['status', '--porcelain=v1'], { cwd: root, encoding: 'utf8' });
 const localInstanceId = instance.ok ? instance.output : '';
-const identityVerified = verifyIdentity({ health, version, provenance, integrity, commit, dirty: Boolean(dirtyState), instanceId: expectedDatabase.instanceId, localInstanceId });
+const identityVerified = verifyIdentity({ health, version, provenance, integrity, commit, dirty: Boolean(dirtyState), instanceId: expectedDatabase.instanceId, instanceIdSource: expectedDatabase.source, localInstanceId });
 const report = {
   schema_version: 1,
   generated_at: new Date().toISOString(),
@@ -72,8 +73,8 @@ const report = {
   reason: identityVerified ? null : 'Deployment identity requires healthy authenticated provenance, matching full commit and database instance, live data mode, and a clean intended revision.',
   next_safe_action: expectedDatabase.source === 'missing_explicit_configuration'
     ? 'Set DJIMITFLO_EXPECTED_DATABASE_INSTANCE_ID from the deployment inventory before checking a remote target.'
-    : localInstanceId !== expectedDatabase.instanceId
-      ? 'Point DJIMITFLO_DB at the intended database instance before using its integrity result.'
+    : expectedDatabase.source === 'local_database' && (localInstanceId !== expectedDatabase.instanceId || !integrity.ok || integrity.output !== 'ok')
+      ? 'Point DJIMITFLO_DB at the intended loopback database and verify its integrity.'
     : provenance.status === 401
       ? 'Provide operator-authorized read:evidence authentication or run MCP doctor locally.'
       : 'Reconcile observed and intended runtime identity.',

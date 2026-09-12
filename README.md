@@ -231,7 +231,7 @@ npm run type-check
 | `DJIMITFLO_CODEX_MODEL` | CLI default | Codex model, including `gpt-6-astra`; task metadata `model` overrides it |
 | `DJIMITFLO_CODEX_REASONING_EFFORT` | CLI default | Codex low/medium/high/xhigh/max; task metadata `reasoningEffort` overrides it |
 | `DJIMITFLO_INSTANCE_ID` | (unset) | Stable runtime identifier reported by MCP doctor |
-| `DJIMITFLO_EXPECTED_DATABASE_INSTANCE_ID` | (unset) | Expected DB identity for `assurance:live` when checking a remote target; local DB identity is used only for loopback targets |
+| `DJIMITFLO_EXPECTED_DATABASE_INSTANCE_ID` | (unset) | Expected DB identity for `assurance:live` remote provenance; local DB identity and integrity gate only loopback targets |
 | `DJIMITFLO_RUNTIME_HOST` | OS hostname | Explicit runtime host reported by MCP doctor |
 | `OKF_BASE` | repository `knowledge` | Actual OKF data bundle for runtime health, capability sync and MCP tools |
 | `OKF_VALIDATOR_PATH` | `tools/validate_okf.py` beside the bundle | Optional absolute path to the existing trusted operator-managed Python validator; validates the actual `OKF_BASE`. Missing or failed validation blocks sync apply; structural acceptance is not certification |

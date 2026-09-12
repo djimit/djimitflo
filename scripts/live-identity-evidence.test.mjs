@@ -3,13 +3,21 @@ import { expectedDatabaseInstance, verifyIdentity } from './live-identity-eviden
 
 const commit = 'a'.repeat(40);
 const input = {
-  commit, dirty: false, instanceId: 'instance-test', localInstanceId: 'instance-test',
+  commit, dirty: false, instanceId: 'instance-test', instanceIdSource: 'local_database', localInstanceId: 'instance-test',
   health: { ok: true, body: { status: 'healthy', commit } },
   version: { ok: true, body: { version: '0.5.8' } },
   provenance: { ok: true, body: { database: { commit_sha: commit, mode: 'live', instance_id: 'instance-test' } } },
   integrity: { ok: true, output: 'ok' },
 };
 assert.equal(verifyIdentity(input), true);
+assert.equal(verifyIdentity({
+  ...input,
+  instanceId: 'prod-db',
+  instanceIdSource: 'configured',
+  localInstanceId: 'unrelated-local-db',
+  integrity: { ok: false, output: 'database missing' },
+  provenance: { ok: true, body: { database: { ...input.provenance.body.database, instance_id: 'prod-db' } } },
+}), true);
 assert.deepEqual(expectedDatabaseInstance({ baseUrl: 'http://127.0.0.1:3001', localInstanceId: 'local-db' }), {
   instanceId: 'local-db', source: 'local_database',
 });
@@ -22,6 +30,7 @@ assert.deepEqual(expectedDatabaseInstance({ baseUrl: 'https://djimitflo.example'
 for (const override of [
   { dirty: true }, { instanceId: '' }, { instanceId: 'other-db' }, { commit: 'b'.repeat(40) },
   { localInstanceId: 'unrelated-local-db' },
+  { instanceIdSource: 'unknown' },
   { health: { ok: true, body: null } }, { health: { ok: true, body: { status: 'healthy', commit: 'b'.repeat(40) } } },
   { version: { ok: true, body: null } }, { integrity: { ok: true, output: 'corrupt' } },
   { provenance: { ok: true, body: {} } }, { provenance: { ok: false, body: input.provenance.body } },
