@@ -102,8 +102,10 @@ describe('runtime governance release HTTP contract', () => {
       { overallScore: 4, categoryScores: 4, certifiedAt: new Date().toISOString() },
       { overallScore: 4, categoryScores: {}, certifiedAt: 42 },
       { overallScore: 4, categoryScores: {}, certifiedAt: '   ' },
+      { overallScore: 4, categoryScores: {}, certifiedAt: 'not-a-date' },
     ];
 
+    const certifiedAt = ' 2026-09-12T09:30:00.000Z ';
     for (const baseline of invalidBaselines) {
       const response = await request(app)
         .post(path)
@@ -117,11 +119,12 @@ describe('runtime governance release HTTP contract', () => {
     const registered = await request(app)
       .post(path)
       .set('Authorization', `Bearer ${tokens.get(UserRole.ADMIN)}`)
-      .send({ overallScore: 10, categoryScores: { governance: 0, injection: 10 }, certifiedAt: new Date().toISOString() });
+      .send({ overallScore: 10, categoryScores: { governance: 0, injection: 10 }, certifiedAt });
     expect(registered.status).toBe(200);
     expect(service.getQuarantineStatus('register-fixture').baseline).toMatchObject({
       certifiedScore: 10,
       categoryScores: { governance: 0, injection: 10 },
+      certifiedAt: certifiedAt.trim(),
     });
   });
 });

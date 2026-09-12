@@ -9,7 +9,7 @@ module.exports = {
     'packages/server/src/execution/executors/docker-sandbox-executor.ts:108:2-113:3',
     // Governance baseline score bounds and no-write validation boundary.
     'packages/server/src/routes/runtime-governance.ts:20:0-22:1',
-    'packages/server/src/routes/runtime-governance.ts:53:4-60:5',
+    'packages/server/src/routes/runtime-governance.ts:53:4-63:5',
   ],
   testRunner: 'vitest',
   ignorePatterns: ['/knowledge'],

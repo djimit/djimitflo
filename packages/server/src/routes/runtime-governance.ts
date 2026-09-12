@@ -50,15 +50,16 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/register — register baseline
   router.post('/agents/:agentId/register', requirePermission('write:governance'), (req, res) => {
     const { overallScore, categoryScores, certifiedAt } = req.body ?? {};
+    const normalizedCertifiedAt = typeof certifiedAt === 'string' ? certifiedAt.trim() : '';
     const validCategoryScores = categoryScores !== null
       && typeof categoryScores === 'object'
       && !Array.isArray(categoryScores)
       && Object.values(categoryScores as Record<string, unknown>).every(isGovernanceScore);
-    if (!isGovernanceScore(overallScore) || !validCategoryScores || typeof certifiedAt !== 'string' || !certifiedAt.trim()) {
-      res.status(400).json({ error: { message: 'scores must be between 0 and 10, and certifiedAt is required', code: 'VALIDATION_ERROR' } });
+    if (!isGovernanceScore(overallScore) || !validCategoryScores || !normalizedCertifiedAt || !Number.isFinite(Date.parse(normalizedCertifiedAt))) {
+      res.status(400).json({ error: { message: 'scores must be between 0 and 10 and certifiedAt must be a valid timestamp', code: 'VALIDATION_ERROR' } });
       return;
     }
-    service.registerBaseline(req.params.agentId, req.body);
+    service.registerBaseline(req.params.agentId, { overallScore, categoryScores, certifiedAt: normalizedCertifiedAt });
     res.json({ registered: true, agentId: req.params.agentId });
   });
 
