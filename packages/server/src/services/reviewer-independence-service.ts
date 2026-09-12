@@ -38,11 +38,12 @@ export class ReviewerIndependenceService {
       SELECT id, loop_run_id, role, runtime, metadata FROM worker_leases
       WHERE loop_run_id = ? AND role IN ('maker', 'checker') ORDER BY created_at DESC
     `).all(loopRunId) as LeaseIdentity[];
-    return this.assess(
-      rows.find((row) => row.role === 'maker') || null,
-      rows.find((row) => row.role === 'checker') || null,
-      loopRunId,
-    );
+    const checker = rows.find((row) => row.role === 'checker') || null;
+    const makerLeaseId = checker ? this.object(checker.metadata).maker_lease_id : null;
+    const maker = typeof makerLeaseId === 'string'
+      ? rows.find((row) => row.id === makerLeaseId) || null
+      : rows.find((row) => row.role === 'maker') || null;
+    return this.assess(maker, checker, loopRunId);
   }
 
   assess(maker: LeaseIdentity | null, checker: LeaseIdentity | null, loopRunId = maker?.loop_run_id || checker?.loop_run_id || ''): ReviewerIndependenceAssessment {
@@ -59,7 +60,8 @@ export class ReviewerIndependenceService {
     };
     const correlatedFields = Object.entries(dimensions).filter(([, independent]) => independent === false).map(([field]) => field);
     const unknownFields = Object.entries(dimensions).filter(([, independent]) => independent === null).map(([field]) => field);
-    const state: IndependenceState = !maker || !checker || unknownFields.length === Object.keys(dimensions).length
+    const syntheticOrManual = [maker?.runtime, checker?.runtime].some((runtime) => runtime === 'mock' || runtime === 'manual');
+    const state: IndependenceState = syntheticOrManual || !maker || !checker || unknownFields.length === Object.keys(dimensions).length
       ? 'UNDETERMINED'
       : correlatedFields.length > 0 ? 'FAIL' : unknownFields.length > 0 ? 'UNDETERMINED' : 'PASS';
     return {
@@ -67,7 +69,7 @@ export class ReviewerIndependenceService {
       maker_lease_id: maker?.id || null,
       checker_lease_id: checker?.id || null,
       state,
-      risk: correlatedFields.length > 0 ? 'high' : unknownFields.length > 0 ? 'medium' : 'low',
+      risk: correlatedFields.length > 0 ? 'high' : syntheticOrManual || unknownFields.length > 0 ? 'medium' : 'low',
       dimensions,
       correlated_fields: correlatedFields,
       unknown_fields: unknownFields,
