@@ -162,6 +162,7 @@ export class RuntimeGovernanceService {
    * Release an agent from quarantine (human approval required).
    */
   releaseFromQuarantine(agentId: string, reason: string): void {
+    if (!this.getAgentState(agentId)) throw new Error(`Agent not found: ${agentId}`);
     this.db.prepare(`
       UPDATE runtime_governance_agents
       SET quarantined = 0, circuit_breaker_tripped = 0, violation_count = 0, updated_at = ?
@@ -181,6 +182,7 @@ export class RuntimeGovernanceService {
    * Reset circuit breaker for an agent.
    */
   resetCircuitBreaker(agentId: string): void {
+    if (!this.getAgentState(agentId)) throw new Error(`Agent not found: ${agentId}`);
     this.db.prepare(`
       UPDATE runtime_governance_agents
       SET circuit_breaker_tripped = 0,

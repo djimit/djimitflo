@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
+import { OutcomeLearningService } from './outcome-learning-service';
 
 const nonBlank = z.string().trim().min(1);
 const decodeField = (value: unknown): unknown => {
@@ -126,6 +127,13 @@ export class ExternalEventIngestService {
           JSON.stringify(normalizedEvent),
         ).changes;
       }
+      // Close the existing ingestion seam before advancing its cursor. Replay
+      // also materializes historical observations left by older deployments.
+      // ponytail: full-history derivation; add a projection cursor if measured
+      // event volume makes this bounded polling transaction too expensive.
+      if (this.db.prepare("SELECT 1 FROM external_events WHERE event_type='outcome.observed' LIMIT 1").get()) {
+        new OutcomeLearningService(this.db).process();
+      }
       if (newestCursor) {
         this.db.prepare(`
           INSERT INTO system_state (key, value, updated_at) VALUES (?, ?, datetime('now'))
@@ -140,7 +148,7 @@ export class ExternalEventIngestService {
   private async poll(): Promise<void> {
     try {
       const inserted = await this.pollOnce();
-      if (inserted) console.log(`[ExternalEventIngest] imported ${inserted} causal event(s)`);
+      if (inserted) console.log(`[ExternalEventIngest] imported ${inserted} external event(s)`);
     } catch (error) {
       console.warn('[ExternalEventIngest] poll failed:', error instanceof Error ? error.message : String(error));
     } finally {

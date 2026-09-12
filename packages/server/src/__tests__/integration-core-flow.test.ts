@@ -8,6 +8,7 @@ import { LoopService } from '../services/loop-service';
 import { GoalService } from '../services/goal-service';
 import { WorktreeManager } from '../services/worktree-manager';
 import { GovernanceGuardService } from '../services/governance-guard-service';
+import { FixLoopService } from '../services/fix-loop-service';
 
 /**
  * Integration test: core loop lifecycle end-to-end.
@@ -57,6 +58,17 @@ describe('Integration: Core Loop Lifecycle', () => {
         message TEXT, metadata TEXT DEFAULT '{}', level TEXT DEFAULT 'info',
         created_at TEXT DEFAULT (datetime('now'))
       );
+      CREATE TABLE agent_trace_spans (
+        id TEXT PRIMARY KEY, trace_id TEXT NOT NULL, parent_span_id TEXT, loop_run_id TEXT,
+        work_item_id TEXT, span_type TEXT NOT NULL, name TEXT NOT NULL, status TEXT NOT NULL,
+        evidence_ref TEXT, started_at TEXT, ended_at TEXT, metadata TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE loop_checkpoints (
+        id TEXT PRIMARY KEY, loop_run_id TEXT NOT NULL, label TEXT NOT NULL,
+        state_json TEXT NOT NULL, gates_json TEXT DEFAULT '[]', findings_json TEXT DEFAULT '[]',
+        leases_json TEXT DEFAULT '[]', metadata TEXT DEFAULT '{}', created_at TEXT DEFAULT (datetime('now'))
+      );
     `);
 
     // Create minimal git repo
@@ -103,6 +115,49 @@ describe('Integration: Core Loop Lifecycle', () => {
     const continued = loopService.continueLoopRun(run.id, { runtime: 'mock' });
     expect(continued.leases.length).toBeGreaterThan(0);
     expect(continued.leases.some(l => l.role === 'maker')).toBe(true);
+  });
+
+  it('runs a targeted fix pipeline through maker, checks, checker and verification', async () => {
+    const fix = new FixLoopService(db, loopService);
+    const result = await fix.fixFile({
+      repositoryPath: tempDir,
+      filePath: 'README.md',
+      description: 'Resolve the documented TODO.',
+      category: 'bug',
+    });
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('ready_for_human_merge');
+    expect(result.requiresHumanApproval).toBe(true);
+    expect(result.runtime).toBe('mock');
+    expect(result.gates.every(gate => !gate.endsWith(':fail'))).toBe(true);
+  });
+
+  it('rejects targeted fix paths outside the repository', () => {
+    expect(() => loopService.startDocDriftAndSmallFixLoop({
+      repository_path: tempDir,
+      target_finding: { file_path: '../outside.txt', description: 'escape', category: 'bug' },
+    })).toThrow('file_path must remain inside repository_path');
+  });
+
+  it('routes security fix requests through a security checker lease', () => {
+    const run = loopService.startDocDriftAndSmallFixLoop({
+      repository_path: tempDir,
+      target_finding: { file_path: 'README.md', description: 'Review this security boundary.', category: 'security' },
+    });
+    const continued = loopService.continueLoopRun(run.id, { runtime: 'mock' });
+    expect(continued.leases.some(lease => lease.role === 'security_checker')).toBe(true);
+  });
+
+  it('completes security fix verification only after the security checker runs', async () => {
+    const result = await new FixLoopService(db, loopService).fixFile({
+      repositoryPath: tempDir,
+      filePath: 'README.md',
+      description: 'Review this security boundary.',
+      category: 'security',
+    });
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('ready_for_human_merge');
+    expect(result.gates.some(gate => gate.startsWith('security_checker_verdict:pass'))).toBe(true);
   });
 
   it('verifies loop gates', () => {

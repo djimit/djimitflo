@@ -1,0 +1,7 @@
+{
+  "generated_at": "2026-09-09T09:07:57.550Z",
+  "state": "FAIL",
+  "transport": "real SDK SSE over loopback",
+  "secrets_recorded": false,
+  "error": "Error POSTing to endpoint (HTTP 404): Session not found"
+}

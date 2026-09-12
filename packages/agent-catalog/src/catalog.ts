@@ -15,19 +15,34 @@ export class AgentCatalog {
   close() { this.db.close(); }
 
   importText(text: string, opts: { sourceRepo: string; sourcePath: string }): ImportResult {
+    return this.db.transaction(() => {
     const parsed = parseAgentMarkdown(text, opts);
     const profile = normalizeAgent(parsed);
     const existing = this.db.listProfiles();
+    const previous = this.db.getEvaluation(profile.id);
     this.db.upsertProfile(profile);
     const evaluation = runStaticGate(profile, existing);
+    if (previous?.version_hash === profile.version_hash && previous.flags.some((flag: string) => flag.startsWith('manual-evaluation:'))) {
+      // Import refreshes static evidence, not the human decision. Preserve its
+      // original verdict even if a new static failure tightens effective status.
+      const manualFlags = (previous.flags as string[]).filter(flag => flag.startsWith('manual-evaluation:'));
+      const recordedVerdict = (previous.flags as string[]).find(flag => /^manual-verdict:(passed|pending|rejected)$/.test(flag))?.slice('manual-verdict:'.length);
+      const manualVerdict = recordedVerdict || previous.status;
+      evaluation.status = evaluation.status === 'rejected' ? 'rejected' : manualVerdict;
+      if (typeof previous.score === 'number') evaluation.score = previous.score;
+      evaluation.flags = [...new Set([...evaluation.flags, ...manualFlags, `manual-verdict:${manualVerdict}`])];
+      const riskOrder = ['low', 'medium', 'high', 'critical'];
+      if (riskOrder.indexOf(previous.risk_level) > riskOrder.indexOf(evaluation.risk_level)) evaluation.risk_level = previous.risk_level;
+    }
     this.db.setEvaluation(evaluation, profile.version_hash);
     profile.risk_profile = { level: evaluation.risk_level, injection_score: evaluation.injection_score, overlap_score: evaluation.overlap_score, flags: evaluation.flags };
     profile.evaluation_status = evaluation.status;
-    profile.activation_status = 'draft';
+    profile.activation_status = this.registry.status(profile.id).status;
     this.db.upsertProfile(profile);
-    for (const o of evaluation.overlaps) this.db.setOverlap(profile.id, o.id, o.score);
+    this.db.replaceOverlaps(profile.id, evaluation.overlaps);
     this.db.audit(profile.id, 'import', JSON.stringify({ sourcePath: opts.sourcePath, status: evaluation.status }));
     return { profile, evaluation };
+    });
   }
 
   importDir(dir: string, sourceRepo: string): ImportResult[] {

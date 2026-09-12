@@ -13,16 +13,19 @@ export function ReviewPage() {
   const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
   const [auditTrail, setAuditTrail] = useState<AuditTrailEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!taskId) return;
+    setLoading(true);
+    setError(null);
     api.getExecutionReview(taskId).then((data) => {
       setTask(data.task);
       setSummary(data.summary);
       setEvidence(data.evidence);
       setFileChanges(data.file_changes);
       setAuditTrail(data.audit_trail);
-    }).finally(() => setLoading(false));
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Review unavailable')).finally(() => setLoading(false));
   }, [taskId]);
 
   const [exporting, setExporting] = useState<string | null>(null);
@@ -50,10 +53,11 @@ export function ReviewPage() {
     );
   }
 
-  if (!task) {
+  if (error || !task) {
     return (
       <div className="p-8 text-center">
-        <h2 className="text-2xl font-bold text-foreground">Task not found</h2>
+        <h2 className="text-2xl font-bold text-foreground">{error ? 'Review unavailable' : 'Task not found'}</h2>
+        {error && <p role="alert" className="text-status-error mt-2">{error}</p>}
         <Link to="/tasks" className="text-accent mt-4 inline-block">Back to Tasks</Link>
       </div>
     );
@@ -124,7 +128,12 @@ function SummaryCard({ summary }: { summary: ExecutionSummary }) {
     cancelled: { icon: <AlertTriangle className="w-5 h-5" />, color: 'text-foreground-muted' },
     denied: { icon: <Shield className="w-5 h-5" />, color: 'text-status-error' },
   };
-  const status = statusConfig[summary.final_status] || statusConfig.completed;
+  const status = statusConfig[summary.final_status] || { icon: <Clock className="w-5 h-5" />, color: 'text-foreground-muted' };
+  const approvalStatus = summary.metadata?.approval_status;
+  const approvalLabels: Record<string, string> = { pending: 'Pending', denied: 'Denied', expired: 'Expired', approved: 'Granted', unknown: 'Unknown', not_recorded: 'Not recorded' };
+  const approvalLabel = typeof approvalStatus === 'string' && approvalLabels[approvalStatus]
+    ? approvalLabels[approvalStatus]
+    : summary.approval_granted === true ? 'Granted' : summary.approval_granted === false ? 'Denied' : 'Unknown';
 
   return (
     <div className="bg-background-secondary border border-border rounded-lg p-6">
@@ -144,7 +153,7 @@ function SummaryCard({ summary }: { summary: ExecutionSummary }) {
         </div>
         <div>
           <div className="text-xs text-foreground-tertiary">Duration</div>
-          <div className="font-medium text-foreground">{summary.duration_ms ? `${Math.round(summary.duration_ms / 1000)}s` : 'N/A'}</div>
+          <div className="font-medium text-foreground">{summary.duration_ms != null ? `${Math.round(summary.duration_ms / 1000)}s` : 'N/A'}</div>
         </div>
         <div>
           <div className="text-xs text-foreground-tertiary">Events</div>
@@ -159,9 +168,15 @@ function SummaryCard({ summary }: { summary: ExecutionSummary }) {
           <div className="font-medium text-foreground">{summary.tool_call_count}</div>
         </div>
         <div>
-          <div className="text-xs text-foreground-tertiary">Approval</div>
+          <div className="text-xs text-foreground-tertiary">Execution approval (recorded)</div>
           <div className="font-medium text-foreground">
-            {summary.approval_required ? (summary.approval_granted ? 'Granted' : 'Denied/Pending') : 'Not required'}
+            {approvalLabel}
+          </div>
+        </div>
+        <div className="col-span-2">
+          <div className="text-xs text-foreground-tertiary">Executor attribution</div>
+          <div className="font-medium text-foreground">
+            {summary.executor_kind}{summary.metadata?.executor_source === 'task_configuration' ? ' (configured; execution not evidenced)' : summary.metadata?.executor_source === 'execution_event' ? ' (recorded execution event)' : ' (unverified)'}
           </div>
         </div>
       </div>
@@ -278,20 +293,26 @@ function DiffSection({ taskId }: { taskId: string }) {
   const [snapshots, setSnapshots] = useState<any[]>([]);
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errors, setErrors] = useState<{ diff?: string; snapshots?: string }>({});
 
   useEffect(() => {
-    Promise.all([
-      api.getTaskDiff(taskId).catch(() => ({ files: [], summary: { totalFiles: 0, totalAdditions: 0, totalDeletions: 0, truncated: false, redactedSecrets: 0 } })),
-      api.getTaskSnapshots(taskId).catch(() => ({ snapshots: [] })),
+    setLoading(true);
+    Promise.allSettled([
+      api.getTaskDiff(taskId),
+      api.getTaskSnapshots(taskId),
     ]).then(([diff, snap]) => {
-      setDiffData(diff);
-      setSnapshots(snap.snapshots || []);
+      setDiffData(diff.status === 'fulfilled' ? diff.value : { files: [], summary: { totalFiles: 0, totalAdditions: 0, totalDeletions: 0, truncated: false, redactedSecrets: 0 } });
+      setSnapshots(snap.status === 'fulfilled' ? snap.value.snapshots : []);
+      setErrors({
+        ...(diff.status === 'rejected' ? { diff: 'Git diff unavailable. File changes could not be verified.' } : {}),
+        ...(snap.status === 'rejected' ? { snapshots: 'Execution snapshots unavailable. Repository state could not be verified.' } : {}),
+      });
     }).finally(() => setLoading(false));
   }, [taskId]);
 
   if (loading) return <div className="bg-background-secondary border border-border rounded-lg p-6 animate-pulse"><div className="h-6 bg-background-elevated rounded w-32 mb-4" /><div className="space-y-2"><div className="h-4 bg-background-elevated rounded" /><div className="h-4 bg-background-elevated rounded w-3/4" /></div></div>;
 
-  if (!diffData || (diffData.files.length === 0 && snapshots.length === 0)) return null;
+  if (!diffData || (diffData.files.length === 0 && snapshots.length === 0 && !errors.diff && !errors.snapshots)) return null;
 
   const typeIcons: Record<string, string> = { created: '+', modified: '~', deleted: '-', renamed: '»' };
   const riskColors: Record<string, string> = {
@@ -306,6 +327,7 @@ function DiffSection({ taskId }: { taskId: string }) {
       <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
         <GitBranch className="w-5 h-5" /> Git Diff & Snapshots
       </h2>
+      {Object.values(errors).map(message => <p key={message} role="alert" className="mb-3 text-sm text-status-error">{message}</p>)}
 
       {snapshots.length > 0 && (
         <div className="mb-4 space-y-2">
@@ -365,7 +387,7 @@ function DiffSection({ taskId }: { taskId: string }) {
             ))}
           </div>
         </>
-      ) : (
+      ) : !errors.diff && (
         <p className="text-foreground-secondary text-sm">No file changes detected.</p>
       )}
     </div>

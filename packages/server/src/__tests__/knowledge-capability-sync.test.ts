@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import os from 'os';
@@ -8,11 +8,16 @@ import { runMigrations } from '../database/migrate';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 
 const previousOkfBase = process.env.OKF_BASE;
+const previousValidatorPath = process.env.OKF_VALIDATOR_PATH;
 const tempDirs: string[] = [];
+
+beforeEach(() => { delete process.env.OKF_VALIDATOR_PATH; });
 
 afterEach(() => {
   if (previousOkfBase) process.env.OKF_BASE = previousOkfBase;
   else delete process.env.OKF_BASE;
+  if (previousValidatorPath === undefined) delete process.env.OKF_VALIDATOR_PATH;
+  else process.env.OKF_VALIDATOR_PATH = previousValidatorPath;
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -29,6 +34,9 @@ function writeOkf() {
   const okfBase = path.join(root, 'okf');
   fs.mkdirSync(path.join(okfBase, 'skills'), { recursive: true });
   fs.mkdirSync(path.join(okfBase, 'agents'), { recursive: true });
+  // This fixture exercises sync semantics, not canonical external validation.
+  fs.mkdirSync(path.join(root, 'tools'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'tools', 'validate_okf.py'), 'import os\nfrom pathlib import Path\nassert (Path(os.environ["OKF_BASE"]) / "skills" / "complete.md").is_file()\nprint("OK: synthetic sync fixture")\n');
   tempDirs.push(root);
   process.env.OKF_BASE = okfBase;
   fs.writeFileSync(path.join(okfBase, 'skills', 'complete.md'), [

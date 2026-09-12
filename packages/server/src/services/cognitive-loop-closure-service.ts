@@ -1,16 +1,16 @@
 /**
  * CognitiveLoopClosureService — cross-episode learning and strategy evolution.
  *
- * Transforms DjimFlo from a "dumb orchestrator" into a "learning system" by:
+ * Materializes observational learning evidence by:
  * 1. Recording loop executions as structured episodes
  * 2. Extracting behavioral patterns from episode sequences
  * 3. Evolving strategies based on pattern success rates
- * 4. Applying learned strategies to future loop executions
+ * 4. Publishing observational strategy advice (not automatic application or causality)
  *
  * Architecture:
- *   Loop Execution → EpisodeRecorder → PatternExtractor → StrategyEvolver → MetaLearning
- *        ↑                                                                    │
- *        └──────────────────── Learned Strategy ◄──────────────────────────────┘
+ *   Loop Execution → Durable Episodes → Patterns → Advisory Strategies
+ * Strategy actions are not applied by the dispatcher; this is not a closed
+ * improvement loop or evidence that future task outcomes improve.
  */
 
 import { randomUUID } from 'crypto';
@@ -71,12 +71,12 @@ interface Strategy {
   description: string;
   goalType: string;
   conditions: Record<string, unknown>;
-  actions: StrategyAction[];
+  actions: Array<StrategyAction | string>;
   successRate: number;
   episodeCount: number;
   avgDurationMs: number;
   avgCostDollars: number;
-  lastUsedAt: string;
+  lastUsedAt: string | null;
   createdAt: string;
 }
 
@@ -99,8 +99,6 @@ interface MetaLearningRecord {
 
 export class CognitiveLoopClosureService {
   private unsubscribe: (() => void) | null = null;
-  private episodeBuffer: Episode[] = [];
-  private readonly BUFFER_FLUSH_SIZE = 5;
 
   constructor(private db: Database) {
     this.ensureTables();
@@ -129,6 +127,8 @@ export class CognitiveLoopClosureService {
         goalType: input.goalType || input.category,
         strategy: input.strategy || `lesson_${input.category}`,
         lesson: input.lesson,
+        evidence_basis: 'self_reported',
+        causal_support: false,
       }),
       JSON.stringify({ success: confidence }),
       confidence,
@@ -143,6 +143,9 @@ export class CognitiveLoopClosureService {
    */
   start(): void {
     if (this.unsubscribe) return;
+    // Repair persisted projections from older batching/statistics implementations
+    // using existing durable observations before publishing current advice.
+    this.evolveStrategies();
 
     this.unsubscribe = swarmEventBus.subscribe((event) => {
       this.handleEvent(event);
@@ -163,6 +166,10 @@ export class CognitiveLoopClosureService {
    * Record a loop execution episode.
    */
   recordEpisode(episode: Omit<Episode, 'id'>): Episode {
+    return this.db.transaction(() => {
+    // A repeated delivery (including another service listener) is not replication.
+    const existing = this.db.prepare('SELECT * FROM cognitive_episodes WHERE loop_run_id = ? ORDER BY rowid LIMIT 1').get(episode.loopRunId) as any;
+    if (existing) return this.mapEpisode(existing);
     const fullEpisode: Episode = { ...episode, id: randomUUID() };
 
     // Store in DB
@@ -187,25 +194,22 @@ export class CognitiveLoopClosureService {
       JSON.stringify(fullEpisode.metadata),
     );
 
-    // Buffer for pattern extraction
-    this.episodeBuffer.push(fullEpisode);
-    if (this.episodeBuffer.length >= this.BUFFER_FLUSH_SIZE) {
-      this.extractPatterns();
-      this.evolveStrategies();
-    }
+    // Current strategy/meta readers must include every newly committed outcome;
+    // a global batch boundary can leave an individual cohort permanently stale.
+    // Full-history reconstruction is intentionally simple; scale is not benchmarked.
+    this.evolveStrategies();
 
     return fullEpisode;
+    }).immediate();
   }
 
   /**
-   * Extract patterns from buffered episodes.
+   * Reconstruct current observational patterns from distinct durable loop outcomes.
    */
   extractPatterns(): ExtractedPattern[] {
-    if (this.episodeBuffer.length < 2) return [];
-
+    const episodes = this.readEpisodes();
+    if (episodes.length < 2) return [];
     const patterns: ExtractedPattern[] = [];
-    const episodes = [...this.episodeBuffer];
-    this.episodeBuffer = [];
 
     // Pattern 1: Goal type → outcome correlation
     const goalTypeOutcomes = this.groupBy(episodes, 'goalType');
@@ -215,11 +219,11 @@ export class CognitiveLoopClosureService {
         id: randomUUID(),
         name: `${goalType}_outcome_correlation`,
         description: `Goal type "${goalType}" has ${(successRate * 100).toFixed(0)}% success rate`,
-        conditions: { goalType },
+        conditions: { goalType, evidence_basis: 'recorded_outcomes', confidence_basis: 'sample_count_heuristic', causal_support: false },
         outcomes: { success: successRate, failure: 1 - successRate },
         confidence: Math.min(1, eps.length / 10),
         episodeCount: eps.length,
-        lastSeenAt: new Date().toISOString(),
+        lastSeenAt: eps.map(e => e.completedAt).sort().at(-1)!,
       });
     }
 
@@ -235,11 +239,11 @@ export class CognitiveLoopClosureService {
           id: randomUUID(),
           name: `strategy_${strategy}_${goalType}_effectiveness`,
           description: `Strategy "${strategy}" for "${goalType}" → ${(successRate * 100).toFixed(0)}% success, avg ${Math.round(avgDuration / 1000)}s`,
-          conditions: { strategy, goalType },
-          outcomes: { success: successRate, avgDurationMs: avgDuration },
+          conditions: { strategy, goalType, evidence_basis: 'recorded_outcomes', confidence_basis: 'sample_count_heuristic', causal_support: false },
+          outcomes: { success: successRate, avgDurationMs: avgDuration, avgCostDollars: eps.reduce((sum, e) => sum + e.metrics.totalCostDollars, 0) / eps.length },
           confidence: Math.min(1, eps.length / 3),
           episodeCount: eps.length,
-          lastSeenAt: new Date().toISOString(),
+          lastSeenAt: eps.map(e => e.completedAt).sort().at(-1)!,
         });
       }
     }
@@ -264,10 +268,16 @@ export class CognitiveLoopClosureService {
 
     // Store patterns
     for (const pattern of patterns) {
+      const existing = this.db.prepare('SELECT id FROM cognitive_patterns WHERE name = ?').get(pattern.name) as { id: string } | undefined;
+      pattern.id = existing?.id ?? pattern.id;
       this.db.prepare(`
-        INSERT OR REPLACE INTO cognitive_patterns (
+        INSERT INTO cognitive_patterns (
           id, name, description, conditions_json, outcomes_json, confidence, episode_count, last_seen_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET description=excluded.description,
+          conditions_json=excluded.conditions_json, outcomes_json=excluded.outcomes_json,
+          confidence=excluded.confidence, episode_count=excluded.episode_count,
+          last_seen_at=excluded.last_seen_at
       `).run(
         pattern.id,
         pattern.name,
@@ -287,38 +297,61 @@ export class CognitiveLoopClosureService {
    * Evolve strategies based on extracted patterns.
    */
   evolveStrategies(): Strategy[] {
+    return this.db.transaction(() => {
+    this.extractPatterns();
     const patterns = this.db.prepare(`
-      SELECT * FROM cognitive_patterns WHERE confidence > 0.5 ORDER BY last_seen_at DESC LIMIT 20
+      SELECT * FROM cognitive_patterns ORDER BY last_seen_at DESC, id
     `).all() as Array<Record<string, unknown>>;
 
     const strategies: Strategy[] = [];
-
+    const groups = new Map<string, Array<{ pattern: Record<string, unknown>; conditions: Record<string, any>; outcomes: Record<string, number> }>>();
     for (const pattern of patterns) {
       const conditions = JSON.parse((pattern.conditions_json as string) || '{}');
       const outcomes = JSON.parse((pattern.outcomes_json as string) || '{}');
-
-      // Only evolve strategies for high-confidence patterns
-      if ((pattern.confidence as number) < 0.5) continue;
-
+      // An anomaly count without a success metric is not a zero-success strategy.
+      if (!Number.isFinite(outcomes.success) || !(Number(pattern.episode_count) > 0)) continue;
       const goalType = conditions.goalType as string || 'general';
       const strategyName = conditions.strategy as string || `learned_from_${pattern.name}`;
+      const key = JSON.stringify([goalType, strategyName]);
+      const group = groups.get(key) ?? [];
+      group.push({ pattern, conditions, outcomes });
+      groups.set(key, group);
+    }
+
+    for (const [key, group] of groups) {
+      const [goalType, strategyName] = JSON.parse(key) as [string, string];
+      const observed = group.filter(item => item.conditions.evidence_basis === 'recorded_outcomes');
+      const strategyObserved = observed.filter(item => item.conditions.strategy === strategyName);
+      // Never blend a sender's effectiveness claim into measured loop outcomes.
+      // Goal aggregates include these same episodes. If their generated advice
+      // name equals a real strategy name, use its explicit cohort, never both.
+      const evidence = strategyObserved.length ? strategyObserved : observed.length ? observed : group;
+      const episodeCount = evidence.reduce((sum, item) => sum + Number(item.pattern.episode_count), 0);
+      const weighted = (field: string) => evidence.reduce((sum, item) => sum + (Number(item.outcomes[field]) || 0) * Number(item.pattern.episode_count), 0) / episodeCount;
+      const successRate = weighted('success');
+      const avgDurationMs = weighted('avgDurationMs');
+      const avgCostDollars = weighted('avgCostDollars');
+      const conditions = { ...evidence[0].conditions, evidence_basis: observed.length ? 'recorded_outcomes' : 'self_reported', causal_support: false, selection_eligible: evidence.some(item => Number(item.pattern.confidence) > 0.5), pattern_ids: group.map(item => item.pattern.id) };
+      const actions = [...new Set(group.flatMap(item => typeof item.conditions.lesson === 'string' ? [item.conditions.lesson] : []))];
+      const lastUsedAt = observed.filter(item => item.conditions.strategy === strategyName).map(item => String(item.pattern.last_seen_at)).sort().at(-1) ?? null;
+      // Existing NOT NULL storage uses an absence sentinel; API null is not a
+      // fabricated strategy-use timestamp for newly imported advisory lessons.
+      const storedLastUsedAt = lastUsedAt ?? '';
+      const description = `Observational advice from ${group.map(item => item.pattern.name).join(', ')}`;
 
       // Check if strategy already exists
       const existing = this.db.prepare(`
         SELECT * FROM cognitive_strategies WHERE name = ? AND goal_type = ?
       `).get(strategyName, goalType) as any;
 
-      const successRate = (outcomes.success as number) || 0;
-      const episodeCount = (pattern.episode_count as number) || 0;
-
       if (existing) {
-        // Update existing strategy
-        const newSuccessRate = ((existing.success_rate * existing.episode_count) + (successRate * episodeCount)) / (existing.episode_count + episodeCount);
+        // Replace the projection; replaying the same evidence cannot increase N.
         this.db.prepare(`
           UPDATE cognitive_strategies
-          SET success_rate = ?, episode_count = episode_count + ?, last_used_at = ?, avg_duration_ms = ?
+          SET success_rate = ?, episode_count = ?, last_used_at = ?, avg_duration_ms = ?,
+            avg_cost_dollars = ?, conditions_json = ?, actions_json = ?, description = ?
           WHERE id = ?
-        `).run(newSuccessRate, episodeCount, new Date().toISOString(), (outcomes.avgDurationMs as number) || 0, existing.id);
+        `).run(successRate, episodeCount, storedLastUsedAt, avgDurationMs, avgCostDollars, JSON.stringify(conditions), JSON.stringify(actions), description, existing.id);
       } else {
         // Create new strategy
         const id = randomUUID();
@@ -330,30 +363,30 @@ export class CognitiveLoopClosureService {
         `).run(
           id,
           strategyName,
-          `Auto-evolved from pattern: ${pattern.name}`,
+          description,
           goalType,
           JSON.stringify(conditions),
-          JSON.stringify(typeof conditions.lesson === 'string' ? [conditions.lesson] : []),
+          JSON.stringify(actions),
           successRate,
           episodeCount,
-          (outcomes.avgDurationMs as number) || 0,
-          0,
-          new Date().toISOString(),
+          avgDurationMs,
+          avgCostDollars,
+          storedLastUsedAt,
           new Date().toISOString(),
         );
 
         strategies.push({
           id,
           name: strategyName,
-          description: `Auto-evolved from pattern: ${pattern.name}`,
+          description,
           goalType,
           conditions,
-          actions: typeof conditions.lesson === 'string' ? [conditions.lesson] : [],
+          actions,
           successRate,
           episodeCount,
-          avgDurationMs: (outcomes.avgDurationMs as number) || 0,
-          avgCostDollars: 0,
-          lastUsedAt: new Date().toISOString(),
+          avgDurationMs,
+          avgCostDollars,
+          lastUsedAt,
           createdAt: new Date().toISOString(),
         });
       }
@@ -363,6 +396,7 @@ export class CognitiveLoopClosureService {
     this.updateMetaLearning();
 
     return strategies;
+    })();
   }
 
   /**
@@ -372,6 +406,7 @@ export class CognitiveLoopClosureService {
     const row = this.db.prepare(`
       SELECT * FROM cognitive_strategies
       WHERE goal_type = ? AND episode_count >= 3
+        AND COALESCE(json_extract(conditions_json, '$.selection_eligible'), 1) = 1
       ORDER BY success_rate DESC, episode_count DESC
       LIMIT 1
     `).get(goalType) as any;
@@ -389,7 +424,7 @@ export class CognitiveLoopClosureService {
       episodeCount: row.episode_count,
       avgDurationMs: row.avg_duration_ms,
       avgCostDollars: row.avg_cost_dollars,
-      lastUsedAt: row.last_used_at,
+      lastUsedAt: row.last_used_at || null,
       createdAt: row.created_at,
     };
   }
@@ -418,23 +453,38 @@ export class CognitiveLoopClosureService {
     overallSuccessRate: number;
     bestGoalType: string | null;
   } {
-    const episodes = (this.db.prepare('SELECT COUNT(*) as c FROM cognitive_episodes').get() as any)?.c || 0;
+    const episodes = this.readEpisodes();
     const patterns = (this.db.prepare('SELECT COUNT(*) as c FROM cognitive_patterns').get() as any)?.c || 0;
     const strategies = (this.db.prepare('SELECT COUNT(*) as c FROM cognitive_strategies').get() as any)?.c || 0;
 
-    const successRow = (this.db.prepare("SELECT AVG(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as rate FROM cognitive_episodes").get() as any);
-    const bestGoal = (this.db.prepare("SELECT goal_type, AVG(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as rate FROM cognitive_episodes GROUP BY goal_type ORDER BY rate DESC LIMIT 1").get() as any);
+    const byGoal = this.groupBy(episodes, 'goalType');
+    const bestGoal = Object.entries(byGoal).sort(([, a], [, b]) => b.filter(e => e.outcome === 'success').length / b.length - a.filter(e => e.outcome === 'success').length / a.length)[0]?.[0];
 
     return {
-      totalEpisodes: episodes,
+      totalEpisodes: episodes.length,
       totalPatterns: patterns,
       totalStrategies: strategies,
-      overallSuccessRate: successRow?.rate || 0,
-      bestGoalType: bestGoal?.goal_type || null,
+      overallSuccessRate: episodes.length ? episodes.filter(e => e.outcome === 'success').length / episodes.length : 0,
+      bestGoalType: bestGoal || null,
     };
   }
 
   // ─── Private ──────────────────────────────────────────────────────────
+
+  private mapEpisode(row: any): Episode {
+    return { id: row.id, loopRunId: row.loop_run_id, goalId: row.goal_id, goalType: row.goal_type,
+      mode: row.mode, startedAt: row.started_at, completedAt: row.completed_at,
+      durationMs: row.duration_ms, outcome: row.outcome, strategy: row.strategy,
+      actions: JSON.parse(row.actions_json || '[]'), metrics: JSON.parse(row.metrics_json || '{}'),
+      metadata: JSON.parse(row.metadata_json || '{}') };
+  }
+
+  private readEpisodes(): Episode[] {
+    // Keep historical duplicates intact, but never count redelivery as replication.
+    return (this.db.prepare(`SELECT * FROM cognitive_episodes WHERE rowid IN
+      (SELECT MIN(rowid) FROM cognitive_episodes GROUP BY loop_run_id) ORDER BY rowid`).all() as any[])
+      .map(row => this.mapEpisode(row));
+  }
 
   private handleEvent(event: { type: string; data?: Record<string, unknown> }): void {
     if (event.type === 'loop_completed' && event.data) {
@@ -488,10 +538,13 @@ export class CognitiveLoopClosureService {
     for (const { goal_type } of goalTypes) {
       const best = (this.db.prepare(`
         SELECT id, success_rate FROM cognitive_strategies
-        WHERE goal_type = ? ORDER BY success_rate DESC LIMIT 1
+        WHERE goal_type = ? AND episode_count >= 3
+          AND COALESCE(json_extract(conditions_json, '$.selection_eligible'), 1) = 1
+        ORDER BY success_rate DESC LIMIT 1
       `).get(goal_type) as any);
 
-      const totalEpisodes = (this.db.prepare('SELECT SUM(episode_count) as total FROM cognitive_strategies WHERE goal_type = ?').get(goal_type) as any)?.total || 0;
+      // Goal and strategy patterns overlap; their counts must never be summed.
+      const totalEpisodes = this.readEpisodes().filter(episode => episode.goalType === goal_type).length;
       const totalStrategies = (this.db.prepare('SELECT COUNT(*) as c FROM cognitive_strategies WHERE goal_type = ?').get(goal_type) as any)?.c || 0;
 
       this.db.prepare(`

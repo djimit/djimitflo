@@ -92,7 +92,7 @@ export class SwarmTaskDecomposer {
     return {
       id: row.id,
       goal: row.goal,
-      tasks: JSON.parse(row.tasks_json),
+      tasks: JSON.parse(row.tasks_json || row.subtasks_json || '[]'),
       stages: JSON.parse(row.stages_json),
       estimatedTotalMinutes: row.estimated_minutes,
       createdAt: row.created_at,
@@ -106,7 +106,7 @@ export class SwarmTaskDecomposer {
     return (this.db.prepare('SELECT * FROM execution_plans ORDER BY created_at DESC').all() as any[]).map((row) => ({
       id: row.id,
       goal: row.goal.slice(0, 80),
-      taskCount: JSON.parse(row.tasks_json).length,
+      taskCount: JSON.parse(row.tasks_json || row.subtasks_json || '[]').length,
       createdAt: row.created_at,
     }));
   }
@@ -213,5 +213,15 @@ export class SwarmTaskDecomposer {
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
+
+    // Older migrations called the payload column `subtasks_json`. Keep both
+    // schemas readable so a migrated database does not break decomposition.
+    const columns = this.db.prepare('PRAGMA table_info(execution_plans)').all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === 'tasks_json')) {
+      this.db.exec("ALTER TABLE execution_plans ADD COLUMN tasks_json TEXT");
+      if (columns.some((column) => column.name === 'subtasks_json')) {
+        this.db.exec("UPDATE execution_plans SET tasks_json = subtasks_json WHERE tasks_json IS NULL");
+      }
+    }
   }
 }

@@ -82,6 +82,14 @@ describe('discussion turn protocol (L4 part 2)', () => {
     expect(broadcasts.some((b) => b.type === WebSocketEventType.DISCUSSION_TURN_ADDED)).toBe(true);
   });
 
+  it('rejects malformed list windows before querying SQLite', async () => {
+    for (const query of ['limit=0', 'limit=-1', 'limit=1.5', 'limit=NaN', 'offset=-1', 'offset=1.5']) {
+      const response = await fetch(`${baseUrl}/discussions?${query}`);
+      expect(response.status, query).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
+  });
+
   it('rejects a turn from a non-participant', async () => {
     const id = await createDiscussion(['agent-a', 'agent-b']);
     const { status, body } = await appendTurn(id, 'agent-c', 'intruder');

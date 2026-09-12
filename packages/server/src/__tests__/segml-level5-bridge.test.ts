@@ -25,46 +25,32 @@ describe('SegmlLevel5Bridge', () => {
 
   it('runs self-improvement cycle', () => {
     const steps = bridge.runSelfImprovementCycle();
-    expect(steps.length).toBeGreaterThan(0);
-    for (const step of steps) {
-      expect(step.generation).toBe(1);
-      expect(step.proof.verified).toBe(true);
-      expect(step.cumulativeGain).toBeGreaterThan(0);
-    }
+    expect(steps).toEqual([]);
+    expect(bridge.getStatus().appliedModifications).toBe(0);
   });
 
-  it('proves improvements before applying', () => {
-    const steps = bridge.runSelfImprovementCycle();
-    for (const step of steps) {
-      expect(step.proof.verified).toBe(true);
-      expect(step.proof.beforeMetrics).toBeDefined();
-      expect(step.proof.afterMetrics).toBeDefined();
-    }
-  });
-
-  it('tracks evolution gain', () => {
+  it('does not claim simulated improvement as proof', () => {
     bridge.runSelfImprovementCycle();
-    const status = bridge.getStatus();
-    expect(status.totalEvolutionGain).toBeGreaterThan(0);
+    const proofs = db.prepare('SELECT * FROM segml_l5_modification_proofs').all() as Array<{ verified: number; before_metrics_json: string; after_metrics_json: string }>;
+    expect(proofs.length).toBeGreaterThan(0);
+    for (const proof of proofs) {
+      expect(proof.verified).toBe(0);
+      expect(JSON.parse(proof.after_metrics_json)).toEqual(JSON.parse(proof.before_metrics_json));
+    }
   });
 
-  it('reverts modifications', () => {
-    const steps = bridge.runSelfImprovementCycle();
-    if (steps.length > 0) {
-      const reverted = bridge.revertModification(steps[0].id);
-      expect(reverted).toBe(true);
-      const status = bridge.getStatus();
-      expect(status.revertedModifications).toBe(1);
-    }
+  it('does not report evolution gain without an executable proof', () => {
+    bridge.runSelfImprovementCycle();
+    expect(bridge.getStatus().totalEvolutionGain).toBe(0);
+  });
+
+  it('does not revert a modification that was never applied', () => {
+    bridge.runSelfImprovementCycle();
+    expect(bridge.revertModification('missing-step')).toBe(false);
   });
 
   it('does not revert already reverted', () => {
-    const steps = bridge.runSelfImprovementCycle();
-    if (steps.length > 0) {
-      bridge.revertModification(steps[0].id);
-      const second = bridge.revertModification(steps[0].id);
-      expect(second).toBe(false);
-    }
+    expect(bridge.revertModification('missing-step')).toBe(false);
   });
 
   it('reports comprehensive status', () => {
@@ -73,6 +59,7 @@ describe('SegmlLevel5Bridge', () => {
     expect(status.generation).toBe(1);
     expect(status.selfModel).not.toBeNull();
     expect(status.improvementAreas).toBeGreaterThan(0);
+    expect(status.appliedModifications).toBe(0);
   });
 
   it('self-model knows its architecture', () => {

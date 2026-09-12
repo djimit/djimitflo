@@ -247,11 +247,44 @@ describe('Apex Integration Tests', () => {
       expect(result.status).toBe('completed');
     });
 
+    it('does not report unconfigured workers as successful', async () => {
+      const unavailable = ['test-gap-detector', 'governance-recert', 'worktree-cleanup', 'evidence-compaction'];
+      expect(service.getStatus().workers.filter(worker => unavailable.includes(worker.id)).every(worker => worker.enabled === false)).toBe(true);
+      for (const id of unavailable) {
+        const result = await service.runWorker(id);
+        expect(result.status).toBe('failed');
+        expect(result.output).toContain(`WORKER_UNAVAILABLE:${id}`);
+      }
+    });
+
+    it('reports TTL deletion as deletion rather than archival', async () => {
+      db.prepare(`INSERT INTO vector_memories (id, content, embedding_json, metadata_json, created_at, ttl)
+        VALUES ('expired-memory', 'expired', '[]', '{}', datetime('now', '-2 days'), 60)`).run();
+      const result = await service.runWorker('memory-archival');
+      expect(result.status).toBe('completed');
+      expect(result.output).toContain('Deleted 1 expired memories');
+      expect(db.prepare("SELECT COUNT(*) AS n FROM vector_memories WHERE id='expired-memory'").get()).toEqual({ n: 0 });
+    });
+
+    it('persists worker results and restores them after service restart', async () => {
+      const result = await service.runWorker('metrics-aggregation');
+      expect(result.status).toBe('completed');
+      expect(result.output).toContain('Metrics snapshot:');
+      expect(db.prepare('SELECT COUNT(*) AS n FROM worker_results').get()).toEqual({ n: 1 });
+      const restarted = new BackgroundWorkerService(db);
+      expect(restarted.getStatus().recentResults[0]).toMatchObject({ taskId: 'metrics-aggregation', status: 'completed', output: result.output });
+    });
+
     it('starts and stops workers', () => {
       expect(() => {
         service.startWorker('health-check');
         service.stopWorker('health-check');
       }).not.toThrow();
+    });
+
+    it('rejects unknown worker lifecycle operations', () => {
+      expect(() => service.startWorker('missing-worker')).toThrow('Worker not found: missing-worker');
+      expect(() => service.stopWorker('missing-worker')).toThrow('Worker not found: missing-worker');
     });
 
     it('provides status', () => {

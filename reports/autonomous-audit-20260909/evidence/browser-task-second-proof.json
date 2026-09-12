@@ -1,0 +1,244 @@
+{
+  "evidence_class": "actual-local-browser-provider-execution",
+  "generated_at": "2026-09-09T11:00:31.223Z",
+  "task": {
+    "id": "506c6e33-af94-44c0-831f-20f004e25f02",
+    "status": "completed",
+    "repository_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+    "execution_mode": "local",
+    "metadata": {
+      "executor": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "low",
+      "workingDirectory": "/private/tmp/djimitflo-browser-task.xlbXU6"
+    },
+    "started_at": "2026-09-09T10:56:57.167Z",
+    "completed_at": "2026-09-09T10:57:16.136Z",
+    "token_usage": 51050
+  },
+  "fixture": {
+    "path": "/private/tmp/djimitflo-browser-task.xlbXU6",
+    "baseline_commit": "351ce015894cd25ee05e51b61003137e4251ccf3",
+    "diff": "diff --git a/README.md b/README.md\nindex 95f308f..a2bb836 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,5 +1,6 @@\n # DjimFlo browser execution fixture\n \n-STATUS: pending\n+STATUS: verified\n \n This disposable repository verifies the browser-to-Codex task execution chain.\n+OBSERVABILITY: verified",
+    "test_output": "\n> test\n> node verify.mjs\n\nBROWSER_TASK_FIXTURE_VERIFIED\n",
+    "expected_marker": "OBSERVABILITY: verified",
+    "unchanged_hashes": {
+      "verify.mjs": "8ebdebd60fd114e40ad711b7b64ab97c9f8f09b25af34f61bc6b80b58657f1f5",
+      "AGENTS.md": "bd3cf624921972cd5515319da318942ab9e3fc5f27a5774b64117095a75fc9cb",
+      "package.json": "fcf2bf97c42c905d943fb3a32234712eb7a6168423c4d6712d2301ea98b4cb5b"
+    }
+  },
+  "browser_log": "reports/autonomous-audit-20260909/evidence/browser-task-second-completed.log",
+  "execution_response": {
+    "path": "/api/tasks/506c6e33-af94-44c0-831f-20f004e25f02/execute",
+    "method": "POST",
+    "status": 200,
+    "body": {
+      "message": "Task execution started",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "executor": "codex",
+      "status": "started",
+      "completion": {}
+    }
+  },
+  "websocket": {
+    "frame_count": 35,
+    "execution_event_count": 24,
+    "completion_received": true,
+    "missing_timestamp_count": 0,
+    "mismatched_timestamp_count": 0
+  },
+  "events": [
+    {
+      "id": "7543a298-82de-45dc-99f8-0a1d15d44b38",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:56:57.166Z",
+      "level": "info",
+      "message": "Execution attempt admitted; process start not yet confirmed",
+      "tool_name": null
+    },
+    {
+      "id": "71fd25b2-5c71-4267-a119-ff9fa909c062",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:56:57.167Z",
+      "level": "info",
+      "message": "Execution attempt 1 started with codex",
+      "tool_name": null
+    },
+    {
+      "id": "ba2133ae-b69b-4465-a587-8022d4acf496",
+      "event_type": "task.started",
+      "timestamp": "2026-09-09T10:56:57.168Z",
+      "level": "info",
+      "message": "Codex execution started",
+      "tool_name": null
+    },
+    {
+      "id": "4d290d27-5cd8-4b1e-810f-abfc614f61b9",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:56:57.212Z",
+      "level": "info",
+      "message": "Reading additional input from stdin...",
+      "tool_name": null
+    },
+    {
+      "id": "2c31ae0d-eb9b-40d6-a007-41d05854c9ad",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:56:57.551Z",
+      "level": "info",
+      "message": "Codex thread started",
+      "tool_name": null
+    },
+    {
+      "id": "83798376-de2d-46e8-a04e-eb1d99b15661",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:56:57.552Z",
+      "level": "debug",
+      "message": "Unknown Codex event: turn.started",
+      "tool_name": null
+    },
+    {
+      "id": "bb17652d-3708-4ba9-93f5-15a04beeb0ce",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:57:01.413Z",
+      "level": "info",
+      "message": "I’ll check the README and repository instructions, append the line once, then run `npm test`.",
+      "tool_name": null
+    },
+    {
+      "id": "cbe8535c-9743-4c8a-b7a6-f03147c972a1",
+      "event_type": "tool.call",
+      "timestamp": "2026-09-09T10:57:03.544Z",
+      "level": "info",
+      "message": "/bin/zsh -lc \"pwd && rg --files -g 'AGENTS.md' -g 'README.md' -g 'package.json' -g 'verify.mjs' && git status --short && cat AGENTS.md README.md package.json verify.mjs\"",
+      "tool_name": "command_execution"
+    },
+    {
+      "id": "69766c31-6b69-4180-b4ad-695a7b1f6c35",
+      "event_type": "tool.result",
+      "timestamp": "2026-09-09T10:57:03.544Z",
+      "level": "info",
+      "message": "/bin/zsh -lc \"pwd && rg --files -g 'AGENTS.md' -g 'README.md' -g 'package.json' -g 'verify.mjs' && git status --short && cat AGENTS.md README.md package.json verify.mjs\"",
+      "tool_name": "command_execution"
+    },
+    {
+      "id": "9e644fb5-7b3d-49f2-9278-f8f6acb3a003",
+      "event_type": "tool.call",
+      "timestamp": "2026-09-09T10:57:11.094Z",
+      "level": "info",
+      "message": "/bin/zsh -lc \"node --input-type=module -e 'import {readFileSync,appendFileSync} from \\\"node:fs\\\"; const p=\\\"README.md\\\"; const s=readFileSync(p,\\\"utf8\\\"); const line=\\\"OBSERVABILITY: verified\\\"; if (\"'!s.split(/'\"\\\\r?\\\\n/).includes(line)) appendFileSync(p,(s.endsWith(\\\"\\\\n\\\") ? \\\"\\\" : \\\"\\\\n\\\")+line+\\\"\\\\n\\\");' && npm test && git diff -- README.md && git diff --exit-code -- verify.mjs AGENTS.md package.json\"",
+      "tool_name": "command_execution"
+    },
+    {
+      "id": "bba22376-100e-4839-b318-ce0f01b996dc",
+      "event_type": "tool.result",
+      "timestamp": "2026-09-09T10:57:11.095Z",
+      "level": "info",
+      "message": "/bin/zsh -lc \"node --input-type=module -e 'import {readFileSync,appendFileSync} from \\\"node:fs\\\"; const p=\\\"README.md\\\"; const s=readFileSync(p,\\\"utf8\\\"); const line=\\\"OBSERVABILITY: verified\\\"; if (\"'!s.split(/'\"\\\\r?\\\\n/).includes(line)) appendFileSync(p,(s.endsWith(\\\"\\\\n\\\") ? \\\"\\\" : \\\"\\\\n\\\")+line+\\\"\\\\n\\\");' && npm test && git diff -- README.md && git diff --exit-code -- verify.mjs AGENTS.md package.json\"",
+      "tool_name": "command_execution"
+    },
+    {
+      "id": "780426b5-fea0-4076-92ed-c15efcb4f800",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:57:15.398Z",
+      "level": "info",
+      "message": "Appended `OBSERVABILITY: verified` exactly once to README.md, preserving `STATUS: verified` and all existing text.\n\n`npm test` passed: `BROWSER_TASK_FIXTURE_VERIFIED`.\n\nverify.mjs, AGENTS.md, and package.json remain unchanged.",
+      "tool_name": null
+    },
+    {
+      "id": "49a6ef2d-72eb-4a62-81d5-1c4d01318446",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:57:15.406Z",
+      "level": "info",
+      "message": "Codex turn completed",
+      "tool_name": null
+    },
+    {
+      "id": "dd0cbfe6-2edf-4e24-8ba5-1d341fa8a763",
+      "event_type": "task.completed",
+      "timestamp": "2026-09-09T10:57:16.139Z",
+      "level": "info",
+      "message": "Codex execution completed successfully",
+      "tool_name": null
+    }
+  ],
+  "audit": [
+    {
+      "id": "b8aba4c5-7dfe-42b9-a93c-3c8c163a679d",
+      "event_type": "task.created",
+      "action": "task_created",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "resource_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "outcome": "success",
+      "hash": "1e6abbdc4b1c8cbc557bd52541dcdcfcc360f6b78cedc6a7c6c4f46b30333ecf",
+      "previous_hash": "864ac095ad3961377fe477446b98239758f3be49c52435bee3a69c85f7fd8519"
+    },
+    {
+      "id": "97f81f9b-51f9-4117-b798-a7c468cf3544",
+      "event_type": "repository.scanned",
+      "action": "pre_execution_snapshot_captured",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "resource_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+      "outcome": "success",
+      "hash": "a152b85d2014cd599cf3cba5ba9542e0476e01c013a04a69642805ed53bc537e",
+      "previous_hash": "1e6abbdc4b1c8cbc557bd52541dcdcfcc360f6b78cedc6a7c6c4f46b30333ecf"
+    },
+    {
+      "id": "23b6a74d-c1e9-4775-aafb-214ce577087c",
+      "event_type": "diff.captured",
+      "action": "post_execution_diff_captured",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "resource_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+      "outcome": "success",
+      "hash": "2b53540ea2e8e42f975e624e458fcdd3eacf4cbc08b596ac994bc4e0b92a1879",
+      "previous_hash": "a152b85d2014cd599cf3cba5ba9542e0476e01c013a04a69642805ed53bc537e"
+    },
+    {
+      "id": "44737157-7bbd-4cdf-a863-f6e6aa37a8db",
+      "event_type": "task.executed",
+      "action": "execution_completed",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "resource_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "outcome": "success",
+      "hash": "7a75d7fe1502becc6eeb0f334a0cf486a5e336030f832f80c17a0139d0779025",
+      "previous_hash": "2b53540ea2e8e42f975e624e458fcdd3eacf4cbc08b596ac994bc4e0b92a1879"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "4da10419-00ab-4782-83a1-9ffa67bc6901",
+      "evidence_type": "execution_summary",
+      "title": "Task execution started (allow)"
+    },
+    {
+      "id": "d0a79815-a626-4f17-ad51-41af86ea29ac",
+      "evidence_type": "pre_execution_git_status",
+      "title": "Pre-execution: dirty working tree"
+    },
+    {
+      "id": "8debb651-2584-4faa-80a8-42f2573d8021",
+      "evidence_type": "post_execution_git_status",
+      "title": "Post-execution: file changes detected"
+    },
+    {
+      "id": "011eddc7-ea38-44e5-85b7-1cbdc21a395f",
+      "evidence_type": "diff_summary",
+      "title": "Diff summary"
+    },
+    {
+      "id": "6310551e-96f6-47b2-a082-f726575bdd81",
+      "evidence_type": "execution_summary",
+      "title": "Task completed successfully"
+    }
+  ],
+  "approval_count": 0,
+  "terminal_audit_count": 1,
+  "observability_complete": true,
+  "boundaries": [
+    "local disposable repository only",
+    "actual Codex/Astra low",
+    "no merge, push or deployment",
+    "policy allowed this task without approval; not an approval/resumption proof",
+    "historical first-run defects preserved; no retroactive corrected-runtime claim"
+  ]
+}

@@ -66,7 +66,7 @@ export function ProofRunDetailPage() {
     return (
       <div className="p-8 space-y-4">
         <BackLink />
-        <div className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/10 p-3 text-sm text-status-error">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           {error || 'Proof run not found.'}
         </div>

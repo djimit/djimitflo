@@ -1,6 +1,16 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
+import { createError } from '../middleware/error-handler';
+
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw createError(400, `${name} must be an integer between ${minimum} and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
 
 /**
  * Authority Ledger HTTP API (2026-08-30) — read-mostly query surface voor
@@ -13,8 +23,15 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
   const router = Router();
   const requirePermission = auth?.requirePermission
     ?? ((_perm: string) => (_req: unknown, _res: unknown, next: () => void) => next());
+  const requireLedger: import('express').RequestHandler = (_req, res, next) => {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'authority_events'").get()) {
+      res.status(503).json({ error: { code: 'AUTHORITY_LEDGER_UNAVAILABLE', message: 'The canonical authority ledger has not been provisioned on this instance.' } });
+      return;
+    }
+    next();
+  };
 
-  router.get('/trace/:correlationId', requirePermission('read:capability'), (req, res) => {
+  router.get('/trace/:correlationId', requirePermission('read:audit'), requireLedger, (req, res) => {
     try {
       const { correlationId } = req.params;
       const events = (
@@ -63,15 +80,8 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     }
   });
 
-  router.get('/stats', requirePermission('read:capability'), (_req, res) => {
+  router.get('/stats', requirePermission('read:audit'), requireLedger, (_req, res) => {
     try {
-      const exists = db.prepare(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='authority_events'",
-      ).get();
-      if (!exists) {
-        res.json({ total: 0, note: 'authority_events nog niet gemigreerd' });
-        return;
-      }
       const total = (db.prepare('SELECT COUNT(*) AS n FROM authority_events').get() as { n: number }).n;
       const byDecision = db.prepare(
         'SELECT policy_decision, COUNT(*) AS n FROM authority_events GROUP BY policy_decision',
@@ -100,10 +110,10 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     }
   });
 
-  router.get('/events', requirePermission('read:capability'), (req, res) => {
+  router.get('/events', requirePermission('read:audit'), requireLedger, (req, res, next) => {
     try {
-      const limit = Math.min(parseInt(String(req.query.limit ?? '50'), 10) || 50, 200);
-      const offset = parseInt(String(req.query.offset ?? '0'), 10) || 0;
+      const limit = boundedInteger(req.query.limit, 50, 1, 200, 'limit');
+      const offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
       const decision = req.query.decision as string | undefined;
       const params: unknown[] = [];
       let where = '';
@@ -118,10 +128,10 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
       ).all(...params, limit, offset);
       const total = (db.prepare(
         `SELECT COUNT(*) AS n FROM authority_events ${where}`,
-      ).get(...(decision ? [decision] : [])) as { n: number }).n;
+      ).get(...params) as { n: number }).n;
       res.json({ events: rows, total });
     } catch (err) {
-      res.status(500).json({ error: 'events_failed', detail: String(err) });
+      next(err);
     }
   });
 

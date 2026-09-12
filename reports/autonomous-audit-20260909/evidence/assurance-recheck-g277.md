@@ -1,0 +1,3 @@
+# G277 assurance recheck
+
+Build, type-check, lint, route registration, route contracts, `/loops`, server and workspace regressions pass. Route inventory is 619 registered with 610 anonymous auth probes; contract inventory is 585 routes / 386 direct static route references / 0 critical unclassified and 56/56 MCP tools. `assurance:truth` remains **FAIL / fail-closed** because OpenMythos certification, authenticated production identity and browser session prerequisites are unavailable; the direct checks are retained in [live](assurance-live-g277.log) and [OpenMythos](assurance-openmythos-g277.log) evidence. No promotion, merge or deployment was attempted.

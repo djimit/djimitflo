@@ -42,7 +42,7 @@ export const useStore = create<DjimitfloState>((set) => ({
   tasks: [],
   selectedTask: null,
   setTasks: (tasks) => set({ tasks: Array.isArray(tasks) ? tasks : [] }),
-  addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
+  addTask: (task) => set((state) => ({ tasks: state.tasks.some(existing => existing.id === task.id) ? state.tasks : [...state.tasks, task] })),
   updateTask: (id, updates) =>
     set((state) => ({
       tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)),

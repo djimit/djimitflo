@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerAuthorityTools } from '../tools/authority.js';
+import { runWithMcpAuth } from '../auth-context.js';
+import { UserRole } from '@djimitflo/shared';
 
 const temporary: string[] = [];
 
@@ -14,6 +16,8 @@ function makeServer() {
   const db = new Database(join(dir, 'test.sqlite'));
   db.pragma('foreign_keys = ON');
   db.exec(`
+    CREATE TABLE system_state (key TEXT PRIMARY KEY, value TEXT);
+    INSERT INTO system_state VALUES ('database_instance_id', 'authority-test-db');
     CREATE TABLE authority_events (
       id TEXT PRIMARY KEY,
       api_version TEXT NOT NULL DEFAULT 'djimit.io/v1alpha1',
@@ -83,6 +87,10 @@ function parse(result: JsonContent): Record<string, unknown> {
   return JSON.parse(result.content[0].text) as Record<string, unknown>;
 }
 
+function asRole<T>(role: UserRole, work: () => T): T {
+  return runWithMcpAuth({ payload: { sub: 'authenticated-test-actor', role, email: 'actor@test', iat: 0, exp: 9999999999 }, token: 'fixture' }, work);
+}
+
 describe('authority ledger MCP tool contracts', () => {
   it('exposes trace, emit and stats tools', () => {
     const { server } = makeServer();
@@ -93,10 +101,10 @@ describe('authority ledger MCP tool contracts', () => {
   });
 
   it('emits lifecycle events and traces them back with summary', async () => {
-    const { server } = makeServer();
+    const { server, db } = makeServer();
     const tools = toolsOf(server);
 
-    const emit = await tools.djimitflo_authority_emit.handler({
+    const emit = await asRole(UserRole.MAKER, () => tools.djimitflo_authority_emit.handler({
       correlationId: 'corr-e2e-1',
       previousState: 'DRAFT',
       requestedState: 'NORMALIZED',
@@ -105,35 +113,55 @@ describe('authority ledger MCP tool contracts', () => {
       actorType: 'ci',
       artifactId: 'art-1',
       payload: { topic: 'authority' },
-    });
+    }));
     const emitted = parse(emit);
     expect(emitted.emitted).toBe(true);
     expect(emitted.sequence).toBe(1);
     expect(String(emitted.payload_digest)).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(db.prepare('SELECT actor_subject, actor_type, actor_issuer FROM authority_events').get()).toEqual({
+      actor_subject: 'authenticated-test-actor', actor_type: 'service', actor_issuer: 'djimitflo-mcp',
+    });
 
-    const emit2 = await tools.djimitflo_authority_emit.handler({
+    const emit2 = await asRole(UserRole.CHECKER, () => tools.djimitflo_authority_emit.handler({
       correlationId: 'corr-e2e-1',
       previousState: 'NORMALIZED',
       requestedState: 'POLICY_VALIDATED',
-      policyDecision: 'ALLOW',
+      policyDecision: 'DENY',
       actorSubject: 'gate',
       artifactId: 'art-1',
-    });
+    }));
     const second = parse(emit2);
     expect(second.sequence).toBe(2);
 
-    const trace = await tools.djimitflo_authority_trace.handler({
+    const trace = await asRole(UserRole.AUDITOR, () => tools.djimitflo_authority_trace.handler({
       correlationId: 'corr-e2e-1',
-    });
+    }));
     const t = parse(trace);
     expect(t.ledger_events).toBe(2);
     const summary = t.summary as Record<string, unknown>;
-    expect(summary.last_decision).toBe('ALLOW');
+    expect(summary.last_decision).toBe('DENY');
     expect(summary.last_state).toBe('POLICY_VALIDATED');
 
-    const stats = await tools.djimitflo_authority_stats.handler({});
+    const stats = await asRole(UserRole.AUDITOR, () => tools.djimitflo_authority_stats.handler({}));
     const s = parse(stats);
     expect(s.total).toBe(2);
+    await expect(asRole(UserRole.VIEWER, () => tools.djimitflo_authority_trace.handler({ correlationId: 'corr-e2e-1' }))).rejects.toThrow('MCP_PERMISSION_DENIED: read:audit');
+    await expect(asRole(UserRole.MAKER, () => tools.djimitflo_authority_stats.handler({}))).rejects.toThrow('MCP_PERMISSION_DENIED: read:audit');
+  });
+
+  it('cannot forge actionable authority, write anonymously, or write through a snapshot', async () => {
+    const { server, db } = makeServer();
+    const tool = toolsOf(server).djimitflo_authority_emit;
+    const input = { correlationId: 'forged', requestedState: 'PLAN_APPROVED', policyDecision: 'ALLOW', actorSubject: 'human-approver', actorType: 'human', artifactId: 'goal-1' };
+    await expect(tool.handler(input)).rejects.toThrow('MCP_AUTH_CONTEXT_REQUIRED');
+    await expect(asRole(UserRole.VIEWER, () => tool.handler({ ...input, policyDecision: 'HOLD' }))).rejects.toThrow('MCP_PERMISSION_DENIED');
+    for (const role of [UserRole.ADMIN, UserRole.MAKER, UserRole.CHECKER]) {
+      await expect(asRole(role, () => tool.handler(input))).rejects.toThrow('AUTHORITY_EMISSION_UNSUPPORTED');
+    }
+    const snapshot = new McpServer({ name: 'snapshot', version: '0' });
+    registerAuthorityTools(snapshot, { db, mode: 'snapshot', close: () => {} });
+    await expect(asRole(UserRole.ADMIN, () => toolsOf(snapshot).djimitflo_authority_emit.handler(input))).rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+    expect((db.prepare('SELECT COUNT(*) AS count FROM authority_events').get() as any).count).toBe(0);
   });
 });
 

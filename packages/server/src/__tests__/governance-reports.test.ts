@@ -118,6 +118,12 @@ describe('Governance Reports Export', () => {
         expect.objectContaining({ source: 'openspec' }),
       ]));
 
+      const jsonExport = await fetch(`${baseUrl}/api/compliance/export?format=json`);
+      expect(jsonExport.status).toBe(200);
+      expect(jsonExport.headers.get('content-disposition')).toContain('compliance-report.json');
+      expect((await jsonExport.json()).totalSpecs).toBeGreaterThanOrEqual(3);
+      expect((await fetch(`${baseUrl}/api/compliance/export?format=xml`)).status).toBe(400);
+
       const csv = await fetch(`${baseUrl}/api/compliance/reports/export?type=nora&format=csv`);
       expect(csv.status).toBe(200);
       expect(csv.headers.get('content-type')).toContain('text/csv');

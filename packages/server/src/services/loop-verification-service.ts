@@ -36,6 +36,7 @@ export class LoopVerificationService {
    */
   verifyLoopRun(id: string): VerificationResult {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     const leases = this.loopService.listWorkerLeases(run.id);
     const makerLeases = leases.filter((lease) => lease.role === 'maker');
     const supersededMakerIds = new Set(
@@ -58,6 +59,16 @@ export class LoopVerificationService {
     const highRisk = this.loopService.isHighRiskRun(run);
 
     const gates: LoopGate[] = [
+      {
+        name: 'run_not_cancelled',
+        status: run.status === 'cancelled' ? 'fail' : 'pass',
+        evidence: 'Verification cannot resume or certify an operator-cancelled run.',
+      },
+      {
+        name: 'maker_completion',
+        status: activeMakerLeases.length > 0 && completedMakerLeases.length === activeMakerLeases.length ? 'pass' : 'fail',
+        evidence: `${completedMakerLeases.length}/${activeMakerLeases.length} active maker lease(s) completed; every non-superseded maker must complete.`,
+      },
       {
         name: 'maker_checker_separation',
         status: activeMakerLeases.length > 0 && checkerLeases.length >= activeMakerLeases.length ? 'pass' : 'fail',
@@ -112,25 +123,32 @@ export class LoopVerificationService {
       },
     ];
 
-    const status = gates.some((gate) => gate.status === 'fail')
+    const waitingForMakers = activeMakerLeases.some((lease) => lease.status === 'prepared' || lease.status === 'running')
+      && activeMakerLeases.every((lease) => lease.status !== 'failed' && lease.status !== 'cancelled');
+    const blockingGate = gates.some((gate) => gate.status === 'fail'
+      && !(gate.name === 'maker_completion' && waitingForMakers));
+    const status = run.status === 'cancelled' || run.status === 'completed'
+      ? run.status
+      : blockingGate
       ? 'blocked'
-      : completedMakerLeases.length > 0
+      : activeMakerLeases.length > 0 && completedMakerLeases.length === activeMakerLeases.length
         ? 'ready_for_human_merge'
         : 'verifying';
 
     // Record structured block reasons in metadata
     const failedGates = gates.filter((gate) => gate.status === 'fail');
-    let blockMetadata: Record<string, unknown> = {};
-    try {
-      const existing = JSON.parse(String(run.metadata || '{}'));
-      blockMetadata = existing;
-    } catch { /* use empty */ }
+    const blockMetadata: Record<string, unknown> = { ...run.metadata };
 
     if (status === 'blocked') {
       blockMetadata.block_reason = 'gate_failed';
       blockMetadata.failed_gates = failedGates.map((g) => `${g.name}: ${g.evidence}`);
       blockMetadata.recommendations = ['Review failed gates and address issues before re-verifying'];
       blockMetadata.blocked_at = new Date().toISOString();
+    } else if (blockMetadata.block_reason === 'gate_failed') {
+      delete blockMetadata.block_reason;
+      delete blockMetadata.failed_gates;
+      delete blockMetadata.recommendations;
+      delete blockMetadata.blocked_at;
     }
 
     const db = (this.loopService as any).db;
@@ -140,8 +158,8 @@ export class LoopVerificationService {
       WHERE id = ?
     `).run(status, JSON.stringify(gates), new Date().toISOString(), JSON.stringify(blockMetadata), run.id);
 
-    this.loopService.recordLoopEvent(run.id, 'loop_verified', status === 'blocked' ? 'warning' : 'info',
-      `Verification gates ${status === 'blocked' ? 'blocked' : 'passed'} for prepared work.`,
+    this.loopService.recordLoopEvent(run.id, 'loop_verified', failedGates.length > 0 ? 'warning' : 'info',
+      `Verification status: ${status}; ${failedGates.length} gate(s) incomplete or failed.`,
       { gates, block_metadata: blockMetadata });
 
     return { run: this.loopService.getLoopRun(run.id), gates, leases };
@@ -152,7 +170,7 @@ export class LoopVerificationService {
    */
   certifyLoopRun(id: string): CertificationResult {
     const result = this.verifyLoopRun(id);
-    const allPass = result.gates.every((g) =>
+    const allPass = (result.run.status === 'ready_for_human_merge' || result.run.status === 'completed') && result.gates.every((g) =>
       g.status === 'pass' || (g.name === 'security_checker_verdict' && g.status === 'skipped')
     );
     swarmEventBus.emit('convergence', {
@@ -173,14 +191,29 @@ export class LoopVerificationService {
 
   private hasAcceptedCheckerVerdict(makerLeaseId: string, checkerLeases: WorkerLeaseRecord[]): boolean {
     return checkerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && l.metadata.verdict === 'accepted'
+      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
     );
   }
 
   private hasAcceptedSecurityCheckerVerdict(makerLeaseId: string, securityCheckerLeases: WorkerLeaseRecord[]): boolean {
     return securityCheckerLeases.some(
-      (l) => l.metadata.maker_lease_id === makerLeaseId && l.metadata.verdict === 'accepted'
+      (l) => l.metadata.maker_lease_id === makerLeaseId && this.hasAcceptedReviewEvidence(l)
     );
+  }
+
+  public hasAcceptedReviewEvidence(lease: WorkerLeaseRecord): boolean {
+    if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return false;
+    // Manual review is an explicit, supported decision path, not runtime proof.
+    if (lease.runtime === 'manual') return true;
+    const proof = lease.metadata;
+    const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
+    // Historical runtime verdicts lacking these observations remain blocked; an
+    // accepted string cannot erase cancellation, runtime failure or a write violation.
+    return proof.exit_status === 0 && proof.timed_out === false && proof.runtime_verdict === 'accepted'
+      && proof.runtime_was_cancelled !== true && proof.runtime_timed_out !== true
+      && proof.read_only_contract_passed === true && proof.runtime_adapter === lease.runtime
+      && contract?.available === true && contract.status === 'ok'
+      && typeof proof.stdout_path === 'string' && fs.existsSync(proof.stdout_path);
   }
 
   private leaseChecksPassed(lease: WorkerLeaseRecord): boolean {

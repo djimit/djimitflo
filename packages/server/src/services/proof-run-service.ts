@@ -1031,7 +1031,10 @@ export class ProofRunService {
         'doc-drift-and-small-fix-loop',
         'closed',
         'running',
-        process.cwd(),
+        // Keep repository identity explicit so concurrent callers do not race
+        // on process-wide cwd changes. Production defaults to the server cwd;
+        // controlled proof callers may supply an isolated Git repository.
+        process.env.PROOF_RUN_REPOSITORY_PATH || process.cwd(),
         JSON.stringify([{ id: `proof-finding:${proofRunId}`, type: 'proof_run', severity: 'info', file: 'packages/server/src/services/loop-service.ts', line: 1, message: 'G7 real-issue demo: add a JSDoc comment to certifyLoopRun (a real, bounded code change).', evidence: 'A one-line JSDoc comment inside a method — a real diff that passes deterministic checks (tests/lint/type-check).', suggested_fix: 'Add the JSDoc comment `/** G7: certified by the Level-3 swarm — convergence invariant. */` on the line immediately before the `return { certified:` statement inside the certifyLoopRun method in packages/server/src/services/loop-service.ts. Make no other changes. Then stop.' }]),
         JSON.stringify({ proof_run_id: proofRunId, steps: ['register', 'review', 'execute', 'verify', 'remember'] }),
         JSON.stringify([{ name: 'artifact_minimums', status: 'pending' }]),

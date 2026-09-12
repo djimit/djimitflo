@@ -87,10 +87,14 @@ describe('production runtime readiness', () => {
     }
   });
 
-  function fakeCodexBin(): string {
+  function fakeCodexBin(loggedIn = false): string {
     runtimeBinDir = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-readiness-runtime-'));
     const file = path.join(runtimeBinDir, 'codex');
     fs.writeFileSync(file, `#!/usr/bin/env sh
+if [ "$1" = "login" ] && [ "$2" = "status" ]; then
+  echo "${loggedIn ? 'Logged in using ChatGPT' : 'Not logged in'}"
+  exit ${loggedIn ? 0 : 1}
+fi
 if [ "$1" = "--version" ]; then
   echo "codex fake-runtime 1.0.0"
   exit 0
@@ -177,6 +181,13 @@ exit 0
     const body = await response.json() as any;
     expect(body.runtimes[0]).toMatchObject({ provider_configured: true, ready: true, start_allowed: true });
     expect(body.runtimes[0].blocked_reasons).toEqual([]);
+  });
+
+  it('accepts an authenticated ChatGPT subscription without an API key', async () => {
+    process.env.CODEX_BIN_PATH = fakeCodexBin(true);
+    const body = await (await fetch(`${baseUrl}/swarms/runtime-readiness?runtime=codex`)).json() as any;
+    expect(body.runtimes[0]).toMatchObject({ provider_configured: true, ready: true });
+    expect(body.starts_workers).toBe(false);
   });
 
   it('requires an explicit OpenCode provider config, not an unrelated base URL', async () => {

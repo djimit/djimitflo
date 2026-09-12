@@ -4,10 +4,12 @@ import { WS_CLOSE_CODES, UserRole, WebSocketEventType } from '@djimitflo/shared'
 import type { AuthenticatedClient } from '@djimitflo/shared';
 import { WebSocket } from 'ws';
 
+const currentUsers = new Map<string, { id: string; email: string; role: UserRole; isActive: boolean }>();
+
 function mockAuthService(payload: any = null, user: any = null) {
   return {
     verifyToken: vi.fn().mockReturnValue(payload),
-    findUserById: vi.fn().mockReturnValue(user),
+    findUserById: vi.fn((id: string) => user ?? currentUsers.get(id) ?? null),
   } as any;
 }
 
@@ -34,6 +36,7 @@ function createMockWs() {
 }
 
 function makeClient(role: UserRole, userId: string, tokenExp = Math.floor(Date.now() / 1000) + 3600): AuthenticatedClient {
+  currentUsers.set(userId, { id: userId, email: `${userId}@test.com`, role, isActive: true });
   return { userId, email: `${userId}@test.com`, role, tokenExp };
 }
 
@@ -44,6 +47,7 @@ describe('WebSocketService', () => {
   let mockWss: any;
 
   beforeEach(() => {
+    currentUsers.clear();
     authService = mockAuthService();
     db = mockDb();
     mockWss = { on: vi.fn() };
@@ -87,12 +91,13 @@ describe('WebSocketService', () => {
       const exp = Math.floor(Date.now() / 1000) + 3600;
       const payload = { sub: 'user-1', email: 'admin@test.com', role: 'admin', exp };
       authService.verifyToken.mockReturnValue(payload);
-      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true });
+      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true, role: UserRole.ADMIN, email: 'admin@test.com' });
       const req = mockReq('/ws?token=validtoken');
       const result = wsService.authenticateConnection(req);
       expect(result).toEqual({
         userId: 'user-1',
         email: 'admin@test.com',
+        organizationId: 'default',
         role: 'admin',
         tokenExp: exp,
       });
@@ -102,7 +107,7 @@ describe('WebSocketService', () => {
       const exp = Math.floor(Date.now() / 1000) + 3600;
       const payload = { sub: 'user-1', email: 'admin@test.com', role: 'admin', exp };
       authService.verifyToken.mockReturnValue(payload);
-      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true });
+      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true, role: UserRole.ADMIN, email: 'admin@test.com' });
 
       // No ?token= in the URL at all — this is exactly how packages/dashboard/src/hooks/useWebSocket.ts
       // connects: `new WebSocket(WS_BASE_URL, "bearer.<token>")`.
@@ -113,6 +118,7 @@ describe('WebSocketService', () => {
       expect(result).toEqual({
         userId: 'user-1',
         email: 'admin@test.com',
+        organizationId: 'default',
         role: 'admin',
         tokenExp: exp,
       });
@@ -120,7 +126,7 @@ describe('WebSocketService', () => {
 
     it('prefers the subprotocol token over a query-string token when both are present', () => {
       authService.verifyToken.mockReturnValue({ sub: 'user-1', email: 'a@test.com', role: 'maker', exp: Math.floor(Date.now() / 1000) + 3600 });
-      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true });
+      authService.findUserById.mockReturnValue({ id: 'user-1', isActive: true, role: UserRole.MAKER, email: 'a@test.com' });
 
       const req = mockReq('/ws?token=query-token', { 'sec-websocket-protocol': 'bearer.protocol-token' });
       wsService.authenticateConnection(req);
@@ -143,7 +149,7 @@ describe('WebSocketService', () => {
       const adminWs = createMockWs();
       const operatorWs = createMockWs();
       wsService['clients'].set(adminWs, makeClient(UserRole.ADMIN, 'admin-1'));
-      wsService['clients'].set(operatorWs, makeClient(UserRole.OPERATOR, 'op-1'));
+      wsService['clients'].set(operatorWs, makeClient(UserRole.MAKER, 'op-1'));
 
       const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
       wsService.broadcastFiltered(msg, (c) => c.role === UserRole.ADMIN);
@@ -181,7 +187,7 @@ describe('WebSocketService', () => {
       const operatorWs = createMockWs();
       const viewerWs = createMockWs();
       wsService['clients'].set(adminWs, makeClient(UserRole.ADMIN, 'admin-1'));
-      wsService['clients'].set(operatorWs, makeClient(UserRole.OPERATOR, 'op-1'));
+      wsService['clients'].set(operatorWs, makeClient(UserRole.MAKER, 'op-1'));
       wsService['clients'].set(viewerWs, makeClient(UserRole.VIEWER, 'viewer-1'));
 
       const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
@@ -199,8 +205,8 @@ describe('WebSocketService', () => {
       const ownerWs = createMockWs();
       const otherWs = createMockWs();
       wsService['clients'].set(adminWs, makeClient(UserRole.ADMIN, 'admin-1'));
-      wsService['clients'].set(ownerWs, makeClient(UserRole.OPERATOR, 'op-1'));
-      wsService['clients'].set(otherWs, makeClient(UserRole.OPERATOR, 'op-2'));
+      wsService['clients'].set(ownerWs, makeClient(UserRole.MAKER, 'op-1'));
+      wsService['clients'].set(otherWs, makeClient(UserRole.MAKER, 'op-2'));
 
       const task = { owner_user_id: 'op-1', created_by: 'op-1' };
       const msg = { type: WebSocketEventType.TASK_UPDATED, payload: { task }, timestamp: new Date().toISOString() };
@@ -214,8 +220,8 @@ describe('WebSocketService', () => {
     it('sends to task creator when no owner_user_id', () => {
       const creatorWs = createMockWs();
       const otherWs = createMockWs();
-      wsService['clients'].set(creatorWs, makeClient(UserRole.OPERATOR, 'creator-1'));
-      wsService['clients'].set(otherWs, makeClient(UserRole.OPERATOR, 'other-1'));
+      wsService['clients'].set(creatorWs, makeClient(UserRole.MAKER, 'creator-1'));
+      wsService['clients'].set(otherWs, makeClient(UserRole.MAKER, 'other-1'));
 
       const task = { owner_user_id: null, created_by: 'creator-1' };
       const msg = { type: WebSocketEventType.TASK_UPDATED, payload: { task }, timestamp: new Date().toISOString() };
@@ -244,8 +250,8 @@ describe('WebSocketService', () => {
     it('sends only to specified user', () => {
       const targetWs = createMockWs();
       const otherWs = createMockWs();
-      wsService['clients'].set(targetWs, makeClient(UserRole.OPERATOR, 'target-1'));
-      wsService['clients'].set(otherWs, makeClient(UserRole.OPERATOR, 'other-1'));
+      wsService['clients'].set(targetWs, makeClient(UserRole.MAKER, 'target-1'));
+      wsService['clients'].set(otherWs, makeClient(UserRole.MAKER, 'other-1'));
 
       const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
       wsService.broadcastToUser('target-1', msg);
@@ -260,7 +266,7 @@ describe('WebSocketService', () => {
       const ws1 = createMockWs();
       const ws2 = createMockWs();
       wsService['clients'].set(ws1, makeClient(UserRole.ADMIN, 'user-1'));
-      wsService['clients'].set(ws2, makeClient(UserRole.OPERATOR, 'user-2'));
+      wsService['clients'].set(ws2, makeClient(UserRole.MAKER, 'user-2'));
 
       const msg = { type: WebSocketEventType.SYSTEM_HEALTH, payload: {}, timestamp: new Date().toISOString() };
       wsService.broadcastToAuthenticated(msg);
@@ -281,7 +287,7 @@ describe('WebSocketService', () => {
   describe('getClientCount', () => {
     it('returns count of authenticated clients', () => {
       wsService['clients'].set(createMockWs(), makeClient(UserRole.ADMIN, 'a'));
-      wsService['clients'].set(createMockWs(), makeClient(UserRole.OPERATOR, 'b'));
+      wsService['clients'].set(createMockWs(), makeClient(UserRole.MAKER, 'b'));
       expect(wsService.getClientCount()).toBe(2);
     });
   });

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import type { ApprovalRequest } from '@djimitflo/shared';
 import { WebSocketEventType } from '@djimitflo/shared';
 import { ApprovalCard } from '../components/ApprovalCard';
@@ -15,31 +15,34 @@ const TABS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-function statusIcon(status: string) {
-  if (status === 'approved') return <CheckCircle className="w-4 h-4 text-green-400" />;
-  if (status === 'denied') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-  return <Clock className="w-4 h-4 text-yellow-400" />;
-}
-
 export function ApprovalQueuePage() {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<StatusFilter>('pending');
+  const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const currentTab = useRef<StatusFilter>(tab);
+  currentTab.current = tab;
   const { subscribe } = useWebSocket(true);
 
-  const load = async (status: StatusFilter) => {
-    const result = await api.getAllApprovals(status === 'all' ? undefined : status);
-    setApprovals(result.approvals);
-    setLoading(false);
-  };
+  const load = useCallback(async (status: StatusFilter) => {
+    const currentRequest = ++requestId.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.getAllApprovals(status === 'all' ? undefined : status);
+      if (currentRequest === requestId.current) setApprovals(result.approvals);
+    } catch (cause) {
+      if (currentRequest === requestId.current) setError(cause instanceof Error ? cause.message : 'Approval queue unavailable');
+    } finally {
+      if (currentRequest === requestId.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
-    load(tab).catch((error) => {
-      console.error('Failed to load approvals:', error);
-      setLoading(false);
-    });
-  }, [tab]);
+    void load(tab);
+    return () => { requestId.current += 1; };
+  }, [tab, load]);
 
   useEffect(() => {
     const refresh = () => {
@@ -52,7 +55,7 @@ export function ApprovalQueuePage() {
       subscribe(WebSocketEventType.APPROVAL_EXPIRED, refresh),
     ];
     return () => unsubs.forEach(u => u());
-  }, [subscribe, tab]);
+  }, [subscribe, tab, load]);
 
   const isPendingTab = tab === 'pending';
 
@@ -61,12 +64,12 @@ export function ApprovalQueuePage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Approval Queue</h1>
         <p className="text-foreground-secondary mt-2">
-          Review high-risk execution requests.
+          Review requested actions and their recorded decisions.
         </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {TABS.map(t => (
           <button
             key={t.value}
@@ -86,53 +89,30 @@ export function ApprovalQueuePage() {
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">
           Loading…
         </div>
+      ) : error ? (
+        <div className="rounded-lg border border-border bg-background-secondary p-6">
+          <p role="alert" className="text-status-error">{error}</p>
+          <button onClick={() => void load(tab)} className="mt-3 text-accent">Retry</button>
+        </div>
       ) : approvals.length === 0 ? (
         <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">
           <AlertTriangle className="w-12 h-12 text-status-completed mx-auto mb-4" />
           <p className="text-foreground-secondary">
             {isPendingTab
-              ? 'No pending approvals. Execution is currently unblocked.'
+              ? 'No pending approvals in this queue.'
               : `No ${tab === 'all' ? '' : tab} approvals found.`}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           {approvals.map((approval) => (
-            isPendingTab ? (
               <ApprovalCard
                 key={approval.id}
                 approval={approval}
                 onUpdated={() => {
-                  setApprovals((current) => current.filter((item) => item.id !== approval.id));
+                  void load(currentTab.current);
                 }}
               />
-            ) : (
-              <div key={approval.id} className="bg-background-secondary border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {statusIcon(approval.status)}
-                    <span className="text-sm font-medium text-foreground">
-                      {(approval as any).task_title || (approval as any).action_type || approval.id}
-                    </span>
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full capitalize ${
-                    approval.status === 'approved' ? 'bg-green-500/10 text-green-400' :
-                    approval.status === 'denied' ? 'bg-red-500/10 text-red-400' :
-                    'bg-yellow-500/10 text-yellow-400'
-                  }`}>
-                    {approval.status}
-                  </span>
-                </div>
-                {(approval as any).risk_level && (
-                  <div className="mt-2 text-xs text-foreground-secondary">
-                    Risk: {(approval as any).risk_level}
-                  </div>
-                )}
-                <div className="mt-1 text-xs text-foreground-tertiary">
-                  {new Date((approval as any).created_at || '').toLocaleString()}
-                </div>
-              </div>
-            )
           ))}
         </div>
       )}

@@ -93,6 +93,12 @@ export interface StartDocDriftLoopInput {
   repository_path?: string;
   max_findings?: number;
   sovereign?: boolean;
+  /** A caller-supplied, bounded finding for the fix pipeline. */
+  target_finding?: {
+    file_path: string;
+    description: string;
+    category: 'bug' | 'security' | 'performance' | 'refactor';
+  };
 }
 
 export interface ContinueLoopInput {
@@ -100,12 +106,18 @@ export interface ContinueLoopInput {
   max_assignments?: number;
   max_maker_workers?: number;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
+  /** Explicit model choice; advisory routing never supplies this implicitly. */
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export interface RetryLoopInput {
   maker_lease_id?: string;
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'manual' | 'pi' | 'mock';
   max_retries?: number;
+  /** Explicit model choice; advisory routing never supplies this implicitly. */
+  model?: string;
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export interface SplitLoopInput {

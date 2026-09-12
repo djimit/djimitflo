@@ -1,0 +1,522 @@
+{
+  "total": 285,
+  "by_status": {
+    "200": 59,
+    "201": 6,
+    "202": 1,
+    "400": 126,
+    "403": 1,
+    "404": 81,
+    "409": 4,
+    "451": 1,
+    "503": 6
+  },
+  "server_errors": [
+    {
+      "method": "POST",
+      "path": "/api/apex/plugins/g186-missing-fixture-id/enable",
+      "source": "apex:POST:/plugins/:id/enable",
+      "status": 503,
+      "code": "PLUGIN_ACTIVATION_UNAVAILABLE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/apex/plugins/g186-missing-fixture-id/disable",
+      "source": "apex:POST:/plugins/:id/disable",
+      "status": 503,
+      "code": "PLUGIN_ACTIVATION_UNAVAILABLE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/g186-missing-fixture-id/enable",
+      "source": "skills:POST:/:id/enable",
+      "status": 503,
+      "code": "SKILL_ACTIVATION_UNAVAILABLE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/g186-missing-fixture-id/disable",
+      "source": "skills:POST:/:id/disable",
+      "status": 503,
+      "code": "SKILL_ACTIVATION_UNAVAILABLE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/skills/reload",
+      "source": "skills:POST:/reload",
+      "status": 503,
+      "code": "SKILL_RELOAD_UNAVAILABLE"
+    },
+    {
+      "method": "POST",
+      "path": "/api/telegram/webhook",
+      "source": "telegram:POST:/webhook",
+      "status": 503,
+      "code": null
+    }
+  ],
+  "empty_successes": [
+    {
+      "method": "POST",
+      "path": "/api/agi/reason",
+      "source": "agi:POST:/reason",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "source": "auth:POST:/logout",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups",
+      "source": "backup:POST:/",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/backups/g186-missing-fixture-id/validate",
+      "source": "backup:POST:/:filename/validate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/cognitive/extract-patterns",
+      "source": "cognitive:POST:/extract-patterns",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/cognitive/evolve-strategies",
+      "source": "cognitive:POST:/evolve-strategies",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/compliance/reports/generate",
+      "source": "compliance:POST:/reports/generate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/sync",
+      "source": "explainer:POST:/fleet/sync",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/refresh-stale",
+      "source": "explainer:POST:/fleet/refresh-stale",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/run",
+      "source": "explainer:POST:/fleet/run",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/pause",
+      "source": "explainer:POST:/fleet/pause",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/resume",
+      "source": "explainer:POST:/fleet/resume",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/knowledge/sync",
+      "source": "explainer:POST:/knowledge/sync",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/explainer/fleet/kill-switch",
+      "source": "explainer:POST:/fleet/kill-switch",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/audit",
+      "source": "exports:POST:/audit",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/exports/report/summary",
+      "source": "exports:POST:/report/summary",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/intelligence/predict",
+      "source": "intelligence:POST:/predict",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/intelligence/heal",
+      "source": "intelligence:POST:/heal",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/start",
+      "source": "loops:POST:/start",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/loops/doc-drift-and-small-fix/start",
+      "source": "loops:POST:/doc-drift-and-small-fix/start",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/maintenance",
+      "source": "memory:POST:/maintenance",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/discover-relations",
+      "source": "memory:POST:/discover-relations",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/memory/consolidate",
+      "source": "memory:POST:/consolidate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/meta/tuning/run",
+      "source": "meta-orchestration:POST:/tuning/run",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/meta/predict",
+      "source": "meta-orchestration:POST:/predict",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/organizations/switch",
+      "source": "organizations:POST:/switch",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/platform/cycle",
+      "source": "platform:POST:/cycle",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/red-team/assess",
+      "source": "red-team:POST:/assess",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/research/contradictions/detect",
+      "source": "research:POST:/contradictions/detect",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/risk/command",
+      "source": "risk:POST:/command",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/runtime-governance/agents/g186-missing-fixture-id/check",
+      "source": "runtime-governance:POST:/agents/:agentId/check",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/federation/extract",
+      "source": "segml-federation:POST:/extract",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/finetuning/generate",
+      "source": "segml-finetuning:POST:/generate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l3/generate",
+      "source": "segml-l3:POST:/generate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/tournament",
+      "source": "segml-l4:POST:/tournament",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/evolve",
+      "source": "segml-l4:POST:/evolve",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l4/coevolution",
+      "source": "segml-l4:POST:/coevolution",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l5/self-improve",
+      "source": "segml-l5:POST:/self-improve",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/l5/revert/g186-missing-fixture-id",
+      "source": "segml-l5:POST:/revert/:id",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/literature/scan",
+      "source": "segml-literature:POST:/scan",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/literature/approve/g186-missing-fixture-id",
+      "source": "segml-literature:POST:/approve/:id",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/generate",
+      "source": "segml-production:POST:/generate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/production/cycle",
+      "source": "segml-production:POST:/cycle",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/segml/run/g186-missing-fixture-id",
+      "source": "segml:POST:/run/:agentId",
+      "status": 202,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/self-modification/analyze",
+      "source": "self-modification:POST:/analyze",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/proof-runs",
+      "source": "swarm-governance:POST:/proof-runs",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/run",
+      "source": "swarm-governance:POST:/evolution/run",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/cs-skill-intelligence/run",
+      "source": "swarm-governance:POST:/cs-skill-intelligence/run",
+      "status": 201,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/evolution/evolve",
+      "source": "swarm-intel:POST:/evolution/evolve",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/governance/evaluate",
+      "source": "swarm-intel:POST:/intelligence/governance/evaluate",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/interaction-handoff/reconcile",
+      "source": "swarm-intel:POST:/intelligence/interaction-handoff/reconcile",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/capacity/plan",
+      "source": "swarm-intel:POST:/intelligence/capacity/plan",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/knowledge/sync",
+      "source": "swarm-knowledge:POST:/knowledge/sync",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/scheduler/tick",
+      "source": "swarm-workers:POST:/scheduler/tick",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/backlog/sync",
+      "source": "swarm-workers:POST:/backlog/sync",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/plan",
+      "source": "swarm-workers:POST:/worker-pool/plan",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/start-next",
+      "source": "swarm-workers:POST:/worker-pool/start-next",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/worker-pool/drain",
+      "source": "swarm-workers:POST:/worker-pool/drain",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/handoffs/drain",
+      "source": "swarm-workers:POST:/handoffs/drain",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/circuit-breaker/g186-missing-fixture-id/failure",
+      "source": "swarms:POST:/intelligence/circuit-breaker/:scope/failure",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/intelligence/circuit-breaker/g186-missing-fixture-id/reset",
+      "source": "swarms:POST:/intelligence/circuit-breaker/:scope/reset",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/expert/dispatch",
+      "source": "swarms:POST:/expert/dispatch",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/rsi/analyze",
+      "source": "swarms:POST:/rsi/analyze",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/rsi/safety/toggle",
+      "source": "swarms:POST:/rsi/safety/toggle",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/learning/cycle",
+      "source": "swarms:POST:/learning/cycle",
+      "status": 200,
+      "code": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/swarms/fix/batch",
+      "source": "swarms:POST:/fix/batch",
+      "status": 200,
+      "code": null
+    }
+  ]
+}

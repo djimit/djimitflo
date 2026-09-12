@@ -7,6 +7,16 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { PredictiveAnalyticsService } from '../services/predictive-analytics-service';
 import { SelfHealingService } from '../services/self-healing-service';
+import { createError } from '../middleware/error-handler';
+
+function boundedLimit(value: unknown, fallback = 50): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
 
 export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
@@ -18,6 +28,13 @@ export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware): R
   // ─── Predictive Analytics ────────────────────────────────────────────
   router.post('/predict', requirePermission('read:evidence'), (req, res) => {
     const { goalType, runtime, mode, estimatedFindings } = req.body;
+    if (typeof goalType !== 'string' || !goalType.trim()
+      || typeof runtime !== 'string' || !runtime.trim()
+      || typeof mode !== 'string' || !mode.trim()
+      || (estimatedFindings !== undefined
+        && (!Number.isInteger(estimatedFindings) || estimatedFindings < 0 || estimatedFindings > 1_000_000))) {
+      throw createError(400, 'goalType, runtime and mode must be non-empty strings; estimatedFindings must be a nonnegative integer', 'VALIDATION_ERROR');
+    }
     res.json(predictive.predict({ goalType, runtime, mode, estimatedFindings }));
   });
 
@@ -44,7 +61,7 @@ export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware): R
   });
 
   router.get('/incidents', requirePermission('read:evidence'), (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const limit = boundedLimit(req.query.limit);
     res.json({ incidents: healing.getIncidents(limit) });
   });
 

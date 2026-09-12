@@ -1,0 +1,156 @@
+{
+  "status": "PASS",
+  "stage": "paused",
+  "at": "2026-09-09T13:02:36.064Z",
+  "goal": {
+    "id": "e94af657-12e4-479d-b796-6fe3eb6d453e",
+    "status": "blocked",
+    "metadata": {
+      "operator_paused": true,
+      "operator_pause_previous_status": "running"
+    }
+  },
+  "run": {
+    "id": "50617d01-1ffb-4c10-a0e0-d53ce0b45d31",
+    "status": "interrupted",
+    "metadata": {
+      "dry_run": true,
+      "workers_leased": 0,
+      "mutating_actions": false,
+      "outcome": "plan_ready",
+      "risk_class": "low",
+      "contract": {
+        "name": "doc-drift-and-small-fix-loop",
+        "title": "Doc Drift And Small Fix",
+        "description": "Find documentation drift and bounded low-risk fixes, then prepare maker/checker worktrees on demand.",
+        "mode": "closed",
+        "risk_class": "low",
+        "trigger": [
+          "manual",
+          "scheduled"
+        ],
+        "context_sources": [
+          "markdown",
+          "package_scripts",
+          "loop_skills"
+        ],
+        "actions_allowed": [
+          "read_repo",
+          "read_docs",
+          "propose_tasks",
+          "write_loop_state",
+          "prepare_worktree",
+          "execute_maker",
+          "run_checks",
+          "submit_checker_verdict",
+          "retry",
+          "split"
+        ],
+        "actions_forbidden": [
+          "merge",
+          "deploy",
+          "modify_secrets",
+          "modify_policy",
+          "delete_data"
+        ],
+        "verification": [
+          "read_only_discovery",
+          "diff_threshold",
+          "tests_lint_typecheck",
+          "checker_verdict",
+          "no_automatic_merge"
+        ],
+        "state": [
+          "sqlite:loop_runs",
+          "sqlite:loop_events",
+          "markdown:LOOP_STATE.md"
+        ],
+        "escalation": [
+          "failed_gate",
+          "retry_budget_exhausted",
+          "wall_clock_budget_exhausted",
+          "token_budget_exhausted"
+        ],
+        "stop_conditions": [
+          "scan_budget_exhausted",
+          "no_findings",
+          "findings_planned",
+          "all_gates_passed_or_human_required"
+        ]
+      },
+      "sovereign": false,
+      "operator_paused": true,
+      "operator_pause_previous_status": "planning",
+      "interrupted_reason": "operator_pause",
+      "interrupted_at": "2026-09-09T13:00:15.045Z",
+      "operator_gate_decisions": [
+        {
+          "gate": "tests_lint_typecheck",
+          "decision": "proceed",
+          "reason": "Advisory fixture only; no replacement of verification evidence",
+          "operator_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+          "recorded_at": "2026-09-09T13:01:04.231Z",
+          "advisory_only": true
+        }
+      ]
+    },
+    "gates": [
+      {
+        "name": "read_only_discovery",
+        "status": "pass",
+        "evidence": "Loop scanned files without editing repository content."
+      },
+      {
+        "name": "no_automatic_merge",
+        "status": "pass",
+        "evidence": "Loop does not merge, deploy, or push changes."
+      },
+      {
+        "name": "maker_checker_separation",
+        "status": "skipped",
+        "evidence": "No maker worker was leased in this read-only first slice."
+      },
+      {
+        "name": "tests_lint_typecheck",
+        "status": "skipped",
+        "evidence": "No patch was created, so code gates are deferred until execution slice."
+      }
+    ]
+  },
+  "claim": {
+    "id": "6a39c274-529b-49c2-abc8-466098e4e8d3",
+    "status": "proposed",
+    "verified_by_gate": null,
+    "metadata": {
+      "goal_id": "e94af657-12e4-479d-b796-6fe3eb6d453e",
+      "operator_injected": true,
+      "operator_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "audit_event_id": "c8fd5820-ba42-483c-85f1-c978b40b577a",
+      "contradictory_claim_id": null,
+      "explicit_contradiction": null
+    }
+  },
+  "audit": [
+    {
+      "id": "057819b1-0eb4-4138-b223-6d4704c34007",
+      "action": "operator.pause",
+      "user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": "{\"checkpointed\":false,\"drained\":0,\"run_ids\":[\"50617d01-1ffb-4c10-a0e0-d53ce0b45d31\"]}"
+    },
+    {
+      "id": "c8fd5820-ba42-483c-85f1-c978b40b577a",
+      "action": "operator.inject",
+      "user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": "{\"predicate\":\"recommends\",\"subject_ref\":\"goal:e94af657-12e4-479d-b796-6fe3eb6d453e\"}"
+    },
+    {
+      "id": "5fa69cc3-faf4-40c2-a228-bcfc62914e11",
+      "action": "operator.gate_decision",
+      "user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": "{\"advisory_only\":true,\"decision\":\"proceed\",\"gate\":\"tests_lint_typecheck\",\"operator_id\":\"f0997a41-1d2c-4833-8102-86ea30f33ead\",\"reason\":\"Advisory fixture only; no replacement of verification evidence\",\"recorded_at\":\"2026-09-09T13:01:04.231Z\",\"run_id\":\"50617d01-1ffb-4c10-a0e0-d53ce0b45d31\"}"
+    }
+  ],
+  "tasks": [],
+  "leases": [],
+  "scope": "Actual browser REST SQLite fixture; no provider dispatch, no worker checkpoint/drain, advice never overrides verification"
+}

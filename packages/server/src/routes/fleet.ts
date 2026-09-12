@@ -7,6 +7,10 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetMeshService } from '../services/fleet-mesh-service';
 
+const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+const stringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(nonEmpty);
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+
 export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
@@ -25,7 +29,10 @@ export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   // POST /api/fleet/nodes — register a fleet node
   router.post('/nodes', requirePermission('write:swarm_action'), (req, res) => {
     const { name, endpoint, capabilities, maxAgents, metadata } = req.body;
-    if (!name || !endpoint) {
+    if (!nonEmpty(name) || !nonEmpty(endpoint)
+      || (capabilities !== undefined && !stringArray(capabilities))
+      || (maxAgents !== undefined && (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 1000))
+      || (metadata !== undefined && !record(metadata))) {
       res.status(400).json({ error: { message: 'name and endpoint are required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -46,7 +53,9 @@ export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   // POST /api/fleet/handoff — request agent handoff
   router.post('/handoff', requirePermission('write:swarm_action'), (req, res) => {
     const { fromNode, toNode, agentId, leaseId, context } = req.body;
-    if (!fromNode || !toNode || !agentId) {
+    if (!nonEmpty(fromNode) || !nonEmpty(toNode) || !nonEmpty(agentId)
+      || (leaseId !== undefined && !nonEmpty(leaseId))
+      || (context !== undefined && !record(context))) {
       res.status(400).json({ error: { message: 'fromNode, toNode, and agentId are required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -69,7 +78,9 @@ export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   // POST /api/fleet/distribute — distribute work to optimal node
   router.post('/distribute', requirePermission('write:swarm_action'), (req, res) => {
     const { loopRunId, requiredCapabilities, priority } = req.body;
-    if (!loopRunId) {
+    if (!nonEmpty(loopRunId)
+      || (requiredCapabilities !== undefined && !stringArray(requiredCapabilities))
+      || (priority !== undefined && (!Number.isInteger(priority) || priority < 0 || priority > 100))) {
       res.status(400).json({ error: { message: 'loopRunId is required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -84,7 +95,9 @@ export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   // POST /api/fleet/sync-capability — sync capability from another node
   router.post('/sync-capability', requirePermission('write:swarm_action'), (req, res) => {
     const { sourceNode, capabilityId, capabilityType, score } = req.body;
-    if (!sourceNode || !capabilityId) {
+    if (!nonEmpty(sourceNode) || !nonEmpty(capabilityId)
+      || !nonEmpty(capabilityType)
+      || typeof score !== 'number' || !Number.isFinite(score) || score < 0) {
       res.status(400).json({ error: { message: 'sourceNode and capabilityId are required', code: 'VALIDATION_ERROR' } });
       return;
     }

@@ -16,6 +16,15 @@ import { OutcomeLearningService } from '../services/outcome-learning-service';
 import { ReviewerIndependenceService } from '../services/reviewer-independence-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
 
+function boundedLimit(value: unknown, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximum) {
+    throw createError(400, `limit must be an integer between 1 and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return limit;
+}
+
 /** @deprecated Backward compatibility for swarms.ts — use createSwarmIntelRoutes */
 export function createIntelligenceRoutes(db: Database, auth?: AuthMiddleware, _wsService?: any): Router {
   return createSwarmIntelRoutes(db, auth);
@@ -34,7 +43,9 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   // ─── Task Decomposition ─────────────────────────────────────────────
   router.post('/decompose', requirePermission('write:swarm_action'), (req, res) => {
     const { goal, maxParallelism, priority } = req.body;
-    if (!goal?.trim()) {
+    if (typeof goal !== 'string' || !goal.trim()
+      || (maxParallelism !== undefined && (!Number.isInteger(maxParallelism) || maxParallelism < 1 || maxParallelism > 50))
+      || (priority !== undefined && (!Number.isInteger(priority) || priority < 1 || priority > 5))) {
       res.status(400).json({ error: { message: 'goal is required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -58,7 +69,11 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   // ─── Knowledge Sharing ──────────────────────────────────────────────
   router.post('/knowledge/publish', requirePermission('write:claim'), (req, res) => {
     const { agentId, topic, claim, confidence, evidence } = req.body;
-    if (!agentId || !topic || !claim) {
+    if (typeof agentId !== 'string' || !agentId.trim()
+      || typeof topic !== 'string' || !topic.trim()
+      || typeof claim !== 'string' || !claim.trim()
+      || (confidence !== undefined && (typeof confidence !== 'number' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1))
+      || (evidence !== undefined && (!Array.isArray(evidence) || evidence.some((item) => typeof item !== 'string')))) {
       res.status(400).json({ error: { message: 'agentId, topic, and claim are required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -68,15 +83,19 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.get('/knowledge/query', requirePermission('read:evidence'), (req, res) => {
     const topic = req.query.topic as string;
-    const minConfidence = req.query.min_confidence ? Number(req.query.min_confidence) : 0.5;
+    const minConfidence = req.query.min_confidence === undefined ? 0.5 : Number(req.query.min_confidence);
     if (!topic) {
       res.status(400).json({ error: { message: 'topic is required', code: 'VALIDATION_ERROR' } });
+      return;
+    }
+    if (!Number.isFinite(minConfidence) || minConfidence < 0 || minConfidence > 1) {
+      res.status(400).json({ error: { message: 'min_confidence must be a number between 0 and 1', code: 'VALIDATION_ERROR' } });
       return;
     }
     res.json({ claims: knowledge.query(topic, minConfidence) });
   });
 
-  router.post('/knowledge/subscribe', requirePermission('write:config'), (req, res) => {
+  router.post('/knowledge/subscribe', requirePermission('write:claim'), (req, res) => {
     const { agentId, topic, priority } = req.body;
     if (!agentId || !topic) {
       res.status(400).json({ error: { message: 'agentId and topic are required', code: 'VALIDATION_ERROR' } });
@@ -88,7 +107,10 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   router.post('/knowledge/vote', requirePermission('write:claim'), (req, res) => {
     const { claimId, agentId, agree, reason } = req.body;
-    if (!claimId || !agentId || agree === undefined) {
+    if (typeof claimId !== 'string' || !claimId.trim()
+      || typeof agentId !== 'string' || !agentId.trim()
+      || typeof agree !== 'boolean'
+      || (reason !== undefined && typeof reason !== 'string')) {
       res.status(400).json({ error: { message: 'claimId, agentId, and agree are required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -105,9 +127,14 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   // ─── Skill Evolution ────────────────────────────────────────────────
-  router.post('/evolution/register', requirePermission('write:config'), (req, res) => {
+  router.post('/evolution/register', requirePermission('write:skills'), (req, res) => {
     const { skillId, traits } = req.body;
-    if (!skillId) {
+    const traitNames = ['efficiency', 'reliability', 'generality', 'complexity', 'adaptability'];
+    const validTraits = traits === undefined || (traits !== null && !Array.isArray(traits)
+      && typeof traits === 'object'
+      && Object.entries(traits).every(([name, value]) => traitNames.includes(name)
+        && typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1));
+    if (typeof skillId !== 'string' || !skillId.trim() || !validTraits) {
       res.status(400).json({ error: { message: 'skillId is required', code: 'VALIDATION_ERROR' } });
       return;
     }
@@ -115,15 +142,17 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
     res.status(201).json(genome);
   });
 
-  router.post('/evolution/evolve', requirePermission('write:config'), (_req, res) => {
+  router.post('/evolution/evolve', requirePermission('write:skills'), (_req, res) => {
     const nextGen = evolution.evolve();
     res.json({ generation: nextGen.length > 0 ? nextGen[0].generation : 0, count: nextGen.length });
   });
 
-  router.post('/evolution/outcome', requirePermission('write:config'), (req, res) => {
+  router.post('/evolution/outcome', requirePermission('write:evidence'), (req, res) => {
     const { skillId, success, tokensUsed, durationMs, domain } = req.body;
-    if (!skillId) {
-      res.status(400).json({ error: { message: 'skillId is required', code: 'VALIDATION_ERROR' } });
+    if (typeof skillId !== 'string' || !skillId.trim() || typeof success !== 'boolean'
+      || !Number.isFinite(tokensUsed) || tokensUsed < 0 || !Number.isFinite(durationMs) || durationMs < 0
+      || typeof domain !== 'string' || !domain.trim()) {
+      res.status(400).json({ error: { message: 'skillId, domain, boolean success and nonnegative numeric metrics are required', code: 'VALIDATION_ERROR' } });
       return;
     }
     evolution.recordOutcome(skillId, { success, tokensUsed, durationMs, domain });
@@ -162,21 +191,22 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
       correlation_id: typeof req.query.correlation_id === 'string' ? req.query.correlation_id : undefined,
       status: typeof req.query.status === 'string' ? req.query.status : undefined,
       source: typeof req.query.source === 'string' ? req.query.source : undefined,
-      limit: Number(req.query.limit) || 100,
+      limit: boundedLimit(req.query.limit, 100, 500),
     });
     res.json({ interactions, ...ledger.dataQuality() });
   });
 
   router.get('/intelligence/interaction-digest', requirePermission('read:evidence'), (req, res) => {
-    res.json(new AgentInteractionLedgerService(db).digest(Number(req.query.limit) || 500));
+    res.json(new AgentInteractionLedgerService(db).digest(boundedLimit(req.query.limit, 500, 500)));
   });
 
   router.post('/intelligence/interaction-handoff/reconcile', requirePermission('write:swarm_action'), (req, res) => {
-    res.json(new BoardHandoffService(db).reconcile(Number(req.body?.limit) || 100));
+    const limit = boundedLimit(req.body?.limit, 100, 500);
+    res.json(new BoardHandoffService(db).reconcile(limit));
   });
 
   router.get('/intelligence/outcome-learning', requirePermission('read:evidence'), (req, res) => {
-    res.json({ assessments: new OutcomeLearningService(db).list(Number(req.query.limit) || 100) });
+    res.json({ assessments: new OutcomeLearningService(db).list(boundedLimit(req.query.limit, 100, 500)) });
   });
 
   router.post('/intelligence/outcome-learning/capabilities/:id/release', requirePermission('write:capability'), (req, res, next) => {
@@ -191,7 +221,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
   });
 
   router.get('/intelligence/reviewer-independence', requirePermission('read:evidence'), (req, res) => {
-    res.json({ assessments: new ReviewerIndependenceService(db).latest(Number(req.query.limit) || 20) });
+    res.json({ assessments: new ReviewerIndependenceService(db).latest(boundedLimit(req.query.limit, 20, 100)) });
   });
 
   // ─── OKF Drift ─────────────────────────────────────────────────────
@@ -201,7 +231,7 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   // ─── Capabilities ──────────────────────────────────────────────────
   router.get('/intelligence/capabilities', requirePermission('read:evidence'), (req, res) => {
-    res.json({ capabilities: intelligence.listCapabilities(Number(req.query.limit) || 100) });
+    res.json({ capabilities: intelligence.listCapabilities(boundedLimit(req.query.limit, 100, 500)) });
   });
 
   router.post('/intelligence/capabilities', requirePermission('write:capability'), (req, res, next) => {
@@ -253,12 +283,21 @@ export function createSwarmIntelRoutes(db: Database, auth?: AuthMiddleware): Rou
 
   // ─── Claims ────────────────────────────────────────────────────────
   router.get('/intelligence/claims', requirePermission('read:evidence'), (req, res) => {
-    res.json({ claims: intelligence.listClaims(Number(req.query.limit) || 100) });
+    res.json({ claims: intelligence.listClaims(boundedLimit(req.query.limit, 100, 500)) });
   });
 
   router.post('/intelligence/claims', requirePermission('write:claim'), (req, res, next) => {
     try {
-      const claim = intelligence.submitClaim(req.body);
+      const input = req.body || {};
+      const claimTypes = ['observation', 'hypothesis', 'decision', 'memory', 'capability', 'backlog', 'policy'];
+      if (typeof input.claim !== 'string' || !input.claim.trim()
+        || !claimTypes.includes(input.claim_type)
+        || typeof input.subject_ref !== 'string' || !input.subject_ref.trim()
+        || typeof input.created_from !== 'string' || !input.created_from.trim()) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'claim, valid claim_type, subject_ref and created_from are required' } });
+        return;
+      }
+      const claim = intelligence.submitClaim(input);
       res.status(201).json(claim);
     } catch (error) {
       next(error);

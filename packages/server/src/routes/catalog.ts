@@ -4,7 +4,7 @@ import { createError } from '../middleware/error-handler';
 import type { AuthMiddleware } from '../middleware/auth';
 import { getCatalog } from '../services/agent-catalog-service';
 import { evaluateAgent, summarizeEvaluations } from '../services/agent-evaluation-service';
-import { compile, type Evaluation, type Profile, type Target } from '@djimitflo/agent-catalog';
+import { compile, runStaticGate, TARGETS, type Evaluation, type Profile, type Target } from '@djimitflo/agent-catalog';
 
 interface CatalogCounts { imported: number; evaluated: number; active: number; duplicate: number; rejected: number; }
 interface CatalogAgent {
@@ -14,17 +14,18 @@ interface CatalogAgent {
 }
 
 function toCatalogAgent(profile: Profile): CatalogAgent {
-  const act = getCatalog().registry.status(profile.id);
+  const catalog = getCatalog();
+  const act = catalog.registry.status(profile.id);
+  const recorded = catalog.db.getEvaluation(profile.id);
+  const current = recorded?.version_hash === profile.version_hash ? recorded : null;
   const active = act.status === 'active';
   let status = 'imported';
   if (active) status = 'active';
-  else if (profile.evaluation_status === 'rejected') status = profile.risk_profile.flags.includes('near-duplicate') ? 'duplicate' : 'rejected';
-  else if (profile.evaluation_status === 'passed') status = 'evaluated';
+  else if (current?.status === 'rejected') status = current.flags.includes('near-duplicate') ? 'duplicate' : 'rejected';
+  else if (current?.status === 'passed') status = 'evaluated';
 
   const evaluation =
-    profile.evaluation_status === 'pending'
-      ? null
-      : { score: profile.evaluation_status === 'passed' ? 100 : 0, verdict: profile.evaluation_status };
+    !current ? null : { ...(typeof current.score === 'number' ? {score:current.score} : {}), verdict: current.status };
   return {
     id: profile.id, name: profile.name, division: profile.division, status,
     evaluation,
@@ -38,9 +39,12 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   const requirePermission = auth?.requirePermission ?? (() => (_req: any, _res: any, next: any) => next());
 
   function evaluateAndPersist(input: Parameters<typeof evaluateAgent>[0]) {
+    if (typeof input.agentId !== 'string' || !input.agentId.trim()) throw createError(400, 'agentId is required', 'VALIDATION_ERROR');
     const catalog = getCatalog();
     const profile = catalog.db.getProfile(input.agentId);
     if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
+    const gate = runStaticGate(profile, catalog.db.listProfiles());
+    if (gate.status !== 'passed') throw createError(409, 'Manual scores cannot bypass the profile schema, injection or overlap gate.', 'CATALOG_STATIC_GATE_REQUIRED');
     let result;
     try {
       result = evaluateAgent(input);
@@ -50,6 +54,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
     const status: Evaluation['status'] = result.verdict === 'approved'
       ? 'passed'
       : result.verdict === 'rejected' ? 'rejected' : 'pending';
+    catalog.db.transaction(() => {
     catalog.db.setEvaluation({
       profile_id: profile.id,
       schema_valid: true,
@@ -62,10 +67,12 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
       risk_level: result.score >= 70 ? 'low' : result.score >= 50 ? 'medium' : 'high',
       flags: [`manual-evaluation:${result.evaluator}`],
       status,
+      score: result.score,
     }, profile.version_hash);
     profile.evaluation_status = status;
     catalog.db.upsertProfile(profile);
     catalog.db.audit(profile.id, 'manual_evaluation', JSON.stringify(result));
+    });
     return result;
   }
 
@@ -94,7 +101,11 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
   });
 
   router.get('/search', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
-    try { res.json({ agents: getCatalog().search(String(req.query.q || ''), Number(req.query.topK) || 20).map(toCatalogAgent) }); } catch (e) { next(e); }
+    try {
+      const topK = req.query.topK === undefined ? 20 : Number(req.query.topK);
+      if (!Number.isInteger(topK) || topK < 1 || topK > 100) throw createError(400, 'topK must be an integer between 1 and 100', 'VALIDATION_ERROR');
+      res.json({ agents: getCatalog().search(String(req.query.q || ''), topK).map(toCatalogAgent) });
+    } catch (e) { next(e); }
   });
 
   router.get('/compile/:id', requireAuth, requirePermission('read:evidence'), (req, res, next) => {
@@ -103,20 +114,29 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
       const profile = cat.db.getProfile(req.params.id);
       if (!profile) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       const target = (req.query.target as Target) || 'openclaw';
-      res.json({ target, files: compile(profile, target).files });
+      if (!TARGETS.includes(target)) throw createError(400, 'Unknown compilation target', 'INVALID_CATALOG_TARGET');
+      res.json({ ...compile(profile, target), runtime_registered: false, execution_started: false });
     } catch (e) { next(e); }
   });
 
   router.post('/activate/:id', requireAuth, requirePermission('manage:config'), (req, res, next) => {
     try {
       const target = (req.body?.target || 'openclaw') as Target;
+      if (!['openclaw', 'codex'].includes(target)) throw createError(400, 'Artifact activation requires openclaw or codex', 'INVALID_CATALOG_TARGET');
+      if (!getCatalog().db.getProfile(req.params.id)) throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       const r = getCatalog().registry.activate(req.params.id, target);
-      res.json({ target: r.target, active: true });
-    } catch (e) { next(e); }
+      res.json({ target: r.target, active: true, runtime_registered: false, execution_started: false });
+    } catch (e) {
+      if (e instanceof Error && /^(no evaluation record|evaluation not passed|evaluation is stale)/.test(e.message)) return next(createError(409, e.message, 'CATALOG_EVALUATION_REQUIRED'));
+      next(e);
+    }
   });
 
   router.post('/deactivate/:id', requireAuth, requirePermission('manage:config'), (_req, res, next) => {
-    try { getCatalog().registry.deactivate(_req.params.id); res.json({ active: false }); } catch (e) { next(e); }
+    try { getCatalog().registry.deactivate(_req.params.id); res.json({ active: false }); } catch (e) {
+      if (e instanceof Error && /^no activation for /.test(e.message)) { next(createError(404, e.message, 'ACTIVATION_NOT_FOUND')); return; }
+      next(e);
+    }
   });
 
 
@@ -125,7 +145,7 @@ export function createCatalogRoutes(_db: Database, auth?: AuthMiddleware): Route
     try {
       const { agents } = req.body;
       if (!Array.isArray(agents)) throw createError(400, 'agents array is required', 'VALIDATION_ERROR');
-      const results = agents.map((agent) => evaluateAndPersist({ ...agent, evaluator: req.user?.email || agent.evaluator || 'system' }));
+      const results = getCatalog().db.transaction(() => agents.map((agent) => evaluateAndPersist({ ...agent, evaluator: req.user?.email || agent?.evaluator || 'system' })));
       res.status(201).json({ results, summary: summarizeEvaluations(results) });
     } catch (e) { next(e); }
   });

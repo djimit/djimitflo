@@ -35,6 +35,7 @@ import { randomUUID } from 'crypto';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import { swarmEventBus } from './swarm-event-bus';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -286,7 +287,7 @@ export class SegmlLevel3Bridge {
    * Uses Alpaca format: {"instruction": "...", "input": "...", "output": "..."}
    */
   private exportToJSONL(examples: TrainingExample[]): JSONLExport {
-    const dir = join(process.cwd(), '.data', 'segml-training');
+    const dir = join(resolveRepositoryRoot(process.cwd()), '.data', 'segml-training');
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
@@ -521,7 +522,8 @@ export interface GovernanceCheckResult {
 }
 
 export function check_${category.replace(/-/g, '_')}(input: string, context?: Record<string, unknown>): GovernanceCheckResult {
-  // TODO: Implement actual ${category} detection logic
+  // Deterministic keyword scoring is the generated tool's bounded local heuristic;
+  // external model evaluation must remain a separate governed evidence step.
   const riskIndicators: string[] = ${JSON.stringify(this.getKeywordsForCategory(category))};
 
   let riskScore = 0;

@@ -1684,6 +1684,8 @@ export function runMigrations(db: BetterSqlite3Database) {
   seedDefaultPolicies(db);
   createPhase43Tables(db);
   createPhase44Tables(db);
+  // Present in canonical schema, missing from older repository databases.
+  addMissingColumns(db, 'repository_health_findings', [{ name: 'scan_id', definition: 'TEXT' }]);
   createPhase52Tables(db);
   createPhase55Tables(db);
   createPhase56Tables(db);
@@ -1779,9 +1781,21 @@ function createLazyServiceTables(db: BetterSqlite3Database) {
     CREATE TABLE IF NOT EXISTS consensus_debates (
       id TEXT PRIMARY KEY,
       topic TEXT NOT NULL,
+      context TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'active',
+      winning_proposal_id TEXT,
+      consensus_score REAL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       resolved_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS context_cache (
+      id TEXT PRIMARY KEY,
+      hash TEXT NOT NULL UNIQUE,
+      original TEXT NOT NULL,
+      compressed TEXT NOT NULL,
+      method TEXT NOT NULL DEFAULT 'text',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS consensus_proposals (
@@ -1793,9 +1807,14 @@ function createLazyServiceTables(db: BetterSqlite3Database) {
       confidence REAL NOT NULL DEFAULT 0.7,
       score REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (debate_id) REFERENCES consensus_debates(id) ON DELETE CASCADE
+    FOREIGN KEY (debate_id) REFERENCES consensus_debates(id) ON DELETE CASCADE
     );
   `);
+  addMissingColumns(db, 'consensus_debates', [
+    { name: 'context', definition: "TEXT NOT NULL DEFAULT ''" },
+    { name: 'winning_proposal_id', definition: 'TEXT' },
+    { name: 'consensus_score', definition: 'REAL DEFAULT 0' },
+  ]);
 }
 
 /**

@@ -220,19 +220,36 @@ export class WorkItemService {
     const metadata = existingItem.source === SECURITY_FINDING_SOURCE
       && (existingItem.status === 'done' || existingItem.status === 'discarded')
       ? this.appendSecurityResolution(existingItem, input.metadata || {})
-      : normalized.metadata;
+      : {
+        ...existingItem.metadata,
+        ...(normalized.metadata || {}),
+        integration: {
+          ...(objectValue(existingItem.metadata.integration) || {}),
+          ...(objectValue(normalized.metadata?.integration) || {}),
+        },
+      };
+    const rank = (risk: RiskClass): number => RISK_RANK[risk];
+    const preservedOperatorState = existingItem.source === SECURITY_FINDING_SOURCE
+      ? {}
+      : {
+        status: existingItem.status,
+        assigned_agent_id: existingItem.assigned_agent_id,
+        assigned_runtime: existingItem.assigned_runtime,
+        parent_goal_id: existingItem.parent_goal_id,
+        recommended_loop: existingItem.recommended_loop || normalized.recommended_loop,
+      };
     return {
       work_item: this.update(existingItem.id, {
         title: normalized.title,
         description: normalized.description,
-        risk_class: normalized.risk_class,
-        value_score: normalized.value_score,
-        confidence: normalized.confidence,
-        status: normalized.status,
-        recommended_loop: normalized.recommended_loop,
-        assigned_agent_id: normalized.assigned_agent_id,
-        assigned_runtime: normalized.assigned_runtime,
-        parent_goal_id: normalized.parent_goal_id,
+        risk_class: rank(normalized.risk_class || 'low') >= rank(existingItem.risk_class) ? normalized.risk_class : existingItem.risk_class,
+        value_score: Math.max(existingItem.value_score, normalized.value_score || 0),
+        confidence: Math.max(existingItem.confidence, normalized.confidence || 0),
+        status: preservedOperatorState.status || normalized.status,
+        recommended_loop: preservedOperatorState.recommended_loop,
+        assigned_agent_id: preservedOperatorState.assigned_agent_id,
+        assigned_runtime: preservedOperatorState.assigned_runtime,
+        parent_goal_id: preservedOperatorState.parent_goal_id,
         metadata,
       }, { allowSecurityReopen: true }),
       created: false,
@@ -332,8 +349,26 @@ export class WorkItemService {
   }
 
   convertToGoal(id: string): { work_item: WorkItemRecord; goal_id: string } {
+    return this.db.transaction(() => this.convertToGoalInTransaction(id))();
+  }
+
+  private convertToGoalInTransaction(id: string): { work_item: WorkItemRecord; goal_id: string } {
     const item = this.get(id);
     if (item.source === 'agent_board') throw new Error('BOARD_HANDOFF_REVIEW_REQUIRED');
+    if (item.status === 'done' || item.status === 'discarded') {
+      if (item.source === SECURITY_FINDING_SOURCE) throw new Error('SECURITY_FINDING_REOPEN_IMPORT_REQUIRED');
+      throw new Error('WORK_ITEM_CONVERSION_INVALID_STATE');
+    }
+    // Repeated conversion is a read, never a new goal or a rewind of leased work.
+    if (item.parent_goal_id) {
+      if (!this.db.prepare('SELECT id FROM goals WHERE id = ?').get(item.parent_goal_id)) {
+        throw new Error('WORK_ITEM_CONVERSION_GOAL_MISSING');
+      }
+      return { work_item: item, goal_id: item.parent_goal_id };
+    }
+    if (item.status !== 'candidate' && item.status !== 'triaged') {
+      throw new Error('WORK_ITEM_CONVERSION_INVALID_STATE');
+    }
     const now = new Date().toISOString();
     const goalId = randomUUID();
     const constraints = nonEmptyStringList(item.metadata.constraints);

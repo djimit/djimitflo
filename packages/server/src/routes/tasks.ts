@@ -5,13 +5,24 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
-import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel, AuthTokenPayload } from '@djimitflo/shared';
+import { TaskStatus, TaskPriority, ExecutionMode, RiskLevel, AuthTokenPayload, AuditEventType, WebSocketEventType } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import { ContextInjectionService } from '../services/context-injection-service';
 import { randomUUID } from 'crypto';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { ExecutorKind } from '../execution/types';
 import type { AuthMiddleware } from '../middleware/auth';
+import type { WebSocketService } from '../services/websocket-service';
+import { AuditService } from '../services/audit-service';
+
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw createError(400, `${name} must be an integer between ${minimum} and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
 
 function loadTaskOr404(db: any, id: string, res: any): any | null {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
@@ -33,10 +44,11 @@ function parseTask(task: any): any {
   };
 }
 
-export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
+export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
-  const contextInjector = new ContextInjectionService();
+  const contextInjector = new ContextInjectionService(db);
+  const audit = new AuditService(db);
 
   function getUser(req: any): AuthTokenPayload {
     return (req as any).user;
@@ -45,8 +57,10 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
   // GET /api/tasks - List all tasks
   router.get('/', (req, res, next) => {
     try {
-      const { status, agent_id, limit = 100, offset = 0 } = req.query;
+      const { status, agent_id } = req.query;
       const user = getUser(req);
+      const limit = boundedInteger(req.query.limit, 100, 1, 500, 'limit');
+      const offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
 
       let query = 'SELECT * FROM tasks';
       const params: any[] = [];
@@ -73,7 +87,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       }
 
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-      params.push(Number(limit), Number(offset));
+      params.push(limit, offset);
 
       const tasks = db.prepare(query).all(...params);
 
@@ -126,21 +140,52 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       if (!title || !description) {
         throw createError(400, 'Title and description are required', 'INVALID_INPUT');
       }
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        throw createError(400, 'metadata must be an object', 'INVALID_INPUT');
+      }
+      if ('environment' in metadata) {
+        throw createError(400, 'Executor environment is server-owned, not task input', 'EXECUTOR_ENVIRONMENT_RESERVED');
+      }
 
       const id = randomUUID();
       const now = new Date().toISOString();
       const actorId = (req as any).user?.sub;
 
       // Inject swarm context (Qdrant + OKF) if enabled
-      let swarmContext = '';
+      let contextSnapshot;
       try {
-        swarmContext = await contextInjector.injectContext(`${title} ${description}`, use_swarm_context);
-      } catch (e: any) {
-        console.warn('Context injection failed:', e?.message || e);
+        contextSnapshot = await contextInjector.injectContextSnapshot(`${title} ${description}`, use_swarm_context);
+      } catch (error) {
+        // Context is advisory; an unavailable retrieval backend must not make
+        // the task intake unavailable. The empty hash is still persisted so
+        // the executor input has explicit, auditable provenance.
+        console.warn('Task context retrieval unavailable:', error instanceof Error ? error.message : String(error));
+        contextSnapshot = await contextInjector.injectContextSnapshot('', false);
       }
+      // Context retrieval is advisory. A failed source must not prevent task
+      // creation, but successful context must be part of the immutable input
+      // before approvals and execution fingerprints are created.
+      if (!contextSnapshot.text) contextSnapshot = { ...contextSnapshot, text: '' };
 
-      const enrichedMetadata = { ...metadata, createdBy: actorId, swarm_context: swarmContext || undefined };
+      if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        throw createError(400, 'metadata must be an object', 'INVALID_INPUT');
+      }
+      const enrichedMetadata = {
+        ...metadata,
+        createdBy: actorId,
+        swarm_context: contextSnapshot.text || undefined,
+        context_snapshot: {
+          sha256: contextSnapshot.sha256,
+          sources: contextSnapshot.sources,
+          advisory: true,
+          independently_reviewed: false,
+          server_generated_at: new Date().toISOString(),
+        },
+      };
+      const taskDescription = contextSnapshot.text ? `${description}\n\n${contextSnapshot.text}` : description;
+      for (const name of Object.keys(enrichedMetadata).filter(name => name.startsWith('execution_recovery_'))) delete enrichedMetadata[name];
 
+      db.transaction(() => {
       db.prepare(`
         INSERT INTO tasks (
           id, title, description, status, priority, risk_level, execution_mode,
@@ -150,7 +195,7 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       `).run(
         id,
         title,
-        description,
+        taskDescription,
         (status || TaskStatus.PENDING),
         priority,
         risk_level || RiskLevel.LOW,
@@ -167,9 +212,14 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         actorId,
         actorId
       );
+      audit.record({ event_type: AuditEventType.TASK_CREATED, action: 'task_created',
+        resource_type: 'task', resource_id: id, task_id: id, user_id: actorId,
+        risk_level: risk_level || RiskLevel.LOW });
+      })();
 
       const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
-
+      wsService?.broadcastTaskEvent(task, { type: WebSocketEventType.TASK_CREATED,
+        payload: { task: parseTask(task) }, timestamp: now });
       res.status(201).json(parseTask(task));
     } catch (error) {
       next(error);
@@ -195,17 +245,36 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       const params: any[] = [];
       const existingMetadata = JSON.parse(task.metadata || '{}') as Record<string, unknown>;
       const executionStateFields = ['status', 'token_usage', 'execution_time_ms', 'started_at', 'completed_at', 'failed_at'];
+      if ((task.status === TaskStatus.RUNNING || executionEngine?.isTaskRunning(id)) && executionStateFields.some((field) => field in updates)) {
+        throw createError(409, 'Running task state is owned by the execution engine', 'TASK_RUNNING');
+      }
       if (existingMetadata.deep_agent_assurance_hold === true && executionStateFields.some((field) => field in updates)) {
         throw createError(409, 'Task is held for independent EVE-V assurance', 'DEEP_AGENT_ASSURANCE_HOLD');
+      }
+      if (existingMetadata.execution_recovery_hold === true && executionStateFields.some((field) => field in updates)) {
+        throw createError(409, 'Task execution outcome requires operator reconciliation', 'EXECUTION_RECOVERY_REQUIRED');
       }
 
       for (const key of allowed) {
         if (key in updates) {
           setClauses.push(`${key} = ?`);
           if (key === 'metadata') {
+            if (!updates.metadata || typeof updates.metadata !== 'object' || Array.isArray(updates.metadata)) {
+              throw createError(400, 'metadata must be an object', 'INVALID_INPUT');
+            }
             const metadata = { ...(updates.metadata || {}) } as Record<string, unknown>;
-            for (const reserved of Object.keys(metadata).filter((name) => name.startsWith('deep_agent_assurance_'))) delete metadata[reserved];
-            for (const [name, value] of Object.entries(existingMetadata).filter(([name]) => name.startsWith('deep_agent_assurance_'))) metadata[name] = value;
+            const reserved = (name: string) => name === 'environment' || name.startsWith('deep_agent_assurance_') || name.startsWith('execution_recovery_');
+            for (const name of Object.keys(metadata).filter(reserved)) delete metadata[name];
+            for (const [name, value] of Object.entries(existingMetadata).filter(([name]) => reserved(name))) metadata[name] = value;
+            // A loop worker's execution-task pointer is server-owned. Preserve
+            // its canonical binding even when replacing all editable metadata.
+            const worker = db.prepare(`SELECT id, loop_run_id FROM worker_leases
+              WHERE json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END, '$.execution_task_id') = ?
+              LIMIT 1`).get(id) as { id: string; loop_run_id: string } | undefined;
+            if (worker) {
+              metadata.loop_run_id = worker.loop_run_id;
+              metadata.lease_id = worker.id;
+            }
             params.push(JSON.stringify(metadata));
             continue;
           }
@@ -228,7 +297,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
       db.prepare(`UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ?`).run(...params);
 
       const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as any;
-
+      wsService?.broadcastTaskEvent(updated, { type: WebSocketEventType.TASK_UPDATED,
+        payload: { task: parseTask(updated) }, timestamp: updated.updated_at });
       res.json(parseTask(updated));
     } catch (error) {
       next(error);
@@ -248,12 +318,24 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         return;
       }
 
+      if (executionEngine?.isTaskRunning(id) || task.status === TaskStatus.RUNNING) {
+        throw createError(409, 'Cancel the running task before deleting it', 'TASK_RUNNING');
+      }
+      if (JSON.parse(task.metadata || '{}').execution_recovery_hold === true) {
+        throw createError(409, 'Task execution outcome requires operator reconciliation', 'EXECUTION_RECOVERY_REQUIRED');
+      }
+      if (db.prepare('SELECT 1 FROM audit_events WHERE task_id = ? LIMIT 1').get(id)) {
+        throw createError(409, 'Task is retained by the immutable audit trail', 'TASK_HAS_AUDIT_TRAIL');
+      }
+
       const result = db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
 
       if (result.changes === 0) {
         throw createError(404, 'Task not found', 'TASK_NOT_FOUND');
       }
 
+      wsService?.broadcastTaskEvent(task, { type: WebSocketEventType.TASK_DELETED,
+        payload: { task: parseTask(task) }, timestamp: new Date().toISOString() });
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -336,7 +418,20 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         return;
       }
 
-      const { executor = 'opencode' } = req.body;
+      // Persisted task metadata is the canonical runtime choice when the
+      // execute request does not override it. Without this, a task created
+      // with Codex/Astra silently fell back to OpenCode for API callers.
+      let persistedExecutor: string | undefined;
+      try {
+        const metadata = JSON.parse(task.metadata || '{}');
+        if (typeof metadata.executor === 'string' && metadata.executor.trim()) persistedExecutor = metadata.executor.trim();
+      } catch {
+        // ExecutionEngine owns malformed metadata validation; retain the safe default.
+      }
+      const requestedExecutor = typeof req.body?.executor === 'string' && req.body.executor.trim()
+        ? req.body.executor.trim()
+        : undefined;
+      const executor = requestedExecutor || persistedExecutor || 'opencode';
 
       if (!executionEngine) {
         throw createError(503, 'Execution engine not available', 'ENGINE_UNAVAILABLE');

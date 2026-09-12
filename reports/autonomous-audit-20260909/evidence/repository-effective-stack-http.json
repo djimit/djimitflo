@@ -1,0 +1,31 @@
+{
+  "scope": "actual authenticated local API, scanned persisted instructions",
+  "observations": [
+    {
+      "path": "/packages/demo/index.ts",
+      "status": 200,
+      "files": [
+        {
+          "relativePath": "AGENTS.md",
+          "appliesToPath": "/"
+        },
+        {
+          "relativePath": "packages/demo/AGENTS.md",
+          "appliesToPath": "/packages/demo"
+        }
+      ],
+      "summary": "2 AGENTS.md file(s) apply to \"/packages/demo/index.ts\"."
+    },
+    {
+      "path": "/packages/demo-other/index.ts",
+      "status": 200,
+      "files": [
+        {
+          "relativePath": "AGENTS.md",
+          "appliesToPath": "/"
+        }
+      ],
+      "summary": "1 AGENTS.md file(s) apply to \"/packages/demo-other/index.ts\"."
+    }
+  ]
+}

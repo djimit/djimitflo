@@ -4,6 +4,8 @@ import { AgentRetirementService } from '../services/agent-retirement-service';
 import { AdversarialRedTeamService } from '../services/adversarial-red-team-service';
 import { CognitivePlatformOrchestrator } from '../services/cognitive-platform-orchestrator';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { schema } from '../database/schema';
+import { runMigrations } from '../database/migrate';
 
 describe('AgentRetirementService', () => {
   let db: Database.Database;
@@ -12,6 +14,9 @@ describe('AgentRetirementService', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    db.prepare("INSERT INTO agents(id,name,description,status,capabilities) VALUES('agent-1','Fixture','Retirement fixture','idle','[]')").run();
     service = new AgentRetirementService(db);
   });
 

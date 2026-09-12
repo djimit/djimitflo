@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { schema } from '../database/schema';
@@ -22,6 +22,9 @@ import { createRuntimeGovernanceRoutes } from '../routes/runtime-governance';
 import { createSpawnRoutes } from '../routes/spawns';
 import { createMCPRoutes } from '../routes/mcp';
 import { createSwarmRoutes } from '../routes/swarms';
+import { createSelfModificationRoutes } from '../routes/self-modification';
+import { createSBOMRoutes } from '../routes/sbom';
+import { createRepositoryIndexRoutes } from '../routes/repository-index';
 
 describe('critical HTTP contracts', () => {
   const envKeys = ['DB_PATH', 'BACKUP_DIR', 'JWT_SECRET', 'AUTH_BOOTSTRAP_ADMIN_EMAIL', 'AUTH_BOOTSTRAP_ADMIN_PASSWORD'] as const;
@@ -71,6 +74,9 @@ describe('critical HTTP contracts', () => {
     app.use('/mcp', createMCPRoutes(db, passAuth));
     app.use('/swarms/spawns', createSpawnRoutes(db, passAuth));
     app.use('/swarms', createSwarmRoutes(db, passAuth));
+    app.use('/self-modification', createSelfModificationRoutes(db, passAuth));
+    app.use('/sbom', createSBOMRoutes(db, passAuth));
+    app.use('/repo-index', createRepositoryIndexRoutes(db, passAuth));
     app.use(errorHandler);
     server = await new Promise(resolve => {
       const listening = app.listen(0, () => resolve(listening));
@@ -111,6 +117,28 @@ describe('critical HTTP contracts', () => {
     expect((await expired.json() as any).error.code).toBe('APPROVAL_EXPIRED');
   });
 
+  it('rejects coerced decisions and preserves terminal approvals', async () => {
+    db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode)
+      VALUES ('decision-task','Decision','Adversarial decision','awaiting_approval','low','high','local')`).run();
+    const insert = db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at)
+      VALUES (?,'decision-task','pending','high','high_risk_action','Decision','{}','maker',?)`);
+    const expiry = new Date(Date.now() + 60_000).toISOString();
+    for (const [index, approved] of ['false', 'true', 1, 0, null, {}, []].entries()) {
+      const id = `malformed-decision-${index}`;
+      insert.run(id, expiry);
+      expect((await request(`/approvals/${id}`, { method: 'PATCH', body: JSON.stringify({ approved }) })).status).toBe(400);
+      expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get(id) as any).status).toBe('pending');
+    }
+    insert.run('valid-denial', expiry);
+    expect((await request('/approvals/valid-denial', { method: 'PATCH', body: JSON.stringify({ approved: false }) })).status).toBe(200);
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('valid-denial') as any).status).toBe('denied');
+    expect((await request('/approvals/valid-denial/cancel', { method: 'POST' })).status).toBe(409);
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('valid-denial') as any).status).toBe('denied');
+    insert.run('invalid-expiry', 'not-a-date');
+    expect((await request('/approvals/invalid-expiry/approve', { method: 'POST', body: '{}' })).status).toBe(410);
+    expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('invalid-expiry') as any).status).toBe('expired');
+  });
+
   it('exercises backup creation, retrieval, download, validation, and restore refusal', async () => {
     const created = await request('/backups', { method: 'POST', body: '{}' });
     expect(created.status).toBe(201);
@@ -129,9 +157,22 @@ describe('critical HTTP contracts', () => {
     expect((await request('/exports/repository/missing', { method: 'POST', body: '{}' })).status).toBe(404);
     expect((await request('/exports/report/summary', { method: 'POST', body: '{}' })).status).toBe(200);
     expect((await request('/exports/training')).status).toBe(200);
+    const stream = await request('/exports/stream/audit');
+    expect(stream.status).toBe(200);
+    expect(stream.headers.get('content-type')).toContain('application/x-ndjson');
+    const events = (await stream.text()).trim().split('\n').map(line => JSON.parse(line));
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.map(event => event.id)).toEqual(
+      (db.prepare('SELECT id FROM audit_events ORDER BY timestamp ASC').all() as any[]).map(event => event.id),
+    );
   });
 
   it('exercises OpenMythos validation, no-data, guard, and report contracts', async () => {
+    for (const path of ['/openmythos/attestations?limit=0', '/openmythos/runs?limit=NaN', '/openmythos/trend/agent?limit=1.5']) {
+      const response = await request(path);
+      expect(response.status, path).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
     expect((await request('/openmythos/eval/agent', { method: 'POST', body: JSON.stringify({ case_ids: 'invalid' }) })).status).toBe(400);
     expect((await request('/openmythos/score/agent')).status).toBe(404);
     expect((await request('/openmythos/report/agent')).status).toBe(200);
@@ -162,6 +203,15 @@ describe('critical HTTP contracts', () => {
     expect((await request('/mcp/permissions/missing', { method: 'PATCH', body: '{}' })).status).toBe(404);
     expect((await request('/swarms/specialist-panels')).status).toBe(200);
     expect((await request('/swarms/opencode/health')).status).toBe(200);
+
+    for (const max_parallel of [0, -1, 1.5, 'NaN', null, 11]) {
+      const response = await request('/swarms/expert/dispatch', {
+        method: 'POST',
+        body: JSON.stringify({ topic: 'validation-only', domains: [], max_parallel }),
+      });
+      expect(response.status, String(max_parallel)).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
 
     const hypothesis = await request('/swarms/intelligence/hypotheses', {
       method: 'POST', body: JSON.stringify({ question: 'Is the contract reachable?' }),
@@ -210,6 +260,81 @@ describe('critical HTTP contracts', () => {
     expect((await request('/swarms/rsi/safety/toggle', { method: 'POST', body: '{}' })).status).toBe(200);
     expect((await request('/swarms/rsi/analyze', { method: 'POST', body: '{}' })).status).toBe(200);
     expect((await request('/swarms/learning/cycle', { method: 'POST', body: '{}' })).status).toBe(200);
+    expect((await request('/swarms/fix', { method: 'POST', body: '{}' })).status).toBe(400);
+    expect((await request('/swarms/fix', { method: 'POST', body: JSON.stringify({ repository_path: '/tmp', file_path: 'x', description: 'x', runtime: 'unknown' }) })).status).toBe(400);
+    expect((await request('/swarms/fix/batch', { method: 'POST', body: JSON.stringify({ requests: {} }) })).status).toBe(400);
     expect((await request('/swarms/fix/batch', { method: 'POST', body: JSON.stringify({ requests: [] }) })).status).toBe(200);
+  });
+
+  it('exercises self-modification planning gates and SBOM generation', async () => {
+    const status = await request('/self-modification/status');
+    expect(status.status).toBe(200);
+    const analysis = await request('/self-modification/analyze', { method: 'POST', body: '{}' });
+    expect(analysis.status).toBe(200);
+    const opportunities = (await analysis.json() as any).opportunities;
+    expect(Array.isArray(opportunities)).toBe(true);
+    if (opportunities.length > 0) {
+      const plan = await request('/self-modification/plan', {
+        method: 'POST', body: JSON.stringify({ opportunityId: opportunities[0].id }),
+      });
+      expect(plan.status).toBe(201);
+    }
+    expect((await request('/self-modification/plan', { method: 'POST', body: '{}' })).status).toBe(400);
+    expect((await request('/self-modification/plan', { method: 'POST', body: JSON.stringify({ opportunityId: 'missing' }) })).status).toBe(404);
+    const execute = await request('/self-modification/execute', { method: 'POST', body: '{}' });
+    expect(execute.status).toBe(451);
+    expect((await execute.json() as any).error.code).toBe('SELF_MODIFICATION_DISABLED');
+
+    const sbom = await request('/sbom/generate');
+    expect(sbom.status).toBe(200);
+    expect(sbom.headers.get('content-disposition')).toContain('sbom.json');
+    const sbomBody = await sbom.json() as any;
+    expect(sbomBody).toMatchObject({ bomFormat: 'CycloneDX', specVersion: '1.6', version: 1 });
+    expect(sbomBody.components.length).toBeGreaterThan(0);
+    expect((await request('/sbom/summary')).status).toBe(200);
+  });
+
+  it('exercises repository-index registration, indexing, search, and deletion', async () => {
+    const repositoryPath = join(dataDir, 'indexed-repository');
+    mkdirSync(repositoryPath, { recursive: true });
+    writeFileSync(join(repositoryPath, 'governance.ts'), 'export const governanceSignal = "verified";\n');
+    for (const body of [{ name: {}, path: repositoryPath }, { name: 'fixture', path: [] }, { name: ' ', path: repositoryPath }, { name: 'fixture', path: repositoryPath, url: 7 }]) {
+      const invalid = await request('/repo-index/register', { method: 'POST', body: JSON.stringify(body) });
+      expect(invalid.status, JSON.stringify(body)).toBe(400);
+    }
+    const registered = await request('/repo-index/register', {
+      method: 'POST', body: JSON.stringify({ name: 'fixture', path: repositoryPath }),
+    });
+    expect(registered.status).toBe(201);
+    const repository = await registered.json() as any;
+    expect((await request('/repo-index/repositories')).status).toBe(200);
+    const indexed = await request(`/repo-index/${repository.id}/index`, { method: 'POST', body: '{}' });
+    expect(indexed.status).toBe(200);
+    expect((await indexed.json() as any).indexed_files).toBe(1);
+    expect((await request(`/repo-index/${repository.id}/stats`)).status).toBe(200);
+    const search = await request('/repo-index/search', {
+      method: 'POST', body: JSON.stringify({ query: 'governanceSignal', repository_id: repository.id }),
+    });
+    expect(search.status).toBe(200);
+    expect((await search.json() as any).count).toBeGreaterThan(0);
+    for (const body of [
+      { query: null }, { query: {} }, { query: [] }, { query: 7 }, { query: '   ' },
+      { query: 'governanceSignal', repository_id: {} },
+      { query: 'governanceSignal', file_pattern: [] },
+      { query: 'governanceSignal', language: 7 },
+      { query: 'governanceSignal', search_type: 'semantic' },
+    ]) {
+      const invalid = await request('/repo-index/search', { method: 'POST', body: JSON.stringify(body) });
+      expect(invalid.status, JSON.stringify(body)).toBe(400);
+    }
+    for (const [field, value] of [['limit', 0], ['limit', -1], ['limit', 1.5], ['limit', 'invalid'], ['offset', -1], ['offset', 1.5], ['offset', 'invalid']] as const) {
+      const invalid = await request('/repo-index/search', {
+        method: 'POST', body: JSON.stringify({ query: 'governanceSignal', repository_id: repository.id, [field]: value }),
+      });
+      expect(invalid.status, `${field}=${value}`).toBe(400);
+    }
+    expect((await request(`/repo-index/${repository.id}`, { method: 'DELETE' })).status).toBe(204);
+    expect((await request(`/repo-index/${repository.id}/stats`)).status).toBe(404);
+    expect((await request(`/repo-index/${repository.id}`, { method: 'DELETE' })).status).toBe(404);
   });
 });

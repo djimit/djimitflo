@@ -7,9 +7,11 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SegmlProductionBridge } from '../services/segml-production-bridge';
 
-export function createSegmlProductionRoutes(db: Database, auth?: AuthMiddleware): Router {
+const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+
+export function createSegmlProductionRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
-  const requireAuth = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const requireAuth = auth.requirePermission;
 
   // POST /api/segml/production/generate — generate training data + JSONL
   router.post('/generate', requireAuth('write:governance'), (_req, res, next) => {
@@ -30,9 +32,12 @@ export function createSegmlProductionRoutes(db: Database, auth?: AuthMiddleware)
   router.post('/train', requireAuth('write:governance'), async (req, res, next) => {
     try {
       const bridge = new SegmlProductionBridge(db);
-      const { datasetId, adapterName } = req.body;
-      if (!datasetId) { res.status(400).json({ error: 'datasetId required' }); return; }
-      const result = await bridge.createOllamaAdapter(datasetId, adapterName || `segml-gov-${Date.now()}`);
+      const { datasetId, adapterName } = req.body ?? {};
+      if (!isNonEmptyString(datasetId) || (adapterName !== undefined && !isNonEmptyString(adapterName))) {
+        res.status(400).json({ error: { message: 'datasetId and optional adapterName must be non-empty strings', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const result = await bridge.createOllamaAdapter(datasetId, adapterName ?? `segml-gov-${Date.now()}`);
       res.json(result);
     } catch (error) {
       next(error);
@@ -43,9 +48,13 @@ export function createSegmlProductionRoutes(db: Database, auth?: AuthMiddleware)
   router.post('/evaluate', requireAuth('write:governance'), async (req, res, next) => {
     try {
       const bridge = new SegmlProductionBridge(db);
-      const { model, categories, apiKey } = req.body;
-      if (!model || !apiKey) { res.status(400).json({ error: 'model and apiKey required' }); return; }
-      const results = await bridge.evaluateModel(model, categories || ['injection', 'hallucination', 'calibration'], apiKey);
+      const { model, categories, apiKey } = req.body ?? {};
+      if (!isNonEmptyString(model) || !isNonEmptyString(apiKey)
+        || (categories !== undefined && (!Array.isArray(categories) || categories.length === 0 || categories.length > 50 || categories.some((category) => !isNonEmptyString(category))))) {
+        res.status(400).json({ error: { message: 'model and apiKey are required; categories must be a non-empty string array', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const results = await bridge.evaluateModel(model, categories ?? ['injection', 'hallucination', 'calibration'], apiKey);
       res.json({ results, averageScore: results.reduce((s, r) => s + r.score, 0) / results.length });
     } catch (error) {
       next(error);
@@ -56,7 +65,12 @@ export function createSegmlProductionRoutes(db: Database, auth?: AuthMiddleware)
   router.post('/cycle', requireAuth('write:governance'), async (req, res, next) => {
     try {
       const bridge = new SegmlProductionBridge(db);
-      const result = await bridge.runProductionCycle(req.body?.apiKey);
+      const apiKey = req.body?.apiKey;
+      if (apiKey !== undefined && !isNonEmptyString(apiKey)) {
+        res.status(400).json({ error: { message: 'apiKey must be a non-empty string when provided', code: 'VALIDATION_ERROR' } });
+        return;
+      }
+      const result = await bridge.runProductionCycle(apiKey);
       res.json(result);
     } catch (error) {
       next(error);

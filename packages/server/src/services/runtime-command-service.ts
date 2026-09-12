@@ -13,6 +13,8 @@ import type { Database } from 'better-sqlite3';
 import type { LoopService } from './loop-service';
 import type { RuntimeProcessHandle, RuntimeContract, RuntimeUsage, RuntimeExecutionResult, RuntimeStopResult } from './loop-types';
 import { runtimeConcurrencySemaphore } from './concurrency-semaphore';
+import { runtimeProcessClosed, stopRuntimeProcess } from '../execution/executors/runtime-process';
+import { RuntimeLeaseRegistry } from './loop-recovery-service';
 
 export class RuntimeCommandService {
   private static readonly runtimeLeases = new Map<string, RuntimeProcessHandle>();
@@ -245,6 +247,7 @@ export class RuntimeCommandService {
       this.loopService.assertWithinWorktreeRoot(options.cwd);
     }
     await this.acquireRuntimePermit(leaseId);
+    if (RuntimeCommandService.runtimeLeases.has(leaseId)) throw new Error('Runtime lease is already running');
     return new Promise<RuntimeExecutionResult>((resolve, reject) => {
       let stdout = '';
       let stderr = '';
@@ -254,6 +257,7 @@ export class RuntimeCommandService {
       let exitCode: number | null = null;
       let signal: string | null = null;
       let settled = false;
+      let processError: Error | undefined;
       const safeTrim = (input: string) => input.length > maxBuffer ? input.slice(-maxBuffer) : input;
       let timeoutHandle: NodeJS.Timeout | undefined;
       let child: ChildProcess;
@@ -264,7 +268,6 @@ export class RuntimeCommandService {
         reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
-      if (!child.pid) { this.releaseRuntimePermit(leaseId); reject(new Error('RUNTIME_PROCESS_START_FAILED')); return; }
       if (timeoutMs > 0) {
         timeoutHandle = setTimeout(() => {
           if (!timedOutHandled) {
@@ -273,12 +276,13 @@ export class RuntimeCommandService {
           }
         }, timeoutMs);
       }
-      this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
+      void runtimeProcessClosed(child);
+      const cleanupLease = this.registerRuntimeLease(leaseId, child, command, args, timeoutHandle);
       const finalize = () => {
         if (settled) return;
         settled = true;
-        this.clearRuntimeLease(leaseId);
-        this.releaseRuntimePermit(leaseId);
+        cleanupLease();
+        if (processError) { reject(processError); return; }
         const runtimeEvents: import('@djimitflo/shared').ExecutionEventCreateInput[] = [];
         // Parse structured runtime JSON lines into typed events (tool calls/results).
         // Best-effort: unparseable stdout stays a plain result without events.
@@ -317,7 +321,7 @@ export class RuntimeCommandService {
       child.stderr?.setEncoding('utf8');
       child.stdout?.on('data', (chunk: string) => { stdout += chunk; if (stdout.length > maxBuffer) stdout = stdout.slice(-maxBuffer); });
       child.stderr?.on('data', (chunk: string) => { stderr += chunk; if (stderr.length > maxBuffer) stderr = stderr.slice(-maxBuffer); });
-      child.on('error', (error) => { this.clearRuntimeLease(leaseId); this.releaseRuntimePermit(leaseId); if (!settled) { settled = true; reject(error); } });
+      child.on('error', (error) => { processError = error; });
       child.on('close', (code, childSignal) => { exitCode = code === null ? exitCode : code; signal = childSignal || null; if (timedOut && typeof code === 'number' && code === 0) timedOut = true; finalize(); });
     });
   }
@@ -331,13 +335,11 @@ export class RuntimeCommandService {
     const child = runtimeLease.child;
     let killAttempted = false;
     try {
-      if (!child.killed) child.kill('SIGTERM');
+      stopRuntimeProcess(child);
       killAttempted = true;
       this.loopService.patchWorkerLeaseMetadata(leaseId, { runtime_stop_requested_at: new Date().toISOString(), runtime_stop_attempted: true, runtime_stop_mode: 'stop' });
     } catch { killAttempted = false; }
-    if (child.killed) { this.clearRuntimeLease(leaseId); return { stopMode: 'stop', killAttempted }; }
-    try { child.kill('SIGKILL'); killAttempted = killAttempted || true; this.clearRuntimeLease(leaseId); return { stopMode: 'kill', killAttempted }; }
-    catch { return { stopMode: 'best_effort_no_process_handle', killAttempted }; }
+    return { stopMode: killAttempted ? 'stop' : 'best_effort_no_process_handle', killAttempted };
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
@@ -401,14 +403,20 @@ export class RuntimeCommandService {
     runtimeConcurrencySemaphore.cancel(`runtime:${leaseId}`);
   }
 
-  private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): void {
-    RuntimeCommandService.runtimeLeases.set(leaseId, { child, leaseId, command, args, startedAt: new Date().toISOString(), timeoutHandle });
-  }
-
-  private clearRuntimeLease(leaseId: string): void {
-    const lease = RuntimeCommandService.runtimeLeases.get(leaseId);
-    if (!lease) return;
-    if (lease.timeoutHandle) clearTimeout(lease.timeoutHandle);
-    RuntimeCommandService.runtimeLeases.delete(leaseId);
+  private registerRuntimeLease(leaseId: string, child: ChildProcess, command: string, args: string[], timeoutHandle?: NodeJS.Timeout): () => void {
+    const lease = { child, leaseId, command, args, startedAt: new Date().toISOString(), timeoutHandle };
+    RuntimeCommandService.runtimeLeases.set(leaseId, lease);
+    const unregister = RuntimeLeaseRegistry.register(leaseId, async () => {
+      if (RuntimeCommandService.runtimeLeases.get(leaseId) !== lease) return;
+      this.stopWorkerLeaseRuntime(leaseId);
+      await stopRuntimeProcess(child);
+    });
+    return () => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      unregister();
+      if (RuntimeCommandService.runtimeLeases.get(leaseId) !== lease) return;
+      RuntimeCommandService.runtimeLeases.delete(leaseId);
+      this.releaseRuntimePermit(leaseId);
+    };
   }
 }

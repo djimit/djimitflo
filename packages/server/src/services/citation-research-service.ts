@@ -189,12 +189,28 @@ export class CitationResearchService {
               detected_at: new Date().toISOString(),
             };
 
-            this.db.prepare(`
-              INSERT INTO research_contradictions (id, claim_a_id, claim_b_id, severity, description, detected_at)
-              VALUES (?, ?, ?, ?, ?, ?)
-            `).run(contradiction.id, contradiction.claim_a_id, contradiction.claim_b_id, contradiction.severity, contradiction.description, contradiction.detected_at);
-
-            contradictions.push(contradiction);
+            const existing = this.db.prepare(`
+              SELECT id, claim_a_id, claim_b_id, severity, description, detected_at
+              FROM research_contradictions
+              WHERE (claim_a_id = ? AND claim_b_id = ?) OR (claim_a_id = ? AND claim_b_id = ?)
+              LIMIT 1
+            `).get(contradiction.claim_a_id, contradiction.claim_b_id, contradiction.claim_b_id, contradiction.claim_a_id) as any;
+            if (existing) {
+              contradictions.push({
+                id: existing.id,
+                claim_a_id: existing.claim_a_id,
+                claim_b_id: existing.claim_b_id,
+                severity: existing.severity,
+                description: existing.description,
+                detected_at: existing.detected_at,
+              });
+            } else {
+              this.db.prepare(`
+                INSERT INTO research_contradictions (id, claim_a_id, claim_b_id, severity, description, detected_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+              `).run(contradiction.id, contradiction.claim_a_id, contradiction.claim_b_id, contradiction.severity, contradiction.description, contradiction.detected_at);
+              contradictions.push(contradiction);
+            }
             break;
           }
         }

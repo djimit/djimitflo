@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import express from 'express';
 import fs from 'fs';
@@ -13,7 +13,10 @@ import { createSwarmRoutes } from '../routes/swarms';
 import { KnowledgeRuntimeService } from '../services/knowledge-runtime-service';
 
 const previousOkfBase = process.env.OKF_BASE;
+const previousValidatorPath = process.env.OKF_VALIDATOR_PATH;
 const tempDirs: string[] = [];
+
+beforeEach(() => { delete process.env.OKF_VALIDATOR_PATH; });
 
 // The repo knowledge symlink targets a directory outside the repo (present on
 // dev machines, absent in CI); smoke tests that assert the real runtime only
@@ -21,8 +24,11 @@ const tempDirs: string[] = [];
 const repoKnowledgeAvailable = fs.existsSync(KnowledgeRuntimeService.repoKnowledgePath());
 
 afterEach(() => {
+  vi.restoreAllMocks();
   if (previousOkfBase) process.env.OKF_BASE = previousOkfBase;
   else delete process.env.OKF_BASE;
+  if (previousValidatorPath === undefined) delete process.env.OKF_VALIDATOR_PATH;
+  else process.env.OKF_VALIDATOR_PATH = previousValidatorPath;
   for (const dir of tempDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -45,6 +51,76 @@ function okf() {
 }
 
 describe('KnowledgeRuntimeService', () => {
+  it('uses an explicitly configured external validator against the actual data bundle', () => {
+    const dataBase = okf();
+    const toolsBase = okf();
+    process.env.OKF_BASE = dataBase;
+    process.env.OKF_VALIDATOR_PATH = path.join(path.dirname(toolsBase), 'tools', 'validate_okf.py');
+    fs.writeFileSync(process.env.OKF_VALIDATOR_PATH, [
+      'import os',
+      'from pathlib import Path',
+      `assert Path(os.environ["OKF_BASE"]).resolve() == Path(${JSON.stringify(dataBase)}).resolve()`,
+      'assert os.environ["PYTHONDONTWRITEBYTECODE"] == "1"',
+      'print("EXTERNAL_VALIDATOR_ACTUAL_DATA")',
+    ].join('\n'));
+    const database = db();
+    try {
+      const service = new KnowledgeRuntimeService(database);
+      const health = service.health();
+      expect(health.okf_base).toBe(dataBase);
+      expect(health.validate_okf.status).toBe('pass');
+      expect(health.validate_okf.stdout).toBe('EXTERNAL_VALIDATOR_ACTUAL_DATA');
+      expect(health.validate_okf.command).toContain(process.env.OKF_VALIDATOR_PATH);
+      expect(service.syncCapabilities({ apply: true }).dry_run).toBe(false);
+    } finally { database.close(); }
+  });
+
+  it('fails closed without a validator while preserving read-only sync preview', () => {
+    const dataBase = okf();
+    process.env.OKF_BASE = dataBase;
+    fs.unlinkSync(path.join(path.dirname(dataBase), 'tools', 'validate_okf.py'));
+    fs.writeFileSync(path.join(dataBase, 'skills', 'candidate.md'), '---\ntitle: Unvalidated fixture\n---\nFixture');
+    const database = db();
+    try {
+      const service = new KnowledgeRuntimeService(database);
+      expect(service.health().validate_okf.status).toBe('fail');
+      expect(service.health().blocked_reasons).toContain('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+      expect(service.syncCapabilities({ dry_run: true }).dry_run).toBe(true);
+      expect(() => service.syncCapabilities({ apply: true })).toThrow('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+      expect(database.prepare('SELECT COUNT(*) AS count FROM swarm_capabilities').get()).toEqual({ count: 0 });
+    } finally { database.close(); }
+  });
+
+  it.each(['missing', 'relative', 'failed'] as const)('does not silently fall back when operator validator is %s', (mode) => {
+    const dataBase = okf();
+    const toolsBase = okf();
+    process.env.OKF_BASE = dataBase;
+    const external = path.join(path.dirname(toolsBase), 'tools', 'external.py');
+    process.env.OKF_VALIDATOR_PATH = mode === 'relative' ? 'tools/external.py' : external;
+    if (mode === 'failed') fs.writeFileSync(external, 'import sys\nprint("VALIDATION_REJECTED", file=sys.stderr)\nsys.exit(3)\n');
+    const database = db();
+    try {
+      const service = new KnowledgeRuntimeService(database);
+      const health = service.health();
+      expect(health.validate_okf.status).toBe('fail');
+      expect(health.valid).toBe(false);
+      if (mode === 'failed') expect(health.validate_okf.stderr).toContain('VALIDATION_REJECTED');
+      expect(() => service.syncCapabilities({ apply: true })).toThrow('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+      expect(database.prepare('SELECT COUNT(*) AS count FROM swarm_capabilities').get()).toEqual({ count: 0 });
+    } finally { database.close(); }
+  });
+
+  it('requires pass rather than merely not-fail before applying sync', () => {
+    process.env.OKF_BASE = okf();
+    const database = db();
+    try {
+      const service = new KnowledgeRuntimeService(database);
+      const health = service.health();
+      vi.spyOn(service, 'health').mockReturnValue({ ...health, validate_okf: { ...health.validate_okf, status: 'skipped' } });
+      expect(() => service.syncCapabilities({ apply: true })).toThrow('KNOWLEDGE_RUNTIME_OKF_VALIDATION_FAILED');
+    } finally { database.close(); }
+  });
+
   it('resolves canonical OKF from OKF_BASE and reports read-only health', () => {
     const okfBase = okf();
     process.env.OKF_BASE = okfBase;

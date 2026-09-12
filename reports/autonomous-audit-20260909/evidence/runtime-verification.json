@@ -1,0 +1,54 @@
+{
+  "date": "2026-09-09",
+  "scope": "local audit working tree based on c0c8d72b; not a deployed production revision",
+  "configuration_probes": {
+    "codex": { "version": "0.153.4", "contract": "ok", "authentication": "ChatGPT subscription" },
+    "opencode": { "version": "1.18.28", "contract": "ok", "provider_execution": "not performed" },
+    "claude": { "version": "2.1.266", "contract": "ok", "provider_execution": "not performed" },
+    "gemini": { "version": "0.57.0", "contract": "ok", "provider_execution": "not performed" },
+    "pi": { "contract": "unavailable", "reason": "spawnSync pi ENOENT" },
+    "editor": { "contract": "unavailable", "reason": "spawnSync cline ENOENT" }
+  },
+  "astra_no_tool_execution": {
+    "model": "gpt-6-astra",
+    "reasoning_effort": "max",
+    "sandbox": "read-only",
+    "response": "ASTRA_RUNTIME_OK",
+    "reported_usage": { "input_tokens": 16223, "output_tokens": 8, "cached_input_tokens": 6400 }
+  },
+  "regression": {
+    "focused_suites": 16,
+    "passed": 216,
+    "skipped": 1,
+    "failed": 0,
+    "final_subprocess_suites": 2,
+    "final_subprocess_tests_passed": 9,
+    "final_subprocess_duration_seconds": 35.40,
+    "subprocess_properties": [
+      "seven adapter cancellation paths terminate TERM-resistant children within seven seconds",
+      "signal exit closes execution event stream while preserving null exit code",
+      "whole-loop stop reaches an engine-owned child from another LoopService instance",
+      "worker-pool stop reaches an engine-owned child from another SwarmStatusService instance",
+      "recovery does not orphan a live registered worker",
+      "late process exit preserves cancelled domain state"
+    ],
+    "server_typecheck": "passed",
+    "scoped_eslint": "passed",
+    "git_diff_check": "passed"
+  },
+  "controlled_improvement_evidence": "controlled-runtime-improvement.json",
+  "production_smoke": {
+    "test": "integration-spine-real-runtime-smoke.test.ts",
+    "opt_in_executed": true,
+    "passed": false,
+    "blocking_condition": "LOOP_WORKER_APPROVAL_REQUIRED",
+    "interpretation": "zero-intervention certification assumptions conflict with enforced task policy; no bypass performed"
+  },
+  "not_proven": [
+    "production deployment",
+    "provider execution for other runtimes",
+    "server crash and provider session recovery",
+    "unattended proposal-to-merge self-improvement",
+    "Astra economic advantage over a cheaper runtime"
+  ]
+}

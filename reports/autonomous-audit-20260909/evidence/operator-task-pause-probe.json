@@ -1,0 +1,9 @@
+📦 Registered executor: mock
+📦 Registered executor: opencode
+📦 Registered executor: codex
+📦 Registered executor: claude
+📦 Registered executor: hermes
+📦 Registered executor: gemini
+📦 Registered executor: editor
+📦 Registered executor: pi
+{"goal_operator_paused":true,"execution_status":"started","task":{"status":"completed"},"error":null}

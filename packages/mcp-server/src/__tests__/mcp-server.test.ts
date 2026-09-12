@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import Database from 'better-sqlite3';
 import type { DbHandle } from '../db.js';
 import { registerTools } from '../index.js';
+import { runWithMcpAuth } from '../auth-context.js';
 
 function createTestDb(): DbHandle {
   const db = new Database(':memory:');
@@ -77,6 +78,22 @@ function createTestDb(): DbHandle {
       domain TEXT, task_id TEXT, agent_id TEXT, skill_version TEXT, skill_content_hash TEXT,
       model TEXT, evidence_refs_json TEXT, created_at TEXT
     );
+    CREATE TABLE memory_candidates (
+      id TEXT PRIMARY KEY, title TEXT, content TEXT, memory_type TEXT, status TEXT,
+      source_ref TEXT, metadata TEXT DEFAULT '{}', created_at TEXT
+    );
+    CREATE TABLE explainer_tasks (
+      id TEXT PRIMARY KEY, title TEXT, description TEXT, provider TEXT, remote_url TEXT,
+      local_path TEXT, status TEXT, metadata TEXT DEFAULT '{}', discovered_repository_id TEXT,
+      created_at TEXT, updated_at TEXT
+    );
+    CREATE TABLE explainer_bundles (
+      id TEXT PRIMARY KEY, task_id TEXT, status TEXT, openmythos_score REAL,
+      created_at TEXT, facts_path TEXT, sections_path TEXT, markdown_path TEXT
+    );
+    CREATE TABLE discovered_repositories (
+      id TEXT PRIMARY KEY, full_name TEXT, language TEXT, license TEXT, priority_tier TEXT
+    );
   `);
   return { db, close: () => db.close() };
 }
@@ -115,6 +132,10 @@ describe('MCP Server Tools', () => {
     expect(toolNames).toContain('djimitflo_get_data_provenance');
     expect(toolNames).toContain('notebook_list');
     expect(toolNames).toContain('explainer_create_task');
+    expect(toolNames).toContain('djimitflo_authority_emit');
+    expect(toolNames).toContain('djimitflo_authority_trace');
+    expect(toolNames).toContain('djimitflo_generate_export');
+    expect(toolNames).toContain('djimitflo_council_ask');
   });
 
   it('list_loop_runs returns empty array when no runs', async () => {
@@ -225,6 +246,78 @@ describe('MCP Server Tools', () => {
 
     for (const [name, input] of calls) {
       await expect(tools[name].handler(input), name).rejects.toThrow('DJIMITFLO_LIVE_DATA_REQUIRED');
+    }
+  });
+
+  it('executes every local read-only MCP tool and reports unavailable external bridges explicitly', async () => {
+    const tools = (server as any)._registeredTools;
+    const localCalls: Array<[string, Record<string, unknown>]> = [
+      ['djimitflo_list_agents', {}],
+      ['djimitflo_get_agent_status', { agentId: 'missing-agent' }],
+      ['djimitflo_list_goals', {}],
+      ['djimitflo_get_goal', { goalId: 'missing-goal' }],
+      ['djimitflo_list_loop_runs', {}],
+      ['djimitflo_get_loop_status', { runId: 'missing-run' }],
+      ['djimitflo_get_loop_catalog', {}],
+      ['djimitflo_get_mission_control', {}],
+      ['djimitflo_get_system_health', {}],
+      ['explainer_list_tasks', {}],
+      ['explainer_get_task', { id: 'missing-task' }],
+      ['explainer_list_bundles', { task_id: 'missing-task' }],
+      ['explainer_ask', { question: 'status' }],
+      ['explainer_search_repo', { query: 'status' }],
+      ['explainer_get_fact', { fact_id: 'missing-fact' }],
+      ['explainer_compare_repos', { repos: ['repo-a', 'repo-b'] }],
+      ['djimitflo_memory_search', { query: 'status' }],
+    ];
+    for (const [name, input] of localCalls) {
+      const result = await tools[name].handler(input);
+      expect(result.content?.[0]?.text, name).toBeDefined();
+    }
+
+    const externalCalls: Array<[string, Record<string, unknown>]> = [
+      ['notebook_list', {}],
+      ['notebook_create', { title: 'fixture' }],
+      ['notebook_delete', { notebookId: 'missing' }],
+      ['notebook_add_source', { notebookId: 'missing', type: 'text', value: 'fixture' }],
+      ['notebook_ask', { notebookId: 'missing', question: 'fixture' }],
+      ['notebook_generate', { notebookId: 'missing', artifactType: 'report' }],
+      ['notebook_research', { notebookId: 'missing', query: 'fixture' }],
+      ['notebook_notes', { notebookId: 'missing', action: 'list' }],
+      ['notebook_download', { notebookId: 'missing', artifactType: 'report', outputPath: '/tmp/fixture-report' }],
+    ];
+    for (const [name, input] of externalCalls) {
+      const result = await tools[name].handler(input);
+      expect(result.isError, name).toBe(true);
+      expect(result.content?.[0]?.text, name).toBeDefined();
+    }
+  });
+
+  it('forwards council and export MCP tools through the authenticated API boundary', async () => {
+    const tools = (server as any)._registeredTools;
+    const calls: string[] = [];
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith('/council/sessions')) return new Response(JSON.stringify({ id: 'session-fixture' }), { status: 200 });
+      return new Response(JSON.stringify({ status: 'completed', format: 'json' }), { status: 200 });
+    });
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const context = { payload: { sub: 'mcp-fixture', email: 'fixture@example.test', role: 'maker' as any, iat: now, exp: now + 60 }, token: 'fixture-token' };
+      await runWithMcpAuth(context, async () => {
+        const council = await tools.djimitflo_council_ask.handler({ question: 'Explain the current status', mode: 'fast' });
+        expect(council.content?.[0]?.text).toContain('completed');
+        const exported = await tools.djimitflo_generate_export.handler({ target: 'summary', format: 'json' });
+        expect(exported.content?.[0]?.text).toContain('completed');
+      });
+      expect(calls).toEqual([
+        'http://127.0.0.1:3001/api/council/sessions',
+        'http://127.0.0.1:3001/api/council/sessions/session-fixture/execute',
+        'http://127.0.0.1:3001/api/exports/report/summary',
+      ]);
+    } finally {
+      fetchMock.mockRestore();
     }
   });
 });

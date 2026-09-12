@@ -10,7 +10,7 @@
  * 2. Generate SFT training pairs (prompt → correct response)
  * 3. Fine-tune via LoRA (Low-Rank Adaptation)
  * 4. A/B test baseline vs fine-tuned model
- * 5. Auto-deploy if improvement > threshold
+ * 5. Recommend promotion only after externally verified evaluation evidence
  *
  * This is the critical missing piece: SEGML Phase 0-1 only improved the
  * scaffold (prompts, memory, curriculum). This bridge improves the
@@ -69,7 +69,6 @@ interface ABTestResult {
 
 export class SegmlFinetuningBridge {
   private readonly MIN_PAIRS_FOR_TRAINING = 20;
-  private readonly IMPROVEMENT_THRESHOLD = 0.15; // 15% improvement required
   private readonly MAX_PAIRS_PER_DATASET = 500;
   private readonly DEFAULT_LEARNING_RATE = 2e-4;
   private readonly DEFAULT_EPOCHS = 3;
@@ -338,72 +337,16 @@ export class SegmlFinetuningBridge {
   }
 
   /**
-   * Run A/B test between baseline and fine-tuned model.
-   * Tests both models on the same governance dataset.
+   * Run an A/B test between baseline and fine-tuned models.
+   *
+   * This bridge has no provider-owned evaluation runner. Returning random
+   * scores would create false promotion evidence, so the route fails closed
+   * until a real runner supplies paired outputs and independent scoring.
    */
-  runABTest(datasetId: string, baselineModel: string, finetunedModel: string): ABTestResult {
-    const dataset = this.db.prepare('SELECT * FROM segml_training_datasets WHERE id = ?').get(datasetId) as any;
-    if (!dataset) throw new Error('Dataset not found');
-
-    const pairs = JSON.parse(dataset.pairs_json || '[]') as TrainingPair[];
-
-    // Simulate scoring (in production, would actually run both models)
-    let baselineScore = 0;
-    let finetunedScore = 0;
-    const categoryScores: Record<string, { baseline: number; finetuned: number }> = {};
-
-    const categories = [...new Set(pairs.map(p => p.category))];
-    for (const cat of categories) {
-      const catPairs = pairs.filter(p => p.category === cat);
-      const catBaseline = 2.5 + Math.random() * 1.5; // Simulated baseline: 2.5-4.0
-      const catFinetuned = catBaseline + (Math.random() * 0.8 - 0.2); // Fine-tuned: slightly better on average
-
-      categoryScores[cat] = {
-        baseline: Math.round(catBaseline * 100) / 100,
-        finetuned: Math.round(Math.min(5, catFinetuned) * 100) / 100,
-      };
-
-      baselineScore += catBaseline * catPairs.length;
-      finetunedScore += Math.min(5, catFinetuned) * catPairs.length;
-    }
-
-    const totalPairs = pairs.length || 1;
-    baselineScore = Math.round((baselineScore / totalPairs) * 100) / 100;
-    finetunedScore = Math.round((finetunedScore / totalPairs) * 100) / 100;
-    const improvement = Math.round(((finetunedScore - baselineScore) / baselineScore) * 10000) / 10000;
-
-    let winner: 'baseline' | 'finetuned' | 'tie' = 'tie';
-    if (improvement > this.IMPROVEMENT_THRESHOLD) winner = 'finetuned';
-    else if (improvement < -this.IMPROVEMENT_THRESHOLD) winner = 'baseline';
-
-    const result: ABTestResult = {
-      id: randomUUID(),
-      baselineModel,
-      finetunedModel,
-      datasetId,
-      baselineScore,
-      finetunedScore,
-      improvement,
-      winner,
-      testedAt: new Date().toISOString(),
-      categoryScores,
-    };
-
-    this.db.prepare(`
-      INSERT INTO segml_ab_test_results
-      (id, baseline_model, finetuned_model, dataset_id, baseline_score, finetuned_score, improvement, winner, category_scores_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(result.id, baselineModel, finetunedModel, datasetId, baselineScore, finetunedScore, improvement, winner, JSON.stringify(categoryScores));
-
-    if (winner === 'finetuned') {
-      swarmEventBus.emit('segml:finetuning:deployment_recommended', {
-        jobId: result.datasetId,
-        improvement,
-        finetunedModel,
-      });
-    }
-
-    return result;
+  runABTest(_datasetId: string, _baselineModel: string, _finetunedModel: string): ABTestResult {
+    const error = new Error('SEGML A/B evaluation runner is not configured; no model scores were generated') as Error & { code: string };
+    error.code = 'SEGML_AB_TEST_UNAVAILABLE';
+    throw error;
   }
 
   /**

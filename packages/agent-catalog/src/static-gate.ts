@@ -77,7 +77,12 @@ export function overlapScore(a: Profile, b: Profile): number { return jaccard(sh
 
 export function runStaticGate(profile: Profile, existing: Profile[] = []): Evaluation {
   const schemaRes = validateSchema(profile);
-  const inj = scanInjection(profileText(profile) + ' ' + (profile.description || ''));
+  // Scan additional runtime instructions without changing profile-overlap text.
+  const inj = scanInjection([
+    profileText(profile), profile.description || '',
+    ...(profile.workflows || []), ...(profile.tools_required || []),
+    profile.memory_policy || '', ...(profile.success_metrics || []),
+  ].join(' '));
   let maxOverlap = 0; let overlapWith: string | null = null; const overlaps: { id: string; score: number }[] = [];
   for (const other of existing) {
     if (other.id === profile.id) continue;

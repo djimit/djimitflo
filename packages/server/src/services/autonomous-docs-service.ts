@@ -11,6 +11,7 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import type { Database } from 'better-sqlite3';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 interface DocGap {
   id: string;
@@ -26,7 +27,7 @@ export class AutonomousDocsService {
   private srcDir: string;
 
   constructor(_db: Database) {
-    this.srcDir = join(process.cwd(), 'packages', 'server', 'src');
+    this.srcDir = join(resolveRepositoryRoot(process.cwd()), 'packages', 'server', 'src');
   }
 
   /**

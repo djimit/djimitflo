@@ -171,6 +171,16 @@ describe('swarm intelligence layer', () => {
     expect(evaluation.scorecard.checks.has_allowed_actions).toBe(true);
   });
 
+  it('maps missing mission and specialist panel details to 404', async () => {
+    const mission = await fetch(`${baseUrl}/swarms/intelligence/missions/missing-mission`);
+    expect(mission.status).toBe(404);
+    expect((await mission.json() as any).error.code).toBe('SWARM_MISSION_NOT_FOUND');
+
+    const panel = await fetch(`${baseUrl}/swarms/specialist-panels/missing-panel`);
+    expect(panel.status).toBe(404);
+    expect((await panel.json() as any).error.code).toBe('SPECIALIST_PANEL_NOT_FOUND');
+  });
+
   it('exposes versioned specialist profiles for science and governance councils', async () => {
     const response = await fetch(`${baseUrl}/swarms/intelligence/specialists`);
     expect(response.status).toBe(200);

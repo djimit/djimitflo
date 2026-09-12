@@ -1,0 +1,3 @@
+# G112 governance-feedback pagination and regression
+
+`/governance-feedback/history` now rejects malformed `limit` values before loop-history access. The focused HTTP regression passed 1/1. One first full workspace run exposed a transient `swarm-intelligence-service` assertion (expected 400, received 401); the test passed 8/8 in isolation, the complete server rerun passed **2436 / 20 skipped**, and the next complete workspace rerun passed **2723 / 20 skipped**. `/loops` checks passed 12/12. Route inventory now passes with 581 source routes and 259 contract-tested references. No assertion was weakened; the intermittent first-run result remains UNKNOWN.

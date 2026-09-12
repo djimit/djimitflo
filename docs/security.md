@@ -4,7 +4,7 @@
 
 - Passwords are hashed with bcryptjs (cost factor 12)
 - JWT tokens are signed with HMAC-SHA256 (HS256)
-- Tokens expire after configurable duration (default: 24h)
+- Tokens expire after configurable duration (default: 15 minutes)
 - Generic error messages on login failure (no account enumeration)
 - Password hashes are never returned through API responses
 
@@ -27,25 +27,28 @@ All API responses include the following security headers:
 | Referrer-Policy | strict-origin-when-cross-origin | Limits referrer information leakage |
 | X-XSS-Protection | 0 | Disables legacy XSS filter (modern browsers don't need it) |
 
-**Content-Security-Policy** is not yet set. The Vite-built dashboard uses inline styles (Tailwind) which require careful CSP configuration. CSP is planned for a future phase with nonce-based headers.
+The existing security-header middleware sets CSP, including `frame-ancestors 'none'`, no inline scripts and no object sources. Inline styles are allowed; non-production mode also permits `unsafe-eval`. Deployment must apply this middleware to dashboard HTML, not only API responses. The September audit found that boundary missing and tracks its repair in the verification report.
 
 ## Authorization
 
-- Role-based access control (RBAC) with three roles: admin, operator, viewer
+- Role-based access control (RBAC): admin, platform_admin, approver, maker, checker, auditor and viewer
 - Route-level authentication via `requireAuth` middleware
 - Action-level authorization via `requirePermission` middleware
 - Backend authorization is the source of truth — frontend role checks are UX-only
 
 ## Token Handling
 
-- JWT tokens are stored in `localStorage` in the browser
-- This is a known limitation — localStorage is accessible to XSS attacks
-- **Mitigation**: Do not store sensitive data in localStorage beyond the auth token
-- **Future improvement**: Move to httpOnly cookies or session-based auth when implementing OIDC/SSO
+- Short-lived access JWTs remain in browser `localStorage`; XSS can still steal them or act as the user. HttpOnly refresh cookies do not eliminate XSS risk.
+- Dashboard login opts in using `X-Djimitflo-Session: browser`. The server stores only refresh-token hashes and sends `djimitflo_refresh` as an HttpOnly, SameSite=Strict cookie scoped to `/api/auth`, with rolling 30-day expiry. Secure defaults on in production; `AUTH_COOKIE_SECURE=false` is only for deliberate local HTTP use.
+- `POST /api/auth/refresh` requires that browser header and cookie. Rotation and its audit record commit together. The dashboard shares one bounded 401 retry across JSON, download and streaming requests; native Web Locks coordinate supporting tabs. Without Web Locks, refresh coordination is in-tab only.
+- Browser access JWTs carry a session ID. HTTP authorization and protected WebSocket delivery check its live, unexpired refresh family. Browser logout revokes the presented family (and authenticated session when a cookie is absent); organization switching retains this binding. Refresh-token replay retains the existing user-wide revocation policy.
+- Headerless legacy login keeps the `{token,user}` bearer contract without a refresh cookie. Legacy sidless tokens remain valid until expiry; legacy logout records an event but cannot revoke them.
+- Session revocation prevents subsequent protected access; it does not undo completed actions or cancel work already admitted. Idle sockets are checked on delivery, not by an immediate revocation timer.
+- HTTP MCP in live-data mode revalidates current account, membership and session family against its existing database on GET/POST. Snapshot/standalone HTTP MCP refuses browser `sid` tokens because it cannot establish live revocation; its legacy sidless mode remains signature-only. Already accepted MCP calls are not retroactively cancelled.
 
 ## Protected Endpoints
 
-- All `/api/*` routes require authentication except `/api/auth/login` and `/api/auth/logout`
+- Login accepts credentials; browser refresh accepts its cookie plus the explicit session header, not an access bearer. Logout supports both browser-session and legacy-bearer contracts described above. Other API routes enforce their registered authentication/permission middleware; the contract inventory records coverage.
 - The `/health` endpoint and `/api/version` are public
 - Permission checks are applied per action within route handlers
 
@@ -58,8 +61,8 @@ All API responses include the following security headers:
 
 ## Audit Trail
 
-- All authenticated actions record the actor's `user_id` in audit events
-- Background/system actions use `user_id = 'system'`
+- Instrumented actions record caller identity; complete coverage of every authenticated action is not established
+- Background/system actions may have no user identity and can carry agent/system attribution
 - Audit events are immutable — no update or delete operations
 
 ## Security Finding Lifecycle
@@ -78,7 +81,7 @@ A finding can become `done` only when its remediation, rescan, and regression re
 
 ## WebSocket Authentication
 
-- WebSocket connections require a valid JWT token delivered via query string (`?token=<JWT>`)
+- The dashboard sends its JWT through the `bearer.<JWT>` WebSocket subprotocol; legacy query-string tokens are still accepted by the server
 - Events are scoped server-side by user role and task ownership — the frontend is not the security boundary
 - Invalid, expired, or missing tokens cause the connection to be rejected with close codes 4001/4002/4003
 - Tokens are validated at connection time and rechecked opportunistically during broadcasts
@@ -104,14 +107,18 @@ A finding can become `done` only when its remediation, rescan, and regression re
 ## Known Limitations
 
 1. **localStorage tokens**: Vulnerable to XSS. Mitigated by content security policy when deployed.
-2. **No refresh tokens**: Users must re-authenticate after token expiry.
-3. **No rate limiting**: Login endpoint is not rate-limited. Should be added before production.
+2. **Refresh API not exposed**: Rotation exists in AuthService, but current login/dashboard use one access token; users must re-authenticate after expiry.
+3. **Single-process login rate limiting**: Login failures are limited; counters do not survive restart or coordinate across servers.
 4. **No CSRF protection**: API uses Bearer tokens, not cookies, so CSRF is not applicable.
 5. **No password reset**: Users must be recreated or password reset via environment variable.
-6. **No account lockout**: Repeated failed login attempts are not blocked.
-7. **WebSocket query-string token**: Token is passed via query string which may appear in reverse proxy logs. Use WSS in production.
+6. **No account-wide lockout**: Per-IP login throttling does not provide a durable account lockout.
+7. **Legacy WebSocket query-string token**: Compatibility callers can still expose tokens in proxy logs; the dashboard uses subprotocol authentication. WSS encrypts transport but does not remove query values from logs.
 8. **In-memory WebSocket map**: Socket connections are stored in server memory, not horizontally scalable. Distributed pub/sub (e.g., Redis) is future work.
 9. **No dedicated WS token-expiry timer**: Expired connections are closed opportunistically during broadcast cycles.
+10. **CLI tool mediation**: ToolBroker policy/tokens are tested at the service boundary, but CLI-internal tool calls do not traverse it. Task admission and optional CLI/Docker sandboxing are separate controls.
+11. **External audit anchoring**: Local HTTP acceptance/retry and durable records are tested; this is not proof of WORM retention, remote hash verification or automatic retry after restart.
+
+Current executable evidence and remaining boundaries: [verification report](../reports/autonomous-audit-20260909/VERIFICATION_REPORT.md), [runtime matrix](../reports/autonomous-audit-20260909/RUNTIME_MATRIX.md), and [gap register](../reports/autonomous-audit-20260909/GAP_REGISTER.md). These are local audit results, not production certification.
 
 ## Recommended Production Configuration
 
@@ -120,7 +127,7 @@ A finding can become `done` only when its remediation, rescan, and regression re
 JWT_SECRET=REDACTED
 
 # Token expiry
-JWT_EXPIRES_IN=24h
+JWT_EXPIRES_IN=15m
 
 # Bootstrap admin
 AUTH_BOOTSTRAP_ADMIN_EMAIL=admin@yourcompany.com

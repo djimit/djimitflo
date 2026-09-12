@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
   injection_score INTEGER NOT NULL,
   risk_level TEXT NOT NULL,
   flags TEXT NOT NULL,
+  score REAL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (profile_id, version_hash)
 );
@@ -64,14 +65,26 @@ export interface Evaluation {
   injection_score: number; injection_flags: string[];
   overlap_score: number; overlap_with: string | null; overlaps: { id: string; score: number }[];
   risk_level: string; flags: string[]; status: 'pending' | 'passed' | 'rejected';
+  score?: number;
 }
 
 export class CatalogDB {
   private db: Database.Database;
-  constructor(path = ':memory:') { this.db = new Database(path); this.db.exec(MIGRATION); }
+  constructor(path = ':memory:') {
+    this.db = new Database(path); this.db.exec(MIGRATION);
+    if (!(this.db.prepare('PRAGMA table_info(evaluations)').all() as Array<{name:string}>).some(column => column.name === 'score')) this.db.exec('ALTER TABLE evaluations ADD COLUMN score REAL');
+  }
   close() { this.db.close(); }
+  transaction<T>(operation: () => T): T { return this.db.transaction(operation)(); }
+
+  private invalidateActivation(profileId: string, reason: string) {
+    const changed = this.db.prepare("UPDATE activations SET status='deactivated', deactivated_at=? WHERE profile_id=? AND status='active'").run(new Date().toISOString(), profileId);
+    if (changed.changes) this.audit(profileId, 'activation_invalidated', JSON.stringify({reason}));
+  }
 
   upsertProfile(p: Profile) {
+    this.transaction(() => {
+    const prior = this.getProfile(p.id);
     this.db.prepare(
       `INSERT INTO profiles(id,name,division,source_repo,source_path,version_hash,document)
        VALUES(?,?,?,?,?,?,?)
@@ -79,6 +92,8 @@ export class CatalogDB {
          source_repo=excluded.source_repo, source_path=excluded.source_path,
          version_hash=excluded.version_hash, document=excluded.document`
     ).run(p.id, p.name, p.division, p.source_repo, p.source_path, p.version_hash, JSON.stringify(p));
+    if (prior && prior.version_hash !== p.version_hash) this.invalidateActivation(p.id, 'profile_version_changed');
+    });
   }
   getProfile(id: string): Profile | null {
     const row: any = this.db.prepare('SELECT document FROM profiles WHERE id=?').get(id);
@@ -89,17 +104,21 @@ export class CatalogDB {
       .map(r => JSON.parse(r.document));
   }
   setEvaluation(ev: Evaluation, versionHash: string) {
+    this.transaction(() => {
     const id = `${ev.profile_id}:${versionHash}`;
     this.db.prepare(
-      `INSERT INTO evaluations(id,profile_id,version_hash,status,schema_valid,overlap_score,injection_score,risk_level,flags)
-       VALUES(?,?,?,?,?,?,?,?,?)
+      `INSERT INTO evaluations(id,profile_id,version_hash,status,schema_valid,overlap_score,injection_score,risk_level,flags,score)
+       VALUES(?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(id) DO UPDATE SET status=excluded.status, schema_valid=excluded.schema_valid,
          overlap_score=excluded.overlap_score, injection_score=excluded.injection_score,
-         risk_level=excluded.risk_level, flags=excluded.flags`
-    ).run(id, ev.profile_id, versionHash, ev.status, ev.schema_valid ? 1 : 0, ev.overlap_score, ev.injection_score, ev.risk_level, JSON.stringify(ev.flags));
+         risk_level=excluded.risk_level, flags=excluded.flags, score=excluded.score`
+    ).run(id, ev.profile_id, versionHash, ev.status, ev.schema_valid ? 1 : 0, ev.overlap_score, ev.injection_score, ev.risk_level, JSON.stringify(ev.flags), ev.score ?? null);
+    if (ev.status !== 'passed' && this.getProfile(ev.profile_id)?.version_hash === versionHash) this.invalidateActivation(ev.profile_id, 'evaluation_not_passed');
+    });
   }
   getEvaluation(profileId: string): any {
-    const row: any = this.db.prepare('SELECT * FROM evaluations WHERE profile_id=? ORDER BY created_at DESC LIMIT 1').get(profileId);
+    const row: any = this.db.prepare(`SELECT * FROM evaluations WHERE profile_id=?
+      ORDER BY (version_hash = (SELECT version_hash FROM profiles WHERE id=?)) DESC, rowid DESC LIMIT 1`).get(profileId, profileId);
     if (!row) return null;
     return { ...row, flags: JSON.parse(row.flags), schema_valid: !!row.schema_valid };
   }
@@ -128,15 +147,21 @@ export class CatalogDB {
     const [x, y] = a < b ? [a, b] : [b, a];
     this.db.prepare('INSERT OR REPLACE INTO overlaps(a,b,score) VALUES(?,?,?)').run(x, y, score);
   }
+  replaceOverlaps(profileId: string, overlaps: Array<{ id: string; score: number }>) {
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM overlaps WHERE a=? OR b=?').run(profileId, profileId);
+      for (const overlap of overlaps) this.setOverlap(profileId, overlap.id, overlap.score);
+    });
+  }
   counts() {
     const q = (s: string) => (this.db.prepare(s).get() as any).n;
     return {
       total: q('SELECT COUNT(*) n FROM profiles'),
-      evaluated: q('SELECT COUNT(DISTINCT profile_id) n FROM evaluations'),
-      passed: q("SELECT COUNT(DISTINCT profile_id) n FROM evaluations WHERE status='passed'"),
+      evaluated: q('SELECT COUNT(*) n FROM evaluations e JOIN profiles p ON p.id=e.profile_id AND p.version_hash=e.version_hash'),
+      passed: q("SELECT COUNT(*) n FROM evaluations e JOIN profiles p ON p.id=e.profile_id AND p.version_hash=e.version_hash WHERE e.status='passed'"),
       active: q("SELECT COUNT(*) n FROM activations WHERE status='active'"),
       duplicate: q('SELECT COUNT(*) n FROM overlaps WHERE score>=0.85'),
-      rejected: q("SELECT COUNT(DISTINCT profile_id) n FROM evaluations WHERE status='rejected'"),
+      rejected: q("SELECT COUNT(*) n FROM evaluations e JOIN profiles p ON p.id=e.profile_id AND p.version_hash=e.version_hash WHERE e.status='rejected'"),
     };
   }
 }

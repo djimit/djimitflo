@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-09T13:04:16.674Z",
+  "status": "blocked",
+  "intended": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "dd3338f2983e938cd2721f925107d153a60dcc5025a87d3d0484778b46b20649",
+    "database": "/Users/dlandman/djimitflo-audit-20260909/.data/audit.sqlite",
+    "database_instance_id": "5189ac69-a8ad-4c9c-b383-4a3b7c2f47ec"
+  },
+  "observed": {
+    "base_url": "http://127.0.0.1:3187",
+    "health": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "status": "healthy",
+        "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+        "timestamp": "2026-09-09T13:04:16.341Z",
+        "uptime": 394.4763375
+      }
+    },
+    "version": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "version": "0.5.8",
+        "name": "Djimitflo API"
+      }
+    },
+    "authenticated_provenance": {
+      "status": 503,
+      "ok": false,
+      "body": {
+        "status": "degraded",
+        "database": {
+          "instance_id": "5189ac69-a8ad-4c9c-b383-4a3b7c2f47ec",
+          "node_id": "MacBook-Pro-2.local",
+          "path": "/Users/dlandman/djimitflo-audit-20260909/.data/audit.sqlite",
+          "mode": "live",
+          "commit_sha": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5"
+        },
+        "checks": {
+          "database": {
+            "status": "ok"
+          },
+          "memory": {
+            "status": "ok"
+          },
+          "activeLeases": {
+            "status": "ok"
+          },
+          "knowledgeRuntime": {
+            "status": "ok"
+          },
+          "litellm": {
+            "status": "disabled"
+          },
+          "ollama": {
+            "status": "error",
+            "message": "fetch failed"
+          },
+          "qdrant": {
+            "status": "error",
+            "message": "fetch failed"
+          }
+        },
+        "timestamp": "2026-09-09T13:04:16.620Z"
+      }
+    },
+    "database_integrity": {
+      "ok": true,
+      "exit_code": 0,
+      "output": "ok"
+    }
+  },
+  "identity_verified": false,
+  "reason": "Deployment identity requires healthy authenticated provenance, matching full commit and database instance, live data mode, and a clean intended revision.",
+  "next_safe_action": "Reconcile observed and intended runtime identity."
+}

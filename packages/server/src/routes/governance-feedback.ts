@@ -18,6 +18,16 @@ import type { WebSocketService } from '../services/websocket-service';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
 import { GovernanceFeedbackLoopService } from '../services/governance-feedback-loop';
+import { createError } from '../middleware/error-handler';
+
+function boundedLimit(value: unknown): number {
+  if (value === undefined) return 20;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
 
 export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
@@ -99,9 +109,12 @@ export function createGovernanceFeedbackRoutes(db: Database, auth?: AuthMiddlewa
 
   // GET /api/governance-feedback/history — loop execution history
   router.get('/history', requirePermission('read:evidence'), (req, res) => {
-    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-    const history = service.getLoopHistory(limit);
-    res.json({ history });
+    try {
+      const history = service.getLoopHistory(boundedLimit(req.query.limit));
+      res.json({ history });
+    } catch (error) {
+      res.status((error as any).status || 500).json({ error: { message: (error as Error).message, code: (error as any).code || 'INTERNAL_ERROR' } });
+    }
   });
 
   // GET /api/governance-feedback/proposals — list proposals

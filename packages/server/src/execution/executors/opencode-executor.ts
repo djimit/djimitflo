@@ -23,6 +23,7 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -142,10 +143,13 @@ export class OpenCodeExecutor implements TaskExecutor {
     const outcome: OpenCodeRunOutcome = { verificationFailures: [] };
     let metricsBuffer = '';
     let childProcess: ChildProcess | null = null;
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
+      if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
@@ -157,16 +161,10 @@ export class OpenCodeExecutor implements TaskExecutor {
       });
 
       childProcess = child;
+      void runtimeProcessClosed(child).then(resolveClosed);
 
       const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
+        stopRuntimeProcess(child);
         emitter.emit('error', new Error(`OpenCode execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
@@ -207,16 +205,11 @@ export class OpenCodeExecutor implements TaskExecutor {
       startedAt,
       events,
       result,
+      closed,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) {
-              childProcess.kill('SIGKILL');
-            }
-          }, 5000);
-        }
         session.status = 'cancelled';
+        await stopRuntimeProcess(childProcess);
+        if (!childProcess) resolveClosed();
         session.completedAt = new Date();
       },
     };
@@ -316,7 +309,8 @@ export class OpenCodeExecutor implements TaskExecutor {
   private getVerificationFailure(event: OpenCodeEvent): { tool: string; reason: string } | null {
     if (event.type !== 'tool_use') return null;
 
-    const part = event.part as OpenCodeToolUse;
+    const part = (event.part || event) as Partial<OpenCodeToolUse>;
+    if (typeof part.tool !== 'string' || !part.state || typeof part.state !== 'object') return null;
     const command = typeof part.state?.input?.command === 'string' ? part.state.input.command : '';
     const tool = part.tool.toLowerCase();
     const commandMatch = command.match(/\b(type-?check|tsc|eslint|vitest|jest|pytest|cargo test|go test|npm (?:run )?test)\b/i);
@@ -352,7 +346,10 @@ export class OpenCodeExecutor implements TaskExecutor {
   }
 
   private mapJsonEventToExecutionEvent(taskId: string, event: OpenCodeEvent): ExecutionEventCreateInput | null {
-    const part = event.part;
+    // OpenCode normally nests payloads under `part`, but some CLI versions
+    // flatten step-finish/tool events. Fall back to the envelope so malformed
+    // or version-drifted events cannot crash the execution stream.
+    const part = (event.part || event) as OpenCodeEventPart & Record<string, unknown>;
 
     switch (event.type) {
       case 'step_start':
@@ -366,6 +363,15 @@ export class OpenCodeExecutor implements TaskExecutor {
 
       case 'tool_use': {
         const toolPart = part as OpenCodeToolUse;
+        if (typeof toolPart.tool !== 'string' || !toolPart.state) {
+          return {
+            task_id: taskId,
+            event_type: ExecutionEventType.LOG,
+            message: 'Malformed OpenCode tool_use event',
+            level: LogLevel.WARNING,
+            metadata: { executor: 'opencode', raw_type: event.type, raw_event: event, malformed: true },
+          };
+        }
         const verificationFailure = this.getVerificationFailure(event);
         return {
           task_id: taskId,
@@ -392,24 +398,25 @@ export class OpenCodeExecutor implements TaskExecutor {
         return {
           task_id: taskId,
           event_type: ExecutionEventType.LOG,
-          message: textPart.text,
+          message: typeof textPart.text === 'string' ? textPart.text : 'Malformed OpenCode text event',
           level: LogLevel.INFO,
-          metadata: { executor: 'opencode', sessionID: event.sessionID },
+          metadata: { executor: 'opencode', sessionID: event.sessionID, malformed: typeof textPart.text !== 'string' },
         };
       }
 
       case 'step_finish': {
         const finishPart = part as OpenCodeStepFinish;
-        const isSuccess = finishPart.reason === 'stop' || finishPart.reason === 'complete';
+        const reason = typeof finishPart.reason === 'string' && finishPart.reason ? finishPart.reason : 'unknown';
+        const isSuccess = reason === 'stop' || reason === 'complete';
         return {
           task_id: taskId,
           event_type: isSuccess ? ExecutionEventType.TASK_COMPLETED : ExecutionEventType.TASK_FAILED,
-          message: `OpenCode step finished: ${finishPart.reason}`,
+          message: `OpenCode step finished: ${reason}`,
           level: isSuccess ? LogLevel.INFO : LogLevel.ERROR,
           metadata: {
             executor: 'opencode',
             sessionID: event.sessionID,
-            reason: finishPart.reason,
+            reason,
             tokens: finishPart.tokens,
             cost: finishPart.cost,
           },
@@ -504,7 +511,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     let buffer = '';
     const outputQueue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const errorQueue: Error[] = [];
-    let exitCode: number | null = null;
+    let exitCode: number | null | undefined;
     let resolver: ((value: boolean) => void) | null = null;
 
     emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
@@ -517,12 +524,12 @@ export class OpenCodeExecutor implements TaskExecutor {
       if (resolver) { resolver(true); resolver = null; }
     });
 
-    emitter.on('exit', (code: number) => {
+    emitter.on('exit', (code: number | null) => {
       exitCode = code;
       if (resolver) { resolver(false); resolver = null; }
     });
 
-    while (exitCode === null) {
+    while (exitCode === undefined) {
       if (outputQueue.length === 0 && errorQueue.length === 0) {
         await new Promise<boolean>((resolve) => { resolver = resolve; });
       }

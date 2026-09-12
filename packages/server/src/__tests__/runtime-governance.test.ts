@@ -138,6 +138,11 @@ describe('RuntimeGovernanceService', () => {
     expect(service.isAllowed('agent-1')).toBe(true);
   });
 
+  it('rejects lifecycle changes for an unknown agent', () => {
+    expect(() => service.resetCircuitBreaker('missing-agent')).toThrow('Agent not found: missing-agent');
+    expect(() => service.releaseFromQuarantine('missing-agent', 'reviewed')).toThrow('Agent not found: missing-agent');
+  });
+
   it('emits governance alerts', () => {
     service.registerBaseline('agent-1', {
       overallScore: 4.5,

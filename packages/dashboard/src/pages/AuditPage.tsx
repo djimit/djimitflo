@@ -1,33 +1,31 @@
 import { useEffect, useState } from 'react';
 import { Clock, Shield, AlertTriangle, Filter } from 'lucide-react';
-import type { AuditTrailEntry } from '@djimitflo/shared';
+import type { AuditTrailEntry, AuditEvent } from '@djimitflo/shared';
 import { api } from '../lib/api';
 
 export function AuditPage() {
   const [trail, setTrail] = useState<AuditTrailEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>('all');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadTrail();
   }, []);
 
   const loadTrail = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const metrics = await api.getObservabilityMetrics();
-      const recentTasks = metrics.recent_errors.map((e) => e.task_id);
-      const uniqueTasks = [...new Set(recentTasks)];
-      const allTrails: AuditTrailEntry[] = [];
-      for (const taskId of uniqueTasks.slice(0, 10)) {
-        try {
-          const result = await api.getAuditTrail(taskId);
-          allTrails.push(...result.trail);
-        } catch {}
-      }
-      allTrails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setTrail(allTrails);
+      const result = await api.request<{ events: AuditEvent[] }>('/audit?limit=50');
+      setTrail(result.events.map(event => ({
+        timestamp: event.timestamp, event_type: event.event_type,
+        action: event.action, resource_type: event.resource_type, resource_id: event.resource_id,
+        summary: event.action, actor: event.user_id || event.agent_id || 'system',
+        risk_level: event.risk_level, metadata: event.metadata,
+      })));
     } catch (error) {
-      console.error('Failed to load audit trail:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load audit trail');
     } finally {
       setLoading(false);
     }
@@ -39,10 +37,11 @@ export function AuditPage() {
     <div className="p-8 space-y-6">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Audit Trail</h1>
-        <p className="text-foreground-secondary mt-2">Chronological record of all policy decisions, approvals, and risk assessments.</p>
+        <p className="text-foreground-secondary mt-2">Latest 50 entries from the canonical audit trail.</p>
       </div>
 
       <div className="flex items-center gap-3">
+        <button onClick={loadTrail} disabled={loading}>Refresh</button>
         <Filter className="w-4 h-4 text-foreground-secondary" />
         <select
           value={filterType}
@@ -58,7 +57,7 @@ export function AuditPage() {
         <span className="text-sm text-foreground-secondary">{filtered.length} events</span>
       </div>
 
-      {loading ? (
+      {error ? <p role="alert">{error}</p> : loading ? (
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading audit trail...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">

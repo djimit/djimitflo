@@ -117,6 +117,14 @@ describe('message routes', () => {
     expect(fetched.read_at).toBe(read.read_at);
   });
 
+  it('rejects malformed message list limits before querying SQLite', async () => {
+    for (const value of ['0', '-1', '1.5', 'NaN']) {
+      const response = await fetch(`${baseUrl}/messages/agent/agent-b?limit=${value}`);
+      expect(response.status, value).toBe(400);
+      expect(await response.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+    }
+  });
+
   it('rejects messages for unknown agents', async () => {
     const response = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
@@ -186,6 +194,9 @@ describe('message routes', () => {
   it('rejects a cross-store idempotency collision instead of duplicating a board event', async () => {
     const service = new AgentCommunicationService(db);
     const durable = service.send({ from: 'agent-a', to: 'agent-b', type: 'alert', action: 'shared-alert', idempotencyKey: 'shared-board-key' });
+    expect(db.prepare('SELECT store, message_id FROM board_idempotency_keys WHERE idempotency_key = ?').get('shared-board-key'))
+      .toEqual({ store: 'agent_messages', message_id: durable.id });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM messages').get()).toEqual({ count: 0 });
 
     const response = await fetch(`${baseUrl}/messages`, {
       method: 'POST',
@@ -196,8 +207,9 @@ describe('message routes', () => {
       }),
     });
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: { code: 'BOARD_IDEMPOTENCY_SCOPE_CONFLICT' } });
+    const responseBody = await response.json();
+    expect(response.status, JSON.stringify({ responseBody, reservations: db.prepare('SELECT * FROM board_idempotency_keys').all() })).toBe(409);
+    expect(responseBody).toMatchObject({ error: { code: 'BOARD_IDEMPOTENCY_SCOPE_CONFLICT' } });
     expect(db.prepare('SELECT COUNT(*) AS count FROM agent_messages WHERE id = ?').get(durable.id)).toMatchObject({ count: 1 });
     expect(db.prepare("SELECT COUNT(*) AS count FROM messages WHERE type = 'alert'").get()).toMatchObject({ count: 0 });
   });
@@ -209,5 +221,51 @@ describe('message routes', () => {
     })).json() as any;
     const response = await fetch(`${baseUrl}/messages/${created.id}`, { method: 'DELETE' });
     expect(response.status).toBe(204);
+  });
+
+  it('does not replay a historical legacy row when the durable store owns its key', async () => {
+    const service = new AgentCommunicationService(db);
+    const durable = service.send({ from: 'agent-a', to: 'agent-b', type: 'alert', action: 'shared-alert', idempotencyKey: 'historical-overlap' });
+    // A pre-reservation database can contain overlapping rows in both stores.
+    // Backfill preserves the first owner; the losing row must not bypass it.
+    db.prepare(`INSERT INTO messages
+      (id, from_agent_id, to_agent_id, type, payload, priority, created_at, idempotency_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('historical-legacy', 'agent-a', 'agent-b', 'alert', '{"action":"shared-alert"}', 'low', '2020-01-01T00:00:00.000Z', 'historical-overlap');
+    new AgentCommunicationService(db);
+
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'alert',
+        idempotency_key: 'historical-overlap', payload: { action: 'shared-alert' } }),
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ error: { code: 'BOARD_IDEMPOTENCY_SCOPE_CONFLICT' } });
+    expect(db.prepare('SELECT store, message_id FROM board_idempotency_keys').get())
+      .toEqual({ store: 'agent_messages', message_id: durable.id });
+    expect(broadcasts).toHaveLength(0);
+  });
+
+  it('does not replay a historical durable row when the legacy store owns its key', async () => {
+    const response = await fetch(`${baseUrl}/messages`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ from_agent_id: 'agent-a', to_agent_id: 'agent-b', type: 'alert',
+        idempotency_key: 'historical-overlap', payload: { action: 'shared-alert' } }),
+    });
+    expect(response.status).toBe(201);
+    const legacy = await response.json() as { id: string };
+    new AgentCommunicationService(db); // Apply the durable store's additive columns.
+    db.prepare(`INSERT INTO agent_messages
+      (id, from_agent, to_agent, type, priority, payload_json, timestamp, ttl, status, idempotency_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run('historical-durable', 'agent-a', 'agent-b', 'alert', 3,
+        '{"action":"shared-alert","params":{}}', '2020-01-01T00:00:00.000Z', 300, 'pending', 'historical-overlap');
+    const service = new AgentCommunicationService(db);
+    expect(() => service.send({ from: 'agent-a', to: 'agent-b', type: 'alert',
+      action: 'shared-alert', idempotencyKey: 'historical-overlap' }))
+      .toThrow('BOARD_IDEMPOTENCY_SCOPE_CONFLICT');
+    expect(db.prepare('SELECT store, message_id FROM board_idempotency_keys').get())
+      .toEqual({ store: 'messages', message_id: legacy.id });
+    expect(broadcasts).toHaveLength(1);
   });
 });

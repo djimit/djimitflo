@@ -1,0 +1,8 @@
+{
+  "scope": "actual server crash and restart, synthetic mock executor only",
+  "task_id": "64300f93-5ea0-4001-a030-a81e67dd5545",
+  "before": "running",
+  "after": "running",
+  "state": "BROKEN",
+  "reason": "Standalone task remains running without an execution session after server death."
+}

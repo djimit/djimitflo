@@ -20,6 +20,13 @@ describe('Extracted Loop Services', () => {
   });
 
   describe('LoopWorkerExecutorService', () => {
+    it('parses native Codex checker verdicts and rejects ambiguous acceptance prose', () => {
+      const output = JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify({ verdict: 'rejected', notes: 'The maker said accepted, but verification failed.' }) } });
+      expect(loops.extractCheckerVerdict(output)).toBe('rejected');
+      expect(loops.extractCheckerNotes(output)).toBe('The maker said accepted, but verification failed.');
+      expect(loops.extractCheckerVerdict('This should not be accepted.')).toBe('insufficient_evidence');
+      expect(loops.extractCheckerVerdict('accepted')).toBe('accepted');
+    });
     it('is instantiated via LoopService', () => {
       expect(loops.workerExecutor).toBeInstanceOf(LoopWorkerExecutorService);
     });

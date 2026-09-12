@@ -54,7 +54,7 @@ describe('G22: Operator intervention', () => {
     expect(result.injected).toBe(true);
   });
 
-  it('overrides a gate decision', () => {
+  it('records an advisory gate decision without replacing executable evidence', () => {
     const goal = loops.createGoal({
       objective: 'Test goal',
       acceptance_criteria: [{metric: 'test_passes', target: 'all'}],
@@ -64,7 +64,8 @@ describe('G22: Operator intervention', () => {
     db.prepare('INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, repository_path, findings_json, plan_json, gates_json, next_actions_json, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .run('run-1', goal.id, 'test', 'closed', 'running', '/tmp', '[]', '[]', JSON.stringify([{name:'test_gate', status:'fail', evidence:'failed'}]), '[]', '{}');
     const result = intervention.overrideGate(goal.id, 'test_gate', 'proceed', 'operator override');
-    expect(result.overridden).toBe(true);
+    expect(result).toEqual({ overridden: false, recorded: true });
+    expect(loops.getLoopRun('run-1').gates[0].status).toBe('fail');
   });
 });
 

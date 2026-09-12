@@ -153,7 +153,15 @@ export class SegmlLevel5Bridge {
         reverted_at TEXT,
         cumulative_gain REAL NOT NULL DEFAULT 0
       );
+
+      CREATE TABLE IF NOT EXISTS segml_l5_cycle_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        generation INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT OR IGNORE INTO segml_l5_cycle_state (id, generation) VALUES (1, 0);
     `);
+    const state = this.db.prepare('SELECT generation FROM segml_l5_cycle_state WHERE id = 1').get() as { generation: number };
+    this.currentGeneration = state.generation;
   }
 
   // ─── Self-Model ───────────────────────────────────────────────────────────
@@ -247,6 +255,7 @@ export class SegmlLevel5Bridge {
   runSelfImprovementCycle(): EvolutionStep[] {
     const steps: EvolutionStep[] = [];
     this.currentGeneration++;
+    this.db.prepare('UPDATE segml_l5_cycle_state SET generation = ? WHERE id = 1').run(this.currentGeneration);
 
     // 1. Identify improvement areas
     const areas = this.identifyImprovementAreas();
@@ -385,12 +394,13 @@ export class SegmlLevel5Bridge {
   private proveImprovement(area: ImprovementArea): ModificationProof {
     const beforeMetrics = this.measureCurrentMetrics();
 
-    // Simulate applying the change and measuring
-    const afterMetrics = this.simulateChange(area);
-
-    // Determine if the change is an improvement
-    const gain = this.calculateGain(beforeMetrics, afterMetrics);
-    const verified = gain > 0 && area.riskLevel < 0.5;
+    // A proposal is not evidence of a changed system. This bridge has no
+    // executable artifact, isolated test run, or independent checker for
+    // these areas, so it must not manufacture an after-state or claim a gain.
+    // The governed LoopService/self-improvement path is the authority for
+    // real maker/checker execution and promotion.
+    const afterMetrics = { ...beforeMetrics };
+    const verified = false;
 
     const proof: ModificationProof = {
       id: randomUUID(),
@@ -423,48 +433,6 @@ export class SegmlLevel5Bridge {
       reliability: 0.92,
       diversity: 0.78,
     };
-  }
-
-  private simulateChange(area: ImprovementArea): Record<string, number> {
-    const before = this.measureCurrentMetrics();
-    const after = { ...before };
-
-    // Apply the expected gain (with some noise)
-    const noise = (Math.random() - 0.5) * 0.05;
-    const gain = area.expectedGain + noise;
-
-    switch (area.area) {
-      case 'fine_tuning_integration':
-        after.governanceCoverage = Math.min(1, before.governanceCoverage + gain * 0.3);
-        after.reliability = Math.min(1, before.reliability + gain * 0.2);
-        break;
-      case 'world_model_learning':
-        after.adaptationSpeed = before.adaptationSpeed * (1 + gain);
-        after.automationLevel = Math.min(1, before.automationLevel + gain * 0.15);
-        break;
-      case 'tool_deployment':
-        after.selfImprovementDepth = before.selfImprovementDepth + 1;
-        after.automationLevel = Math.min(1, before.automationLevel + gain * 0.25);
-        break;
-      case 'population_real_eval':
-        after.diversity = Math.min(1, before.diversity + gain * 0.3);
-        after.governanceCoverage = Math.min(1, before.governanceCoverage + gain * 0.1);
-        break;
-      case 'auto_rollback':
-        after.reliability = Math.min(1, before.reliability + gain * 0.4);
-        break;
-      case 'cross_instance_learning':
-        after.adaptationSpeed = before.adaptationSpeed * (1 + gain * 0.5);
-        after.diversity = Math.min(1, before.diversity + gain * 0.2);
-        break;
-    }
-
-    // Round
-    for (const key of Object.keys(after)) {
-      after[key] = Math.round(after[key] * 1000) / 1000;
-    }
-
-    return after;
   }
 
   private calculateGain(before: Record<string, number>, after: Record<string, number>): number {
@@ -520,9 +488,14 @@ export class SegmlLevel5Bridge {
       UPDATE segml_l5_evolution_log SET reverted_at = ? WHERE id = ?
     `).run(new Date().toISOString(), stepId);
 
-    this.db.prepare(`
-      UPDATE segml_l5_improvement_areas SET status = 'reverted' WHERE id = ?
-    `).run(step.proof_id);
+    const proof = step.proof_id
+      ? this.db.prepare('SELECT area_id FROM segml_l5_modification_proofs WHERE id = ?').get(step.proof_id) as { area_id?: string } | undefined
+      : undefined;
+    if (proof?.area_id) {
+      this.db.prepare(`
+        UPDATE segml_l5_improvement_areas SET status = 'reverted' WHERE id = ?
+      `).run(proof.area_id);
+    }
 
     swarmEventBus.emit('segml:l5:modification_reverted', { stepId });
     return true;

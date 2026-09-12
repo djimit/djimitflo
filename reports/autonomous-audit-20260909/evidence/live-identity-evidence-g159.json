@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-10T07:08:10.302Z",
+  "status": "fail",
+  "intended": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "a3dfe77183f5efd7d9c89a7a0935680321de53294d83ffe1b843db4017e4e354",
+    "database": "/Users/dlandman/djimitflo-audit-20260909/.data/djimitflo.sqlite",
+    "database_instance_id": "cb01b242-acca-4549-b75f-197f15d73c02"
+  },
+  "observed": {
+    "base_url": "http://127.0.0.1:3001",
+    "health": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "version": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "authenticated_provenance": {
+      "status": null,
+      "ok": false,
+      "error": "fetch failed"
+    },
+    "database_integrity": {
+      "ok": true,
+      "exit_code": 0,
+      "output": "ok"
+    }
+  },
+  "identity_verified": false,
+  "reason": "Deployment identity requires healthy authenticated provenance, matching full commit and database instance, live data mode, and a clean intended revision.",
+  "next_safe_action": "Reconcile observed and intended runtime identity."
+}

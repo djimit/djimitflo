@@ -1,0 +1,5 @@
+# G259 swarm mission-control authorization boundary
+
+The `/swarms` route factory previously authenticated the mount but left the mission/task/decision/circuit-breaker family without per-permission middleware. An authenticated viewer could therefore reach mutation handlers. The shared factory now requires `read:evidence` for mission/task/decision/circuit-breaker reads and `write:swarm_action` for mission/task/decision transitions, creation and circuit-breaker failure/reset.
+
+`route-permissions-http.test.ts` executes the real JWT role matrix: admin and maker create missions and record circuit-breaker failures (201/200); platform_admin, approver, checker, auditor and viewer are denied (403) across mission transition, task creation/transition, decision creation and circuit-breaker reset; all roles retain evidence reads (200). The persisted state is exactly two missions and one authorized task, proving denied requests caused no writes. Anonymous mount authentication remains covered by the existing 608-route sweep.

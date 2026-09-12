@@ -11,7 +11,8 @@
  * - Userinfo endpoint called for profile
  */
 
-import { createHash, randomBytes } from 'crypto';
+import { createHash, createPublicKey, randomBytes } from 'crypto';
+import jwt from 'jsonwebtoken';
 
 export interface OIDCConfig {
   provider_name: string;
@@ -181,41 +182,32 @@ export class OIDCAbstraction {
      return response.json() as unknown as OIDCUserInfo;
   }
 
-  /**
-   * Validate an ID token against the JWKS endpoint.
-   * In production, use a library like `jose` or `jsonwebtoken` with JWKS.
-   * This is a structural placeholder for the validation contract.
-   */
+  /** Validate an ID token signature and claims against the provider JWKS. */
   async validateIdToken(idToken: string): Promise<{ valid: boolean; payload?: Record<string, unknown> }> {
     const jwksResponse = await fetch(this.config.jwks_uri);
     if (!jwksResponse.ok) {
       throw new OIDCError('JWKS_FETCH_FAILED', 'Failed to fetch JWKS');
     }
-
-    const _jwks = await jwksResponse.json();
-    void _jwks;
-
-    const parts = idToken.split('.');
-    if (parts.length !== 3) {
-      return { valid: false };
-    }
-
     try {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
-
-      if (payload.exp && payload.exp < Date.now() / 1000) {
+      const jwks = await jwksResponse.json() as { keys?: Array<Record<string, unknown>> };
+      const decoded = jwt.decode(idToken, { complete: true });
+      if (!decoded || typeof decoded === 'string' || !decoded.header || typeof decoded.payload !== 'object' || decoded.payload === null) {
         return { valid: false };
       }
-
-      if (payload.iss !== this.config.issuer_url) {
+      const algorithms = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'];
+      const { alg, kid } = decoded.header;
+      if (typeof alg !== 'string' || !algorithms.includes(alg) || typeof kid !== 'string' || !Array.isArray(jwks.keys)) {
         return { valid: false };
       }
-
-      if (payload.aud !== this.config.client_id) {
-        return { valid: false };
-      }
-
-      return { valid: true, payload };
+      const jwk = jwks.keys.find((candidate) => candidate.kid === kid && (candidate.use === undefined || candidate.use === 'sig') && (candidate.alg === undefined || candidate.alg === alg));
+      if (!jwk) return { valid: false };
+      const publicKey = createPublicKey({ key: jwk, format: 'jwk' });
+      const payload = jwt.verify(idToken, publicKey, {
+        algorithms: [alg as jwt.Algorithm],
+        issuer: this.config.issuer_url,
+        audience: this.config.client_id,
+      });
+      return typeof payload === 'string' ? { valid: false } : { valid: true, payload: payload as Record<string, unknown> };
     } catch {
       return { valid: false };
     }

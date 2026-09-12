@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import type { Database } from 'better-sqlite3';
 import { ToolBroker, type ToolCallRequest } from '../services/tool-broker';
@@ -29,6 +29,7 @@ describe('Security Invariant: ToolBroker', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     db.close();
   });
 
@@ -92,10 +93,12 @@ describe('Security Invariant: ToolBroker', () => {
     const decision = broker.evaluateToolCall(makeRequest({ tool: 'read_file', data_classification: 'internal' }));
     const token = decision.capability_token!;
 
-    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1')).toBe(true);
-    expect(broker.validateCapabilityToken(token.token_id, 'write_file', 'task-1')).toBe(false);
-    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-2')).toBe(false);
-    expect(broker.validateCapabilityToken('invalid-token', 'read_file', 'task-1')).toBe(false);
+    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(true);
+    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(true);
+    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'other-principal')).toBe(false);
+    expect(broker.validateCapabilityToken(token.token_id, 'write_file', 'task-1', 'user-1')).toBe(false);
+    expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-2', 'user-1')).toBe(false);
+    expect(broker.validateCapabilityToken('invalid-token', 'read_file', 'task-1', 'user-1')).toBe(false);
   });
 
   it('reloads capability tokens from durable storage after broker restart', () => {
@@ -108,7 +111,7 @@ describe('Security Invariant: ToolBroker', () => {
     const token = decision.capability_token!;
     const restartedBroker = new ToolBroker(db);
 
-    expect(restartedBroker.validateCapabilityToken(token.token_id, 'read_file', 'task-1')).toBe(true);
+    expect(restartedBroker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(true);
     expect(db.prepare('SELECT COUNT(*) as c FROM tool_broker_capability_tokens WHERE token_id = ?').get(token.token_id)).toEqual({ c: 1 });
   });
 
@@ -116,6 +119,43 @@ describe('Security Invariant: ToolBroker', () => {
     broker.evaluateToolCall(makeRequest({ tool: 'test_audit' }));
     const row = db.prepare('SELECT COUNT(*) as c FROM tool_broker_decisions WHERE tool = ?').get('test_audit') as any;
     expect(row.c).toBe(1);
+  });
+
+  it('revokes only the changed decision across warm brokers and restart', () => {
+    db.prepare(`INSERT INTO approval_policies
+      (id, name, action_type, risk_levels, decision, priority, enabled, created_at)
+      VALUES ('reads', 'reads', 'tool_call', '["medium"]', 'allow', 100, 1, datetime('now'))`).run();
+    const unrelated = broker.evaluateToolCall(makeRequest());
+    const original = broker.evaluateToolCall(makeRequest());
+    const otherBroker = new ToolBroker(db);
+    const valid = (instance: ToolBroker, decision: typeof original) =>
+      instance.validateCapabilityToken(decision.capability_token!.token_id, 'read_file', 'task-1', 'user-1');
+    expect(valid(otherBroker, original)).toBe(true);
+
+    broker.reevaluateOnParameterChange(original.decision_id, makeRequest({ args: { path: '/new' } }));
+
+    for (const instance of [broker, otherBroker, new ToolBroker(db)]) {
+      expect(valid(instance, original)).toBe(false);
+      expect(valid(instance, unrelated)).toBe(true);
+    }
+    expect(() => broker.reevaluateOnParameterChange(unrelated.decision_id, makeRequest({ task_id: 'other' }))).toThrow('Original decision does not belong');
+    expect(valid(broker, unrelated)).toBe(true);
+  });
+
+  it('rejects corrupt or expired durable token expiry even after it was cached', () => {
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    db.prepare(`INSERT INTO approval_policies
+      (id, name, action_type, risk_levels, decision, priority, enabled, created_at)
+      VALUES ('reads', 'reads', 'tool_call', '["medium"]', 'allow', 100, 1, datetime('now'))`).run();
+    for (const expiry of ['invalid', '2000-01-01T00:00:00Z', new Date(now).toISOString()]) {
+      const token = broker.evaluateToolCall(makeRequest()).capability_token!;
+      expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(true);
+      db.prepare('UPDATE tool_broker_capability_tokens SET expires_at = ? WHERE token_id = ?').run(expiry, token.token_id);
+      expect(broker.validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(false);
+      expect(new ToolBroker(db).validateCapabilityToken(token.token_id, 'read_file', 'task-1', 'user-1')).toBe(false);
+      expect(db.prepare('SELECT count(*) AS n FROM tool_broker_capability_tokens WHERE token_id = ?').get(token.token_id)).toEqual({ n: 0 });
+    }
   });
 
   it('assesses shell tools as high risk', () => {

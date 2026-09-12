@@ -15,6 +15,7 @@ import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { LoopRunMutationService } from './loop-run-mutation-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
+import { createError } from '../middleware/error-handler';
 import type { WorkerLeaseRecord } from './loop-types';
 
 export interface RecoveryResult {
@@ -35,10 +36,19 @@ export interface ResumeResult {
  * Previously a static field on LoopService.
  */
 export class RuntimeLeaseRegistry {
-  private static leases = new Map<string, { leaseId: string; startedAt: string }>();
+  private static leases = new Map<string, { leaseId: string; startedAt: string; stop?: () => Promise<void> }>();
 
-  static register(leaseId: string): void {
-    this.leases.set(leaseId, { leaseId, startedAt: new Date().toISOString() });
+  static register(leaseId: string, stop?: () => Promise<void>): () => void {
+    const lease = { leaseId, startedAt: new Date().toISOString(), stop };
+    this.leases.set(leaseId, lease);
+    return () => { if (this.leases.get(leaseId) === lease) this.leases.delete(leaseId); };
+  }
+
+  static async stop(leaseId: string): Promise<boolean> {
+    const stop = this.leases.get(leaseId)?.stop;
+    if (!stop) return false;
+    await stop();
+    return true;
   }
 
   static unregister(leaseId: string): void {
@@ -118,6 +128,7 @@ export class LoopRecoveryService {
    */
   resumeInterruptedRun(runId: string, maxResumeAttempts = 3): ResumeResult {
     const run = this.queries.getById(runId);
+    if (run.metadata.operator_paused === true) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     if (run.status !== 'interrupted') {
       throw new Error('LOOP_RUN_NOT_INTERRUPTED');
     }
@@ -170,6 +181,7 @@ export class LoopRecoveryService {
     let boundedFailed = 0;
 
     for (const run of interruptedRuns) {
+      if (run.metadata.operator_paused === true) continue;
       const result = this.resumeInterruptedRun(run.id);
       details.push({ runId: run.id, resumed: result.resumed });
       if (result.resumed) resumed++;

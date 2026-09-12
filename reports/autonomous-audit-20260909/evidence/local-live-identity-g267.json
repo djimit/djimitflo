@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-11T10:26:17.823Z",
+  "status": "blocked",
+  "intended": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "9a4c01c2d6a438f34e91cdd1f18dde8e691ed9a996ce97fd601c04b887d87e7d",
+    "database": "/tmp/djimitflo-g267.sqlite",
+    "database_instance_id": "73bc4700-1b2c-4a86-a042-0133087edfb3"
+  },
+  "observed": {
+    "base_url": "http://127.0.0.1:3131",
+    "health": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "status": "healthy",
+        "commit": null,
+        "timestamp": "2026-09-11T10:26:17.743Z",
+        "uptime": 6.965767333
+      }
+    },
+    "version": {
+      "status": 200,
+      "ok": true,
+      "body": {
+        "version": "0.5.8",
+        "name": "Djimitflo API"
+      }
+    },
+    "authenticated_provenance": {
+      "status": 401,
+      "ok": false,
+      "body": {
+        "error": {
+          "message": "Authentication required",
+          "code": "AUTH_REQUIRED"
+        }
+      }
+    },
+    "database_integrity": {
+      "ok": true,
+      "exit_code": 0,
+      "output": "ok"
+    }
+  },
+  "identity_verified": false,
+  "reason": "Deployment identity requires healthy authenticated provenance, matching full commit and database instance, live data mode, and a clean intended revision.",
+  "next_safe_action": "Provide operator-authorized read:evidence authentication or run MCP doctor locally."
+}

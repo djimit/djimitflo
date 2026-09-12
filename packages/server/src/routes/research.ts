@@ -30,7 +30,11 @@ export function createResearchRoutes(db: Database, auth?: AuthMiddleware): Route
 
   // GET /api/research/sources/trusted — get trusted sources
   router.get('/sources/trusted', requirePermission('read:evidence'), (req, res) => {
-    const minTrust = req.query.min_trust ? Number(req.query.min_trust) : 0.7;
+    const minTrust = req.query.min_trust === undefined ? 0.7 : Number(req.query.min_trust);
+    if (!Number.isFinite(minTrust) || minTrust < 0 || minTrust > 1) {
+      res.status(400).json({ error: { message: 'min_trust must be a number between 0 and 1', code: 'VALIDATION_ERROR' } });
+      return;
+    }
     res.json({ sources: service.getTrustedSources(minTrust) });
   });
 

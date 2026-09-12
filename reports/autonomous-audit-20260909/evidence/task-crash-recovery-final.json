@@ -1,0 +1,8 @@
+{
+  "scope": "actual server crash and restart, synthetic mock executor only",
+  "task_id": "65e3b51e-ea04-4f5d-9e79-4aae34679dd1",
+  "before": "running",
+  "after": "failed",
+  "state": "PARTIAL",
+  "reason": "Task state reconciled; real provider orphan handling remains unproven."
+}

@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { execSync } from 'child_process';
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'crypto';
+import { createError } from '../middleware/error-handler';
 import type {
   Repository, GitStatusResult, StackDetection, RepositoryHealth, HealthScoreDriver, RepositoryHealthFinding,
   RepositoryScanResult, AgentsMdFile, ScanSummary, SecretScanSummary, SecretScanFinding, DependencyManifest,
@@ -50,6 +51,7 @@ export class RepositoryScanner {
       tags,
     };
 
+    return this.db.transaction(() => {
     let repository = this.db.prepare('SELECT * FROM repositories WHERE path = ?').get(resolvedPath) as any;
 
     if (!repository) {
@@ -58,8 +60,8 @@ export class RepositoryScanner {
       this.db.prepare(`
         INSERT INTO repositories (id, name, description, path, provider, status, detected_stacks, package_manager,
           test_commands, build_commands, lint_commands, typecheck_commands, has_git, has_agents_md, health_score,
-          is_active, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '{}', ?, ?)
+          is_active, metadata, created_at, updated_at, git_branch, git_commit, last_synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, '{}', ?, ?, ?, ?, ?)
       `).run(
         id,
         resolvedPath.split('/').pop() || 'unknown',
@@ -77,6 +79,9 @@ export class RepositoryScanner {
         agentsMdFiles.length > 0 ? 1 : 0,
         health.score,
         now,
+        now,
+        gitStatus?.currentBranch || null,
+        gitStatus?.headCommit || null,
         now
       );
       repository = this.db.prepare('SELECT * FROM repositories WHERE id = ?').get(id) as any;
@@ -116,7 +121,7 @@ export class RepositoryScanner {
         detected_stacks, package_manager, test_commands, build_commands, lint_commands, typecheck_commands,
         has_type_script, has_tests, has_lint, has_ci, has_docker, health_score, scan_duration_ms,
         metadata, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{"findings_version":1}', ?, ?)
     `).run(
       scanId, repository.id,
       gitStatus?.isGitRepository ? 1 : 0,
@@ -146,9 +151,9 @@ export class RepositoryScanner {
 
     for (const finding of healthFindings) {
       this.db.prepare(`
-        INSERT INTO repository_health_findings (id, repository_id, severity, category, title, description, recommendation, discovered_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(randomUUID(), repository.id, finding.severity, finding.category, finding.title, finding.description, finding.recommendation || null, now);
+        INSERT INTO repository_health_findings (id, repository_id, scan_id, severity, category, title, description, recommendation, discovered_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(finding.id, repository.id, scanId, finding.severity, finding.category, finding.title, finding.description, finding.recommendation || null, now);
     }
 
     const agentsMdRepoFiles = this.persistAgentsMdFiles(repository.id, agentsMdFiles);
@@ -166,7 +171,8 @@ export class RepositoryScanner {
       has_agents_md: Boolean(repository.has_agents_md),
     };
 
-    return { scanId, repository: parsedRepo, gitStatus, stack, health, agentsMdFiles: agentsMdRepoFiles, healthFindings, scanSummary };
+    return { scanId, repository: parsedRepo, gitStatus, stack, health, agentsMdFiles: agentsMdRepoFiles, healthFindings: this.getHealthFindings(repository.id), scanSummary };
+    })();
   }
 
   private resolveRepositoryPath(candidate: string): string {
@@ -277,7 +283,7 @@ export class RepositoryScanner {
         if (scripts.test && scripts.test !== 'echo "Error: no test specified" && exit 1') { commands.testCommands.push(`npm test`); hasTests = true; }
         if (scripts.build) commands.buildCommands.push(`npm run build`);
         if (scripts.lint) { commands.lintCommands.push(`npm run lint`); hasLint = true; }
-        if (scripts.typecheck || scripts['type-check']) { commands.typecheckCommands.push(`npm run typecheck`); }
+        if (scripts.typecheck || scripts['type-check']) { commands.typecheckCommands.push(`npm run ${scripts.typecheck ? 'typecheck' : 'type-check'}`); }
         if (scripts.dev) commands.devCommands.push(`npm run dev`);
       } catch {}
       if (packageManager === 'pnpm') {
@@ -351,7 +357,7 @@ export class RepositoryScanner {
                   repositoryId: '',
                   path: nestedFile,
                   relativePath: relative(repoPath, nestedFile),
-                  appliesToPath: `/${entry.name}`,
+                  appliesToPath: `/${relative(repoPath, join(dir, entry.name)).split(sep).join('/')}`,
                   contentHash: this.simpleHash(content),
                   sizeBytes: stat.size,
                   content,
@@ -580,7 +586,6 @@ export class RepositoryScanner {
 
   private persistAgentsMdFiles(repositoryId: string, files: AgentsMdFile[]): AgentsMdFile[] {
     this.db.prepare('DELETE FROM agents_md_files WHERE repository_id = ?').run(repositoryId);
-    const persisted: AgentsMdFile[] = [];
     for (const file of files) {
       const id = randomUUID();
       const now = new Date().toISOString();
@@ -588,9 +593,8 @@ export class RepositoryScanner {
         INSERT INTO agents_md_files (id, repository_id, path, relative_path, applies_to_path, content_hash, size_bytes, content, discovered_at, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(id, repositoryId, file.path, file.relativePath, file.appliesToPath, file.contentHash, file.sizeBytes, file.content || null, now, now, now);
-      persisted.push({ ...file, id, repositoryId });
     }
-    return persisted;
+    return this.getAgentsMdFiles(repositoryId);
   }
 
   getRepositories(): Repository[] {
@@ -627,13 +631,26 @@ export class RepositoryScanner {
   }
 
   getHealthFindings(repositoryId: string): RepositoryHealthFinding[] {
-    return this.db.prepare('SELECT * FROM repository_health_findings WHERE repository_id = ? ORDER BY discovered_at DESC').all(repositoryId) as any[];
+    // Current findings belong to the latest completed atomic scan; history stays stored.
+    // Legacy unbound findings cannot establish current health: rescan to refresh them.
+    const scan = this.db.prepare('SELECT id, metadata FROM repository_scans WHERE repository_id = ? ORDER BY rowid DESC LIMIT 1').get(repositoryId) as { id: string; metadata: string } | undefined;
+    let current = false;
+    try { current = JSON.parse(scan?.metadata || '{}').findings_version === 1; } catch { /* Historical evidence is not current scan proof. */ }
+    if (!scan || !current) throw createError(409, 'Rescan required: historical findings cannot establish current repository health.', 'REPOSITORY_RESCAN_REQUIRED');
+    const rows = this.db.prepare('SELECT * FROM repository_health_findings WHERE repository_id = ? AND scan_id = ? ORDER BY rowid').all(repositoryId, scan.id) as any[];
+    return rows.map(row => ({ ...row, repositoryId: row.repository_id, discoveredAt: row.discovered_at }));
   }
 
   getAgentsMdFiles(repositoryId: string): AgentsMdFile[] {
     const rows = this.db.prepare('SELECT * FROM agents_md_files WHERE repository_id = ? ORDER BY relative_path').all(repositoryId) as any[];
     return rows.map(r => ({
       ...r,
+      repositoryId: r.repository_id,
+      relativePath: r.relative_path,
+      appliesToPath: r.applies_to_path,
+      contentHash: r.content_hash,
+      sizeBytes: r.size_bytes,
+      discoveredAt: r.discovered_at,
       metadata: JSON.parse(r.metadata || '{}'),
     }));
   }

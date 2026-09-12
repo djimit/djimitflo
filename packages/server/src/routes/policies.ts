@@ -55,6 +55,9 @@ export function createPolicyRoutes(db: Database, auth?: AuthMiddleware): Router 
       const id = randomUUID();
       const now = new Date().toISOString();
       const input = req.body;
+      if (!input || typeof input.name !== 'string' || !input.name.trim()) {
+        throw createError(400, 'name is required', 'VALIDATION_ERROR');
+      }
       db.prepare(`
         INSERT INTO approval_policies (
           id, name, description, enabled, priority, action_type, decision,

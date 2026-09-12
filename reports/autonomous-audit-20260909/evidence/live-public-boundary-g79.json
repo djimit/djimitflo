@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-09-09T19:27:55Z",
+  "url": "https://djimitflo.agentical.nl/",
+  "index": { "status": 200, "content_type": "text/html; charset=utf-8", "server": "nginx" },
+  "public_api": {
+    "/api/version": { "status": 200, "body": { "version": "0.5.8", "name": "Djimitflo API" } },
+    "/api/health": { "status": 401, "error_code": "AUTH_REQUIRED" },
+    "/api/openapi.json": { "status": 401, "error_code": "AUTH_REQUIRED" }
+  },
+  "interpretation": "Live public boundary is reachable; health and OpenAPI are intentionally authenticated. This proves availability/version and auth boundary only, not authenticated UI behavior, route semantics, deployment provenance or production task execution."
+}

@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { createError } from '../middleware/error-handler';
 
 export interface GoalBudget {
   max_tokens?: number;
@@ -101,6 +102,7 @@ export class GoalService {
 
   createGoal(input: GoalCreateInput, ownerUserId?: string): GoalRecord {
     validateGoalInput(input);
+    this.assertOperatorMetadataNotSupplied(input.metadata);
 
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -143,6 +145,8 @@ export class GoalService {
 
   updateGoal(id: string, input: GoalUpdateInput): GoalRecord {
     const existing = this.getGoalById(id);
+    this.assertOperatorMetadataNotSupplied(input.metadata);
+    if (existing.metadata.operator_paused === true && input.status !== undefined && input.status !== existing.status) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     const metadata = { ...existing.metadata, ...(input.metadata || {}) };
     if (Array.isArray(existing.metadata.depends_on_goal_keys)) {
       metadata.depends_on_goal_keys = existing.metadata.depends_on_goal_keys;
@@ -215,6 +219,7 @@ export class GoalService {
 
   decomposeGoal(id: string, contracts: Array<{ name: string; mode: string; description: string; verification: string[] }>, primaryLoopName: string): { goal: GoalRecord; candidates: DecomposedLoopCandidate[] } {
     const goal = this.getGoalById(id);
+    if (goal.metadata.operator_paused === true) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     this.assertDependenciesSatisfied(id, goal.metadata);
     const candidates: DecomposedLoopCandidate[] = contracts.map((contract) => ({
       loop_name: contract.name,
@@ -229,5 +234,9 @@ export class GoalService {
       .run('decomposed', new Date().toISOString(), id);
 
     return { goal: this.getGoalById(goal.id), candidates };
+  }
+
+  private assertOperatorMetadataNotSupplied(metadata?: Record<string, unknown>): void {
+    if (metadata && Object.keys(metadata).some(key => key.startsWith('operator_pause'))) throw createError(400, 'GOAL_OPERATOR_METADATA_SERVER_OWNED', 'GOAL_OPERATOR_METADATA_SERVER_OWNED');
   }
 }

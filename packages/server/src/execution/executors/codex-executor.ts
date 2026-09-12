@@ -1,21 +1,21 @@
 /**
  * Codex CLI executor — spawns 'codex exec' process and streams structured events
  *
- * CLI contract (anticipated; verified against actual binary when available):
+ * CLI contract verified against codex-cli 0.153.4:
  *   codex exec [--json] [--cd <path>] [--model <model>] <prompt>
  *
  * JSON event stream (NDJSON, one JSON object per line):
- *   { "type": "step-start", ... }
- *   { "type": "tool",       ... }
- *   { "type": "text",       ... }
- *   { "type": "step-finish",... }
+ *   thread.started, turn.started, item.started/updated/completed, turn.completed.
+ * Legacy step-start/tool/text/step-finish events remain accepted.
  *
- * Falls back to heuristic parsing if Codex does not produce valid JSON.
+ * Non-JSON stdout lines use heuristic parsing without disabling later NDJSON.
+ * Stderr diagnostics remain separate from the structured stdout protocol.
  */
 
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
@@ -114,10 +114,13 @@ export class CodexExecutor implements TaskExecutor {
 
     const emitter = new EventEmitter();
     let childProcess: ChildProcess | null = null;
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
+      if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
@@ -129,16 +132,10 @@ export class CodexExecutor implements TaskExecutor {
       });
 
       childProcess = child;
+      void runtimeProcessClosed(child).then(resolveClosed);
 
       const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
+        stopRuntimeProcess(child);
         emitter.emit('error', new Error(`Codex execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
@@ -160,7 +157,7 @@ export class CodexExecutor implements TaskExecutor {
       });
     };
 
-    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms);
+    const events = this.createEventStream(task, emitter, spawnProcess, skipPerms, options);
     const result = this.createResultPromise(task, emitter);
 
     const session: ExecutionSession = {
@@ -171,16 +168,11 @@ export class CodexExecutor implements TaskExecutor {
       startedAt,
       events,
       result,
+      closed,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) {
-              childProcess.kill('SIGKILL');
-            }
-          }, 5000);
-        }
         session.status = 'cancelled';
+        await stopRuntimeProcess(childProcess);
+        if (!childProcess) resolveClosed();
         session.completedAt = new Date();
       },
     };
@@ -190,14 +182,7 @@ export class CodexExecutor implements TaskExecutor {
 
   // ── CLI argument construction ───────────────────────────────────────────────
   //
-  // Two likely CLI invocations, controlled by env vars:
-  //   `codex exec [--format json] [--dir <path>] [--model <model>] <prompt>`
-  //     — OpenAI Codex CLI (default binary: `codex`, override with CODEX_BIN_PATH)
-  //   `kilo run [--format json] [--dir <path>] [--model <model>] <prompt>`
-  //     — Kilo CLI (default binary: `kilo`, override with CODEX_BIN_PATH,
-  //       alternative subcommand via CODEX_SUBCOMMAND, default: `exec`)
-  //
-  // Both produce the same structured NDJSON event stream (step-start/tool/text/step-finish).
+  // `codex exec --json --cd <path> --model <model> -c model_reasoning_effort="high" <prompt>`
 
   private buildCodexArgs(task: Task, options?: ExecutorOptions): string[] {
     const args: string[] = ['exec'];
@@ -211,9 +196,14 @@ export class CodexExecutor implements TaskExecutor {
       args.push('--cd', options.workingDirectory);
     }
 
-    if (options?.model) {
-      args.push('--model', options.model);
+    const model = options?.model || process.env.DJIMITFLO_CODEX_MODEL;
+    if (model) args.push('--model', model);
+    const reasoningEffort = options?.reasoningEffort || process.env.DJIMITFLO_CODEX_REASONING_EFFORT;
+    if (reasoningEffort) {
+      if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(reasoningEffort)) throw new Error('INVALID_REASONING_EFFORT');
+      args.push('-c', `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`);
     }
+    if (options?.codexSandbox) args.push('--sandbox', options.codexSandbox);
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
     if (skipPerms) {
@@ -245,6 +235,29 @@ export class CodexExecutor implements TaskExecutor {
     const part = event.part ?? (event as unknown as Record<string, unknown>);
 
     switch (event.type) {
+      case 'thread.started':
+        return { task_id: taskId, event_type: ExecutionEventType.LOG, message: 'Codex thread started', level: LogLevel.INFO, metadata: { executor: 'codex', thread_id: event.thread_id } };
+      case 'turn.completed':
+        return { task_id: taskId, event_type: ExecutionEventType.LOG, message: 'Codex turn completed', level: LogLevel.INFO, metadata: { executor: 'codex', usage: event.usage } };
+      case 'turn.failed':
+      case 'error':
+        return { task_id: taskId, event_type: ExecutionEventType.ERROR, message: String((event.error as { message?: string })?.message || event.message || 'Codex turn failed'), level: LogLevel.ERROR, metadata: { executor: 'codex', raw_event: event } };
+      case 'item.started':
+      case 'item.updated':
+      case 'item.completed': {
+        const item = event.item as Record<string, unknown> | undefined;
+        if (!item || typeof item !== 'object') return null;
+        const tool = ['command_execution', 'file_change', 'mcp_tool_call', 'web_search'].includes(String(item.type));
+        const completed = event.type === 'item.completed';
+        return {
+          task_id: taskId,
+          event_type: tool ? (completed ? ExecutionEventType.TOOL_RESULT : ExecutionEventType.TOOL_CALL) : ExecutionEventType.LOG,
+          message: String(item.text || item.command || item.tool || item.type || 'Codex item'),
+          level: item.status === 'failed' ? LogLevel.ERROR : LogLevel.INFO,
+          ...(tool ? { tool_name: String(item.tool || item.type), ...(completed ? { tool_output: item } : { tool_input: item }) } : {}),
+          metadata: { executor: 'codex', item_id: item.id, parsing_mode: 'json', raw_event: event },
+        };
+      }
       case 'step-start':
         return {
           task_id: taskId,
@@ -370,38 +383,52 @@ export class CodexExecutor implements TaskExecutor {
     emitter: EventEmitter,
     spawnProcess: () => void,
     skipPerms: boolean,
+    options?: ExecutorOptions,
   ): AsyncIterable<ExecutionEventCreateInput> {
-    spawnProcess();
-
-    yield {
-      task_id: task.id,
-      event_type: ExecutionEventType.TASK_STARTED,
-      message: 'Codex execution started',
-      level: LogLevel.INFO,
-      metadata: { executor: 'codex', skip_permissions: skipPerms, output_format: this.outputFormat },
-    };
-
-    if (skipPerms) {
-      yield {
-        task_id: task.id,
-        event_type: ExecutionEventType.LOG,
-        message:
-          'SECURITY OVERRIDE: Codex permission prompts bypassed by CODEX_SKIP_PERMISSIONS=true. Approval gates will not be shown.',
-        level: LogLevel.WARNING,
-        metadata: {
-          security_override: 'codex_permissions_bypass',
-          reason: 'Configured via CODEX_SKIP_PERMISSIONS environment variable',
-        },
-      };
-    }
-
-    let useJsonParsing = this.outputFormat === 'json';
+    const outputFormat = options?.format ?? this.outputFormat;
+    const useJsonParsing = outputFormat === 'json';
     let heuristicWarningEmitted = false;
-
-    let buffer = '';
+    const buffers = { stdout: '', stderr: '' };
+    const discarding = { stdout: false, stderr: false };
+    const maxLineChars = 1024 * 1024;
+    let truncationWarningEmitted = false;
+    const truncationWarning = (): ExecutionEventCreateInput[] => {
+      if (truncationWarningEmitted) return [];
+      truncationWarningEmitted = true;
+      return [{ task_id: task.id, event_type: ExecutionEventType.LOG, level: LogLevel.WARNING,
+        message: 'EVIDENCE WARNING: Oversized Codex output line omitted from event parsing.',
+        metadata: { parsing_mode: 'truncated', max_line_chars: maxLineChars } }];
+    };
+    const parseLine = (line: string, stream: 'stdout' | 'stderr'): ExecutionEventCreateInput[] => {
+      const trimmed = line.trim();
+      if (!trimmed) return [];
+      if (stream === 'stderr') {
+        const warning = /\bwarn(?:ing)?\b/i.test(trimmed);
+        const error = !warning && /\b(?:error|failed|fatal|panic)\b/i.test(trimmed);
+        return [{ task_id: task.id, event_type: error ? ExecutionEventType.ERROR : ExecutionEventType.LOG,
+          message: trimmed, level: error ? LogLevel.ERROR : warning ? LogLevel.WARNING : LogLevel.INFO,
+          metadata: { executor: 'codex', stream, parsing_mode: 'diagnostic' } }];
+      }
+      if (useJsonParsing) {
+        const jsonEvent = this.parseJsonEvent(trimmed);
+        if (jsonEvent) {
+          const mapped = this.mapJsonEventToExecutionEvent(task.id, jsonEvent);
+          return mapped ? [mapped] : [];
+        }
+      }
+      const events: ExecutionEventCreateInput[] = [];
+      if (useJsonParsing && !heuristicWarningEmitted) {
+        heuristicWarningEmitted = true;
+        events.push({ task_id: task.id, event_type: ExecutionEventType.LOG, level: LogLevel.WARNING,
+          message: 'EVIDENCE WARNING: Non-JSON Codex stdout uses heuristic parsing; subsequent JSON remains structured.',
+          metadata: { parsing_mode: 'heuristic_fallback', reason: 'non_json_stdout_detected' } });
+      }
+      events.push(this.convertHeuristicToExecutionEvent(task.id, this.parseHeuristicLine(trimmed, stream), trimmed));
+      return events;
+    };
     const outputQueue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const errorQueue: Error[] = [];
-    let exitCode: number | null = null;
+    let exitCode: number | null | undefined;
     let resolver: ((value: boolean) => void) | null = null;
 
     emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
@@ -420,7 +447,7 @@ export class CodexExecutor implements TaskExecutor {
       }
     });
 
-    emitter.on('exit', (code: number) => {
+    emitter.on('exit', (code: number | null) => {
       exitCode = code;
       if (resolver) {
         resolver(false);
@@ -428,7 +455,23 @@ export class CodexExecutor implements TaskExecutor {
       }
     });
 
-    while (exitCode === null) {
+    // Install listeners before spawning or yielding: a fast child may emit
+    // output and close while the consumer is handling the initial event.
+    spawnProcess();
+    yield {
+      task_id: task.id, event_type: ExecutionEventType.TASK_STARTED,
+      message: 'Codex execution started', level: LogLevel.INFO,
+      metadata: { executor: 'codex', skip_permissions: skipPerms, output_format: outputFormat,
+        model: options?.model || process.env.DJIMITFLO_CODEX_MODEL || 'cli-default',
+        reasoning_effort: options?.reasoningEffort || process.env.DJIMITFLO_CODEX_REASONING_EFFORT || 'cli-default' },
+    };
+    if (skipPerms) {
+      yield { task_id: task.id, event_type: ExecutionEventType.LOG, level: LogLevel.WARNING,
+        message: 'SECURITY OVERRIDE: Codex permission prompts bypassed by explicit runtime configuration. Approval gates will not be shown.',
+        metadata: { security_override: 'codex_permissions_bypass', reason: 'Configured via executor options or CODEX_SKIP_PERMISSIONS' } };
+    }
+
+    while (exitCode === undefined || outputQueue.length > 0 || errorQueue.length > 0) {
       if (outputQueue.length === 0 && errorQueue.length === 0) {
         await new Promise<boolean>((resolve) => {
           resolver = resolve;
@@ -448,59 +491,25 @@ export class CodexExecutor implements TaskExecutor {
 
       while (outputQueue.length > 0) {
         const { text, stream } = outputQueue.shift()!;
-        buffer += text;
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          if (useJsonParsing) {
-            const jsonEvent = this.parseJsonEvent(trimmed);
-            if (jsonEvent) {
-              const mapped = this.mapJsonEventToExecutionEvent(task.id, jsonEvent);
-              if (mapped) yield mapped;
-            } else {
-              // Not valid JSON — switch to heuristic fallback
-              if (!heuristicWarningEmitted) {
-                heuristicWarningEmitted = true;
-                useJsonParsing = false;
-                yield {
-                  task_id: task.id,
-                  event_type: ExecutionEventType.LOG,
-                  message:
-                    'EVIDENCE WARNING: Codex structured output unavailable; falling back to heuristic parsing. Event accuracy may be reduced.',
-                  level: LogLevel.WARNING,
-                  metadata: { parsing_mode: 'heuristic_fallback', reason: 'non_json_output_detected' },
-                };
-              }
-              const parsed = this.parseHeuristicLine(trimmed, stream);
-              yield this.convertHeuristicToExecutionEvent(task.id, parsed, trimmed);
-            }
-          } else {
-            const parsed = this.parseHeuristicLine(trimmed, stream);
-            yield this.convertHeuristicToExecutionEvent(task.id, parsed, trimmed);
-          }
+        let chunk = text;
+        if (discarding[stream]) {
+          const boundary = chunk.indexOf('\n');
+          if (boundary < 0) continue;
+          chunk = chunk.slice(boundary + 1);
+          discarding[stream] = false;
+        }
+        const lines = (buffers[stream] + chunk).split('\n');
+        buffers[stream] = lines.pop() || '';
+        for (const line of lines) yield* line.length > maxLineChars ? truncationWarning() : parseLine(line, stream);
+        if (buffers[stream].length > maxLineChars) {
+          buffers[stream] = '';
+          discarding[stream] = true;
+          yield* truncationWarning();
         }
       }
     }
 
-    // Process remaining buffer
-    if (buffer.trim()) {
-      const trimmed = buffer.trim();
-      if (useJsonParsing) {
-        const jsonEvent = this.parseJsonEvent(trimmed);
-        if (jsonEvent) {
-          const mapped = this.mapJsonEventToExecutionEvent(task.id, jsonEvent);
-          if (mapped) yield mapped;
-        }
-      } else {
-        const parsed = this.parseHeuristicLine(trimmed, 'stdout');
-        yield this.convertHeuristicToExecutionEvent(task.id, parsed, trimmed);
-      }
-    }
+    for (const stream of ['stdout', 'stderr'] as const) yield* parseLine(buffers[stream], stream);
 
     if (exitCode === 0) {
       yield {
@@ -528,8 +537,20 @@ export class CodexExecutor implements TaskExecutor {
     emitter: EventEmitter,
   ): Promise<ExecutionResult> {
     const output = captureExecutorOutput(emitter);
+    const startedAt = Date.now();
     return new Promise((resolveResult) => {
-      const resolve = (result: ExecutionResult) => resolveResult({ ...result, ...output() });
+      const resolve = (result: ExecutionResult) => {
+        const captured = output();
+        let tokenUsage: number | undefined;
+        for (const line of (captured.stdout || '').split('\n')) {
+          const event = this.parseJsonEvent(line);
+          const usage = event?.type === 'turn.completed' ? event.usage as Record<string, unknown> | undefined : undefined;
+          if (usage && typeof usage.input_tokens === 'number' && typeof usage.output_tokens === 'number') {
+            tokenUsage = (tokenUsage || 0) + usage.input_tokens + usage.output_tokens;
+          }
+        }
+        resolveResult({ ...result, ...captured, metrics: { ...result.metrics, executionTimeMs: Date.now() - startedAt, ...(tokenUsage !== undefined ? { tokenUsage } : {}) } });
+      };
       emitter.on('exit', (code: number) => {
         if (code === 0) {
           resolve({

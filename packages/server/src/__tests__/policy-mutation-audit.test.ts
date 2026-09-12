@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import express from 'express';
+import request from 'supertest';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { createPolicyRoutes } from '../routes/policies';
+import { errorHandler } from '../middleware/error-handler';
 
 describe('policy mutation audit', () => {
   let db: Database.Database;
@@ -44,5 +47,22 @@ describe('policy mutation audit', () => {
     const deleteAudit = db.prepare("SELECT before, after FROM audit_events WHERE action = 'approval_policy.deleted'").get() as any;
     expect(JSON.parse(deleteAudit.before)).toMatchObject({ id: policyId, version: 2 });
     expect(JSON.parse(deleteAudit.after)).toEqual({ deleted: true });
+  });
+
+  it('executes the canonical policy PATCH and DELETE routes over HTTP', async () => {
+    const app = express()
+      .use(express.json())
+      .use('/api/policies', createPolicyRoutes(db))
+      .use(errorHandler);
+    const policyId = 'policy-low-task-allow';
+
+    const updated = await request(app).patch(`/api/policies/${policyId}`).send({ description: 'HTTP update' });
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({ id: policyId, version: 2, description: 'HTTP update' });
+
+    const deleted = await request(app).delete(`/api/policies/${policyId}`);
+    expect(deleted.status).toBe(204);
+    expect(db.prepare('SELECT id FROM approval_policies WHERE id = ?').get(policyId)).toBeUndefined();
+    expect(db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE action IN ('approval_policy.updated', 'approval_policy.deleted')").get()).toEqual({ count: 2 });
   });
 });

@@ -1,0 +1,16 @@
+{
+  "state": "PASS",
+  "scope": "actual local HTTP + Chromium renders + SQLite + restart; mocked execution, not provider capability",
+  "taskId": "ab1015d2-0f63-45d2-ac53-b607e3452588",
+  "retiredAgentId": "3daccc84-a269-484b-9f09-4ff24bbcc52a",
+  "pendingAgentFixture": "http://127.0.0.1:3187/agents/1444dcde-c9c1-4fe5-854d-65b6f0daeb98",
+  "executionEvents": 15,
+  "canonicalAuditRows": 11,
+  "approvalRecords": 2,
+  "realFileChanges": 0,
+  "providerExecuted": false,
+  "humanApproval": false,
+  "summaryIdentityPreserved": true,
+  "archiveIdentityPreserved": true,
+  "initialHarnessFailuresRetained": true
+}

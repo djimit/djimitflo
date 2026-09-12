@@ -7,9 +7,11 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { SegmlLiteratureScanBridge } from '../services/segml-literature-scan-bridge';
 
-export function createSegmlLiteratureRoutes(db: Database, auth?: AuthMiddleware): Router {
+const LITERATURE_STATUSES = new Set(['proposed', 'approved', 'rejected', 'integrated']);
+
+export function createSegmlLiteratureRoutes(db: Database, auth: AuthMiddleware): Router {
   const router = Router();
-  const requireAuth = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const requireAuth = auth.requirePermission;
 
   // POST /api/segml/literature/scan — trigger a literature scan
   router.post('/scan', requireAuth('write:governance'), async (_req, res, next) => {
@@ -27,6 +29,10 @@ export function createSegmlLiteratureRoutes(db: Database, auth?: AuthMiddleware)
     try {
       const bridge = new SegmlLiteratureScanBridge(db);
       const status = req.query.status as string | undefined;
+      if (status !== undefined && !LITERATURE_STATUSES.has(status)) {
+        res.status(400).json({ error: { message: 'status must be a supported literature status', code: 'VALIDATION_ERROR' } });
+        return;
+      }
       res.json({ categories: bridge.getProposedCategories(status) });
     } catch (error) {
       next(error);
@@ -37,6 +43,10 @@ export function createSegmlLiteratureRoutes(db: Database, auth?: AuthMiddleware)
   router.post('/approve/:id', requireAuth('write:governance'), (req, res, next) => {
     try {
       const bridge = new SegmlLiteratureScanBridge(db);
+      if (typeof req.params.id !== 'string' || !req.params.id.trim()) {
+        res.status(400).json({ error: { message: 'id is required', code: 'VALIDATION_ERROR' } });
+        return;
+      }
       const approved = bridge.approveCategory(req.params.id);
       res.json({ approved });
     } catch (error) {

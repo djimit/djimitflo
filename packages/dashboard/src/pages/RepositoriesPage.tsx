@@ -3,46 +3,60 @@ import { FolderGit, RefreshCw, CheckCircle, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Repository } from '@djimitflo/shared';
 import { api } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 
 export function RepositoriesPage() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canScan = useAuthStore(s => s.hasPermission('scan:repository'));
 
-  useEffect(() => {
-    api.getRepositories().then((res) => setRepositories(res.repositories)).finally(() => setLoading(false));
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try { setRepositories((await api.getRepositories()).repositories); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Repository list unavailable'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); }, []);
 
   const handleScan = async (path: string) => {
+    if (!canScan || !path.trim() || scanning !== null) return;
     setScanning(path);
+    setError(null);
+    setScanResult(null);
     try {
       const result = await api.scanRepository(path);
       setScanResult(result);
       const res = await api.getRepositories();
       setRepositories(res.repositories);
     } catch (error) {
-      console.error('Scan failed:', error);
+      setError(error instanceof Error ? error.message : 'Repository scan failed');
     } finally {
       setScanning(null);
     }
   };
 
   const handleRescan = async (id: string) => {
+    if (!canScan || scanning !== null) return;
     setScanning(id);
+    setError(null);
+    setScanResult(null);
     try {
       const result = await api.rescanRepository(id);
       setScanResult(result);
       const res = await api.getRepositories();
       setRepositories(res.repositories);
     } catch (error) {
-      console.error('Rescan failed:', error);
+      setError(error instanceof Error ? error.message : 'Repository rescan failed');
     } finally {
       setScanning(null);
     }
   };
 
-  const [scanPath, setScanPath] = useState('/home/djimit/workspace/djimitflo');
+  const [scanPath, setScanPath] = useState('');
 
   return (
     <div className="p-8 space-y-6">
@@ -51,26 +65,30 @@ export function RepositoriesPage() {
         <p className="text-foreground-secondary mt-2">Scan, analyze, and monitor repositories for health, stack, and AGENTS.md governance.</p>
       </div>
 
-      <div className="bg-background-secondary border border-border rounded-lg p-6">
+      {canScan && <div className="bg-background-secondary border border-border rounded-lg p-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">Scan Repository</h2>
-        <div className="flex gap-3">
+        <label htmlFor="repository-scan-path" className="text-sm text-foreground-secondary">Repository path on the server</label>
+        <form onSubmit={e => { e.preventDefault(); void handleScan(scanPath.trim()); }} className="flex flex-wrap gap-3">
           <input
+            id="repository-scan-path"
             type="text"
             value={scanPath}
             onChange={(e) => setScanPath(e.target.value)}
             placeholder="/path/to/repository"
-            className="flex-1 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
+            className="flex-1 min-w-0 px-3 py-2 bg-background rounded border border-border text-foreground text-sm"
           />
           <button
-            onClick={() => handleScan(scanPath)}
-            disabled={scanning !== null}
+            type="submit"
+            disabled={scanning !== null || !scanPath.trim()}
             className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${scanning === scanPath ? 'animate-spin' : ''}`} />
             {scanning === scanPath ? 'Scanning...' : 'Scan'}
           </button>
-        </div>
-      </div>
+        </form>
+      </div>}
+
+      {error && <div role="alert" className="text-status-error">{error} <button onClick={() => void load()} disabled={loading}>Retry repository list</button></div>}
 
       {scanResult && (
         <div className="bg-background-secondary border border-accent/20 rounded-lg p-6">
@@ -111,7 +129,7 @@ export function RepositoriesPage() {
 
       {loading ? (
         <div className="bg-background-secondary border border-border rounded-lg p-8 text-foreground-secondary">Loading repositories...</div>
-      ) : repositories.length === 0 ? (
+      ) : repositories.length === 0 && !error ? (
         <div className="bg-background-secondary border border-border rounded-lg p-12 text-center">
           <FolderGit className="w-12 h-12 text-foreground-muted mx-auto mb-4" />
           <p className="text-foreground-secondary">No repositories registered yet. Scan a repository path to get started.</p>
@@ -141,9 +159,9 @@ export function RepositoriesPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => handleRescan(repo.id)} disabled={scanning !== null} className="p-2 hover:bg-background-elevated rounded-lg transition-colors disabled:opacity-50" title="Rescan">
+                  {canScan && <button onClick={() => handleRescan(repo.id)} disabled={scanning !== null} className="p-2 hover:bg-background-elevated rounded-lg transition-colors disabled:opacity-50" title="Rescan">
                     <RefreshCw className={`w-4 h-4 text-foreground-secondary ${scanning === repo.id ? 'animate-spin' : ''}`} />
-                  </button>
+                  </button>}
                   <Link to={`/repositories/${repo.id}`} className="p-2 hover:bg-background-elevated rounded-lg transition-colors" title="Details">
                     <ChevronRight className="w-5 h-5 text-foreground-secondary" />
                   </Link>

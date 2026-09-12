@@ -1,4 +1,4 @@
-import { BookUser, Users, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { BookUser, Users, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { useCatalog } from '../hooks/useCatalog';
 import { AgentCatalogTable } from '../components/AgentCatalogTable';
 
@@ -13,42 +13,10 @@ export function AgentCatalogPage() {
     activateAgent,
     deactivateAgent,
     retry,
+    divisions,
+    divisionFilter,
+    searchQuery,
   } = useCatalog();
-
-  if (loading && agents.length === 0) {
-    return (
-      <div className="p-8 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Agent Catalog</h1>
-          <p className="text-foreground-secondary mt-2">Browse, search, and manage imported agents</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 text-foreground-muted animate-spin" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error && agents.length === 0) {
-    return (
-      <div className="p-8 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Agent Catalog</h1>
-          <p className="text-foreground-secondary mt-2">Browse, search, and manage imported agents</p>
-        </div>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-12 text-center">
-          <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-4" />
-          <p className="text-red-700 mb-4">{error}</p>
-          <button
-            onClick={retry}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
-          >
-            <RefreshCw className="w-4 h-4" /> Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-8 space-y-6">
@@ -56,6 +24,7 @@ export function AgentCatalogPage() {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Agent Catalog</h1>
         <p className="text-foreground-secondary mt-2">Browse, search, and manage imported agents</p>
+        <p className="text-foreground-secondary mt-2">Preparing an artifact compiles agent configuration and records catalog activation. It does not register a runtime agent, start a provider, or dispatch work.</p>
       </div>
 
       {/* Summary Counts */}
@@ -75,7 +44,7 @@ export function AgentCatalogPage() {
           />
           <StatCard
             icon={<CheckCircle className="w-5 h-5" />}
-            label="Active"
+            label="Artifacts prepared"
             value={counts.active}
             color="text-green-600 bg-green-50"
           />
@@ -88,9 +57,20 @@ export function AgentCatalogPage() {
         </div>
       )}
 
+      {loading && <p role="status" className="text-foreground-secondary">Loading catalog…</p>}
+      {error && <div role="alert" className="border border-red-200 rounded-lg p-4 text-red-700">
+        <p>{error}</p>
+        {agents.length > 0 && <p>Showing previously loaded rows; the current filter could not be refreshed.</p>}
+        <button onClick={retry} className="inline-flex items-center gap-2 mt-2"><RefreshCw className="w-4 h-4" /> Retry</button>
+      </div>}
+
       {/* Table */}
       <AgentCatalogTable
         agents={agents}
+        divisions={divisions}
+        divisionFilter={divisionFilter}
+        searchQuery={searchQuery}
+        emptyMessage={loading ? 'Waiting for catalog data.' : error ? 'Catalog data unavailable.' : undefined}
         onActivate={activateAgent}
         onDeactivate={deactivateAgent}
         onFilterDivision={filterDivision}

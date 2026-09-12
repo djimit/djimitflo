@@ -36,6 +36,7 @@ async function startApp() {
   const app = express();
   app.use(express.json());
   app.use('/goals', createGoalRoutes(db, auth));
+  app.use('/api/goals', createGoalRoutes(db, auth));
   app.use('/loops', createLoopRoutes(db, auth, path.join(tempDir, 'agent-evidence')));
   app.use(errorHandler);
 
@@ -155,6 +156,12 @@ describe('doc-drift-and-small-fix-loop', () => {
     });
     expect(createResponse.status).toBe(201);
     const goal = await createResponse.json() as any;
+
+    const listResponse = await fetch(`${baseUrl}/api/goals/`);
+    expect(listResponse.status).toBe(200);
+    expect((await listResponse.json() as any).goals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: goal.id, objective: 'Find low-risk docs drift' }),
+    ]));
 
     const updateResponse = await fetch(`${baseUrl}/goals/${goal.id}`, {
       method: 'PATCH',
@@ -358,13 +365,15 @@ describe('doc-drift-and-small-fix-loop', () => {
     const continueResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/continue`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ max_assignments: 1, runtime: 'manual' }),
+      body: JSON.stringify({ max_assignments: 1, runtime: 'manual', model: 'gpt-6-astra', reasoningEffort: 'max' }),
     });
     expect(continueResponse.status).toBe(201);
     const continued = await continueResponse.json() as any;
     expect(continued.leases.filter((lease: any) => lease.role === 'maker')).toHaveLength(1);
     expect(continued.leases.filter((lease: any) => lease.role === 'checker')).toHaveLength(1);
     expect(continued.leases.filter((lease: any) => lease.role === 'security_checker')).toHaveLength(1);
+    expect(continued.leases.find((lease: any) => lease.role === 'maker').metadata)
+      .toMatchObject({ model: 'gpt-6-astra', reasoningEffort: 'max' });
   });
 
   it('continues by preparing isolated maker/checker leases and verifies gates', async () => {

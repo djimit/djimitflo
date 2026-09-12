@@ -63,9 +63,51 @@ describe('self-improvement routes', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ proposal: { status: 'executing', approvedBy: 'route-admin' }, goalCreated: true });
     expect((db.prepare('SELECT COUNT(*) AS count FROM goals').get() as { count: number }).count).toBe(1);
+
+    const retrieved = await fetch(`${baseUrl}/proposals/${proposal.id}`);
+    expect(retrieved.status).toBe(200);
+    expect(await retrieved.json()).toMatchObject({ id: proposal.id, status: 'executing' });
+
+    const [rejected] = new SelfImprovementService(db).generateFromReflection({
+      whatFailed: ['duplicate proposal'],
+      lessonsLearned: ['reject stale work'],
+      proposedImprovements: ['Reject stale work proposal'],
+      loopRunId: 'loop-route-reject',
+    });
+    const rejectedResponse = await fetch(`${baseUrl}/proposals/${rejected.id}/reject`, { method: 'POST' });
+    expect(rejectedResponse.status).toBe(200);
+    expect(await rejectedResponse.json()).toMatchObject({ proposal: { id: rejected.id, status: 'rejected' } });
   });
 
   it('rejects an invalid status filter', async () => {
     expect((await fetch(`${baseUrl}/proposals?status=anything`)).status).toBe(400);
+  });
+
+  it('rejects malformed pagination before proposal reads', async () => {
+    const response = await fetch(`${baseUrl}/proposals?limit=NaN`);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('scans documentation gaps from the workspace launch context', async () => {
+    const scan = await fetch(`${baseUrl}/docs/scan`);
+    expect(scan.status).toBe(200);
+    const body = await scan.json() as { count: number; gaps: unknown[] };
+    expect(body.count).toBeGreaterThan(0);
+    expect(body.gaps.length).toBe(body.count);
+    const stats = await fetch(`${baseUrl}/docs/stats`);
+    expect(stats.status).toBe(200);
+    expect((await stats.json() as { totalGaps: number }).totalGaps).toBe(body.count);
+
+    const reconciled = await fetch(`${baseUrl}/reconcile`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ claims: [{ title: '[Test Coverage] Add tests for a future isolated module' }] }),
+    });
+    expect(reconciled.status).toBe(200);
+    expect(await reconciled.json()).toMatchObject({ totalClaims: 1, source: 'api', applied: false });
+    const latest = await fetch(`${baseUrl}/reconciliation`);
+    expect(latest.status).toBe(200);
+    expect(await latest.json()).toMatchObject({ totalClaims: 1, source: 'api', applied: false });
   });
 });

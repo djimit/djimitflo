@@ -32,13 +32,19 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 |--------|-------|
 | **Version** | 0.5.8 (all packages) |
 | **Tests** | Full workspace suite + targeted mutation gate |
-| **API Contract** | Generated from the live Express route inventory |
-| **Database Tables** | 72+ |
-| **Agent Runtimes** | 7 (OpenCode, Codex, Claude, Gemini, Pi, Editor, Mock) |
+| **API Contract** | Source-derived route inventory; runtime behavior verified separately |
+| **Database Tables** | 165 in the audited local schema; deployment schemas may differ |
+| **Agent Runtimes** | 8 default adapters (OpenCode, Codex, Claude, Hermes, Gemini, Pi, Editor, Mock); Deep Agents opt-in |
 | **Packages** | 7 npm workspaces + knowledge runtime directory |
-| **Node** | >= 20 and < 25 |
+| **Node** | >= 22 and < 25 |
 | **TypeScript** | 6.x strict mode |
-| **Last Updated** | 2026-08-27 |
+| **Last Updated** | 2026-09-09 |
+
+Execution evidence and limitations from the current local reconstruction are in
+[the verification report](reports/autonomous-audit-20260909/VERIFICATION_REPORT.md),
+[capability graph](reports/autonomous-audit-20260909/CAPABILITY_MATRIX.md), and
+[runtime matrix](reports/autonomous-audit-20260909/RUNTIME_MATRIX.md).
+Adapter registration, rendered screens and passing unit tests do not establish production readiness.
 
 ---
 
@@ -47,7 +53,7 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 ### Task & Agent Management
 - Create, assign, and track tasks across multiple AI coding agents
 - Agent registry with capability tracking, status monitoring, and retirement workflows
-- Multi-runtime execution engine with Docker sandbox isolation
+- Multi-runtime execution engine with optional Docker sandbox isolation
 - Real-time task output streaming via WebSocket
 
 ### Loop Execution Engine
@@ -58,9 +64,9 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 
 ### Approval & Governance
 - Risk-classified approval workflow (low/medium/high/critical) with policy enforcement
-- **ToolBroker** — mandatory policy enforcement point for all mutating actions
+- **ToolBroker** — policy evaluation and durable scoped tokens. CLI-internal tools are not currently mediated through this service; task-level execution policy is enforced separately.
 - **Self-approval prevention** — maker cannot approve their own requests (data-layer invariant)
-- **Maker-checker-approver separation** — six distinct roles with granular permissions
+- **Maker-checker-approver separation** — seven defined roles with granular permissions
 - Compliance audit trail with cryptographic chain hashing and append-only enforcement
 - SBOM generation (CycloneDX 1.6)
 
@@ -98,7 +104,7 @@ djimitflo/
 
 ### Security Architecture
 
-See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
+See the [Security Model](docs/security.md) and [current evidence-backed gaps](reports/autonomous-audit-20260909/GAP_REGISTER.md). A complete current STRIDE assessment is not claimed.
 
 **Trust Boundaries**:
 1. External Internet → API Server (TLS 1.3, JWT 15min, CSP)
@@ -133,12 +139,12 @@ See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 ### Implemented
 - [x] Docker container isolation (non-root, cap-drop, no-new-privileges, read-only root)
 - [x] Image digest pinning (`@sha256:` required)
-- [x] JWT 15-minute TTL with refresh token rotation
+- [x] JWT 15-minute default TTL; browser login/refresh/logout use rotating HttpOnly refresh cookies and revocable session-bound access tokens (legacy bearer clients remain stateless)
 - [x] WebSocket token via subprotocol (not URL)
 - [x] CSP headers (strict, frame-ancestors none)
 - [x] Self-approval prevention (data-layer invariant)
 - [x] Audit log append-only (SQLite triggers)
-- [x] ToolBroker policy enforcement (default deny)
+- [x] ToolBroker default-deny decisions and durable token revocation (service-level tests; universal executor mediation remains incomplete)
 - [x] Plugin signature verification (default disabled)
 - [x] SBOM generation (CycloneDX)
 - [x] Data classification model (4 levels)
@@ -163,7 +169,7 @@ See [Threat Model](.swarm/THREAT-MODEL.md) for full STRIDE analysis.
 ## Getting Started
 
 ### Prerequisites
-- Node.js >= 20 and < 25
+- Node.js >= 22 and < 25
 - npm >= 9
 - Docker (for sandboxed execution)
 
@@ -222,9 +228,12 @@ npm run type-check
 | `DB_PATH` | `./data/djimitflo.sqlite` | SQLite database path |
 | `DJIMITFLO_DB` | auto-detected | MCP SQLite database path |
 | `DJIMITFLO_DATA_MODE` | `snapshot` | Set to `live` only when MCP points at the operational database; mutating MCP tools reject snapshots |
+| `DJIMITFLO_CODEX_MODEL` | CLI default | Codex model, including `gpt-6-astra`; task metadata `model` overrides it |
+| `DJIMITFLO_CODEX_REASONING_EFFORT` | CLI default | Codex low/medium/high/xhigh/max; task metadata `reasoningEffort` overrides it |
 | `DJIMITFLO_INSTANCE_ID` | (unset) | Stable runtime identifier reported by MCP doctor |
 | `DJIMITFLO_RUNTIME_HOST` | OS hostname | Explicit runtime host reported by MCP doctor |
-| `OKF_BASE` | auto-detected | Explicit OKF bundle directory for MCP tools |
+| `OKF_BASE` | repository `knowledge` | Actual OKF data bundle for runtime health, capability sync and MCP tools |
+| `OKF_VALIDATOR_PATH` | `tools/validate_okf.py` beside the bundle | Optional absolute path to the existing trusted operator-managed Python validator; validates the actual `OKF_BASE`. Missing or failed validation blocks sync apply; structural acceptance is not certification |
 | `DOCKER_SANDBOX_IMAGE` | `djimitflo-runner:latest` | Sandbox image (must be digest-pinned) |
 | `DOCKER_SANDBOX_SKIP_DIGEST_CHECK` | `false` | Skip digest check (NOT recommended) |
 | `PLUGIN_TRUST_KEYS` | (empty) | Comma-separated trusted Ed25519 public keys |

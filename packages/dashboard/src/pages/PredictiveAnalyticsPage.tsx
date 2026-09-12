@@ -4,6 +4,7 @@
 
 import { useState, useCallback } from 'react';
 import { TrendingUp, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface Prediction {
   successProbability: number;
@@ -16,18 +17,18 @@ interface Prediction {
 export function PredictiveAnalyticsPage() {
   const [prediction, setPrediction] = useState<Prediction | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runPrediction = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const response = await fetch('/api/intelligence/predict', {
+      setPrediction(await api.request<Prediction>('/intelligence/predict', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goalType: 'general', runtime: 'mock', mode: 'closed' }),
-      });
-      if (response.ok) {
-        setPrediction(await response.json());
-      }
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Prediction failed');
     } finally {
       setLoading(false);
     }
@@ -45,6 +46,8 @@ export function PredictiveAnalyticsPage() {
           {loading ? 'Predicting...' : 'Run Prediction'}
         </button>
       </div>
+
+      {error && <p role="alert" className="text-status-error">{error}</p>}
 
       {prediction && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>

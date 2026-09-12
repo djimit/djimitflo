@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Heart, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface HealthCheck {
   name: string;
@@ -10,15 +11,16 @@ interface HealthCheck {
 export function SelfHealingPage() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const runHealthCheck = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const response = await fetch('/api/intelligence/health');
-      if (response.ok) {
-        const data = await response.json();
-        setChecks(data.checks || []);
-      }
+      const data = await api.request<{ checks: HealthCheck[] }>('/intelligence/health');
+      setChecks(data.checks);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Health check failed');
     } finally {
       setLoading(false);
     }
@@ -38,6 +40,8 @@ export function SelfHealingPage() {
           {loading ? 'Checking...' : 'Run Health Check'}
         </button>
       </div>
+
+      {error && <p role="alert" className="text-status-error">{error}</p>}
 
       {checks.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

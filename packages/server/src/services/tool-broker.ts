@@ -1,8 +1,9 @@
 /**
- * ToolBroker — mandatory policy enforcement point for all mutating actions.
+ * ToolBroker — policy decisions and durable scoped capability tokens.
  *
- * Security invariant: NO executor can bypass this broker. Every filesystem,
- * shell, network, Git, MCP, and model action MUST flow through evaluateToolCall().
+ * Callers must evaluate before execution and validate tokens at the effect boundary.
+ * CLI executors do not currently mediate their internal tools through this service;
+ * constructing a broker in ExecutionEngine does not enforce per-tool policy.
  *
  * Architecture:
  *   Executor → ToolBroker.evaluateToolCall() → PolicyDecision → Allow/Deny/Approval
@@ -104,7 +105,6 @@ const RISK_ORDER: Record<RiskLevel, number> = {
 
 export class ToolBroker {
   private config: ToolBrokerConfig;
-  private capability_tokens: Map<string, CapabilityToken> = new Map();
   private rate_limits: Map<string, RateLimitState> = new Map();
   private policy: PolicyDecisionService;
 
@@ -177,8 +177,7 @@ export class ToolBroker {
   }
 
   /**
-   * Evaluate a tool call against all policies. This is the SINGLE ENTRY POINT
-   * for all mutating actions. No executor may bypass this method.
+   * Evaluate a tool call against policies. This does not itself execute the tool.
    *
    * Returns a decision with a unique decision_id for audit trail.
    */
@@ -238,14 +237,19 @@ export class ToolBroker {
   /**
    * Validate a capability token before tool execution.
    * Returns true if the token is valid, not expired, and scoped to this tool.
+   * The presenting principal is part of the capability boundary. Requiring it
+   * here prevents callers from accidentally turning a durable token into a
+   * bearer token at an effect boundary.
    */
-  validateCapabilityToken(token_id: string, tool: string, task_id: string): boolean {
-    const token = this.capability_tokens.get(token_id) ?? this.loadCapabilityToken(token_id);
+  validateCapabilityToken(token_id: string, tool: string, task_id: string, principal_id: string): boolean {
+    // Durable state is authoritative across broker instances and revocation.
+    const token = this.loadCapabilityToken(token_id);
     if (!token) return false;
     if (token.tool !== tool) return false;
     if (token.task_id !== task_id) return false;
-    if (new Date(token.expires_at) < new Date()) {
-      this.capability_tokens.delete(token_id);
+    if (token.principal_id !== principal_id) return false;
+    const expiry = Date.parse(token.expires_at);
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
       this.db.prepare('DELETE FROM tool_broker_capability_tokens WHERE token_id = ?').run(token_id);
       return false;
     }
@@ -257,10 +261,15 @@ export class ToolBroker {
    * Invalidates the previous capability token.
    */
   reevaluateOnParameterChange(
-    _original_decision_id: string,
+    original_decision_id: string,
     request: ToolCallRequest,
   ): ToolCallDecision {
-    this.invalidateCapabilityToken();
+    const original = this.db.prepare(`
+      SELECT capability_token_id FROM tool_broker_decisions
+      WHERE decision_id = ? AND principal_id = ? AND task_id = ?
+    `).get(original_decision_id, request.principal.sub, request.task_id) as { capability_token_id: string | null } | undefined;
+    if (!original) throw new Error('Original decision does not belong to this principal and task');
+    this.db.prepare('DELETE FROM tool_broker_capability_tokens WHERE token_id = ?').run(original.capability_token_id);
     return this.evaluateToolCall(request);
   }
 
@@ -308,7 +317,6 @@ export class ToolBroker {
       },
     };
 
-    this.capability_tokens.set(token.token_id, token);
     this.db.prepare(`
       INSERT INTO tool_broker_capability_tokens
         (token_id, scope, tool, task_id, principal_id, issued_at, expires_at, constraints_json)
@@ -353,17 +361,7 @@ export class ToolBroker {
       expires_at: row.expires_at,
       constraints,
     };
-    this.capability_tokens.set(token_id, token);
     return token;
-  }
-
-  private invalidateCapabilityToken(): void {
-    for (const [id] of this.capability_tokens) {
-      if (id.startsWith('cap-')) {
-        this.capability_tokens.delete(id);
-        break;
-      }
-    }
   }
 
   private auditDecision(result: ToolCallDecision): void {

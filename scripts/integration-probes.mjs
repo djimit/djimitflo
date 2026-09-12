@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const output = resolve(root, 'openspec/changes/assurance-truth-closure/integration-evidence.json');
+const output = resolve(root, process.env.INTEGRATION_REPORT_PATH || 'openspec/changes/assurance-truth-closure/integration-evidence.json');
 
 async function http(id, url, required, validate) {
   const started = Date.now();

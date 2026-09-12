@@ -14,6 +14,7 @@
 import { Task, ExecutionEventType, LogLevel, ExecutionEventCreateInput } from '@djimitflo/shared';
 import { TaskExecutor, ExecutionSession, ExecutionResult, ExecutorOptions, ExecutorKind } from '../types';
 import { buildExecutorEnv } from './executor-env';
+import { runtimeProcessClosed, stopRuntimeProcess } from './runtime-process';
 import { structuredRuntimeEvent } from './structured-runtime-event';
 import { randomUUID } from 'crypto';
 import { spawn, ChildProcess } from 'child_process';
@@ -56,10 +57,13 @@ export class GeminiExecutor implements TaskExecutor {
 
     const emitter = new EventEmitter();
     let childProcess: ChildProcess | null = null;
+    let resolveClosed!: () => void;
+    const closed = new Promise<void>(resolve => { resolveClosed = resolve; });
 
     const skipPerms = options?.skipPermissions ?? this.skipPermissions;
 
     const spawnProcess = () => {
+      if (session.status === 'cancelled') { resolveClosed(); emitter.emit('exit', null); return; }
       const cwd = options?.workingDirectory || process.cwd();
       const env = buildExecutorEnv(options?.environment);
       const timeoutMs = options?.timeout ?? this.executionTimeoutMs;
@@ -71,16 +75,10 @@ export class GeminiExecutor implements TaskExecutor {
       });
 
       childProcess = child;
+      void runtimeProcessClosed(child).then(resolveClosed);
 
       const timeoutHandle = setTimeout(() => {
-        if (child && !child.killed) {
-          child.kill('SIGTERM');
-          setTimeout(() => {
-            if (child && !child.killed) {
-              child.kill('SIGKILL');
-            }
-          }, 5000);
-        }
+        stopRuntimeProcess(child);
         emitter.emit('error', new Error(`Gemini execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
@@ -113,16 +111,11 @@ export class GeminiExecutor implements TaskExecutor {
       startedAt,
       events,
       result,
+      closed,
       cancel: async () => {
-        if (childProcess && !childProcess.killed) {
-          childProcess.kill('SIGTERM');
-          setTimeout(() => {
-            if (childProcess && !childProcess.killed) {
-              childProcess.kill('SIGKILL');
-            }
-          }, 5000);
-        }
         session.status = 'cancelled';
+        await stopRuntimeProcess(childProcess);
+        if (!childProcess) resolveClosed();
         session.completedAt = new Date();
       },
     };
@@ -238,7 +231,7 @@ export class GeminiExecutor implements TaskExecutor {
     let buffer = '';
     const outputQueue: Array<{ text: string; stream: 'stdout' | 'stderr' }> = [];
     const errorQueue: Error[] = [];
-    let exitCode: number | null = null;
+    let exitCode: number | null | undefined;
     let resolver: ((value: boolean) => void) | null = null;
 
     emitter.on('output', (text: string, stream: 'stdout' | 'stderr') => {
@@ -257,7 +250,7 @@ export class GeminiExecutor implements TaskExecutor {
       }
     });
 
-    emitter.on('exit', (code: number) => {
+    emitter.on('exit', (code: number | null) => {
       exitCode = code;
       if (resolver) {
         resolver(false);
@@ -265,7 +258,7 @@ export class GeminiExecutor implements TaskExecutor {
       }
     });
 
-    while (exitCode === null) {
+    while (exitCode === undefined) {
       if (outputQueue.length === 0 && errorQueue.length === 0) {
         await new Promise<boolean>((resolve) => {
           resolver = resolve;

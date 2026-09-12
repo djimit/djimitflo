@@ -1,0 +1,145 @@
+{
+  "state": "PASS",
+  "recorded_at": "2026-09-09T17:54:41.208Z",
+  "scope": "E1 baseline completed; E2/E3/E4 active audit, not workers; E5/E6 prerequisites remain open",
+  "progress": [
+    {
+      "key": "E1",
+      "id": "1d36485d-d3b1-44fa-b753-642b2c16efd2",
+      "status": "completed",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E1",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "isolated audit checkout and local API"
+        },
+        "depends_on_goal_keys": [],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "acceptance_evidence": [
+          {
+            "path": "reports/autonomous-audit-20260909/evidence/evolution-baseline.json",
+            "sha256": "e613ef4e662d208c6d1ae5b501082e473263c08504b80f1549ab2b48a00bd8d7",
+            "scope": "Attributable baseline snapshot, not current feature verification"
+          }
+        ]
+      }
+    },
+    {
+      "key": "E2",
+      "id": "29fae050-ba37-4435-aca8-277171ee2972",
+      "status": "running",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E2",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "actual route registration, channel contracts and domain semantics"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "progress_kind": "active_external_audit",
+        "autonomous_worker_started": false,
+        "objective_complete": false
+      }
+    },
+    {
+      "key": "E3",
+      "id": "c9aa17af-059d-433d-a9fd-99d28a241b64",
+      "status": "running",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E3",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "dashboard and multi-channel product workflows"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "progress_kind": "active_external_audit",
+        "autonomous_worker_started": false,
+        "objective_complete": false
+      }
+    },
+    {
+      "key": "E4",
+      "id": "7371f30d-8316-4768-b763-3d42c721ba9e",
+      "status": "running",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E4",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "existing self-improvement, goal, loop, maker and checker services"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "progress_kind": "active_external_audit",
+        "autonomous_worker_started": false,
+        "objective_complete": false
+      }
+    },
+    {
+      "key": "E5",
+      "id": "e41eb751-876e-49f9-9e52-483ad48889e1",
+      "status": "created",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E5",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "measured evaluation and subsequent decision use"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E4"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "progress_kind": "prerequisite_corrections_only",
+        "objective_complete": false,
+        "causal_improvement_proven": false,
+        "recurring_background_monitor_active": false
+      }
+    },
+    {
+      "key": "E6",
+      "id": "4ee661ca-47cd-4add-b9f1-7d23ba32052f",
+      "status": "created",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E6",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "existing loop execution and verification lifecycle"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E2",
+          "evolution-20260909-E3",
+          "evolution-20260909-E5"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0,
+        "progress_kind": "prerequisite_corrections_only",
+        "objective_complete": false,
+        "causal_improvement_proven": false,
+        "recurring_background_monitor_active": false
+      }
+    }
+  ]
+}

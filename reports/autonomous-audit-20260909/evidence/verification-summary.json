@@ -1,0 +1,458 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-11",
+  "scope": "isolated local audit worktree; not production certification",
+  "base_commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+  "branch": "codex/autonomous-audit-20260909",
+  "dirty": true,
+  "mission_complete": false,
+  "merge_status": "REVIEW_REQUIRED",
+  "checkpoint_note": "G393 hardens OpenCode event mapping; local regressions remain green while OpenMythos and authenticated deployed identity stay fail-closed.",
+  "checks": {
+    "build": "pass",
+    "type_check": "pass",
+    "lint": "pass",
+    "tests": {
+      "passed": 2867,
+      "skipped": 20,
+      "failed": 0,
+      "evidence": "workspace-regression-g393.log",
+      "note": "Current package totals: server2575 dashboard152 MCP41 catalog26 ransomware40 shared3 Telegram30"
+    },
+    "mutation": {
+      "historical_attempt": "native SIGSEGV during an earlier dry run; retained as historical only",
+      "latest_attempt": "pass without retry on 2026-09-11",
+      "killed": 71,
+      "survived": 0,
+      "no_coverage": 0,
+      "scope": "three configured source regions, not repository-wide; approval line range realigned to same intended guards after transaction refactor; previous shifted64 run is not equivalent",
+      "evidence": "mutation-regression-g358.md"
+    },
+    "dependency_audit": "pass",
+    "contract_inventory": "pass;585 source declarations and 619 instantiated API entries agree; all 585 routes are classified and have direct route-test references, with 56 MCP tools covered; static references are not execution proof",
+    "route_contract_inventory": "pass;619/619 registered routes and 610/610 marked-auth anonymous probes from refreshed G366 runtime artifact",
+    "integration_probes": "pass; read-only HTTP properties only; assurance-integrations G283 pass",
+    "live_identity": "blocked; local isolated startup/integrity pass, but authenticated production identity remains unverified",
+    "assurance_truth": "blocked; live identity and OpenMythos certification prerequisites",
+    "assurance_evidence": {
+      "contracts": "evidence/contract-inventory-g370.md",
+      "route_contracts": "evidence/assurance-recheck-g374.md",
+      "integrations": "evidence/assurance-recheck-g374.md",
+      "tables": "evidence/assurance-recheck-g374.md",
+      "truth": "openspec/changes/assurance-truth-closure/evidence.json",
+      "live": "openspec/changes/assurance-truth-closure/live-identity-evidence.json"
+    },
+    "table_inventory": {
+      "graph_fixture_tables": 165,
+      "root_gate_runtime_tables": 167,
+      "root_gate_only_tables": [
+        "context_cache",
+        "github_webhook_deliveries"
+      ],
+      "root_gate_only_source_reachable": true,
+      "unreachable_in_both": 11,
+      "separate_catalog_tables": 5,
+      "status": "pass; both read-only scans are retained and source reachability is separate from scoped runtime proofs",
+      "evidence": "table-reachability-g277.md",
+      "scanner_latest": "167 tables / 160 empty / 10 unreachable; static source scan only"
+    },
+    "actual_mock_crash_recovery": "pass; running to failed after server restart",
+    "independent_cancel_redispatch_probe": "pass; actual child closure and retained new lease",
+    "browser_real_task_chain": {
+      "state": "verified bounded local fixture",
+      "task_id": "506c6e33-af94-44c0-831f-20f004e25f02",
+      "evidence": "browser-task-second-proof.json",
+      "execution_events": 14,
+      "captured_execution_frames": 24,
+      "missing_or_mismatched_timestamps": 0,
+      "terminal_audit_rows": 1,
+      "provider_tokens_reported": 51050
+    },
+    "browser_dashboard_crawl": {
+      "state": "pass authenticated local Chromium against disposable production-profile server",
+      "evidence": "browser-local-crawl-g244.md",
+      "route_patterns": 38,
+      "ordinary_routes_page_errors": 0,
+      "clean_batch_failed_requests": 0,
+      "expected_fixture_404_or_unavailable_503": true,
+      "production_authenticated": false
+    },
+    "browser_revalidation_g254": {
+      "state": "unavailable; no connected browser instance",
+      "evidence": "browser-availability-g267.md",
+      "new_ui_claim": false
+    },
+    "live_public_recheck_g261": {
+      "state": "pass; read-only public shell/version and protected health/openapi boundary",
+      "evidence": "live-public-recheck-g261.md",
+      "authenticated_semantics": false,
+      "deployed_commit_identity": false
+    },
+    "catalog_browser_chain": {
+      "state": "verified artifact preparation/deactivation only",
+      "evidence": "catalog-ui-final-db.json",
+      "runtime_registered": false
+    },
+    "controlled_product_improvement": {
+      "state": "supervised product-source repair applied to uncommitted audit checkout",
+      "evidence": "controlled-product-improvement-v2.json",
+      "run_id": "8230a6c2-7ff9-4e89-ac27-186792c51d9e",
+      "tasks_completed": 3,
+      "programmatic_fixture_approvals": 3,
+      "execution_events": 76,
+      "audit_events": 15,
+      "reported_tokens": 318519,
+      "duration_seconds": 109.46,
+      "immutable_catalog_tests_passed": 26,
+      "reviewers_reran_tests": false,
+      "human_signoff": false,
+      "promoted": false
+    },
+    "controlled_product_first_attempt": {
+      "state": "failed before review on fixture dependency symlink boundary",
+      "evidence": "controlled-product-improvement.json.partial.json",
+      "reported_tokens": 123673,
+      "root_cause_repaired": "exact dependency ignore paths and actual worktree preflight; no production dependency change"
+    },
+    "loops_browser_governance": {
+      "state": "pass scoped actual browser REST SQLite restart assertions",
+      "evidence": "g54-browser-proof.json",
+      "fixture_makers": "explicit synthetic mock",
+      "provider_executed": false,
+      "completion_identity": "server-owned authenticated operator",
+      "restart": "completed remains completed; in-flight loops interrupted; native task awaiting approval with no start/token usage"
+    },
+    "loops_start_layout": {
+      "state": "pass desktop bounds",
+      "evidence": "g54-layout-proof.json",
+      "viewport_widths": [
+        1200,
+        1440
+      ],
+      "scope": "Start Loop controls within card; no main horizontal overflow; not whole-page/mobile certification"
+    },
+    "loops_header_layout": {
+      "state": "pass desktop bounds and visual inspection",
+      "evidence": "g54-header-proof.json",
+      "viewport_widths": [
+        1200,
+        1440
+      ],
+      "scope": "selected run title readable; buttons and Start controls within cards; no domain mutations"
+    },
+    "operator_intervention": {
+      "state": "pass scoped browser REST SQLite restart resume",
+      "evidence": "intervention-resumed-db.json",
+      "restart_evidence": "intervention-paused-after-restart.json",
+      "tasks": 0,
+      "leases": 0,
+      "claim_status": "proposed",
+      "gate_evidence_unchanged": true,
+      "live_worker_drain": false
+    },
+    "intervention_cancel_mutation": {
+      "state": "targeted mutation detected and restored",
+      "red_evidence": "intervention-cancel-mutation-red.log",
+      "green_evidence": "intervention-ui-final.log",
+      "scope": "cancelled prompt must not manufacture proceed; separate from 73 configured Stryker mutations"
+    },
+    "paused_dispatch_admission": {
+      "state": "pass nested and generic engine fixtures",
+      "evidence": "routing-continuation.md",
+      "scope": "initial dispatch, after semaphore, fallback, canonical worker binding; no provider checkpoint"
+    },
+    "telegram_local_transport": {
+      "state": "pass mapped transport shared API domain fixtures",
+      "evidence": "telegram-continuation.md",
+      "provider_delivery": false,
+      "durable_update_deduplication": false
+    },
+    "knowledge_validator": {
+      "state": "pass actual configured canonical structural validator",
+      "evidence": "knowledge-validator-real-service.log",
+      "scope": "174 documents accepted;172 types excluded from typed checks; not capability certification"
+    },
+    "predictive_intelligence_validation": {
+      "state": "pass local HTTP admission and neutral-prior contract",
+      "evidence": "predictive-validation-g253.md",
+      "malformed_request_status": 400,
+      "valid_zero_finding_status": 200,
+      "quality_or_provider_proof": false
+    },
+    "openmythos_false_green": {
+      "state": "8 CLI regression checks pass; actual certification blocked",
+      "evidence": "openmythos-admissibility-current.json"
+    },
+    "current_principal": {
+      "state": "pass scoped actual HTTP TCP WebSocket SQLite",
+      "evidence": "auth-principal-continuation.md",
+      "all_tenant_socket_isolation": false,
+      "idle_revocation_timer": false
+    },
+    "refresh_service": {
+      "state": "actual browser chain locally verified",
+      "evidence": "g66-session-closure.md",
+      "route_frontend_state": "CONNECTED",
+      "browser_database_proof": "browser-session-db-final.json",
+      "revoked_generations": 5,
+      "legacy_sidless_revocation": false,
+      "production_verified": false
+    },
+    "work_item_goal_conversion": {
+      "state": "pass browser duplicate reload restart SQLite",
+      "evidence": "work-item-browser-after-restart.json",
+      "linked_loop_runs": 0
+    },
+    "organization_switch": {
+      "state": "pass browser roundtrip token scope canonical audit",
+      "evidence": "organization-browser-db.json",
+      "tenant_row_isolation_verified": false
+    },
+    "approval_binding_and_queue": {
+      "state": "scoped actual SQLite/engine adversarial checks pass",
+      "evidence": "queue-admission-revalidation.md",
+      "continuous_post_start_policy_enforcement": false,
+      "one_use_grants": false
+    },
+    "agent_lifecycle": {
+      "state": "scoped HTTP SQLite retirement/heartbeat/registry and browser proof",
+      "evidence": "agent-lifecycle-continuation.md",
+      "live_process_drain": false
+    },
+    "lifecycle_browser": {
+      "state": "actual local Chromium HTTP SQLite restart; explicitly MockExecutor",
+      "evidence": "lifecycle-closure.md",
+      "executable_proof": "lifecycle-browser-proof.json",
+      "provider_executed": false,
+      "human_approval": false
+    },
+    "openmythos_cache_integrity": {
+      "state": "51 focused checks pass; failed loads remain failed and snapshot hashes match consumed bytes",
+      "evidence": "openmythos-cache-integrity.md",
+      "certification_ready": false
+    },
+    "evolution_checkpoint": {
+      "evidence": "evolution-continuation.md",
+      "goals_registered": 6,
+      "goals_completed": [
+        "E1"
+      ],
+      "auth_routes_tested": 604,
+      "api_registrations": 610,
+      "cognitive_http_restart": "evolution-http-after-restart.json",
+      "negative_loop_control": "evolution-loop-negative-control-final.json",
+      "recurrent_polling": "tested and stopped in disposable fixtures",
+      "strategy_applied": false,
+      "unseen_task_improvement_proven": false,
+      "background_monitor_active": false
+    },
+    "targeted_fix_pipeline": {
+      "state": "pass; bounded target finding through maker/checker/checks/verification with explicit runtime validation and security risk classification",
+      "evidence": "fix-pipeline-validation-g187.md",
+      "status": "ready_for_human_merge",
+      "automatic_merge": false
+    },
+    "self_modification_and_sbom_routes": {
+      "state": "pass; real Express/SQLite route semantics",
+      "evidence": "self-modification-sbom-g191.md",
+      "tests": 17,
+      "execute_policy": "451 SELF_MODIFICATION_DISABLED"
+    },
+    "latest_gate_evidence": {
+      "build": "npm run build (2026-09-11)",
+      "final_server_build": "npm run build --workspace=@djimitflo/server (included in root build)",
+      "type_check": "npm run type-check (2026-09-11)",
+      "lint": "npm run lint (2026-09-11)",
+      "assurance": "assurance-recheck-g291.md",
+      "contracts": "contract-inventory-g291.json",
+      "route_contracts": "advanced-route-validation-g273.md",
+      "mcp": "route-contract-recheck-g270.md",
+      "full_workspace_regression": "workspace-regression-g291.md",
+      "full_server_regression": "server-regression-g291.md",
+      "mutation": "mutation-regression-g266.md",
+      "loops_recheck": "loops-self-check-g291-retry.log",
+      "social_runtime": "social-runtime-g265.md",
+      "poller": "poller-self-test-g265.md",
+      "astra_loop_forwarding": "astra-loop-forwarding-g266.md",
+      "evolution_preparation": "evolution-preparation-g270.md",
+      "skills_route_validation": "skills-route-validation-g271.md",
+      "database_scope": "database-scope-reconciliation-g243.md",
+      "table_reachability": "table-reachability-g269.md",
+      "browser_dashboard_crawl": "browser-local-crawl-g244.md",
+      "browser_revalidation": "browser-availability-g267.md",
+      "gym_auth_recheck": "gym-auth-recheck-g245.md",
+      "contract_route_recheck": "contract-inventory-g273.json",
+      "swarm_mission_permissions": "swarm-mission-permissions-g259.md",
+      "memory_evolution_permissions": "memory-evolution-permissions-g260.md",
+      "meta_route_permissions": "meta-route-permissions-g261.md",
+      "repository_index_validation": "repository-index-validation-g261.md",
+      "compliance_audit_boundary": "compliance-report-boundary-g258.md",
+      "knowledge_bus_cleanup": "knowledge-bus-cleanup-g247.md",
+      "knowledge_publish_validation": "knowledge-publish-validation-g248.md",
+      "predictive_intelligence_validation": "predictive-validation-g253.md",
+      "usage_integrity": "usage-accounting-g256.md",
+      "real_server_task_chain": "e2e-task-chain-g235.md",
+      "agi_consensus_routes": "agi-consensus-route-validation-g237.md",
+      "live_public": "live-github-recheck-g274.md",
+      "assurance_buffer_regression": "assurance-source-buffer.md",
+      "observability_route_validation": "observability-route-validation-g272.md",
+      "advanced_route_validation": "advanced-route-validation-g273.md",
+      "assurance_truth": "assurance-truth-g291.log",
+      "advanced_governance": "advanced-governance-g274.md",
+      "explainer_route_validation": "explainer-route-validation-g275.md",
+      "explainer_pipeline_route": "explainer-pipeline-route-g276.md",
+      "route_inventory": "route-inventory-runtime-g289.json"
+    },
+    "swarm_intel_evolution": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "swarm-intel-evolution-route-g277.md",
+      "plan_persistence": "legacy subtasks_json schema compatible",
+      "evolution_generation": 2,
+      "outcomes": 2
+    },
+    "audit_ci": "pass; no unaccepted high/critical production advisories (evidence audit-ci-g283.md)",
+    "swarm_orchestration": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "swarm-orchestration-route-g278.md",
+      "session_persistence": true,
+      "message_idempotency": true,
+      "executor_unavailable": "typed 503 fail-closed"
+    },
+    "discussion_governance": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "discussion-governance-route-g279.md",
+      "proposal_persistence": true,
+      "votes_persisted": 2,
+      "consensus": "accepted_and_discussion_closed",
+      "timeline_entries": 4
+    },
+    "apex_inventory": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "apex-inventory-route-g280.md",
+      "plugin_activation": "typed 503 fail-closed",
+      "memory_inventory": true,
+      "worker_status": true,
+      "provider_execution": "not_claimed"
+    },
+    "cognitive_evolution": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "cognitive-evolution-route-g281.md",
+      "episodes": 3,
+      "successes": 2,
+      "failures": 1,
+      "observed_success_rate": 0.6666666666666666,
+      "automatic_application": false
+    },
+    "compliance_audit": {
+      "state": "verified bounded local HTTP/SQLite chain",
+      "evidence": "compliance-audit-route-g282.md",
+      "entries": 2,
+      "chain_valid": true,
+      "report_type": "nora"
+    },
+    "self_hosted_improvement": {
+      "state": "verified supervised disposable product-source workflow",
+      "runtime": "codex",
+      "model": "gpt-6-astra",
+      "maker_checker": "pass",
+      "security_review": "HOLD",
+      "promotion": "REVIEW_REQUIRED",
+      "promoted": false,
+      "evidence": "self-hosted-improvement-g294.json"
+    },
+    "latest_route_chain": {
+      "state": "verified local authenticated HTTP Gym governance read chain",
+      "capabilities": ["gym.status", "gym.curriculum", "gym.history"],
+      "evidence": "gym-route-chain-g332.md"
+    }
+  },
+  "latest_recheck": {
+    "checkpoint": "G393",
+    "workspace_tests": {
+      "passed": 2867,
+      "skipped": 20,
+      "failed": 0,
+      "evidence": "workspace-regression-g393.log",
+      "note": "Full workspace regression after OpenCode event-boundary repair"
+    },
+    "server_tests": {
+      "passed": 2575,
+      "skipped": 20,
+      "failed": 0,
+      "evidence": "server-regression-g393.log",
+      "note": "Server phase after OpenCode event-boundary repair"
+    },
+    "loops_self_check": {
+      "files": 35,
+      "passed": 338,
+      "skipped": 2,
+      "failed": 0,
+      "evidence": "loops-self-check-g393.md",
+      "note": "Broader governed /loops, social-runtime and self-improvement subset after fleet recovery"
+    },
+    "route_inventory": "route-inventory-runtime-g366.json",
+    "contract_inventory": {
+      "routes": 585,
+      "tested": 585,
+      "critical_unclassified": 0,
+      "mcp_tools": 56,
+      "mcp_tools_tested": 56,
+      "evidence": "module-covered-routes-g375.md"
+    },
+    "live_browser_login": {
+      "state": "verified production login rendering and fail-closed invalid credentials",
+      "status": 401,
+      "console_errors": 0,
+      "authenticated_dashboard": false,
+      "evidence": "evidence/live-browser-login-g386.md"
+    },
+    "local_spa_crawl": {
+      "state": "verified authenticated local SPA route rendering",
+      "routes": 32,
+      "rendered_h1": 32,
+      "expected_unavailable_503": "/authority ledger not provisioned",
+      "expected_sse_abort": "/api/observability/stream on route change",
+      "evidence": "evidence/browser-local-crawl-g387.md"
+    },
+    "browser_recheck": {
+      "state": "unavailable; no connected browser instance",
+      "evidence": "evidence/browser-availability-g392.md",
+      "new_ui_claim": false
+    },
+    "build": "pass",
+    "type_check": "pass",
+    "lint": "pass",
+    "assurance": "fail_closed_external_prerequisites",
+    "evidence": "evidence/assurance-recheck-g393.md"
+  },
+  "unresolved_intermittents": [
+    "one integrated workspace run observed compliance-usage-pagination expected400 but received401 for malformed report input; focused 2-test run and immediate complete workspace rerun passed, so no auth or validation bypass is claimed",
+    "one full server run observed anonymous GET /swarms/intelligence/outcome-learning as 404 instead of401; focused route-inventory rerun and immediate complete server rerun passed, so no route-registration or auth bypass is claimed",
+    "first G298 workspace sweep returned200 for /swarms/assurance/capability-tokens?limit=NaN instead of400; immediate complete rerun passed, so no validation-bypass or fix is claimed",
+    "route-inventory anonymous probe returned200 once for DELETE /skills/:id/assign/:agentId during the first post-fix run; immediate rerun and standalone full sweep returned401 consistently, so no bypass is claimed",
+    "full server suite observed one transient 200 for GET /segml/l5/status during one run; isolated route inventory and immediate repeated full suite returned401/zero failures, so no bypass is claimed",
+    "cross-store message idempotency returned200 once instead of409; not reproduced in30targeted repeats or subsequent full suites",
+    "native Node/V8 mutation dry-run crash; direct tests and unchanged retry pass",
+    "one parallel workspace route-permissions-http viewer request returned 401 instead of 403; isolated and full-server reruns passed, so no auth bypass or fix is claimed",
+    "full workspace route-inventory probe returned200 once for POST /repo-index/register and404 once for POST /swarms/intelligence/missions; focused reruns and a subsequent full workspace run passed, so no auth bypass or missing-route fix is claimed",
+    "full server suite reproduced one anonymous 200 for POST /gym/governance/:skillId/run; route-local and repeated focused/full reruns returned401, so no bypass or fix is claimed",
+    "first integrated G250 run reproduced one anonymous 200 for GET /api/observability/policy-stats; isolated route inventory and immediate complete rerun returned401, so no bypass or fix is claimed",
+    "first integrated G252 workspace run observed loop-service goal creation expected 201 but received 200; immediate complete workspace rerun passed, so the cause remains UNKNOWN and no semantic status change is claimed",
+    "one parallel full server run observed platform_admin receiving 200 instead of 403 on skill assignment; 20 isolated repeats and an immediate full rerun passed, so no authorization bypass or fix is claimed",
+    "one parallel full workspace run observed task-recovery PATCH expected TASK_RUNNING but received 404; isolated test and immediate complete reruns passed, so the cause remains UNKNOWN",
+    "integrated workspace run observed one transient platform_admin /skills/reload 200 instead of expected 503; isolated 13-test route-permission suite and immediate complete rerun passed, so state remains UNKNOWN",
+    "integrated server run observed one transient socialize response 200 instead of expected 201; isolated 3-test suite and immediate full rerun passed, so state remains UNKNOWN",
+    "full server run observed swarm-orchestration unavailable executor expected 503 but received 404; isolated route suite and immediate complete rerun passed, so no runtime availability or routing claim is changed",
+    "integrated workspace run observed loop-service goal response 401 instead of JSON 201; immediate complete workspace rerun passed, so no authentication or goal-state bypass is claimed",
+    "one full workspace run observed anonymous GET /api/memory-evolution/retrieve as 200 instead of 401; isolated route-inventory rerun and immediate complete workspace rerun passed, so no authentication bypass is claimed"
+  ],
+  "boundaries": [
+    "fresh browser revalidation unavailable: no connected browser instance",
+    "production authenticated UI not inspected",
+    "CLI-internal tools not universally mediated by ToolBroker",
+    "real provider crash/descendant process recovery not certified",
+    "Astra maker/checker/security-checker product-source repair supervised; same model/account, separate threads/worktrees; no unattended merge",
+    "Telegram provider delivery not verified",
+    "no external authority gates bypassed"
+  ]
+}

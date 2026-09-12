@@ -98,7 +98,9 @@ describe('Council routes', () => {
     expect(created.status).toBe(201);
     const sessionId = created.body.id;
 
-    expect((await request('/sessions?limit=-2')).body).toHaveLength(1);
+    const invalidLimit = await request('/sessions?limit=-2');
+    expect(invalidLimit.status).toBe(400);
+    expect(invalidLimit.body.error.code).toBe('VALIDATION_ERROR');
     expect((await request(`/sessions/${sessionId}`)).body.phase).toBe('diverging');
 
     const executed = await request(`/sessions/${sessionId}/execute`, { method: 'POST' });

@@ -9,6 +9,9 @@ const root = resolve(import.meta.dirname, '..');
 const output = resolve(root, process.env.ASSURANCE_REPORT_PATH || 'openspec/changes/assurance-truth-closure/evidence.json');
 const now = new Date().toISOString();
 const gates = [];
+// Match the gate runner's bounded ceiling. Exceeding it must fail, never hash
+// truncated source or silently describe an unreadable worktree as clean.
+const SOURCE_MAX_BUFFER = 64 * 1024 * 1024;
 
 function hashFile(path) {
   return createHash('sha256').update(readFileSync(resolve(root, path))).digest('hex');
@@ -40,17 +43,17 @@ function redact(value) {
     .replace(/((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\s,"']+/gi, '$1[REDACTED]');
 }
 
-function source(command, args) {
-  try { return execFileSync(command, args, { cwd: root, encoding: 'utf8' }).trim(); }
-  catch { return null; }
+function source(command, args, repoRoot = root, required = false) {
+  try { return execFileSync(command, args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: SOURCE_MAX_BUFFER }).trim(); }
+  catch (error) { if (required) throw error; return null; }
 }
 
-function sourceState() {
-  const status = source('git', ['status', '--porcelain=v1']) || '';
-  const hash = createHash('sha256').update(execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: root }));
-  const untracked = (source('git', ['ls-files', '--others', '--exclude-standard']) || '').split('\n').filter(Boolean);
-  for (const path of untracked) hash.update(path).update('\0').update(readFileSync(resolve(root, path)));
-  return { commit: source('git', ['rev-parse', 'HEAD']), dirty: Boolean(status), dirty_state_sha256: hash.digest('hex') };
+function sourceState(repoRoot = root) {
+  const status = source('git', ['status', '--porcelain=v1'], repoRoot, true);
+  const hash = createHash('sha256').update(execFileSync('git', ['diff', '--binary', 'HEAD'], { cwd: repoRoot, maxBuffer: SOURCE_MAX_BUFFER }));
+  const untracked = source('git', ['ls-files', '--others', '--exclude-standard'], repoRoot, true).split('\n').filter(Boolean);
+  for (const path of untracked) hash.update(path).update('\0').update(readFileSync(resolve(repoRoot, path)));
+  return { commit: source('git', ['rev-parse', 'HEAD'], repoRoot, true), dirty: Boolean(status), dirty_state_sha256: hash.digest('hex') };
 }
 
 function main() {
@@ -59,8 +62,8 @@ function main() {
   gates.push({
   id: 'supported_node',
   mandatory: true,
-  status: major >= 20 && major < 25 ? 'pass' : 'fail',
-  evidence: `node=${process.version}; required=>=20 <25`,
+  status: major >= 22 && major < 25 ? 'pass' : 'fail',
+  evidence: `node=${process.version}; required=>=22 <25`,
   started_at: now,
   finished_at: now,
   });
@@ -101,4 +104,4 @@ function main() {
 
 if (resolve(process.argv[1] || '') === fileURLToPath(import.meta.url)) main();
 
-export { redact };
+export { redact, sourceState };

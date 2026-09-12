@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-09-09T17:47:39.066Z",
+  "state": "BASELINE_RECORDED",
+  "source": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "4c4100b1ce50b60862cfcebb652ac9426192df03997c491c9cf6ac4644325fb6"
+  },
+  "branch": "codex/autonomous-audit-20260909",
+  "github_main": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+  "local_runtime": {
+    "base": "http://127.0.0.1:3187",
+    "health": {
+      "status": "healthy",
+      "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+      "timestamp": "2026-09-09T17:47:39.065Z",
+      "uptime": 7475.73975575
+    },
+    "profile": "api",
+    "external_connections": "Ollama/Qdrant/UAMS explicitly loopback-refused; event-bus polling not configured"
+  },
+  "production_reference": {
+    "url": "https://djimitflo.agentical.nl/",
+    "http_status": 200,
+    "content_type": "text/html; charset=utf-8",
+    "authenticated_capabilities": "UNKNOWN; no authenticated production traversal in this checkpoint"
+  },
+  "previous_verified_checkpoint": {
+    "tests": {
+      "passed": 2656,
+      "skipped": 20,
+      "failed": 0,
+      "evidence": "lifecycle-tests-final.log",
+      "note": "Full integrated root suite: server2371 dashboard147 MCP39 catalog26 ransomware40 shared3 Telegram30; maintained TypeScript catalog tests exclude stale compiled duplicates"
+    },
+    "mutation": {
+      "historical_attempt": "native SIGSEGV during earlier dry run, unchanged retry passed",
+      "latest_attempt": "pass without retry",
+      "killed": 71,
+      "survived": 0,
+      "no_coverage": 0,
+      "scope": "three configured source regions, not repository-wide; approval line range realigned to same intended guards after transaction refactor; previous shifted64 run is not equivalent",
+      "evidence": "approval-range-mutation-final.log"
+    },
+    "mission_complete": false,
+    "summary_sha256": "67a81a755576a9611118f0d6d26005a4a5f9a0027b4d9dd7609143897f10eee8",
+    "report_sha256": "49055931f3b52865dd37348ae474396ccaeac93e89cf0ac9e8c1a762bad1a30a",
+    "evidence": "lifecycle-tests-final.log; approval-range-mutation-final.log; lifecycle-browser-proof.json",
+    "meaning": "historical executed checkpoint, not a rerun for current edits"
+  },
+  "new_experiment_baselines": [
+    "cognitive evolution fixed-episode RED probe",
+    "outcome-ingest-chain-red.log",
+    "self-improvement-closure-red.log"
+  ],
+  "goals": [
+    {
+      "id": "4ee661ca-47cd-4add-b9f1-7d23ba32052f",
+      "key": "evolution-20260909-E6",
+      "status": "created"
+    },
+    {
+      "id": "e41eb751-876e-49f9-9e52-483ad48889e1",
+      "key": "evolution-20260909-E5",
+      "status": "created"
+    },
+    {
+      "id": "7371f30d-8316-4768-b763-3d42c721ba9e",
+      "key": "evolution-20260909-E4",
+      "status": "created"
+    },
+    {
+      "id": "c9aa17af-059d-433d-a9fd-99d28a241b64",
+      "key": "evolution-20260909-E3",
+      "status": "created"
+    },
+    {
+      "id": "29fae050-ba37-4435-aca8-277171ee2972",
+      "key": "evolution-20260909-E2",
+      "status": "created"
+    },
+    {
+      "id": "1d36485d-d3b1-44fa-b753-642b2c16efd2",
+      "key": "evolution-20260909-E1",
+      "status": "created"
+    }
+  ],
+  "limits": [
+    "Source snapshot taken during active development; each controlled experiment must bind its own before/after artifact identities",
+    "Public HTTP200 is reachability only",
+    "No new provider, authenticated production, held-out intelligence improvement or recurring background monitor claimed"
+  ]
+}

@@ -75,6 +75,20 @@ describe('errorHandler', () => {
       }),
     }));
   });
+
+  it('maps domain error markers to safe client statuses when services throw plain errors', () => {
+    const cases = [
+      ['AGENT_NOT_FOUND', 404],
+      ['OPENMYTHOS_SUBJECT_MODEL_REQUIRED', 400],
+      ['FLEET_HANDOFF_NOT_PENDING', 409],
+      ['PLUGIN_ACTIVATION_UNAVAILABLE', 503],
+    ] as const;
+    for (const [message, status] of cases) {
+      const res = createMockResponse();
+      errorHandler(new Error(message), { method: 'POST', path: '/domain' } as Request, res, vi.fn());
+      expect(res.status).toHaveBeenCalledWith(status);
+    }
+  });
 });
 
 describe('createError', () => {

@@ -35,6 +35,15 @@ function mapDiscussionTurnError(error: unknown): never {
   }
 }
 
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw createError(400, `${name} must be an integer between ${minimum} and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
+
 function loadDiscussionOr404(db: any, id: string, res: any): any | null {
   const discussion = db.prepare('SELECT * FROM discussions WHERE id = ?').get(id);
   if (!discussion) {
@@ -83,7 +92,9 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
   // GET /api/discussions - List all discussions
   router.get('/', (req, res, next) => {
     try {
-      const { status, agent_id, limit = 100, offset = 0 } = req.query;
+      const { status, agent_id } = req.query;
+      const limit = boundedInteger(req.query.limit, 100, 1, 500, 'limit');
+      const offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
 
       let query = 'SELECT * FROM discussions';
       const params: any[] = [];
@@ -104,7 +115,7 @@ export function createDiscussionRoutes(db: Database, auth?: AuthMiddleware, wsSe
       }
 
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-      params.push(Number(limit), Number(offset));
+      params.push(limit, offset);
 
       const discussions = db.prepare(query).all(...params);
       const parsed = discussions.map((d: any) => parseDiscussion(d));

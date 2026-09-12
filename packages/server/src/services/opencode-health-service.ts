@@ -1,6 +1,7 @@
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { resolveRepositoryRoot } from '../utils/repository-root';
 
 export type OpenCodeMcpStatus = 'ok' | 'locked' | 'unconfigured' | 'unavailable' | 'error';
 
@@ -43,7 +44,7 @@ export class OpenCodeHealthService {
       };
     }
 
-    const content = exists ? fs.readFileSync(resolvedPath, 'utf8') : envContent!;
+    const content = envContent ?? (exists ? fs.readFileSync(resolvedPath, 'utf8') : undefined)!;
     const config = this.parseJsonc(content);
 
     const requiredSections = ['mcp', 'tools', 'agent', 'permission'];
@@ -54,7 +55,7 @@ export class OpenCodeHealthService {
     const perAgentRecs = this.perAgentRecommendations(config, mcpEntries);
 
     return {
-      config_path: exists ? resolvedPath : 'env:OPENCODE_CONFIG_CONTENT',
+      config_path: envContent ? 'env:OPENCODE_CONFIG_CONTENT' : resolvedPath,
       config_exists: true,
       missing_sections: missingSections,
       mcp_entries: mcpEntries,
@@ -65,9 +66,12 @@ export class OpenCodeHealthService {
   }
 
   private findConfigPath(): string {
+    const repoRoot = resolveRepositoryRoot(process.cwd());
     const candidates = [
       path.join(process.cwd(), 'opencode.jsonc'),
       path.join(process.cwd(), 'opencode.json'),
+      path.join(repoRoot, 'opencode.jsonc'),
+      path.join(repoRoot, 'opencode.json'),
     ];
     for (const candidate of candidates) {
       if (fs.existsSync(candidate)) return candidate;

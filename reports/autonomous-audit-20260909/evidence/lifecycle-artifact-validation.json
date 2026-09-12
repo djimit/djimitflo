@@ -1,0 +1,10 @@
+{
+  "state": "PASS",
+  "reports": 9,
+  "passed": 2656,
+  "skipped": 20,
+  "missionComplete": false,
+  "assurance": "blocked",
+  "browserProof": "PASS",
+  "reviewGrantTimestampsMatchCanonical": true
+}

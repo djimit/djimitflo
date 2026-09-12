@@ -37,15 +37,22 @@ export class ApprovalService {
     return row ? this.mapApproval(row) : null;
   }
 
-  getLatestPendingForTask(taskId: string): ApprovalRequest | null {
+  getLatestPendingForTask(taskId: string, options: { executionOnly?: boolean } = {}): ApprovalRequest | null {
     const now = new Date().toISOString();
     const expired = this.db.prepare(`
       SELECT * FROM approvals
       WHERE task_id = ? AND status = 'pending'
-        AND (expires_at IS NULL OR julianday(expires_at) <= julianday(?))
+        AND (julianday(expires_at) IS NULL OR julianday(expires_at) <= julianday(?))
     `).all(taskId, now) as any[];
     expired.forEach((row) => this.expireApproval(this.mapApproval(row)));
-    const row = this.db.prepare("SELECT * FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(taskId) as any;
+    // Manual action reviews do not authorize or pause task execution. Filter
+    // before LIMIT so a newer manual review cannot hide an older execution gate.
+    // json_type distinguishes the server-owned boolean true from strings/numbers.
+    const executionFilter = options.executionOnly ? `AND CASE
+      WHEN json_valid(metadata) THEN COALESCE(json_type(metadata, '$.manual_action'), 'null') != 'true'
+      ELSE 1 END` : '';
+    const row = this.db.prepare(`SELECT * FROM approvals WHERE task_id = ? AND status = 'pending'
+      ${executionFilter} ORDER BY created_at DESC LIMIT 1`).get(taskId) as any;
     return row ? this.mapApproval(row) : null;
   }
 
@@ -54,52 +61,55 @@ export class ApprovalService {
     const now = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-    this.db.prepare(`
-      INSERT INTO approvals (
-        id, task_id, execution_event_id, status, risk_level, action_type, title, description,
-        command, tool_name, target_path, policy_id, request_type, request_message, request_data,
-        expires_at, metadata, requested_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.task.id,
-      null,
-      ApprovalStatus.PENDING,
-      input.assessment.risk_level,
-      input.assessment.action_type,
-      input.title,
-      input.description,
-      input.command || null,
-      input.toolName || null,
-      input.targetPath || null,
-      input.policyId || null,
-      input.requestType,
-      input.description,
-      JSON.stringify({
-        assessment: input.assessment,
-        taskTitle: input.task.title,
-      }),
-      expiresAt,
-      JSON.stringify(input.metadata || {}),
-      input.requestedBy || input.task.owner_user_id || input.task.created_by || 'system',
-      now,
-      now
-    );
+    const approval = this.db.transaction(() => {
+      this.db.prepare(`
+        INSERT INTO approvals (
+          id, task_id, execution_event_id, status, risk_level, action_type, title, description,
+          command, tool_name, target_path, policy_id, request_type, request_message, request_data,
+          expires_at, metadata, requested_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        input.task.id,
+        null,
+        ApprovalStatus.PENDING,
+        input.assessment.risk_level,
+        input.assessment.action_type,
+        input.title,
+        input.description,
+        input.command || null,
+        input.toolName || null,
+        input.targetPath || null,
+        input.policyId || null,
+        input.requestType,
+        input.description,
+        JSON.stringify({
+          assessment: input.assessment,
+          taskTitle: input.task.title,
+        }),
+        expiresAt,
+        JSON.stringify(input.metadata || {}),
+        input.requestedBy || input.task.owner_user_id || input.task.created_by || 'system',
+        now,
+        now
+      );
 
-    const approval = this.getApproval(id)!;
-    this.auditService.record({
-      event_type: AuditEventType.APPROVAL_REQUESTED,
-      action: 'approval_requested',
-      resource_type: 'approval',
-      resource_id: id,
-      task_id: input.task.id,
-      risk_level: input.assessment.risk_level,
-      metadata: {
-        policyId: input.policyId || null,
-        actionType: input.assessment.action_type,
-      },
-    });
-    this.wsService.broadcastTaskEventById(input.task.id, {
+      const approval = this.getApproval(id)!;
+      this.auditService.record({
+        event_type: AuditEventType.APPROVAL_REQUESTED,
+        action: 'approval_requested',
+        resource_type: 'approval',
+        resource_id: id,
+        task_id: input.task.id,
+        risk_level: input.assessment.risk_level,
+        metadata: {
+          policyId: input.policyId || null,
+          actionType: input.assessment.action_type,
+        },
+      });
+      return approval;
+    }).immediate();
+    this.publish(input.task.id, {
       type: WebSocketEventType.APPROVAL_REQUESTED,
       payload: { approval },
       timestamp: now,
@@ -109,77 +119,95 @@ export class ApprovalService {
   }
 
   decideApproval(id: string, approved: boolean, decidedBy: string, reason?: string): ApprovalRequest {
-    const approval = this.getApproval(id);
-    if (!approval) {
-      throw new Error('Approval not found');
+    if (typeof approved !== 'boolean') {
+      throw new Error('INVALID_APPROVAL_DECISION: approved must be a boolean.');
     }
-    if (approval.status === ApprovalStatus.EXPIRED) {
-      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
-    }
-    if (approval.status !== ApprovalStatus.PENDING) {
-      throw new Error('Approval already processed');
-    }
-    if (!approval.expires_at || new Date(approval.expires_at).getTime() <= Date.now()) {
-      this.expireApproval(approval);
-      throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
-    }
-    // SECURITY INVARIANT: Self-approval prevention.
-    // The maker (requested_by) cannot be the approver (decided_by).
-    // This enforces separation of duties at the data layer.
-    if (approval.requested_by && decidedBy === approval.requested_by) {
-      throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
-    }
-    const now = new Date().toISOString();
-    const status = approved ? ApprovalStatus.APPROVED : ApprovalStatus.DENIED;
+    const updated = this.db.transaction(() => {
+      const approval = this.getApproval(id);
+      if (!approval) {
+        throw new Error('Approval not found');
+      }
+      if (approval.status === ApprovalStatus.EXPIRED) {
+        throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
+      }
+      if (approval.status !== ApprovalStatus.PENDING) {
+        throw new Error('Approval already processed');
+      }
+      if (!approval.expires_at || !(new Date(approval.expires_at).getTime() > Date.now())) {
+        // Persist expiry and its audit together; throw only after that commit.
+        return this.expireApprovalRecord(approval)!;
+      }
+      // SECURITY INVARIANT: Self-approval prevention.
+      // The maker (requested_by) cannot be the approver (decided_by).
+      // This enforces separation of duties at the data layer.
+      if (approval.requested_by && decidedBy === approval.requested_by) {
+        throw new Error('SELF_APPROVAL_FORBIDDEN: The maker cannot approve their own request. Independent approval required.');
+      }
+      const now = new Date().toISOString();
+      const status = approved ? ApprovalStatus.APPROVED : ApprovalStatus.DENIED;
 
-    this.db.prepare(`
-      UPDATE approvals SET
-        status = ?,
-        approved_by = ?,
-        approved_at = ?,
-        denied_at = ?,
-        denial_reason = ?,
-        decided_at = ?,
-        decided_by = ?,
-        decision_reason = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(
-      status,
-      decidedBy,
-      approved ? now : null,
-      approved ? null : now,
-      approved ? null : (reason || 'No reason provided'),
-      now,
-      decidedBy,
-      reason || null,
-      now,
-      id
-    );
+      this.db.prepare(`
+        UPDATE approvals SET
+          status = ?,
+          approved_by = ?,
+          approved_at = ?,
+          denied_at = ?,
+          denial_reason = ?,
+          decided_at = ?,
+          decided_by = ?,
+          decision_reason = ?,
+          updated_at = ?
+        WHERE id = ? AND status = 'pending'
+      `).run(
+        status,
+        decidedBy,
+        approved ? now : null,
+        approved ? null : now,
+        approved ? null : (reason || 'No reason provided'),
+        now,
+        decidedBy,
+        reason || null,
+        now,
+        id
+      );
 
-    const updated = this.getApproval(id)!;
-    this.auditService.record({
-      event_type: approved ? AuditEventType.APPROVAL_GRANTED : AuditEventType.APPROVAL_DENIED,
-      action: approved ? 'approval_granted' : 'approval_denied',
-      resource_type: 'approval',
-      resource_id: id,
-      task_id: updated.task_id,
-      risk_level: updated.risk_level,
-      metadata: { reason: reason || null },
-    });
-    this.wsService.broadcastTaskEventById(updated.task_id, {
-      type: approved ? WebSocketEventType.APPROVAL_GRANTED : WebSocketEventType.APPROVAL_DENIED,
+      const updated = this.getApproval(id)!;
+      this.auditService.record({
+        event_type: approved ? AuditEventType.APPROVAL_GRANTED : AuditEventType.APPROVAL_DENIED,
+        action: approved ? 'approval_granted' : 'approval_denied',
+        resource_type: 'approval',
+        resource_id: id,
+        task_id: updated.task_id,
+        risk_level: updated.risk_level,
+        metadata: { reason: reason || null },
+      });
+      return updated;
+    }).immediate();
+    const expired = updated.status === ApprovalStatus.EXPIRED;
+    this.publish(updated.task_id, {
+      type: expired ? WebSocketEventType.APPROVAL_EXPIRED : approved ? WebSocketEventType.APPROVAL_GRANTED : WebSocketEventType.APPROVAL_DENIED,
       payload: { approval: updated },
-      timestamp: now,
+      timestamp: updated.updated_at,
     });
+    if (expired) throw new Error('APPROVAL_EXPIRED: Expired approvals cannot authorize execution.');
 
     return updated;
   }
 
   private expireApproval(approval: ApprovalRequest): void {
+    const expired = this.db.transaction(() => this.expireApprovalRecord(approval)).immediate();
+    if (!expired) return;
+    this.publish(expired.task_id, {
+      type: WebSocketEventType.APPROVAL_EXPIRED,
+      payload: { approval: expired },
+      timestamp: expired.updated_at,
+    });
+  }
+
+  private expireApprovalRecord(approval: ApprovalRequest): ApprovalRequest | null {
     const now = new Date().toISOString();
     const result = this.db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(now, approval.id);
-    if (!result.changes) return;
+    if (!result.changes) return null;
 
     const expired = this.getApproval(approval.id)!;
     this.auditService.record({
@@ -190,11 +218,17 @@ export class ApprovalService {
       task_id: expired.task_id,
       risk_level: expired.risk_level,
     });
-    this.wsService.broadcastTaskEventById(expired.task_id, {
-      type: WebSocketEventType.APPROVAL_EXPIRED,
-      payload: { approval: expired },
-      timestamp: now,
-    });
+    return expired;
+  }
+
+  private publish(taskId: string, message: Parameters<WebSocketService['broadcastTaskEventById']>[1]): void {
+    try {
+      this.wsService.broadcastTaskEventById(taskId, message);
+    } catch {
+      // State and canonical audit are already committed. A disconnected socket
+      // must not turn a valid decision into an apparent domain failure.
+      console.warn('[ApprovalService] Post-commit notification failed', { taskId, eventType: message.type });
+    }
   }
 
   private mapApproval(row: any): ApprovalRequest {

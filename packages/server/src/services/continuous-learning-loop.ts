@@ -97,7 +97,7 @@ export class ContinuousLearningLoop {
       goalsGenerated,
       dreamOpportunitiesGenerated,
       dreamTasksPlanned,
-      socialExchangesStarted: socialization.messages.length,
+      socialExchangesStarted: socialization.status === 'started' ? 1 : 0,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,

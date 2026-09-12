@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+const base='http://127.0.0.1:3187/api';
+const login=await fetch(base+'/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'audit@example.test',password:'disposable-local-audit-only'})});
+assert.equal(login.status,200);const{token}=await login.json();const requests=[];
+async function call(path,method='GET',body,expected=200){const r=await fetch(base+path,{method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();requests.push({path,method,status:r.status});console.error(JSON.stringify({path,status:r.status,id:data.id??data.run?.id,error:data.error}));assert.equal(r.status,expected,JSON.stringify(data));return data;}
+const repository='/private/tmp/djimitflo-evolution-loop.I7u89r';
+const resumeId=process.argv[2];
+const run=resumeId?await call(`/loops/runs/${resumeId}`):await call('/loops/start','POST',{loop_name:'doc-drift-and-small-fix-loop',repository_path:repository,max_findings:1},201);
+assert.equal(run.findings.length,1);
+const path=`/loops/runs/${run.id}`;
+const step=await call(path+'/step','POST',{});
+const prepared=resumeId?await call(path+'/review-bundle'):await call(path+'/continue','POST',{runtime:'mock',max_assignments:1},201);
+const maker=prepared.leases.find(lease=>lease.role==='maker');assert(maker?.worktree_path);assert.notEqual(maker.worktree_path,repository);
+const sourceBefore=readFileSync(maker.worktree_path+'/outcome.js','utf8');
+const execution=await call(path+'/execute-worker','POST',{lease_id:maker.id,timeout_ms:10000,skip_permissions:false});
+const checks=await call(path+'/run-checks','POST',{lease_id:maker.id,scripts:['test'],timeout_ms:10000});
+assert.equal(checks.run.status,'blocked');assert.equal(checks.lease.status,'failed');assert.equal(checks.checks[0].status,'fail');assert.notEqual(checks.checks[0].exit_status,0);
+const stdout=readFileSync(checks.checks[0].stdout_path,'utf8');assert(stdout.includes('fixed observations cannot gain an invented success fraction'));assert(stdout.includes('ERR_ASSERTION'));
+const verification=await call(path+'/verify','POST',{});
+const rejection=await call(path+'/continue','POST',{runtime:'mock',max_assignments:1},409);
+const bundle=await call(path+'/review-bundle');
+const closure=await call('/swarms/evolution/close-loop','POST',{loop_run_id:run.id},201);assert.equal(closure.status,'blocked');assert.equal(closure.eval_run,null);
+assert.equal(readFileSync(maker.worktree_path+'/outcome.js','utf8'),sourceBefore);
+console.log(JSON.stringify({state:'PASS',recorded_at:new Date().toISOString(),runId:run.id,repository,maker,step,execution,checks,verification,rejection,closure,bundle,requests,test_log_sha256:createHash('sha256').update(stdout).digest('hex'),test_stdout:stdout,providerExecuted:false,codeRepaired:false,checkerExecuted:false,approvalForged:false,causalImprovementClaimed:false,scope:'Actual scanner, worktree, explicit mock echo child and npm failure; durable blocked verification and refused learning closure, not autonomous engineering improvement'},null,2));

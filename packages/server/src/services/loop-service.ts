@@ -1,14 +1,15 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import { LOOP_CATALOG } from '@djimitflo/shared';
+import { createError } from '../middleware/error-handler';
 
 import type { Database } from 'better-sqlite3';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import { AgentAssuranceService } from './agent-assurance-service';
-import { SwarmIntelligenceService } from './swarm-intelligence-service';
+import { SwarmIntelligenceService, type SwarmCapabilityRecord } from './swarm-intelligence-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
 import { swarmEventBus } from './swarm-event-bus';
 import { LoopBudgetService } from './loop-budget-service';
@@ -23,7 +24,7 @@ import type { ExecuteWorkerResult } from './loop-worker-executor-service';
 import { LoopEventService } from './loop-event-service';
 import { LoopRunQueryService } from './loop-run-query-service';
 import { WorkerLeaseRepo } from './loop-worker-lease-repo';
-import { LoopRecoveryService } from './loop-recovery-service';
+import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import type {
@@ -136,6 +137,7 @@ const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
 const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
 const ASSIGNMENT_PACKET_FILE = 'ASSIGNMENT_PACKET.json';
+const ASSIGNMENT_CONTEXT_FILE = 'ASSIGNMENT_CONTEXT.json';
 
 const LOOP_CONTRACTS: LoopContract[] = [
   {
@@ -412,6 +414,7 @@ export class LoopService {
   startLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
     const contract = this.getLoopContract(input.loop_name || LOOP_NAME);
     const goal = input.goal_id ? this.getGoal(input.goal_id) : null;
+    if (goal?.metadata.operator_paused === true) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     if (goal) this.goals.assertDependenciesSatisfied(goal.id, goal.metadata);
     const repositoryPath = this.resolveRepositoryPath(input.repository_path || process.cwd());
     const runRiskClass: RiskClass = (goal?.risk_class === 'high' || goal?.risk_class === 'critical' || goal?.risk_class === 'medium' || goal?.risk_class === 'low')
@@ -421,7 +424,9 @@ export class LoopService {
     const runId = randomUUID();
     const now = new Date().toISOString();
 
-    const findings = this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
+    const findings = input.target_finding
+      ? [this.createTargetFinding(repositoryPath, input.target_finding)]
+      : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
@@ -507,6 +512,12 @@ export class LoopService {
     return this.getLoopRun(runId);
   }
 
+  assertOperatorNotPaused(run: LoopRunRecord): void {
+    if (run.metadata.operator_paused === true || (run.goal_id && this.getGoal(run.goal_id).metadata.operator_paused === true)) {
+      throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
+    }
+  }
+
   getLoopRun(id: string): LoopRunRecord {
     return this.queries.getById(id);
   }
@@ -559,25 +570,26 @@ export class LoopService {
     };
   }
 
-  private findCapabilityForFinding(finding: LoopFinding, capabilities: Array<{ id: string }>): { id: string } | undefined {
-    try {
-      const matching = capabilities.filter(c =>
-        c.id.includes(finding.type) || finding.type.includes(c.id)
-      );
-      return matching[0] || capabilities[0];
-    } catch { return undefined; }
+  private findCapabilityForFinding(finding: LoopFinding, capabilities: SwarmCapabilityRecord[]): SwarmCapabilityRecord | undefined {
+    if (!finding.type) return undefined;
+    return capabilities.find(capability => capability.id === finding.type)
+      || capabilities.find(capability => capability.id.includes(finding.type) || finding.type.includes(capability.id));
   }
 
+  /** Advisory per-finding runtime recommendations; never execution authority. */
   planLoopRun(id: string): Array<{ findingId: string; runtime: string; capabilityId: string }> {
     const run = this.getLoopRun(id);
     const findings = run.findings;
     const plan: Array<{ findingId: string; runtime: string; capabilityId: string }> = [];
-    const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
-
     // PERFORMANCE: Batch load capabilities once instead of per-finding N+1
-    let allCapabilities: Array<{ id: string }> = [];
+    let allCapabilities: SwarmCapabilityRecord[] = [];
     try {
-      allCapabilities = this.intelligence.listCapabilities();
+      const riskRank: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+      const requiredRisk = riskRank[String(run.metadata.risk_class || 'low')] ?? 3;
+      allCapabilities = this.intelligence.listCapabilities().filter(capability => capability.live_route_allowed
+        && capability.allowed_actions.includes('spawn_runtime_worker')
+        && !capability.forbidden_actions.includes('spawn_runtime_worker')
+        && (riskRank[capability.risk_ceiling] ?? -1) >= requiredRisk);
     } catch { /* best-effort */ }
 
     for (const finding of findings) {
@@ -590,11 +602,7 @@ export class LoopService {
       } else {
         const capability = this.findCapabilityForFinding(finding, allCapabilities);
         capabilityId = capability?.id || '';
-        selectedRuntime = this.selectRuntimeForCapability(capabilityId, finding);
-      }
-
-      if (!validRuntimes.includes(selectedRuntime as typeof validRuntimes[number])) {
-        selectedRuntime = 'codex';
+        selectedRuntime = this.selectRuntimeForCapability(capabilityId);
       }
 
       plan.push({
@@ -607,31 +615,20 @@ export class LoopService {
     return plan;
   }
 
-  private selectRuntimeForCapability(capabilityId: string, _finding: LoopFinding): string {
-    void _finding;
-    const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor', 'mock'] as const;
-
+  private selectRuntimeForCapability(capabilityId: string): string {
+    if (!capabilityId) return 'manual';
+    const validRuntimes = ['codex', 'opencode', 'pi', 'claude', 'gemini', 'editor'] as const;
     try {
-      const cap = this.db.prepare('SELECT metadata, cost_model_json FROM swarm_capabilities WHERE id = ?').get(capabilityId) as { metadata: string; cost_model_json: string } | undefined;
-      if (cap) {
-        const costModel = JSON.parse(cap.cost_model_json || '{}') as { learned?: boolean; p50_tokens?: number };
-        if (costModel?.learned && typeof costModel.p50_tokens === 'number' && costModel.p50_tokens < 5000) {
-          return 'opencode';
-        }
-        const metadata = JSON.parse(cap.metadata || '{}') as Record<string, unknown>;
-        const competence = metadata.competence as { success_rate?: number } | undefined;
-        if (competence?.success_rate !== undefined && competence.success_rate > 0.7) {
-          return 'codex';
-        }
-      }
-
+      // Existing per-runtime completion observations can inform a recommendation.
+      // Capability-wide tokens/scores cannot identify a runtime or prove its cost.
       const runtimeData = this.intelligence.measureCompetencePerRuntime(capabilityId);
       const entries = Object.entries(runtimeData);
       if (entries.length > 0) {
         let bestRuntime = entries[0][0];
         let bestScore = -1;
         for (const [runtime, data] of entries) {
-          if (data.success_rate < 0.3) continue;
+          if (!validRuntimes.includes(runtime as typeof validRuntimes[number]) || data.n_runs <= 0
+            || !Number.isFinite(data.success_rate) || data.success_rate < 0.3) continue;
           if (data.success_rate > bestScore) {
             bestScore = data.success_rate;
             bestRuntime = runtime;
@@ -643,7 +640,7 @@ export class LoopService {
       }
     } catch { /* fallback */ }
 
-    return 'codex';
+    return 'manual';
   }
 
   computeDollarCost(runtime: string, totalTokens: number): number {
@@ -665,7 +662,7 @@ export class LoopService {
     return this.budget.adjustConcurrency(increase);
   }
 
-  stopLoopRun(id: string): { run: LoopRunRecord; events: LoopEventRecord[] } {
+  async stopLoopRun(id: string): Promise<{ run: LoopRunRecord; events: LoopEventRecord[] }> {
     const run = this.getLoopRun(id);
     if (run.status !== 'cancelled') {
       const now = new Date().toISOString();
@@ -685,6 +682,10 @@ export class LoopService {
       });
     }
 
+    for (const lease of this.listWorkerLeases(id).filter(lease => ['prepared', 'running'].includes(lease.status))) {
+      this.updateWorkerLeaseStatus(lease.id, 'cancelled', { stopped_by_runner: true, stopped_at: new Date().toISOString() });
+      if (!await RuntimeLeaseRegistry.stop(lease.id)) this.runtimeCommand.stopWorkerLeaseRuntime(lease.id);
+    }
     void this.experience.indexRun(id);
 
     return {
@@ -712,6 +713,8 @@ export class LoopService {
 
   completeLoopRun(id: string, input: { human_approval_ref?: string } = {}): { run: LoopRunRecord; gates: LoopGate[] } {
     const current = this.getLoopRun(id);
+    if (current.status === 'cancelled') throw new Error('LOOP_COMPLETION_CANCELLED');
+    if (current.status === 'completed') return { run: current, gates: current.gates };
     const leases = this.listWorkerLeases(current.id);
 
     if (leases.some((lease) => lease.role === 'maker')) {
@@ -806,10 +809,6 @@ export class LoopService {
       });
 
       return { run: completedRun, gates: verified.gates };
-    }
-
-    if (current.status === 'completed') {
-      return { run: current, gates: current.gates };
     }
 
     throw new Error('LOOP_COMPLETION_NO_WORKERS');
@@ -1045,6 +1044,7 @@ export class LoopService {
   }
   async executeWorker(id: string, input: ExecuteMakerInput = {}): Promise<ExecuteWorkerResult> {
     const run = this.getLoopRun(id);
+    this.assertOperatorNotPaused(run);
     const leases = this.listWorkerLeases(run.id);
     const lease = input.lease_id
       ? leases.find((candidate) => candidate.id === input.lease_id)
@@ -1203,6 +1203,26 @@ export class LoopService {
     return resolved;
   }
 
+  private createTargetFinding(repositoryPath: string, target: NonNullable<StartDocDriftLoopInput['target_finding']>): LoopFinding {
+    const requestedPath = target.file_path.trim();
+    if (!requestedPath || path.isAbsolute(requestedPath)) throw createError(400, 'file_path must be a non-empty relative path', 'FIX_FILE_PATH_INVALID');
+    const absolutePath = path.resolve(repositoryPath, requestedPath);
+    if (absolutePath !== repositoryPath && !absolutePath.startsWith(repositoryPath + path.sep)) {
+      throw createError(403, 'file_path must remain inside repository_path', 'FIX_FILE_PATH_OUTSIDE_REPOSITORY');
+    }
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
+      throw createError(404, 'file_path was not found in repository_path', 'FIX_FILE_NOT_FOUND');
+    }
+    const description = target.description.trim();
+    if (!description) throw createError(400, 'description is required', 'FIX_DESCRIPTION_REQUIRED');
+    const severity = target.category === 'security' ? 'error' : target.category === 'bug' ? 'warning' : 'info';
+    return {
+      id: randomUUID(), type: `targeted_${target.category}_fix`, severity, file: path.relative(repositoryPath, absolutePath),
+      message: description, evidence: 'Caller supplied a bounded fix request for this repository file.',
+      suggested_fix: description, metadata: { targeted: true, category: target.category },
+    };
+  }
+
   public assertNoFailedGates(run: LoopRunRecord): void {
     if (run.gates.some((gate) => gate.status === 'fail')) {
       throw new Error('LOOP_FAILED_GATES_BLOCK_CONTINUE');
@@ -1294,7 +1314,7 @@ export class LoopService {
   }
 
   public evaluateTokenBudget(run: LoopRunRecord, runtimeUsage: RuntimeUsage | null, currentLeaseId: string, diffLines?: number): { gate: LoopGate; exhausted: boolean; efficiencyExceeded: boolean; budget: Record<string, unknown> } {
-    return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines);
+    return this.budget.evaluateTokenBudget(run, runtimeUsage, currentLeaseId, diffLines, this.getTokenBudget(run));
   }
 
   private sumRuntimeTokens(leases: WorkerLeaseRecord[]): number {
@@ -1414,12 +1434,7 @@ export class LoopService {
   }
 
   public isHighRiskRun(run: LoopRunRecord, finding?: LoopFinding): boolean {
-    if (run.goal_id) {
-      const goal = this.getGoal(run.goal_id);
-      if (goal.risk_class === 'high' || goal.risk_class === 'critical') {
-        return true;
-      }
-    }
+    if (this.highRiskReason(run)) return true;
     const candidates = finding ? [finding] : run.findings;
     return candidates.some((candidate) => Boolean(this.highRiskReason(run, candidate)));
   }
@@ -1437,6 +1452,9 @@ export class LoopService {
     }
     if (!finding) {
       return null;
+    }
+    if (finding.metadata?.category === 'security') {
+      return 'security_finding_category';
     }
     const haystack = [
       finding.file,
@@ -1522,6 +1540,7 @@ export class LoopService {
     leaseId?: string;
   }): { leaseId: string; worktreePath: string; assignmentPath: string; assignmentPacketPath: string } {
     const run = this.getLoopRun(input.loopRunId);
+    this.assertOperatorNotPaused(run);
     if (!run.repository_path) {
       throw new Error('NESTED_SPAWN_NO_REPOSITORY');
     }
@@ -1918,7 +1937,7 @@ export class LoopService {
       if (lease.role === 'maker') {
         return !supersededMakerIds.has(lease.id);
       }
-      if (lease.role === 'checker') {
+      if (lease.role === 'checker' || lease.role === 'security_checker') {
         const makerLeaseId = lease.metadata.maker_lease_id;
         return typeof makerLeaseId !== 'string' || !supersededMakerIds.has(makerLeaseId);
       }
@@ -1951,6 +1970,38 @@ export class LoopService {
 
   private assignmentPacketPath(worktreePath: string): string {
     return path.join(this.controlDir(worktreePath), ASSIGNMENT_PACKET_FILE);
+  }
+
+  private assignmentContextPath(worktreePath: string): string {
+    return path.join(this.controlDir(worktreePath), ASSIGNMENT_CONTEXT_FILE);
+  }
+
+  private advisoryAssignmentContext(worktreePath: string, run: LoopRunRecord, finding: LoopFinding): {
+    text: string; sha256: string; sources: string[]; advisory: true; independently_reviewed: false;
+  } {
+    const contextPath = this.assignmentContextPath(worktreePath);
+    if (fs.existsSync(contextPath)) {
+      try {
+        const existing = JSON.parse(fs.readFileSync(contextPath, 'utf8')) as ReturnType<LoopService['advisoryAssignmentContext']>;
+        if (existing?.advisory === true && existing?.independently_reviewed === false
+          && typeof existing.text === 'string' && typeof existing.sha256 === 'string'
+          && createHash('sha256').update(existing.text).digest('hex') === existing.sha256) return existing;
+      } catch { /* regenerate a corrupt local control artifact */ }
+    }
+    const results = this.experience.retrieveLocalRelevantRuns(
+      `${run.loop_name} ${finding.message} ${finding.suggested_fix}`,
+      3,
+    );
+    const text = results.length ? this.experience.formatExperienceContext(results) : '';
+    const snapshot = {
+      text,
+      sha256: createHash('sha256').update(text).digest('hex'),
+      sources: results.length ? ['experience_retrieval'] : [],
+      advisory: true as const,
+      independently_reviewed: false as const,
+    };
+    fs.writeFileSync(contextPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+    return snapshot;
   }
 
   private ensureControlDir(worktreePath: string): string {
@@ -1996,6 +2047,7 @@ export class LoopService {
     options: { nestedSpawnControl?: string } = {}
   ): void {
     this.ensureControlDir(worktreePath);
+    const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2016,6 +2068,10 @@ export class LoopService {
       '',
       finding.suggested_fix,
       '',
+      '## Advisory Past Experience',
+      '',
+      advisoryContext.text || 'No matching observed episodes were retrieved.',
+      '',
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
@@ -2034,6 +2090,7 @@ export class LoopService {
 
   public writeAssignmentPacket(worktreePath: string, run: LoopRunRecord, finding: LoopFinding, runtime: string, retryAttempt?: number, capabilitiesManifest?: string): string {
     this.ensureControlDir(worktreePath);
+    const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
     const packetPath = this.assignmentPacketPath(worktreePath);
     const contract = (run.metadata.contract && typeof run.metadata.contract === 'object')
       ? run.metadata.contract as Record<string, unknown>
@@ -2083,6 +2140,7 @@ export class LoopService {
         next_actions: run.next_actions,
         plan: run.plan,
       },
+      advisory_context: advisoryContext,
       allowed_actions: ['read_repo', 'edit_files', 'run_tests', 'write_artifacts'],
       forbidden_actions: ['merge', 'push', 'deploy', 'modify_secrets', 'modify_policy', 'delete_data'],
       expected_artifacts: ['diff', 'stdout_log', 'stderr_log', 'deterministic_check_results'],
@@ -2107,13 +2165,16 @@ export class LoopService {
     const stderrPath = typeof maker.metadata.stderr_path === 'string' ? maker.metadata.stderr_path : '';
     const checks = JSON.stringify(maker.metadata.deterministic_checks || [], null, 2);
     return [
-      `# ${run.loop_name} Checker Assignment`,
+      `# ${run.loop_name} ${checker.role === 'security_checker' ? 'Security Checker' : 'Checker'} Assignment`,
       '',
       `Loop run: ${run.id}`,
       `Checker lease: ${checker.id}`,
       `Maker lease: ${maker.id}`,
       '',
       'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+      checker.role === 'security_checker'
+        ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
+        : 'Your technical verdict is not human approval or permission to merge.',
       'Review the maker output using the evidence below.',
       '',
       'Return a concise verdict. Prefer JSON on one line:',
@@ -2153,9 +2214,8 @@ export class LoopService {
         return verdict as CheckerVerdictInput['verdict'];
       }
     }
-    if (/\baccepted\b/i.test(stdout)) return 'accepted';
-    if (/needs[_ -]?revision/i.test(stdout)) return 'needs_revision';
-    if (/\brejected\b/i.test(stdout)) return 'rejected';
+    const plainVerdict = stdout.trim().toLowerCase();
+    if (['accepted', 'needs_revision', 'rejected'].includes(plainVerdict)) return plainVerdict as CheckerVerdictInput['verdict'];
     return 'insufficient_evidence';
   }
 
@@ -2171,8 +2231,10 @@ export class LoopService {
       try {
         const parsed = JSON.parse(trimmed) as Record<string, unknown>;
         const part = parsed.part;
-        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined];
-        const text = candidates.map((candidate) => candidate?.text).find((value) => typeof value === 'string');
+        const item = parsed.item as Record<string, unknown> | undefined;
+        const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
+          item?.type === 'agent_message' ? item : undefined];
+        const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
         if (typeof text === 'string' && text.trim().startsWith('{')) {
           candidates.push(JSON.parse(text) as Record<string, unknown>);
         }

@@ -1,0 +1,52 @@
+{
+  "change": "autonomous-functional-evolution-20260909",
+  "ordered_goals": [
+    {
+      "key": "evolution-20260909-E1",
+      "target": "isolated audit checkout and local API",
+      "objective": "E1: Establish an attributable functional and evolution baseline without claiming unavailable live proof",
+      "risk_class": "low",
+      "acceptance_criteria": ["Record local source identity, runtime profile and previous verification artifact hashes", "Record current GitHub main reference and live public reachability separately", "Record dependencies and unavailable channels explicitly; no failed prerequisite counted as passed"]
+    },
+    {
+      "key": "evolution-20260909-E2",
+      "target": "actual route registration, channel contracts and domain semantics",
+      "depends_on": ["evolution-20260909-E1"],
+      "objective": "E2: Validate every registered route against its intended behavior and consumers",
+      "risk_class": "medium",
+      "acceptance_criteria": ["Enumerate actual method and path pairs independently of source regex inventory", "Execute authorization and shape checks separately from semantic state assertions", "Every route has domain execution evidence or an explicit unresolved or intentional limitation; registration is not semantic verification"]
+    },
+    {
+      "key": "evolution-20260909-E3",
+      "target": "dashboard and multi-channel product workflows",
+      "depends_on": ["evolution-20260909-E1"],
+      "objective": "E3: Close meaningful browser-to-domain-to-runtime workflows with persistence and error recovery",
+      "risk_class": "medium",
+      "acceptance_criteria": ["Exercise meaningful controls on every inventoried dashboard page", "Verify resulting domain state, refresh, restart, permissions and failures", "Separate rendered, simulated, unavailable and actually executed capabilities"]
+    },
+    {
+      "key": "evolution-20260909-E4",
+      "target": "existing self-improvement, goal, loop, maker and checker services",
+      "depends_on": ["evolution-20260909-E1"],
+      "objective": "E4: Make DjimFlo execute a controlled product improvement through its own governed workflow",
+      "risk_class": "medium",
+      "acceptance_criteria": ["Observed reproducible defect reaches an evidence-bound proposal, goal and loop", "Isolated real implementation and independent checks produce attributable artifacts", "Failed attempts and authority boundaries persist; no mock execution claimed as provider engineering capability"]
+    },
+    {
+      "key": "evolution-20260909-E5",
+      "target": "measured evaluation and subsequent decision use",
+      "depends_on": ["evolution-20260909-E4"],
+      "objective": "E5: Demonstrate content-level improvement over a fixed baseline on unseen tasks and subsequent decisions",
+      "risk_class": "medium",
+      "acceptance_criteria": ["Predeclare metric, baseline, held-out cases, minimum effect and comparable runtime conditions", "Measure with-versus-without candidate and retained failed or inconclusive results", "Trace accepted learning into a later real decision and distinguish causal evidence from labels or structural scores", "No relevant regression; insufficient evidence remains undetermined and cannot authorize promotion"]
+    },
+    {
+      "key": "evolution-20260909-E6",
+      "target": "existing loop execution and verification lifecycle",
+      "depends_on": ["evolution-20260909-E2", "evolution-20260909-E3", "evolution-20260909-E5"],
+      "objective": "E6: Repeatedly verify functional and evolution outcomes without duplicate execution or silent regression",
+      "risk_class": "medium",
+      "acceptance_criteria": ["Relevant checks run after changes, full regression after integration and outcome evaluation after candidate runs", "Repeated control survives restart and rejects overlapping or replayed work", "Regression triggers explicit hold or rejection through existing authority; no autonomous protected deployment", "Record actual trigger/run evidence; no claimed background monitor without a running supported mechanism"]
+    }
+  ]
+}

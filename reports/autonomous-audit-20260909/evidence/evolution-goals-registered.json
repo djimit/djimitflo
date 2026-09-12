@@ -1,0 +1,235 @@
+{
+  "state": "PASS",
+  "registeredAt": "2026-09-09T17:43:19.815Z",
+  "started_workers": 0,
+  "background_schedule_started": false,
+  "codex_background_goal_status": "usageLimited",
+  "batches": [
+    {
+      "selected_ids": [
+        "evolution-20260909-E1",
+        "evolution-20260909-E2",
+        "evolution-20260909-E3"
+      ],
+      "created": 3,
+      "replaySkipped": 3
+    },
+    {
+      "selected_ids": [
+        "evolution-20260909-E4",
+        "evolution-20260909-E5",
+        "evolution-20260909-E6"
+      ],
+      "created": 3,
+      "replaySkipped": 3
+    }
+  ],
+  "goals": [
+    {
+      "id": "4ee661ca-47cd-4add-b9f1-7d23ba32052f",
+      "objective": "E6: Repeatedly verify functional and evolution outcomes without duplicate execution or silent regression",
+      "constraints": [
+        "target:existing loop execution and verification lifecycle"
+      ],
+      "acceptance_criteria": [
+        "Relevant checks run after changes, full regression after integration and outcome evaluation after candidate runs",
+        "Repeated control survives restart and rejects overlapping or replayed work",
+        "Regression triggers explicit hold or rejection through existing authority; no autonomous protected deployment",
+        "Record actual trigger/run evidence; no claimed background monitor without a running supported mechanism"
+      ],
+      "risk_class": "medium",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E6",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "existing loop execution and verification lifecycle"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E2",
+          "evolution-20260909-E3",
+          "evolution-20260909-E5"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.806Z",
+      "updated_at": "2026-09-09T17:43:19.806Z"
+    },
+    {
+      "id": "e41eb751-876e-49f9-9e52-483ad48889e1",
+      "objective": "E5: Demonstrate content-level improvement over a fixed baseline on unseen tasks and subsequent decisions",
+      "constraints": [
+        "target:measured evaluation and subsequent decision use"
+      ],
+      "acceptance_criteria": [
+        "Predeclare metric, baseline, held-out cases, minimum effect and comparable runtime conditions",
+        "Measure with-versus-without candidate and retained failed or inconclusive results",
+        "Trace accepted learning into a later real decision and distinguish causal evidence from labels or structural scores",
+        "No relevant regression; insufficient evidence remains undetermined and cannot authorize promotion"
+      ],
+      "risk_class": "medium",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E5",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "measured evaluation and subsequent decision use"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E4"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.806Z",
+      "updated_at": "2026-09-09T17:43:19.806Z"
+    },
+    {
+      "id": "7371f30d-8316-4768-b763-3d42c721ba9e",
+      "objective": "E4: Make DjimFlo execute a controlled product improvement through its own governed workflow",
+      "constraints": [
+        "target:existing self-improvement, goal, loop, maker and checker services"
+      ],
+      "acceptance_criteria": [
+        "Observed reproducible defect reaches an evidence-bound proposal, goal and loop",
+        "Isolated real implementation and independent checks produce attributable artifacts",
+        "Failed attempts and authority boundaries persist; no mock execution claimed as provider engineering capability"
+      ],
+      "risk_class": "medium",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E4",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "existing self-improvement, goal, loop, maker and checker services"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.806Z",
+      "updated_at": "2026-09-09T17:43:19.806Z"
+    },
+    {
+      "id": "c9aa17af-059d-433d-a9fd-99d28a241b64",
+      "objective": "E3: Close meaningful browser-to-domain-to-runtime workflows with persistence and error recovery",
+      "constraints": [
+        "target:dashboard and multi-channel product workflows"
+      ],
+      "acceptance_criteria": [
+        "Exercise meaningful controls on every inventoried dashboard page",
+        "Verify resulting domain state, refresh, restart, permissions and failures",
+        "Separate rendered, simulated, unavailable and actually executed capabilities"
+      ],
+      "risk_class": "medium",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E3",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "dashboard and multi-channel product workflows"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.798Z",
+      "updated_at": "2026-09-09T17:43:19.798Z"
+    },
+    {
+      "id": "29fae050-ba37-4435-aca8-277171ee2972",
+      "objective": "E2: Validate every registered route against its intended behavior and consumers",
+      "constraints": [
+        "target:actual route registration, channel contracts and domain semantics"
+      ],
+      "acceptance_criteria": [
+        "Enumerate actual method and path pairs independently of source regex inventory",
+        "Execute authorization and shape checks separately from semantic state assertions",
+        "Every route has domain execution evidence or an explicit unresolved or intentional limitation; registration is not semantic verification"
+      ],
+      "risk_class": "medium",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E2",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "actual route registration, channel contracts and domain semantics"
+        },
+        "depends_on_goal_keys": [
+          "evolution-20260909-E1"
+        ],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.798Z",
+      "updated_at": "2026-09-09T17:43:19.798Z"
+    },
+    {
+      "id": "1d36485d-d3b1-44fa-b753-642b2c16efd2",
+      "objective": "E1: Establish an attributable functional and evolution baseline without claiming unavailable live proof",
+      "constraints": [
+        "target:isolated audit checkout and local API"
+      ],
+      "acceptance_criteria": [
+        "Record local source identity, runtime profile and previous verification artifact hashes",
+        "Record current GitHub main reference and live public reachability separately",
+        "Record dependencies and unavailable channels explicitly; no failed prerequisite counted as passed"
+      ],
+      "risk_class": "low",
+      "budget": {
+        "max_failure_count": 2
+      },
+      "status": "created",
+      "owner_user_id": "f0997a41-1d2c-4833-8102-86ea30f33ead",
+      "metadata": {
+        "goal_batch": {
+          "id": "evolution-20260909-E1",
+          "change": "autonomous-functional-evolution-20260909",
+          "target_ref": "isolated audit checkout and local API"
+        },
+        "depends_on_goal_keys": [],
+        "imported_without_worker_start": true,
+        "execution_source": "goal_batch_import",
+        "executor_runtime": null,
+        "attempt_count": 0
+      },
+      "created_at": "2026-09-09T17:43:19.798Z",
+      "updated_at": "2026-09-09T17:43:19.798Z"
+    }
+  ]
+}

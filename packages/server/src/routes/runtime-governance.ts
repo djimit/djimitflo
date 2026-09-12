@@ -6,6 +6,16 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { createError } from '../middleware/error-handler';
+
+function boundedLimit(value: unknown, fallback = 50): number {
+  if (value === undefined) return fallback;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
 
 export function createRuntimeGovernanceRoutes(
   db: Database,
@@ -24,7 +34,7 @@ export function createRuntimeGovernanceRoutes(
 
   // GET /api/runtime-governance/alerts — recent governance alerts
   router.get('/alerts', requirePermission('read:evidence'), (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const limit = boundedLimit(req.query.limit);
     res.json({ alerts: service.getAlerts(limit) });
   });
 
@@ -35,6 +45,11 @@ export function createRuntimeGovernanceRoutes(
 
   // POST /api/runtime-governance/agents/:agentId/register — register baseline
   router.post('/agents/:agentId/register', requirePermission('write:governance'), (req, res) => {
+    const { overallScore, categoryScores, certifiedAt } = req.body ?? {};
+    if (!Number.isFinite(overallScore) || !categoryScores || typeof categoryScores !== 'object' || Array.isArray(categoryScores) || typeof certifiedAt !== 'string' || !certifiedAt.trim()) {
+      res.status(400).json({ error: { message: 'overallScore, categoryScores and certifiedAt are required', code: 'VALIDATION_ERROR' } });
+      return;
+    }
     service.registerBaseline(req.params.agentId, req.body);
     res.json({ registered: true, agentId: req.params.agentId });
   });
@@ -53,14 +68,30 @@ export function createRuntimeGovernanceRoutes(
       res.status(400).json({ error: { message: 'reason is required', code: 'VALIDATION_ERROR' } });
       return;
     }
-    service.releaseFromQuarantine(req.params.agentId, reason);
-    res.json({ released: true, agentId: req.params.agentId });
+    try {
+      service.releaseFromQuarantine(req.params.agentId, reason);
+      res.json({ released: true, agentId: req.params.agentId });
+    } catch (error) {
+      if (error instanceof Error && /^Agent not found:/.test(error.message)) {
+        res.status(404).json({ error: { message: error.message, code: 'AGENT_NOT_FOUND' } });
+        return;
+      }
+      throw error;
+    }
   });
 
   // POST /api/runtime-governance/agents/:agentId/reset — reset circuit breaker
   router.post('/agents/:agentId/reset', requirePermission('write:governance'), (req, res) => {
-    service.resetCircuitBreaker(req.params.agentId);
-    res.json({ reset: true, agentId: req.params.agentId });
+    try {
+      service.resetCircuitBreaker(req.params.agentId);
+      res.json({ reset: true, agentId: req.params.agentId });
+    } catch (error) {
+      if (error instanceof Error && /^Agent not found:/.test(error.message)) {
+        res.status(404).json({ error: { message: error.message, code: 'AGENT_NOT_FOUND' } });
+        return;
+      }
+      throw error;
+    }
   });
 
   return router;

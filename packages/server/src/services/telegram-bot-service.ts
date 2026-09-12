@@ -2,7 +2,7 @@
  * TelegramBotService — Telegram gateway for agent interaction.
  *
  * Enables users to interact with DjimFlo agents via Telegram:
- * - Start/stop loops
+ * - View loops (loop start/stop is not exposed here)
  * - Check agent status
  * - Approve/reject actions
  * - View mission control
@@ -12,9 +12,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { randomUUID } from 'crypto';
 import { DENNIS_AGENT_ID, DennisAgentService } from './dennis-agent-service';
-import type { ApprovalService } from './approval-service';
+import type { TelegramApiService } from './telegram-api-service';
 
 interface TelegramConfig {
   botToken: string;
@@ -36,7 +35,7 @@ export class TelegramBotService {
   private baseUrl = 'https://api.telegram.org/bot';
   private linkedUsers = new Map<number, string>();
 
-  constructor(private db: Database, private approvalService?: ApprovalService) {}
+  constructor(private db: Database, private api?: TelegramApiService) {}
 
   /**
    * Configure the Telegram bot.
@@ -71,6 +70,7 @@ export class TelegramBotService {
     if (!this.config || !payload.message) return;
 
     const { chat, from, text, message_id } = payload.message;
+    if (!chat || !from || !Number.isSafeInteger(chat.id) || !Number.isSafeInteger(from.id) || typeof text !== 'string') return;
 
     // Check if user is allowed
     if (!this.config.allowedUsers.includes(from.id)) {
@@ -80,6 +80,11 @@ export class TelegramBotService {
     const actorUserId = this.linkedUsers.get(from.id);
     if (!actorUserId) {
       await this.sendMessage(chat.id, '⛔ Telegram identity is not linked to a DjimFlo user.');
+      return;
+    }
+    const user = this.db.prepare('SELECT is_active FROM users WHERE id = ?').get(actorUserId) as { is_active: number } | undefined;
+    if (!user?.is_active) {
+      await this.sendMessage(chat.id, '⛔ DjimFlo account is disabled or no longer linked.');
       return;
     }
 
@@ -102,7 +107,7 @@ export class TelegramBotService {
 
     // Parse command
     const parts = text.split(/\s+/);
-    const command = parts[0]?.toLowerCase();
+    const command = parts[0]?.toLowerCase().replace(/@[a-z0-9_]+$/, '');
     const args = parts.slice(1);
 
     switch (command) {
@@ -127,7 +132,22 @@ export class TelegramBotService {
         break;
 
       case '/dennis_task':
-        await this.createDennisDryRunTask(chatId, args.join(' '));
+        await this.createDennisDryRunTask(chatId, args.join(' '), message.actorUserId);
+        break;
+
+      case '/task':
+      case '/cancel':
+        try {
+          if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+          if (!args.length) { await this.sendMessage(chatId, `Usage: ${command} <${command === '/task' ? 'description' : 'task_id'}>`); break; }
+          if (command === '/task') {
+            const id = await this.api.createTask(args.join(' '), 'telegram-webhook', message.actorUserId);
+            await this.sendMessage(chatId, `Task aangemaakt: ${id}`);
+          } else {
+            await this.api.cancelTask(args[0], message.actorUserId);
+            await this.sendMessage(chatId, `Task geannuleerd: ${args[0]}`);
+          }
+        } catch (error) { await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`); }
         break;
 
       case '/approve':
@@ -158,8 +178,9 @@ export class TelegramBotService {
     if (!this.config?.botToken) return;
 
     try {
-      await fetch(`${this.baseUrl}${this.config.botToken}/sendMessage`, {
+      const response = await fetch(`${this.baseUrl}${this.config.botToken}/sendMessage`, {
         method: 'POST',
+        signal: AbortSignal.timeout(15_000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
@@ -167,8 +188,11 @@ export class TelegramBotService {
           parse_mode: 'MarkdownV2',
         }),
       });
-    } catch (error) {
-      console.error('Telegram send error:', error);
+      const result = await response.json() as { ok?: boolean };
+      if (!response.ok || result.ok !== true) throw new Error('TELEGRAM_DELIVERY_FAILED');
+    } catch {
+      // Telegram's URL contains the bot credential; never propagate raw fetch errors.
+      throw new Error('TELEGRAM_DELIVERY_FAILED');
     }
   }
 
@@ -203,6 +227,8 @@ export class TelegramBotService {
       '🤖 *DjimFlo Bot*\n\n' +
       'Your agentic control plane\\. Use these commands:\n\n' +
       '/status \\- System health\n' +
+      '/task \\<description\\> \\- Create a pending task, not execute it\n' +
+      '/cancel \\<task_id\\> \\- Cancel a running owned task\n' +
       '/loops \\- Active loops\n' +
       '/agents \\- Agent status\n' +
       '/dennis \\- Dennis Agent status en scopes\n' +
@@ -295,35 +321,26 @@ export class TelegramBotService {
     );
   }
 
-  private async createDennisDryRunTask(chatId: number, prompt: string): Promise<void> {
+  private async createDennisDryRunTask(chatId: number, prompt: string, actor: string): Promise<void> {
     const description = prompt.trim();
     if (!description) {
       await this.sendMessage(chatId, 'Usage: /dennis_task <beschrijving>');
       return;
     }
-    const now = new Date().toISOString();
-    const id = `telegram-${randomUUID()}`;
-    this.ensureDennisAgentRow(now);
-    this.db.prepare(`
-      INSERT INTO tasks (
-        id, title, description, status, priority, risk_level, execution_mode,
-        agent_id, tags, metadata, created_at, updated_at
-      ) VALUES (?, ?, ?, 'pending', 'medium', 'medium', 'dry_run', ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      description.slice(0, 120) || 'Dennis Telegram task',
-      description,
-      DENNIS_AGENT_ID,
-      JSON.stringify(['telegram', 'dennis-agent', 'dry-run']),
-      JSON.stringify({
+    try {
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      this.api.requireActor(actor, 'create:task');
+      this.ensureDennisAgentRow(new Date().toISOString());
+      const task = await this.api.request(actor, '/tasks', 'POST', {
+        title: description.slice(0, 120), description, execution_mode: 'dry_run', risk_level: 'medium',
+        agent_id: DENNIS_AGENT_ID, tags: ['telegram', 'dennis-agent', 'dry-run'], use_swarm_context: false, metadata: {
         source: 'telegram',
         autonomy_mode: 'dry_run_only',
         blocked_without_approval: ['external_write', 'destructive_action', 'production_mutation', 'external_message'],
-      }),
-      now,
-      now,
-    );
-    await this.sendMessage(chatId, `Dennis dry\\-run task aangemaakt: ${id}`);
+        },
+      });
+      await this.sendMessage(chatId, `Dennis dry\\-run task aangemaakt: ${task.id}`);
+    } catch (error) { await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`); }
   }
 
   private ensureDennisAgentRow(now: string): void {
@@ -342,12 +359,9 @@ export class TelegramBotService {
     }
 
     try {
-      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
-      this.approvalService.decideApproval(approvalId, true, actorUserId);
-      const materialized = new DennisAgentService(this.db).materializeApprovedDryRun(approvalId, actorUserId);
-      await this.sendMessage(chatId, materialized.status === 'materialized'
-        ? `✅ Approved and materialized Dennis dry\\-run: ${approvalId}`
-        : `✅ Approved: ${approvalId}`);
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/approve`, 'POST');
+      await this.sendMessage(chatId, `✅ Approved: ${approvalId}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await this.sendMessage(chatId, message.startsWith('SELF_APPROVAL_FORBIDDEN')
@@ -364,9 +378,8 @@ export class TelegramBotService {
     }
 
     try {
-      if (!this.approvalService) throw new Error('APPROVAL_SERVICE_UNAVAILABLE');
-      this.approvalService.decideApproval(approvalId, false, actorUserId);
-      new DennisAgentService(this.db).finalizeDeniedDryRun(approvalId, actorUserId);
+      if (!this.api) throw new Error('TELEGRAM_API_UNAVAILABLE');
+      await this.api.request(actorUserId, `/approvals/${encodeURIComponent(approvalId)}/deny`, 'POST');
       await this.sendMessage(chatId, `❌ Rejected: ${approvalId}`);
     } catch (error) {
       await this.sendMessage(chatId, `Fout: ${error instanceof Error ? error.message : String(error)}`);

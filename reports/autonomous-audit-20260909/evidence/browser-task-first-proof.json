@@ -1,0 +1,305 @@
+{
+  "evidence_class": "actual-local-browser-provider-execution",
+  "generated_at": "2026-09-09T10:54:28.729Z",
+  "task": {
+    "id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+    "status": "completed",
+    "repository_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+    "execution_mode": "local",
+    "metadata": {
+      "executor": "codex",
+      "model": "gpt-6-astra",
+      "reasoningEffort": "low",
+      "workingDirectory": "/private/tmp/djimitflo-browser-task.xlbXU6"
+    },
+    "started_at": "2026-09-09T10:47:17.530Z",
+    "completed_at": "2026-09-09T10:47:44.677Z",
+    "token_usage": 68381
+  },
+  "fixture": {
+    "path": "/private/tmp/djimitflo-browser-task.xlbXU6",
+    "baseline_commit": "351ce015894cd25ee05e51b61003137e4251ccf3",
+    "diff": "diff --git a/README.md b/README.md\nindex 95f308f..3fd58a6 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,5 +1,5 @@\n # DjimFlo browser execution fixture\n \n-STATUS: pending\n+STATUS: verified\n \n This disposable repository verifies the browser-to-Codex task execution chain.",
+    "test_output": "\n> test\n> node verify.mjs\n\nBROWSER_TASK_FIXTURE_VERIFIED\n",
+    "unchanged_hashes": {
+      "verify.mjs": "8ebdebd60fd114e40ad711b7b64ab97c9f8f09b25af34f61bc6b80b58657f1f5",
+      "AGENTS.md": "bd3cf624921972cd5515319da318942ab9e3fc5f27a5774b64117095a75fc9cb",
+      "package.json": "fcf2bf97c42c905d943fb3a32234712eb7a6168423c4d6712d2301ea98b4cb5b"
+    }
+  },
+  "browser_log": "reports/autonomous-audit-20260909/evidence/browser-task-completed-real.log",
+  "execution_response": {
+    "path": "/api/tasks/d470002f-3de2-48fb-b0f8-6a7d051b10d4/execute",
+    "method": "POST",
+    "status": 200,
+    "body": {
+      "message": "Task execution started",
+      "task_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+      "executor": "codex",
+      "status": "started",
+      "completion": {}
+    }
+  },
+  "websocket": {
+    "frame_count": 53,
+    "execution_event_count": 42,
+    "completion_received": true,
+    "missing_timestamp_count": 42,
+    "mismatched_timestamp_count": 42
+  },
+  "events": [
+    {
+      "id": "d4cbbcd4-f4db-4295-a6ad-643bf8c0a31c",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:17.530Z",
+      "level": "info",
+      "message": "Execution attempt admitted; process start not yet confirmed",
+      "tool_name": null
+    },
+    {
+      "id": "70b723c8-dec9-4377-939a-bcf4e0ecf1ef",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:17.531Z",
+      "level": "info",
+      "message": "Execution attempt 1 started with codex",
+      "tool_name": null
+    },
+    {
+      "id": "0cc7e84b-0322-4145-acc4-1dd984223379",
+      "event_type": "task.started",
+      "timestamp": "2026-09-09T10:47:17.535Z",
+      "level": "info",
+      "message": "Codex execution started",
+      "tool_name": null
+    },
+    {
+      "id": "c5c17bf6-4517-4221-a532-17632e72c16c",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:20.231Z",
+      "level": "warning",
+      "message": "EVIDENCE WARNING: Codex structured output unavailable; falling back to heuristic parsing. Event accuracy may be reduced.",
+      "tool_name": null
+    },
+    {
+      "id": "310279ef-94de-46f4-96e5-0d6be6d9b4e9",
+      "event_type": "error",
+      "timestamp": "2026-09-09T10:47:20.232Z",
+      "level": "error",
+      "message": "Reading additional input from stdin...",
+      "tool_name": null
+    },
+    {
+      "id": "ccd7bf17-4c6e-4507-9cd0-94e8766edac9",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:20.444Z",
+      "level": "info",
+      "message": "{\"type\":\"thread.started\",\"thread_id\":\"01a085c7-8411-7543-83f1-ff665e453209\"}",
+      "tool_name": null
+    },
+    {
+      "id": "f5937be4-233c-4409-9b17-8f7db01afe24",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:20.460Z",
+      "level": "info",
+      "message": "{\"type\":\"turn.started\"}",
+      "tool_name": null
+    },
+    {
+      "id": "a98ceb67-9f38-409e-a1a2-6004e6eafddf",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:26.072Z",
+      "level": "info",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_0\",\"type\":\"agent_message\",\"text\":\"I’ll check the README and test setup, change the status in README.md, then run `npm test`.\\n\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "0a25b97e-eda8-4617-a360-11ca72b4a595",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:28.903Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"pwd; git status --short; rg --files -g 'README.md' -g 'package.json' -g 'AGENTS.md' -g '*verif*' -g '*test*'\\\"\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "1e0e01b4-5f89-4274-a98e-818ab4bfe401",
+      "event_type": "error",
+      "timestamp": "2026-09-09T10:47:28.904Z",
+      "level": "error",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_1\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc \\\"pwd; git status --short; rg --files -g 'README.md' -g 'package.json' -g 'AGENTS.md' -g '*verif*' -g '*test*'\\\"\",\"aggregated_output\":\"/private/tmp/djimitflo-browser-task.xlbXU6\\ngit: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\ngit: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\nAGENTS.md\\npackage.json\\nREADME.md\\nverify.mjs\\n\",\"exit_code\":0,\"status\":\"completed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "10c39cc5-3a7e-4e90-912b-c01aad794737",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:28.960Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'cat README.md package.json; rg --files scripts'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "a7275b9c-fb58-4f43-bac8-d30c4f22d5b4",
+      "event_type": "error",
+      "timestamp": "2026-09-09T10:47:28.960Z",
+      "level": "error",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_2\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'cat README.md package.json; rg --files scripts'\",\"aggregated_output\":\"# DjimFlo browser execution fixture\\n\\nSTATUS: pending\\n\\nThis disposable repository verifies the browser-to-Codex task execution chain.\\n{\\n  \\\"name\\\": \\\"djimitflo-browser-execution-fixture\\\",\\n  \\\"private\\\": true,\\n  \\\"type\\\": \\\"module\\\",\\n  \\\"scripts\\\": { \\\"test\\\": \\\"node verify.mjs\\\" }\\n}\\nrg: scripts: IO error for operation on scripts: No such file or directory (os error 2)\\n\",\"exit_code\":2,\"status\":\"failed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "5cc82686-a0c3-4517-b28b-a384cb76368f",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:33.525Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'cat AGENTS.md verify.mjs'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "23c98c4e-43ac-426e-acda-0809b72dd052",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:33.525Z",
+      "level": "info",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_3\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'cat AGENTS.md verify.mjs'\",\"aggregated_output\":\"# Disposable browser task fixture\\n\\nWork only in this repository. Change README.md when requested, then run npm test.\\nThe existing verification script is authoritative and must remain unchanged.\\nimport assert from 'node:assert/strict';\\nimport { readFileSync } from 'node:fs';\\n\\nassert.match(readFileSync(new URL('./README.md', import.meta.url), 'utf8'), /^STATUS: verified$/m);\\nconsole.log('BROWSER_TASK_FIXTURE_VERIFIED');\\n\",\"exit_code\":0,\"status\":\"completed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "d64aad06-56cc-43d3-8cdc-96e7703d6089",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:40.041Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_4\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/private/tmp/djimitflo-browser-task.xlbXU6/README.md\",\"kind\":\"update\"}],\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "bb0f34ea-4e6e-4770-af21-d928c80fa090",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:40.085Z",
+      "level": "info",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_4\",\"type\":\"file_change\",\"changes\":[{\"path\":\"/private/tmp/djimitflo-browser-task.xlbXU6/README.md\",\"kind\":\"update\"}],\"status\":\"completed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "509a79f6-7cfc-471c-b913-97340aa4450d",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:40.228Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'npm test'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "72952a24-f451-4566-a4ad-053da1067988",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:40.228Z",
+      "level": "info",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_5\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'npm test'\",\"aggregated_output\":\"\\n> test\\n> node verify.mjs\\n\\nBROWSER_TASK_FIXTURE_VERIFIED\\n\",\"exit_code\":0,\"status\":\"completed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "8b262594-65ab-49b0-95d1-3bcd538f4e9a",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:40.308Z",
+      "level": "info",
+      "message": "{\"type\":\"item.started\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'git diff --exit-code -- verify.mjs; git diff --stat; git diff -- README.md; git status --short'\",\"aggregated_output\":\"\",\"exit_code\":null,\"status\":\"in_progress\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "1f8b9993-0745-421e-91fc-606878e836fb",
+      "event_type": "error",
+      "timestamp": "2026-09-09T10:47:40.309Z",
+      "level": "error",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_6\",\"type\":\"command_execution\",\"command\":\"/bin/zsh -lc 'git diff --exit-code -- verify.mjs; git diff --stat; git diff -- README.md; git status --short'\",\"aggregated_output\":\"git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\ngit: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\n README.md | 2 +-\\n 1 file changed, 1 insertion(+), 1 deletion(-)\\ngit: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\ndiff --git a/README.md b/README.md\\nindex 95f308f..3fd58a6 100644\\n--- a/README.md\\n+++ b/README.md\\n@@ -1,5 +1,5 @@\\n # DjimFlo browser execution fixture\\n \\n-STATUS: pending\\n+STATUS: verified\\n \\n This disposable repository verifies the browser-to-Codex task execution chain.\\ngit: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\\n M README.md\\n\",\"exit_code\":0,\"status\":\"completed\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "72a72c77-3a94-4ca7-a0a6-1a07f670babd",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:43.798Z",
+      "level": "info",
+      "message": "{\"type\":\"item.completed\",\"item\":{\"id\":\"item_7\",\"type\":\"agent_message\",\"text\":\"Changed only README.md from `STATUS: pending` to `STATUS: verified`. The verification script remains unchanged.\\n\\n`npm test` passed (exit code 0), printing `BROWSER_TASK_FIXTURE_VERIFIED`.\"}}",
+      "tool_name": null
+    },
+    {
+      "id": "9edd9900-3c74-4b56-819d-2f3ea3da053e",
+      "event_type": "log",
+      "timestamp": "2026-09-09T10:47:43.805Z",
+      "level": "info",
+      "message": "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":68061,\"cached_input_tokens\":56192,\"cache_write_input_tokens\":0,\"output_tokens\":320,\"reasoning_output_tokens\":0}}",
+      "tool_name": null
+    },
+    {
+      "id": "52406a41-2f0f-4c86-b216-65675cc60593",
+      "event_type": "task.completed",
+      "timestamp": "2026-09-09T10:47:44.690Z",
+      "level": "info",
+      "message": "Codex execution completed successfully",
+      "tool_name": null
+    }
+  ],
+  "audit": [
+    {
+      "id": "b71af3b7-2064-440e-a404-e22c2909943c",
+      "event_type": "task.created",
+      "action": "task_created",
+      "task_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+      "resource_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+      "outcome": "success",
+      "hash": "b2acc325a5d7a6bf5dcbb6f4ea9db80039915e92699f6d9a717518f878234de4",
+      "previous_hash": "ce9aeb39bd7e92978340c8b48f4542ea7b495b3a49ccc72750c2d89fa8b6b890"
+    },
+    {
+      "id": "979f12a0-b4d4-47f7-a117-ccbf0c5887cb",
+      "event_type": "repository.scanned",
+      "action": "pre_execution_snapshot_captured",
+      "task_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+      "resource_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+      "outcome": "success",
+      "hash": "fb0d3e7b6b0d524620b30a9a022ab5847e29035617d493a40ac0b08f2d529049",
+      "previous_hash": "b2acc325a5d7a6bf5dcbb6f4ea9db80039915e92699f6d9a717518f878234de4"
+    },
+    {
+      "id": "391df381-78bd-4306-9ed0-1b693aced043",
+      "event_type": "diff.captured",
+      "action": "post_execution_diff_captured",
+      "task_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+      "resource_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+      "outcome": "success",
+      "hash": "1ba77d616372bca11bc7181de0ea8620bb838d98c520b5034f9e5759f18d622f",
+      "previous_hash": "fb0d3e7b6b0d524620b30a9a022ab5847e29035617d493a40ac0b08f2d529049"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "cf24bf55-a039-43d9-9408-db5d088adcee",
+      "evidence_type": "execution_summary",
+      "title": "Task execution started (allow)"
+    },
+    {
+      "id": "b8e97fb9-7dbc-4cf8-8a67-395f48e23447",
+      "evidence_type": "pre_execution_git_status",
+      "title": "Pre-execution: clean working tree"
+    },
+    {
+      "id": "97be4ce6-1548-4a43-b07c-d94614a79ee2",
+      "evidence_type": "post_execution_git_status",
+      "title": "Post-execution: file changes detected"
+    },
+    {
+      "id": "ca321ec3-c570-4c27-b018-0b2614641f15",
+      "evidence_type": "diff_summary",
+      "title": "Diff summary"
+    },
+    {
+      "id": "3925cc87-3acc-43a7-9200-9a83f86a22c1",
+      "evidence_type": "execution_summary",
+      "title": "Task completed successfully"
+    }
+  ],
+  "approval_count": 0,
+  "terminal_audit_count": 0,
+  "observability_complete": false,
+  "boundaries": [
+    "local disposable repository only",
+    "actual Codex/Astra low",
+    "no merge, push or deployment",
+    "policy allowed this task without approval; not an approval/resumption proof",
+    "historical first-run defects preserved; no retroactive corrected-runtime claim"
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "status": "blocked",
+  "generated_at": "2026-09-09T15:08:39.712Z",
+  "source": {
+    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "dirty": true,
+    "dirty_state_sha256": "2747c3f37c24fe9e708ea6ebdb3c5a070cd20b3d871c1fd660f3917081c1a846",
+    "package_lock_sha256": "e47bfb4491f9764c80c2692bc1c8e3415790da68cc5af2984a11f73598c1b17c"
+  },
+  "environment": {
+    "node": "v22.23.2",
+    "npm": "10.9.8"
+  },
+  "gates": [
+    {
+      "id": "supported_node",
+      "mandatory": true,
+      "status": "pass",
+      "evidence": "node=v22.23.2; required=>=22 <25",
+      "started_at": "2026-09-09T15:08:39.712Z",
+      "finished_at": "2026-09-09T15:08:39.712Z"
+    },
+    {
+      "id": "dependency_audit",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-09-09T15:08:40.307Z",
+      "finished_at": "2026-09-09T15:08:41.032Z",
+      "evidence": "\n> djimitflo@0.5.8 audit:ci\n> node scripts/ci-audit.mjs\n\nNo unaccepted high/critical production advisories.\n\n"
+    },
+    {
+      "id": "contract_inventory",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-09-09T15:08:41.032Z",
+      "finished_at": "2026-09-09T15:08:42.812Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:contracts\n> node scripts/contract-inventory.mjs\n\n{\n  \"output\": \"/Users/dlandman/djimitflo-audit-20260909/reports/autonomous-audit-20260909/evidence/contracts-browser-session.json\",\n  \"routes\": {\n    \"total\": 572,\n    \"tested\": 190,\n    \"critical_unclassified\": 0\n  },\n  \"mcp_tools\": {\n    \"total\": 56,\n    \"tested\": 28,\n    \"critical_unclassified\": 0\n  }\n}\n\n"
+    },
+    {
+      "id": "openmythos_evidence",
+      "mandatory": true,
+      "status": "blocked",
+      "exit_code": 2,
+      "started_at": "2026-09-09T15:08:42.812Z",
+      "finished_at": "2026-09-09T15:08:44.645Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:openmythos\n> node scripts/openmythos-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo-audit-20260909/reports/autonomous-audit-20260909/evidence/openmythos-browser-session.json\n\n"
+    },
+    {
+      "id": "integration_probes",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-09-09T15:08:44.645Z",
+      "finished_at": "2026-09-09T15:08:45.550Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:integrations\n> node scripts/integration-probes.mjs\n\nPASS /Users/dlandman/djimitflo-audit-20260909/reports/autonomous-audit-20260909/evidence/integrations-browser-session.json\n\n"
+    },
+    {
+      "id": "live_identity",
+      "mandatory": true,
+      "status": "blocked",
+      "exit_code": 2,
+      "started_at": "2026-09-09T15:08:45.550Z",
+      "finished_at": "2026-09-09T15:08:46.026Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:live\n> node scripts/live-identity-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo-audit-20260909/reports/autonomous-audit-20260909/evidence/identity-browser-session.json\n\n"
+    },
+    {
+      "id": "diff_check",
+      "mandatory": true,
+      "status": "pass",
+      "exit_code": 0,
+      "started_at": "2026-09-09T15:08:46.026Z",
+      "finished_at": "2026-09-09T15:08:46.065Z",
+      "evidence": "\n"
+    }
+  ],
+  "limitations": [
+    "At least one mandatory local gate did not pass."
+  ],
+  "next_safe_action": "Resolve the first failed mandatory gate."
+}

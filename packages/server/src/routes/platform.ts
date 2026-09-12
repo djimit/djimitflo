@@ -6,11 +6,11 @@ import { RuntimeGovernanceService } from '../services/runtime-governance-service
 
 export function createPlatformRoutes(
   db: Database,
-  auth?: AuthMiddleware,
+  auth: AuthMiddleware,
   governance = new RuntimeGovernanceService(db),
 ): Router {
   const router = Router();
-  const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
+  const requirePermission = auth.requirePermission;
   const orchestrator = new CognitivePlatformOrchestrator(db, governance);
   orchestrator.start();
 

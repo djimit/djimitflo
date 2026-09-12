@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import express from "express";
+import request from "supertest";
 import { createServer, type Server } from "http";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
@@ -144,6 +145,17 @@ describe("public explore boundary", () => {
     expect(card.status).toBe(200);
     expect(card.headers.get("content-type")).toContain("image/svg+xml");
     expect(await card.text()).toContain("DJIMIT EXPLORE");
+  });
+
+  it("serves crawler metadata and explicit empty leaderboard state", async () => {
+    const db = createTestDb();
+    const app = express().use("/explore", createExplorePublicRoutes(db));
+    expect((await request(app).get("/explore/sitemap.xml")).status).toBe(200);
+    expect((await request(app).get("/explore/robots.txt")).status).toBe(200);
+    expect((await request(app).get("/explore/leaderboard")).status).toBe(404);
+    expect((await request(app).get("/explore/djimit/missing/llms.txt")).status).toBe(404);
+    expect((await request(app).get("/explore/djimit/missing/badge.svg")).status).toBe(404);
+    db.close();
   });
 
   // contract:explore-public:GET:/leaderboard

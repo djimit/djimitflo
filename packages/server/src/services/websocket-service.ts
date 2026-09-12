@@ -99,16 +99,20 @@ export class WebSocketService {
     }
 
     const user = this.authService.findUserById(payload.sub);
-    if (!user || !user.isActive) {
+    const organizationId = payload.organization_id ?? 'default';
+    if (!user || !user.isActive || (organizationId !== 'default'
+      && organizationId !== (user as typeof user & { organization_id?: string }).organization_id)) {
       this.rejectPendingConnection(ws, WS_CLOSE_CODES.AUTH_INVALID);
       return null;
     }
 
     return {
       userId: payload.sub,
-      email: payload.email,
-      role: payload.role as UserRole,
+      email: user.email,
+      role: user.role,
       tokenExp: payload.exp || 0,
+      ...(payload.sid === undefined ? {} : { sessionId: payload.sid }),
+      organizationId,
     };
   }
 
@@ -117,41 +121,23 @@ export class WebSocketService {
   }
 
   send(client: WebSocket, message: WebSocketMessage) {
-    if (client.readyState === WebSocket.OPEN) {
+    if (client.readyState === WebSocket.OPEN && this.getAuthenticatedClient(client)) {
       client.send(JSON.stringify(message));
     }
   }
 
   broadcastToAuthenticated(message: WebSocketMessage) {
-    const data = JSON.stringify(message);
-    const now = Date.now() / 1000;
-    const configuredLimit = Number(process.env.WS_MAX_BUFFERED_AMOUNT_BYTES ?? 1_048_576);
-    const maxBufferedAmount = Number.isFinite(configuredLimit) && configuredLimit >= 0 ? configuredLimit : 1_048_576;
-    this.clients.forEach((clientInfo, ws) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
-          ws.close(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
-          this.clients.delete(ws);
-          return;
-        }
-        if (ws.bufferedAmount > maxBufferedAmount) return;
-        ws.send(data);
-      }
-    });
+    this.broadcastFiltered(message, () => true);
   }
 
   broadcastFiltered(message: WebSocketMessage, filterFn: ClientFilter) {
     const data = JSON.stringify(message);
-    const now = Date.now() / 1000;
     const configuredLimit = Number(process.env.WS_MAX_BUFFERED_AMOUNT_BYTES ?? 1_048_576);
     const maxBufferedAmount = Number.isFinite(configuredLimit) && configuredLimit >= 0 ? configuredLimit : 1_048_576;
-    this.clients.forEach((clientInfo, ws) => {
+    this.clients.forEach((_clientInfo, ws) => {
       if (ws.readyState !== WebSocket.OPEN) return;
-      if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) {
-        ws.close(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
-        this.clients.delete(ws);
-        return;
-      }
+      const clientInfo = this.getAuthenticatedClient(ws);
+      if (!clientInfo) return;
       if (filterFn(clientInfo)) {
         if (ws.bufferedAmount > maxBufferedAmount) return;
         ws.send(data);
@@ -192,14 +178,31 @@ export class WebSocketService {
   }
 
   getAuthenticatedClient(ws: WebSocket): AuthenticatedClient | undefined {
-    return this.clients.get(ws);
+    const client = this.clients.get(ws);
+    if (!client) return undefined;
+    if (client.tokenExp > 0 && client.tokenExp <= Date.now() / 1000) {
+      ws.close(WS_CLOSE_CODES.AUTH_EXPIRED, 'Token expired');
+      this.clients.delete(ws);
+      return undefined;
+    }
+    const user = this.authService.findUserById(client.userId);
+    // Rebind through a fresh connection after authority changes; never emit using stale privileges.
+    if (!user?.isActive || user.role !== client.role || user.email !== client.email
+      || ((client.organizationId ?? 'default') !== 'default'
+        && client.organizationId !== (user as typeof user & { organization_id?: string }).organization_id)
+      || (client.sessionId !== undefined && !this.authService.isSessionActive(client.userId, client.sessionId))) {
+      ws.close(WS_CLOSE_CODES.AUTH_INVALID, 'Authentication failed');
+      this.clients.delete(ws);
+      return undefined;
+    }
+    return client;
   }
 
   /**
    * Subscribe a WebSocket client to a consensus debate.
    */
   subscribeToDebate(ws: WebSocket, debateId: string): void {
-    const client = this.clients.get(ws);
+    const client = this.getAuthenticatedClient(ws);
     if (!client) return;
 
     // Store debate subscription in client metadata
@@ -235,17 +238,9 @@ export class WebSocketService {
       timestamp: event.timestamp,
     };
 
-    const data = JSON.stringify(message);
-    const now = Date.now() / 1000;
-
-    this.clients.forEach((clientInfo, ws) => {
-      if (ws.readyState !== WebSocket.OPEN) return;
-      if (clientInfo.tokenExp > 0 && clientInfo.tokenExp < now) return;
-
+    this.broadcastFiltered(message, (clientInfo) => {
       const subscriptions = (clientInfo as any).debateSubscriptions as Set<string>;
-      if (subscriptions && subscriptions.has(debateId)) {
-        ws.send(data);
-      }
+      return !!subscriptions?.has(debateId);
     });
   }
 

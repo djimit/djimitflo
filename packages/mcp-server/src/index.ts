@@ -25,6 +25,8 @@ import { registerOpenMythosTools } from './tools/openmythos.js';
 import { registerGovernanceTools } from './tools/governance.js';
 import { registerNotebookTools } from './tools/notebooks.js';
 import { registerExplainerTools } from './tools/explainer.js';
+import { registerAuthorityTools } from './tools/authority.js';
+import { registerPlatformTools } from './tools/platform.js';
 import { runWithMcpAuth } from './auth-context.js';
 import { UserRole } from '@djimitflo/shared';
 import type { DbHandle } from './db.js';
@@ -49,12 +51,11 @@ async function main() {
   const opts = parseArgs();
   const db = createDatabase(opts.dbPath);
 
-  const server = new McpServer({
-    name: 'djimitflo',
-    version: '0.1.0',
-  });
-
-  registerTools(server, db);
+  const createServer = () => {
+    const server = new McpServer({ name: 'djimitflo', version: '0.1.0' });
+    registerTools(server, db);
+    return server;
+  };
 
   if (opts.transport === 'stdio') {
     const transport = new StdioServerTransport();
@@ -68,11 +69,11 @@ async function main() {
         exp: now + 24 * 60 * 60,
       },
       token: process.env.DJIMITFLO_MCP_TOKEN || '',
-    }, () => server.connect(transport));
+    }, () => createServer().connect(transport));
     console.error('DjimFlo MCP Server running on stdio');
   } else {
     const { startHttpServer } = await import('./transports/http.js');
-    await startHttpServer(server, opts.port);
+    await startHttpServer(createServer, opts.port, process.env.JWT_SECRET || '', '0.0.0.0', db);
     console.error(`DjimFlo MCP Server running on http://0.0.0.0:${opts.port}/mcp`);
   }
 }
@@ -88,6 +89,8 @@ export function registerTools(server: McpServer, db: DbHandle): void {
   registerGovernanceTools(server, db);
   registerNotebookTools(server);
   registerExplainerTools(server, db.db);
+  registerAuthorityTools(server, db);
+  registerPlatformTools(server, db);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

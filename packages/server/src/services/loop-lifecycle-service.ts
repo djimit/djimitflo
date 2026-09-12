@@ -26,6 +26,7 @@ export class LoopLifecycleService {
 
   continueLoopRun(id: string, input: ContinueLoopInput = {}): ContinueResult {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertLoopNotEscalated(run);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
@@ -51,26 +52,23 @@ export class LoopLifecycleService {
     if (selectedFindings.length === 0 && alreadyLeased.length > 0) return { run, leases: alreadyLeased };
     if (selectedFindings.length === 0) throw new Error('LOOP_FINDING_NOT_FOUND');
 
-    // Intelligent runtime selection: use meta-orchestration if no explicit runtime requested
-    let runtime = input.runtime;
-    if (!runtime && this.loopService.metaOrchestration) {
-      const routing = this.loopService.metaOrchestration.getRoutingOptimization(run.loop_name || 'coding');
-      // Extract runtime from routing recommendation (format: "provider/model")
-      const recommendedModel = routing.recommendedModel;
-      // Map model names to runtimes
-      runtime = 'mock'; // Default to mock for safety
-      if (recommendedModel.includes('codex')) runtime = 'codex';
-      else if (recommendedModel.includes('opencode')) runtime = 'opencode';
-      else if (recommendedModel.includes('claude')) runtime = 'claude';
-      else if (recommendedModel.includes('gemini')) runtime = 'gemini';
+    // Model recommendations are not executor identities or permission to spend.
+    // Keep the explicit runtime, or prepare manual work until an operator chooses.
+    const runtime = input.runtime || 'manual';
+    if (input.model !== undefined && (typeof input.model !== 'string' || !input.model.trim() || input.model.length > 200)) {
+      throw new Error('INVALID_EXECUTION_MODEL');
     }
-    runtime = runtime || 'manual';
+    if (input.reasoningEffort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(input.reasoningEffort)) {
+      throw new Error('INVALID_REASONING_EFFORT');
+    }
     this.loopService.assertRuntimeAvailable(runtime);
     const budget = this.loopService.getMakerLeaseBudget(run, input);
     const currentMakerLeases = alreadyLeased.filter((l) => l.role === 'maker').length;
     if (currentMakerLeases >= budget.maxMakerWorkers || selectedFindings.length > budget.maxMakerWorkers - currentMakerLeases) {
       throw new Error('LOOP_WORKER_BUDGET_EXHAUSTED');
     }
+    const routingRecommendations = this.loopService.planLoopRun(run.id)
+      .filter(recommendation => selectedFindings.some(finding => finding.id === recommendation.findingId));
 
     const now = new Date().toISOString();
     for (const finding of selectedFindings) {
@@ -84,7 +82,11 @@ export class LoopLifecycleService {
       this.loopService.insertWorkerLease({
         id: makerLeaseId, loopRunId: run.id, role: 'maker', runtime,
         findingId: finding.id, worktreePath, branchName,
-        metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile, requested_runtime: runtime, effective_runtime: runtime }, now,
+        metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
+          requested_runtime: input.runtime ?? null, effective_runtime: runtime,
+          ...(input.model ? { model: input.model } : {}),
+          ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+          routing_recommendation: routingRecommendations.find(recommendation => recommendation.findingId === finding.id) }, now,
       });
       const checkerLeaseId = randomUUID();
       this.loopService.insertWorkerLease({
@@ -119,13 +121,14 @@ export class LoopLifecycleService {
       run.id,
     );
     this.loopService.recordLoopEvent(run.id, 'worker_leases_prepared', 'info', 'Prepared ' + selectedFindings.length + ' maker/checker assignment(s) with strategy "' + strategy.strategy + '".', {
-      finding_ids: selectedFindings.map((f) => f.id), runtime, budget, strategy: strategy.strategy, strategyConfidence: strategy.confidence,
+      finding_ids: selectedFindings.map((f) => f.id), runtime, routing_recommendations: routingRecommendations, budget, strategy: strategy.strategy, strategyConfidence: strategy.confidence,
     });
     return { run: this.loopService.getLoopRun(run.id), leases: this.loopService.listWorkerLeases(run.id) };
   }
 
   splitLoopFinding(id: string, input: SplitLoopInput): SplitResult {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertLoopNotEscalated(run);
     this.loopService.assertWallClockBudgetAvailable(run);
     if (!input.finding_id) throw new Error('LOOP_FINDING_ID_REQUIRED');
@@ -162,6 +165,7 @@ export class LoopLifecycleService {
 
   retryLoopRun(id: string, input: RetryLoopInput = {}): RetryResult {
     const run = this.loopService.getLoopRun(id);
+    this.loopService.assertOperatorNotPaused(run);
     this.loopService.assertLoopNotEscalated(run);
     this.loopService.assertWallClockBudgetAvailable(run);
     this.loopService.assertTokenBudgetAvailable(run);
@@ -182,6 +186,14 @@ export class LoopLifecycleService {
     const usedRetries = leases.filter((l) => l.role === 'maker' && l.metadata.retry_root_maker_lease_id === retryRootMakerLeaseId).length;
     if (usedRetries >= retryBudget.maxRetries) throw new Error('LOOP_RETRY_BUDGET_EXHAUSTED');
     const runtime = input.runtime || (maker.runtime as RetryLoopInput['runtime']) || 'manual';
+    const model = input.model ?? (typeof maker.metadata.model === 'string' ? maker.metadata.model : undefined);
+    const reasoningEffort = input.reasoningEffort ?? (maker.metadata.reasoningEffort as RetryLoopInput['reasoningEffort'] | undefined);
+    if (model !== undefined && (typeof model !== 'string' || !model.trim() || model.length > 200)) {
+      throw new Error('INVALID_EXECUTION_MODEL');
+    }
+    if (reasoningEffort !== undefined && !['low', 'medium', 'high', 'xhigh', 'max'].includes(reasoningEffort)) {
+      throw new Error('INVALID_REASONING_EFFORT');
+    }
     this.loopService.assertRuntimeAvailable(runtime);
     const retryAttempt = usedRetries + 1;
     const branchName = this.loopService.branchNameFor(run.id, finding.id, retryAttempt);
@@ -194,20 +206,29 @@ export class LoopLifecycleService {
     const retryMakerLeaseId = randomUUID();
     this.loopService.insertWorkerLease({
       id: retryMakerLeaseId, loopRunId: run.id, role: 'maker', runtime, findingId: finding.id, worktreePath, branchName,
-      metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile, retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
+      metadata: { assignment_file: assignmentFile, assignment_packet_file: assignmentPacketFile,
+        ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}),
+        retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
     });
     const retryCheckerLeaseId = randomUUID();
     this.loopService.insertWorkerLease({
       id: retryCheckerLeaseId, loopRunId: run.id, role: 'checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
       metadata: { maker_lease_id: retryMakerLeaseId, requires_independent_review: true, retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
     });
+    const retrySecurityCheckerLeaseId = this.loopService.isHighRiskRun(run, finding) ? randomUUID() : null;
+    if (retrySecurityCheckerLeaseId) {
+      this.loopService.insertWorkerLease({
+        id: retrySecurityCheckerLeaseId, loopRunId: run.id, role: 'security_checker', runtime: 'manual', findingId: finding.id, worktreePath: null, branchName: null,
+        metadata: { maker_lease_id: retryMakerLeaseId, requires_security_review: true, high_risk_reason: this.loopService.highRiskReason(run, finding), retry_of_maker_lease_id: maker.id, retry_root_maker_lease_id: retryRootMakerLeaseId, retry_attempt: retryAttempt }, now,
+      });
+    }
     this.loopService.updateWorkerLeaseStatus(maker.id, maker.status, { superseded_by_maker_lease_id: retryMakerLeaseId, superseded_at: now });
     const db = (this.loopService as any).db;
     db.prepare('UPDATE loop_runs SET status = ?, next_actions_json = ?, updated_at = ? WHERE id = ?').run(
-      'running', JSON.stringify(['Run retry maker in prepared worktree', 'Run deterministic checks', 'Submit independent checker verdict']), now, run.id,
+      'running', JSON.stringify(['Run retry maker in prepared worktree', 'Run deterministic checks', retrySecurityCheckerLeaseId ? 'Submit independent checker and security checker verdicts' : 'Submit independent checker verdict']), now, run.id,
     );
     this.loopService.recordLoopEvent(run.id, 'retry_prepared', 'info', `Prepared retry ${retryAttempt} for maker lease ${maker.id}.`, {
-      maker_lease_id: maker.id, retry_maker_lease_id: retryMakerLeaseId, retry_checker_lease_id: retryCheckerLeaseId, retry_attempt: retryAttempt, retry_budget: retryBudget,
+      maker_lease_id: maker.id, retry_maker_lease_id: retryMakerLeaseId, retry_checker_lease_id: retryCheckerLeaseId, retry_security_checker_lease_id: retrySecurityCheckerLeaseId, retry_attempt: retryAttempt, retry_budget: retryBudget,
     });
     const updatedLeases = this.loopService.listWorkerLeases(run.id);
     return { run: this.loopService.getLoopRun(run.id), leases: updatedLeases, retry_maker: updatedLeases.find((l) => l.id === retryMakerLeaseId)!, retry_checker: updatedLeases.find((l) => l.id === retryCheckerLeaseId)! };

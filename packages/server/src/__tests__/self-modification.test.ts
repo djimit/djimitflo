@@ -1,6 +1,6 @@
 import { afterEach, describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { SelfModificationPipeline } from '../services/self-modification-pipeline';
@@ -24,6 +24,11 @@ describe('SelfModificationPipeline', () => {
   it('analyzes codebase for improvement opportunities', () => {
     const opportunities = pipeline.analyze();
     expect(Array.isArray(opportunities)).toBe(true);
+  });
+
+  it('resolves the monorepo root when launched from a workspace', () => {
+    const repoRoot = (pipeline as SelfModificationPipeline & { repoRoot: string }).repoRoot;
+    expect(existsSync(join(repoRoot, 'packages/server/src'))).toBe(true);
   });
 
   it('creates a modification plan for an opportunity', () => {

@@ -9,14 +9,79 @@ import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
 import { OpenMythosEvalService } from '../services/openmythos-eval-service';
+import { OpenMythosAttestationService } from '../services/openmythos-attestation-service';
+import { WorldLabEvidenceService } from '../services/worldlab-evidence-service';
 import { GovernanceGuardService } from '../services/governance-guard-service';
 import { ApexReportService } from '../services/apex-report-service';
+
+function boundedLimit(value: unknown, fallback: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw createError(400, `limit must be an integer between 1 and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
 
 export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const evalService = new OpenMythosEvalService(db);
   const guardService = new GovernanceGuardService(db);
+  const attestationService = new OpenMythosAttestationService(db);
+  const worldLabEvidence = new WorldLabEvidenceService(db);
+
+  router.get('/attestations', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      const limit = boundedLimit(req.query.limit, 50, 200);
+      res.json({ attestations: attestationService.list(limit) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/attestations/:id', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(attestationService.get(req.params.id));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'OPENMYTHOS_ATTESTATION_NOT_FOUND') {
+        next(createError(404, 'OpenMythos attestation not found', 'OPENMYTHOS_ATTESTATION_NOT_FOUND'));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/attestations/import', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      const actor = String((req as any).user?.sub || '').trim();
+      res.status(201).json(attestationService.import(req.body?.payload ?? req.body, actor));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'OPENMYTHOS_ATTESTATION_IMPORT_FAILED';
+      if (code.startsWith('OPENMYTHOS_ATTESTATION_')) {
+        next(createError(code.endsWith('_NOT_FOUND') ? 404 : 400, 'OpenMythos attestation import rejected', code));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/worldlab/retests', requirePermission('write:governance'), (req, res, next) => {
+    try {
+      res.status(201).json(worldLabEvidence.recordRetest(req.body));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'WORLDLAB_RETEST_FAILED';
+      if (code === 'WORLDLAB_RETEST_GOAL_NOT_FOUND') {
+        next(createError(404, 'WorldLab goal not found', code));
+        return;
+      }
+      if (code === 'WORLDLAB_RETEST_INVALID' || code === 'WORLDLAB_RETEST_FINDING_MISMATCH') {
+        next(createError(400, 'WorldLab retest rejected', code));
+        return;
+      }
+      next(error);
+    }
+  });
 
   router.get(['/status', '/status/:agentId'], requirePermission('read:evidence'), (req, res, next) => {
     try {
@@ -43,7 +108,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/openmythos/runs — recent eval runs across all agents
   router.get('/runs', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const limit = req.query.limit ? Math.min(Math.max(Number(req.query.limit) || 20, 1), 100) : 20;
+      const limit = boundedLimit(req.query.limit, 20, 100);
       res.json({ runs: evalService.listRuns(limit) });
     } catch (error) {
       next(error);
@@ -85,7 +150,7 @@ export function createOpenMythosRoutes(db: Database, auth?: AuthMiddleware): Rou
   // GET /api/openmythos/trend/:agentId — governance trend over time
   router.get('/trend/:agentId', requirePermission('read:evidence'), (req, res, next) => {
     try {
-      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      const limit = boundedLimit(req.query.limit, 10, 100);
       const trend = evalService.getGovernanceTrend(req.params.agentId, limit);
       res.json({ agentId: req.params.agentId, trend });
     } catch (error) {

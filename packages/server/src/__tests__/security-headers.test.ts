@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Request, Response } from 'express';
 import { securityHeaders } from '../middleware/security-headers';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 function createMockResponse(): Response {
   const headers: Record<string, string> = {};
@@ -11,6 +13,14 @@ function createMockResponse(): Response {
 }
 
 describe('securityHeaders', () => {
+  it('mounts the existing policy before public health and dashboard handlers at startup', () => {
+    const startup = readFileSync(join(__dirname, '../index.ts'), 'utf8');
+    const middleware = startup.indexOf('app.use(securityHeaders)');
+    expect(middleware).toBeGreaterThan(-1);
+    for (const handler of ["app.get('/health'", "app.use('/explore'", 'app.use(express.static']) {
+      expect(startup.indexOf(handler)).toBeGreaterThan(middleware);
+    }
+  });
   it('sets X-Content-Type-Options to nosniff', () => {
     const res = createMockResponse();
     const next = vi.fn();

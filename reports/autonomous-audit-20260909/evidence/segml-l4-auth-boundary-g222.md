@@ -1,0 +1,3 @@
+# G222 SEGML Level-4 auth-boundary repair
+
+The full route-inventory HTTP proof exposed `POST /api/segml/l4/tournament` returning `200` during the integrated sweep instead of the required anonymous `401`. The Level-4 route factory now requires a real `AuthMiddleware` and no longer has a permissive no-auth fallback. The focused route-inventory suite passes 7/7, the full server suite passes 2,494/20, the integrated workspace passes 2,785/20, and the canonical `/loops` suite passes 23 files / 291 tests / 1 skip. This closes the local auth-boundary defect; it does not certify authenticated production behavior.

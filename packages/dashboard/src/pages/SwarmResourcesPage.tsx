@@ -574,10 +574,11 @@ function WorkItemRow({
         <span>value {item.value_score}</span>
         <span>confidence {(item.confidence * 100).toFixed(0)}%</span>
         {item.recommended_loop && <span>{item.recommended_loop}</span>}
+        {item.parent_goal_id && <span className="break-all">Goal ID: {item.parent_goal_id}</span>}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button onClick={onTriage} disabled={busy || item.status !== 'candidate'} className="px-2 py-1 rounded border border-accent/20 text-xs text-accent hover:bg-accent/10 disabled:opacity-50">Triage</button>
-        <button onClick={onGoal} disabled={busy || item.status === 'discarded' || item.status === 'done'} className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50">Goal</button>
+        <button onClick={onGoal} disabled={busy || Boolean(item.parent_goal_id) || item.source === 'agent_board' || (item.status !== 'candidate' && item.status !== 'triaged')} className="px-2 py-1 rounded border border-status-completed/20 text-xs text-status-completed hover:bg-status-completed/10 disabled:opacity-50">Goal</button>
         <button onClick={onDiscard} disabled={busy || item.status === 'discarded'} className="px-2 py-1 rounded border border-status-error/20 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-50">Discard</button>
       </div>
     </div>

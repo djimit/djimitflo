@@ -11,6 +11,7 @@ import type { Task } from '@djimitflo/shared';
 import { DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
 import { ApprovalService } from '../services/approval-service';
 import { AuditService } from '../services/audit-service';
+import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -187,11 +188,13 @@ describe('ExecutionEngine', () => {
       .mockReturnValue({ files: [], summary: { redactedSecrets: 0 } });
     (engine as any).diffContexts.set(task.id, { repositoryId: 'repo-1', repositoryPath: '/tmp/repo', preSnapshotId: 'snapshot-1' });
 
-    (engine as any).handleExecutionComplete(task.id, {
+    const session = {
       taskId: task.id,
       executorKind: 'deep-agent',
       startedAt: new Date(),
-    }, { status: 'completed', message: 'executor-only success', metrics: { toolCalls: 0 } });
+    };
+    (engine as any).activeSessions.set(task.id, session);
+    (engine as any).handleExecutionComplete(task.id, session, { status: 'completed', message: 'executor-only success', metrics: { toolCalls: 0 } });
 
     expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('awaiting_approval');
     expect(capturePostExecutionDiff).toHaveBeenCalledWith('/tmp/repo', 'repo-1', task.id, 'snapshot-1');
@@ -274,9 +277,10 @@ describe('ExecutionEngine', () => {
     const task = createTask({ id: 'scoped-approval' });
     db.prepare(`INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode)
       VALUES (?,?,?,?,?,?,?)`).run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'high', 'local');
-    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,metadata)
-      VALUES ('scoped','scoped-approval','approved','high','high_risk_action','Run','{}','maker',?)`)
-      .run(JSON.stringify({ executorKind: 'deep-agent' }));
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('scoped','scoped-approval','approved','high','high_risk_action','Run','{}','maker',?,?)`)
+      .run(new Date(Date.now() + 60_000).toISOString(), JSON.stringify({ executorKind: 'deep-agent',
+        executionInputHash: (engine as any).executionInputHash((engine as any).getTask(task.id), 'deep-agent') }));
 
     expect((engine as any).hasApprovedStart(task.id, 'deep-agent')).toBe(true);
     expect((engine as any).hasApprovedStart(task.id, 'opencode')).toBe(false);
@@ -309,6 +313,44 @@ describe('ExecutionEngine', () => {
     fs.rmSync(root, { recursive: true });
   });
 
+  it('dispatches normally while an independent manual action remains pending', async () => {
+    const task = createTask({ id: 'pending-manual-action' });
+    db.prepare('INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode) VALUES (?,?,?,?,?,?,?)')
+      .run(task.id, task.title, task.description, 'pending', 'low', 'low', 'local');
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('manual-only',?,'pending','low','high_risk_action','Review action','{}','maker',?,?)`)
+      .run(task.id, new Date(Date.now() + 60_000).toISOString(), JSON.stringify({ manual_action: true }));
+    const service = new ApprovalService(db, createMockWsService(), new AuditService(db));
+    expect(service.getLatestPendingForTask(task.id)?.id).toBe('manual-only');
+    expect((await engine.executeTask(task.id, 'mock')).status).toBe('started');
+    expect(service.getApproval('manual-only')?.status).toBe('pending');
+  });
+
+  it('keeps an older execution approval blocking alongside a newer manual action', async () => {
+    const task = createTask({ id: 'pending-mixed-approvals' });
+    db.prepare('INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode) VALUES (?,?,?,?,?,?,?)')
+      .run(task.id, task.title, task.description, 'awaiting_approval', 'low', 'low', 'local');
+    const insert = db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata,created_at)
+      VALUES (?,?,'pending','low','high_risk_action','Review','{}','maker',?,?,?)`);
+    const expiry = new Date(Date.now() + 60_000).toISOString();
+    insert.run('execution-first', task.id, expiry, JSON.stringify({ executorKind: 'mock' }), '2026-01-01T00:00:00.000Z');
+    insert.run('manual-newer', task.id, expiry, JSON.stringify({ manual_action: true }), '2026-01-02T00:00:00.000Z');
+    const start = vi.spyOn(engine.getExecutor('mock')!, 'start');
+    await expect(engine.executeTask(task.id, 'mock')).rejects.toThrow('Task is awaiting approval');
+    expect(start).not.toHaveBeenCalled();
+    expect((db.prepare('SELECT status FROM tasks WHERE id=?').get(task.id) as any).status).toBe('awaiting_approval');
+  });
+
+  it.each([false, 'true', 1, null])('does not treat manual_action=%j as the server-owned boolean marker', async (marker) => {
+    const task = createTask();
+    db.prepare('INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode) VALUES (?,?,?,?,?,?,?)')
+      .run(task.id, task.title, task.description, 'pending', 'low', 'low', 'local');
+    db.prepare(`INSERT INTO approvals (id,task_id,status,risk_level,request_type,request_message,request_data,requested_by,expires_at,metadata)
+      VALUES ('non-manual',?,'pending','low','high_risk_action','Review','{}','maker',?,?)`)
+      .run(task.id, new Date(Date.now() + 60_000).toISOString(), JSON.stringify({ manual_action: marker }));
+    await expect(engine.executeTask(task.id, 'mock')).rejects.toThrow('Task is awaiting approval');
+  });
+
   it('executes a low-risk task with mock executor', async () => {
     const task = createTask();
     db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
@@ -317,6 +359,32 @@ describe('ExecutionEngine', () => {
 
     const result = await engine.executeTask(task.id, 'mock');
     expect(result.status).toBe('started');
+  });
+
+  it('preserves model and reasoning from persisted task metadata at dispatch', async () => {
+    const executor = new MockExecutor();
+    const start = vi.spyOn(executor, 'start');
+    engine.registerExecutor(executor);
+    const metadata = { model: 'gpt-6-astra', reasoningEffort: 'max', codexSandbox: 'workspace-write' };
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', ?)")
+      .run('model-dispatch', 'Model dispatch', 'echo hello', JSON.stringify(metadata));
+    const execution = await engine.executeTask('model-dispatch', 'mock');
+    expect(start).toHaveBeenCalledWith(expect.anything(), expect.objectContaining(metadata));
+    await execution.completion;
+  });
+
+  it.each([
+    [{ model: 7 }, 'INVALID_EXECUTION_MODEL'],
+    [{ reasoningEffort: 'unbounded' }, 'INVALID_REASONING_EFFORT'],
+    [{ codexSandbox: 'danger-full-access' }, 'INVALID_CODEX_SANDBOX'],
+  ])('rejects invalid runtime selection before starting an executor: %j', async (metadata, error) => {
+    const executor = new MockExecutor();
+    const start = vi.spyOn(executor, 'start');
+    engine.registerExecutor(executor);
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, metadata) VALUES (?, ?, ?, 'pending', 'medium', 'low', 'local', ?)")
+      .run('invalid-dispatch', 'Invalid settings', 'echo hello', JSON.stringify(metadata));
+    await expect(engine.executeTask('invalid-dispatch', 'mock')).rejects.toThrow(String(error));
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('does not let a late executor result overwrite cancellation', async () => {
@@ -370,6 +438,92 @@ describe('ExecutionEngine', () => {
 
     expect(result).toMatchObject({ status: 'denied', reason: expect.stringContaining('blocked-agent') });
     expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
+  });
+
+  it.each(['paused', 'error', 'offline', 'retired', 'handoff_complete'])('does not dispatch an assigned %s agent', async (status) => {
+    db.prepare('INSERT INTO agents (id, name, status) VALUES (?, ?, ?)').run('unavailable-agent', 'Unavailable agent', status);
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id) VALUES ('unavailable-task','Assigned task','echo hello','pending','medium','low','local','unavailable-agent')").run();
+    const start = vi.fn(async (task: Task) => ({
+      id: 'unexpected-session', taskId: task.id, executorKind: 'mock' as const, status: 'running' as const,
+      startedAt: new Date(), events: (async function* () {})(), cancel: async () => {},
+      result: Promise.resolve({ status: 'completed' as const, message: 'fixture', metrics: {} }),
+    }));
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start });
+
+    await expect(engine.executeTask('unavailable-task', 'mock')).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' });
+    expect(start).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT status FROM tasks WHERE id = 'unavailable-task'").get()).toEqual({ status: 'pending' });
+  });
+
+  it.each(['idle', 'active'])('dispatches an assigned %s agent through the explicitly selected executor', async (status) => {
+    db.prepare('INSERT INTO agents (id, name, status) VALUES (?, ?, ?)').run('available-agent', 'Available agent', status);
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id) VALUES ('available-task','Assigned task','echo hello','pending','medium','low','local','available-agent')").run();
+    const start = vi.fn(async (task: Task) => ({
+      id: 'available-session', taskId: task.id, executorKind: 'mock' as const, status: 'running' as const,
+      startedAt: new Date(), events: (async function* () {})(), cancel: async () => {},
+      result: Promise.resolve({ status: 'completed' as const, message: 'fixture', metrics: {} }),
+    }));
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start });
+    const execution = await engine.executeTask('available-task', 'mock');
+    await execution.completion;
+    expect(start).toHaveBeenCalledOnce();
+    expect(start.mock.calls[0][0].agent_id).toBe('available-agent');
+  });
+
+  it.each(['retired', 'quarantined'])('rechecks an assigned agent that becomes %s while waiting for runtime capacity', async (change) => {
+    const previousLimit = process.env.RUNTIME_MAX_CONCURRENCY;
+    process.env.RUNTIME_MAX_CONCURRENCY = '1';
+    const reservation = `agent-admission-${change}`;
+    db.prepare("INSERT INTO agents (id,name,status) VALUES ('queued-agent','Queued agent','idle')").run();
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id) VALUES ('queued-agent-task','Assigned task','echo hello','pending','medium','low','local','queued-agent')").run();
+    const start = vi.fn(async (task: Task) => ({
+      id: 'unexpected-session', taskId: task.id, executorKind: 'mock' as const, status: 'running' as const,
+      startedAt: new Date(), events: (async function* () {})(), cancel: async () => {},
+      result: Promise.resolve({ status: 'completed' as const, message: 'fixture', metrics: {} }),
+    }));
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start });
+    try {
+      await runtimeConcurrencySemaphore.acquire(reservation);
+      const dispatch = engine.executeTask('queued-agent-task', 'mock');
+      const rejected = expect(dispatch).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' });
+      await Promise.resolve();
+      expect(start).not.toHaveBeenCalled();
+      if (change === 'retired') {
+        db.prepare("UPDATE agents SET status = 'retired' WHERE id = 'queued-agent'").run();
+      } else {
+        const governance = new RuntimeGovernanceService(db);
+        governance.registerBaseline('queued-agent', { overallScore: 4.5, categoryScores: {}, certifiedAt: new Date().toISOString() });
+        db.prepare("UPDATE runtime_governance_agents SET quarantined = 1 WHERE agent_id = 'queued-agent'").run();
+      }
+      runtimeConcurrencySemaphore.release(reservation);
+      await rejected;
+      expect(start).not.toHaveBeenCalled();
+      expect(engine.isTaskRunning('queued-agent-task')).toBe(false);
+      expect(runtimeConcurrencySemaphore.activeCount).toBe(0);
+    } finally {
+      runtimeConcurrencySemaphore.release(reservation);
+      if (previousLimit === undefined) delete process.env.RUNTIME_MAX_CONCURRENCY;
+      else process.env.RUNTIME_MAX_CONCURRENCY = previousLimit;
+    }
+  });
+
+  it('does not send a retired assigned agent to a fallback after a failed start', async () => {
+    db.prepare("INSERT INTO agents (id,name,status) VALUES ('fallback-agent','Fallback agent','idle')").run();
+    db.prepare("INSERT INTO tasks (id,title,description,status,priority,risk_level,execution_mode,agent_id) VALUES ('agent-fallback-task','Assigned task','echo hello','pending','medium','low','local','fallback-agent')").run();
+    const firstStart = vi.fn(async () => {
+      db.prepare("UPDATE agents SET status = 'retired' WHERE id = 'fallback-agent'").run();
+      throw new Error('Provider temporarily unavailable before process start');
+    });
+    const fallbackStart = vi.fn(async () => { throw new Error('Unexpected fallback start'); });
+    engine.registerExecutor({ kind: 'mock', canExecute: () => true, start: firstStart });
+    for (const kind of ['claude', 'codex', 'gemini'] as const) {
+      engine.registerExecutor({ kind, canExecute: () => true, start: fallbackStart });
+    }
+
+    await expect(engine.executeTask('agent-fallback-task', 'mock')).rejects.toMatchObject({ code: 'AGENT_UNAVAILABLE' });
+    expect(firstStart).toHaveBeenCalledOnce();
+    expect(fallbackStart).not.toHaveBeenCalled();
+    expect(runtimeConcurrencySemaphore.activeCount).toBe(0);
   });
 
   it('queues execution when the shared runtime concurrency cap is full', async () => {

@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import { createError } from '../middleware/error-handler';
-import { AuthTokenPayload } from '@djimitflo/shared';
+import { ApprovalRequestType, AuthTokenPayload, RiskLevel } from '@djimitflo/shared';
+import { z } from 'zod';
 import { AuthorizationService } from '../services/authorization-service';
+import { ApprovalService } from '../services/approval-service';
+import { AuditService } from '../services/audit-service';
+import type { WebSocketService } from '../services/websocket-service';
 import type { ExecutionEngine } from '../execution/execution-engine';
 import type { AuthMiddleware } from '../middleware/auth';
 
@@ -14,13 +18,43 @@ function parseApproval(approval: any) {
   };
 }
 
-export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware): Router {
+export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEngine, auth?: AuthMiddleware, wsService?: WebSocketService): Router {
   const router = Router();
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
 
   function getUser(req: any): AuthTokenPayload {
     return (req as any).user;
   }
+
+  // Human review of an action attached to an existing task. A decision records
+  // authorization only; it cannot dispatch arbitrary task metadata as a command.
+  router.post('/', requirePermission('create:task'), (req, res, next) => {
+    try {
+      const parsed = z.object({
+        task_id: z.string().min(1), action: z.string().trim().min(1).max(4000),
+        reason: z.string().trim().min(1).max(10000),
+        risk_level: z.enum(RiskLevel), context: z.record(z.string(), z.unknown()).default({}),
+      }).safeParse(req.body);
+      if (!parsed.success) throw createError(400, 'Valid task_id, action, reason and risk_level are required', 'INVALID_INPUT');
+      const input = parsed.data;
+      const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(input.task_id) as any;
+      if (!task || !AuthorizationService.canModifyTask(getUser(req), task)) {
+        throw createError(404, 'Task not found', 'TASK_NOT_FOUND');
+      }
+      const service = new ApprovalService(db, wsService || { broadcastTaskEventById: () => {} }, new AuditService(db));
+      const approval = service.createApproval({
+        task, title: input.action, description: input.reason,
+        requestedBy: getUser(req).sub, requestType: ApprovalRequestType.HIGH_RISK_ACTION,
+        assessment: {
+          action_type: 'unknown', risk_level: input.risk_level,
+          matched_rules: [], explanation: input.reason, recommended_decision: 'require_approval',
+          metadata: { action: input.action, context: input.context },
+        },
+        metadata: { manual_action: true, context: input.context },
+      });
+      res.status(201).json(approval);
+    } catch (error) { next(error); }
+  });
 
   function loadApprovalOr404(id: string, res: any): any | null {
     const approval = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id);
@@ -33,6 +67,10 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
 
   function sendDecisionError(error: unknown, res: any): boolean {
     if (!(error instanceof Error)) return false;
+    if (error.message.startsWith('INVALID_APPROVAL_DECISION:')) {
+      res.status(400).json({ error: { message: error.message, code: 'INVALID_APPROVAL_DECISION' } });
+      return true;
+    }
     const code = error.message.includes('SELF_APPROVAL_FORBIDDEN')
       ? 'SELF_APPROVAL_FORBIDDEN'
       : error.message.includes('APPROVAL_EXPIRED') ? 'APPROVAL_EXPIRED' : null;
@@ -47,9 +85,9 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
   }
 
   function canAccessApprovalTask(user: AuthTokenPayload, approval: any): boolean {
-    if (AuthorizationService.isAdmin(user)) return true;
+    if (AuthorizationService.getApprovalTaskVisibilityWhere(user) === null) return true;
     const task = loadTaskForApproval(approval);
-    if (!task) return true;
+    if (!task) return false;
     return AuthorizationService.canReadTask(user, task);
   }
 
@@ -58,8 +96,9 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
     try {
       const { status } = req.query;
       const user = getUser(req);
+      const visibility = AuthorizationService.getApprovalTaskVisibilityWhere(user);
 
-      if (AuthorizationService.isAdmin(user)) {
+      if (!visibility) {
         let query = 'SELECT * FROM approvals';
         const params: any[] = [];
         if (status) {
@@ -70,11 +109,10 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         const approvals = db.prepare(query).all(...params);
         res.json({ approvals: (approvals as any[]).map(parseApproval) });
       } else {
-        const visibility = AuthorizationService.getApprovalTaskVisibilityWhere(user);
-        let query = 'SELECT a.* FROM approvals a INNER JOIN tasks t ON a.task_id = t.id';
+        let query = 'SELECT a.* FROM approvals a INNER JOIN tasks ON a.task_id = tasks.id';
         const params: any[] = [];
-        const where: string[] = [visibility!.clause];
-        const visParams = visibility!.params;
+        const where: string[] = [visibility.clause];
+        const visParams = visibility.params;
 
         if (status) {
           where.push('a.status = ?');
@@ -133,7 +171,7 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
       const decidedBy = user?.sub || 'system';
 
       try {
-        await executionEngine.handleApprovalDecision(id, Boolean(approved), decidedBy, reason);
+        await executionEngine.handleApprovalDecision(id, approved, decidedBy, reason);
       } catch (error) {
         if (sendDecisionError(error, res)) return;
         throw error;
@@ -225,7 +263,10 @@ export function createApprovalRoutes(db: Database, executionEngine?: ExecutionEn
         return;
       }
 
-      db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
+      const result = db.prepare("UPDATE approvals SET status = 'expired', updated_at = ? WHERE id = ? AND status = 'pending'").run(new Date().toISOString(), id);
+      if (!result.changes) {
+        throw createError(409, 'Approval already processed', 'APPROVAL_ALREADY_PROCESSED');
+      }
       const updated = db.prepare('SELECT * FROM approvals WHERE id = ?').get(id) as any;
       res.json(parseApproval(updated));
     } catch (error) {

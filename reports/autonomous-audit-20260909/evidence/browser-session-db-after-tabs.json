@@ -1,0 +1,67 @@
+{
+  "observed_at": "2026-09-09T15:00:04.915Z",
+  "sid": "eb9de2b1-96b0-4ed8-9335-5c212d920440",
+  "records": [
+    {
+      "session_id": "eb9de2b1-96b0-4ed8-9335-5c212d920440",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "revoked": 1,
+      "issued_at": "2026-09-09T14:56:55.762Z",
+      "expires_at": "2026-10-09T14:56:55.762Z",
+      "rotated": 0
+    },
+    {
+      "session_id": "eb9de2b1-96b0-4ed8-9335-5c212d920440",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "revoked": 1,
+      "issued_at": "2026-09-09T14:58:25.514Z",
+      "expires_at": "2026-10-09T14:58:25.514Z",
+      "rotated": 1
+    },
+    {
+      "session_id": "eb9de2b1-96b0-4ed8-9335-5c212d920440",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "revoked": 1,
+      "issued_at": "2026-09-09T14:59:10.843Z",
+      "expires_at": "2026-10-09T14:59:10.843Z",
+      "rotated": 1
+    },
+    {
+      "session_id": "eb9de2b1-96b0-4ed8-9335-5c212d920440",
+      "user_id": "bbb95c82-f6ee-4e37-a660-ad418c111a5a",
+      "revoked": 0,
+      "issued_at": "2026-09-09T15:00:04.322Z",
+      "expires_at": "2026-10-09T15:00:04.322Z",
+      "rotated": 1
+    }
+  ],
+  "audit": [
+    {
+      "id": "7f6564f7-87fe-44b6-9133-607f735503bc",
+      "action": "auth.login",
+      "metadata": "{\"channel\":\"browser\"}"
+    },
+    {
+      "id": "19c24664-1856-44d7-9fef-da4ab89f7114",
+      "action": "auth.refresh",
+      "metadata": "{\"channel\":\"browser\"}"
+    },
+    {
+      "id": "f3565b35-4b00-4629-bedb-9181f9641e74",
+      "action": "organization.switch",
+      "metadata": "{\"from\":\"audit-org-20260909\",\"to\":\"default\"}"
+    },
+    {
+      "id": "40dc467f-462d-4a82-a925-ff0a9d471f0d",
+      "action": "auth.refresh",
+      "metadata": "{\"channel\":\"browser\"}"
+    },
+    {
+      "id": "807f84f1-6b05-462b-a505-08557feaa07b",
+      "action": "auth.refresh",
+      "metadata": "{\"channel\":\"browser\"}"
+    }
+  ],
+  "final_logout_asserted": false,
+  "production_verified": false
+}

@@ -3,8 +3,8 @@
  *
  * Exposes: spawn_agent, handoff_agent, approve_action, list_agents
  *
- * These tools enable agent-to-agent delegation and human-in-the-loop
- * approval gating, following the OpenAI Agents SDK handoff pattern.
+ * Registration, handoff requests and human review are control-plane records.
+ * They do not themselves launch an executor or transfer a running process.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -13,6 +13,7 @@ import { randomUUID } from 'crypto';
 import { requireLiveMode, type DbHandle } from '../db.js';
 import { ROLE_PERMISSIONS } from '@djimitflo/shared';
 import { currentMcpAuth } from '../auth-context.js';
+import { api } from './platform.js';
 
 function requirePermission(permission: string) {
   const principal = currentMcpAuth().payload;
@@ -27,30 +28,30 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
   server.registerTool(
     'djimitflo_spawn_agent',
     {
-      description: 'Spawn a sub-agent to handle a specific task with isolated context. The sub-agent gets its own context window, tool budget, and scratch space.',
+      description: 'Registration-only legacy spawn tool: create an idle agent record with requested task/runtime metadata. Does not create or execute a task, allocate context or scratch space, or start a worker. Actual execution requires a separately authorized task execution or governed loop.',
       inputSchema: {
-        task: z.string().describe('The task description for the sub-agent'),
-        runtime: z.enum(['mock', 'codex', 'opencode', 'claude', 'gemini', 'editor']).default('mock').describe('Runtime to use for the sub-agent'),
+        task: z.string().min(1).describe('Requested work description stored on the agent; no task is created'),
+        runtime: z.enum(['mock', 'codex', 'opencode', 'claude', 'gemini', 'editor']).default('mock').describe('Requested runtime metadata; availability is not checked and no runtime is started'),
         role: z.enum(['planner', 'maker', 'checker', 'security_checker', 'memory_curator', 'governance_guard']).default('maker').describe('Role of the sub-agent'),
-        context_budget: z.number().int().min(500).max(100000).default(4000).describe('Token budget for the sub-agent context window'),
-        parent_run_id: z.string().optional().describe('Parent loop run ID (if spawning from within a loop)'),
+        context_budget: z.number().int().min(500).max(100000).default(4000).describe('Requested context budget metadata only; not allocated or enforced'),
+        parent_run_id: z.string().optional().describe('Requested parent run metadata only; does not attach a worker to the loop'),
       },
     },
     async ({ task, runtime, role, context_budget, parent_run_id }) => {
       requireLiveMode(dbHandle);
       const principal = requirePermission('write:swarm_action');
-      const agentId = `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const agentId = `agent-${randomUUID()}`;
 
-      // Register the sub-agent
+      // Compatibility registration only; dispatch belongs to the task/loop services.
       db.prepare(`
         INSERT INTO agents (id, name, description, status, capabilities, model, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, 'idle', ?, 'workstation-litellm/coding', ?, datetime('now'), datetime('now'))
+        VALUES (?, ?, ?, 'idle', ?, NULL, ?, datetime('now'), datetime('now'))
       `).run(
         agentId,
-        `${role}-${runtime}`,
+        `${role}-${runtime}-${agentId}`,
         task,
         JSON.stringify([role]),
-        JSON.stringify({ parent_run_id, context_budget, spawned_by: principal.sub, spawned_by_role: principal.role })
+        JSON.stringify({ parent_run_id, requested_runtime: runtime, context_budget, context_budget_enforced: false, registration_only: true, spawned_by: principal.sub, spawned_by_role: principal.role })
       );
 
       return {
@@ -58,12 +59,15 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
           type: 'text' as const,
           text: JSON.stringify({
             agent_id: agentId,
-            status: 'spawned',
+            status: 'idle',
+            registration_only: true,
+            execution_started: false,
+            context_budget_enforced: false,
             runtime,
             role,
             context_budget,
             task: task.slice(0, 200),
-            message: `Sub-agent spawned with ${context_budget} token budget. Use djimitflo_get_agent_status to monitor progress.`,
+            message: 'Idle agent registered; no task, worker, context allocation or execution was started. Use a separately authorized task execution or governed loop to perform work.',
           }, null, 2),
         }],
       };
@@ -127,32 +131,30 @@ export function registerOrchestrationTools(server: McpServer, dbHandle: DbHandle
     {
       description: 'Request human approval for a high-risk action. Returns a pending approval that must be confirmed before the action proceeds.',
       inputSchema: {
+        task_id: z.string().min(1).describe('Existing task to which the requested action belongs'),
         action: z.string().describe('The action requiring approval'),
         reason: z.string().describe('Why approval is needed'),
         risk_level: z.enum(['low', 'medium', 'high', 'critical']).describe('Risk level of the action'),
         context: z.record(z.string(), z.unknown()).default({}).describe('Additional context for the approver'),
       },
     },
-    async ({ action, reason, risk_level, context }) => {
+    async ({ task_id, action, reason, risk_level, context }) => {
       requireLiveMode(dbHandle);
-      const principal = requirePermission('create:task');
-      const approvalId = `approval-${Date.now()}`;
-
-      // Store approval request using existing approvals table
-      db.prepare(`
-        INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, requested_by, created_at)
-        VALUES (?, 'mcp-orchestrator', 'pending', ?, 'high_risk_action', ?, ?, ?, datetime('now'))
-      `).run(approvalId, risk_level, action, JSON.stringify({ reason, context }), principal.sub);
+      requirePermission('create:task');
+      const approval = await api('/approvals', {
+        method: 'POST', body: JSON.stringify({ task_id, action, reason, risk_level, context }),
+      }).then(response => response.json()) as { id: string };
 
       return {
         content: [{
           type: 'text' as const,
           text: JSON.stringify({
-            approval_id: approvalId,
+            approval_id: approval.id,
+            task_id,
             status: 'pending',
             action: action.slice(0, 200),
             risk_level,
-            message: `Approval requested for ${risk_level}-risk action. Use the DjimFlo dashboard or API to approve/reject.`,
+            message: `Approval requested for ${risk_level}-risk action. Dashboard/API review records the decision; it does not execute the action.`,
           }, null, 2),
         }],
       };

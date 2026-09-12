@@ -5,6 +5,15 @@ import { createError } from '../middleware/error-handler';
 import { SECURITY_FINDING_SOURCE, WorkItemService } from '../services/work-item-service';
 import { IntegrationInboxService } from '../services/integration-inbox-service';
 
+function boundedLimit(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw createError(400, 'limit must be an integer between 1 and 500', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
+
 function mapWorkItemError(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
   if (message === 'WORK_ITEM_NOT_FOUND') throw createError(404, 'Work item not found', 'WORK_ITEM_NOT_FOUND');
@@ -12,6 +21,8 @@ function mapWorkItemError(error: unknown): never {
   if (message === 'WORK_ITEM_DESCRIPTION_REQUIRED') throw createError(400, 'description is required', 'WORK_ITEM_DESCRIPTION_REQUIRED');
   if (message === 'WORK_ITEM_RISK_INVALID') throw createError(400, 'risk_class is invalid', 'WORK_ITEM_RISK_INVALID');
   if (message === 'WORK_ITEM_STATUS_INVALID') throw createError(400, 'status is invalid', 'WORK_ITEM_STATUS_INVALID');
+  if (message === 'WORK_ITEM_CONVERSION_INVALID_STATE') throw createError(409, 'only candidate or triaged work can create a goal', message);
+  if (message === 'WORK_ITEM_CONVERSION_GOAL_MISSING') throw createError(409, 'the linked goal is unavailable; conversion cannot replace its identity', message);
   if (message === 'WORK_ITEM_NUMERIC_RANGE_INVALID') throw createError(400, 'value_score/confidence is out of range', 'WORK_ITEM_NUMERIC_RANGE_INVALID');
   if (message === 'INTEGRATION_SOURCE_INVALID') throw createError(400, 'source is invalid', 'INTEGRATION_SOURCE_INVALID');
   if (message === 'INTEGRATION_TITLE_REQUIRED') throw createError(400, 'title is required', 'INTEGRATION_TITLE_REQUIRED');
@@ -49,7 +60,7 @@ export function createWorkItemRoutes(db: Database, auth?: AuthMiddleware): Route
       res.json({
         work_items: service.list({
           status: req.query.status as string | undefined,
-          limit: req.query.limit ? Number(req.query.limit) : undefined,
+          limit: boundedLimit(req.query.limit),
         }),
       });
     } catch (error) {

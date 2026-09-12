@@ -15,7 +15,7 @@ export function createInterventionRoutes(db: Database, auth: AuthMiddleware): Ro
   // G22: POST /api/intervention/:goalId/pause
   router.post('/:goalId/pause', requireAdmin, async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await intervention.pauseGoal(req.params.goalId);
+      const result = await intervention.pauseGoal(req.params.goalId, req.user!.sub);
       res.json(result);
     } catch (error) { next(error); }
   });
@@ -23,7 +23,7 @@ export function createInterventionRoutes(db: Database, auth: AuthMiddleware): Ro
   // G22: POST /api/intervention/:goalId/resume
   router.post('/:goalId/resume', requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = intervention.resumeGoal(req.params.goalId);
+      const result = intervention.resumeGoal(req.params.goalId, req.user!.sub);
       res.json(result);
     } catch (error) { next(error); }
   });
@@ -31,8 +31,8 @@ export function createInterventionRoutes(db: Database, auth: AuthMiddleware): Ro
   // G22: POST /api/intervention/:goalId/inject
   router.post('/:goalId/inject', requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { predicate, subject_ref, confidence, evidence } = req.body;
-      const result = intervention.injectKnowledge(req.params.goalId, { predicate, subject_ref, confidence, evidence });
+      const { predicate, subject_ref, confidence, evidence } = req.body || {};
+      const result = intervention.injectKnowledge(req.params.goalId, { predicate, subject_ref, confidence, evidence }, req.user!.sub);
       res.json(result);
     } catch (error) { next(error); }
   });
@@ -40,8 +40,8 @@ export function createInterventionRoutes(db: Database, auth: AuthMiddleware): Ro
   // G22: POST /api/intervention/:goalId/override
   router.post('/:goalId/override', requireAdmin, (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { gate, decision, reason } = req.body;
-      const result = intervention.overrideGate(req.params.goalId, gate, decision, reason);
+      const { gate, decision, reason } = req.body || {};
+      const result = intervention.overrideGate(req.params.goalId, gate, decision, reason, req.user!.sub);
       res.json(result);
     } catch (error) { next(error); }
   });

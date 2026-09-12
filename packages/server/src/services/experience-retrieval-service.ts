@@ -11,6 +11,8 @@ export interface ExperienceResult {
   similarity: number;
   totalTokens: number;
   createdAt: string;
+  sourceClass: 'observed_episode';
+  evidenceRefs: string[];
 }
 
 interface LoopRunRow {
@@ -27,6 +29,7 @@ interface GoalRow {
 
 interface LeaseRow {
   loop_run_id: string;
+  role: string;
   runtime: string;
   capability_id: string | null;
   status: string;
@@ -44,6 +47,8 @@ interface ExperienceRow {
   total_tokens: number;
   created_at: string;
 }
+
+const evidenceRefsFor = (runId: string): string[] => [`loop:${runId}`, `experience:${runId}`];
 
 export class ExperienceRetrievalService {
   private qdrantUrl: string;
@@ -83,8 +88,9 @@ export class ExperienceRetrievalService {
       if (goal) objective = goal.objective;
     }
 
-    const leases = this.db.prepare('SELECT loop_run_id, runtime, capability_id, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(loopRunId) as LeaseRow[];
-    const makers = leases.filter(l => l.status === 'completed' || l.status === 'failed');
+    const leases = this.db.prepare('SELECT loop_run_id, role, runtime, capability_id, status, metadata FROM worker_leases WHERE loop_run_id = ?').all(loopRunId) as LeaseRow[];
+    // Review leases are evidence about a maker, not additional executions.
+    const makers = leases.filter(l => l.role === 'maker' && (l.status === 'completed' || l.status === 'failed'));
     const primaryMaker = makers.find(l => l.status === 'completed') || makers[0];
     const runtime = primaryMaker?.runtime || 'unknown';
     const capabilityId = primaryMaker?.capability_id || '';
@@ -94,7 +100,7 @@ export class ExperienceRetrievalService {
     const outcome: 'success' | 'failure' = options.certified ? 'success' : 'failure';
 
     let totalTokens = 0;
-    for (const lease of leases) {
+    for (const lease of makers) {
       try {
         const meta = JSON.parse(lease.metadata || '{}');
         const usage = meta.runtime_usage as { total_tokens?: number } | undefined;
@@ -116,14 +122,15 @@ export class ExperienceRetrievalService {
       const qdrantResults = await this.queryQdrant(objective, limit);
       if (qdrantResults.length > 0) return qdrantResults;
     } catch { /* fallback */ }
-    return this.retrieveFromDb(objective, limit);
+    return this.retrieveLocalRelevantRuns(objective, limit);
   }
 
   formatExperienceContext(results: ExperienceResult[]): string {
     if (results.length === 0) return '';
-    const lines: string[] = ['## Past Experience', ''];
+    const lines: string[] = ['## Past Experience (advisory observed episodes)', ''];
     for (const r of results) {
-      lines.push('### ' + (r.outcome === 'success' ? 'Success' : 'Failure') + ': ' + r.objective);
+      lines.push('### ' + (r.outcome === 'success' ? 'Observed Success' : 'Observed Failure') + ': ' + r.objective);
+      lines.push(`- Source class: ${r.sourceClass}; independently reviewed: no; evidence: ${r.evidenceRefs.join(', ')}`);
       lines.push('- Runtime: ' + r.runtime + ', Retries: ' + r.retries + ', Tokens: ' + r.totalTokens);
       if (r.lessons.length > 0) lines.push('- Lessons: ' + r.lessons.join('; '));
       lines.push('');
@@ -178,6 +185,7 @@ export class ExperienceRetrievalService {
           retries: dbRow.retries, runtime: dbRow.runtime, capabilityId: dbRow.capability_id,
           lessons: JSON.parse(dbRow.lessons || '[]'), similarity: point.score,
           totalTokens: dbRow.total_tokens, createdAt: dbRow.created_at,
+          sourceClass: 'observed_episode', evidenceRefs: evidenceRefsFor(dbRow.run_id),
         });
       }
       return results;
@@ -202,7 +210,8 @@ export class ExperienceRetrievalService {
     } catch { return null; }
   }
 
-  private retrieveFromDb(objective: string, limit: number): ExperienceResult[] {
+  /** Bounded local lookup for synchronous loop assignment generation. */
+  public retrieveLocalRelevantRuns(objective: string, limit: number = 5): ExperienceResult[] {
     const words = objective.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     if (words.length === 0) return [];
     const conditions = words.map(() => 'objective LIKE ?').join(' OR ');
@@ -221,6 +230,7 @@ export class ExperienceRetrievalService {
       similarity: 0.5,
       totalTokens: r.total_tokens,
       createdAt: r.created_at,
+      sourceClass: 'observed_episode', evidenceRefs: evidenceRefsFor(r.run_id),
     }));
   }
 }

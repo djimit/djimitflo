@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-09T11:56:36.553Z",
+  "status": "pass",
+  "probes": [
+    {
+      "id": "djimitflo",
+      "kind": "http-contract",
+      "required": true,
+      "target": "http://127.0.0.1:3187/health",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 470
+    },
+    {
+      "id": "event_bus",
+      "kind": "http-json",
+      "required": true,
+      "target": "http://100.86.47.122:8083/events/djimit.events?count=1",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 503
+    },
+    {
+      "id": "paperclip",
+      "kind": "http-contract",
+      "required": true,
+      "target": "http://192.168.1.28:3100/api/health",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 525
+    },
+    {
+      "id": "uams",
+      "kind": "http-contract",
+      "required": true,
+      "target": "http://100.77.58.72:8000/health",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 593
+    },
+    {
+      "id": "ollama",
+      "kind": "http-contract",
+      "required": true,
+      "target": "http://100.77.58.72:11434/api/tags",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 490
+    },
+    {
+      "id": "qdrant",
+      "kind": "http-contract",
+      "required": true,
+      "target": "http://100.77.58.72:6333/healthz",
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 489
+    },
+    {
+      "id": "litellm",
+      "kind": "http",
+      "required": false,
+      "target": "http://192.168.1.28:4000/health",
+      "status": "unavailable",
+      "latency_ms": 488,
+      "reason": "fetch failed"
+    },
+    {
+      "id": "context7",
+      "kind": "http",
+      "required": false,
+      "target": "https://mcp.context7.com/mcp",
+      "status": "fail",
+      "http_status": 405,
+      "latency_ms": 735
+    },
+    {
+      "id": "codex",
+      "kind": "binary",
+      "required": true,
+      "target": "codex",
+      "status": "pass",
+      "version": "codex-cli 0.153.4"
+    },
+    {
+      "id": "opencode",
+      "kind": "binary",
+      "required": false,
+      "target": "opencode",
+      "status": "pass",
+      "version": "1.18.28"
+    }
+  ],
+  "next_safe_action": "Verify deployed Djimitflo identity."
+}

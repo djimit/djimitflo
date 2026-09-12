@@ -1,6 +1,17 @@
 import { Router } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
+import { AuthorizationService } from '../services/authorization-service';
+import { createError } from '../middleware/error-handler';
+
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw createError(400, `${name} must be an integer between ${minimum} and ${maximum}`, 'VALIDATION_ERROR');
+  }
+  return parsed;
+}
 
 /**
  * Audit-log viewer endpoints — FR-011.
@@ -11,6 +22,13 @@ import type { Database } from 'better-sqlite3';
  */
 export function createAuditLogRoutes(db: Database, requireAuthMiddleware?: any): Router {
   const router = Router();
+  router.use(requireAuthMiddleware, (req: any, res, next) => {
+    if (!req.user || !AuthorizationService.hasPermission(req.user, 'read:audit')) {
+      res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Audit read permission required' } });
+      return;
+    }
+    next();
+  });
   const auditLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false });
 
   /**
@@ -37,7 +55,10 @@ export function createAuditLogRoutes(db: Database, requireAuthMiddleware?: any):
     }
 
     query += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
-    params.push(Number(limit) || 50, Number(offset) || 0);
+    params.push(
+      boundedInteger(limit, 50, 1, 10_000, 'limit'),
+      boundedInteger(offset, 0, 0, 1_000_000, 'offset'),
+    );
 
     const logs = db.prepare(query).all(...params) as any[];
     res.json(logs);

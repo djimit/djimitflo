@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
+import path from 'path';
 import { SegmlLevel3Bridge } from '../services/segml-level3-finetuning';
 
 describe('SegmlLevel3Bridge', () => {
@@ -16,6 +17,8 @@ describe('SegmlLevel3Bridge', () => {
     expect(result.examples.length).toBeGreaterThan(0);
     expect(result.export.exampleCount).toBe(result.examples.length);
     expect(result.export.path.endsWith('.jsonl')).toBe(true);
+    const root = process.cwd().endsWith(path.join('packages', 'server')) ? path.resolve(process.cwd(), '../..') : process.cwd();
+    expect(result.export.path.startsWith(path.join(root, '.data', 'segml-training') + path.sep)).toBe(true);
     expect(result.export.categories.length).toBeGreaterThan(0);
   });
 
@@ -65,6 +68,8 @@ describe('SegmlLevel3Bridge', () => {
     const tool = bridge.synthesizeTool('injection');
     expect(tool.name).toBe('governance_check_injection');
     expect(tool.code).toContain('check_injection');
+    expect(tool.code).toContain('riskIndicators');
+    expect(tool.code).not.toContain('TODO');
     expect(tool.testCases.length).toBeGreaterThan(0);
     expect(tool.status).toBe('draft');
   });

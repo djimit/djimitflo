@@ -1,0 +1,18 @@
+{
+  "evidence_class": "disposable-local-browser-execution-fixture",
+  "fixture_path": "/private/tmp/djimitflo-browser-task.xlbXU6",
+  "baseline_commit": "351ce015894cd25ee05e51b61003137e4251ccf3",
+  "baseline_test": "npm test failed: expected STATUS: verified, observed STATUS: pending",
+  "repository_id": "efedab1e-7842-49a5-a2f5-9b83328f58da",
+  "task_id": "d470002f-3de2-48fb-b0f8-6a7d051b10d4",
+  "creation_channel": "actual browser form, POST /api/tasks 201",
+  "runtime": "codex",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "low",
+  "immutable_fixture_hashes": {
+    "verify.mjs": "8ebdebd60fd114e40ad711b7b64ab97c9f8f09b25af34f61bc6b80b58657f1f5",
+    "AGENTS.md": "bd3cf624921972cd5515319da318942ab9e3fc5f27a5774b64117095a75fc9cb",
+    "package.json": "fcf2bf97c42c905d943fb3a32234712eb7a6168423c4d6712d2301ea98b4cb5b"
+  },
+  "boundaries": ["no production repository", "no merge or push", "no external messaging", "no execution proof at setup time"]
+}

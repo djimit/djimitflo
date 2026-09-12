@@ -75,17 +75,33 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
 
       const agentId = id || randomUUID();
       const now = new Date().toISOString();
+      const existing = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId) as any;
+      if (db.prepare('SELECT 1 FROM agents WHERE name = ? AND id <> ?').get(name, agentId)) {
+        throw createError(409, 'Agent name belongs to a different identity', 'AGENT_NAME_CONFLICT');
+      }
+      if (!Array.isArray(capabilities) || capabilities.some(value => typeof value !== 'string')
+        || !metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+        throw createError(400, 'Invalid agent capabilities or metadata', 'VALIDATION_ERROR');
+      }
 
-      // Upsert: insert or replace
+      // Update in place: REPLACE deletes the identity and cascades into tasks,
+      // messages and evidence. Registration never resets lifecycle or metrics.
       db.prepare(`
-        INSERT OR REPLACE INTO agents (
+        INSERT INTO agents (
           id, name, description, status, capabilities, model, temperature, max_tokens,
           total_tasks, completed_tasks, failed_tasks, total_execution_time_ms, total_token_usage,
           last_active_at, metadata, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, COALESCE((SELECT created_at FROM agents WHERE id = ?), ?), ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description,
+          capabilities = excluded.capabilities, model = excluded.model, temperature = excluded.temperature,
+          max_tokens = excluded.max_tokens, metadata = excluded.metadata, updated_at = excluded.updated_at
       `).run(
-        agentId, name, description, status, JSON.stringify(capabilities), model, temperature, max_tokens,
-        now, JSON.stringify(metadata), agentId, now, now
+        agentId, name, description, existing?.status ?? status,
+        req.body.capabilities === undefined && existing ? existing.capabilities : JSON.stringify(capabilities),
+        req.body.model === undefined ? existing?.model ?? null : model,
+        req.body.temperature === undefined ? existing?.temperature ?? temperature : temperature,
+        req.body.max_tokens === undefined ? existing?.max_tokens ?? max_tokens : max_tokens,
+        now, JSON.stringify({ ...JSON.parse(existing?.metadata || '{}'), ...metadata }), existing?.created_at ?? now, now
       );
 
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId) as any;
@@ -108,6 +124,10 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(id) as any;
       if (!agent) {
         throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
+      }
+
+      if (agent.retired_at && status !== undefined && status !== 'offline') {
+        throw createError(409, 'Retired agent identity cannot be reactivated by a status update', 'AGENT_RETIRED');
       }
 
       const updates: string[] = [];
@@ -148,6 +168,12 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
       if (!agent) {
         throw createError(404, 'Agent not found', 'AGENT_NOT_FOUND');
       }
+      if (agent.retired_at
+        || db.prepare('SELECT 1 FROM tasks WHERE agent_id = ? LIMIT 1').get(id)
+        || db.prepare('SELECT 1 FROM messages WHERE from_agent_id = ? OR to_agent_id = ? LIMIT 1').get(id, id)
+        || db.prepare('SELECT 1 FROM audit_events WHERE agent_id = ? LIMIT 1').get(id)) {
+        throw createError(409, 'Agent identity has retained work or audit history; retire it instead', 'AGENT_HAS_HISTORY');
+      }
       db.prepare('DELETE FROM agents WHERE id = ?').run(id);
       res.json({ success: true, id });
     } catch (error) {
@@ -167,11 +193,17 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
 
       const now = new Date().toISOString();
       const currentMeta = JSON.parse(agent.metadata || '{}');
-      const mergedMeta = { ...currentMeta, ...(metadata || {}), active_tasks };
+      if ((metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)))
+        || (active_tasks !== undefined && (!Number.isInteger(active_tasks) || active_tasks < 0))) {
+        throw createError(400, 'Invalid heartbeat telemetry', 'VALIDATION_ERROR');
+      }
+      // Evidence writers may report liveness, not approve/reactivate agents or
+      // replace operator-owned configuration such as system_prompt and tools.
+      const mergedMeta = { ...currentMeta, heartbeat: { reported_status: status, active_tasks, metadata: metadata || {} } };
 
       db.prepare(
-        `UPDATE agents SET status = COALESCE(?, status), metadata = ?, last_heartbeat_at = ? WHERE id = ?`
-      ).run(status ?? agent.status, JSON.stringify(mergedMeta), now, id);
+        `UPDATE agents SET metadata = ?, last_heartbeat_at = ?, updated_at = ? WHERE id = ?`
+      ).run(JSON.stringify(mergedMeta), now, now, id);
 
       // Write OKF agent concept + regenerate index
       try {
@@ -184,7 +216,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
           hostMachineId: agent.host_machine_id || agent.name,
           capabilities: JSON.parse(agent.capabilities || '[]'),
           lastSeen: now,
-          status: status ?? agent.status,
+          status: agent.status,
           metadata: mergedMeta,
         });
         agentRegistry.regenerateIndex(
@@ -205,7 +237,7 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
         console.warn('OKF agent concept write failed:', id, okfErr?.message || okfErr);
       }
 
-      res.json({ ok: true, agent_id: id, status: status ?? agent.status, last_heartbeat_at: now });
+      res.json({ ok: true, agent_id: id, status: agent.status, last_heartbeat_at: now });
     } catch (error) {
       next(error);
     }
@@ -243,6 +275,14 @@ export function createAgentRoutes(db: Database, auth?: AuthMiddleware): Router {
         metadata: JSON.parse(agent.metadata || '{}'),
       });
     } catch (error) {
+      if (error instanceof Error && error.message === 'AGENT_NOT_FOUND') {
+        next(createError(404, 'Agent not found', 'AGENT_NOT_FOUND'));
+        return;
+      }
+      if (error instanceof Error && error.message === 'AGENT_NOT_PENDING') {
+        next(createError(409, 'Agent is not pending approval', 'AGENT_NOT_PENDING'));
+        return;
+      }
       next(error);
     }
   });

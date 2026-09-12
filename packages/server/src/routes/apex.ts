@@ -10,6 +10,16 @@ import { VectorMemoryService } from '../services/vector-memory-service';
 import { BackgroundWorkerService } from '../services/background-worker-service';
 import { LlmRouterService } from '../services/llm-router-service';
 import { lifecycleManager } from '../services/lifecycle-manager';
+import { createError } from '../middleware/error-handler';
+
+function boundedLimit(value: unknown): number {
+  if (value === undefined) return 10;
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw createError(400, 'limit must be an integer between 1 and 100', 'VALIDATION_ERROR');
+  }
+  return limit;
+}
 
 export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBackgroundWorkers = false): Router {
   const router = Router();
@@ -40,14 +50,12 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
     res.json(plugins.getStats());
   });
 
-  router.post('/plugins/:id/enable', requirePermission('write:config'), (req, res) => {
-    const success = plugins.enablePlugin(req.params.id);
-    res.json({ success });
+  router.post('/plugins/:id/enable', requirePermission('manage:config'), (_req, res) => {
+    res.status(503).json({ error: { code: 'PLUGIN_ACTIVATION_UNAVAILABLE', message: 'No shared trusted runtime plugin activation mechanism is configured; inventory flags are not activation.' } });
   });
 
-  router.post('/plugins/:id/disable', requirePermission('write:config'), (req, res) => {
-    const success = plugins.disablePlugin(req.params.id);
-    res.json({ success });
+  router.post('/plugins/:id/disable', requirePermission('manage:config'), (_req, res) => {
+    res.status(503).json({ error: { code: 'PLUGIN_ACTIVATION_UNAVAILABLE', message: 'No shared runtime plugin deactivation mechanism is configured; inventory flags do not stop execution.' } });
   });
 
   // ─── Vector Memory ───────────────────────────────────────────────────
@@ -67,7 +75,13 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
 
   router.get('/memory/search', requirePermission('read:evidence'), async (req, res, next) => {
     const q = req.query.q as string;
-    const limit = req.query.limit ? Number(req.query.limit) : 10;
+    let limit: number;
+    try {
+      limit = boundedLimit(req.query.limit);
+    } catch (error) {
+      next(error);
+      return;
+    }
     if (!q) {
       res.status(400).json({ error: { message: 'q parameter is required', code: 'VALIDATION_ERROR' } });
       return;
@@ -96,26 +110,56 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
     res.json(workers.getStatus());
   });
 
-  router.post('/workers/:id/run', requirePermission('write:config'), async (req, res) => {
-    const result = await workers.runWorker(req.params.id);
-    res.json(result);
+  router.post('/workers/:id/run', requirePermission('manage:config'), requirePermission('execute:task'), async (req, res, next) => {
+    try {
+      const result = await workers.runWorker(req.params.id);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof Error && /^Worker not found:/.test(error.message)) {
+        next(createError(404, error.message, 'WORKER_NOT_FOUND'));
+        return;
+      }
+      next(error);
+    }
   });
 
-  router.post('/workers/:id/start', requirePermission('write:config'), (req, res) => {
-    workers.startWorker(req.params.id);
-    res.json({ started: true });
+  router.post('/workers/:id/start', requirePermission('manage:config'), requirePermission('execute:task'), (req, res, next) => {
+    try {
+      workers.startWorker(req.params.id);
+      res.json({ started: true });
+    } catch (error) {
+      if (error instanceof Error && /^Worker not found:/.test(error.message)) {
+        next(createError(404, error.message, 'WORKER_NOT_FOUND'));
+        return;
+      }
+      next(error);
+    }
   });
 
-  router.post('/workers/:id/stop', requirePermission('write:config'), (req, res) => {
-    workers.stopWorker(req.params.id);
-    res.json({ stopped: true });
+  router.post('/workers/:id/stop', requirePermission('manage:config'), (req, res, next) => {
+    try {
+      workers.stopWorker(req.params.id);
+      res.json({ stopped: true });
+    } catch (error) {
+      if (error instanceof Error && /^Worker not found:/.test(error.message)) {
+        next(createError(404, error.message, 'WORKER_NOT_FOUND'));
+        return;
+      }
+      next(error);
+    }
   });
 
   // ─── LLM Router ──────────────────────────────────────────────────────
   router.post('/llm/route', requirePermission('read:evidence'), async (req, res, next) => {
     try {
+      const request = req.body || {};
+      const taskTypes = ['coding', 'analysis', 'creative', 'reasoning', 'chat', 'embedding'];
+      if (!taskTypes.includes(request.taskType) || typeof request.prompt !== 'string' || !request.prompt.trim()) {
+        res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'taskType and prompt are required' } });
+        return;
+      }
       await llm.refreshProviderHealth();
-      res.json(llm.route(req.body));
+      res.json(llm.route(request));
     } catch (error) {
       next(error);
     }
@@ -129,7 +173,15 @@ export function createApexRoutes(db: Database, auth?: AuthMiddleware, enableBack
     res.json(llm.getStats());
   });
 
-  router.post('/llm/performance', requirePermission('write:config'), (req, res) => {
+  router.post('/llm/performance', requirePermission('write:evidence'), (req, res) => {
+    const { provider, taskType, success, latencyMs, costDollars } = req.body;
+    if (!['anthropic', 'openai', 'google', 'ollama', 'litellm'].includes(provider)
+      || typeof taskType !== 'string' || !taskType.trim() || typeof success !== 'boolean'
+      || !Number.isFinite(latencyMs) || latencyMs < 0
+      || (costDollars !== undefined && (!Number.isFinite(costDollars) || costDollars < 0))) {
+      res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Valid provider, taskType, boolean success and nonnegative numeric metrics are required' } });
+      return;
+    }
     llm.recordPerformance(req.body);
     res.json({ recorded: true });
   });

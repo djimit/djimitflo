@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=name=>readFileSync(new URL(name,import.meta.url),'utf8');
+const json=name=>JSON.parse(read(name));
+function browser(name){const match=read(name).match(/### Result\n([\s\S]*?)\n### Ran/);assert(match,`No browser result: ${name}`);return JSON.parse(match[1]);}
+const setup=json('lifecycle-http-setup.json');
+const before=json('lifecycle-http-before-restart.json');
+const after=json('lifecycle-http-after-restart.json');
+assert.equal(setup.taskId,after.taskId); assert.equal(setup.agentId,after.agentId);
+assert.equal(setup.held.id,after.summary.id); assert.equal(before.summary.id,after.summary.id);
+assert.equal(setup.pending.started_at,null);assert.equal(setup.held.final_status,'awaiting_approval');
+assert.equal(after.summary.final_status,'completed');assert.equal(after.summary.executor_kind,'mock');
+assert.equal(after.summary.event_count,15);assert.equal(after.summary.files_changed.length,0);
+assert.equal(after.archiveId,before.archiveId);assert.equal(after.retired.retiredAt,before.retired.retiredAt);
+assert.equal(after.decisions.length,2); assert(after.decisions.every(a=>a.status==='approved'));
+const pending=browser('browser-lifecycle-agent-pending-final.log'); assert(pending.pendingRendered);assert(pending.main.includes('pending_approval'));
+const held=read('browser-lifecycle-review-held-snapshot.log');assert(held.includes('awaiting_approval'));assert(held.includes('mock (configured; execution not evidenced)'));
+const retired=browser('browser-lifecycle-agent-final.log');assert(retired.retirementPersisted);assert(retired.url.endsWith(setup.agentId));assert(retired.main.includes('Retired at'));
+const review=browser('browser-lifecycle-review-final.log');assert(review.restartPersisted);assert(review.url.includes(setup.taskId));assert(review.main.includes('Execution approval (recorded)'));assert(review.main.includes('mock (recorded execution event)'));
+console.log(JSON.stringify({state:'PASS',scope:'actual local HTTP + Chromium renders + SQLite + restart; mocked execution, not provider capability',taskId:setup.taskId,retiredAgentId:setup.agentId,pendingAgentFixture:pending.url,executionEvents:after.summary.event_count,canonicalAuditRows:after.audit.length,approvalRecords:after.decisions.length,realFileChanges:0,providerExecuted:false,humanApproval:false,summaryIdentityPreserved:true,archiveIdentityPreserved:true,initialHarnessFailuresRetained:true},null,2));

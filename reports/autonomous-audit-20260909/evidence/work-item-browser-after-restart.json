@@ -1,0 +1,16 @@
+{
+  "work_item": {
+    "id": "a67c8f37-56cc-4232-8d5b-79639bdb6130",
+    "status": "planned",
+    "parent_goal_id": "515f7687-f130-47de-a2fb-5d972c8f5eb3"
+  },
+  "goals": [
+    {
+      "id": "515f7687-f130-47de-a2fb-5d972c8f5eb3",
+      "status": "created"
+    }
+  ],
+  "loop_runs": [],
+  "proof": "browser conversion, duplicate API request, reload and independent file-SQLite assertions",
+  "provider_execution": false
+}
