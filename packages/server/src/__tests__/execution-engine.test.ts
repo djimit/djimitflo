@@ -689,6 +689,33 @@ describe('ExecutionEngine', () => {
     expect(assessments.length).toBeGreaterThan(0);
   });
 
+  it('assesses the worker finding instead of policy boilerplate while retaining approval for risky findings', async () => {
+    const task = createTask({
+      id: 'worker-policy-boilerplate',
+      title: 'maker worker for doc-drift-and-small-fix-loop',
+      description: '# Assignment\nDo not merge, push, deploy, edit secrets, or change policy.\nRun relevant deterministic checks.',
+    });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      task.id, task.title, task.description, 'pending', 'medium', 'low', 'local',
+    );
+
+    const execution = await engine.executeTask(task.id, 'mock', undefined, {
+      riskAssessmentText: 'Replace the documentation TODO with a factual one-line explanation.',
+    });
+    expect(execution.status).toBe('started');
+    await expect(execution.completion).resolves.toMatchObject({ status: 'completed' });
+    expect((db.prepare('SELECT risk_level FROM risk_assessments WHERE task_id = ? ORDER BY created_at DESC LIMIT 1').get(task.id) as any).risk_level).toBe('low');
+
+    const riskyTask = createTask({ id: 'worker-risky-finding', title: 'maker worker for doc loop', description: task.description });
+    db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+      riskyTask.id, riskyTask.title, riskyTask.description, 'pending', 'medium', 'low', 'local',
+    );
+    const riskyExecution = await engine.executeTask(riskyTask.id, 'mock', undefined, {
+      riskAssessmentText: 'Deploy the change to production and delete the stale data.',
+    });
+    expect(riskyExecution.status).toBe('awaiting_approval');
+  });
+
   it('updates task status to running after execution starts', async () => {
     const task = createTask();
     db.prepare('INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode) VALUES (?, ?, ?, ?, ?, ?, ?)').run(

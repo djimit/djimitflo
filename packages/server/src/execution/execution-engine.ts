@@ -240,7 +240,12 @@ export class ExecutionEngine {
   /**
    * Execute a task
    */
-  async executeTask(taskId: string, executorKind: ExecutorKind = 'opencode', dispatcherId?: string): Promise<ExecuteTaskResult> {
+  async executeTask(
+    taskId: string,
+    executorKind: ExecutorKind = 'opencode',
+    dispatcherId?: string,
+    options: { riskAssessmentText?: string } = {},
+  ): Promise<ExecuteTaskResult> {
     // Check if task is already running
     if (this.activeSessions.has(taskId) || this.pendingExecutions.has(taskId)) {
       throw new Error('Task is already running');
@@ -306,7 +311,8 @@ export class ExecutionEngine {
       throw new Error(`Executor ${executorKind} cannot execute this task`);
     }
 
-    const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd());
+    const riskAssessmentText = options.riskAssessmentText;
+    const assessment = this.riskClassifier.assessTask(parsedTask, executorKind, process.cwd(), riskAssessmentText);
     let evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(taskId, assessment, `${parsedTask.title}: ${parsedTask.description}`);
 
@@ -480,7 +486,7 @@ export class ExecutionEngine {
       // Task bytes alone do not bind mutable policy or governance evidence.
       // Reassess at admission after the asynchronous capacity wait, before any
       // provider starts; a tighter decision requires a new explicit request.
-      const currentAssessment = this.riskClassifier.assessTask(currentTask, executorKind, process.cwd());
+      const currentAssessment = this.riskClassifier.assessTask(currentTask, executorKind, process.cwd(), riskAssessmentText);
       let currentEvaluation = this.policyDecisionService.evaluate(currentAssessment);
       const currentGate = this.governanceGate.assess(currentTask, executorKind);
       if (currentGate.action === 'require_approval' && currentEvaluation.decision === 'allow') {
@@ -514,7 +520,7 @@ export class ExecutionEngine {
       const workingDirectory = (parsedTask.metadata as Record<string, unknown> | undefined)?.workingDirectory as string | undefined;
       const mode = (parsedTask.metadata?.executionMode as ExecutionMode) || 'standard';
       const maxRetries = this.executionModePolicy.getConfig(mode).maxRetries;
-      const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory);
+      const session = await this.startExecutionAttempt(parsedTask, executorKind, mode, 0, maxRetries, workingDirectory, riskAssessmentText);
       const completion = session.closed ? session.result.then(
         async result => { await session.closed; return result; },
         async error => { await session.closed; throw error; },
@@ -583,6 +589,7 @@ export class ExecutionEngine {
     attempt: number,
     maxRetries: number,
     workingDirectory?: string,
+    riskAssessmentText?: string,
   ): Promise<ExecutionSession> {
     // Capacity waits and fallback attempts are new admission boundaries: an
     // agent can be paused, retired or quarantined after the initial request.
@@ -596,9 +603,9 @@ export class ExecutionEngine {
       if (executorKind === 'deep-agent') throw new Error('Deep Agent circuit breaker is open; fallback is forbidden');
       const fallback = this.fallbackChain.getNextAvailable(executorKind, mode, this.circuitBreaker);
       if (!fallback || attempt >= maxRetries) throw new Error(`No fallback available for ${executorKind}`);
-      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory, riskAssessmentText);
     }
-    if (attempt > 0 && !this.fallbackAdmitted(task, executorKind)) {
+    if (attempt > 0 && !this.fallbackAdmitted(task, executorKind, riskAssessmentText)) {
       throw new Error(`Fallback executor ${executorKind} was not admitted by policy`);
     }
 
@@ -677,7 +684,7 @@ export class ExecutionEngine {
         console.error(`Error processing event stream for task ${task.id}:`, error);
       });
       session.result.then((result) => {
-        void this.handleAttemptResult(task, session, result, mode, attempt, maxRetries, workingDirectory);
+        void this.handleAttemptResult(task, session, result, mode, attempt, maxRetries, workingDirectory, riskAssessmentText);
       }).catch((error: unknown) => {
         void this.handleAttemptFailure(
           task,
@@ -687,6 +694,8 @@ export class ExecutionEngine {
           attempt,
           maxRetries,
           workingDirectory,
+          undefined,
+          riskAssessmentText,
         );
       });
       return session;
@@ -696,7 +705,7 @@ export class ExecutionEngine {
       const fallback = this.nextRetryExecutor(executorKind, mode, attempt, maxRetries, failure);
       if (!fallback) throw new ExecutionFailureError(failure);
       this.persistFallbackEvent(task.id, executorKind, fallback, attempt + 2, failure);
-      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+      return this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory, riskAssessmentText);
     }
   }
 
@@ -708,6 +717,7 @@ export class ExecutionEngine {
     attempt: number,
     maxRetries: number,
     workingDirectory?: string,
+    riskAssessmentText?: string,
   ): Promise<void> {
     if (session.closed) await session.closed;
     if (session.status === 'cancelled' || this.activeSessions.get(task.id) !== session) return;
@@ -734,7 +744,7 @@ export class ExecutionEngine {
       failureDomain: session.executorKind,
     };
     if (result.status === 'failed') {
-      await this.handleAttemptFailure(task, session, failure, mode, attempt, maxRetries, workingDirectory, result);
+      await this.handleAttemptFailure(task, session, failure, mode, attempt, maxRetries, workingDirectory, result, riskAssessmentText);
       return;
     }
     this.handleExecutionComplete(task.id, session, result);
@@ -749,6 +759,7 @@ export class ExecutionEngine {
     maxRetries: number,
     workingDirectory?: string,
     failedResult?: ExecutionResult,
+    riskAssessmentText?: string,
   ): Promise<void> {
     if (session.closed) await session.closed;
     if (session.status === 'cancelled' || this.activeSessions.get(task.id) !== session) return;
@@ -757,7 +768,7 @@ export class ExecutionEngine {
     if (fallback) {
       this.persistFallbackEvent(task.id, session.executorKind, fallback, attempt + 2, failure);
       try {
-        await this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory);
+        await this.startExecutionAttempt(task, fallback, mode, attempt + 1, maxRetries, workingDirectory, riskAssessmentText);
         return;
       } catch (fallbackError) {
         failure = this.normalizeFailure(fallbackError, false, fallback);
@@ -797,8 +808,8 @@ export class ExecutionEngine {
     };
   }
 
-  private fallbackAdmitted(task: Task, executorKind: ExecutorKind): boolean {
-    const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd());
+  private fallbackAdmitted(task: Task, executorKind: ExecutorKind, riskAssessmentText?: string): boolean {
+    const assessment = this.riskClassifier.assessTask(task, executorKind, process.cwd(), riskAssessmentText);
     const evaluation = this.policyDecisionService.evaluate(assessment);
     this.persistRiskAssessment(task.id, assessment, `${task.title}: ${task.description}`);
     if (evaluation.decision === 'deny') return false;

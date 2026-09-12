@@ -158,12 +158,15 @@ export class SegmlWorldModelBridge {
 
     try {
       evalRun = this.db.prepare(`
-        SELECT overall_score, category_scores
+        SELECT overall_score, metadata
         FROM openmythos_eval_runs
         WHERE agent_id = ? AND status = 'completed'
         ORDER BY finished_at DESC LIMIT 1
       `).get(agentId) as any;
-      categoryScores = evalRun ? JSON.parse(evalRun.category_scores || '{}') : {};
+      if (evalRun) {
+        try { categoryScores = JSON.parse(evalRun.metadata || '{}').category_scores || {}; }
+        catch { /* malformed evaluation metadata must not sink the governance profile */ }
+      }
     } catch { /* table may not exist */ }
 
     try {

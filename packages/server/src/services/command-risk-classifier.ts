@@ -75,8 +75,8 @@ export class CommandRiskClassifier {
     });
   }
 
-  assessTask(task: Task, executorKind: string, workspacePath?: string): RiskAssessment {
-    const description = `${task.title} ${task.description}`.toLowerCase();
+  assessTask(task: Task, executorKind: string, workspacePath?: string, riskAssessmentText?: string): RiskAssessment {
+    const description = `${task.title} ${riskAssessmentText ?? task.description}`.toLowerCase();
     const matchedRules: string[] = [];
     let riskLevel = task.risk_level;
     let recommendedDecision: PolicyDecision = riskLevel === RiskLevel.LOW ? 'allow' : 'require_approval';

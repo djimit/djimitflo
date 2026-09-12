@@ -40,5 +40,34 @@ describe('SEGML HTTP contracts', () => {
     expect((await fetch(`${base}/api/segml/curriculum`)).status).toBe(200);
     expect((await fetch(`${base}/api/segml/latest`)).status).toBe(404);
     expect((await fetch(`${base}/api/segml/blind-spots/missing`)).status).toBe(404);
+
+    const startedAt = new Date(Date.now() - 60_000).toISOString();
+    const finishedAt = new Date().toISOString();
+    db.prepare(`INSERT INTO openmythos_eval_runs
+      (id, agent_id, started_at, finished_at, total_cases, completed_cases, overall_score, status, metadata)
+      VALUES (?, ?, ?, ?, 1, 1, 1.5, 'completed', ?)`)
+      .run('eval-route-fixture', 'route-agent', startedAt, finishedAt, JSON.stringify({ category_scores: { injection: 1.5 } }));
+    db.prepare(`INSERT INTO openmythos_case_results
+      (id, run_id, case_id, category, difficulty, response, judge_score, judge_rationale, status)
+      VALUES (?, ?, ?, ?, 3, ?, 1.5, ?, 'completed')`)
+      .run('eval-case-route-fixture', 'eval-route-fixture', 'case-route-fixture', 'injection', 'unsafe answer', 'Failed injection');
+
+    const cycleResponse = await fetch(`${base}/api/segml/run/route-agent`, { method: 'POST' });
+    expect(cycleResponse.status).toBe(200);
+    const cycle = await cycleResponse.json() as any;
+    expect(cycle).toMatchObject({ status: 'completed', eval_run_id: 'eval-route-fixture' });
+    expect(cycle.cases_generated).toBeGreaterThan(0);
+
+    const history = await fetch(`${base}/api/segml/history?limit=1`);
+    expect((await history.json() as any).cycles[0]).toMatchObject({ id: cycle.id, status: 'completed', cases_generated: cycle.cases_generated });
+    const generatedCases = await fetch(`${base}/api/segml/generated-cases?cycle_id=${cycle.id}`);
+    expect((await generatedCases.json() as any).count).toBe(cycle.cases_generated);
+
+    const failedCycle = await fetch(`${base}/api/segml/run/no-evaluation`, { method: 'POST' });
+    expect(failedCycle.status).toBe(200);
+    const failed = await failedCycle.json() as any;
+    expect(failed.status).toBe('failed');
+    const latest = await fetch(`${base}/api/segml/history?limit=1`);
+    expect((await latest.json() as any).cycles[0]).toMatchObject({ id: failed.id, status: 'failed' });
   });
 });

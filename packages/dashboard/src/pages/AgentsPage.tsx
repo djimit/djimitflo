@@ -1,7 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Bot, Activity, XCircle, Clock } from 'lucide-react';
 import { useStore } from '../lib/store'
 import { api } from '../lib/api';
+import type { RuntimeGovernanceAgentStatus } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 import { Link, useParams } from 'react-router-dom';
 
 export function AgentsPage() {
@@ -42,6 +44,8 @@ export function AgentsPage() {
             return (
               <AgentCard
                 key={agent.id}
+                agentId={agent.id}
+                showGovernance={Boolean(agentId)}
                 name={agent.name}
                 description={agent.description}
                 status={agent.status}
@@ -62,6 +66,8 @@ export function AgentsPage() {
 }
 
 interface AgentCardProps {
+  agentId: string;
+  showGovernance: boolean;
   name: string;
   description: string;
   status: string;
@@ -75,6 +81,8 @@ interface AgentCardProps {
 }
 
 function AgentCard({
+  agentId,
+  showGovernance,
   name,
   description,
   status,
@@ -174,6 +182,8 @@ function AgentCard({
           />
         </div>
       </div>
+
+      {showGovernance && <RuntimeGovernancePanel agentId={agentId} />}
       
       {/* Capabilities */}
       <div>
@@ -190,6 +200,94 @@ function AgentCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function RuntimeGovernancePanel({ agentId }: { agentId: string }) {
+  const canRead = useAuthStore((state) => state.hasPermission('read:evidence'));
+  const canRelease = useAuthStore((state) => state.hasPermission('write:governance'));
+  const [governance, setGovernance] = useState<RuntimeGovernanceAgentStatus | null>(null);
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [releasing, setReleasing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canRead) return;
+    let current = true;
+    setLoading(true);
+    setError(null);
+    setGovernance(null);
+    api.getRuntimeGovernanceAgent(agentId)
+      .then((status) => { if (current) setGovernance(status); })
+      .catch((cause) => { if (current) setError(cause instanceof Error ? cause.message : 'Governance status unavailable'); })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [agentId, canRead]);
+
+  async function release(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const releaseReason = reason.trim();
+    if (!canRelease || !releaseReason || releasing) return;
+    setReleasing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api.releaseRuntimeGovernanceAgent(agentId, releaseReason);
+      setGovernance((current) => current ? { ...current, quarantined: false, circuitBreakerTripped: false, violationCount: 0 } : current);
+      setReason('');
+      setNotice('Governance hold released.');
+      try {
+        setGovernance(await api.getRuntimeGovernanceAgent(agentId));
+        setNotice('Governance hold released; status refreshed from the server.');
+      } catch (cause) {
+        setError(`Release succeeded, but status refresh failed: ${cause instanceof Error ? cause.message : 'unknown error'}`);
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not release governance hold');
+    } finally {
+      setReleasing(false);
+    }
+  }
+
+  return (
+    <section aria-label="Runtime governance" className="mb-4 rounded-lg border border-border bg-background-elevated p-4">
+      <h4 className="font-semibold text-foreground">Runtime governance</h4>
+      {!canRead ? <p className="mt-2 text-sm text-foreground-secondary">Your role cannot read runtime governance status.</p> : loading ? (
+        <p role="status" className="mt-2 text-sm text-foreground-secondary">Loading governance status…</p>
+      ) : error && !governance ? (
+        <p role="alert" className="mt-2 text-sm text-status-error">Governance status unavailable: {error}</p>
+      ) : governance && (
+        <>
+          <div className="mt-2 space-y-1 text-sm text-foreground-secondary">
+            <p>{governance.quarantined ? 'Quarantined' : 'Not quarantined'}</p>
+            <p>Circuit breaker: {governance.circuitBreakerTripped ? 'tripped' : 'clear'}</p>
+            <p>Recorded violations: {governance.violationCount}</p>
+            {!governance.baseline && <p>No runtime governance baseline is registered.</p>}
+          </div>
+          {canRelease && (governance.quarantined || governance.circuitBreakerTripped) && (
+            <form onSubmit={(event) => void release(event)} className="mt-4 space-y-2">
+              <p className="text-xs text-foreground-secondary">Releasing clears quarantine, resets the circuit breaker and violation count, and records the reason in a governance alert.</p>
+              <label htmlFor={`release-reason-${agentId}`} className="block text-sm text-foreground">Reason for release</label>
+              <textarea
+                id={`release-reason-${agentId}`}
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={2}
+                required
+                className="w-full rounded border border-border bg-background-secondary p-2 text-sm text-foreground"
+              />
+              <button type="submit" disabled={!reason.trim() || releasing} className="rounded bg-accent px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">
+                {releasing ? 'Releasing…' : 'Release governance hold'}
+              </button>
+            </form>
+          )}
+          {notice && <p role="status" className="mt-2 text-sm text-foreground-secondary">{notice}</p>}
+          {error && governance && <p role="alert" className="mt-2 text-sm text-status-error">{error}</p>}
+        </>
+      )}
+    </section>
   );
 }
 

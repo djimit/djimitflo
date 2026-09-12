@@ -31,7 +31,7 @@ export function createSegmlRoutes(db: Database, auth?: AuthMiddleware): Router {
     try {
       const loop = new SelfEvolvingGovernanceLoop(db, req.body?.config);
       const result = await loop.runCycle(req.params.agentId);
-      res.status(result.status === 'completed' ? 200 : 202).json(result);
+      res.json(result);
     } catch (error) {
       next(error);
     }

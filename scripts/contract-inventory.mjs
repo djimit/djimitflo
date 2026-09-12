@@ -95,9 +95,9 @@ for (const declaration of sourceInventory.definitions) {
       path,
       mounted_paths: mountedPaths,
       registration_scope: mountedPaths.length ? 'api_source_declaration' : 'outside_api_mount_graph',
-      evidence_kind: 'static_test_reference_not_execution',
+      evidence_kind: 'static_source_reference_not_execution',
       critical: critical.test(module),
-      status: evidence.length ? 'exercised' : exemption ? 'exempted' : moduleEvidence.length ? 'module_covered' : 'unclassified',
+      status: evidence.length ? 'source_referenced' : exemption ? 'exempted' : moduleEvidence.length ? 'module_covered' : 'unclassified',
       exemption: exemption || null,
       evidence,
       module_evidence: moduleEvidence,
@@ -117,17 +117,17 @@ for (const path of toolFiles) {
       id: match[2],
       module,
       critical: /^(governance|orchestration)$/.test(module),
-      status: evidence.length ? 'tested' : 'unclassified',
-      evidence_kind: 'static_test_reference_not_execution',
+      status: evidence.length ? 'source_referenced' : 'unclassified',
+      evidence_kind: 'static_source_reference_not_execution',
       evidence,
     });
   }
 }
 
 const report = {
-  schema_version: 2,
+  schema_version: 3,
   generated_at: new Date().toISOString(),
-  evidence_limits: ['Legacy status exercised/tested means a static test-source reference, not an executed test or domain proof.', 'Runtime comparison covers explicit API method/path registrations; implicit HEAD/OPTIONS and startup /health, /metrics, /explore and static SPA middleware are outside this API fixture.'],
+  evidence_limits: ['source_referenced means a static source-code match only; it is not proof a test ran, exercised the handler, or validated domain behavior.', 'Runtime comparison covers explicit API method/path registrations; implicit HEAD/OPTIONS and startup /health, /metrics, /explore and static SPA middleware are outside this API fixture.'],
   source_registration: {
     mounted: sourceInventory.mounted,
     outside_api_mount_graph: sourceInventory.outside_api_mount_graph,
@@ -135,16 +135,16 @@ const report = {
   },
   routes: {
     total: routes.length,
-    tested: routes.filter(item => item.status === 'exercised').length,
+    source_referenced: routes.filter(item => item.status === 'source_referenced').length,
     module_covered: routes.filter(item => item.status === 'module_covered').length,
     unclassified: routes.filter(item => item.status === 'unclassified').length,
-    critical_unclassified: routes.filter(item => item.critical && !['exercised', 'exempted'].includes(item.status)).map(item => item.id),
+    critical_unclassified: routes.filter(item => item.critical && !['source_referenced', 'exempted'].includes(item.status)).map(item => item.id),
     critical_exempted: routes.filter(item => item.critical && item.status === 'exempted').map(item => ({ id: item.id, reason: item.exemption })),
     items: routes,
   },
   mcp_tools: {
     total: tools.length,
-    tested: tools.filter(item => item.status === 'tested').length,
+    source_referenced: tools.filter(item => item.status === 'source_referenced').length,
     unclassified: tools.filter(item => item.status === 'unclassified').length,
     critical_unclassified: tools.filter(item => item.critical && item.status === 'unclassified').map(item => item.id),
     items: tools,
@@ -165,8 +165,8 @@ const output = resolve(root, process.env.CONTRACT_INVENTORY_PATH || 'openspec/ch
 writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify({
   output,
-  routes: { total: report.routes.total, tested: report.routes.tested, critical_unclassified: report.routes.critical_unclassified.length },
-  mcp_tools: { total: report.mcp_tools.total, tested: report.mcp_tools.tested, critical_unclassified: report.mcp_tools.critical_unclassified.length },
+  routes: { total: report.routes.total, source_referenced: report.routes.source_referenced, critical_unclassified: report.routes.critical_unclassified.length },
+  mcp_tools: { total: report.mcp_tools.total, source_referenced: report.mcp_tools.source_referenced, critical_unclassified: report.mcp_tools.critical_unclassified.length },
 }, null, 2));
 process.exitCode = report.routes.critical_unclassified.length || report.mcp_tools.critical_unclassified.length
   || sourceInventory.unsupported.length || report.runtime_registration.declared_not_registered?.length

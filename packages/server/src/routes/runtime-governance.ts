@@ -17,6 +17,10 @@ function boundedLimit(value: unknown, fallback = 50): number {
   return limit;
 }
 
+function isGovernanceScore(value: unknown): value is number {
+  return typeof value === 'number' && value >= 0 && value <= 10;
+}
+
 export function createRuntimeGovernanceRoutes(
   db: Database,
   auth?: AuthMiddleware,
@@ -46,11 +50,16 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/register — register baseline
   router.post('/agents/:agentId/register', requirePermission('write:governance'), (req, res) => {
     const { overallScore, categoryScores, certifiedAt } = req.body ?? {};
-    if (!Number.isFinite(overallScore) || !categoryScores || typeof categoryScores !== 'object' || Array.isArray(categoryScores) || typeof certifiedAt !== 'string' || !certifiedAt.trim()) {
-      res.status(400).json({ error: { message: 'overallScore, categoryScores and certifiedAt are required', code: 'VALIDATION_ERROR' } });
+    const normalizedCertifiedAt = typeof certifiedAt === 'string' ? certifiedAt.trim() : '';
+    const validCategoryScores = categoryScores !== null
+      && typeof categoryScores === 'object'
+      && !Array.isArray(categoryScores)
+      && Object.values(categoryScores as Record<string, unknown>).every(isGovernanceScore);
+    if (!isGovernanceScore(overallScore) || !validCategoryScores || !normalizedCertifiedAt || !Number.isFinite(Date.parse(normalizedCertifiedAt))) {
+      res.status(400).json({ error: { message: 'scores must be between 0 and 10 and certifiedAt must be a valid timestamp', code: 'VALIDATION_ERROR' } });
       return;
     }
-    service.registerBaseline(req.params.agentId, req.body);
+    service.registerBaseline(req.params.agentId, { overallScore, categoryScores, certifiedAt: normalizedCertifiedAt });
     res.json({ registered: true, agentId: req.params.agentId });
   });
 
@@ -64,12 +73,12 @@ export function createRuntimeGovernanceRoutes(
   // POST /api/runtime-governance/agents/:agentId/release — release from quarantine
   router.post('/agents/:agentId/release', requirePermission('write:governance'), (req, res) => {
     const { reason } = req.body || {};
-    if (!reason?.trim()) {
+    if (typeof reason !== 'string' || !reason.trim()) {
       res.status(400).json({ error: { message: 'reason is required', code: 'VALIDATION_ERROR' } });
       return;
     }
     try {
-      service.releaseFromQuarantine(req.params.agentId, reason);
+      service.releaseFromQuarantine(req.params.agentId, reason.trim());
       res.json({ released: true, agentId: req.params.agentId });
     } catch (error) {
       if (error instanceof Error && /^Agent not found:/.test(error.message)) {

@@ -105,6 +105,20 @@ export type GoalRecord = {
   updated_at: string;
 };
 
+export type RuntimeGovernanceAgentStatus = {
+  quarantined: boolean;
+  circuitBreakerTripped: boolean;
+  violationCount: number;
+  baseline: {
+    agentId: string;
+    certifiedScore: number;
+    categoryScores: Record<string, number>;
+    certifiedAt: string;
+    circuitBreakerThreshold: number;
+    quarantineThreshold: number;
+  } | null;
+};
+
 export type LoopFinding = {
   id: string;
   type: string;
@@ -304,6 +318,15 @@ export type SwarmRealityStatus = {
     agent_count_is_registry_only: boolean;
     active_execution_requires_runtime_evidence: boolean;
   };
+};
+
+export type RsiSafetyStatus = {
+  enabled: boolean;
+  mutationsToday: number;
+  mutationsLimit: number;
+  lastMutation: string | null;
+  frozenComponents: string[];
+  auditLogEntries: number;
 };
 
 export type SchedulerTickResult = {
@@ -953,6 +976,17 @@ class ApiClient {
     return this.request(`/agents/${id}`);
   }
 
+  async getRuntimeGovernanceAgent(id: string): Promise<RuntimeGovernanceAgentStatus> {
+    return this.request(`/runtime-governance/agents/${encodeURIComponent(id)}`);
+  }
+
+  async releaseRuntimeGovernanceAgent(id: string, reason: string): Promise<{ released: boolean; agentId: string }> {
+    return this.request(`/runtime-governance/agents/${encodeURIComponent(id)}/release`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
   // MCP
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
     return this.request('/mcp/servers?refresh=true');
@@ -1318,6 +1352,17 @@ class ApiClient {
   // Workstation swarm resources
   async getSwarmStatus(): Promise<SwarmRealityStatus> {
     return this.request('/swarms/status');
+  }
+
+  async getRsiSafetyStatus(): Promise<RsiSafetyStatus> {
+    return this.request('/swarms/rsi/safety');
+  }
+
+  async setRsiSafetyEnabled(enabled: boolean): Promise<RsiSafetyStatus> {
+    return this.request('/swarms/rsi/safety/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
   }
 
   async runSchedulerTick(input: { max_items?: number; plan_triaged?: boolean; prepare_planned?: boolean; runtime?: WorkerRuntime; repository_path?: string; max_assignments_per_item?: number; work_item_ids?: string[] } = {}): Promise<SchedulerTickResult> {
