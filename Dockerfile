@@ -52,6 +52,7 @@ WORKDIR /app
 ARG VCS_REF=unknown
 
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends ca-certificates git python3-minimal && \
     rm -rf /var/lib/apt/lists/*
 
