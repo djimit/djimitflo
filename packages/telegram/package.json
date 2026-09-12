@@ -19,7 +19,7 @@
     "@types/node": "^26.1.1",
     "tsx": "^4.19.2",
     "typescript": "7.0.2",
-    "vitest": "4.1.11"
+    "vitest": "5.0.0"
   },
   "types": "src/index.ts"
 }
