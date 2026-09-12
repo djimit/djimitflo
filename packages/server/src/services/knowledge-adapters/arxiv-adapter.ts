@@ -1,6 +1,17 @@
 import { randomUUID } from 'crypto';
 import type { KnowledgeResult, KnowledgeSourceAdapter } from './types';
 
+// arXiv treats an unquoted multi-term query as an implicit OR (hundreds of thousands of hits,
+// ranked loosely); requiring every term with AND is what a scholarly lookup expects.
+// ponytail: term-level AND only; add phrase/title boosting if precision is still short.
+export function toArxivQuery(query: string): string {
+  const terms = query
+    .split(/\s+/)
+    .map((term) => term.replace(/[^\p{L}\p{N}-]/gu, ''))
+    .filter((term) => term.length > 1);
+  return terms.length ? terms.map((term) => `all:${term}`).join(' AND ') : `all:${query.trim()}`;
+}
+
 export class ArxivAdapter implements KnowledgeSourceAdapter {
   name = 'arxiv';
   private baseUrl = 'http://export.arxiv.org/api/query';
@@ -12,7 +23,7 @@ export class ArxivAdapter implements KnowledgeSourceAdapter {
 
     try {
       const params = new URLSearchParams({
-        search_query: `all:${query}`,
+        search_query: toArxivQuery(query),
         max_results: String(limit),
         start: '0',
       });

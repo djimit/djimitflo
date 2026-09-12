@@ -110,9 +110,9 @@ export class ExpertSwarmOrchestrator {
   private async executeExpert(domain: string, topic: string, sources: string[]): Promise<ExpertAnswer | null> {
     try {
       const skill = this.skills.getSkillForFinding(topic, domain);
-      const query = skill
-        ? `Given this procedure:\n${skill}\n\nResearch: ${topic} in ${domain}`
-        : `${topic} ${domain}`;
+      // The skill procedure is LLM context, not a search string: sending it as the query
+      // turned every adapter lookup into a prompt-sized keyword soup.
+      const query = `${topic} ${domain}`;
 
       const results = await this.registry.searchAll(query, sources, 3);
 
