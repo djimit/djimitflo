@@ -13,18 +13,23 @@ vi.mock('child_process', async (importOriginal) => {
 });
 
 import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
 import { createTestDb } from './helpers/test-db';
 import { createGitHubWebhookRoutes } from '../routes/github-webhooks';
 
 const HEAD_SHA = 'a'.repeat(40);
+let lastCommentBody: string | undefined;
 
 function mockGh(prStat: { additions: number; deletions: number; changedFiles: number; files: string[] }, options: { commentFails?: boolean } = {}) {
+  lastCommentBody = undefined;
   vi.mocked(execFileSync).mockImplementation(((command: string, args: string[] = []) => {
     if (args[0] === 'pr' && args[1] === 'view') {
       return JSON.stringify({ title: 'Test PR', url: 'https://github.com/owner/repo/pull/7', ...prStat, files: prStat.files.map((path) => ({ path })) });
     }
     if (args[0] === 'pr' && args[1] === 'comment') {
       if (options.commentFails) throw new Error('gh: authentication required');
+      const bodyFileIndex = args.indexOf('--body-file');
+      if (bodyFileIndex !== -1) lastCommentBody = readFileSync(args[bodyFileIndex + 1], 'utf8');
       return '';
     }
     if (args[0] === 'api') {
@@ -43,6 +48,7 @@ describe('GitHub pull_request review webhook', () => {
     if (repoPath) rmSync(repoPath, { recursive: true, force: true });
     delete process.env.GITHUB_WEBHOOK_SECRET;
     delete process.env.GITHUB_REPOSITORY_PATHS;
+    delete process.env.ROBOREV_PENDING_PATH;
     vi.mocked(execFileSync).mockReset();
   });
 
@@ -145,6 +151,34 @@ describe('GitHub pull_request review webhook', () => {
     const second = await post(body, 'delivery-pr-5');
     expect(second.status).toBe(200);
     expect(vi.mocked(execFileSync).mock.calls.length).toBe(callsAfterFirst);
+    db.close();
+  });
+
+  it('folds matching roborev static findings into the posted comment', async () => {
+    const pendingDir = mkdtempSync(join(tmpdir(), 'djimitflo-roborev-pending-'));
+    const pendingPath = join(pendingDir, 'pending.jsonl');
+    writeFileSync(pendingPath, JSON.stringify({
+      repo: 'owner/repo', sha: HEAD_SHA, task_title: 'Polynomial regex on uncontrolled input',
+      task_type: 'review_fix', severity: 'high', affected_files: ['src/parser.ts'],
+    }) + '\n', 'utf8');
+    process.env.ROBOREV_PENDING_PATH = pendingPath; // must be set before setup() constructs the service
+    const db = await setup();
+    mockGh({ additions: 5, deletions: 2, changedFiles: 1, files: ['src/index.ts'] });
+
+    await post(prBody(), 'delivery-pr-6');
+    expect(lastCommentBody).toContain('## Static findings (roborev)');
+    expect(lastCommentBody).toContain('Polynomial regex on uncontrolled input');
+    expect(lastCommentBody).toContain('src/parser.ts');
+
+    rmSync(pendingDir, { recursive: true, force: true });
+    db.close();
+  });
+
+  it('omits the roborev section when there are no matching findings', async () => {
+    const db = await setup();
+    mockGh({ additions: 1, deletions: 1, changedFiles: 1, files: ['src/index.ts'] });
+    await post(prBody(), 'delivery-pr-7');
+    expect(lastCommentBody).not.toContain('Static findings');
     db.close();
   });
 });
