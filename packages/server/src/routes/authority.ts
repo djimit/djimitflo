@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { createError } from '../middleware/error-handler';
@@ -21,6 +22,7 @@ function boundedInteger(value: unknown, fallback: number, minimum: number, maxim
  */
 export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Router {
   const router = Router();
+  const readLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false });
   const requirePermission = auth?.requirePermission
     ?? ((_perm: string) => (_req: unknown, _res: unknown, next: () => void) => next());
   const requireLedger: import('express').RequestHandler = (_req, res, next) => {
@@ -31,7 +33,7 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     next();
   };
 
-  router.get('/trace/:correlationId', requirePermission('read:evidence'), requireLedger, (req, res) => {
+  router.get('/trace/:correlationId', readLimiter, requirePermission('read:evidence'), requireLedger, (req, res) => {
     try {
       const { correlationId } = req.params;
       const events = (
@@ -80,7 +82,7 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     }
   });
 
-  router.get('/stats', requirePermission('read:evidence'), requireLedger, (_req, res) => {
+  router.get('/stats', readLimiter, requirePermission('read:evidence'), requireLedger, (_req, res) => {
     try {
       const total = (db.prepare('SELECT COUNT(*) AS n FROM authority_events').get() as { n: number }).n;
       const byDecision = db.prepare(
@@ -110,7 +112,7 @@ export function createAuthorityRoutes(db: Database, auth?: AuthMiddleware): Rout
     }
   });
 
-  router.get('/events', requirePermission('read:evidence'), requireLedger, (req, res, next) => {
+  router.get('/events', readLimiter, requirePermission('read:evidence'), requireLedger, (req, res, next) => {
     try {
       const limit = boundedInteger(req.query.limit, 50, 1, 200, 'limit');
       const offset = boundedInteger(req.query.offset, 0, 0, 1_000_000, 'offset');
