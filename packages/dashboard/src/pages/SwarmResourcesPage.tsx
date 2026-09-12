@@ -339,7 +339,7 @@ export function SwarmResourcesPage() {
             Eval guardrails: {assuranceSummary?.guardrails.external_writes_from_evals ?? 0} external writes; replay lease copy is {assuranceSummary?.guardrails.replay_copies_worker_leases ? 'enabled' : 'blocked'}.
           </div>
           <div className="space-y-2">
-            {assuranceSummary?.latest_evals.length ? assuranceSummary.latest_evals.map((evalRun) => (
+            {assuranceSummary?.latest_evals?.length ? assuranceSummary.latest_evals.map((evalRun) => (
               <div key={evalRun.id} className="rounded border border-border bg-background p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm font-medium text-foreground">{evalRun.suite_name}</div>
@@ -375,7 +375,7 @@ export function SwarmResourcesPage() {
               Stale Agents
             </div>
             <div className="space-y-2">
-              {status?.stale_agents.length ? status.stale_agents.map((agent) => (
+              {status?.stale_agents?.length ? status.stale_agents.map((agent) => (
                 <div key={agent.id} className="rounded border border-border bg-background p-3 text-sm">
                   <div className="font-medium text-foreground">{agent.name}</div>
                   <div className="text-xs text-foreground-tertiary">{agent.status} · {agent.last_active_at || 'no heartbeat'}</div>
@@ -629,7 +629,7 @@ function SpecialistPanelCard({
         ))}
       </div>
 
-      {panel.consensus.dissent.length > 0 && (
+      {(panel.consensus.dissent?.length ?? 0) > 0 && (
         <div className="rounded border border-status-paused/20 bg-status-paused/10 p-3 text-xs text-status-paused">
           Dissent: {panel.consensus.dissent.map((item) => `${item.specialist_title} ${item.stance}`).join(', ')}
         </div>

@@ -163,9 +163,15 @@ export function createExplainerRoutes(db: Database, auth?: AuthMiddleware): Rout
       ).get(repo.id) as any;
       const lastGenerated = bundle?.created_at ?? null;
       const ageDays = lastGenerated ? (now - new Date(lastGenerated).getTime()) / 86_400_000 : null;
-      const scan = db.prepare(
-        `SELECT health_score FROM repositories WHERE full_name = ?`,
-      ).get(repo.full_name) as any;
+      // `repositories` (local disk-scanned checkouts) and `discovered_repositories`
+      // (remote GitHub fleet) are separate registries with no guaranteed shared
+      // key; best-effort match on short repo name, degrade to null otherwise.
+      let scan: { health_score: number | null } | undefined;
+      try {
+        scan = db.prepare(
+          `SELECT health_score FROM repositories WHERE name = ?`,
+        ).get(repo.name) as any;
+      } catch { scan = undefined; }
       return {
         ...repo,
         last_generated: lastGenerated,

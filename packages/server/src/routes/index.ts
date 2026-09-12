@@ -8,6 +8,7 @@ import type { Database } from 'better-sqlite3';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { hostname } from 'os';
+import { createError } from '../middleware/error-handler';
 const execFileAsync = promisify(execFile);
 import { createTaskRoutes } from './tasks';
 import { createAgentRoutes } from './agents';
@@ -167,11 +168,11 @@ export function createRoutes(
   });
 
   // D2: runtime URLs — use the host OS' native listener inventory.
-  router.get('/workstation/urls', requireAuth, async (_req: any, res: any) => {
+  router.get('/workstation/urls', requireAuth, async (_req: any, res: any, next: any) => {
     try {
       res.json({ host: hostname(), platform: process.platform, ports: await scanListeningPorts() });
     } catch (error) {
-      res.status(503).json({ error: error instanceof Error ? error.message : 'Failed to scan listening ports' });
+      next(createError(503, error instanceof Error ? error.message : 'Failed to scan listening ports', 'WORKSTATION_PORT_SCAN_FAILED'));
     }
   });
 
@@ -253,6 +254,17 @@ export function createRoutes(
 }
 
 export async function scanListeningPorts(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
+  try {
+    return await scanListeningPortsUnsafe();
+  } catch {
+    // Best-effort local introspection: a slim container image without
+    // netstat/ss, or an unsupported platform, should show an empty list
+    // rather than fail the whole page.
+    return [];
+  }
+}
+
+async function scanListeningPortsUnsafe(): Promise<Array<{ address: string; port: number; pid: number | null; process: string; bind: string }>> {
   if (process.platform === 'darwin') {
     // Native socket inventory avoids lsof's potentially uninterruptible device inspection.
     const { stdout: output } = await execFileAsync('/usr/sbin/netstat', ['-anv', '-p', 'tcp'], { encoding: 'utf8', timeout: 5_000, killSignal: 'SIGKILL', signal: AbortSignal.timeout(5_000) });
