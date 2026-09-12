@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Server } from 'node:http';
@@ -28,6 +29,7 @@ describe('runtime governance release HTTP contract', () => {
     const auth = createAuthMiddleware(authService);
     app = express();
     app.use(express.json());
+    app.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
     app.use('/runtime-governance', auth.requireAuth, createRuntimeGovernanceRoutes(db, auth, service));
     app.use(errorHandler);
     server = await new Promise(resolve => {

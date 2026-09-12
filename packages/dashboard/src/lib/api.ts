@@ -105,6 +105,20 @@ export type GoalRecord = {
   updated_at: string;
 };
 
+export type RuntimeGovernanceAgentStatus = {
+  quarantined: boolean;
+  circuitBreakerTripped: boolean;
+  violationCount: number;
+  baseline: {
+    agentId: string;
+    certifiedScore: number;
+    categoryScores: Record<string, number>;
+    certifiedAt: string;
+    circuitBreakerThreshold: number;
+    quarantineThreshold: number;
+  } | null;
+};
+
 export type LoopFinding = {
   id: string;
   type: string;
@@ -951,6 +965,17 @@ class ApiClient {
 
   async getAgent(id: string): Promise<Agent> {
     return this.request(`/agents/${id}`);
+  }
+
+  async getRuntimeGovernanceAgent(id: string): Promise<RuntimeGovernanceAgentStatus> {
+    return this.request(`/runtime-governance/agents/${encodeURIComponent(id)}`);
+  }
+
+  async releaseRuntimeGovernanceAgent(id: string, reason: string): Promise<{ released: boolean; agentId: string }> {
+    return this.request(`/runtime-governance/agents/${encodeURIComponent(id)}/release`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   }
 
   // MCP
