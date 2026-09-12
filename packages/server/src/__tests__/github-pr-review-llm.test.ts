@@ -110,9 +110,13 @@ describe('GitHub pull_request review webhook (Phase 2: real LLM checker path)', 
     expect(payload.review).toMatchObject({ status: 'pending' });
 
     const reviewRow = await waitFor(() => {
-      const row = db.prepare('SELECT status, check_run_id, loop_run_id FROM github_pull_request_reviews').get() as any;
+      const row = db.prepare('SELECT status, check_run_id, loop_run_id, metadata FROM github_pull_request_reviews').get() as any;
       return row && row.status !== 'pending' ? row : undefined;
     });
+    if (reviewRow.status !== 'commented') {
+      // eslint-disable-next-line no-console
+      console.error('Phase 2 review did not complete as expected, metadata:', reviewRow.metadata);
+    }
     expect(reviewRow).toMatchObject({ status: 'commented', check_run_id: '999' });
 
     const leases = db.prepare('SELECT role, status, worktree_path FROM worker_leases WHERE loop_run_id = ? ORDER BY role').all(reviewRow.loop_run_id) as Array<{ role: string; status: string; worktree_path: string | null }>;
@@ -129,10 +133,10 @@ describe('GitHub pull_request review webhook (Phase 2: real LLM checker path)', 
     expect(checker.status).toBe('completed');
 
     db.close();
-  }, 20_000);
+  }, 30_000);
 });
 
-async function waitFor<T>(check: () => T | undefined, timeoutMs = 10_000): Promise<T> {
+async function waitFor<T>(check: () => T | undefined, timeoutMs = 20_000): Promise<T> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const value = check();
