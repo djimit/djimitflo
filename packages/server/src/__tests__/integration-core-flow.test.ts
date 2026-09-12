@@ -9,6 +9,7 @@ import { GoalService } from '../services/goal-service';
 import { WorktreeManager } from '../services/worktree-manager';
 import { GovernanceGuardService } from '../services/governance-guard-service';
 import { FixLoopService } from '../services/fix-loop-service';
+import { RsiSafetyGuard } from '../services/rsi-safety-guard';
 
 /**
  * Integration test: core loop lifecycle end-to-end.
@@ -130,6 +131,21 @@ describe('Integration: Core Loop Lifecycle', () => {
     expect(result.requiresHumanApproval).toBe(true);
     expect(result.runtime).toBe('mock');
     expect(result.gates.every(gate => !gate.endsWith(':fail'))).toBe(true);
+  });
+
+  it('blocks the targeted fix pipeline when the persisted RSI kill switch is disabled', async () => {
+    new RsiSafetyGuard(db).setEnabled(false);
+
+    const result = await new FixLoopService(db, loopService).fixFile({
+      repositoryPath: tempDir,
+      filePath: 'README.md',
+      description: 'This must not dispatch while the kill switch is disabled.',
+      category: 'bug',
+    });
+
+    expect(new RsiSafetyGuard(db).getStatus().enabled).toBe(false);
+    expect(result).toMatchObject({ success: false, status: 'blocked', testPassed: false, gates: ['rsi_safety_guard:blocked'] });
+    expect((db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get() as { count: number }).count).toBe(0);
   });
 
   it('rejects targeted fix paths outside the repository', () => {

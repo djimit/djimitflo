@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { LoopService } from './loop-service';
+import { RsiSafetyGuard } from './rsi-safety-guard';
 
 export interface FixRequest {
   repositoryPath: string;
@@ -23,12 +24,28 @@ export interface FixResult {
 }
 
 export class FixLoopService {
+  private safetyGuard: RsiSafetyGuard;
+
   constructor(
     private db: Database,
     private loops: LoopService,
-  ) {}
+  ) {
+    this.safetyGuard = new RsiSafetyGuard(db);
+  }
 
   async fixFile(request: FixRequest): Promise<FixResult> {
+    const decision = this.safetyGuard.canMutate('self-modification');
+    if (!decision.allowed) {
+      return {
+        success: false,
+        status: 'blocked',
+        testPassed: false,
+        gates: ['rsi_safety_guard:blocked'],
+        error: decision.reason || 'RSI safety policy blocked this mutation',
+      };
+    }
+    this.safetyGuard.logAction('mutation', 'self-modification', { category: request.category });
+
     let loopRunId: string | undefined;
     try {
       const run = this.loops.startDocDriftAndSmallFixLoop({

@@ -257,9 +257,23 @@ describe('critical HTTP contracts', () => {
       '/swarms/learning/history', '/swarms/learning/last', '/swarms/learning-curve',
       '/swarms/economy', '/swarms/fix/history',
     ]) expect((await request(path)).status, path).toBe(200);
-    expect((await request('/swarms/rsi/safety/toggle', { method: 'POST', body: '{}' })).status).toBe(200);
+    const invalidSafetyToggle = await request('/swarms/rsi/safety/toggle', { method: 'POST', body: JSON.stringify({ enabled: 'false' }) });
+    expect(invalidSafetyToggle.status).toBe(400);
+    const disabledSafety = await request('/swarms/rsi/safety/toggle', { method: 'POST', body: JSON.stringify({ enabled: false }) });
+    expect(disabledSafety.status).toBe(200);
+    expect(await disabledSafety.json()).toMatchObject({ enabled: false });
+    expect(await (await request('/swarms/rsi/safety')).json()).toMatchObject({ enabled: false });
+    expect((db.prepare("SELECT value FROM system_state WHERE key = 'rsi_safety_enabled'").get() as any).value).toBe('false');
+    const enabledSafety = await request('/swarms/rsi/safety/toggle', { method: 'POST', body: JSON.stringify({ enabled: true }) });
+    expect(await enabledSafety.json()).toMatchObject({ enabled: true });
     expect((await request('/swarms/rsi/analyze', { method: 'POST', body: '{}' })).status).toBe(200);
-    expect((await request('/swarms/learning/cycle', { method: 'POST', body: '{}' })).status).toBe(200);
+    const learningCycleResponse = await request('/swarms/learning/cycle', { method: 'POST', body: '{}' });
+    expect(learningCycleResponse.status).toBe(200);
+    const learningCycle = await learningCycleResponse.json() as any;
+    expect(learningCycle).toMatchObject({ id: expect.any(String), producer: 'continuous-learning-loop', schemaVersion: 1 });
+    expect(await (await request('/swarms/learning/last')).json()).toMatchObject({ id: learningCycle.id });
+    expect((db.prepare('SELECT result_json FROM learning_cycles WHERE id = ?').get(learningCycle.id) as any).result_json)
+      .toContain(learningCycle.id);
     expect((await request('/swarms/fix', { method: 'POST', body: '{}' })).status).toBe(400);
     expect((await request('/swarms/fix', { method: 'POST', body: JSON.stringify({ repository_path: '/tmp', file_path: 'x', description: 'x', runtime: 'unknown' }) })).status).toBe(400);
     expect((await request('/swarms/fix/batch', { method: 'POST', body: JSON.stringify({ requests: {} }) })).status).toBe(400);
