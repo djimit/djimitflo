@@ -5,7 +5,7 @@ import { api } from './api';
 const user = { id: 'fixture', role: 'admin', email: 'fixture@example.test' } as any;
 const token = (exp: number, organization_id = 'tenant', sid = 'family') => `header.${btoa(JSON.stringify({ sub: 'fixture', sid, exp, organization_id }))}.signature`;
 const expired = token(1);
-const fresh = () => token(Math.floor(Date.now() / 1000) + 900);
+const fresh = () => token(4_102_444_800);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const session = () => json({ token: fresh(), user, expires_in: 900 });
 const denied = () => json({ error: { message: 'Session revoked' } }, 401);
