@@ -93,9 +93,15 @@ describe('runtime governance release HTTP contract', () => {
     const path = '/runtime-governance/agents/register-fixture/register';
     const invalidBaselines = [
       { overallScore: 10.1, categoryScores: {}, certifiedAt: new Date().toISOString() },
+      { overallScore: '4', categoryScores: {}, certifiedAt: new Date().toISOString() },
       { overallScore: 4, categoryScores: { governance: -0.1 }, certifiedAt: new Date().toISOString() },
       { overallScore: 4, categoryScores: { governance: '4' }, certifiedAt: new Date().toISOString() },
       { overallScore: 4, categoryScores: [], certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: null, certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: '4', certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: 4, certifiedAt: new Date().toISOString() },
+      { overallScore: 4, categoryScores: {}, certifiedAt: 42 },
+      { overallScore: 4, categoryScores: {}, certifiedAt: '   ' },
     ];
 
     for (const baseline of invalidBaselines) {

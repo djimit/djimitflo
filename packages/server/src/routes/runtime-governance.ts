@@ -18,7 +18,7 @@ function boundedLimit(value: unknown, fallback = 50): number {
 }
 
 function isGovernanceScore(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 10;
+  return typeof value === 'number' && value >= 0 && value <= 10;
 }
 
 export function createRuntimeGovernanceRoutes(
