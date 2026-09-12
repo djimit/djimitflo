@@ -12,7 +12,6 @@ import { runMigrations } from '../database/migrate';
 
 function createFakeRepo(): string {
   const dir = mkdtempSync(join(tmpdir(), "repo-scanner-"));
-  mkdirSync(join(dir, ".git"), { recursive: true });
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "package.json"), JSON.stringify({
     name: "test-repo",
