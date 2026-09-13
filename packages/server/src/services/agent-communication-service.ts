@@ -176,15 +176,7 @@ export class AgentCommunicationService {
       if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
     }
 
-    const gap = this.db.prepare(`
-      SELECT id, claim, evidence_refs_json FROM swarm_claims
-      WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
-      ORDER BY created_at DESC LIMIT 1
-    `).get() as { id: string; claim: string; evidence_refs_json: string } | undefined;
-    const topic = this.cleanOptional(gap?.claim || 'cross-agent learning in the Djimit ecosystem', 1_000);
-    const topicRef = gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
-    const evidence = (gap ? [topicRef, ...this.stringArray(gap.evidence_refs_json)] : [topicRef])
-      .map((reference) => this.cleanOptional(reference, 200)).filter(Boolean).slice(0, 20);
+    const { topic, topicRef, evidence } = this.pickTopic();
     const correlationId = `social:${randomUUID()}`;
     const [first, second] = pair;
     const firstId = String(first.id);
@@ -271,6 +263,49 @@ export class AgentCommunicationService {
       agents,
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit)),
     };
+  }
+
+  /**
+   * What the next round is about, in order of curiosity: an open knowledge gap,
+   * then the newest candidate lesson nobody has challenged yet, then a rotating
+   * ecosystem question so consecutive rounds do not repeat the same prompt.
+   */
+  private pickTopic(): { topic: string; topicRef: string; evidence: string[] } {
+    const clean = (references: string[]) => references.map((reference) => this.cleanOptional(reference, 200)).filter(Boolean).slice(0, 20);
+    const gap = this.db.prepare(`
+      SELECT id, claim, evidence_refs_json FROM swarm_claims
+      WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as { id: string; claim: string; evidence_refs_json: string } | undefined;
+    if (gap) {
+      const topicRef = `claim:${gap.id}`;
+      return { topic: this.cleanOptional(gap.claim, 1_000), topicRef, evidence: clean([topicRef, ...this.stringArray(gap.evidence_refs_json)]) };
+    }
+    const lesson = this.db.prepare(`
+      SELECT id, lesson FROM reflection_candidates
+      WHERE status IN ('candidate', 'promoted')
+        AND ('reflection:' || id) NOT IN (
+          SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
+          WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text'
+        )
+      ORDER BY created_at DESC LIMIT 1
+    `).get() as { id: string; lesson: string } | undefined;
+    if (lesson) {
+      const topicRef = `reflection:${lesson.id}`;
+      return { topic: this.cleanOptional(`Challenge this candidate lesson: ${lesson.lesson}`, 1_000), topicRef, evidence: [topicRef] };
+    }
+    // ponytail: static curiosity seeds; replace with OKF/knowledge-drift signals once those emit gap claims.
+    const seeds = [
+      'cross-agent learning in the Djimit ecosystem',
+      'what evidence a Paperclip task must carry before an agent may act on it',
+      'when a reflection candidate deserves promotion and who may decide',
+      'which signals reveal an agent drifting from its declared capabilities',
+      'how repeated roborev findings should turn into a reusable skill',
+      'what makes a knowledge gap worth a peer exchange instead of a lookup',
+    ];
+    const rounds = (this.db.prepare("SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get() as { n: number }).n;
+    const index = rounds % seeds.length;
+    return { topic: seeds[index], topicRef: index === 0 ? 'ecosystem:cross-agent-learning' : `ecosystem:curiosity-seed-${index}`, evidence: [index === 0 ? 'ecosystem:cross-agent-learning' : `ecosystem:curiosity-seed-${index}`] };
   }
 
   /** Record a signed runtime poller as eligible for future social rounds. */
