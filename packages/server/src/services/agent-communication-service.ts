@@ -195,6 +195,7 @@ export class AgentCommunicationService {
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
       params: { topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: 'continuous-learning-loop', board_summary: context },
+      facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
     });
     const messages = this.db.transaction(() => [
       question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
@@ -364,6 +365,7 @@ export class AgentCommunicationService {
     replyTo?: string;
     epistemicRole?: EpistemicRole;
     idempotencyKey?: string;
+    facilitatorCommit?: string;
   }): AgentMessage {
     const validTypes: MessageType[] = ['task', 'result', 'question', 'alert', 'handoff', 'knowledge'];
     if (!validTypes.includes(input.type)) throw new Error('BOARD_MESSAGE_TYPE_INVALID');
@@ -380,9 +382,13 @@ export class AgentCommunicationService {
     const idempotencyKey = typeof input.idempotencyKey === 'string' && input.idempotencyKey.trim()
       ? input.idempotencyKey.trim()
       : undefined;
+    const { facilitator_commit: _untrustedFacilitatorCommit, ...inputParams } = input.params || {};
+    const facilitatorCommit = input.facilitatorCommit?.trim();
+    if (facilitatorCommit && !/^[0-9a-f]{40}$/i.test(facilitatorCommit)) throw new Error('SOCIAL_FACILITATOR_COMMIT_INVALID');
+    const params = { ...inputParams, ...(input.facilitatorCommit !== undefined ? { facilitator_commit: facilitatorCommit || '' } : {}) };
     const fingerprint = boardMessageFingerprint({
       from: input.from, to: input.to, type: input.type, priority: input.priority || 3,
-      action: input.action, params: input.params || {}, context: input.context,
+      action: input.action, params, context: input.context,
       evidence: input.evidence, ttl: input.ttl === undefined ? 300 : input.ttl,
       threadId: input.threadId, replyTo: input.replyTo, epistemicRole: input.epistemicRole,
     });
@@ -401,7 +407,7 @@ export class AgentCommunicationService {
       priority: input.priority || 3,
       payload: {
         action: input.action,
-        params: input.params || {},
+        params,
         context: input.context,
         evidence: input.evidence,
         thread_id: input.threadId,
@@ -699,14 +705,14 @@ export class AgentCommunicationService {
 
   private runtimeSafeMessage(message: AgentMessage): AgentMessage {
     const params = message.payload.params || {};
-    const allowedParams = ['topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id'];
+    const allowedParams = ['topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit'];
     return { ...message, payload: {
       action: message.payload.action,
       context: this.cleanOptional(message.payload.context, 4_000),
       evidence: this.stringArray(message.payload.evidence).map((item) => this.cleanOptional(item, 200)).filter(Boolean).slice(0, 20),
       thread_id: this.cleanOptional(message.payload.thread_id, 200), reply_to: this.cleanOptional(message.payload.reply_to, 200),
       epistemic_role: message.payload.epistemic_role,
-      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, this.cleanOptional(params[key], key === 'answer' ? 3_000 : 1_000)])),
+      params: Object.fromEntries(allowedParams.filter((key) => typeof params[key] === 'string').map((key) => [key, key === 'facilitator_commit' && /^[0-9a-f]{40}$/i.test(String(params[key])) ? params[key] : this.cleanOptional(params[key], key === 'answer' ? 3_000 : 1_000)])),
     } };
   }
 
