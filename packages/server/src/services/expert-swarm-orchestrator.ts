@@ -3,12 +3,22 @@ import type { Database } from 'better-sqlite3';
 import { KnowledgeAdapterRegistry } from './knowledge-adapters';
 import { JudgeService, type ExpertAnswer, type JudgeVerdict } from './judge-service';
 import { SkillService } from './skill-service';
+import { ExpertCouncilService, type CouncilResult } from './expert-council-service';
+import type { ResolveOptions } from './expert-resolver-service';
+import { frontierExpertsEnabled } from './frontier-expert-registry-service';
 
 export interface ExpertSwarmInput {
   topic: string;
+  /** Legacy path: one adapter lookup per domain string. Kept for compatibility (§15). */
   domains: string[];
   maxParallel?: number;
   sources?: string[];
+  /**
+   * Frontier path: resolve evidence-backed experts for the topic, run independent perspectives,
+   * build the claim graph and falsify. Requires DJIMITFLO_FRONTIER_EXPERTS_ENABLED=true unless
+   * `force` is set (tests). Ignored when absent.
+   */
+  expertSelection?: ResolveOptions & { force?: boolean; adversarial?: boolean; language?: 'en' | 'nl' };
 }
 
 export interface ExpertSwarmResult {
@@ -23,6 +33,8 @@ export interface ExpertSwarmResult {
   promotion_decision: JudgeVerdict['promotion_decision'];
   /** memory_candidates row awaiting human review, when one was recorded. */
   knowledge_candidate_id: string | null;
+  /** Present on the frontier path: perspectives, claim graph, disagreements, adversarial attacks. */
+  council?: CouncilResult;
   duration_ms: number;
   created_at: string;
 }
@@ -31,6 +43,7 @@ export interface ExpertSwarmDeps {
   registry?: KnowledgeAdapterRegistry;
   judge?: JudgeService;
   skills?: SkillService;
+  council?: ExpertCouncilService;
 }
 
 interface SwarmRow {
@@ -45,10 +58,14 @@ export class ExpertSwarmOrchestrator {
   private skills: SkillService;
   private maxParallel = 10;
 
+  private council: ExpertCouncilService | null;
+
   constructor(private db: Database, deps: ExpertSwarmDeps = {}) {
     this.registry = deps.registry ?? new KnowledgeAdapterRegistry(db);
     this.judge = deps.judge ?? new JudgeService(db);
     this.skills = deps.skills ?? new SkillService(db);
+    // Lazily built on first frontier dispatch so the legacy path pays nothing.
+    this.council = deps.council ?? null;
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS expert_swarm_history (
@@ -71,21 +88,48 @@ export class ExpertSwarmOrchestrator {
     const sources = input.sources ?? ['wikipedia', 'arxiv', 'okf'];
 
     const answers: ExpertAnswer[] = [];
+    let council: CouncilResult | undefined;
 
-    const domainChunks = this.chunkArray(input.domains, maxParallel);
+    if (input.expertSelection && (input.expertSelection.force || frontierExpertsEnabled())) {
+      // Frontier path (§15, §16): resolver → independent perspectives → claim graph → adversary.
+      const { force: _force, adversarial, language, ...selection } = input.expertSelection;
+      this.council ??= new ExpertCouncilService(this.db);
+      council = await this.council.convene(input.topic, selection, { maxParallel, adversarial, language });
+      for (const perspective of council.perspectives) {
+        const confidence = perspective.output.claims.length
+          ? perspective.output.claims.reduce((sum, claim) => sum + claim.confidence, 0) / perspective.output.claims.length
+          : 0.2;
+        answers.push({
+          domain: perspective.canonical_name,
+          content: perspective.output.analysis,
+          source: 'frontier-expert',
+          confidence,
+          evidence_refs: perspective.output.evidence_refs,
+          metadata: { expert_id: perspective.expert_id, why_selected: perspective.why_selected, claim_ids: perspective.claim_ids, runtime: perspective.runtime, dropped_refs: perspective.dropped_refs },
+        });
+      }
+    } else {
+      const domainChunks = this.chunkArray(input.domains, maxParallel);
 
-    for (const chunk of domainChunks) {
-      const chunkPromises = chunk.map(domain => this.executeExpert(domain, input.topic, sources));
-      const chunkResults = await Promise.allSettled(chunkPromises);
+      for (const chunk of domainChunks) {
+        const chunkPromises = chunk.map(domain => this.executeExpert(domain, input.topic, sources));
+        const chunkResults = await Promise.allSettled(chunkPromises);
 
-      for (const result of chunkResults) {
-        if (result.status === 'fulfilled' && result.value) {
-          answers.push(result.value);
+        for (const result of chunkResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            answers.push(result.value);
+          }
         }
       }
     }
 
     const verdict = this.judge.evaluate(answers);
+    // A council disagreement is a contradiction even when the lexical heuristic misses it (§19, I08).
+    if (council?.disagreements.length) {
+      verdict.contradictions.push(...council.disagreements.map((item) => `Council disagreement on "${item.proposition}" between ${item.expert_a} and ${item.expert_b}`));
+      verdict.promotion_decision = 'CONTRADICTED';
+      verdict.verification_status = 'contradicted';
+    }
     // The heuristic judge can never say "verified", so the old `verification_status === 'verified'`
     // gate silently stored nothing. Knowledge now enters the governed review queue when the
     // judge asks for human review; contradicted, insufficient or unverifiable output stays out.
@@ -102,6 +146,7 @@ export class ExpertSwarmOrchestrator {
       knowledge_updated: knowledgeCandidateId !== null,
       promotion_decision: verdict.promotion_decision,
       knowledge_candidate_id: knowledgeCandidateId,
+      council,
       duration_ms: Date.now() - start,
       created_at: new Date().toISOString(),
     };
@@ -182,7 +227,7 @@ export class ExpertSwarmOrchestrator {
       JSON.stringify({
         origin: 'expert-swarm', run_id: runId, topic, version: 1,
         judge: { verdict_id: verdict.id, score: verdict.score, score_kind: verdict.score_kind, confidence: verdict.confidence, promotion_decision: verdict.promotion_decision, verification_status: verdict.verification_status },
-        answers: answers.map(a => ({ domain: a.domain, source: a.source, confidence: a.confidence, evidence_refs: a.evidence_refs ?? [], url: a.metadata?.url ?? null })),
+        answers: answers.map(a => ({ domain: a.domain, source: a.source, confidence: a.confidence, evidence_refs: a.evidence_refs ?? [], url: a.metadata?.url ?? null, expert_id: a.metadata?.expert_id ?? null, claim_ids: a.metadata?.claim_ids ?? [] })),
         evidence_refs: evidence,
         empirical_status: 'UNDETERMINED', promotion_allowed: false,
       })
