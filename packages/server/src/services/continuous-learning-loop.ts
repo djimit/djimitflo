@@ -9,6 +9,7 @@ import { SelfImprovementService } from './self-improvement-service';
 import { DreamCycleService } from './dream-cycle-service';
 import { DreamTaskPlannerService } from './dream-task-planner-service';
 import { AgentCommunicationService } from './agent-communication-service';
+import { AgentLureService } from './agent-lure-service';
 import { config as envConfig } from '../config/env';
 
 export interface LearningCycleResult {
@@ -18,6 +19,7 @@ export interface LearningCycleResult {
   dreamOpportunitiesGenerated: number;
   dreamTasksPlanned: number;
   socialExchangesStarted: number;
+  luresCast?: number;
   producer: 'continuous-learning-loop'; schemaVersion: 1;
 }
 
@@ -29,6 +31,7 @@ export class ContinuousLearningLoop {
   private dreams: DreamCycleService;
   private dreamTasks: DreamTaskPlannerService;
   private communication: AgentCommunicationService;
+  private lure: AgentLureService;
   private _trajectories?: TrajectoryStore;
   private segml?: SelfEvolvingGovernanceLoop;
   private segmlTimer: ReturnType<typeof setInterval> | null = null;
@@ -47,6 +50,7 @@ export class ContinuousLearningLoop {
     this.dreams = new DreamCycleService(db);
     this.dreamTasks = new DreamTaskPlannerService(db);
     this.communication = new AgentCommunicationService(db);
+    this.lure = new AgentLureService(db, this.communication);
     this.intervalMs = options.intervalMs ?? 3600_000;
     this.db.exec("CREATE TABLE IF NOT EXISTS learning_cycles (id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
   }
@@ -87,6 +91,10 @@ export class ContinuousLearningLoop {
     const dreamOpportunitiesGenerated = this.dreams.runCycle().length;
     const dreamTasksPlanned = this.dreamTasks.exportPending();
     const socialization = this.communication.socialize();
+    // Empty commons: cast an autonomous lure (invites + Paperclip task, no tokens) at most once per lure lifetime.
+    const lureCast = socialization.reason === 'insufficient_agents'
+      ? this.lure.castIfQuiet({ by: 'continuous-learning-loop', baseUrl: process.env.DJIMITFLO_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3001}` })
+      : null;
     const result: LearningCycleResult = {
       id,
       timestamp: new Date().toISOString(),
@@ -98,6 +106,7 @@ export class ContinuousLearningLoop {
       dreamOpportunitiesGenerated,
       dreamTasksPlanned,
       socialExchangesStarted: socialization.status === 'started' ? 1 : 0,
+      luresCast: lureCast ? 1 : 0,
       durationMs: Date.now() - start,
       producer: 'continuous-learning-loop',
       schemaVersion: 1,
