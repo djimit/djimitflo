@@ -182,7 +182,10 @@ export class FrontierExpertRegistryService {
     if (qualifying.length !== refs.length) throw new Error('EXPERT_CAPABILITY_EVIDENCE_INSUFFICIENT');
     const id = `capability:${randomUUID()}`;
     this.db.prepare(`INSERT INTO expert_capabilities (id, expert_id, capability_id, confidence, evidence_refs_json, derived_by, status) VALUES (?, ?, ?, ?, ?, ?, 'inferred')
-      ON CONFLICT(expert_id, capability_id) DO UPDATE SET confidence = excluded.confidence, evidence_refs_json = excluded.evidence_refs_json, derived_by = excluded.derived_by, status = 'inferred', updated_at = datetime('now')`)
+      ON CONFLICT(expert_id, capability_id) DO UPDATE SET confidence = excluded.confidence, evidence_refs_json = excluded.evidence_refs_json, derived_by = excluded.derived_by,
+        -- §54: unchanged evidence keeps the governed status; a changed evidence set is a delta that must be re-checked.
+        status = CASE WHEN expert_capabilities.evidence_refs_json = excluded.evidence_refs_json AND expert_capabilities.status != 'revoked' THEN expert_capabilities.status ELSE 'inferred' END,
+        updated_at = datetime('now')`)
       .run(id, expertId, capabilityId, Math.max(0, Math.min(1, input.confidence)), JSON.stringify(refs), input.derivedBy);
     this.snapshot(expertId, `capability ${capabilityId}`);
     return capabilityId;
@@ -292,6 +295,43 @@ export class FrontierExpertRegistryService {
   private hasQualifiedCapability(expertId: string): boolean {
     const capabilities = this.db.prepare("SELECT evidence_refs_json FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(expertId) as Array<{ evidence_refs_json: string }>;
     return capabilities.some((capability) => this.qualifyingEvidence(expertId, JSON.parse(capability.evidence_refs_json)).length > 0);
+  }
+
+  /**
+   * Governed activation of a capability delta on an already ACTIVE/APPROVED expert (§54): a capability inferred
+   * after activation stays 'inferred' (not recommended) until a checker marks it checked and a different
+   * governance actor approves it. Revoking a single capability keeps the expert and its evidence history.
+   */
+  reviewCapability(expertId: string, capability: string, decision: 'checked' | 'approved' | 'revoked', input: { actor: string; reason?: string }): { capability_id: string; status: string } {
+    const capabilityId = this.resolveCapability(capability);
+    if (!capabilityId) throw new Error('EXPERT_CAPABILITY_UNKNOWN');
+    const row = this.db.prepare('SELECT status FROM expert_capabilities WHERE expert_id = ? AND capability_id = ?').get(expertId, capabilityId) as { status: string } | undefined;
+    if (!row) throw new Error('EXPERT_CAPABILITY_NOT_FOUND');
+    if (/^(system|ingestion|swarm|autopilot)/i.test(input.actor)) throw new Error('EXPERT_GOVERNANCE_ACTOR_REQUIRED');
+    const marker = (state: string) => `CAPABILITY_${state.toUpperCase()}:${capabilityId}`;
+    if (decision === 'checked' && row.status !== 'inferred') throw new Error(`EXPERT_CAPABILITY_TRANSITION_INVALID:${row.status}->checked`);
+    if (decision === 'approved') {
+      if (row.status !== 'checked') throw new Error(`EXPERT_CAPABILITY_TRANSITION_INVALID:${row.status}->approved`);
+      const checker = this.lastActor(expertId, marker('checked') as ExpertLifecycleState);
+      if (!checker || checker === input.actor) throw new Error('EXPERT_APPROVER_MUST_DIFFER_FROM_CHECKER');
+    }
+    this.db.prepare("UPDATE expert_capabilities SET status = ?, updated_at = datetime('now') WHERE expert_id = ? AND capability_id = ?").run(decision, expertId, capabilityId);
+    const expert = this.get(expertId)!;
+    this.event(expertId, expert.lifecycle_state, marker(decision) as ExpertLifecycleState, input.actor, input.reason ?? '', []);
+    this.snapshot(expertId, `capability ${capabilityId} ${decision}`);
+    return { capability_id: capabilityId, status: decision };
+  }
+
+  /**
+   * Controlled deactivation (§55): the expert leaves recommendation (REVOKED from governed states, REJECTED
+   * before governance) with a typed reason; evidence, claims, events and versions stay queryable AS OF.
+   */
+  deprecate(expertId: string, input: { reason: 'stale' | 'unsupported' | 'superseded' | 'misattributed'; actor: string; note?: string }): ExpertIdentityRow {
+    const expert = this.get(expertId);
+    if (!expert) throw new Error('EXPERT_NOT_FOUND');
+    if (/^(system|ingestion|swarm|autopilot)/i.test(input.actor)) throw new Error('EXPERT_GOVERNANCE_ACTOR_REQUIRED');
+    const to: ExpertLifecycleState = TRANSITIONS[expert.lifecycle_state].includes('REVOKED') ? 'REVOKED' : 'REJECTED';
+    return this.transition(expertId, to, { actor: input.actor, reason: `deprecated:${input.reason}${input.note ? ` ${input.note}` : ''}` });
   }
 
   private lastActor(expertId: string, state: ExpertLifecycleState): string | null {

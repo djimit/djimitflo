@@ -25,6 +25,8 @@ export interface EnrichmentResult {
   lifecycle_state: string;
   evidence_added: number;
   capabilities: Array<{ id: string; confidence: number; evidence: number }>;
+  /** Capability ids that did not exist on the expert before this run (§54: capability delta awaiting governance on ACTIVE experts). */
+  capability_delta: string[];
   reason: string | null;
 }
 
@@ -65,19 +67,20 @@ export class ExpertEvidenceEnrichmentService {
 
     if (!identity.matched.length) {
       // I10: absence of arXiv evidence is not evidence of absence; the identity simply stays DISCOVERED.
-      return { ...base, lifecycle_state: expert.lifecycle_state, evidence_added: 0, capabilities: [], reason: 'no_author_match' };
+      return { ...base, lifecycle_state: expert.lifecycle_state, evidence_added: 0, capabilities: [], capability_delta: [], reason: 'no_author_match' };
     }
     if (expert.lifecycle_state === 'DISCOVERED' || expert.lifecycle_state === 'AMBIGUOUS') {
       const resolved = this.registry.resolveIdentity(expertId, { confidence: identity.confidence, actor: input.actor, reason: `arxiv author match: ${identity.matched.length} paper(s), AI share ${identity.ai_share}` });
       if (resolved.lifecycle_state === 'AMBIGUOUS') {
         // I03: fail closed, attach nothing to a person we cannot pin down.
-        return { ...base, lifecycle_state: 'AMBIGUOUS', evidence_added: 0, capabilities: [], reason: 'identity_below_threshold' };
+        return { ...base, lifecycle_state: 'AMBIGUOUS', evidence_added: 0, capabilities: [], capability_delta: [], reason: 'identity_below_threshold' };
       }
     } else if (expert.identity_confidence < IDENTITY_CONFIDENCE_THRESHOLD) {
-      return { ...base, lifecycle_state: expert.lifecycle_state, evidence_added: 0, capabilities: [], reason: 'identity_below_threshold' };
+      return { ...base, lifecycle_state: expert.lifecycle_state, evidence_added: 0, capabilities: [], capability_delta: [], reason: 'identity_below_threshold' };
     }
 
     const before = (this.db.prepare("SELECT COUNT(*) AS n FROM expert_evidence WHERE expert_id = ? AND kind = 'paper'").get(expertId) as { n: number }).n;
+    const knownCapabilities = new Set((this.db.prepare('SELECT capability_id FROM expert_capabilities WHERE expert_id = ?').all(expertId) as Array<{ capability_id: string }>).map((row) => row.capability_id));
     const evidenceByCapability = new Map<string, Set<string>>();
     for (const paper of identity.matched) {
       const evidenceId = this.registry.addEvidence(expertId, {
@@ -106,7 +109,7 @@ export class ExpertEvidenceEnrichmentService {
     if (capabilities.length && this.registry.get(expertId)!.lifecycle_state === 'EVIDENCE_COLLECTED') {
       this.registry.transition(expertId, 'CAPABILITY_INFERRED', { actor: input.actor, reason: capabilities.map((capability) => capability.id).join(', ') });
     }
-    return { ...base, lifecycle_state: this.registry.get(expertId)!.lifecycle_state, evidence_added: after - before, capabilities, reason: capabilities.length ? null : 'no_capability_derived' };
+    return { ...base, lifecycle_state: this.registry.get(expertId)!.lifecycle_state, evidence_added: after - before, capabilities, capability_delta: capabilities.map((capability) => capability.id).filter((id) => !knownCapabilities.has(id)), reason: capabilities.length ? null : 'no_capability_derived' };
   }
 
   /** Enrich a bounded batch of DISCOVERED experts, oldest first (§51: bounded, incremental). */
@@ -114,7 +117,7 @@ export class ExpertEvidenceEnrichmentService {
     const rows = this.db.prepare("SELECT id FROM expert_identities WHERE lifecycle_state = 'DISCOVERED' ORDER BY created_at ASC LIMIT ?").all(Math.max(1, Math.min(50, input.limit ?? 10))) as Array<{ id: string }>;
     const results: EnrichmentResult[] = [];
     for (const row of rows) {
-      try { results.push(await this.enrich(row.id, input)); } catch (error) { results.push({ expert_id: row.id, canonical_name: '', papers_found: 0, papers_matched: 0, ai_share: 0, identity_confidence: 0, lifecycle_state: 'DISCOVERED', evidence_added: 0, capabilities: [], reason: error instanceof Error ? error.message : 'ENRICH_FAILED' }); }
+      try { results.push(await this.enrich(row.id, input)); } catch (error) { results.push({ expert_id: row.id, canonical_name: '', papers_found: 0, papers_matched: 0, ai_share: 0, identity_confidence: 0, lifecycle_state: 'DISCOVERED', evidence_added: 0, capabilities: [], capability_delta: [], reason: error instanceof Error ? error.message : 'ENRICH_FAILED' }); }
     }
     return results;
   }

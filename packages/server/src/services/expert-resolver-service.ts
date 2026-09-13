@@ -110,7 +110,7 @@ export class ExpertResolverService {
 
     const candidates = (this.db.prepare(`
       SELECT DISTINCT e.id, e.canonical_name, e.lifecycle_state, e.identity_confidence FROM expert_identities e
-      JOIN expert_capabilities c ON c.expert_id = e.id AND c.status != 'revoked'
+      JOIN expert_capabilities c ON c.expert_id = e.id AND c.status != 'revoked' AND NOT (e.lifecycle_state IN ('ACTIVE', 'APPROVED') AND c.status = 'inferred')
       WHERE e.lifecycle_state IN (SELECT value FROM json_each(?)) AND c.capability_id IN (SELECT value FROM json_each(?))
       ${options.expertIds?.length ? 'AND e.id IN (SELECT value FROM json_each(?))' : ''}
     `).all(JSON.stringify(states), JSON.stringify([...capabilityScore.keys()]), ...(options.expertIds?.length ? [JSON.stringify(options.expertIds)] : [])) as Array<{ id: string; canonical_name: string; lifecycle_state: string; identity_confidence: number }>);
@@ -143,7 +143,9 @@ export class ExpertResolverService {
   }
 
   private scoreExpert(candidate: { id: string; canonical_name: string; lifecycle_state: string; identity_confidence: number }, capabilityScore: Map<string, number>, questionTokens: Set<string>, asOf: string): ResolvedExpert {
-    const capabilities = (this.db.prepare("SELECT capability_id AS id, confidence, evidence_refs_json FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(candidate.id) as Array<{ id: string; confidence: number; evidence_refs_json: string }>);
+    // §54: on a governed (APPROVED/ACTIVE) expert only checked/approved capabilities are recommended; a delta inferred after activation waits for review.
+    const governed = candidate.lifecycle_state === 'ACTIVE' || candidate.lifecycle_state === 'APPROVED';
+    const capabilities = (this.db.prepare(`SELECT capability_id AS id, confidence, evidence_refs_json FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked' ${governed ? "AND status != 'inferred'" : ''}`).all(candidate.id) as Array<{ id: string; confidence: number; evidence_refs_json: string }>);
     const evidence = (this.db.prepare("SELECT id, kind, tier, title, url, source_family, retrieved_at FROM expert_evidence WHERE expert_id = ? AND lifecycle = 'active' AND retrieved_at <= ? AND kind NOT IN ('signature', 'secondary', 'other')").all(candidate.id, asOf) as Array<{ id: string; kind: string; tier: number; title: string; url: string | null; source_family: string; retrieved_at: string }>);
     const taxonomy = new Map((this.db.prepare('SELECT id, label, aliases_json FROM expert_capability_taxonomy').all() as Array<{ id: string; label: string; aliases_json: string }>).map((row) => [row.id, `${row.label} ${(JSON.parse(row.aliases_json) as string[]).join(' ')}`]));
 

@@ -259,6 +259,19 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     try { res.json(registry().transition(req.params.id, to, { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); }
     catch (error) { const message = error instanceof Error ? error.message : 'EXPERT_TRANSITION_FAILED'; const code = message.split(':')[0]; throw createError(code === 'EXPERT_NOT_FOUND' ? 404 : 409, message, code); }
   }));
+  const registryError = (error: unknown): never => { const message = error instanceof Error ? error.message : 'EXPERT_GOVERNANCE_FAILED'; const code = message.split(':')[0]; throw createError(code.endsWith('NOT_FOUND') ? 404 : 409, message, code); };
+  router.post('/expert/experts/:id/capabilities/:capability/review', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const decision = String(req.body?.decision || '');
+    if (!['checked', 'approved', 'revoked'].includes(decision)) throw createError(400, 'decision must be checked, approved or revoked', 'VALIDATION_ERROR');
+    try { res.json(registry().reviewCapability(req.params.id, req.params.capability, decision as 'checked' | 'approved' | 'revoked', { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); } catch (error) { registryError(error); }
+  }));
+  router.post('/expert/experts/:id/deprecate', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const reason = String(req.body?.reason || '');
+    if (!['stale', 'unsupported', 'superseded', 'misattributed'].includes(reason)) throw createError(400, 'reason must be stale, unsupported, superseded or misattributed', 'VALIDATION_ERROR');
+    try { res.json(registry().deprecate(req.params.id, { reason: reason as 'stale' | 'unsupported' | 'superseded' | 'misattributed', actor, note: typeof req.body?.note === 'string' ? req.body.note : undefined })); } catch (error) { registryError(error); }
+  }));
   router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {
     operatorActor(req);
     if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled (DJIMITFLO_FRONTIER_EXPERTS_ENABLED)', 'FRONTIER_EXPERTS_DISABLED');
