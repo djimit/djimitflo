@@ -11,6 +11,7 @@ import { AgentCommunicationService } from '../services/agent-communication-servi
 import { createError } from '../middleware/error-handler';
 import { resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { AgentLureService } from '../services/agent-lure-service';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -184,9 +185,33 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     res.json(comms.getStats());
   });
 
+  // GET /api/swarm-v2/social/commons — operator read-model for the Agent Commons UI
+  router.get('/social/commons', requirePermission('read:evidence'), (req, res) => {
+    res.json(comms.listSocialCommons(Number(req.query.limit) || 50));
+  });
+
+  // Agent Commons honeypot: cast a lure (invite absent agents, issue runtime tokens once) and read bites/probes.
+  const lure = new AgentLureService(db, comms);
+  router.post('/social/lures', requirePermission('write:swarm_action'), (req: any, res) => {
+    try {
+      const ttlMs = Number(req.body?.ttl_ms);
+      res.status(201).json(lure.castLure({
+        by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+        ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined, paperclipPath: req.body?.paperclip === false ? null : undefined,
+      }));
+    } catch (error) {
+      res.status(500).json({ error: { code: 'LURE_FAILED', message: error instanceof Error ? error.message : 'LURE_FAILED' } });
+    }
+  });
+  router.get('/social/lures', requirePermission('read:evidence'), (_req, res) => {
+    res.json(lure.status());
+  });
+
   // POST /api/swarm-v2/socialize — bounded, evidence-linked peer exchange.
-  router.post('/socialize', requirePermission('write:swarm_action'), (_req, res) => {
-    const result = comms.socialize();
+  router.post('/socialize', requirePermission('write:swarm_action'), (req, res) => {
+    // Operator-triggered rounds may pass cooldown_ms (0 = start now); the autonomous loop keeps the 6h default.
+    const cooldown = Number(req.body?.cooldown_ms);
+    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined);
     res.status(result.status === 'started' ? 201 : 200).json(result);
   });
 
@@ -198,15 +223,18 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   const router = Router();
   router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
   const comms = new AgentCommunicationService(db);
+  const lure = new AgentLureService(db, comms);
 
   function authorized(req: any, res: any): boolean {
     const agentId = String(req.params.agentId || '');
     const token = req.get('X-Agent-Social-Token') || '';
     if (!agentId || !validateSpawnToken(resolveSpawnTokenSecret(), token, agentId, 'social-runtime')) {
+      lure.recordProbe(agentId, req.ip, token ? 'token_invalid' : 'token_missing');
       res.status(401).json({ error: { code: 'SOCIAL_TOKEN_INVALID', message: 'Social runtime token is invalid, expired, or scoped to another agent' } });
       return false;
     }
     if (!runtimeGovernance.isAllowed(agentId)) {
+      lure.recordProbe(agentId, req.ip, 'governance_blocked');
       res.status(403).json({ error: { code: 'SOCIAL_AGENT_BLOCKED', message: 'Agent is blocked by runtime governance' } });
       return false;
     }

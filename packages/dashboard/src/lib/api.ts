@@ -698,6 +698,39 @@ export type SwarmMissionControl = {
   } | null;
 };
 
+export type SocialMessage = {
+  id: string; from: string; to: string;
+  action: 'social.question' | 'social.response' | 'social.learning';
+  timestamp: string; status: string; reply_to: string | null; text: string; evidence: string[];
+  answer: string | null; uncertainty: string | null; falsifiable_next_step: string | null;
+  creative_alternative: string | null; stop_condition: string | null;
+  runtime: string | null; model_id: string | null; reflection_id: string | null; reflection_status: string | null;
+};
+
+export type SocialThread = {
+  id: string; topic: string; topic_ref: string | null; participants: string[];
+  stage: 'asked' | 'responding' | 'learned'; started_at: string; last_activity_at: string;
+  learnings: number; messages: SocialMessage[];
+};
+
+export type SocialAgentPresence = {
+  id: string; name: string; status: string; capabilities: string[]; model: string;
+  runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+};
+
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[] };
+
+export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null };
+export type LureStatus = {
+  lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
+  probes: Array<{ id: string; agent_id: string; ip: string; reason: string; created_at: string }>;
+  probe_count: number;
+};
+export type LureCast = {
+  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
+  invitations: Array<{ agent_id: string; name: string; token: string; expires_at: string; poller_env: string }>;
+};
+
 export type AgentInteractionRecord = {
   id: string;
   timestamp: string;
@@ -1516,6 +1549,22 @@ class ApiClient {
   async getAgentInteractions(params: { agent_id?: string; correlation_id?: string; status?: string; source?: string; limit?: number } = {}): Promise<{ interactions: AgentInteractionRecord[]; data_quality?: 'COMPLETE' | 'DEGRADED'; unavailable_sources?: string[] }> {
     const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)]));
     return this.request(`/swarms/intelligence/interactions${query.size ? `?${query}` : ''}`);
+  }
+
+  async getSocialCommons(limit = 50): Promise<SocialCommons> {
+    return this.request(`/swarm-v2/social/commons?limit=${limit}`);
+  }
+
+  async startSocialRound(): Promise<{ status: 'started' | 'skipped'; correlation_id: string | null; topic: string | null; participants: string[]; reason: string | null }> {
+    return this.request('/swarm-v2/socialize', { method: 'POST', body: JSON.stringify({ cooldown_ms: 0 }) });
+  }
+
+  async getLures(): Promise<LureStatus> {
+    return this.request('/swarm-v2/social/lures');
+  }
+
+  async castLure(): Promise<LureCast> {
+    return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
   }
 
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {

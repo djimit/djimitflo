@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, ClipboardCheck, MessageSquare } from 'lucide-react';
+import { Activity, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, ClipboardCheck, MessageSquare, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
 
@@ -181,6 +181,12 @@ export function Layout() {
             icon={<MessageSquare className="w-5 h-5" />}
             label="Interaction Board"
             active={isActive('/interaction-board')}
+          />
+          <NavLink
+            to="/agent-commons"
+            icon={<Sparkles className="w-5 h-5" />}
+            label="Agent Commons"
+            active={isActive('/agent-commons')}
           />
           <NavLink
             to="/cognitive"

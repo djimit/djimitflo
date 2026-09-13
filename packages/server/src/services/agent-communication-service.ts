@@ -72,6 +72,47 @@ export interface SocialReplyResult {
   duplicate: boolean;
 }
 
+export interface SocialMessage {
+  id: string;
+  from: string;
+  to: string;
+  action: 'social.question' | 'social.response' | 'social.learning';
+  timestamp: string;
+  status: AgentMessage['status'];
+  reply_to: string | null;
+  text: string;
+  evidence: string[];
+  answer: string | null;
+  uncertainty: string | null;
+  falsifiable_next_step: string | null;
+  creative_alternative: string | null;
+  stop_condition: string | null;
+  runtime: string | null;
+  model_id: string | null;
+  reflection_id: string | null;
+  reflection_status: string | null;
+}
+
+export interface SocialThread {
+  id: string;
+  topic: string;
+  topic_ref: string | null;
+  participants: string[];
+  stage: 'asked' | 'responding' | 'learned';
+  started_at: string;
+  last_activity_at: string;
+  learnings: number;
+  messages: SocialMessage[];
+}
+
+export interface SocialCommons {
+  agents: Array<{
+    id: string; name: string; status: string; capabilities: string[]; model: string;
+    runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+  }>;
+  threads: SocialThread[];
+}
+
 interface CommunicationStats {
   totalMessages: number;
   pendingMessages: number;
@@ -97,7 +138,7 @@ export class AgentCommunicationService {
       WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ?
       ORDER BY timestamp DESC LIMIT 1
     `).get(cutoff) as { payload_json: string } | undefined;
-    if (recent) {
+    if (cooldownMs > 0 && recent) {
       const payload = this.object(recent.payload_json);
       const params = this.object(payload.params);
       return { status: 'skipped', correlation_id: this.string(payload.thread_id) || null,
@@ -114,13 +155,24 @@ export class AgentCommunicationService {
     `).all(heartbeatCutoff) as Array<Record<string, unknown>>;
     if (agents.length < 2) return { status: 'skipped', correlation_id: null, topic: null, participants: [], messages: [], reason: 'insufficient_agents' };
 
+    // Curiosity first: prefer peers that have not met yet, then the largest capability distance.
+    const met = new Map<string, number>();
+    for (const row of this.db.prepare(`
+      SELECT from_agent, to_agent, COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') = 'social.question' GROUP BY from_agent, to_agent
+    `).all() as Array<{ from_agent: string; to_agent: string; n: number }>) {
+      const key = [row.from_agent, row.to_agent].sort().join('\u0000');
+      met.set(key, (met.get(key) || 0) + row.n);
+    }
     // ponytail: O(n2) is clearer for the small registry; index pairings if the fleet grows beyond hundreds.
     let pair: [Record<string, unknown>, Record<string, unknown>] = [agents[0], agents[1]];
-    let pairScore = -1;
+    let pairScore = -Infinity;
     for (let left = 0; left < agents.length; left += 1) for (let right = left + 1; right < agents.length; right += 1) {
       const leftCapabilities = this.capabilities(agents[left]);
       const rightCapabilities = this.capabilities(agents[right]);
-      const score = new Set([...leftCapabilities.filter((value) => !rightCapabilities.includes(value)), ...rightCapabilities.filter((value) => !leftCapabilities.includes(value))]).size;
+      const distance = new Set([...leftCapabilities.filter((value) => !rightCapabilities.includes(value)), ...rightCapabilities.filter((value) => !leftCapabilities.includes(value))]).size;
+      const familiarity = met.get([String(agents[left].id), String(agents[right].id)].sort().join('\u0000')) || 0;
+      const score = distance - familiarity * 1_000;
       if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
     }
 
@@ -150,6 +202,74 @@ export class AgentCommunicationService {
       question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
+  }
+
+  /**
+   * Operator read-model for the Agent Commons UI: who is present and every
+   * social thread (question -> response -> learning) grouped by thread_id.
+   * Content was redacted on write, so this is a plain projection.
+   */
+  listSocialCommons(limit = 50): SocialCommons {
+    const heartbeatCutoff = Date.now() - 20 * 60_000;
+    const agents = (this.db.prepare(`
+      SELECT * FROM agents
+      WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
+      ORDER BY id ASC
+    `).all() as Array<Record<string, unknown>>).map((row) => {
+      const social = this.object(this.object(row.metadata).social_runtime);
+      const lastHeartbeat = this.string(social.last_heartbeat_at) || null;
+      return {
+        id: String(row.id), name: String(row.name || row.id), status: String(row.status),
+        capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
+        runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
+        present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
+      };
+    });
+
+    const rows = this.db.prepare(`
+      SELECT * FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+        AND json_type(payload_json, '$.thread_id') = 'text'
+      ORDER BY timestamp ASC
+    `).all() as Array<Record<string, unknown>>;
+    const reflections = new Map((this.db.prepare(`
+      SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
+    `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
+
+    const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
+    const threads = new Map<string, SocialThread>();
+    for (const row of rows) {
+      const message = this.messageFromRow(row);
+      const threadId = this.string(message.payload.thread_id);
+      const params = this.object(message.payload.params);
+      const reflection = reflections.get(`message:${message.id}`);
+      const thread = threads.get(threadId) || {
+        id: threadId, topic: this.string(params.topic) || 'cross-agent learning', topic_ref: this.string(params.topic_ref) || null,
+        participants: [], stage: 'asked' as SocialThread['stage'], started_at: message.timestamp, last_activity_at: message.timestamp,
+        learnings: 0, messages: [],
+      };
+      const messageStage: SocialThread['stage'] = message.payload.action === 'social.learning' ? 'learned' : message.payload.action === 'social.response' ? 'responding' : 'asked';
+      if (stageRank[messageStage] > stageRank[thread.stage]) thread.stage = messageStage;
+      thread.participants = [...new Set([...thread.participants, message.from, message.to])].sort();
+      if (message.timestamp > thread.last_activity_at) thread.last_activity_at = message.timestamp;
+      if (messageStage === 'learned') thread.learnings += 1;
+      thread.messages.push({
+        id: message.id, from: message.from, to: message.to, action: message.payload.action as SocialMessage['action'],
+        timestamp: message.timestamp, status: message.status, reply_to: this.string(message.payload.reply_to) || null,
+        text: this.string(message.payload.context), evidence: this.stringArray(message.payload.evidence),
+        answer: this.string(params.answer) || null, uncertainty: this.string(params.uncertainty) || null,
+        falsifiable_next_step: this.string(params.falsifiable_next_step) || null,
+        creative_alternative: this.string(params.creative_alternative) || null,
+        stop_condition: this.string(params.stop_condition) || null,
+        runtime: this.string(params.runtime) || null, model_id: this.string(params.model_id) || null,
+        reflection_id: reflection?.id || null, reflection_status: reflection?.status || null,
+      });
+      threads.set(threadId, thread);
+    }
+    return {
+      agents,
+      threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit)),
+    };
   }
 
   /** Record a signed runtime poller as eligible for future social rounds. */
