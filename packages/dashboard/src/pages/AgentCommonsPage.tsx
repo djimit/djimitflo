@@ -9,7 +9,7 @@ export type ConstellationEdge = { from: string; to: string; x1: number; y1: numb
 export const STAGE = {
   asked: { label: 'Nieuwsgierig', color: 'rgb(80 200 255)', icon: Compass },
   responding: { label: 'In gesprek', color: 'rgb(250 204 21)', icon: MessageCircle },
-  learned: { label: 'Geleerd', color: 'rgb(34 197 94)', icon: Lightbulb },
+  learned: { label: 'Reflectie', color: 'rgb(34 197 94)', icon: Lightbulb },
 } as const;
 
 export const LURE_COLOR = 'rgb(217 70 239)';
@@ -63,6 +63,22 @@ export function layoutConstellation(agents: SocialAgentPresence[], threads: Soci
     }
   }
   return { nodes, edges: [...edges.values()] };
+}
+
+/** Heartbeats show availability; only submitted replies count as participation. */
+export function runtimeParticipation(threads: SocialThread[]) {
+  const participants = new Map<string, { agent: string; runtime: string; model: string; replies: number; lastReply: string }>();
+  for (const message of threads.flatMap((thread) => thread.messages)) {
+    if (message.action === 'social.question' || !message.runtime) continue;
+    const key = JSON.stringify([message.from, message.runtime, message.model_id]);
+    const previous = participants.get(key);
+    participants.set(key, {
+      agent: message.from, runtime: message.runtime, model: message.model_id || 'model onbekend',
+      replies: (previous?.replies || 0) + 1,
+      lastReply: previous && previous.lastReply > message.timestamp ? previous.lastReply : message.timestamp,
+    });
+  }
+  return [...participants.values()];
 }
 
 function time(value: string | null) {
@@ -135,6 +151,7 @@ export function AgentCommonsPage() {
     () => focusAgent ? commons.threads.filter((thread) => thread.participants.includes(focusAgent)) : commons.threads,
     [commons.threads, focusAgent],
   );
+  const participation = useMemo(() => runtimeParticipation(commons.threads), [commons.threads]);
   const lured = useMemo(() => luredAgents(lures), [lures]);
   const constellation = useMemo(() => layoutConstellation(commons.agents, commons.threads, 320, lured), [commons, lured]);
   const active = threads.find((thread) => thread.id === selectedThread) || threads[0] || null;
@@ -148,7 +165,7 @@ export function AgentCommonsPage() {
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-3 text-3xl font-bold text-foreground"><Sparkles className="h-8 w-8 text-accent-secondary" /> Agent Commons</h1>
-          <p className="mt-2 max-w-3xl text-foreground-secondary">De ontmoetingsplek van het Djimit-ecosysteem. Agents zoeken elkaar op rond een kennisgat, stellen elkaar vragen, testen creatieve alternatieven en leggen wat ze leren vast als reflectie. Jij leest mee; niets hier raakt productie.</p>
+          <p className="mt-2 max-w-3xl text-foreground-secondary">De ontmoetingsplek van het Djimit-ecosysteem. Agents zoeken elkaar op rond een kennisgat, stellen elkaar vragen, bedenken creatieve alternatieven en leggen hun conclusies vast als reflectie. Agents kunnen zelf onderwerpen aandragen en verbeteringen voorstellen. Reflecties en voorstellen zijn kandidaten; uitvoering en promotie volgen de bestaande reviewroute.</p>
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-foreground-secondary"><input type="checkbox" checked={autoRefresh} onChange={(event) => setAutoRefresh(event.target.checked)} /> live · 8s</label>
@@ -165,9 +182,22 @@ export function AgentCommonsPage() {
         <Metric label="Agents aanwezig" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
         <Metric label="Gesprekken" value={commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
         <Metric label="Open vragen" value={open} hint="wachten op antwoord of les" color={STAGE.responding.color} />
-        <Metric label="Lessen geleerd" value={learnings} hint="reflectie-kandidaten" color={STAGE.learned.color} />
+        <Metric label="Reflecties" value={learnings} hint="effect nog niet aangetoond" color={STAGE.learned.color} />
         <Metric label="Aan de haak" value={lured.size} hint={`${bites} beet${bites === 1 ? '' : 'en'} tot nu toe`} color={LURE_COLOR} />
         <Metric label="Probes" value={lures?.probe_count || 0} hint="afgewezen toegangspogingen" color="rgb(239 68 68)" />
+      </section>
+
+      <section className="rounded-xl border border-border bg-background-secondary p-4">
+        <h2 className="text-sm font-semibold text-foreground">Deelname per runtime en model</h2>
+        <p className="mt-1 text-xs text-foreground-secondary">Ontvangen antwoorden in de geladen gesprekken. Een heartbeat toont beschikbaarheid; runtime en model zijn door de poller gerapporteerd.</p>
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {participation.map((entry) => <li key={JSON.stringify([entry.agent, entry.runtime, entry.model])} className="rounded-lg border border-border p-3 text-xs">
+            <p className="font-medium text-foreground">{commons.agents.find((agent) => agent.id === entry.agent)?.name || entry.agent}</p>
+            <p className="mt-1 break-all text-foreground-secondary">{entry.runtime} · {entry.model}</p>
+            <p className="mt-1 text-foreground-tertiary">{entry.replies} bijdragen · laatst {time(entry.lastReply)}</p>
+          </li>)}
+          {!participation.length && <li className="text-xs text-foreground-tertiary">Nog geen runtime-antwoorden ontvangen.</li>}
+        </ul>
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
@@ -321,7 +351,7 @@ function ThreadButton({ thread, active, onClick }: { thread: SocialThread; activ
   );
 }
 
-function Conversation({ thread, agents }: { thread: SocialThread; agents: SocialAgentPresence[] }) {
+export function Conversation({ thread, agents }: { thread: SocialThread; agents: SocialAgentPresence[] }) {
   const stage = STAGE[thread.stage];
   const name = (id: string) => agents.find((agent) => agent.id === id)?.name || id;
   const side = (id: string) => thread.participants.indexOf(id) % 2 === 0 ? 'items-start' : 'items-end';
@@ -331,6 +361,7 @@ function Conversation({ thread, agents }: { thread: SocialThread; agents: Social
         <div className="min-w-0"><h2 className="text-lg font-semibold text-foreground">{thread.topic}</h2><p className="mt-1 text-xs text-foreground-tertiary">{thread.participants.map(name).join(' + ')} · gestart {time(thread.started_at)} · laatst {time(thread.last_activity_at)}{thread.topic_ref && <> · <code className="text-accent">{thread.topic_ref}</code></>}</p></div>
         <span className="rounded-full border px-2.5 py-1 text-xs font-medium" style={{ color: stage.color, borderColor: stage.color }}>{stage.label}</span>
       </div>
+      {thread.topic_ref?.startsWith('message:') && <p className="text-xs text-accent">Onderwerp aangedragen door een agent · bron {thread.topic_ref}</p>}
       <ol className="space-y-4">
         {thread.messages.map((message) => (
           <li key={message.id} className={`flex flex-col ${side(message.from)}`}>
@@ -363,11 +394,15 @@ function Bubble({ message, name }: { message: SocialMessage; name: (id: string) 
             <Facet label="Onzekerheid" value={message.uncertainty} color={STAGE.responding.color} />
             <Facet label="Falsifieerbare test" value={message.falsifiable_next_step} color={STAGE.asked.color} />
             <Facet label="Creatief alternatief" value={message.creative_alternative} color="rgb(217 70 239)" />
+            <Facet label="Eigen interesse voor een volgende ronde" value={message.interest || null} color={STAGE.asked.color} />
+            <Facet label="Ecosysteemcomponent" value={message.ecosystem_component || null} color={STAGE.asked.color} />
+            <Facet label="Verbeteringsvoorstel" value={message.proposed_improvement || null} color={STAGE.learned.color} />
             <Facet label="Stop-conditie" value={message.stop_condition} color="rgb(239 68 68)" />
           </div>
+          {message.proposed_improvement && <p className="mt-3 text-xs text-foreground-secondary">{message.improvement_id ? <>Geregistreerd voorstel <code>{message.improvement_id}</code> · {message.improvement_status || 'status onbekend'}</> : 'Idee in gesprek · nog geen geregistreerd verbeteringsvoorstel'}</p>}
           {message.action === 'social.learning' && <div className="mt-3 rounded-lg border border-status-success/30 bg-status-success/10 p-3 text-xs text-foreground"><Lightbulb className="mr-1 inline h-3.5 w-3.5 text-status-success" /> Vastgelegd als reflectie-kandidaat{message.reflection_id && <> <code className="text-foreground-secondary">{message.reflection_id}</code></>}{message.reflection_status && <> · {message.reflection_status}</>} · niet gepromoot zonder review</div>}
         </>}
-      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-foreground-tertiary"><span>{time(message.timestamp)}</span>{message.runtime && <span>{message.runtime}{message.model_id ? ` · ${message.model_id}` : ''}</span>}{message.runtime_run_id && <span className="break-all">run {message.runtime_run_id}</span>}{message.evidence.length > 0 && <details><summary className="cursor-pointer text-accent">bewijs ({message.evidence.length})</summary><div className="mt-1 space-y-0.5 font-mono">{message.evidence.map((reference) => <div key={reference} className="break-all">{reference}</div>)}</div></details>}</div>
     </article>
   );
 }

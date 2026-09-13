@@ -704,6 +704,8 @@ export type SocialMessage = {
   timestamp: string; status: string; reply_to: string | null; text: string; evidence: string[];
   answer: string | null; uncertainty: string | null; falsifiable_next_step: string | null;
   creative_alternative: string | null; stop_condition: string | null;
+  interest?: string | null; ecosystem_component?: string | null; proposed_improvement?: string | null; improvement_id?: string | null; improvement_status?: string | null;
+  runtime_run_id?: string | null; provenance_status?: string | null;
   runtime: string | null; model_id: string | null; reflection_id: string | null; reflection_status: string | null;
 };
 
