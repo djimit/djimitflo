@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import unittest
@@ -39,6 +40,15 @@ class ControllerTests(unittest.TestCase):
         p.run_cli.assert_called_once()
         self.assertEqual(result['model_calls'], 1)
         self.assertEqual(p.api.call_args.args[2]['delivery_lease_token'], 'lease')
+
+    def test_invalid_reply_retains_only_allowlisted_numeric_usage(self):
+        p = Mock()
+        p.api.side_effect = [(200, {}), (200, {'messages': [{'id': 'one'}]})]
+        p.run_cli.return_value = ('private output', 'runtime', {'output': 700, 'reasoning': 700, 'input': 'private', 'secret': 42})
+        p.extract_object.side_effect = RuntimeError('runtime returned no JSON object')
+        with patch('builtins.print') as printed, self.assertRaises(RuntimeError):
+            c.poll_once(p, 'operator-secret')
+        self.assertEqual(json.loads(printed.call_args.args[0]), {'agent': c.AGENT, 'stage': 'runtime_completed', 'usage': {'output': 700, 'reasoning': 700}})
 
     def test_empty_inbox_creates_one_fixed_round_then_no_inference_if_still_empty(self):
         p = Mock()

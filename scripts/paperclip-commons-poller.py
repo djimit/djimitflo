@@ -91,6 +91,10 @@ def poll_once(poller, operator, progress=lambda stage: None):
     message = messages[0]
     progress('runtime_inference')
     output, runtime_id, usage = poller.run_cli('opencode', poller.prompt_for(message))
+    # Preserve numeric usage even when the subsequent reply validation fails.
+    print(json.dumps({'agent': AGENT, 'stage': 'runtime_completed',
+        'usage': {key: value for key, value in usage.items()
+                  if key in ('total', 'input', 'output', 'reasoning') and type(value) is int and value >= 0}}), flush=True)
     progress('parse_reply')
     reply = poller.extract_object(output)
     reply.update(runtime='opencode', model_id=MODEL, runtime_run_id=runtime_id,
