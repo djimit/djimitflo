@@ -463,7 +463,7 @@ export class BackupService {
       }
       pack.finalize();
 
-      pack.pipe(gzip).pipe(output);
+      (pack as unknown as import('stream').Writable).pipe(gzip).pipe(output);
       output.on('finish', resolve);
       output.on('error', reject);
     });
@@ -477,7 +477,7 @@ export class BackupService {
       const gunzip = createGunzip();
       const seenEntries = new Set<string>();
 
-      extract.on('entry', (header: tar.Headers, stream: NodeJS.ReadableStream, next: () => void) => {
+      extract.on('entry', (header, stream, next) => {
         const name = header.name;
 
         if (header.type === 'symlink' || header.type === 'link') {
@@ -525,7 +525,7 @@ export class BackupService {
       fileStream.on('error', (err) => reject(err));
       gunzip.on('error', (err) => reject(err));
 
-      fileStream.pipe(gunzip).pipe(extract);
+      fileStream.pipe(gunzip).pipe(extract as unknown as import('stream').Writable);
     });
   }
 
