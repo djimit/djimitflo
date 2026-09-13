@@ -51,6 +51,8 @@ export class WorldLabEvidenceService {
     const now = new Date().toISOString();
     const record = { id, ...input, decision, recorded_at: now, promoted: false };
     const evidence = new SwarmEvidenceService(this.db);
+    const linkMetadata = { effect_scope: 'isolated', retest_id: id, correlation_id: input.change_id };
+    const openMythosRetestRef = `openmythos:assurance:${input.evidence_hash}`;
     const transaction = this.db.transaction(() => {
       this.db.prepare('UPDATE goals SET metadata = ?, updated_at = ? WHERE id = ?')
         .run(JSON.stringify({ ...metadata, worldlab_retests: [...history, record], promotion_state: decision }), now, input.goal_id);
@@ -58,6 +60,10 @@ export class WorldLabEvidenceService {
       evidence.createEvidenceEdge(`change:${input.change_id}`, `commit:${input.commit}`, 'implemented_by', { effect_scope: 'isolated', retest_id: id });
       evidence.createEvidenceEdge(`change:${input.change_id}`, `trajectory:${input.trajectory_id}`, 'retested_by', { effect_scope: 'simulated', retest_id: id });
       evidence.createEvidenceEdge(`change:${input.change_id}`, `goal:${input.goal_id}`, 'implements', { effect_scope: 'isolated', retest_id: id });
+      evidence.createEvidenceEdge(`openmythos:finding:${input.finding_id}`, `worldlab:trajectory:${input.trajectory_id}`, 'requests_retest', linkMetadata);
+      evidence.createEvidenceEdge(`worldlab:trajectory:${input.trajectory_id}`, openMythosRetestRef, 'returns_evidence', linkMetadata);
+      evidence.createEvidenceEdge(openMythosRetestRef, `djimitflo:change:${input.change_id}`, 'submits_assurance', linkMetadata);
+      evidence.createEvidenceEdge(`djimitflo:change:${input.change_id}`, `openmythos:finding:${input.finding_id}`, 'returns_decision', linkMetadata);
       for (const ref of [...new Set(input.evidence_refs)]) {
         evidence.createEvidenceEdge(ref, `change:${input.change_id}`, 'supports', { effect_scope: 'isolated', retest_id: id });
       }
