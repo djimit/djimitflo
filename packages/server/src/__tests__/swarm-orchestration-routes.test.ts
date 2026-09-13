@@ -47,6 +47,7 @@ describe('swarm orchestration message pagination', () => {
     expect(first.status).toBe(201);
     expect(first.body.status).toBe('started');
     expect(first.body.messages).toHaveLength(2);
+    expect(first.body.messages[0].payload.params).toMatchObject({ facilitator_trigger: 'operator', facilitated_by: 'operator-socialize-route' });
     const second = await request(app).post('/swarm/socialize');
     expect(second.status).toBe(200);
     expect(second.body.reason).toBe('cooldown_active');

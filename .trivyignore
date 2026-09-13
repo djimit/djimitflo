@@ -1,2 +1,12 @@
 # Client-rendered dashboard does not use React Router RSC actions.
 GHSA-qwww-vcr4-c8h2
+
+# gh CLI's vendored golang.org/x/mod/sumdb (Go module checksum-db
+# verification); upstream has not yet released a build with the fix.
+# Confirmed no usage of golang.org/x/mod in cli/cli's own source (GitHub
+# code search) — only reachable via `gh extension` Go-module tooling,
+# which djimitflo's GithubPrReviewService never invokes (only pr view/
+# diff/comment and api). Revisit when cli/cli ships a release past
+# v2.100.0 with the dependency bumped.
+CVE-2026-56864
+CVE-2026-56865

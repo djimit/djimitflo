@@ -47,6 +47,18 @@ def run_deerflow(prompt):
     if result.returncode: raise RuntimeError(f'DeerFlow failed with exit {result.returncode}: {result.stderr[-500:]}')
     envelope = json.loads(result.stdout); return envelope['content'], envelope.get('run_id', ''), envelope.get('usage', {})
 
+def run_ollama(prompt):
+    """Local Ollama runtime (default http://127.0.0.1:11434); JSON mode keeps the reply parseable."""
+    model = os.environ.get('SOCIAL_MODEL_ID') or 'qwen2.5:14b-instruct-q4_K_M'
+    body = {'model': model, 'stream': False, 'format': 'json', 'options': {'temperature': 0.7, 'num_predict': 700},
+            'messages': [{'role': 'system', 'content': 'You are a curious, creative specialist agent. Reply with exactly one JSON object.'}, {'role': 'user', 'content': prompt}]}
+    request = urllib.request.Request(os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434').rstrip('/') + '/api/chat', data=json.dumps(body).encode(), method='POST', headers={'Content-Type': 'application/json'})
+    with urllib.request.urlopen(request, timeout=300) as response: data = json.load(response)
+    usage = {key: data[key] for key in ('prompt_eval_count', 'eval_count', 'total_duration') if isinstance(data.get(key), (int, float))}
+    return data.get('message', {}).get('content', ''), data.get('created_at', ''), usage
+
+RUNTIMES = {'hermes': run_hermes, 'deerflow': run_deerflow, 'ollama': run_ollama}
+
 def self_test():
     assert extract_object('{"answer":"a","uncertainty":"u","falsifiable_next_step":"f","creative_alternative":"c","stop_condition":"s","evidence_refs":[]}')['answer'] == 'a'
     print('agent-social-poller self-test: PASS')
@@ -58,7 +70,7 @@ def main():
     _, body = api('GET', f'/api/swarm-v2/social-runtime/{agent}/messages?limit=4'); failures = processed = 0
     for message in body.get('messages', []):
         try:
-            output, run_id, usage = run_hermes(prompt_for(message)) if runtime == 'hermes' else run_deerflow(prompt_for(message))
+            output, run_id, usage = RUNTIMES[runtime](prompt_for(message))
             reply = extract_object(output); reply.update({'runtime': runtime, 'model_id': model, 'runtime_run_id': run_id, 'usage': usage, 'delivery_lease_token': message.get('deliveryLeaseToken', '')})
             status, result = api('POST', f"/api/swarm-v2/social-runtime/{agent}/messages/{message['id']}/respond", reply)
             print(json.dumps({'agent': agent, 'input': message['payload']['action'], 'output': result['message']['payload']['action'], 'status': status, 'duplicate': result['duplicate']})); processed += 1
