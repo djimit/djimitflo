@@ -52,7 +52,7 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Council with real model | BLOCKED (G-02) |
 | Pacing-the-Frontier ingestion | PROVEN (real page, idempotent) |
 | arXiv enrichment + capability derivation | PROVEN offline / BLOCKED live (G-01) |
-| Full seed enrichment run | BLOCKED (G-01) |
+| Full seed enrichment run | BLOCKED, runner active (G-01: arXiv throttles to ~1 request per 25 min for this client) |
 | Benchmark + hard gates | PROVEN (synthetic) / NOT_PROVEN (live data) |
 | §59 end-to-end scenario | PROVEN (scripted) / BLOCKED (live model) |
 | Skills (§34) via OKF/SkillService, injected into perspectives | PROVEN (14 skills validate; prompt injection of procedure tested) |
@@ -61,7 +61,7 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Evolution: capability delta governed, status preserved on unchanged evidence (§54) | PROVEN |
 | Deprecation with typed reasons, history queryable AS OF (§55) | PROVEN |
 | UI (§36): registry, detail (provenance, claims, lifecycle, versions), resolver, governed actions, swarm runs | PROVEN locally (page rendered in Chrome against a seeded server: resolution, detail, contradicted run with rejected perspective; no console errors) |
-| Scheduled re-enrichment trigger | NOT_PROVEN (manual `enrichBatch`) |
+| Enrichment/ingestion triggers: resumable runner script + operator routes (bounded) | PROVEN offline (route test; runner exercised live and backing off on 429) |
 | Production activation | BLOCKED (merge, flag, runtime) |
 
 ## 10. Remaining gaps
