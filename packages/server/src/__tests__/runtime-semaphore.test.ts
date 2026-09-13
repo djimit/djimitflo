@@ -86,6 +86,22 @@ describe('RuntimeSemaphore (P2 bounded concurrency)', () => {
     } finally { db.close(); }
   });
 
+  it('keeps a negative runtime timeout bounded instead of disabling the kill timer', async () => {
+    const db = createTestDb();
+    const { LoopService } = await import('../services/loop-service');
+    const { RuntimeCommandService } = await import('../services/runtime-command-service');
+    const runtime = new RuntimeCommandService(db, new LoopService(db));
+    const startedAt = Date.now();
+    try {
+      const result = await runtime.executeRuntimeCommand(
+        'negative-timeout-fixture', process.execPath, ['-e', 'setTimeout(() => {}, 2500)'],
+        { runtime: 'opencode', timeoutMs: -1 },
+      );
+      expect(result.timedOut).toBe(true);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+    } finally { db.close(); }
+  });
+
   it('makes stale registration cleanup harmless after the same lease is re-owned', () => {
     const oldCleanup = RuntimeLeaseRegistry.register('registry-owner-fixture');
     const newCleanup = RuntimeLeaseRegistry.register('registry-owner-fixture');

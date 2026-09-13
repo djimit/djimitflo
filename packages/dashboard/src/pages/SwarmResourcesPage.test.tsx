@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { api, type WorkItemRecord } from '../lib/api';
+import { api, type RsiSafetyStatus, type WorkItemRecord } from '../lib/api';
+import { useAuthStore } from '../lib/auth-store';
 import { SwarmResourcesPage } from './SwarmResourcesPage';
 
 const item = (patch: Partial<WorkItemRecord> = {}): WorkItemRecord => ({
@@ -12,12 +13,37 @@ const item = (patch: Partial<WorkItemRecord> = {}): WorkItemRecord => ({
 
 beforeEach(() => {
   vi.spyOn(api, 'getSwarmStatus').mockResolvedValue(null as any);
+  vi.spyOn(api, 'getRsiSafetyStatus').mockResolvedValue({ enabled: true, mutationsToday: 0, mutationsLimit: 5, lastMutation: null, frozenComponents: [], auditLogEntries: 0 });
   vi.spyOn(api, 'getMemoryCandidates').mockResolvedValue({ candidates: [] });
   vi.spyOn(api, 'getSpecialistCatalog').mockResolvedValue({ specialists: [] } as any);
   vi.spyOn(api, 'getSpecialistPanels').mockResolvedValue({ panels: [] });
   vi.spyOn(api, 'getAssuranceSummary').mockResolvedValue(null as any);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); useAuthStore.setState({ user: null, token: null, isAuthenticated: false }); });
+
+it('reads and persists the governed self-improvement mutation gate for authorized operators', async () => {
+  const enabled: RsiSafetyStatus = { enabled: true, mutationsToday: 1, mutationsLimit: 5, lastMutation: null, frozenComponents: [], auditLogEntries: 2 };
+  const disabled: RsiSafetyStatus = { ...enabled, enabled: false, auditLogEntries: 3 };
+  useAuthStore.setState({ user: { id: 'fixture-admin', role: 'admin' } as any });
+  vi.spyOn(api, 'getRsiSafetyStatus').mockResolvedValueOnce(enabled).mockResolvedValue(disabled);
+  const toggle = vi.spyOn(api, 'setRsiSafetyEnabled').mockResolvedValue(disabled);
+  vi.spyOn(api, 'getWorkItems').mockResolvedValue({ work_items: [] });
+
+  render(<SwarmResourcesPage />);
+  expect((await screen.findByRole('status')).textContent).toContain('Self-improvement mutations allowed');
+  fireEvent.click(screen.getByRole('button', { name: 'Disable self-improvement mutations' }));
+  await waitFor(() => expect(toggle).toHaveBeenCalledExactlyOnceWith(false));
+  expect((await screen.findByRole('status')).textContent).toContain('Self-improvement mutations blocked');
+});
+
+it('does not offer the mutation-gate control to a read-only operator', async () => {
+  useAuthStore.setState({ user: { id: 'fixture-viewer', role: 'viewer' } as any });
+  vi.spyOn(api, 'getWorkItems').mockResolvedValue({ work_items: [] });
+  render(<SwarmResourcesPage />);
+  expect((await screen.findByRole('status')).textContent).toContain('Self-improvement mutations allowed');
+  expect(screen.queryByRole('button', { name: /self-improvement mutations/i })).toBeNull();
+  expect(screen.getByText('Changing this requires write:swarm_action.')).toBeTruthy();
+});
 
 it.each(['planned', 'leased'] as const)('does not reconvert linked %s work and shows its actual goal identity', async (status) => {
   vi.spyOn(api, 'getWorkItems').mockResolvedValue({ work_items: [item({ status, parent_goal_id: 'actual-goal' })] });

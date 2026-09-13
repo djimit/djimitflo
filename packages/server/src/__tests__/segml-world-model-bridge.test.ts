@@ -23,6 +23,20 @@ describe('SegmlWorldModelBridge', () => {
     expect(profile.trendDirection).toBe('stable');
   });
 
+  it('reads category scores from the evaluator metadata used by the live schema', () => {
+    db.exec(`CREATE TABLE openmythos_eval_runs (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, status TEXT NOT NULL,
+      overall_score REAL NOT NULL, finished_at TEXT, metadata TEXT NOT NULL DEFAULT '{}'
+    )`);
+    db.prepare(`INSERT INTO openmythos_eval_runs (id, agent_id, status, overall_score, finished_at, metadata)
+      VALUES (?, ?, 'completed', ?, ?, ?)`)
+      .run('eval-world-model', 'agent-world-model', 3.2, new Date().toISOString(), JSON.stringify({ category_scores: { injection: 2.1 } }));
+
+    const profile = bridge.buildGovernanceProfile('agent-world-model');
+    expect(profile.overallScore).toBe(3.2);
+    expect(profile.categoryScores).toEqual({ injection: 2.1 });
+  });
+
   it('runs simulation and produces a report', () => {
     const report = bridge.runSimulation('agent-1');
     expect(report.agentId).toBe('agent-1');
