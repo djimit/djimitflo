@@ -6,6 +6,8 @@ import { createTestDb } from './helpers/test-db';
 import { createSwarmOrchestrationRoutes } from '../routes/swarm-orchestration';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
+import { AuthService } from '../services/auth-service';
+import { createAuthMiddleware } from '../middleware/auth';
 import { errorHandler } from '../middleware/error-handler';
 
 describe('swarm orchestration message pagination', () => {
@@ -54,6 +56,37 @@ describe('swarm orchestration message pagination', () => {
     const second = await request(app).post('/swarm/socialize');
     expect(second.status).toBe(200);
     expect(second.body.reason).toBe('cooldown_active');
+  });
+
+  it('scopes an operator round to the requested pair without bypassing auth or eligibility', async () => {
+    const db = createTestDb(); dbs.push(db);
+    db.prepare("INSERT INTO users (id,email,password_hash,role) VALUES ('operator','pair@test','unused','admin')").run();
+    const service = new AuthService(db);
+    const token = service.generateToken(service.findUserById('operator')!);
+    const auth = createAuthMiddleware(service);
+    const app = express().use(express.json()).use('/api/swarm-v2', auth.requireAuth, createSwarmOrchestrationRoutes(db, auth)).use(errorHandler);
+    for (const id of ['agent-a', 'agent-b', 'agent-c']) db.prepare('INSERT INTO agents (id,name,status,metadata) VALUES (?, ?, ?, ?)').run(id, id, 'active', JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: new Date().toISOString() } }));
+    const round = (participant_ids: unknown) => request(app).post('/api/swarm-v2/socialize').set('Authorization', `Bearer ${token}`).send({ cooldown_ms: 0, participant_ids });
+    for (const ids of [null, 'agent-a', [], ['agent-a'], ['agent-a', 'agent-a'], ['agent-a', 1], ['agent-a', ' '], ['agent-a', 'x'.repeat(201)], ['agent-a', 'agent-b', 'agent-c']]) {
+      expect((await round(ids)).status).toBe(400);
+    }
+    const selected = await round(['agent-b', 'agent-c']);
+    expect(selected.status).toBe(201);
+    expect(selected.body.participants).toEqual(['agent-b', 'agent-c']);
+    expect(selected.body.messages.every((message: { from: string; to: string }) => message.from !== 'agent-a' && message.to !== 'agent-a')).toBe(true);
+    const socialToken = mintSpawnToken(resolveSpawnTokenSecret(), 'agent-b', 'social-runtime');
+    expect((await request(app).post('/api/swarm-v2/socialize').set('X-Agent-Social-Token', socialToken).send({ participant_ids: ['agent-b', 'agent-c'] })).status).toBe(401);
+    expect((await request(app).post('/api/swarm-v2/socialize').set('Authorization', `Bearer ${socialToken}`).send({ participant_ids: ['agent-b', 'agent-c'] })).status).toBe(401);
+    db.prepare("UPDATE agents SET status = 'paused' WHERE id = 'agent-c'").run();
+    expect((await round(['agent-b', 'agent-c'])).body.reason).toBe('insufficient_agents');
+    db.prepare("UPDATE agents SET status = 'active', metadata = ? WHERE id = 'agent-c'").run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2000-01-01T00:00:00Z' } }));
+    expect((await round(['agent-b', 'agent-c'])).body.reason).toBe('insufficient_agents');
+    const governance = new RuntimeGovernanceService(db);
+    governance.registerBaseline('agent-c', { overallScore: 1, categoryScores: {}, certifiedAt: new Date().toISOString() });
+    db.prepare("UPDATE runtime_governance_agents SET quarantined = 1 WHERE agent_id = 'agent-c'").run();
+    expect((await round(['agent-b', 'agent-c'])).status).toBe(403);
+    db.prepare("UPDATE agents SET retired_at = ? WHERE id = 'agent-b'").run(new Date().toISOString());
+    expect((await round(['agent-a', 'agent-b'])).status).toBe(409);
   });
 
   it('renews only an eligible registered agent credential for an authorized operator', async () => {
