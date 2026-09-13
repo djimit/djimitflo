@@ -141,14 +141,16 @@ export class AgentCommunicationService {
   }
 
   /** Open one bounded peer exchange between recently connected real runtimes. */
-  socialize(cooldownMs = 6 * 3600_000, facilitatorTrigger: 'autonomous' | 'operator' = 'autonomous'): SocializationResult {
+  socialize(cooldownMs = 6 * 3600_000, facilitatorTrigger: 'autonomous' | 'operator' = 'autonomous', participantIds?: string[]): SocializationResult {
     this.cleanup();
     const cutoff = new Date(Date.now() - Math.max(0, cooldownMs)).toISOString();
+    const participantScope = participantIds ? JSON.stringify(participantIds) : null;
     const recent = this.db.prepare(`
       SELECT payload_json FROM agent_messages
-      WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ?
+      WHERE json_extract(payload_json, '$.action') = 'social.question' AND timestamp >= ? AND status <> 'expired'
+        AND (? IS NULL OR to_agent IN (SELECT value FROM json_each(?)))
       ORDER BY timestamp DESC LIMIT 1
-    `).get(cutoff) as { payload_json: string } | undefined;
+    `).get(cutoff, participantScope, participantScope) as { payload_json: string } | undefined;
     if (cooldownMs > 0 && recent) {
       const payload = this.object(recent.payload_json);
       const params = this.object(payload.params);
@@ -162,8 +164,9 @@ export class AgentCommunicationService {
       WHERE status IN ('active', 'idle')
         AND json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
         AND json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at') >= ?
+        AND (? IS NULL OR id IN (SELECT value FROM json_each(?)))
       ORDER BY id ASC
-    `).all(heartbeatCutoff) as Array<Record<string, unknown>>;
+    `).all(heartbeatCutoff, participantScope, participantScope) as Array<Record<string, unknown>>;
     if (agents.length < 2) return { status: 'skipped', correlation_id: null, topic: null, participants: [], messages: [], reason: 'insufficient_agents' };
 
     // Curiosity first: prefer peers that have not met yet, then the largest capability distance.
