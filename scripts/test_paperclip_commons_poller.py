@@ -75,6 +75,28 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(c.main(), 1 if fails else 0)
             patches = [body for method, path, body in calls if method == 'PATCH']
             self.assertEqual(patches[0]['status'], 'blocked' if fails else 'done')
+            if fails: self.assertEqual(patches[0]['unblockDescriptor']['owner'], 'board')
+
+    def test_failure_categories_never_expose_provider_body(self):
+        self.assertEqual(c.failure_code(RuntimeError('Djimitflo HTTP 422: secret value')), 'http_422')
+        self.assertEqual(c.failure_code(RuntimeError('runtime returned no JSON object')), 'reply_not_json')
+        self.assertEqual(c.failure_code(RuntimeError('unexpected secret value')), 'unclassified')
+
+    def test_rejected_blocking_records_reason_and_attempts_run_comment(self):
+        calls = []
+        def request(method, base, path, body=None, token=None, run_id=None):
+            calls.append((method, path, body))
+            if path.startswith('/api/heartbeat-runs/'): return {'agentId': 'agent', 'contextSnapshot': {'issueId': 'issue'}}
+            if method == 'PATCH': raise RuntimeError('PATCH /api/issues/issue HTTP 422')
+            return {'token': 'token'}
+        env = {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': '{"email":"operator","password":"secret"}',
+               'PAPERCLIP_RUN_ID': 'run', 'PAPERCLIP_API_KEY': 'run-secret', 'PAPERCLIP_AGENT_ID': 'agent'}
+        with patch.dict(os.environ, env, clear=True), patch.object(c, 'request', side_effect=request), patch.object(c, 'poll_once', side_effect=RuntimeError('runtime returned no JSON object')):
+            self.assertEqual(c.main(), 1)
+        comment = calls[-1]
+        self.assertEqual(comment[1], '/api/issues/issue/comments')
+        self.assertIn('http_422', comment[2]['body'])
+        self.assertIn('reply_not_json', comment[2]['body'])
 
     def test_renewal_uses_only_fixed_target_and_short_ttl(self):
         calls = []
