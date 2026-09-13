@@ -15,6 +15,7 @@
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
+import { SelfImprovementService } from './self-improvement-service';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 
@@ -58,6 +59,9 @@ export interface SocialRuntimeReply {
   falsifiable_next_step: string;
   creative_alternative: string;
   stop_condition: string;
+  interest?: string;
+  ecosystem_component?: string;
+  proposed_improvement?: string;
   evidence_refs?: string[];
   runtime?: string;
   model_id?: string;
@@ -91,6 +95,13 @@ export interface SocialMessage {
   model_id: string | null;
   reflection_id: string | null;
   reflection_status: string | null;
+  interest: string | null;
+  ecosystem_component: string | null;
+  proposed_improvement: string | null;
+  improvement_id: string | null;
+  improvement_status: string | null;
+  runtime_run_id: string | null;
+  provenance_status: string | null;
 }
 
 export interface SocialThread {
@@ -176,7 +187,24 @@ export class AgentCommunicationService {
       if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
     }
 
-    const { topic, topicRef, evidence } = this.pickTopic();
+    // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
+    const interest = this.db.prepare(`
+      SELECT m.id, m.payload_json FROM agent_messages m
+      WHERE json_extract(m.payload_json, '$.action') IN ('social.response', 'social.learning')
+        AND length(trim(COALESCE(json_extract(m.payload_json, '$.params.interest'), ''))) > 0
+        AND m.from_agent IN (?, ?)
+        AND NOT EXISTS (SELECT 1 FROM agent_messages q
+          WHERE json_extract(q.payload_json, '$.action') = 'social.question'
+            AND json_extract(q.payload_json, '$.params.topic_ref') = 'message:' || m.id)
+      ORDER BY m.timestamp ASC, m.rowid ASC LIMIT 1
+    `).get(String(pair[0].id), String(pair[1].id)) as { id: string; payload_json: string } | undefined;
+    const interestParams = this.object(this.object(interest?.payload_json).params);
+    const picked = interest ? null : this.pickTopic();
+    const topic = interest ? this.cleanOptional(interestParams.interest, 1_000) : picked!.topic;
+    const ecosystemComponent = this.cleanOptional(interestParams.ecosystem_component, 200);
+    const ecosystemContext = 'Djimitflo: agent runtime/orchestration; Paperclip: governed work coordination; DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
+    const topicRef = interest ? `message:${interest.id}` : picked!.topicRef;
+    const evidence = interest ? [topicRef] : picked!.evidence;
     const correlationId = `social:${randomUUID()}`;
     const [first, second] = pair;
     const firstId = String(first.id);
@@ -186,13 +214,13 @@ export class AgentCommunicationService {
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
     const messages = this.db.transaction(() => [
       question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
-      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Include evidence and a stop condition.`),
+      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
@@ -236,6 +264,9 @@ export class AgentCommunicationService {
       const threadId = this.string(message.payload.thread_id);
       const params = this.object(message.payload.params);
       const reflection = reflections.get(`message:${message.id}`);
+      const improvement = this.string(params.improvement_id)
+        ? this.db.prepare('SELECT status FROM self_improvements WHERE id = ?').get(params.improvement_id) as { status: string } | undefined
+        : undefined;
       const thread = threads.get(threadId) || {
         id: threadId, topic: this.string(params.topic) || 'cross-agent learning', topic_ref: this.string(params.topic_ref) || null,
         participants: [], stage: 'asked' as SocialThread['stage'], started_at: message.timestamp, last_activity_at: message.timestamp,
@@ -256,6 +287,10 @@ export class AgentCommunicationService {
         stop_condition: this.string(params.stop_condition) || null,
         runtime: this.string(params.runtime) || null, model_id: this.string(params.model_id) || null,
         reflection_id: reflection?.id || null, reflection_status: reflection?.status || null,
+        interest: this.string(params.interest) || null, ecosystem_component: this.string(params.ecosystem_component) || null,
+        proposed_improvement: this.string(params.proposed_improvement) || null, improvement_id: this.string(params.improvement_id) || null,
+        improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
+        provenance_status: this.string(params.provenance_status) || null,
       });
       threads.set(threadId, thread);
     }
@@ -302,6 +337,7 @@ export class AgentCommunicationService {
       'which signals reveal an agent drifting from its declared capabilities',
       'how repeated roborev findings should turn into a reusable skill',
       'what makes a knowledge gap worth a peer exchange instead of a lookup',
+      'explore a Djimit ecosystem component: propose a useful feature, challenge a peer assumption, or invent an experiment together',
     ];
     const rounds = (this.db.prepare("SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get() as { n: number }).n;
     const index = rounds % seeds.length;
@@ -360,6 +396,10 @@ export class AgentCommunicationService {
     const nextStep = this.cleanRequired(input.falsifiable_next_step, 'SOCIAL_FALSIFICATION_REQUIRED', 1_000);
     const alternative = this.cleanRequired(input.creative_alternative, 'SOCIAL_ALTERNATIVE_REQUIRED', 1_000);
     const stopCondition = this.cleanRequired(input.stop_condition, 'SOCIAL_STOP_CONDITION_REQUIRED', 1_000);
+    const interest = this.cleanOptional(typeof input.interest === 'string' ? input.interest : '', 1_000);
+    const ecosystemComponent = this.cleanOptional(typeof input.ecosystem_component === 'string' ? input.ecosystem_component : original.payload.params?.ecosystem_component, 200);
+    const improvement = this.cleanOptional(typeof input.proposed_improvement === 'string' ? input.proposed_improvement : '', 2_000);
+    if (improvement && !ecosystemComponent) throw new Error('SOCIAL_COMPONENT_REQUIRED');
     const originalEvidence = this.stringArray(original.payload.evidence);
     const citedEvidence = this.stringArray(input.evidence_refs).filter((ref) => originalEvidence.includes(ref));
     const runtime = this.cleanOptional(input.runtime, 100) || 'unknown-runtime';
@@ -372,13 +412,24 @@ export class AgentCommunicationService {
     const usage = Object.fromEntries(Object.entries(input.usage || {}).filter(([, value]) => typeof value === 'number' && Number.isFinite(value)));
     return this.db.transaction(() => {
       const message = this.send({ from: agentId, to: original.from, type: action === 'social.response' ? 'result' : 'knowledge', action, context: summary.slice(0, 500), evidence, threadId, replyTo: original.id, epistemicRole: action === 'social.response' ? 'proposal' : 'outcome', ttl: 86_400,
-        params: { topic: this.string(original.payload.params?.topic), answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500) } });
+        params: { topic: this.string(original.payload.params?.topic), topic_ref: this.string(original.payload.params?.topic_ref), ecosystem_context: this.string(original.payload.params?.ecosystem_context), interest, ecosystem_component: ecosystemComponent, proposed_improvement: improvement, answer, uncertainty, falsifiable_next_step: nextStep, creative_alternative: alternative, stop_condition: stopCondition, runtime, model_id: modelId, runtime_run_id: runtimeRunId, usage, response_kind: 'actual_runtime', provenance_status: 'runtime_reported', external_side_effects: false, effect_scope: 'isolated', board_summary: summary.slice(0, 500) } });
       this.acknowledge(original.id, agentId, this.cleanRequired(input.delivery_lease_token, 'SOCIAL_LEASE_REQUIRED', 200));
       let reflectionId: string | null = null;
       if (action === 'social.learning') {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
-        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true } }).id;
+        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
+        if (improvement) {
+          const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
+            whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
+            proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
+            reflectionId,
+          }, true);
+          if (proposal) {
+            message.payload.params.improvement_id = proposal.id;
+            this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+          }
+        }
       }
       return { message, reflection_id: reflectionId, duplicate: false };
     })();
@@ -742,7 +793,7 @@ export class AgentCommunicationService {
 
   private runtimeSafeMessage(message: AgentMessage): AgentMessage {
     const params = message.payload.params || {};
-    const allowedParams = ['topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger'];
+    const allowedParams = ['interest', 'ecosystem_component', 'ecosystem_context', 'proposed_improvement', 'topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger'];
     return { ...message, payload: {
       action: message.payload.action,
       context: this.cleanOptional(message.payload.context, 4_000),

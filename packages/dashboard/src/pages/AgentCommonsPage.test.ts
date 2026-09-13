@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { SocialAgentPresence, SocialThread } from '../lib/api';
-import { agentHue, layoutConstellation, luredAgents } from './AgentCommonsPage';
+import { createElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
+import { renderToStaticMarkup } from 'react-dom/server';
+import type { SocialMessage, SocialAgentPresence, SocialThread } from '../lib/api';
+import { agentHue, Conversation, layoutConstellation, luredAgents, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
   { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true },
@@ -39,4 +42,40 @@ describe('agent commons constellation', () => {
     expect(agentHue('agent-a')).toBe(agentHue('agent-a'));
     expect(agentHue('agent-a')).not.toBe(agentHue('agent-b'));
   });
+});
+
+const reply: SocialMessage = {
+  id: 'reply', from: 'a', to: 'b', action: 'social.learning', timestamp: '2026-09-13T10:01:00Z',
+  status: 'read', reply_to: 'question', text: 'candidate', evidence: [], answer: 'Try a control',
+  uncertainty: 'Untested', falsifiable_next_step: 'Compare with baseline', creative_alternative: 'Blind test',
+  stop_condition: 'No improvement', runtime: 'claude', model_id: 'model-1', reflection_id: 'reflection-1',
+  reflection_status: 'candidate', interest: 'Explore retrieval', ecosystem_component: 'Djimitflo',
+  proposed_improvement: 'Add a control group', improvement_id: 'proposal-1', improvement_status: 'proposed',
+  runtime_run_id: 'run-1',
+};
+
+it('counts submitted runtime replies separately from questions and keeps model provenance', () => {
+  const discussion = { ...thread('1', 'learned', ['a', 'b']), messages: [
+    reply, { ...reply, id: 'question', action: 'social.question' as const },
+    { ...reply, id: 'reply-2', model_id: 'model-2' },
+    { ...reply, id: 'unknown', runtime: null },
+  ] };
+  expect(runtimeParticipation([discussion])).toEqual([
+    { agent: 'a', runtime: 'claude', model: 'model-1', replies: 1, lastReply: reply.timestamp },
+    { agent: 'a', runtime: 'claude', model: 'model-2', replies: 1, lastReply: reply.timestamp },
+  ]);
+});
+
+it('renders agent interests and live proposal status without claiming proven learning', () => {
+  const discussion = { ...thread('1', 'learned', ['a', 'b']), topic_ref: 'message:prior-reply', messages: [reply] };
+  const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Conversation, { thread: discussion, agents })));
+  for (const text of ['Onderwerp aangedragen door een agent', 'Explore retrieval', 'Djimitflo', 'proposal-1', 'proposed', 'reflectie-kandidaat', 'run-1']) expect(html).toContain(text);
+  expect(html).not.toContain('Geleerd');
+  expect(html).toContain('href="/compliance#improvement-inbox-title"');
+  expect(html).toContain('Open review-inbox');
+  const suggestion = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_id: null }] }, agents }));
+  expect(suggestion).toContain('nog geen geregistreerd verbeteringsvoorstel');
+  expect(suggestion).not.toContain('Open review-inbox');
+  const approved = renderToStaticMarkup(createElement(Conversation, { thread: { ...discussion, messages: [{ ...reply, improvement_status: 'approved' }] }, agents }));
+  expect(approved).not.toContain('Open review-inbox');
 });

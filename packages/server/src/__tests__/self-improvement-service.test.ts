@@ -131,6 +131,41 @@ describe('G71: Self Improvement', () => {
     expect((db.prepare('SELECT COUNT(*) AS count FROM goals WHERE improvement_id = ?').get(proposals[0].id) as { count: number }).count).toBe(1);
   });
 
+  it('retains duplicate reflection evidence without changing an existing review decision', () => {
+    const reflection = { whatFailed: [], lessonsLearned: ['Candidate only'], proposedImprovements: ['Add peer evidence view'] };
+    const [first] = improvement.generateFromReflection({ ...reflection, reflectionId: 'first' }, true);
+    const [duplicate] = improvement.generateFromReflection({ ...reflection, reflectionId: 'second' }, true);
+    expect(duplicate.id).toBe(first.id);
+    expect(duplicate.evidenceRefs).toEqual(['reflection:first', 'reflection:second']);
+    const panels = new SpecialistPanelService(db);
+    let panel = panels.getPanel(first.panelId!);
+    expect(panel.context.evidence_refs).toEqual(duplicate.evidenceRefs);
+    const review = { stance: 'support' as const, confidence: 0.9, evidence_refs: duplicate.evidenceRefs };
+    panels.submitReview(panel.id, { ...review, specialist_id: panel.panel[0].id }, 'reviewer-a');
+    const reviewing = panels.getPanel(panel.id);
+    improvement.generateFromReflection({ ...reflection, reflectionId: 'third' }, true);
+    panel = panels.getPanel(panel.id);
+    expect(panel.status).toBe('reviewing');
+    expect(panel.context).toEqual(reviewing.context);
+    expect(panel.consensus).toEqual(reviewing.consensus);
+    expect(panel.reviews).toEqual(reviewing.reviews);
+    expect(panel.metadata.pending_evidence_refs).toEqual(['reflection:third']);
+    panels.submitReview(panel.id, { ...review, specialist_id: panel.panel[1].id }, 'reviewer-b');
+    improvement.approveImprovement(first.id, 'operator');
+    const approved = panels.getPanel(panel.id);
+    improvement.generateFromReflection({ ...reflection, reflectionId: 'fourth' }, true);
+    improvement.generateFromReflection({ ...reflection, reflectionId: 'fourth' }, true);
+    panel = panels.getPanel(panel.id);
+    expect(panel.context).toEqual(approved.context);
+    expect(panel.consensus).toEqual(approved.consensus);
+    expect(panel.reviews).toEqual(approved.reviews);
+    expect(panel.status).toBe('goal_created');
+    expect(panel.metadata.pending_evidence_refs).toEqual(['reflection:third', 'reflection:fourth']);
+    expect(improvement.getImprovement(first.id)).toMatchObject({ status: 'scheduled', approvedBy: 'operator', evidenceRefs: duplicate.evidenceRefs });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM self_improvements').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM specialist_panels').get()).toEqual({ n: 1 });
+  });
+
   it('completes improvement', () => {
     const proposals = improvement.generateFromReflection({
       whatFailed: [],
