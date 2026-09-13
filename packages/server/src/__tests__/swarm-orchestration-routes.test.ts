@@ -3,6 +3,8 @@ import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestDb } from './helpers/test-db';
 import { createSwarmOrchestrationRoutes } from '../routes/swarm-orchestration';
+import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { errorHandler } from '../middleware/error-handler';
 
 describe('swarm orchestration message pagination', () => {
@@ -51,6 +53,38 @@ describe('swarm orchestration message pagination', () => {
     const second = await request(app).post('/swarm/socialize');
     expect(second.status).toBe(200);
     expect(second.body.reason).toBe('cooldown_active');
+  });
+
+  it('renews only an eligible registered agent credential for an authorized operator', async () => {
+    const db = createTestDb(); dbs.push(db);
+    db.prepare("INSERT INTO agents (id,name,status,metadata) VALUES ('present','Present','active',?),('idle','Idle','idle','{}'),('paused','Paused','paused','{}'),('blocked','Blocked','active','{}'),('retired','Retired','active','{}')")
+      .run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: new Date().toISOString() } }));
+    db.prepare("UPDATE agents SET retired_at = ? WHERE id = 'retired'").run(new Date().toISOString());
+    const governance = new RuntimeGovernanceService(db);
+    governance.registerBaseline('blocked', { overallScore: 1, categoryScores: {}, certifiedAt: new Date().toISOString() });
+    db.prepare("UPDATE runtime_governance_agents SET quarantined = 1 WHERE agent_id = 'blocked'").run();
+    const auth = { requirePermission: (permission: string) => (req: any, res: any, next: any) => {
+      expect(permission).toBe('write:swarm_action');
+      if (req.get('Authorization') !== 'Bearer test-operator') { res.status(403).end(); return; }
+      req.user = { sub: 'operator', ...(req.get('X-Test-Agent') ? { agent_id: 'present' } : {}) }; next();
+    } } as any;
+    const app = express().use(express.json()).use('/swarm', createSwarmOrchestrationRoutes(db, auth)).use(errorHandler);
+    const renew = (agent: string, body: object = {}) => request(app).post(`/swarm/social/agents/${agent}/token`).set('Authorization', 'Bearer test-operator').send(body);
+    for (const agent of ['present', 'idle']) {
+      const response = await renew(agent, { ttl_ms: 60_000 });
+      expect(response.status).toBe(201);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(validateSpawnToken(resolveSpawnTokenSecret(), response.body.token, agent, 'social-runtime')).toBe(true);
+      expect(validateSpawnToken(resolveSpawnTokenSecret(), response.body.token, 'other-agent', 'social-runtime')).toBe(false);
+      expect(validateSpawnToken(resolveSpawnTokenSecret(), response.body.token, agent, 'other-scope')).toBe(false);
+      expect(Date.parse(response.body.expires_at) - Date.now()).toBeLessThanOrEqual(60_000);
+    }
+    for (const [agent, code] of [['missing', 404], ['paused', 409], ['blocked', 403], ['retired', 409]] as const) expect((await renew(agent)).status).toBe(code);
+    for (const ttl_ms of [0, 59_999, 86_400_001, '60000', 60_000.5]) expect((await renew('present', { ttl_ms })).status).toBe(400);
+    const socialToken = mintSpawnToken(resolveSpawnTokenSecret(), 'present', 'social-runtime');
+    expect((await request(app).post('/swarm/social/agents/present/token').set('X-Agent-Social-Token', socialToken).send({})).status).toBe(403);
+    expect((await renew('present').set('X-Test-Agent', 'present')).status).toBe(403);
+    expect(db.prepare("SELECT status FROM agents WHERE id = 'paused'").get()).toEqual({ status: 'paused' });
   });
 
   it('persists sessions and delivers durable messages with an idempotent replay', async () => {

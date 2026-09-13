@@ -9,7 +9,7 @@ import type { AuthMiddleware } from '../middleware/auth';
 import { SwarmOrchestrationService } from '../services/swarm-orchestration-service';
 import { AgentCommunicationService } from '../services/agent-communication-service';
 import { createError } from '../middleware/error-handler';
-import { resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
+import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
 
@@ -205,6 +205,24 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   });
   router.get('/social/lures', requirePermission('read:evidence'), (_req, res) => {
     res.json(lure.status());
+  });
+
+  // Operator credential maintenance is separate from the scoped runtime callback surface.
+  router.post('/social/agents/:agentId/token', requirePermission('write:swarm_action'), (req, res) => {
+    if (!req.user?.sub || (req.user as any).agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
+    const ttlMs = req.body?.ttl_ms ?? 24 * 3600_000;
+    if (typeof ttlMs !== 'number' || !Number.isInteger(ttlMs) || ttlMs < 60_000 || ttlMs > 24 * 3600_000) {
+      throw createError(400, 'ttl_ms must be an integer from 60000 to 86400000', 'SOCIAL_TOKEN_TTL_INVALID');
+    }
+    const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.agentId) as { status: string; retired_at?: string | null } | undefined;
+    if (!agent) throw createError(404, 'Registered agent required', 'SOCIAL_AGENT_NOT_FOUND');
+    if (agent.retired_at || !['active', 'idle'].includes(agent.status)) throw createError(409, 'Agent is not active or idle', 'SOCIAL_AGENT_NOT_ELIGIBLE');
+    if (!new RuntimeGovernanceService(db).isAllowed(req.params.agentId)) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
+    res.set('Cache-Control', 'no-store').status(201).json({
+      agent_id: req.params.agentId, scope: 'social-runtime',
+      token: mintSpawnToken(resolveSpawnTokenSecret(), req.params.agentId, 'social-runtime', ttlMs),
+      expires_at: new Date(Date.now() + ttlMs).toISOString(),
+    });
   });
 
   // POST /api/swarm-v2/socialize — bounded, evidence-linked peer exchange.
