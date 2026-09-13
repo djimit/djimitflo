@@ -10,6 +10,11 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /build
 
+# better-sqlite3 builds its native addon when no prebuilt binary is available.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
 # Copy all package manifests first (for layer caching)
 COPY package.json package-lock.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/
@@ -87,8 +92,12 @@ COPY packages/agent-catalog/package.json packages/agent-catalog/
 COPY packages/mcp-server/package.json packages/mcp-server/
 
 # Install production dependencies only
-RUN npm install --omit=dev && \
-    node -e "new (require('better-sqlite3'))(':memory:').close()"
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    npm install --omit=dev && \
+    node -e "new (require('better-sqlite3'))(':memory:').close()" && \
+    apt-get purge -y --auto-remove make g++ && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN npm install --global npm@12.0.2 && \
     npm install --global --prefix /tmp/npm-patches \
