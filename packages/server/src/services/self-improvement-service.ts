@@ -161,7 +161,29 @@ export class SelfImprovementService {
     const duplicate = this.db.prepare(
       "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating') LIMIT 1"
     ).get(fingerprint) as { id: string } | undefined;
-    if (duplicate) return includeExisting ? this.getImprovement(duplicate.id) : null;
+    if (duplicate) {
+      if (!includeExisting) return null;
+      return this.db.transaction(() => {
+        const proposal = this.getImprovement(duplicate.id);
+        const additions = (input.evidenceRefs || []).filter(ref => !proposal.evidenceRefs.includes(ref));
+        if (!additions.length || !proposal.panelId) return proposal;
+        const panel = this.panels.getPanel(proposal.panelId);
+        const now = new Date().toISOString();
+        if (proposal.status === 'proposed' && panel.status === 'planned' && !panel.reviews?.length) {
+          const evidenceRefs = [...new Set([...proposal.evidenceRefs, ...additions])];
+          this.db.prepare('UPDATE self_improvements SET evidence_refs_json = ?, updated_at = ? WHERE id = ?')
+            .run(JSON.stringify(evidenceRefs), now, proposal.id);
+          this.db.prepare('UPDATE specialist_panels SET context_json = ?, updated_at = ? WHERE id = ?')
+            .run(JSON.stringify({ ...panel.context, evidence_refs: evidenceRefs }), now, panel.id);
+        } else {
+          // Freeze the reviewed decision basis; later corroboration remains explicitly unreviewed.
+          const pending = Array.isArray(panel.metadata.pending_evidence_refs) ? panel.metadata.pending_evidence_refs : [];
+          this.db.prepare('UPDATE specialist_panels SET metadata = ?, updated_at = ? WHERE id = ?')
+            .run(JSON.stringify({ ...panel.metadata, pending_evidence_refs: [...new Set([...pending, ...additions])] }), now, panel.id);
+        }
+        return this.getImprovement(proposal.id);
+      })();
+    }
 
     const id = randomUUID();
     const now = new Date().toISOString();
