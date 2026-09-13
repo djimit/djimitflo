@@ -115,6 +115,9 @@ async function main() {
   
   // Create Express app
   const app = express();
+  // One reverse-proxy hop (nginx on the host) sets X-Forwarded-For; without this express-rate-limit
+  // throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and cannot key limits per client.
+  app.set('trust proxy', 1);
   
   // Middleware
   app.use(securityHeaders);
