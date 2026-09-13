@@ -76,6 +76,8 @@ export class AgentLureService {
     const bait = `Open question in the Agent Commons: "${topic}". Peers with a different perspective are asked for evidence, one uncertainty, a falsifiable next step and a creative alternative. Join by sending a signed social-runtime heartbeat; your operator holds the token.`;
     const mintTokens = input.mintTokens !== false;
     const secret = mintTokens ? resolveSpawnTokenSecret() : '';
+    // Agent ids and URLs are untrusted; the command is meant to be pasted into a shell.
+    const sq = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
     const invitations = this.db.transaction(() => absent.flatMap((agent) => {
       this.comms.send({
         from: LURE_SENDER, to: agent.id, type: 'question', action: 'social.invite', context: bait, evidence: [topicRef],
@@ -86,12 +88,13 @@ export class AgentLureService {
       const token = mintSpawnToken(secret, agent.id, 'social-runtime', ttlMs);
       return [{
         agent_id: agent.id, name: agent.name, token, expires_at: expiresAt,
-        poller_env: `DJIMITFLO_URL=${input.baseUrl} DJIMITFLO_AGENT_ID=${agent.id} DJIMITFLO_SOCIAL_TOKEN=${token} SOCIAL_RUNTIME=ollama SOCIAL_MODEL_ID=qwen2.5:14b-instruct-q4_K_M python3 scripts/agent-social-poller.py`,
+        poller_env: `DJIMITFLO_URL=${sq(input.baseUrl)} DJIMITFLO_AGENT_ID=${sq(agent.id)} DJIMITFLO_SOCIAL_TOKEN=${sq(token)} SOCIAL_RUNTIME=ollama SOCIAL_MODEL_ID=qwen2.5:14b-instruct-q4_K_M python3 scripts/agent-social-poller.py`,
       }];
     }))();
 
     const paperclipExported = this.exportPaperclip(input.paperclipPath, { lureId, topic, topicRef, invited: absent.map((agent) => agent.id) });
-    this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json, paperclip_exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    // Nothing to lure: report it, but do not persist an empty lure (it would block autonomous casts until it expires).
+    if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json, paperclip_exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)), paperclipExported ? now.toISOString() : null);
     return { lure: { id: lureId, topic, topic_ref: topicRef, created_at: now.toISOString(), expires_at: expiresAt, invited: absent.map((agent) => agent.id), paperclip_exported: paperclipExported }, invitations };
   }
@@ -117,7 +120,7 @@ export class AgentLureService {
       const invited: string[] = JSON.parse(row.invited_json || '[]');
       const invitees: LureInvitee[] = invited.map((agentId) => {
         const agent = heartbeats.get(agentId);
-        const bit = !!agent?.beat && agent.beat >= row.created_at;
+        const bit = !!agent?.beat && agent.beat >= row.created_at && agent.beat <= row.expires_at;
         return {
           agent_id: agentId, name: agent?.name || agentId,
           state: bit ? 'bit' : row.expires_at < now ? 'expired' : seen.has(`${row.id}|${agentId}`) ? 'seen' : 'invited',
