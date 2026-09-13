@@ -15,7 +15,7 @@ describe('signed agent social runtime', () => {
     process.env.JWT_SECRET = secret;
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('agent-a', 'Agent A', 'active'), ('agent-b', 'Agent B', 'active')").run();
-    new AgentCommunicationService(db).send({ from: 'agent-a', to: 'agent-b', type: 'question', action: 'social.question', context: 'Inspect api_key=abcdefghijklmnop before answering.', evidence: ['claim:gap'], params: { topic: 'Test gap' }, threadId: 'social:test', epistemicRole: 'question' });
+    new AgentCommunicationService(db).send({ from: 'agent-a', to: 'agent-b', type: 'question', action: 'social.question', context: 'Inspect api_key=abcdefghijklmnop before answering.', evidence: ['claim:gap'], params: { topic: 'Test gap', facilitator_commit: 'forged' }, facilitatorCommit: 'a'.repeat(40), threadId: 'social:test', epistemicRole: 'question' });
     db.prepare(`INSERT INTO agent_messages (id, from_agent, to_agent, type, payload_json, timestamp, ttl, status) VALUES ('legacy-social', 'agent-a', 'agent-b', 'question', ?, datetime('now'), 86400, 'pending')`).run(JSON.stringify({ action: 'social.question', params: { correlation_id: 'legacy-thread' } }));
     const app = express(); app.use(express.json()); app.use('/social-runtime', createAgentSocialRuntimeRoutes(db));
     await new Promise<void>((resolve) => { server = app.listen(0, '127.0.0.1', () => { const address = server.address(); base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}/social-runtime`; resolve(); }); });
@@ -24,6 +24,7 @@ describe('signed agent social runtime', () => {
   afterEach(async () => { await new Promise<void>((resolve) => server.close(() => resolve())); db.close(); delete process.env.JWT_SECRET; });
 
   it('keeps agent scope, lease fencing and candidate learning intact', async () => {
+    expect(() => new AgentCommunicationService(db).send({ from: 'agent-a', to: 'agent-b', type: 'task', action: 'noop', facilitatorCommit: 'forged' })).toThrow('SOCIAL_FACILITATOR_COMMIT_INVALID');
     const tokenA = mintSpawnToken(secret, 'agent-a', 'social-runtime', 60_000); const tokenB = mintSpawnToken(secret, 'agent-b', 'social-runtime', 60_000);
     expect((await fetch(`${base}/agent-b/messages`)).status).toBe(401);
     expect((await fetch(`${base}/agent-a/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).status).toBe(401);
@@ -32,7 +33,7 @@ describe('signed agent social runtime', () => {
     expect(heartbeat.status).toBe(200);
     const received = (await (await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).json()).messages;
     expect(received).toHaveLength(1); const [question] = received;
-    expect(question.id).not.toBe('legacy-social'); expect(question.payload.context).toContain('[REDACTED:Generic Secret]'); expect(question.payload.context).not.toContain('abcdefghijklmnop'); expect(question.deliveryLeaseToken).toBeTruthy();
+    expect(question.id).not.toBe('legacy-social'); expect(question.payload.params.facilitator_commit).toBe('a'.repeat(40)); expect(question.payload.context).toContain('[REDACTED:Generic Secret]'); expect(question.payload.context).not.toContain('abcdefghijklmnop'); expect(question.deliveryLeaseToken).toBeTruthy();
     const responseBody = { answer: 'Use a negative control.', uncertainty: 'Effect size is unknown.', falsifiable_next_step: 'Run the control.', creative_alternative: 'Blind the evaluator.', stop_condition: 'Stop if outcomes are identical.', evidence_refs: ['claim:gap'], runtime: 'test-runtime', model_id: 'test-model', runtime_run_id: 'run-1', delivery_lease_token: question.deliveryLeaseToken };
     const responseUrl = `${base}/agent-b/messages/${question.id}/respond`;
     const response = await fetch(responseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify(responseBody) });
