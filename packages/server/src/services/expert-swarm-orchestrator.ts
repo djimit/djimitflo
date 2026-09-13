@@ -17,9 +17,20 @@ export interface ExpertSwarmResult {
   domains: string[];
   expert_answers: ExpertAnswer[];
   verdict: JudgeVerdict;
+  /** True when a governed knowledge candidate was recorded; never means "promoted". */
   knowledge_updated: boolean;
+  /** Promotion decision from the judge; VERIFIED_FOR_USE needs an external checker or human. */
+  promotion_decision: JudgeVerdict['promotion_decision'];
+  /** memory_candidates row awaiting human review, when one was recorded. */
+  knowledge_candidate_id: string | null;
   duration_ms: number;
   created_at: string;
+}
+
+export interface ExpertSwarmDeps {
+  registry?: KnowledgeAdapterRegistry;
+  judge?: JudgeService;
+  skills?: SkillService;
 }
 
 interface SwarmRow {
@@ -34,10 +45,10 @@ export class ExpertSwarmOrchestrator {
   private skills: SkillService;
   private maxParallel = 10;
 
-  constructor(private db: Database) {
-    this.registry = new KnowledgeAdapterRegistry(db);
-    this.judge = new JudgeService(db);
-    this.skills = new SkillService(db);
+  constructor(private db: Database, deps: ExpertSwarmDeps = {}) {
+    this.registry = deps.registry ?? new KnowledgeAdapterRegistry(db);
+    this.judge = deps.judge ?? new JudgeService(db);
+    this.skills = deps.skills ?? new SkillService(db);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS expert_swarm_history (
@@ -75,12 +86,12 @@ export class ExpertSwarmOrchestrator {
     }
 
     const verdict = this.judge.evaluate(answers);
-    const knowledgeUpdated = verdict.verification_status === 'verified'
-      && verdict.contradictions.length === 0;
-
-    if (knowledgeUpdated) {
-      this.storeKnowledge(input.topic, answers, verdict);
-    }
+    // The heuristic judge can never say "verified", so the old `verification_status === 'verified'`
+    // gate silently stored nothing. Knowledge now enters the governed review queue when the
+    // judge asks for human review; contradicted, insufficient or unverifiable output stays out.
+    const knowledgeCandidateId = verdict.promotion_decision === 'HUMAN_REVIEW_REQUIRED'
+      ? this.storeKnowledge(id, input.topic, answers, verdict)
+      : null;
 
     const result: ExpertSwarmResult = {
       id,
@@ -88,7 +99,9 @@ export class ExpertSwarmOrchestrator {
       domains: input.domains,
       expert_answers: answers,
       verdict,
-      knowledge_updated: knowledgeUpdated,
+      knowledge_updated: knowledgeCandidateId !== null,
+      promotion_decision: verdict.promotion_decision,
+      knowledge_candidate_id: knowledgeCandidateId,
       duration_ms: Date.now() - start,
       created_at: new Date().toISOString(),
     };
@@ -148,20 +161,33 @@ export class ExpertSwarmOrchestrator {
     }
   }
 
-  private storeKnowledge(topic: string, answers: ExpertAnswer[], verdict: JudgeVerdict): void {
-    try {
-      const content = answers.map(a => `[${a.domain}] ${a.content}`).join('\n\n');
-      this.db.prepare(`
-        INSERT OR IGNORE INTO memory_candidates (id, title, content, memory_type, source_ref, metadata, created_at, updated_at)
-        VALUES (?, ?, ?, 'expert_knowledge', ?, ?, datetime('now'), datetime('now'))
-      `).run(
-        randomUUID(),
-        `Expert knowledge: ${topic}`,
-        content,
-        `expert-swarm:${topic}`,
-        JSON.stringify({ verdict_score: verdict.score, confidence: verdict.confidence, domains: answers.map(a => a.domain) })
-      );
-    } catch { /* best-effort */ }
+  /**
+   * Record swarm output as a governed knowledge candidate. It lands in the human review
+   * queue (never `promoted`) with the full provenance: run id, judge verdict, per-answer
+   * evidence refs and sources. The previous version used memory_type 'expert_knowledge',
+   * which violates the memory_candidates CHECK constraint and was swallowed by a catch.
+   */
+  private storeKnowledge(runId: string, topic: string, answers: ExpertAnswer[], verdict: JudgeVerdict): string | null {
+    const candidateId = randomUUID();
+    const content = answers.map(a => `[${a.domain}] ${a.content}`).join('\n\n');
+    const evidence = answers.flatMap(a => a.evidence_refs ?? []);
+    this.db.prepare(`
+      INSERT INTO memory_candidates (id, title, content, memory_type, store, source_ref, status, promotion_status, human_required, sensitivity, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, 'operational_memory', 'semantic', ?, 'review_required', 'blocked_pending_human', 1, 'normal', ?, datetime('now'), datetime('now'))
+    `).run(
+      candidateId,
+      `Expert knowledge candidate: ${topic}`,
+      content,
+      `expert-swarm:${runId}`,
+      JSON.stringify({
+        origin: 'expert-swarm', run_id: runId, topic, version: 1,
+        judge: { verdict_id: verdict.id, score: verdict.score, score_kind: verdict.score_kind, confidence: verdict.confidence, promotion_decision: verdict.promotion_decision, verification_status: verdict.verification_status },
+        answers: answers.map(a => ({ domain: a.domain, source: a.source, confidence: a.confidence, evidence_refs: a.evidence_refs ?? [], url: a.metadata?.url ?? null })),
+        evidence_refs: evidence,
+        empirical_status: 'UNDETERMINED', promotion_allowed: false,
+      })
+    );
+    return candidateId;
   }
 
   private chunkArray<T>(arr: T[], size: number): T[][] {
