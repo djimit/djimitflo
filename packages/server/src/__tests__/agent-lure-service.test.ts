@@ -39,7 +39,7 @@ describe('agent commons lure (honeypot)', () => {
     const [invitation] = cast.invitations;
     expect(validateSpawnToken(secret, invitation.token, 'silent', 'social-runtime')).toBe(true);
     expect(validateSpawnToken(secret, invitation.token, 'present', 'social-runtime')).toBe(false);
-    expect(invitation.poller_env).toContain('DJIMITFLO_AGENT_ID=silent');
+    expect(invitation.poller_env).toContain("DJIMITFLO_AGENT_ID='silent'");
 
     const [invite] = comms.receive('silent');
     expect(invite.payload.action).toBe('social.invite');
@@ -57,6 +57,20 @@ describe('agent commons lure (honeypot)', () => {
     comms.heartbeat('silent', 'ollama', 'qwen');
     status = lure.status();
     expect(status.lures[0]).toMatchObject({ bites: 1, invitees: [expect.objectContaining({ agent_id: 'silent', state: 'bit' })] });
+  });
+
+  it('shell-quotes untrusted ids in the poller command and persists nothing when nobody is absent', () => {
+    db.prepare("INSERT INTO agents (id, name, status) VALUES ('evil;rm -rf /', 'Evil', 'active')").run();
+    const cast = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null });
+    const evil = cast.invitations.find((invitation) => invitation.agent_id === 'evil;rm -rf /')!;
+    expect(evil.poller_env).toContain("DJIMITFLO_AGENT_ID='evil;rm -rf /'");
+    expect(evil.poller_env).toContain(`DJIMITFLO_SOCIAL_TOKEN='${evil.token}'`);
+    comms.heartbeat('silent', 'codex');
+    comms.heartbeat('evil;rm -rf /', 'codex');
+    const empty = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null });
+    expect(empty.lure.invited).toEqual([]);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM social_lures').get() as { n: number }).n).toBe(1);
+    expect(lure.castIfQuiet({ by: 'loop', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null })).toBeNull();
   });
 
   it('logs probes with a bounded history', () => {
