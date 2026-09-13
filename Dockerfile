@@ -95,6 +95,8 @@ COPY --from=builder /build/packages/agent-catalog/dist packages/agent-catalog/di
 COPY packages/agent-catalog/src/schema packages/agent-catalog/dist/schema
 COPY --from=builder /build/packages/mcp-server/dist packages/mcp-server/dist
 COPY specs specs
+# ExplainerCriticService reads packages/server/corpus/explainer.corpus.jsonl relative to dist; without it every explainer task fails with ENOENT.
+COPY packages/server/corpus packages/server/corpus
 
 # Copy entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
