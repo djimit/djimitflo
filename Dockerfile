@@ -53,8 +53,18 @@ ARG VCS_REF=unknown
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends ca-certificates git python3-minimal && \
+    apt-get install -y --no-install-recommends ca-certificates git python3-minimal curl && \
     rm -rf /var/lib/apt/lists/*
+
+# gh CLI: djimitflo's own PR review service shells out to it for PR
+# comments and Check Runs (see GithubPrReviewService). Static .deb, no
+# third-party apt repo needed; pinned like the other global installs below.
+ARG GH_CLI_VERSION=2.100.0
+RUN ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSL -o /tmp/gh.deb "https://github.com/cli/cli/releases/download/v${GH_CLI_VERSION}/gh_${GH_CLI_VERSION}_linux_${ARCH}.deb" && \
+    dpkg -i /tmp/gh.deb && \
+    rm -f /tmp/gh.deb && \
+    gh --version
 
 # Keep the production worker surface equal to the runtimes accepted by
 # /swarms/runtime-readiness. Versions are pinned for reproducible probes.
