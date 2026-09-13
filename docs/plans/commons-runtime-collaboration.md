@@ -11,8 +11,9 @@ Real available runtimes participate under distinct identities; agents propose in
 - [x] Extend existing Commons flow for agent-originated interests and ecosystem challenges, peer critique and evidence-linked improvement proposals; reuse task/governance state.
 - [x] Expose participation/challenges/results through the existing Commons view and document activation/operation.
 - [x] Run real multi-runtime collaboration and failure-boundary checks; execute an attainable selected improvement and retain test evidence.
-- [ ] Run appropriate automated checks, review the complete diff, create a reviewable PR, and activate only through verified available governance/deployment routes.
-- [ ] Record exact deployed/local/blocked status, evidence and next operational trigger.
+- [x] Run appropriate automated checks, review the complete diff and create a reviewable PR: https://github.com/djimit/djimitflo/pull/219. Remote CI is tracked on the PR.
+- [ ] Activate production through the existing release/operator routes — blocked by required independent GitHub approval and unavailable authenticated operator session.
+- [x] Record exact deployed/local/blocked status, evidence and next operational trigger.
 
 ## Constraints and observations
 Preserve dirty primary checkout. No new task control plane. No credentials in logs or runtime prompts. No tool execution authorized by untrusted peer messages. Agent learning is a candidate until measured. Cost/time bounds are mandatory for recurring jobs; existing Paperclip/governance gates remain authoritative.
