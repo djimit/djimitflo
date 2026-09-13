@@ -12,6 +12,7 @@ import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService, type ClaimRelation } from './frontier-expert-registry-service';
 import { ExpertResolverService, type ResolveOptions, type ResolvedExpert } from './expert-resolver-service';
 import { buildPerspectivePrompt, validatePerspectiveOutput, type PerspectiveOutput } from './expert-perspective-builder';
+import { procedureForCapability } from './frontier-expert-skills';
 
 export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string) => Promise<unknown>;
 
@@ -73,7 +74,10 @@ export class ExpertCouncilService {
   private runtimeLabel: string;
   private modelRunnerResolved = false;
 
-  constructor(private readonly db: Database, deps: { registry?: FrontierExpertRegistryService; resolver?: ExpertResolverService; runner?: PerspectiveRunner; runtimeLabel?: string } = {}) {
+  private readonly procedureFor: (capabilityId: string) => string | null;
+
+  constructor(private readonly db: Database, deps: { registry?: FrontierExpertRegistryService; resolver?: ExpertResolverService; runner?: PerspectiveRunner; runtimeLabel?: string; procedureFor?: (capabilityId: string) => string | null } = {}) {
+    this.procedureFor = deps.procedureFor ?? ((capabilityId) => procedureForCapability(capabilityId));
     this.registry = deps.registry ?? new FrontierExpertRegistryService(db);
     this.resolver = deps.resolver ?? new ExpertResolverService(db);
     this.runner = deps.runner ?? null;
@@ -130,6 +134,7 @@ export class ExpertCouncilService {
     const prompt = buildPerspectivePrompt({
       expert: { id: expert.expert_id, canonical_name: expert.canonical_name, capabilities: expert.capabilities.map((capability) => capability.id) },
       question, language,
+      procedure: expert.capabilities.map((capability) => this.procedureFor(capability.id)).find(Boolean) ?? null,
       evidence: evidence.map((item) => ({ id: item.id, kind: item.kind, tier: item.tier, title: item.title, url: item.url, excerpt: this.excerpt(item.metadata_json) })),
     });
     const raw = await this.runner!('perspective', prompt.system, prompt.user);
