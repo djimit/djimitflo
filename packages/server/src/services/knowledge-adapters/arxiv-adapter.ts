@@ -50,17 +50,17 @@ export class ArxivAdapter implements KnowledgeSourceAdapter {
   private rateLimitMs = 6000; // 10 req/min
   private lastRequest = 0;
 
-  /** Papers listing the given person as an author (`au:"First Last"`), newest first. Empty on any failure. */
+  /**
+   * Papers listing the given person as an author (`au:"First Last"`), newest first.
+   * Unlike search(), a transport or HTTP failure throws (ARXIV_HTTP_<status>) so callers can tell
+   * "the source was unavailable" from "this person has no papers" (I10).
+   */
   async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
     await this.enforceRateLimit();
-    try {
-      const params = new URLSearchParams({ search_query: `au:"${name.replace(/"/g, '')}"`, max_results: String(limit), start: '0', sortBy: 'submittedDate', sortOrder: 'descending' });
-      const response = await fetch(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(15_000) });
-      if (!response.ok) return [];
-      return parseArxivPapers(await response.text());
-    } catch {
-      return [];
-    }
+    const params = new URLSearchParams({ search_query: `au:"${name.replace(/"/g, '')}"`, max_results: String(limit), start: '0', sortBy: 'submittedDate', sortOrder: 'descending' });
+    const response = await fetch(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`ARXIV_HTTP_${response.status}`);
+    return parseArxivPapers(await response.text());
   }
 
   async search(query: string, limit: number = 5): Promise<KnowledgeResult[]> {

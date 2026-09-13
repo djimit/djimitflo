@@ -33,8 +33,8 @@ const TIER_BY_KIND: Record<EvidenceKind, 1 | 2 | 3 | 4> = {
 export const CAPABILITY_TAXONOMY: Array<{ id: string; label: string; aliases: string[]; parent?: string }> = [
   { id: 'frontier_model_engineering', label: 'Frontier model engineering', aliases: ['frontier models', 'large-scale training', 'pretraining'] },
   { id: 'scaling_laws', label: 'Scaling laws', aliases: ['scaling', 'compute-optimal training', 'neural scaling'] },
-  { id: 'reinforcement_learning', label: 'Reinforcement learning', aliases: ['rl', 'policy optimization', 'rlhf'] },
-  { id: 'agent_learning', label: 'Agent learning', aliases: ['agentic learning', 'learning agents'] },
+  { id: 'reinforcement_learning', label: 'Reinforcement learning', aliases: ['rl', 'policy optimization', 'policy optimisation', 'rlhf', 'reward hacking', 'sparse rewards'] },
+  { id: 'agent_learning', label: 'Agent learning', aliases: ['agentic learning', 'learning agents', 'long-horizon agents', 'agents that learn'] },
   { id: 'post_training', label: 'Post-training', aliases: ['fine-tuning', 'instruction tuning', 'alignment training'] },
   { id: 'reasoning', label: 'Reasoning', aliases: ['chain of thought', 'test-time compute'] },
   { id: 'automated_ai_research', label: 'Automated AI research', aliases: ['ai for ai research', 'research automation'] },
@@ -42,19 +42,19 @@ export const CAPABILITY_TAXONOMY: Array<{ id: string; label: string; aliases: st
   { id: 'mechanistic_interpretability', label: 'Mechanistic interpretability', aliases: ['interpretability', 'circuits', 'features'] },
   { id: 'alignment', label: 'Alignment', aliases: ['ai alignment', 'value alignment'] },
   { id: 'scalable_oversight', label: 'Scalable oversight', aliases: ['debate', 'weak-to-strong', 'oversight'], parent: 'alignment' },
-  { id: 'misalignment_detection', label: 'Misalignment detection', aliases: ['deception detection', 'sleeper agents'], parent: 'alignment' },
+  { id: 'misalignment_detection', label: 'Misalignment detection', aliases: ['deception detection', 'sleeper agents', 'deceptive alignment'], parent: 'alignment' },
   { id: 'model_evaluations', label: 'Model evaluations', aliases: ['evals', 'benchmarks', 'capability evaluations'] },
   { id: 'safety_evaluations', label: 'Safety evaluations', aliases: ['dangerous capability evals', 'safety evals'], parent: 'model_evaluations' },
   { id: 'model_control', label: 'Model control', aliases: ['ai control', 'control protocols'] },
-  { id: 'ai_security', label: 'AI security', aliases: ['ml security', 'adversarial robustness', 'model security'] },
+  { id: 'ai_security', label: 'AI security', aliases: ['ml security', 'adversarial robustness', 'model security', 'prompt injection', 'jailbreak', 'weight exfiltration', 'adaptive attackers', 'insider threat'] },
   { id: 'cyber_capabilities', label: 'Cyber capabilities', aliases: ['offensive cyber', 'cyber evals'], parent: 'ai_security' },
   { id: 'model_resilience', label: 'Model resilience', aliases: ['robustness', 'jailbreak resistance'], parent: 'ai_security' },
   { id: 'frontier_risk', label: 'Frontier risk', aliases: ['catastrophic risk', 'frontier safety'] },
   { id: 'ai_governance', label: 'AI governance', aliases: ['governance', 'responsible scaling'] },
-  { id: 'ai_policy', label: 'AI policy', aliases: ['policy', 'regulation'], parent: 'ai_governance' },
-  { id: 'coordination_mechanisms', label: 'Coordination mechanisms', aliases: ['international coordination', 'compute governance'], parent: 'ai_governance' },
+  { id: 'ai_policy', label: 'AI policy', aliases: ['public policy', 'regulation', 'legislation', 'policymakers'], parent: 'ai_governance' },
+  { id: 'coordination_mechanisms', label: 'Coordination mechanisms', aliases: ['international coordination', 'compute governance', 'mechanism design', 'racing dynamics'], parent: 'ai_governance' },
   { id: 'human_ai_interaction', label: 'Human-AI interaction', aliases: ['hci', 'human-ai collaboration'] },
-  { id: 'multi_agent_systems', label: 'Multi-agent systems', aliases: ['multi-agent', 'agent societies'] },
+  { id: 'multi_agent_systems', label: 'Multi-agent systems', aliases: ['multi-agent', 'agent societies', 'autonomous agents', 'collusion', 'negotiation between agents'] },
 ];
 
 const TRANSITIONS: Record<ExpertLifecycleState, ExpertLifecycleState[]> = {
@@ -94,10 +94,12 @@ export class FrontierExpertRegistryService {
   }
 
   seedTaxonomy(): number {
-    const insert = this.db.prepare('INSERT OR IGNORE INTO expert_capability_taxonomy (id, label, description, parent_id, aliases_json) VALUES (?, ?, ?, ?, ?)');
-    let inserted = 0;
-    for (const entry of CAPABILITY_TAXONOMY) inserted += insert.run(entry.id, entry.label, '', entry.parent ?? null, JSON.stringify(entry.aliases)).changes;
-    return inserted;
+    // Upsert so alias improvements reach existing databases (§54); ids are stable, so nothing referencing them breaks.
+    const upsert = this.db.prepare(`INSERT INTO expert_capability_taxonomy (id, label, description, parent_id, aliases_json) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET label = excluded.label, parent_id = excluded.parent_id, aliases_json = excluded.aliases_json WHERE aliases_json != excluded.aliases_json OR label != excluded.label`);
+    let changed = 0;
+    for (const entry of CAPABILITY_TAXONOMY) changed += upsert.run(entry.id, entry.label, '', entry.parent ?? null, JSON.stringify(entry.aliases)).changes;
+    return changed;
   }
 
   /** Resolve a capability id from an id, label or alias (case-insensitive). */
