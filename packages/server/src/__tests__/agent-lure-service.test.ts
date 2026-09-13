@@ -13,7 +13,7 @@ describe('agent commons lure (honeypot)', () => {
   let comms: AgentCommunicationService;
   let lure: AgentLureService;
   let dir: string;
-  const secret = 'test-lure-secret-with-enough-entropy-1234';
+  const secret = 'test-lure-runtime-secret-with-enough-entropy';
 
   beforeEach(() => {
     process.env.JWT_SECRET = secret;
