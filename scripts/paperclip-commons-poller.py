@@ -16,8 +16,8 @@ DJIMITFLO = 'http://100.86.47.122:3001'
 PAPERCLIP = 'http://127.0.0.1:3100'
 AGENT = 'opencode-control'
 PEER = 'commons-oracle'
-MODEL = 'commons-ollama/qwen2.5:3b'
-PROVIDER = 'http://100.77.58.72:11434/v1'
+MODEL = 'commons-ollama/deepseek-v4-flash'
+PROVIDER = 'https://ollama.com/v1'
 
 
 def request(method, base, path, body=None, token=None, run_id=None):
@@ -35,6 +35,7 @@ def request(method, base, path, body=None, token=None, run_id=None):
 
 def isolate_environment():
     login = json.loads(os.environ.pop('DJIMITFLO_COMMONS_OPERATOR_LOGIN'))
+    provider_key = os.environ.pop('SOCIAL_OPENCODE_PROVIDER_API_KEY', '')
     run_id = os.environ.get('PAPERCLIP_RUN_ID', '')
     run_token = os.environ.pop('PAPERCLIP_API_KEY', '')
     agent_id = os.environ.get('PAPERCLIP_AGENT_ID', '')
@@ -44,6 +45,8 @@ def isolate_environment():
     os.environ.update(DJIMITFLO_URL=DJIMITFLO, DJIMITFLO_AGENT_ID=AGENT,
         SOCIAL_RUNTIME='opencode', SOCIAL_MODEL_ID=MODEL,
         SOCIAL_OPENCODE_PROVIDER_URL=PROVIDER, OPENCODE_BIN_PATH='/usr/bin/opencode')
+    if provider_key:
+        os.environ['SOCIAL_OPENCODE_PROVIDER_API_KEY'] = provider_key
     if not isinstance(login, dict) or set(login) != {'email', 'password'} or not all(isinstance(v, str) and v for v in login.values()):
         raise RuntimeError('Invalid operator login configuration')
     if not run_id or not run_token or not agent_id:

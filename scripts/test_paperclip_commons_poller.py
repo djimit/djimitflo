@@ -13,12 +13,17 @@ class ControllerTests(unittest.TestCase):
         env = {'DJIMITFLO_COMMONS_OPERATOR_LOGIN': '{"email":"operator","password":"secret"}',
                'PAPERCLIP_RUN_ID': 'run', 'PAPERCLIP_API_KEY': 'run-secret', 'PAPERCLIP_AGENT_ID': 'agent',
                'DJIMITFLO_SOCIAL_TOKEN': 'stale', 'OPENAI_API_KEY': 'cloud-secret', 'NODE_OPTIONS': '--evil',
-               'SOCIAL_MODEL_ID': 'arbitrary', 'PATH': '/usr/bin'}
+               'SOCIAL_MODEL_ID': 'arbitrary', 'PATH': '/usr/bin', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'provider-only'}
         with patch.dict(os.environ, env, clear=True):
             login, run, token, agent = c.isolate_environment()
             self.assertEqual(token, 'run-secret')
             for name in ('DJIMITFLO_COMMONS_OPERATOR_LOGIN', 'PAPERCLIP_API_KEY', 'PAPERCLIP_RUN_ID', 'DJIMITFLO_SOCIAL_TOKEN', 'OPENAI_API_KEY', 'NODE_OPTIONS'):
                 self.assertNotIn(name, os.environ)
+            self.assertEqual(os.environ['SOCIAL_OPENCODE_PROVIDER_API_KEY'], 'provider-only')
+            poller_spec = importlib.util.spec_from_file_location('poller', Path(__file__).with_name('agent-social-poller.py'))
+            poller = importlib.util.module_from_spec(poller_spec)
+            poller_spec.loader.exec_module(poller)
+            self.assertNotIn('SOCIAL_OPENCODE_PROVIDER_API_KEY', poller.runtime_env('opencode'))
             self.assertEqual(os.environ['SOCIAL_MODEL_ID'], c.MODEL)
             self.assertEqual(os.environ['DJIMITFLO_AGENT_ID'], c.AGENT)
 
