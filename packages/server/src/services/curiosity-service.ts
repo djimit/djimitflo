@@ -22,8 +22,12 @@ interface CapabilityRow {
 
 interface ClaimRow {
   subject_ref: string;
-  freq: number;
+  cnt: number;
 }
+
+// Diagnostic claims are outputs of this scanner, never observations feeding it.
+const NON_DIAGNOSTIC = "COALESCE(predicate, '') <> 'gap' AND created_from <> 'curiosity-service'";
+const ACTIVE_CLAIM = "status IN ('proposed', 'supported', 'promoted', 'review_required') AND invalidated_by IS NULL AND (valid_until IS NULL OR datetime(valid_until) >= datetime('now'))";
 
 export class CuriosityService {
   private intervalMs: number;
@@ -56,14 +60,22 @@ export class CuriosityService {
     let published = 0;
     for (const gap of gaps) {
       try {
+        const claim = `Knowledge gap: ${gap.description}`;
+        // Keep unchanged operator decisions intact; a changed signal can create a new candidate.
+        const existing = this.db.prepare(`SELECT 1 FROM swarm_claims
+          WHERE subject_ref = ? AND claim = ? AND predicate = 'gap' AND created_from = 'curiosity-service'
+            AND invalidated_by IS NULL AND (valid_until IS NULL OR datetime(valid_until) >= datetime('now'))
+          LIMIT 1`).get(gap.domain, claim);
+        if (existing) continue;
         this.intelligence.createClaim({
-          claim: `Knowledge gap: ${gap.description}`,
+          claim,
           claim_type: 'capability',
           subject_ref: gap.domain,
           predicate: 'gap',
           confidence: gap.severity,
           evidence_refs: [],
           created_from: 'curiosity-service',
+          metadata: { gap_type: gap.type, ...(gap.type === 'coverage' ? { detection_method: 'count_heuristic', coverage_status: 'UNKNOWN' } : {}) },
         });
         published++;
       } catch { /* skip duplicates */ }
@@ -76,7 +88,8 @@ export class CuriosityService {
     const gaps: Gap[] = [];
     try {
       const domains = this.db.prepare(`
-        SELECT subject_ref, COUNT(*) as cnt FROM swarm_claims
+        SELECT subject_ref, COUNT(DISTINCT json_array(lower(trim(claim)), COALESCE(predicate, ''), COALESCE(object, ''), COALESCE(scope, ''))) as cnt
+        FROM swarm_claims WHERE ${NON_DIAGNOSTIC} AND ${ACTIVE_CLAIM}
         GROUP BY subject_ref HAVING cnt < 3
       `).all() as Array<{ subject_ref: string; cnt: number }>;
       for (const d of domains) {
@@ -84,7 +97,7 @@ export class CuriosityService {
           domain: d.subject_ref,
           type: 'coverage',
           severity: 0.5,
-          description: `Only ${d.cnt} claims in domain '${d.subject_ref}' — needs more coverage`,
+          description: `Sparse claim inventory: ${d.cnt} distinct normalized active statements in domain '${d.subject_ref}' (count heuristic < 3; coverage UNKNOWN)`,
         });
       }
     } catch { /* best-effort */ }
@@ -97,7 +110,7 @@ export class CuriosityService {
     try {
       const lowConf = this.db.prepare(`
         SELECT subject_ref, AVG(confidence) as avg_conf FROM swarm_claims
-        WHERE created_at < ?
+        WHERE datetime(created_at) < datetime(?) AND ${NON_DIAGNOSTIC} AND ${ACTIVE_CLAIM}
         GROUP BY subject_ref HAVING avg_conf < 0.5
       `).all(thirtyDaysAgo) as Array<{ subject_ref: string; avg_conf: number }>;
       for (const lc of lowConf) {
@@ -118,15 +131,16 @@ export class CuriosityService {
     try {
       const contradictions = this.db.prepare(`
         SELECT subject_ref, COUNT(*) as cnt FROM swarm_claims
-        WHERE status = 'contradicted' AND created_at > ?
+        WHERE status = 'contradicted' AND datetime(created_at) > datetime(?) AND ${NON_DIAGNOSTIC}
+          AND (valid_until IS NULL OR datetime(valid_until) >= datetime('now'))
         GROUP BY subject_ref
       `).all(sevenDaysAgo) as ClaimRow[];
       for (const c of contradictions) {
         gaps.push({
           domain: c.subject_ref,
           type: 'contradiction',
-          severity: Math.min(1, c.freq * 0.3),
-          description: `${c.freq} unresolved contradictions in '${c.subject_ref}'`,
+          severity: Math.min(1, c.cnt * 0.3),
+          description: `${c.cnt} unresolved contradictions in '${c.subject_ref}'`,
         });
       }
     } catch { /* best-effort */ }
