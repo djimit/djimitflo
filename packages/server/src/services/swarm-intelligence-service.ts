@@ -1748,6 +1748,7 @@ export class SwarmIntelligenceService {
     if (!capability.forbidden_actions.length) blocked.push('forbidden_actions_missing');
     if (!capability.required_evidence.length) blocked.push('required_evidence_missing');
     if (!capability.removal_strategy?.trim()) blocked.push('removal_strategy_missing');
+    if (capability.metadata.outcome_hold) blocked.push('outcome_evidence_hold');
     return blocked;
   }
 
