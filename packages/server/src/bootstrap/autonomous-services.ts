@@ -22,6 +22,7 @@ import { ExplainerFleetWorker } from '../services/explainer-fleet-worker';
 import { TrajectoryStore } from '../services/trajectory-store';
 import { CuriosityService } from '../services/curiosity-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
+import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
   try {
@@ -57,6 +58,19 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
   void learningLoop.runCycle().catch((error) => {
     console.warn('⚠️  Initial continuous learning cycle failed (non-fatal):', error instanceof Error ? error.message : String(error));
   });
+
+  // Agent Commons autopilot: residents heartbeat, answer and open rounds in-process (SOCIAL_AUTOPILOT_RUNTIME=ollama).
+  try {
+    const autopilotConfig = autopilotConfigFromEnv();
+    if (autopilotConfig.runtime !== 'off') {
+      const autopilot = new AgentSocialAutopilotService(db, autopilotConfig);
+      autopilot.start();
+      lifecycleManager.register({ serviceName: 'AgentSocialAutopilot', stop: () => autopilot.stop() });
+      console.log(`🪐 Agent Commons autopilot on: runtime=${autopilotConfig.runtime} model=${autopilotConfig.model} agents=${autopilotConfig.agents} every ${autopilotConfig.intervalMs}ms`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Agent Commons autopilot failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
 
   const intelligence = new SwarmIntelligenceService(db);
   const nestedSpawns = new NestedSpawnService(db, recoverySvc, { intelligence, controlUrl: process.env.DJIMITFLO_CONTROL_URL || '' });
