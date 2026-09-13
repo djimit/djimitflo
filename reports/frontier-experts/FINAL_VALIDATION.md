@@ -20,7 +20,7 @@ Ten new tables created in `runMigrations` (`createFrontierExpertTables`): expert
 
 ## 4. Tests
 
-See TEST_REPORT.md: full server suite 356 files / 2662 tests passed, 0 failed, 2 pre-existing skips; frontier-specific 13 files / 49 tests; `tsc --noEmit` clean.
+See TEST_REPORT.md: full server suite 356 files / 2662 tests passed, 0 failed, 2 pre-existing skips; frontier-specific 14 files / 51 tests; `tsc --noEmit` clean.
 
 ## 5. Benchmark (baseline vs enhanced)
 
@@ -58,7 +58,9 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Skills (§34) via OKF/SkillService, injected into perspectives | PROVEN (14 skills validate; prompt injection of procedure tested) |
 | MCP read-only expert tools (§35) | PROVEN (4 tools, offline tests) |
 | HTTP routes: list/get/resolve/transition/council | PROVEN (supertest; council flag-gated, abstains without runtime) |
-| UI (§36), evolution/deprecation jobs (§54–§55) | NOT_PROVEN (not built, P2) |
+| Evolution: capability delta governed, status preserved on unchanged evidence (§54) | PROVEN |
+| Deprecation with typed reasons, history queryable AS OF (§55) | PROVEN |
+| UI (§36), scheduled re-enrichment trigger | NOT_PROVEN (not built, P2) |
 | Production activation | BLOCKED (merge, flag, runtime) |
 
 ## 10. Remaining gaps

@@ -41,9 +41,10 @@ The two skipped files are pre-existing: `expert-swarm-orchestrator.test.ts` (12 
 | skills | frontier-expert-skills.test.ts | 2 | 14 §34 skills install idempotently and validate through SkillService; procedure reaches the perspective prompt without weakening no-persona rules |
 | routes | expert-routes.test.ts | 2 | list/filter/resolve/detail; transition needs an operator (agents 403), registry guards map to 409, council flag-gated and abstains without runtime |
 | mcp | packages/mcp-server/src/__tests__/expert-tools.test.ts | 2 | search/get/capabilities/claims read-only; honest error when tables are absent |
+| evolution / deprecation | expert-evolution.test.ts | 2 | capability delta versioned and withheld from recommendation until checked+approved by different actors; approved status survives re-enrichment; deprecation keeps evidence and AS OF history |
 | end-to-end | expert-e2e-scenario.test.ts | 1 (17 checks) | §59 reference scenario on the frontier path with a scripted evidence-bound model; impersonating perspective surfaced and claim-free; run history stored |
 
-Total frontier-specific: 13 files, 49 tests, 0 skipped (server 47 + mcp-server 2) after commit 0099b19d; the full-suite numbers above include the routes and skills tests (mcp-server suite runs separately: `cd packages/mcp-server && npx vitest run`). Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
+Total frontier-specific: 14 files, 51 tests, 0 skipped (server 49 + mcp-server 2) after commit 0099b19d; the full-suite numbers above include the routes and skills tests (mcp-server suite runs separately: `cd packages/mcp-server && npx vitest run`). Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
 
 ## Not covered by automated tests
 
