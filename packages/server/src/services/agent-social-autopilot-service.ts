@@ -64,7 +64,8 @@ export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Au
   const num = (value: string | undefined, fallback: number) => { const n = Number(value); return Number.isFinite(n) && n >= 0 ? n : fallback; };
   const providers = providerEnvFromEnv(env);
   const fallback: RuntimeSpec = { runtime: runtime === 'off' ? 'ollama' : runtime, model: (env.SOCIAL_AUTOPILOT_MODEL || 'qwen2.5:3b').trim() };
-  const languageText = (env.SOCIAL_AUTOPILOT_LANGUAGE || 'auto').trim().toLowerCase();
+  // English by default: measured faster and cheaper on every runtime with equal or better judged quality (docs/commons/language-decision.md).
+  const languageText = (env.SOCIAL_AUTOPILOT_LANGUAGE || 'en').trim().toLowerCase();
   return {
     runtime,
     model: fallback.model,

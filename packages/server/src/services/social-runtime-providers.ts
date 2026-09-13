@@ -82,7 +82,12 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
   const abort = signal ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS);
   const post = async (url: string, headers: Record<string, string>, body: unknown) => {
     const response = await fetchImpl(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body), signal: abort });
-    if (!response.ok) throw new Error(`SOCIAL_RUNTIME_${spec.runtime.toUpperCase().replace('-', '_')}_HTTP_${response.status}`);
+    if (!response.ok) {
+      // Keep the provider's own reason (quota, invalid model, ...) but bounded; bodies never contain our credentials.
+      let reason = '';
+      try { const parsed = await response.json() as { error?: { message?: string } | string }; reason = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message || ''; } catch { /* non-JSON error body */ }
+      throw new Error(`SOCIAL_RUNTIME_${spec.runtime.toUpperCase().replace('-', '_')}_HTTP_${response.status}${reason ? `: ${reason.slice(0, 160)}` : ''}`);
+    }
     return response.json() as Promise<Record<string, any>>;
   };
   const numbers = (value: Record<string, unknown> | undefined) => Object.fromEntries(Object.entries(value || {}).filter(([, item]) => typeof item === 'number'));
