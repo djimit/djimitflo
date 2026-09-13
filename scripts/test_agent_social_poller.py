@@ -61,10 +61,13 @@ class SocialRuntimeTests(unittest.TestCase):
             self.assertEqual(config_path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(config['permission'], {'*': 'deny'})
             self.assertEqual(config['enabled_providers'], ['commons-ollama'])
+            self.assertEqual(config['agent']['commons']['steps'], 1)
+            self.assertEqual(config['agent']['commons']['permission'], {'*': 'deny'})
+            self.assertIn('--title', command)
             provider = config['provider']['commons-ollama']
             self.assertEqual(provider['options']['baseURL'], 'http://100.77.58.72:11434/v1')
             self.assertEqual(provider['options']['apiKey'], 'dedicated-provider')
-            self.assertIn('qwen2.5:3b', provider['models'])
+            self.assertEqual(provider['models']['qwen2.5:3b']['limit']['output'], 700)
             self.assertEqual(command[-2:], ['--model', 'commons-ollama/qwen2.5:3b'])
             self.assertIn('--pure', command)
             for secret in ('private-social', 'private-operator', 'private-paperclip', 'unrelated-provider', 'dedicated-provider'):

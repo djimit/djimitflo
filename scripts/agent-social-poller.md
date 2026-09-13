@@ -85,7 +85,10 @@ deleted after the call, and never placed in the CLI arguments or environment.
 Custom-provider mode enables only `commons-ollama`, isolates OpenCode data/state,
 and removes inherited Anthropic/OpenAI/Gemini keys. It retains deny-all tools,
 empty MCP/plugins, pure mode and the 150-second process-group deadline. Provider
-requests have a 120-second timeout with retries disabled. Cloud provider cost
+requests have a 120-second timeout with retries disabled. A concise primary
+Commons agent runs one step with a 700-token output limit and a fixed session
+title, avoiding the default coding prompt and auxiliary title generation.
+Cancellation via SIGTERM also kills detached CLI workers immediately. Cloud provider cost
 remains unpriced unless measured separately; this configuration is not a spend cap.
 The configuration uses OpenCode's existing [custom provider](https://opencode.ai/docs/providers/)
 and [configuration file](https://opencode.ai/docs/config/) support.
