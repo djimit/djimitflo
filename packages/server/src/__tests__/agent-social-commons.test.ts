@@ -46,6 +46,55 @@ describe('agent commons read-model', () => {
     expect(learning.answer).not.toContain('abcdefghijklmnop');
   });
 
+  it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    expect(question.payload.params.ecosystem_context).toContain('Paperclip');
+    const reply = {
+      answer: 'Let peers compare retrieval failures.', uncertainty: 'No live measurements yet.',
+      falsifiable_next_step: 'Compare ten known queries against the baseline.', creative_alternative: 'Try a blinded query set.',
+      stop_condition: 'Stop if recall regresses.', runtime: 'opencode',
+      interest: 'Could peers identify missing retrieval evidence?', ecosystem_component: 'DjimitKBWiki',
+      proposed_improvement: 'Add a retrieval evidence comparison view.', delivery_lease_token: question.deliveryLeaseToken,
+    };
+    const response = comms.respondSocial('agent-b', question.id, reply);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM self_improvements').get()).toEqual({ n: 0 });
+    const peerResponse = comms.receiveSocial('agent-a').find((m) => m.id === response.message.id)!;
+    expect(peerResponse.payload.params.interest).toBe(reply.interest);
+    const learning = comms.respondSocial('agent-a', peerResponse.id, { ...reply, interest: '', delivery_lease_token: peerResponse.deliveryLeaseToken });
+    const proposal = db.prepare('SELECT * FROM self_improvements').get() as any;
+    expect(proposal.status).toBe('proposed');
+    expect(proposal.approved_by).toBeNull();
+    expect(proposal.description).toContain(reply.falsifiable_next_step);
+    expect(JSON.parse(proposal.evidence_refs_json)).toContain(`reflection:${learning.reflection_id}`);
+    expect(learning.message.payload.params.improvement_id).toBe(proposal.id);
+    expect(db.prepare('SELECT status FROM specialist_panels WHERE id = ?').get(proposal.panel_id)).toEqual({ status: 'planned' });
+    const reflection = db.prepare('SELECT status, metadata FROM reflection_candidates WHERE id = ?').get(learning.reflection_id) as any;
+    expect(reflection.status).toBe('candidate');
+    expect(JSON.parse(reflection.metadata)).toMatchObject({ candidate_only: true, promotion_allowed: false });
+    expect(comms.respondSocial('agent-a', peerResponse.id, { ...reply, delivery_lease_token: peerResponse.deliveryLeaseToken }).duplicate).toBe(true);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM self_improvements').get()).toEqual({ n: 1 });
+    const nextRound = comms.socialize(0);
+    expect(nextRound.topic).toBe(reply.interest);
+    expect(nextRound.messages[0].payload.params.topic_ref).toBe(`message:${response.message.id}`);
+    expect(nextRound.messages[0].payload.params.ecosystem_component).toBe('DjimitKBWiki');
+    expect(comms.socialize(0).topic).not.toBe(reply.interest);
+    const projected = comms.listSocialCommons().threads.flatMap((t) => t.messages).find((m) => m.id === learning.message.id)!;
+    expect(projected.improvement_id).toBe(proposal.id);
+    expect(projected.improvement_status).toBe('proposed');
+    expect(projected.provenance_status).toBe('runtime_reported');
+  });
+
+  it('requires component context before accepting an improvement and leaves its lease usable', () => {
+    comms.socialize(0);
+    const [question] = comms.receiveSocial('agent-b');
+    expect(() => comms.respondSocial('agent-b', question.id, {
+      answer: 'An idea', uncertainty: 'Unknown', falsifiable_next_step: 'Test', creative_alternative: 'Other',
+      stop_condition: 'Failure', proposed_improvement: 'Add a view', delivery_lease_token: question.deliveryLeaseToken,
+    })).toThrow('SOCIAL_COMPONENT_REQUIRED');
+    expect(db.prepare('SELECT status FROM agent_messages WHERE id = ?').get(question.id)).toEqual({ status: 'delivered' });
+  });
+
   it('seeks out peers that have not met before the same pair talks again', () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-c', 'Agent C', 'active', '[]')").run();
     comms.heartbeat('agent-c', 'ollama');
