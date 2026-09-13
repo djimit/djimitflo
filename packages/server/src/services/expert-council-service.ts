@@ -39,6 +39,8 @@ export interface CouncilResult {
   uncertainties: string[];
   adversarial: { attacks: Array<{ claim_id: string; attack: string; evidence_gap: string }>; runtime: string } | null;
   unsupported_attribution_count: number;
+  /** Perspectives the validator refused (impersonation, invalid output) — surfaced, never hidden (§40, I09). */
+  rejected_perspectives: Array<{ expert_id: string; reason: string }>;
 }
 
 /**
@@ -81,7 +83,7 @@ export class ExpertCouncilService {
 
   async convene(question: string, selection: ResolveOptions = {}, options: { maxParallel?: number; adversarial?: boolean; language?: 'en' | 'nl' } = {}): Promise<CouncilResult> {
     const resolution = this.resolver.resolve(question, selection);
-    const empty = (reason: string): CouncilResult => ({ abstained: true, reason, resolution, perspectives: [], claims: [], relations: [], agreements: [], disagreements: [], uncertainties: [], adversarial: null, unsupported_attribution_count: 0 });
+    const empty = (reason: string): CouncilResult => ({ abstained: true, reason, resolution, perspectives: [], claims: [], relations: [], agreements: [], disagreements: [], uncertainties: [], adversarial: null, unsupported_attribution_count: 0, rejected_perspectives: [] });
     if (resolution.abstained) return empty(resolution.reason ?? 'no_experts');
     if (!this.modelRunnerResolved) {
       this.modelRunnerResolved = true;
@@ -92,13 +94,17 @@ export class ExpertCouncilService {
 
     // Independent perspectives (§16): bounded parallelism, no shared state between calls.
     const perspectives: CouncilPerspective[] = [];
+    const rejected: CouncilResult['rejected_perspectives'] = [];
     const parallel = Math.max(1, Math.min(7, options.maxParallel ?? 3));
     for (let index = 0; index < resolution.experts.length; index += parallel) {
       const batch = resolution.experts.slice(index, index + parallel);
       const settled = await Promise.allSettled(batch.map((expert) => this.perspective(question, expert, options.language)));
-      for (const result of settled) if (result.status === 'fulfilled' && result.value) perspectives.push(result.value);
+      settled.forEach((result, position) => {
+        if (result.status === 'fulfilled' && result.value) perspectives.push(result.value);
+        else if (result.status === 'rejected') rejected.push({ expert_id: batch[position].expert_id, reason: result.reason instanceof Error ? result.reason.message : 'PERSPECTIVE_FAILED' });
+      });
     }
-    if (!perspectives.length) return empty('no_valid_perspective');
+    if (!perspectives.length) return { ...empty('no_valid_perspective'), rejected_perspectives: rejected };
 
     // Claim graph and relations (§17).
     const claims = perspectives.flatMap((perspective) => perspective.claim_ids.map((id, position) => ({ id, expert_id: perspective.expert_id, ...perspective.output.claims[position], evidence_refs: perspective.output.claims[position].evidence_refs })));
@@ -115,6 +121,7 @@ export class ExpertCouncilService {
     return {
       abstained: false, reason: null, resolution, perspectives, claims, relations, agreements, disagreements, uncertainties, adversarial,
       unsupported_attribution_count: 0, // structurally: every persisted claim cites evidence that exists for its expert
+      rejected_perspectives: rejected,
     };
   }
 
