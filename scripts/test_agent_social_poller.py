@@ -49,6 +49,48 @@ class SocialRuntimeTests(unittest.TestCase):
                 output, _, _ = poller.run_cli(runtime, 'quoted peer data')
                 self.assertEqual(poller.extract_object(output), REPLY)
 
+    def test_opencode_custom_provider_is_explicit_isolated_and_secret_scoped(self):
+        config_path = None
+        def execute(command, prompt, cwd, env):
+            nonlocal config_path
+            config_path = Path(env['OPENCODE_CONFIG'])
+            config = json.loads(config_path.read_text())
+            self.assertEqual(config_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(config['permission'], {'*': 'deny'})
+            self.assertEqual(config['enabled_providers'], ['commons-ollama'])
+            provider = config['provider']['commons-ollama']
+            self.assertEqual(provider['options']['baseURL'], 'http://100.77.58.72:11434/v1')
+            self.assertEqual(provider['options']['apiKey'], 'dedicated-provider')
+            self.assertIn('qwen2.5:3b', provider['models'])
+            self.assertEqual(command[-2:], ['--model', 'commons-ollama/qwen2.5:3b'])
+            self.assertIn('--pure', command)
+            for secret in ('private-social', 'private-operator', 'private-paperclip', 'unrelated-provider', 'dedicated-provider'):
+                self.assertNotIn(secret, json.dumps(env))
+            self.assertEqual(env['XDG_DATA_HOME'], cwd)
+            return json.dumps({'type': 'text', 'sessionID': 'native-opencode-run', 'part': {'text': json.dumps(REPLY)}})
+        settings = {'SOCIAL_OPENCODE_PROVIDER_URL': 'http://100.77.58.72:11434/v1',
+                    'SOCIAL_MODEL_ID': 'commons-ollama/qwen2.5:3b', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'dedicated-provider',
+                    'DJIMITFLO_SOCIAL_TOKEN': 'private-social', 'DJIMITFLO_COMMONS_OPERATOR_LOGIN': 'private-operator',
+                    'PAPERCLIP_API_KEY': 'private-paperclip', 'OPENAI_API_KEY': 'unrelated-provider'}
+        with patch.dict(os.environ, settings, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/opencode'), patch.object(poller, 'bounded_process', side_effect=execute):
+            _, run_id, _ = poller.run_cli('opencode', 'peer input')
+            self.assertEqual(run_id, 'native-opencode-run')
+        self.assertFalse(config_path.exists())
+
+    def test_opencode_provider_rejects_unsafe_transport_and_config_substitution(self):
+        settings = {'SOCIAL_MODEL_ID': 'commons-ollama/qwen2.5:3b'}
+        with patch.dict(os.environ, settings, clear=True):
+            for url in ('http://public.example/v1', 'http://8.8.8.8/v1', 'https://user:secret@example.com/v1', 'https://example.com/v1?key=secret', 'file:///etc/passwd', 'https://example.com/{env:SECRET}', 'https://example.com:invalid/v1'):
+                with self.subTest(url=url), patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': url}), self.assertRaises(RuntimeError):
+                    poller.opencode_provider_config()
+            for url in ('http://127.0.0.1:11434/v1', 'http://100.77.58.72:11434/v1', 'https://ollama.com/v1'):
+                with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': url}):
+                    self.assertNotIn('apiKey', poller.opencode_provider_config()['provider']['commons-ollama']['options'])
+            with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': 'https://ollama.com/v1', 'SOCIAL_MODEL_ID': 'other/model'}), self.assertRaises(RuntimeError):
+                poller.opencode_provider_config()
+            with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': 'https://ollama.com/v1', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'private', 'DJIMITFLO_SOCIAL_TOKEN': 'private'}), self.assertRaises(RuntimeError):
+                poller.opencode_provider_config()
+
     def test_nested_json_cannot_replace_answer_and_unknown_fields_are_dropped(self):
         value = {**REPLY, 'interest': 'creative experiment', 'proposed_improvement': 'measure before patching', 'nested': {'ignored': True}, 'runtime': 'spoofed'}
         result = poller.extract_object(json.dumps(value))

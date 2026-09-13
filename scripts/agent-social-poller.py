@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Run one bounded Djimitflo peer-learning poll for a real runtime."""
-import json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.request
+import ipaddress, json, os, re, shutil, signal, subprocess, sys, tempfile, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 def api(method, path, body=None):
@@ -92,6 +92,34 @@ def parse_cli_output(runtime, output):
                 usage = message.get('usage', {})
     return ''.join(texts), run_id, usage
 
+def opencode_provider_config():
+    url = os.environ.get('SOCIAL_OPENCODE_PROVIDER_URL', '')
+    if not url: return None
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or any(c in url for c in '{}\\\r\n'):
+            raise ValueError()
+        if parsed.scheme != 'https':
+            address = ipaddress.ip_address(parsed.hostname)
+            if parsed.scheme != 'http' or not (address.is_private or address in ipaddress.ip_network('100.64.0.0/10')):
+                raise ValueError()
+        if parsed.port is not None and not 1 <= parsed.port <= 65535: raise ValueError()
+    except ValueError:
+        raise RuntimeError('OpenCode provider URL must use HTTPS or a private literal HTTP address without credentials/query') from None
+    model = os.environ.get('SOCIAL_MODEL_ID', '')
+    if not re.fullmatch(r'commons-ollama/[A-Za-z0-9][A-Za-z0-9._:/-]*', model):
+        raise RuntimeError('OpenCode custom provider requires SOCIAL_MODEL_ID=commons-ollama/<model>')
+    options = {'baseURL': url.rstrip('/'), 'timeout': 120000, 'maxRetries': 0}
+    key = os.environ.get('SOCIAL_OPENCODE_PROVIDER_API_KEY', '')
+    if key:
+        if any(c in key for c in '{}\r\n') or key in [os.environ.get(name) for name in ('DJIMITFLO_SOCIAL_TOKEN', 'DJIMITFLO_COMMONS_OPERATOR_LOGIN', 'PAPERCLIP_API_KEY')]:
+            raise RuntimeError('OpenCode custom provider requires a dedicated provider credential')
+        options['apiKey'] = key
+    return {'enabled_providers': ['commons-ollama'], 'provider': {'commons-ollama': {
+        'npm': '@ai-sdk/openai-compatible', 'name': 'Commons Ollama', 'options': options,
+        'models': {model.split('/', 1)[1]: {'name': model.split('/', 1)[1]}},
+    }}}
+
 def run_cli(runtime, prompt):
     executable = shutil.which(os.environ.get(runtime.upper() + '_BIN_PATH', runtime))
     if not executable: raise RuntimeError(f'{runtime} CLI is not installed')
@@ -123,6 +151,15 @@ def run_cli(runtime, prompt):
         elif runtime == 'opencode':
             env.update({'XDG_CONFIG_HOME': directory, 'OPENCODE_DISABLE_PROJECT_CONFIG': 'true',
                         'OPENCODE_CONFIG_CONTENT': json.dumps({'permission': {'*': 'deny'}, 'mcp': {}, 'plugin': []})})
+            provider = opencode_provider_config()
+            if provider:
+                config = json.loads(env.pop('OPENCODE_CONFIG_CONTENT'))
+                config.update(provider)
+                config_file = root / 'provider.json'
+                with open(config_file, 'w', opener=lambda path, flags: os.open(path, flags, 0o600)) as handle:
+                    json.dump(config, handle)
+                env = {key: value for key, value in env.items() if key not in ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY')}
+                env.update({'OPENCODE_CONFIG': str(config_file), 'XDG_DATA_HOME': directory, 'XDG_STATE_HOME': directory})
             args = ['run', '--format', 'json', '--pure']
         else:
             args = ['--mode', 'json', '-p', '--no-session', '--no-tools',
