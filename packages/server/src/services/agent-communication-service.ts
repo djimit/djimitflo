@@ -385,7 +385,7 @@ export class AgentCommunicationService {
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
             reflectionId,
-          });
+          }, true);
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;
             this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);

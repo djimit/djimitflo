@@ -43,7 +43,7 @@ export class SelfImprovementService {
     proposedImprovements: string[];
     loopRunId?: string;
     reflectionId?: string;
-  }): ImprovementProposal[] {
+  }, includeExisting = false): ImprovementProposal[] {
     const evidenceRefs = [
       reflection.loopRunId && `loop:${reflection.loopRunId}`,
       reflection.reflectionId && `reflection:${reflection.reflectionId}`,
@@ -58,7 +58,7 @@ export class SelfImprovementService {
         source: 'reflection',
         priority: type === 'bug_fix' ? 0.9 : type === 'security' ? 0.95 : 0.6,
         evidenceRefs,
-      });
+      }, includeExisting);
       return proposal ? [proposal] : [];
     });
   }
@@ -154,14 +154,14 @@ export class SelfImprovementService {
     return this.getImprovement(id);
   }
 
-  private createProposal(input: ProposalInput): ImprovementProposal | null {
+  private createProposal(input: ProposalInput, includeExisting = false): ImprovementProposal | null {
     const fingerprint = createHash('sha256')
       .update(`${input.source}\0${input.title.trim().toLowerCase()}\0${input.description.trim().toLowerCase()}`)
       .digest('hex');
     const duplicate = this.db.prepare(
       "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating') LIMIT 1"
     ).get(fingerprint) as { id: string } | undefined;
-    if (duplicate) return null;
+    if (duplicate) return includeExisting ? this.getImprovement(duplicate.id) : null;
 
     const id = randomUUID();
     const now = new Date().toISOString();

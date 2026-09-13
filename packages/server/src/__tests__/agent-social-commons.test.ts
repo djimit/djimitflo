@@ -85,6 +85,27 @@ describe('agent commons read-model', () => {
     expect(projected.provenance_status).toBe('runtime_reported');
   });
 
+  it('links distinct peer learnings to the same active proposal without duplicating review panels', () => {
+    const round = comms.socialize(0);
+    const reply = { answer: 'An unverified idea', uncertainty: 'Needs evidence', falsifiable_next_step: 'Compare with baseline',
+      creative_alternative: 'Blind comparison', stop_condition: 'Any regression', ecosystem_component: 'Djimitflo',
+      proposed_improvement: 'Add a peer comparison view' };
+    for (const agent of round.participants) {
+      const [question] = comms.receiveSocial(agent, 1).filter(m => m.payload.action === 'social.question');
+      comms.respondSocial(agent, question.id, { ...reply, delivery_lease_token: question.deliveryLeaseToken });
+    }
+    const learnings = round.participants.map(agent => {
+      const [response] = comms.receiveSocial(agent).filter(m => m.payload.action === 'social.response');
+      return comms.respondSocial(agent, response.id, { ...reply, delivery_lease_token: response.deliveryLeaseToken });
+    });
+    expect(learnings[0].message.id).not.toBe(learnings[1].message.id);
+    expect(learnings[0].reflection_id).not.toBe(learnings[1].reflection_id);
+    expect(learnings[0].message.payload.params.improvement_id).toBeTruthy();
+    expect(learnings[1].message.payload.params.improvement_id).toBe(learnings[0].message.payload.params.improvement_id);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM self_improvements').get()).toEqual({ n: 1 });
+    expect(db.prepare('SELECT COUNT(*) AS n FROM specialist_panels').get()).toEqual({ n: 1 });
+  });
+
   it('requires component context before accepting an improvement and leaves its lease usable', () => {
     comms.socialize(0);
     const [question] = comms.receiveSocial('agent-b');
