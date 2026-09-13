@@ -12,6 +12,8 @@ import { createError } from '../middleware/error-handler';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
+import { AuditService } from '../services/audit-service';
+import { AuditEventType } from '@djimitflo/shared';
 
 function boundedLimit(value: unknown): number {
   if (value === undefined) return 10;
@@ -192,13 +194,17 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
 
   // Agent Commons honeypot: cast a lure (invite absent agents, issue runtime tokens once) and read bites/probes.
   const lure = new AgentLureService(db, comms);
-  router.post('/social/lures', requirePermission('write:swarm_action'), (req: any, res) => {
+  const audit = new AuditService(db);
+  router.post('/social/lures', requirePermission('manage:tokens'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     try {
       const ttlMs = Number(req.body?.ttl_ms);
-      res.status(201).json(lure.castLure({
+      const cast = lure.castLure({
         by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
         ttlMs: Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : undefined, paperclipPath: req.body?.paperclip === false ? null : undefined,
-      }));
+      });
+      for (const invitation of cast.invitations) audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: invitation.agent_id, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: invitation.expires_at, lure_id: cast.lure.id } });
+      res.set('Cache-Control', 'no-store').status(201).json(cast);
     } catch (error) {
       res.status(500).json({ error: { code: 'LURE_FAILED', message: error instanceof Error ? error.message : 'LURE_FAILED' } });
     }
@@ -208,7 +214,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   });
 
   // Operator credential maintenance is separate from the scoped runtime callback surface.
-  router.post('/social/agents/:agentId/token', requirePermission('write:swarm_action'), (req, res) => {
+  router.post('/social/agents/:agentId/token', requirePermission('manage:tokens'), (req, res) => {
     if (!req.user?.sub || (req.user as any).agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     const ttlMs = req.body?.ttl_ms ?? 24 * 3600_000;
     if (typeof ttlMs !== 'number' || !Number.isInteger(ttlMs) || ttlMs < 60_000 || ttlMs > 24 * 3600_000) {
@@ -218,10 +224,12 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     if (!agent) throw createError(404, 'Registered agent required', 'SOCIAL_AGENT_NOT_FOUND');
     if (agent.retired_at || !['active', 'idle'].includes(agent.status)) throw createError(409, 'Agent is not active or idle', 'SOCIAL_AGENT_NOT_ELIGIBLE');
     if (!new RuntimeGovernanceService(db).isAllowed(req.params.agentId)) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
+    const token = mintSpawnToken(resolveSpawnTokenSecret(), req.params.agentId, 'social-runtime', ttlMs);
+    const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+    audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_runtime_token_issued', resource_type: 'agent', resource_id: req.params.agentId, user_id: req.user.sub, metadata: { scope: 'social-runtime', expires_at: expiresAt } });
     res.set('Cache-Control', 'no-store').status(201).json({
       agent_id: req.params.agentId, scope: 'social-runtime',
-      token: mintSpawnToken(resolveSpawnTokenSecret(), req.params.agentId, 'social-runtime', ttlMs),
-      expires_at: new Date(Date.now() + ttlMs).toISOString(),
+      token, expires_at: expiresAt,
     });
   });
 

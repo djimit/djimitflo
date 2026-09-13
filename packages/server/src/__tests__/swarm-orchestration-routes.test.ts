@@ -1,4 +1,5 @@
 import express from 'express';
+import { ROLE_PERMISSIONS, UserRole } from '@djimitflo/shared';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createTestDb } from './helpers/test-db';
@@ -57,6 +58,7 @@ describe('swarm orchestration message pagination', () => {
 
   it('renews only an eligible registered agent credential for an authorized operator', async () => {
     const db = createTestDb(); dbs.push(db);
+    db.prepare("INSERT INTO users (id,email,password_hash,role) VALUES ('operator','operator@test','unused','admin')").run();
     db.prepare("INSERT INTO agents (id,name,status,metadata) VALUES ('present','Present','active',?),('idle','Idle','idle','{}'),('paused','Paused','paused','{}'),('blocked','Blocked','active','{}'),('retired','Retired','active','{}')")
       .run(JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: new Date().toISOString() } }));
     db.prepare("UPDATE agents SET retired_at = ? WHERE id = 'retired'").run(new Date().toISOString());
@@ -64,8 +66,9 @@ describe('swarm orchestration message pagination', () => {
     governance.registerBaseline('blocked', { overallScore: 1, categoryScores: {}, certifiedAt: new Date().toISOString() });
     db.prepare("UPDATE runtime_governance_agents SET quarantined = 1 WHERE agent_id = 'blocked'").run();
     const auth = { requirePermission: (permission: string) => (req: any, res: any, next: any) => {
-      expect(permission).toBe('write:swarm_action');
-      if (req.get('Authorization') !== 'Bearer test-operator') { res.status(403).end(); return; }
+      expect(permission).toBe('manage:tokens');
+      const role = req.get('Authorization') === 'Bearer test-maker' ? UserRole.MAKER : UserRole.ADMIN;
+      if (!ROLE_PERMISSIONS[role].includes(permission) || req.get('Authorization') !== 'Bearer test-operator') { res.status(403).end(); return; }
       req.user = { sub: 'operator', ...(req.get('X-Test-Agent') ? { agent_id: 'present' } : {}) }; next();
     } } as any;
     const app = express().use(express.json()).use('/swarm', createSwarmOrchestrationRoutes(db, auth)).use(errorHandler);
@@ -78,9 +81,24 @@ describe('swarm orchestration message pagination', () => {
       expect(validateSpawnToken(resolveSpawnTokenSecret(), response.body.token, 'other-agent', 'social-runtime')).toBe(false);
       expect(validateSpawnToken(resolveSpawnTokenSecret(), response.body.token, agent, 'other-scope')).toBe(false);
       expect(Date.parse(response.body.expires_at) - Date.now()).toBeLessThanOrEqual(60_000);
+      const event = db.prepare("SELECT user_id, resource_id, metadata FROM audit_events WHERE action = 'social_runtime_token_issued' AND resource_id = ?").get(agent) as any;
+      expect(event).toMatchObject({ user_id: 'operator', resource_id: agent });
+      expect(JSON.parse(event.metadata)).toEqual({ scope: 'social-runtime', expires_at: response.body.expires_at });
+      expect(JSON.stringify(event)).not.toContain(response.body.token);
     }
     for (const [agent, code] of [['missing', 404], ['paused', 409], ['blocked', 403], ['retired', 409]] as const) expect((await renew(agent)).status).toBe(code);
     for (const ttl_ms of [0, 59_999, 86_400_001, '60000', 60_000.5]) expect((await renew('present', { ttl_ms })).status).toBe(400);
+    for (const path of ['/swarm/social/agents/present/token', '/swarm/social/lures']) {
+      expect((await request(app).post(path).set('Authorization', 'Bearer test-maker').send({ paperclip: false })).status).toBe(403);
+    }
+    const lure = await request(app).post('/swarm/social/lures').set('Authorization', 'Bearer test-operator').send({ paperclip: false });
+    expect(lure.status).toBe(201);
+    expect(lure.headers['cache-control']).toBe('no-store');
+    for (const invitation of lure.body.invitations) {
+      const event = db.prepare("SELECT metadata FROM audit_events WHERE action = 'social_runtime_token_issued' AND resource_id = ? ORDER BY rowid DESC LIMIT 1").get(invitation.agent_id) as any;
+      expect(JSON.parse(event.metadata)).toMatchObject({ scope: 'social-runtime', lure_id: lure.body.lure.id, expires_at: invitation.expires_at });
+      expect(JSON.stringify(event)).not.toContain(invitation.token);
+    }
     const socialToken = mintSpawnToken(resolveSpawnTokenSecret(), 'present', 'social-runtime');
     expect((await request(app).post('/swarm/social/agents/present/token').set('X-Agent-Social-Token', socialToken).send({})).status).toBe(403);
     expect((await renew('present').set('X-Test-Agent', 'present')).status).toBe(403);
