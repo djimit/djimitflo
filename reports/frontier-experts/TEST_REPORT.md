@@ -38,9 +38,12 @@ The two skipped files are pre-existing: `expert-swarm-orchestrator.test.ts` (12 
 | ingestion | pacing-frontier-ingestion.test.ts | 3 | parser on the real page structure, idempotent ingestion, DISCOVERED only, anonymous skipped |
 | enrichment | expert-evidence-enrichment.test.ts | 4 | Atom author view parsing, Tier-1 attachment + capability inference with evidence refs, ambiguous fails closed (I03), unmatched stays DISCOVERED (I10), bounded batch |
 | benchmark / calibration | expert-resolution-benchmark.test.ts | 3 | ≥25 in-domain queries over 12 families; §44 hard gates all zero; improvement vs naive baseline on P@3, R@3, NDCG, primary ratio, false-expert, unsupported attribution, contradiction detection; abstention quality |
+| skills | frontier-expert-skills.test.ts | 2 | 14 §34 skills install idempotently and validate through SkillService; procedure reaches the perspective prompt without weakening no-persona rules |
+| routes | expert-routes.test.ts | 2 | list/filter/resolve/detail; transition needs an operator (agents 403), registry guards map to 409, council flag-gated and abstains without runtime |
+| mcp | packages/mcp-server/src/__tests__/expert-tools.test.ts | 2 | search/get/capabilities/claims read-only; honest error when tables are absent |
 | end-to-end | expert-e2e-scenario.test.ts | 1 (17 checks) | §59 reference scenario on the frontier path with a scripted evidence-bound model; impersonating perspective surfaced and claim-free; run history stored |
 
-Total frontier-specific: 10 files, 43 tests, 0 skipped. Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
+Total frontier-specific: 13 files, 49 tests, 0 skipped (server 47 + mcp-server 2) after commit 0099b19d; the full-suite numbers above predate the routes/MCP/skills commits and are re-run before merge. Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
 
 ## Not covered by automated tests
 

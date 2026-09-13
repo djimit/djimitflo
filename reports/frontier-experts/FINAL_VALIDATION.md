@@ -12,7 +12,7 @@ Branch `feat/frontier-expert-intelligence` (base main ab9a8fb1, head af642fd2), 
 
 ## 2. Files changed (non-test, non-report)
 
-`.codex/frontier-expert-intelligence.md` · `packages/server/src/database/migrate.ts` · `services/judge-service.ts` · `services/expert-swarm-orchestrator.ts` · `services/frontier-expert-registry-service.ts` · `services/expert-perspective-builder.ts` · `services/expert-resolver-service.ts` · `services/expert-council-service.ts` · `services/pacing-frontier-ingestion-service.ts` · `services/expert-evidence-enrichment-service.ts` · `services/expert-resolution-benchmark.ts` · `services/expert-e2e-scenario.ts` · `services/knowledge-adapters/arxiv-adapter.ts` · `scripts/expert-resolution-benchmark.ts` · `scripts/expert-e2e-scenario.ts`. Ten test files and eleven reports (`reports/frontier-experts/`).
+`.codex/frontier-expert-intelligence.md` · `packages/server/src/database/migrate.ts` · `services/judge-service.ts` · `services/expert-swarm-orchestrator.ts` · `services/frontier-expert-registry-service.ts` · `services/expert-perspective-builder.ts` · `services/expert-resolver-service.ts` · `services/expert-council-service.ts` · `services/pacing-frontier-ingestion-service.ts` · `services/expert-evidence-enrichment-service.ts` · `services/expert-resolution-benchmark.ts` · `services/expert-e2e-scenario.ts` · `services/knowledge-adapters/arxiv-adapter.ts` · `scripts/expert-resolution-benchmark.ts` · `scripts/expert-e2e-scenario.ts` · `services/frontier-expert-skills.ts` · `scripts/install-frontier-skills.ts` · `routes/swarms.ts` · `packages/mcp-server/src/tools/experts.ts` · `packages/mcp-server/src/register-tools.ts`. Ten test files and eleven reports (`reports/frontier-experts/`).
 
 ## 3. Database / schema
 
@@ -55,7 +55,10 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Full seed enrichment run | BLOCKED (G-01) |
 | Benchmark + hard gates | PROVEN (synthetic) / NOT_PROVEN (live data) |
 | §59 end-to-end scenario | PROVEN (scripted) / BLOCKED (live model) |
-| Skills, MCP, UI, evolution/deprecation | NOT_PROVEN (not built, P2) |
+| Skills (§34) via OKF/SkillService, injected into perspectives | PROVEN (14 skills validate; prompt injection of procedure tested) |
+| MCP read-only expert tools (§35) | PROVEN (4 tools, offline tests) |
+| HTTP routes: list/get/resolve/transition/council | PROVEN (supertest; council flag-gated, abstains without runtime) |
+| UI (§36), evolution/deprecation jobs (§54–§55) | NOT_PROVEN (not built, P2) |
 | Production activation | BLOCKED (merge, flag, runtime) |
 
 ## 10. Remaining gaps
@@ -64,4 +67,4 @@ GAP_REGISTER.md, G-01 … G-10.
 
 ## 11. Commit-ready summary
 
-Nine commits on `feat/frontier-expert-intelligence`, each with green tests; no change to existing behaviour unless the flag or `expertSelection.force` is set; PR to be opened against main once the user decides on PR 223 ordering (the council's model runner imports the provider module from that branch lazily and abstains cleanly when absent).
+Fourteen commits on `feat/frontier-expert-intelligence` (PR 227), each with green tests; no change to existing behaviour unless the flag or `expertSelection.force` is set; PR to be opened against main once the user decides on PR 223 ordering (the council's model runner imports the provider module from that branch lazily and abstains cleanly when absent).
