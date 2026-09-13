@@ -18,6 +18,14 @@ REPLY = dict(answer='a', uncertainty='u', falsifiable_next_step='f', creative_al
 
 
 class SocialRuntimeTests(unittest.TestCase):
+    def test_provider_error_only_exposes_numeric_http_status(self):
+        event = {'type': 'error', 'error': {'data': {'statusCode': 401, 'message': 'secret provider body'}}}
+        with self.assertRaisesRegex(RuntimeError, '^opencode provider HTTP 401$'):
+            poller.parse_cli_output('opencode', json.dumps(event))
+        event['error']['data']['statusCode'] = 'secret'
+        with self.assertRaisesRegex(RuntimeError, '^opencode returned an error event$'):
+            poller.parse_cli_output('opencode', json.dumps(event))
+
     def test_token_and_runtime_configuration_cannot_escape_to_children(self):
         with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'private', 'NODE_OPTIONS': '--require evil', 'OPENCODE_CONFIG_CONTENT': 'evil', 'ANTHROPIC_API_KEY': 'provider'}, clear=True):
             for runtime in ('claude', 'gemini', 'opencode', 'pi', 'hermes'):

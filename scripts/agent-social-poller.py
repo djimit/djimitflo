@@ -52,6 +52,12 @@ def runtime_env(runtime):
     }
     return {key: os.environ[key] for key in (*common, *auth.get(runtime, ())) if key in os.environ}
 
+def provider_http_status(event):
+    error = event.get('error') or {}
+    data = error.get('data') or {} if isinstance(error, dict) else {}
+    status = data.get('statusCode') if isinstance(data, dict) else None
+    return status if isinstance(status, int) and 400 <= status <= 599 else None
+
 def bounded_process(command, prompt, cwd, env, timeout=150):
     # Cancellation must also stop the detached CLI and all of its workers.
     def cancelled(signum, _frame):
@@ -72,6 +78,12 @@ def bounded_process(command, prompt, cwd, env, timeout=150):
                 child.communicate()
             if child.returncode:
                 # Runtime logs can contain credentials or peer content; keep them local.
+                if Path(command[0]).name == 'opencode':
+                    for line in stdout.splitlines():
+                        try: event = json.loads(line)
+                        except json.JSONDecodeError: continue
+                        status = provider_http_status(event) if isinstance(event, dict) else None
+                        if status: raise RuntimeError(f'opencode provider HTTP {status}')
                 raise RuntimeError(f'{Path(command[0]).name} failed with exit {child.returncode}')
         return stdout
     finally:
@@ -87,7 +99,10 @@ def parse_cli_output(runtime, output):
     for line in output.splitlines():
         try: event = json.loads(line)
         except json.JSONDecodeError: continue
-        if event.get('type') == 'error': raise RuntimeError(f'{runtime} returned an error event')
+        if event.get('type') == 'error':
+            status = provider_http_status(event)
+            if status: raise RuntimeError(f'{runtime} provider HTTP {status}')
+            raise RuntimeError(f'{runtime} returned an error event')
         if runtime == 'opencode':
             run_id = event.get('sessionID') or run_id
             if event.get('type') == 'text': texts.append(event.get('part', {}).get('text', ''))
