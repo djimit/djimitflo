@@ -27,6 +27,8 @@ import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
 import { ExpertResolverService } from '../services/expert-resolver-service';
+import { PacingFrontierIngestionService } from '../services/pacing-frontier-ingestion-service';
+import { ExpertEvidenceEnrichmentService } from '../services/expert-evidence-enrichment-service';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
@@ -271,6 +273,19 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const reason = String(req.body?.reason || '');
     if (!['stale', 'unsupported', 'superseded', 'misattributed'].includes(reason)) throw createError(400, 'reason must be stale, unsupported, superseded or misattributed', 'VALIDATION_ERROR');
     try { res.json(registry().deprecate(req.params.id, { reason: reason as 'stale' | 'unsupported' | 'superseded' | 'misattributed', actor, note: typeof req.body?.note === 'string' ? req.body.note : undefined })); } catch (error) { registryError(error); }
+  }));
+  // Operator triggers for ingestion and enrichment (§33, §51): bounded, idempotent, never advancing past CAPABILITY_INFERRED.
+  router.post('/expert/ingest/pacing', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    res.json(await new PacingFrontierIngestionService(db).ingest({ actor: `ingestion:pacing:${actor}`, force: req.body?.force === true }));
+  }));
+  router.post('/expert/enrich', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    const limit = req.body?.limit === undefined ? 3 : Number(req.body.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw createError(400, 'limit must be an integer between 1 and 5 (one arXiv request per expert, rate-limited)', 'VALIDATION_ERROR');
+    const service = new ExpertEvidenceEnrichmentService(db);
+    const results = await service.enrichBatch({ actor: `ingestion:arxiv:${actor}`, limit, retryBefore: typeof req.body?.retry_before === 'string' ? req.body.retry_before : undefined });
+    res.json({ results, pending: service.pending() });
   }));
   router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {
     operatorActor(req);

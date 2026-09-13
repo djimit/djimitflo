@@ -46,6 +46,18 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
     expect((await request(app).get('/swarms/expert/experts/expert:nope')).status).toBe(404);
   });
 
+  it('offers bounded operator triggers for ingestion and enrichment', async () => {
+    expect((await request(app).post('/swarms/expert/enrich').send({ limit: 50 })).body.error.code).toBe('VALIDATION_ERROR');
+    user.agent_id = 'agent-1';
+    expect((await request(app).post('/swarms/expert/ingest/pacing').send({})).status).toBe(403);
+    delete user.agent_id;
+    // No network in tests: mark every discovered identity as already attempted, so the bounded batch has nothing to fetch.
+    db.prepare("UPDATE expert_identities SET provenance_json = json_set(provenance_json, '$.enrichment.attempted_at', '2026-09-01T00:00:00Z') WHERE lifecycle_state = 'DISCOVERED'").run();
+    const enrich = await request(app).post('/swarms/expert/enrich').send({ limit: 2 });
+    expect(enrich.status).toBe(200);
+    expect(enrich.body).toEqual({ results: [], pending: 0 });
+  });
+
   it('keeps lifecycle mutation governed: operator identity as actor, registry guards enforced, council flag-gated', async () => {
     const discovered = (await request(app).get('/swarms/expert/experts?state=DISCOVERED&limit=1')).body.experts[0];
     // A signature-only signatory cannot be promoted, whoever asks (I01).
