@@ -211,7 +211,7 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/socialize', requirePermission('write:swarm_action'), (req, res) => {
     // Operator-triggered rounds may pass cooldown_ms (0 = start now); the autonomous loop keeps the 6h default.
     const cooldown = Number(req.body?.cooldown_ms);
-    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined);
+    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined, 'operator');
     res.status(result.status === 'started' ? 201 : 200).json(result);
   });
 
