@@ -25,6 +25,8 @@ import { LoopService } from '../services/loop-service';
 import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
+import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
+import { ExpertResolverService } from '../services/expert-resolver-service';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
@@ -222,6 +224,49 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/history', requirePermission('read:evidence'), route((_req, res) => { res.json(new ExpertSwarmOrchestrator(db).getHistory(20)); }));
   router.get('/expert/sources', requirePermission('read:evidence'), route((_req, res) => { res.json({ sources: new ExpertSwarmOrchestrator(db).getAvailableSources() }); }));
   router.get('/expert/updates', requirePermission('read:evidence'), route((_req, res) => { res.json(new OkfKnowledgeUpdater(db).getUpdateHistory(20)); }));
+
+  // Frontier Expert Intelligence (§35): read-only retrieval is broad, mutation stays governed.
+  const registry = () => new FrontierExpertRegistryService(db);
+  const operatorActor = (req: any): string => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'EXPERT_OPERATOR_REQUIRED');
+    return String(req.user.email || req.user.sub);
+  };
+  router.get('/expert/experts', requirePermission('read:evidence'), route((req, res) => {
+    const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw createError(400, 'limit must be a positive integer', 'VALIDATION_ERROR');
+    res.json({ experts: registry().list({ state: req.query.state as string | undefined, capability: req.query.capability as string | undefined, name: req.query.name as string | undefined, limit }) });
+  }));
+  router.get('/expert/experts/:id', requirePermission('read:evidence'), route((req, res) => {
+    const reg = registry();
+    const expert = reg.get(req.params.id);
+    if (!expert) throw createError(404, 'Expert not found', 'EXPERT_NOT_FOUND');
+    const asOf = typeof req.query.as_of === 'string' ? req.query.as_of : null;
+    res.json({
+      expert, provenance: reg.provenance(expert.id), affiliations: reg.affiliationsAsOf(expert.id, asOf ?? new Date().toISOString()), versions: reg.versions(expert.id),
+      snapshot: asOf ? reg.asOf(expert.id, asOf) : null,
+      claims: db.prepare('SELECT * FROM expert_claims WHERE expert_id = ? ORDER BY created_at DESC LIMIT 100').all(expert.id),
+      lifecycle: db.prepare('SELECT from_state, to_state, actor, reason, created_at FROM expert_lifecycle_events WHERE expert_id = ? ORDER BY created_at ASC').all(expert.id),
+    });
+  }));
+  router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
+    const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+    if (!question) throw createError(400, 'question is required', 'VALIDATION_ERROR');
+    res.json(new ExpertResolverService(db).resolve(question, { maxExperts: boundedParallel(req.body.max_experts), asOf: typeof req.body.as_of === 'string' ? req.body.as_of : undefined, capabilities: Array.isArray(req.body.capabilities) ? req.body.capabilities.map(String) : undefined }));
+  }));
+  router.post('/expert/experts/:id/transition', requirePermission('write:swarm_action'), route((req, res) => {
+    const actor = operatorActor(req);
+    const to = String(req.body?.to || '') as ExpertLifecycleState;
+    try { res.json(registry().transition(req.params.id, to, { actor, reason: typeof req.body?.reason === 'string' ? req.body.reason : undefined })); }
+    catch (error) { const message = error instanceof Error ? error.message : 'EXPERT_TRANSITION_FAILED'; const code = message.split(':')[0]; throw createError(code === 'EXPERT_NOT_FOUND' ? 404 : 409, message, code); }
+  }));
+  router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {
+    operatorActor(req);
+    if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled (DJIMITFLO_FRONTIER_EXPERTS_ENABLED)', 'FRONTIER_EXPERTS_DISABLED');
+    const topic = typeof req.body?.topic === 'string' ? req.body.topic.trim() : '';
+    if (!topic) throw createError(400, 'topic is required', 'VALIDATION_ERROR');
+    const result = await new ExpertSwarmOrchestrator(db).dispatch({ topic, domains: [], maxParallel: boundedParallel(req.body.max_parallel), expertSelection: { maxExperts: boundedParallel(req.body.max_experts), adversarial: req.body.adversarial !== false, language: req.body.language === 'nl' ? 'nl' : 'en' } });
+    res.json(result);
+  }));
 
   // RSI Engine
   router.post('/rsi/analyze', requirePermission('write:swarm_action'), route((_req, res) => {
