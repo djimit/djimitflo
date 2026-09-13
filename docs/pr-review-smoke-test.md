@@ -7,3 +7,5 @@ once the review comment + check run are confirmed to have posted.
 Retrigger after gh CLI + auth were added to production.
 
 Retrigger after commit-status API fix.
+
+Retrigger after commit-statuses permission was added.
