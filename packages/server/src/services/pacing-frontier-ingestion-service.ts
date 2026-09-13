@@ -136,6 +136,8 @@ function decodeEscapes(text: string): string {
 /** The flight payload is a JS string literal (layer 1) wrapping JSON text (layer 2). Nothing is executed. */
 function decodeFlight(raw: string): string { return decodeEscapes(raw); }
 
+const HTML_ENTITIES: Record<string, string> = { '&#x27;': "'", '&amp;': '&', '&quot;': '"' };
+/** Single pass over the three entities the page emits, so "&amp;quot;" can never be unescaped twice. */
 function unescapeJson(text: string): string {
-  return decodeEscapes(text).replace(/&#x27;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+  return decodeEscapes(text).replace(/&(?:#x27|amp|quot);/g, (entity) => HTML_ENTITIES[entity]);
 }

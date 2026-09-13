@@ -11,7 +11,7 @@ function page(signatories: Array<[string, string, string | null]>, quotes: Array
     signatories: signatories.map(([name, title, quoteId]) => ({ name, title, quoteId: quoteId ?? '$undefined' })),
     quotes: quotes.map(([id, name, title, quote]) => ({ id, name, title, quote })),
     signatoryCount: 1386,
-  }).replace(/"quoteId":"\$undefined"/g, '"quoteId":"$undefined"');
+  });
   const escaped = payload.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return `<html><body><p class="text-[16px] font-medium">${signatories[0][0]}</p><script>self.__next_f.push([1,"0:${escaped}"])</script></body></html>`;
 }
