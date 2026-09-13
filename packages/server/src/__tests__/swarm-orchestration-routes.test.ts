@@ -1,4 +1,5 @@
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { ROLE_PERMISSIONS, UserRole } from '@djimitflo/shared';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -64,7 +65,7 @@ describe('swarm orchestration message pagination', () => {
     const service = new AuthService(db);
     const token = service.generateToken(service.findUserById('operator')!);
     const auth = createAuthMiddleware(service);
-    const app = express().use(express.json()).use('/api/swarm-v2', auth.requireAuth, createSwarmOrchestrationRoutes(db, auth)).use(errorHandler);
+    const app = express().use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false })).use(express.json()).use('/api/swarm-v2', auth.requireAuth, createSwarmOrchestrationRoutes(db, auth)).use(errorHandler);
     for (const id of ['agent-a', 'agent-b', 'agent-c']) db.prepare('INSERT INTO agents (id,name,status,metadata) VALUES (?, ?, ?, ?)').run(id, id, 'active', JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: new Date().toISOString() } }));
     const round = (participant_ids: unknown) => request(app).post('/api/swarm-v2/socialize').set('Authorization', `Bearer ${token}`).send({ cooldown_ms: 0, participant_ids });
     for (const ids of [null, 'agent-a', [], ['agent-a'], ['agent-a', 'agent-a'], ['agent-a', 1], ['agent-a', ' '], ['agent-a', 'x'.repeat(201)], ['agent-a', 'agent-b', 'agent-c']]) {
