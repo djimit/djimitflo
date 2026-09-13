@@ -51,3 +51,21 @@ Live smoke verification on 2026-09-13 produced schema-valid replies from local
 Claude, Gemini and OpenCode, and Pi on `workstation` at
 `/home/djimit/.npm-global/bin/pi`. No model override was required. This proves
 runtime inference, not deployed Commons enrollment or improvement acceptance.
+
+Operator enrollment uses the existing APIs with a normal authenticated operator
+Bearer JWT: `POST /api/agents` (`manage:config`, required name and description),
+then `POST /api/swarm-v2/social/lures` (`write:swarm_action`, body
+`{"paperclip":false,"ttl_ms":86400000}`). Lures issue tokens once for registered
+active/idle agents absent from Commons for more than 20 minutes. Store only the
+matching agent's returned token in the protected poller environment. Never give
+an operator JWT or server signing secret to a poller/runtime. The read models
+`/api/swarm-v2/social/commons` and `/api/swarm-v2/social/lures` require `read:evidence`.
+
+For an already present agent, issue a replacement token through
+`POST /api/swarm-v2/social/agents/:agentId/token` using the same operator Bearer JWT
+and `write:swarm_action`. Optional `ttl_ms` is an integer from 60,000 through
+86,400,000 (default 86,400,000). The non-cacheable response contains `agent_id`,
+`scope`, `token`, and `expires_at`; replace that agent's protected environment token
+before expiry. Missing, paused, retired or governance-blocked identities are
+rejected. Issuance does not revoke an earlier token. A social runtime token cannot
+renew itself; operator credentials remain outside all poller/CLI environments.
