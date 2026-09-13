@@ -130,7 +130,7 @@ export class AgentCommunicationService {
   }
 
   /** Open one bounded peer exchange between recently connected real runtimes. */
-  socialize(cooldownMs = 6 * 3600_000): SocializationResult {
+  socialize(cooldownMs = 6 * 3600_000, facilitatorTrigger: 'autonomous' | 'operator' = 'autonomous'): SocializationResult {
     this.cleanup();
     const cutoff = new Date(Date.now() - Math.max(0, cooldownMs)).toISOString();
     const recent = this.db.prepare(`
@@ -194,8 +194,9 @@ export class AgentCommunicationService {
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
+      facilitatorTrigger,
     });
     const messages = this.db.transaction(() => [
       question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
@@ -366,6 +367,7 @@ export class AgentCommunicationService {
     epistemicRole?: EpistemicRole;
     idempotencyKey?: string;
     facilitatorCommit?: string;
+    facilitatorTrigger?: 'autonomous' | 'operator';
   }): AgentMessage {
     const validTypes: MessageType[] = ['task', 'result', 'question', 'alert', 'handoff', 'knowledge'];
     if (!validTypes.includes(input.type)) throw new Error('BOARD_MESSAGE_TYPE_INVALID');
@@ -382,10 +384,10 @@ export class AgentCommunicationService {
     const idempotencyKey = typeof input.idempotencyKey === 'string' && input.idempotencyKey.trim()
       ? input.idempotencyKey.trim()
       : undefined;
-    const { facilitator_commit: _untrustedFacilitatorCommit, ...inputParams } = input.params || {};
+    const { facilitator_commit: _untrustedFacilitatorCommit, facilitator_trigger: _untrustedFacilitatorTrigger, ...inputParams } = input.params || {};
     const facilitatorCommit = input.facilitatorCommit?.trim();
     if (facilitatorCommit && !/^[0-9a-f]{40}$/i.test(facilitatorCommit)) throw new Error('SOCIAL_FACILITATOR_COMMIT_INVALID');
-    const params = { ...inputParams, ...(input.facilitatorCommit !== undefined ? { facilitator_commit: facilitatorCommit || '' } : {}) };
+    const params = { ...inputParams, ...(input.facilitatorCommit !== undefined ? { facilitator_commit: facilitatorCommit || '' } : {}), ...(input.facilitatorTrigger ? { facilitator_trigger: input.facilitatorTrigger } : {}) };
     const fingerprint = boardMessageFingerprint({
       from: input.from, to: input.to, type: input.type, priority: input.priority || 3,
       action: input.action, params, context: input.context,
@@ -705,7 +707,7 @@ export class AgentCommunicationService {
 
   private runtimeSafeMessage(message: AgentMessage): AgentMessage {
     const params = message.payload.params || {};
-    const allowedParams = ['topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit'];
+    const allowedParams = ['topic', 'topic_ref', 'answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition', 'runtime', 'model_id', 'runtime_run_id', 'facilitator_commit', 'facilitator_trigger'];
     return { ...message, payload: {
       action: message.payload.action,
       context: this.cleanOptional(message.payload.context, 4_000),

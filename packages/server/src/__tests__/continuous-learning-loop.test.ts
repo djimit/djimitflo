@@ -76,6 +76,7 @@ describe('G127: Continuous Learning Loop', () => {
       expect(result.socialExchangesStarted).toBe(1);
       expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
       expect(db.prepare("SELECT DISTINCT json_extract(payload_json, '$.params.facilitator_commit') AS commit_sha FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").all()).toEqual([{ commit_sha: 'a'.repeat(40) }]);
+      expect(db.prepare("SELECT DISTINCT json_extract(payload_json, '$.params.facilitator_trigger') AS trigger FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").all()).toEqual([{ trigger: 'autonomous' }]);
     } finally { delete process.env.DJIMITFLO_COMMIT_SHA; }
   });
 

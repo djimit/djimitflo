@@ -39,6 +39,7 @@ interface InternalPair {
   reflection_status: string | null;
   reflection_metadata: Record<string, unknown>;
   facilitator_commit: string;
+  facilitator_trigger: string;
   metrics: {
     peer_uptake_delta: number;
     content_novelty: number;
@@ -82,6 +83,15 @@ interface RuntimeProvenance {
   commit_counts: Record<string, number>;
 }
 
+interface TriggerProvenance {
+  status: 'PASS' | 'UNDETERMINED';
+  allowed_trigger: 'autonomous';
+  pairs_with_provenance: number;
+  missing_pairs: number;
+  disallowed_pairs: number;
+  trigger_counts: Record<string, number>;
+}
+
 export interface CampaignReport {
   schema: 'djimit.social-learning-campaign.report.v1';
   campaign_id: string;
@@ -104,6 +114,7 @@ export interface CampaignReport {
   worldlab: WorldLabEvidence | null;
   outcome_evidence: { matched: number; causal: number; metric: MetricSummary };
   runtime_provenance: RuntimeProvenance;
+  trigger_provenance: TriggerProvenance;
   promotion: { allowed: false; reason: string };
   limitations: string[];
   evidence_hash: string;
@@ -146,7 +157,8 @@ export class SocialLearningCampaignService {
       independent_variables: ['peer feedback exposure'],
       dependent_variables: ['peer uptake delta', 'content novelty', 'evidence retention', 'falsifiability specificity', 'explicit correction signal', 'repetition risk', 'linked operational outcome lift'],
       controls: ['same thread', 'same agent', 'same topic', 'pre-feedback proposal'],
-      confounders: ['fixed ordering', 'topic drift', 'model updates', 'runtime retries', 'mandatory response fields', 'runtime deployment drift'],
+      confounders: ['fixed ordering', 'topic drift', 'model updates', 'runtime retries', 'mandatory response fields', 'runtime deployment drift', 'operator-triggered social rounds'],
+      allowed_social_trigger: 'autonomous',
       randomization: 'none; paired observational design with WorldLab counterfactual replay',
       stopping_condition: `seven days and at least ${minimumPairs} complete pairs`,
       falsification: 'peer-uptake 95% interval does not exceed +0.05, or linked causal outcome evidence does not improve',
@@ -215,17 +227,18 @@ export class SocialLearningCampaignService {
     const checker = this.check(pairs);
     const outcome = this.outcomeEvidence(pairs, state.started_at, windowEnd, state.minimum_pairs);
     const runtimeProvenance = this.runtimeProvenance(pairs, this.string(this.object(state.manifest.provenance).runtime_commit));
+    const triggerProvenance = this.triggerProvenance(pairs);
     const worldlab = this.worldlab(input.worldlab, state.campaign_id, state.latest_report_hash);
     let status: CampaignStatus = 'RUNNING';
     if (complete && !worldlab) status = 'AWAITING_ASSURANCE';
     else if (complete) {
       status = peerSignal === 'FALSIFIED' || outcome.status === 'FALSIFIED' || checker.status === 'FAIL' || worldlab?.status === 'FAIL'
         ? 'FALSIFIED'
-        : peerSignal === 'SUPPORTED' && outcome.status === 'SUPPORTED' && checker.status === 'PASS' && runtimeProvenance.status === 'PASS' && worldlab?.status === 'PASS' && worldlab.causal_claim_supported
+        : peerSignal === 'SUPPORTED' && outcome.status === 'SUPPORTED' && checker.status === 'PASS' && runtimeProvenance.status === 'PASS' && triggerProvenance.status === 'PASS' && worldlab?.status === 'PASS' && worldlab.causal_claim_supported
           ? 'SUPPORTED' : 'UNDETERMINED';
     }
     const publicPairs = pairs.map(pair => this.publicPair(pair));
-    const evidenceHash = `sha256:${this.hash({ campaign_id: state.campaign_id, observation_window: { start: state.started_at, end: windowEnd }, pairs: publicPairs, metrics, peerSignal, checker, outcome, runtimeProvenance, worldlab })}`;
+    const evidenceHash = `sha256:${this.hash({ campaign_id: state.campaign_id, observation_window: { start: state.started_at, end: windowEnd }, pairs: publicPairs, metrics, peerSignal, checker, outcome, runtimeProvenance, triggerProvenance, worldlab })}`;
     const goalBatch = status === 'SUPPORTED' ? this.goalBatch(state, evidenceHash, metrics, outcome, worldlab!) : null;
     const generatedAt = complete ? state.ends_at : observedAt;
     const core = {
@@ -236,8 +249,9 @@ export class SocialLearningCampaignService {
       independent_checker: checker, worldlab,
       outcome_evidence: { matched: outcome.matched, causal: outcome.causalCount, metric: outcome.metric },
       runtime_provenance: runtimeProvenance,
+      trigger_provenance: triggerProvenance,
       promotion: { allowed: false as const, reason: status === 'SUPPORTED' ? 'supported evidence may create a review-gated goal batch; promotion still requires approval' : 'evidence is not fully supported' },
-      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'Falsifiability specificity measures structured detail, not whether a proposed test is valid.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.', 'Missing or changed facilitator commits block supported status.'],
+      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'Falsifiability specificity measures structured detail, not whether a proposed test is valid.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.', 'Missing or changed facilitator commits block supported status.', 'Missing or non-autonomous facilitator triggers block supported status.'],
       evidence_hash: evidenceHash, goal_batch: goalBatch,
     };
     const report: CampaignReport = { ...core, report_hash: `sha256:${this.hash(core)}` };
@@ -247,7 +261,7 @@ export class SocialLearningCampaignService {
       this.saveState(nextState);
       this.event(state.campaign_id, complete && worldlab ? 'social.campaign.finalized' : 'social.campaign.observed', observedAt,
         complete && worldlab ? 10_000 : day + 2,
-        { report_hash: report.report_hash, status, pairs: pairs.length, peer_signal: peerSignal, outcome_signal: outcome.status, checker: checker.status, runtime_provenance: runtimeProvenance.status, worldlab: worldlab?.status || 'UNDETERMINED' });
+        { report_hash: report.report_hash, status, pairs: pairs.length, peer_signal: peerSignal, outcome_signal: outcome.status, checker: checker.status, runtime_provenance: runtimeProvenance.status, trigger_provenance: triggerProvenance.status, worldlab: worldlab?.status || 'UNDETERMINED' });
     })();
     return report;
   }
@@ -283,6 +297,7 @@ export class SocialLearningCampaignService {
         baseline, peer, learning, reflection_id: reflection?.id || null, reflection_status: reflection?.status || null,
         reflection_metadata: reflection?.metadata || {},
         facilitator_commit: this.string(question?.params.facilitator_commit),
+        facilitator_trigger: this.string(question?.params.facilitator_trigger),
         metrics: {
           peer_uptake_delta: this.jaccard(learning.answer, peer.answer) - this.jaccard(baseline.answer, peer.answer),
           content_novelty: 1 - this.jaccard(learning.answer, baseline.answer),
@@ -325,6 +340,14 @@ export class SocialLearningCampaignService {
     const mismatched = pairs.filter(pair => pair.facilitator_commit && pair.facilitator_commit !== expectedCommit).length;
     const homogeneous = pairs.length > 0 && missing === 0 && mismatched === 0;
     return { status: homogeneous ? 'PASS' : 'UNDETERMINED', expected_commit: expectedCommit, homogeneous, pairs_with_provenance: pairs.length - missing, missing_pairs: missing, mismatched_pairs: mismatched, commit_counts: commitCounts };
+  }
+
+  private triggerProvenance(pairs: InternalPair[]): TriggerProvenance {
+    const triggerCounts: Record<string, number> = {};
+    for (const pair of pairs) if (pair.facilitator_trigger) triggerCounts[pair.facilitator_trigger] = (triggerCounts[pair.facilitator_trigger] || 0) + 1;
+    const missing = pairs.filter(pair => !pair.facilitator_trigger).length;
+    const disallowed = pairs.filter(pair => pair.facilitator_trigger && pair.facilitator_trigger !== 'autonomous').length;
+    return { status: pairs.length > 0 && missing === 0 && disallowed === 0 ? 'PASS' : 'UNDETERMINED', allowed_trigger: 'autonomous', pairs_with_provenance: pairs.length - missing, missing_pairs: missing, disallowed_pairs: disallowed, trigger_counts: triggerCounts };
   }
 
   private outcomeEvidence(pairs: InternalPair[], start: string, end: string, minimum: number): { matched: number; causalCount: number; causal: boolean; status: CampaignEvidenceStatus; metric: MetricSummary } {
@@ -376,6 +399,7 @@ export class SocialLearningCampaignService {
       baseline_hash: `sha256:${this.hash(pair.baseline.answer)}`, peer_hash: `sha256:${this.hash(pair.peer.answer)}`, learning_hash: `sha256:${this.hash(pair.learning.answer)}`,
       runtime: this.string(pair.learning.params.runtime), model_id: this.string(pair.learning.params.model_id),
       facilitator_commit: pair.facilitator_commit,
+      facilitator_trigger: pair.facilitator_trigger,
       effect_scope: this.string(pair.learning.params.effect_scope), metrics: pair.metrics,
     };
   }

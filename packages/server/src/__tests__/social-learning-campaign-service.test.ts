@@ -19,7 +19,7 @@ function worldlabEvidence(campaignId: string, inputReportHash: string): Record<s
   return { ...core, evidence_hash: `sha256:${createHash('sha256').update(canonical(core)).digest('hex')}` };
 }
 
-function message(db: Database.Database, id: string, from: string, to: string, action: string, thread: string, at: string, answer: string, evidence: string[], facilitatorCommit?: string): void {
+function message(db: Database.Database, id: string, from: string, to: string, action: string, thread: string, at: string, answer: string, evidence: string[], facilitatorCommit?: string, facilitatorTrigger?: string): void {
   db.prepare(`INSERT INTO agent_messages (id, from_agent, to_agent, type, payload_json, timestamp, ttl, status)
     VALUES (?, ?, ?, ?, ?, ?, 86400, 'read')`).run(id, from, to, action === 'social.question' ? 'question' : action === 'social.learning' ? 'knowledge' : 'result', JSON.stringify({
       action, thread_id: thread, evidence,
@@ -28,14 +28,15 @@ function message(db: Database.Database, id: string, from: string, to: string, ac
         creative_alternative: 'Use a blinded negative control.', stop_condition: 'Stop when the interval crosses zero.',
         runtime: from === 'agent-a' ? 'runtime-a' : 'runtime-b', model_id: from === 'agent-a' ? 'model-a' : 'model-b',
         ...(facilitatorCommit ? { facilitator_commit: facilitatorCommit } : {}),
+        ...(facilitatorTrigger ? { facilitator_trigger: facilitatorTrigger } : {}),
         response_kind: 'actual_runtime', effect_scope: 'isolated', external_side_effects: false,
       },
     }), at);
 }
 
-function pair(db: Database.Database, index: number, at: string, facilitatorCommit: string | null = 'a'.repeat(40)): string {
+function pair(db: Database.Database, index: number, at: string, facilitatorCommit: string | null = 'a'.repeat(40), facilitatorTrigger = 'autonomous'): string {
   const thread = `social:confirm-${index}`;
-  message(db, `question-${index}`, 'agent-b', 'agent-a', 'social.question', thread, at, 'Challenge this proposal.', [`claim:${index}`], facilitatorCommit || undefined);
+  message(db, `question-${index}`, 'agent-b', 'agent-a', 'social.question', thread, at, 'Challenge this proposal.', [`claim:${index}`], facilitatorCommit || undefined, facilitatorTrigger);
   message(db, `baseline-${index}`, 'agent-a', 'agent-b', 'social.response', thread, at, 'Independent baseline approach without corroboration.', [`claim:${index}`, `message:question-a-${index}`, 'runtime:agent-a:runtime-a']);
   message(db, `peer-${index}`, 'agent-b', 'agent-a', 'social.response', thread, at, 'Verify evidence provenance using a blinded control group.', [`claim:${index}`, `message:question-b-${index}`, 'runtime:agent-b:runtime-b']);
   message(db, `learning-${index}`, 'agent-a', 'agent-b', 'social.learning', thread, at, 'I revise the proposal: verify evidence provenance using a blinded control group.', [`claim:${index}`, `message:question-b-${index}`, 'runtime:agent-b:runtime-b', `message:peer-${index}`, 'runtime:agent-a:runtime-a']);
@@ -53,7 +54,7 @@ describe('SocialLearningCampaignService', () => {
       message(db, 'pilot', 'agent-a', 'agent-b', 'social.response', 'social:pilot', '2025-12-31T10:00:00.000Z', 'pilot', []);
       const service = new SocialLearningCampaignService(db);
       const start = service.start({ campaign_id: 'social-confirmatory-1', started_at: '2026-01-01T00:00:00.000Z', days: 7, minimum_pairs: 2, runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) });
-      expect(start.state.manifest).toMatchObject({ phase: 'CONFIRMATORY', confounders: expect.arrayContaining(['runtime deployment drift']), pilot_snapshot: { threads: 1, responses: 1, learnings: 0 } });
+      expect(start.state.manifest).toMatchObject({ phase: 'CONFIRMATORY', allowed_social_trigger: 'autonomous', confounders: expect.arrayContaining(['runtime deployment drift', 'operator-triggered social rounds']), pilot_snapshot: { threads: 1, responses: 1, learnings: 0 } });
       expect(service.start({ campaign_id: 'social-confirmatory-1', started_at: '2026-01-01T00:00:00.000Z', runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) }).duplicate).toBe(true);
 
       const first = pair(db, 1, '2026-01-02T00:00:00.000Z');
@@ -65,6 +66,7 @@ describe('SocialLearningCampaignService', () => {
       const running = service.tick({ observed_at: '2026-01-05T00:00:00.000Z' });
       expect(running).toMatchObject({ status: 'RUNNING', signals: { peer_learning: 'SUPPORTED', operational_outcome_lift: 'SUPPORTED' }, independent_checker: { status: 'PASS' }, promotion: { allowed: false }, goal_batch: null });
       expect(running.runtime_provenance).toMatchObject({ status: 'PASS', homogeneous: true, commit_counts: { ['a'.repeat(40)]: 2 } });
+      expect(running.trigger_provenance).toMatchObject({ status: 'PASS', allowed_trigger: 'autonomous', trigger_counts: { autonomous: 2 } });
       expect(running.pairs).toHaveLength(2);
       expect(running.pairs[0]).not.toHaveProperty('answer');
       expect(running.metrics.falsifiability_specificity).toMatchObject({ n: 2 });
@@ -75,6 +77,20 @@ describe('SocialLearningCampaignService', () => {
       expect(complete.promotion.allowed).toBe(false);
       expect(complete.goal_batch).toMatchObject({ schema: 'djimit.openmythos.worldlab.goal.v1', waves: [{ ordered_goals: [{ metadata: { promotion_eligible: false } }] }] });
       expect(db.prepare("SELECT COUNT(*) AS count FROM external_events WHERE event_type = 'social.campaign.finalized'").get()).toEqual({ count: 1 });
+    } finally { db.close(); }
+  });
+
+  it('holds otherwise supported evidence from an operator-triggered round', () => {
+    const db = createTestDb();
+    try {
+      const service = new SocialLearningCampaignService(db);
+      service.start({ campaign_id: 'social-confirmatory-operator', started_at: '2026-01-01T00:00:00.000Z', days: 7, minimum_pairs: 2, runtime_commit: 'a'.repeat(40), analyzer_commit: 'b'.repeat(40) });
+      const candidates = [pair(db, 1, '2026-01-02T00:00:00.000Z', 'a'.repeat(40), 'operator'), pair(db, 2, '2026-01-03T00:00:00.000Z', 'a'.repeat(40), 'operator')];
+      candidates.forEach((candidate, index) => db.prepare(`INSERT INTO external_events (id, event_type, source, occurred_at, payload) VALUES (?, 'outcome.observed', 'test', ?, ?)`)
+        .run(`operator-outcome-${index}`, `2026-01-0${index + 4}T00:00:00.000Z`, JSON.stringify({ candidate_id: candidate, value: 1, baseline: 0.5, direction: 'increase', causal_status: 'randomized' })));
+      const running = service.tick({ observed_at: '2026-01-05T00:00:00.000Z' });
+      const complete = service.tick({ observed_at: '2026-01-08T00:00:00.000Z', worldlab: worldlabEvidence('social-confirmatory-operator', running.report_hash) });
+      expect(complete).toMatchObject({ status: 'UNDETERMINED', goal_batch: null, runtime_provenance: { status: 'PASS' }, trigger_provenance: { status: 'UNDETERMINED', pairs_with_provenance: 2, missing_pairs: 0, disallowed_pairs: 2, trigger_counts: { operator: 2 } } });
     } finally { db.close(); }
   });
 
