@@ -105,12 +105,16 @@ def run_cli(runtime, prompt):
         elif runtime == 'gemini':
             config = root / '.gemini'; config.mkdir()
             env['GEMINI_CLI_HOME'] = directory
-            # Only the normal OAuth cache is copied; no settings, hooks or extensions.
-            for filename in ('oauth_creds.json', 'google_accounts.json'):
-                source = Path.home() / '.gemini' / filename
-                if source.is_file(): shutil.copyfile(source, config / filename); (config / filename).chmod(0o600)
+            api_key_auth = bool(env.get('GEMINI_API_KEY') or env.get('GOOGLE_API_KEY'))
+            # OAuth refresh updates stay ephemeral; API-key runs never copy OAuth credentials.
+            if not api_key_auth:
+                for filename in ('oauth_creds.json', 'google_accounts.json'):
+                    source = Path.home() / '.gemini' / filename
+                    if source.is_file():
+                        shutil.copyfile(source, config / filename)
+                        (config / filename).chmod(0o600)
             settings = {'tools': {'core': []}, 'hooksConfig': {'enabled': False},
-                        'security': {'auth': {'selectedType': 'gemini-api-key' if env.get('GEMINI_API_KEY') else 'oauth-personal'}},
+                        'security': {'auth': {'selectedType': 'gemini-api-key' if api_key_auth else 'oauth-personal'}},
                         'mcpServers': {}, 'general': {'maxSessionTurns': 1}}
             (config / 'settings.json').write_text(json.dumps(settings))
             policy = root / 'deny-tools.toml'

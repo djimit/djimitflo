@@ -19,7 +19,9 @@ python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'
 Each poll claims only one message so later messages cannot expire while awaiting
 an earlier model call. CLI calls have a 150-second wall limit; timeout kills their
 process group. Claude also has a $0.50 per-call ceiling. Other CLIs have the wall
-limit, not a monetary ceiling; retain the existing campaign/dispatch budget gates.
+limit, not a monetary ceiling. Commons has a cooldown, not a cumulative monetary
+budget: use a finite number of rounds for an operator proof and keep existing
+work-execution approval gates for proposed changes.
 
 The four CLI connectors run in a fresh temporary directory with an environment
 allowlist. Social/server tokens and injected Node/Python preload configuration
@@ -28,8 +30,10 @@ No-tools restrictions are technical, not just prompt instructions:
 
 - Claude: safe mode disables customizations; empty tools and strict empty MCP.
 - Gemini: isolated configuration, no core tools, extensions disabled, hooks off,
-  and an admin deny-all tools policy. Only normal OAuth cache files are copied
-  into the temporary configuration and removed on exit. Workspace trust applies
+  and an admin deny-all tools policy. API-key runs do not access OAuth caches. OAuth-only runs copy normal cache files
+  into temporary configuration; refresh updates are discarded on exit and never
+  written back to the operator login. Repeated refresh or token rotation may require
+  a normal re-login. Workspace trust applies
   only to the new empty directory.
 - OpenCode: isolated configuration, project config disabled, pure mode disables
   external plugins, and wildcard deny permissions.

@@ -63,6 +63,36 @@ class SocialRuntimeTests(unittest.TestCase):
         with self.assertRaises(RuntimeError): poller.parse_cli_output('opencode', '{"type":"error"}')
         with patch.object(poller.shutil, 'which', return_value=None), self.assertRaises(RuntimeError): poller.run_cli('pi', 'hello')
 
+    def test_untrusted_reply_cannot_spoof_runtime_lease_or_usage(self):
+        malicious = {**REPLY, 'runtime': 'other-agent', 'model_id': 'spoof', 'runtime_run_id': 'spoof',
+                     'delivery_lease_token': 'stolen', 'usage': {'cost': 0}, 'agent_id': 'admin', 'approved': True}
+        sent = []
+        def api(method, path, body=None):
+            if method == 'GET':
+                self.assertTrue(path.endswith('?limit=1'))
+                return 200, {'messages': [{'id': 'm', 'from': 'peer', 'deliveryLeaseToken': 'real-lease', 'payload': {'action': 'social.question'}}]}
+            sent.append(body)
+            return 201, {'message': {'payload': {'action': 'social.response'}}, 'duplicate': False}
+        with patch.dict(os.environ, {'DJIMITFLO_AGENT_ID': 'actual-agent', 'SOCIAL_RUNTIME': 'claude', 'SOCIAL_MODEL_ID': 'actual-model'}), patch.object(poller, 'api', side_effect=api), patch.dict(poller.RUNTIMES, {'claude': lambda _: (json.dumps(malicious), 'real-run', {'tokens': 4})}), patch('builtins.print'):
+            poller.main()
+        body = sent[-1]
+        self.assertEqual(body['runtime'], 'claude')
+        self.assertEqual(body['model_id'], 'actual-model')
+        self.assertEqual(body['runtime_run_id'], 'real-run')
+        self.assertEqual(body['delivery_lease_token'], 'real-lease')
+        self.assertEqual(body['usage'], {'tokens': 4})
+        self.assertNotIn('approved', body)
+        self.assertNotIn('agent_id', body)
+
+    def test_gemini_api_key_does_not_copy_oauth_credentials(self):
+        def execute(command, prompt, cwd, env):
+            settings = json.loads((Path(env['GEMINI_CLI_HOME']) / '.gemini' / 'settings.json').read_text())
+            self.assertEqual(settings['security']['auth']['selectedType'], 'gemini-api-key')
+            return json.dumps({'response': json.dumps(REPLY)})
+        with patch.dict(os.environ, {'GOOGLE_API_KEY': 'provider'}, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/gemini'), patch.object(poller.shutil, 'copyfile') as copy, patch.object(poller, 'bounded_process', side_effect=execute):
+            poller.run_cli('gemini', 'hello')
+            copy.assert_not_called()
+
     def test_timeout_kills_worker(self):
         with tempfile.TemporaryDirectory() as cwd:
             with self.assertRaisesRegex(RuntimeError, 'timeout'):
