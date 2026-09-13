@@ -95,9 +95,12 @@ for (const [routineId, triggerId] of pairs) {
 }
 ```
 
-To cancel an in-flight execution, use the actual run ID from
-`GET /api/routines/:routineId/runs`, then
-`POST /api/heartbeat-runs/:runId/cancel`. None was started by this setup.
+To cancel an in-flight execution, take each non-null `linkedIssueId` from
+`GET /api/routines/:routineId/runs`, then fetch
+`GET /api/issues/:linkedIssueId/live-runs`. Cancel each returned heartbeat `id`
+with `POST /api/heartbeat-runs/:heartbeatRunId/cancel` using board authentication.
+Do not pass a routine-run ID to the heartbeat cancellation route. None was
+started by this setup.
 
 Rollback is restricted to the four pairs above: after verifying the routine is
 still paused and its trigger still disabled, `DELETE /api/routine-triggers/:id`
