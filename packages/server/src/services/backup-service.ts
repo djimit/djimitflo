@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, copyFileSync, createReadStream, rmSync } from 'fs';
 import { join, basename } from 'path';
 import { createGzip, createGunzip } from 'zlib';
+import { Readable } from 'stream';
 import * as tar from 'tar-stream';
 import { AuditService } from './audit-service';
 import { AuditEventType, RiskLevel } from '@djimitflo/shared';
@@ -463,7 +464,7 @@ export class BackupService {
       }
       pack.finalize();
 
-      pack.pipe(gzip).pipe(output);
+      Readable.from(pack).pipe(gzip).pipe(output);
       output.on('finish', resolve);
       output.on('error', reject);
     });
@@ -477,7 +478,7 @@ export class BackupService {
       const gunzip = createGunzip();
       const seenEntries = new Set<string>();
 
-      extract.on('entry', (header: tar.Headers, stream: NodeJS.ReadableStream, next: () => void) => {
+      extract.on('entry', (header, stream, next) => {
         const name = header.name;
 
         if (header.type === 'symlink' || header.type === 'link') {
@@ -525,7 +526,8 @@ export class BackupService {
       fileStream.on('error', (err) => reject(err));
       gunzip.on('error', (err) => reject(err));
 
-      fileStream.pipe(gunzip).pipe(extract);
+      // tar-stream uses streamx, whose write() typing is unknown despite Node stream interoperability.
+      fileStream.pipe(gunzip).pipe(extract as unknown as NodeJS.WritableStream);
     });
   }
 
