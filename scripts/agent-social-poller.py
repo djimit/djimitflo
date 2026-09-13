@@ -53,20 +53,29 @@ def runtime_env(runtime):
     return {key: os.environ[key] for key in (*common, *auth.get(runtime, ())) if key in os.environ}
 
 def bounded_process(command, prompt, cwd, env, timeout=150):
-    # Kill the process group too: CLI workers must not outlive an expired lease.
-    with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE, text=True, cwd=cwd, env=env,
-                          start_new_session=True) as child:
-        try:
-            stdout, _ = child.communicate(prompt, timeout=timeout)
-        except subprocess.TimeoutExpired:
-            os.killpg(child.pid, signal.SIGKILL)
-            child.communicate()
-            raise RuntimeError('runtime exceeded bounded execution timeout') from None
-        if child.returncode:
-            # Runtime logs can contain credentials or peer content; keep them local.
-            raise RuntimeError(f'{Path(command[0]).name} failed with exit {child.returncode}')
-    return stdout
+    # Cancellation must also stop the detached CLI and all of its workers.
+    def cancelled(signum, _frame):
+        raise SystemExit(128 + signum)
+    previous = signal.signal(signal.SIGTERM, cancelled)
+    try:
+        with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, text=True, cwd=cwd, env=env,
+                              start_new_session=True) as child:
+            try:
+                stdout, _ = child.communicate(prompt, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError('runtime exceeded bounded execution timeout') from None
+            finally:
+                # Also reap on SIGTERM, KeyboardInterrupt and failed communication.
+                try: os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError: pass
+                child.communicate()
+            if child.returncode:
+                # Runtime logs can contain credentials or peer content; keep them local.
+                raise RuntimeError(f'{Path(command[0]).name} failed with exit {child.returncode}')
+        return stdout
+    finally:
+        signal.signal(signal.SIGTERM, previous)
 
 def parse_cli_output(runtime, output):
     if runtime in ('claude', 'gemini'):

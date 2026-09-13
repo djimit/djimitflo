@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 import sys
+import signal
+import subprocess
+import time
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -134,6 +137,33 @@ class SocialRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {'GOOGLE_API_KEY': 'provider'}, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/gemini'), patch.object(poller.shutil, 'copyfile') as copy, patch.object(poller, 'bounded_process', side_effect=execute):
             poller.run_cli('gemini', 'hello')
             copy.assert_not_called()
+
+    def test_sigterm_stops_detached_runtime_and_its_worker(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            pid_file = Path(cwd) / 'pids.json'
+            worker = "import subprocess,sys,os,json,time; from pathlib import Path; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); Path(sys.argv[1]).write_text(json.dumps([os.getpid(),child.pid])); time.sleep(30)"
+            controller = "import importlib.util,sys; s=importlib.util.spec_from_file_location('poller',sys.argv[1]); p=importlib.util.module_from_spec(s); s.loader.exec_module(p); p.bounded_process([sys.executable,'-c',sys.argv[2],sys.argv[3]],'',sys.argv[4],{},timeout=20)"
+            child = subprocess.Popen([sys.executable, '-c', controller, str(Path(poller.__file__).resolve()), worker, str(pid_file), cwd])
+            pids = []
+            try:
+                deadline = time.monotonic() + 5
+                while not pid_file.exists() and time.monotonic() < deadline: time.sleep(0.01)
+                self.assertTrue(pid_file.exists(), 'runtime did not start')
+                pids = json.loads(pid_file.read_text())
+                child.terminate()
+                self.assertEqual(child.wait(timeout=3), 128 + signal.SIGTERM)
+                for pid in pids:
+                    deadline = time.monotonic() + 2
+                    while True:
+                        status = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+                        if not status or status.startswith('Z') or time.monotonic() >= deadline: break
+                        time.sleep(0.01)
+                    self.assertTrue(not status or status.startswith('Z'), f'worker {pid} survived cancellation')
+            finally:
+                if child.poll() is None: child.kill(); child.wait()
+                for pid in pids:
+                    try: os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError: pass
 
     def test_timeout_kills_worker(self):
         with tempfile.TemporaryDirectory() as cwd:
