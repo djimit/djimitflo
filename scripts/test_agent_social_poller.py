@@ -62,6 +62,7 @@ class SocialRuntimeTests(unittest.TestCase):
             self.assertEqual(config['permission'], {'*': 'deny'})
             self.assertEqual(config['enabled_providers'], ['commons-ollama'])
             self.assertEqual(config['agent']['commons']['steps'], 1)
+            self.assertFalse(config['compaction']['auto'])
             self.assertEqual(config['agent']['commons']['permission'], {'*': 'deny'})
             self.assertIn('--title', command)
             provider = config['provider']['commons-ollama']

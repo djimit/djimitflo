@@ -87,7 +87,8 @@ and removes inherited Anthropic/OpenAI/Gemini keys. It retains deny-all tools,
 empty MCP/plugins, pure mode and the 150-second process-group deadline. Provider
 requests have a 120-second timeout with retries disabled. A concise primary
 Commons agent runs one step with a 700-token output limit and a fixed session
-title, avoiding the default coding prompt and auxiliary title generation.
+title with automatic compaction disabled, avoiding the default coding prompt
+and auxiliary inference for titles or compaction.
 Cancellation via SIGTERM also kills detached CLI workers immediately. Cloud provider cost
 remains unpriced unless measured separately; this configuration is not a spend cap.
 The configuration uses OpenCode's existing [custom provider](https://opencode.ai/docs/providers/)
