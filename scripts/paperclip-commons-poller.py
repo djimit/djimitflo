@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""Deterministic Paperclip process adapter: one OpenCode Commons inference per run.
+
+Scheduling/admission belongs to Paperclip (maxDailyRuns=4, concurrency=1).
+Operator login is a Paperclip secret_ref; only this controller receives it.
+"""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import sys
+import urllib.error
+import urllib.request
+
+DJIMITFLO = 'http://100.86.47.122:3001'
+PAPERCLIP = 'http://127.0.0.1:3100'
+AGENT = 'opencode-control'
+PEER = 'commons-oracle'
+MODEL = 'commons-ollama/qwen2.5:3b'
+PROVIDER = 'http://100.77.58.72:11434/v1'
+
+
+def request(method, base, path, body=None, token=None, run_id=None):
+    headers = {'Content-Type': 'application/json'}
+    if token: headers['Authorization'] = 'Bearer ' + token
+    if run_id: headers['X-Paperclip-Run-Id'] = run_id
+    req = urllib.request.Request(base + path, method=method, headers=headers,
+        data=None if body is None else json.dumps(body).encode())
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(f'{method} {path} HTTP {error.code}') from None
+
+
+def isolate_environment():
+    login = json.loads(os.environ.pop('DJIMITFLO_COMMONS_OPERATOR_LOGIN'))
+    run_id = os.environ.get('PAPERCLIP_RUN_ID', '')
+    run_token = os.environ.pop('PAPERCLIP_API_KEY', '')
+    agent_id = os.environ.get('PAPERCLIP_AGENT_ID', '')
+    inherited = {key: os.environ[key] for key in ('PATH', 'HOME', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if key in os.environ}
+    os.environ.clear()
+    os.environ.update(inherited)
+    os.environ.update(DJIMITFLO_URL=DJIMITFLO, DJIMITFLO_AGENT_ID=AGENT,
+        SOCIAL_RUNTIME='opencode', SOCIAL_MODEL_ID=MODEL,
+        SOCIAL_OPENCODE_PROVIDER_URL=PROVIDER, OPENCODE_BIN_PATH='/usr/bin/opencode')
+    if not isinstance(login, dict) or set(login) != {'email', 'password'} or not all(isinstance(v, str) and v for v in login.values()):
+        raise RuntimeError('Invalid operator login configuration')
+    if not run_id or not run_token or not agent_id:
+        raise RuntimeError('Paperclip run identity required')
+    return login, run_id, run_token, agent_id
+
+
+def poll_once(poller, operator):
+    poller.api('POST', f'/api/swarm-v2/social-runtime/{AGENT}/heartbeat', {'runtime': 'opencode', 'model_id': MODEL})
+    path = f'/api/swarm-v2/social-runtime/{AGENT}/messages?limit=1'
+    _, inbox = poller.api('GET', path)
+    if not inbox.get('messages'):
+        request('POST', DJIMITFLO, '/api/swarm-v2/socialize',
+                {'cooldown_ms': 0, 'participant_ids': [AGENT, PEER]}, operator)
+        _, inbox = poller.api('GET', path)
+    messages = inbox.get('messages', [])
+    if not messages:
+        return {'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'no_eligible_message'}
+    message = messages[0]
+    output, runtime_id, usage = poller.run_cli('opencode', poller.prompt_for(message))
+    reply = poller.extract_object(output)
+    reply.update(runtime='opencode', model_id=MODEL, runtime_run_id=runtime_id,
+                 usage=usage, delivery_lease_token=message.get('deliveryLeaseToken', ''))
+    _, result = poller.api('POST', f"/api/swarm-v2/social-runtime/{AGENT}/messages/{message['id']}/respond", reply)
+    return {'agent': AGENT, 'processed': 1, 'model_calls': 1, 'message_id': message['id'],
+            'runtime_run_id': runtime_id, 'usage': usage, 'output': result['message']['payload']['action']}
+
+
+def main():
+    login, run_id, run_token, paperclip_agent = isolate_environment()
+    issue_id = None
+    def pc(method, path, body=None):
+        return request(method, PAPERCLIP, path, body, run_token, run_id)
+    try:
+        run = pc('GET', '/api/heartbeat-runs/' + run_id)
+        if run.get('agentId') != paperclip_agent: raise RuntimeError('Paperclip run agent mismatch')
+        candidate_issue = (run.get('contextSnapshot') or {}).get('issueId')
+        if candidate_issue:
+            pc('POST', '/api/issues/' + candidate_issue + '/checkout',
+               {'agentId': paperclip_agent, 'expectedStatuses': ['todo', 'in_progress', 'backlog']})
+            issue_id = candidate_issue
+        operator = request('POST', DJIMITFLO, '/api/auth/login', login)['token']
+        login.clear()
+        scoped = request('POST', DJIMITFLO, f'/api/swarm-v2/social/agents/{AGENT}/token', {'ttl_ms': 900000}, operator)
+        os.environ['DJIMITFLO_SOCIAL_TOKEN'] = scoped['token']
+        spec = importlib.util.spec_from_file_location('commons_poller', Path(__file__).with_name('agent-social-poller.py'))
+        poller = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(poller)
+        result = poll_once(poller, operator)
+        result.update(paperclip_run_id=run_id, token_renewed=True, token_ttl_ms=900000)
+        if issue_id:
+            pc('PATCH', '/api/issues/' + issue_id, {'status': 'done', 'comment': json.dumps(result)})
+        print(json.dumps(result))
+    except Exception as error:
+        # Never log responses, exception payloads or credential-bearing environment.
+        report = {'agent': AGENT, 'paperclip_run_id': run_id, 'error_type': type(error).__name__, 'status': 'failed'}
+        if issue_id:
+            try: pc('PATCH', '/api/issues/' + issue_id, {'status': 'blocked', 'comment': json.dumps(report)})
+            except Exception: pass
+        print(json.dumps(report), file=sys.stderr)
+        return 1
+    finally:
+        os.environ.pop('DJIMITFLO_SOCIAL_TOKEN', None)
+    return 0
+
+if __name__ == '__main__': sys.exit(main())
