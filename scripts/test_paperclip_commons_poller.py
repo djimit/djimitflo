@@ -85,7 +85,7 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(c.main(), 1 if fails else 0)
             patches = [body for method, path, body in calls if method == 'PATCH']
             self.assertEqual(patches[0]['status'], 'blocked' if fails else 'done')
-            if fails: self.assertEqual(patches[0]['unblockDescriptor']['owner'], 'board')
+            if fails: self.assertEqual(patches[0]['unblockDescriptor']['owner'], {'agentId': 'agent'})
 
     def test_failure_categories_never_expose_provider_body(self):
         self.assertEqual(c.failure_code(RuntimeError('Djimitflo HTTP 422: secret value')), 'http_422')
