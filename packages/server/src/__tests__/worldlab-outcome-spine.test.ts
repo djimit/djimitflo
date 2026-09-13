@@ -32,14 +32,17 @@ describe('WorldLab to DjimitFlo outcome spine', () => {
     const loop = new ContinuousLearningLoop(db, { intervalMs: 999999999 });
     const cycle = await loop.runCycle();
     loop.stop();
-    expect(cycle).toMatchObject({ outcomeAssessments: 1, outcomeWorkItemsCreated: 1 });
+    // Ingest already projects outcomes (ExternalEventIngestService.pollOnce -> OutcomeLearningService.process),
+    // so the cycle refreshes the existing work item instead of creating a second one.
+    expect(cycle).toMatchObject({ outcomeAssessments: 1, outcomeWorkItemsCreated: 0 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM work_items WHERE source = 'outcome_observed'").get()).toEqual({ n: 1 });
     expect(new OutcomeLearningService(db).list()[0]).toMatchObject({
       status: 'UNDETERMINED', signal_status: 'SUPPORTED', replications: 30, causal_support: false,
       result: { exploratory: true, required_next_gate: 'confirmatory_replication', promotion_eligible: false },
     });
 
     const item = db.prepare("SELECT id, recommended_loop FROM work_items WHERE source = 'outcome_observed'").get() as { id: string; recommended_loop: string };
-    expect(item.recommended_loop).toBe('research-loop');
+    expect(item.recommended_loop).toBe('outcome-learning-loop');
     const converted = new WorkItemService(db).convertToGoal(item.id);
     const goal = db.prepare('SELECT status, metadata FROM goals WHERE id = ?').get(converted.goal_id) as any;
     expect(goal.status).toBe('created');
