@@ -1846,6 +1846,17 @@ export function createFrontierExpertTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_expert_lifecycle_expert ON expert_lifecycle_events(expert_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS expert_source_snapshots (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      entry_count INTEGER NOT NULL DEFAULT 0,
+      retrieved_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_source_snapshots_source ON expert_source_snapshots(source, retrieved_at);
   `);
 }
 
