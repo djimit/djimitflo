@@ -36,6 +36,24 @@ describe('G127: Continuous Learning Loop', () => {
     expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
   });
 
+  it('casts one autonomous lure when the commons is empty and does not repeat while it is open', async () => {
+    const pending = `${process.env.TMPDIR || '/tmp'}/lure-loop-${Date.now()}.jsonl`;
+    process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
+    try {
+      db.prepare("INSERT INTO agents (id, name, description, status) VALUES ('quiet-a', 'Quiet A', '', 'active'), ('quiet-b', 'Quiet B', '', 'idle')").run();
+      const first = await loop.runCycle();
+      expect(first.socialExchangesStarted).toBe(0);
+      expect(first.luresCast).toBe(1);
+      const invites = db.prepare("SELECT to_agent FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.invite' ORDER BY to_agent").all();
+      expect(invites).toEqual([{ to_agent: 'quiet-a' }, { to_agent: 'quiet-b' }]);
+      const second = await loop.runCycle();
+      expect(second.luresCast).toBe(0);
+      expect(db.prepare('SELECT COUNT(*) AS n FROM social_lures').get()).toEqual({ n: 1 });
+    } finally {
+      delete process.env.DENNIS_AGENT_PAPERCLIP_PENDING;
+    }
+  });
+
   it('tracks history', async () => {
     await loop.runCycle();
     await loop.runCycle();
@@ -52,9 +70,14 @@ describe('G127: Continuous Learning Loop', () => {
     const communication = new AgentCommunicationService(db);
     communication.heartbeat('agent-a', 'runtime-a', 'model-a');
     communication.heartbeat('agent-b', 'runtime-b', 'model-b');
-    const result = await loop.runCycle();
-    expect(result.socialExchangesStarted).toBe(1);
-    expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
+    process.env.DJIMITFLO_COMMIT_SHA = 'a'.repeat(40);
+    try {
+      const result = await loop.runCycle();
+      expect(result.socialExchangesStarted).toBe(1);
+      expect(db.prepare("SELECT COUNT(*) AS count FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").get()).toEqual({ count: 2 });
+      expect(db.prepare("SELECT DISTINCT json_extract(payload_json, '$.params.facilitator_commit') AS commit_sha FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").all()).toEqual([{ commit_sha: 'a'.repeat(40) }]);
+      expect(db.prepare("SELECT DISTINCT json_extract(payload_json, '$.params.facilitator_trigger') AS trigger FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'").all()).toEqual([{ trigger: 'autonomous' }]);
+    } finally { delete process.env.DJIMITFLO_COMMIT_SHA; }
   });
 
   it('ignores foreign cycle records in history and watermarks', async () => {

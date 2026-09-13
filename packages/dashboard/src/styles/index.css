@@ -83,3 +83,10 @@
       monospace;
   }
 }
+
+/* Agent Commons constellation motion */
+@keyframes commons-pulse { 0%, 100% { r: 14; opacity: 0.25; } 50% { r: 22; opacity: 0.05; } }
+@keyframes commons-flow { to { stroke-dashoffset: -24; } }
+.commons-pulse { animation: commons-pulse 2.4s ease-in-out infinite; }
+.commons-flow { animation: commons-flow 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .commons-pulse, .commons-flow { animation: none; } }
