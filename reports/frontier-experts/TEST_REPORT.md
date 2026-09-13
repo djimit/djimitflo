@@ -1,13 +1,13 @@
 # Test report (§41, §61)
 
-Branch `feat/frontier-expert-intelligence` at af642fd2 (base main ab9a8fb1). Run 2026-09-14 00:07 CEST on macOS, Node 22.23.2, vitest 4.1.11.
+Branch `feat/frontier-expert-intelligence` at 417da47f (base main ab9a8fb1). Run 2026-09-14 00:51 CEST on macOS, Node 22.23.2, vitest 4.1.11.
 
 ## Commands and results
 
 ```bash
 cd packages/server && npx vitest run                       # full server suite
-# Test Files  354 passed | 2 skipped (356)
-# Tests       2658 passed | 20 skipped (2678)   0 failed   35.75 s
+# Test Files  356 passed | 2 skipped (358)
+# Tests       2662 passed | 20 skipped (2682)   0 failed   35.84 s
 
 cd packages/server && npx tsc --noEmit -p tsconfig.json    # clean
 
@@ -43,7 +43,7 @@ The two skipped files are pre-existing: `expert-swarm-orchestrator.test.ts` (12 
 | mcp | packages/mcp-server/src/__tests__/expert-tools.test.ts | 2 | search/get/capabilities/claims read-only; honest error when tables are absent |
 | end-to-end | expert-e2e-scenario.test.ts | 1 (17 checks) | §59 reference scenario on the frontier path with a scripted evidence-bound model; impersonating perspective surfaced and claim-free; run history stored |
 
-Total frontier-specific: 13 files, 49 tests, 0 skipped (server 47 + mcp-server 2) after commit 0099b19d; the full-suite numbers above predate the routes/MCP/skills commits and are re-run before merge. Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
+Total frontier-specific: 13 files, 49 tests, 0 skipped (server 47 + mcp-server 2) after commit 0099b19d; the full-suite numbers above include the routes and skills tests (mcp-server suite runs separately: `cd packages/mcp-server && npx vitest run`). Nothing was weakened: the misleading `describe.skip` assertion that once encoded the dead end was replaced by a live assertion in `expert-swarm-verification.test.ts`.
 
 ## Not covered by automated tests
 

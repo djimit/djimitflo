@@ -20,7 +20,7 @@ Ten new tables created in `runMigrations` (`createFrontierExpertTables`): expert
 
 ## 4. Tests
 
-See TEST_REPORT.md: full server suite 354 files / 2658 tests passed, 0 failed, 2 pre-existing skips; frontier-specific 10 files / 43 tests; `tsc --noEmit` clean.
+See TEST_REPORT.md: full server suite 356 files / 2662 tests passed, 0 failed, 2 pre-existing skips; frontier-specific 13 files / 49 tests; `tsc --noEmit` clean.
 
 ## 5. Benchmark (baseline vs enhanced)
 
