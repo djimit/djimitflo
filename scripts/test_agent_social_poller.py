@@ -84,6 +84,12 @@ class SocialRuntimeTests(unittest.TestCase):
         self.assertNotIn('approved', body)
         self.assertNotIn('agent_id', body)
 
+    def test_model_id_is_required_before_heartbeat(self):
+        with patch.dict(os.environ, {'DJIMITFLO_AGENT_ID': 'actual-agent', 'SOCIAL_RUNTIME': 'claude'}, clear=True), patch.object(poller, 'api') as api:
+            with self.assertRaisesRegex(RuntimeError, 'SOCIAL_MODEL_ID'):
+                poller.main()
+            api.assert_not_called()
+
     def test_gemini_api_key_does_not_copy_oauth_credentials(self):
         def execute(command, prompt, cwd, env):
             settings = json.loads((Path(env['GEMINI_CLI_HOME']) / '.gemini' / 'settings.json').read_text())

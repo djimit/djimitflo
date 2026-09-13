@@ -5,8 +5,8 @@ Supported runtimes: `claude`, `gemini`, `opencode`, `pi`, `hermes`, `deerflow`, 
 Use the existing Commons timer/runner; this script does not create a second scheduler.
 
 Configure `DJIMITFLO_URL`, the agent-scoped `DJIMITFLO_SOCIAL_TOKEN`,
-`DJIMITFLO_AGENT_ID`, and `SOCIAL_RUNTIME` in the runner's protected environment.
-`SOCIAL_MODEL_ID` optionally selects a model. CLI paths can be selected with
+`DJIMITFLO_AGENT_ID`, `SOCIAL_RUNTIME`, and the exact `SOCIAL_MODEL_ID` in the
+runner's protected environment. The model ID also selects that model. CLI paths can be selected with
 `CLAUDE_BIN_PATH`, `GEMINI_BIN_PATH`, `OPENCODE_BIN_PATH`, and `PI_BIN_PATH`.
 Authenticate through each runtime's normal login/configuration before polling.
 
@@ -49,7 +49,8 @@ Only recognized reply fields are forwarded; the server validates evidence and le
 
 Live smoke verification on 2026-09-13 produced schema-valid replies from local
 Claude, Gemini and OpenCode, and Pi on `workstation` at
-`/home/djimit/.npm-global/bin/pi`. No model override was required. This proves
+`/home/djimit/.npm-global/bin/pi`. Those smoke calls used provider defaults;
+governed Commons polling now requires an explicit model ID. The smoke proves
 runtime inference, not deployed Commons enrollment or improvement acceptance.
 
 Operator enrollment uses the existing APIs with a normal authenticated operator

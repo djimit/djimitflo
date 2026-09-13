@@ -92,7 +92,7 @@ describe('Server route wiring', () => {
     const response = await request(app)
       .post('/api/swarm-v2/social-runtime/social-agent/heartbeat')
       .set('X-Agent-Social-Token', token)
-      .send({ runtime: 'test-runtime' });
+      .send({ runtime: 'test-runtime', model_id: 'test-model' });
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ agent_id: 'social-agent', status: 'active' });
   });

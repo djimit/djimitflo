@@ -29,6 +29,7 @@ describe('signed agent social runtime', () => {
     expect((await fetch(`${base}/agent-b/messages`)).status).toBe(401);
     expect((await fetch(`${base}/agent-a/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).status).toBe(401);
     expect((await fetch(`${base}/agent-b/heartbeat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: '{}' })).status).toBe(400);
+    expect((await fetch(`${base}/agent-b/heartbeat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify({ runtime: 'test-runtime' }) })).status).toBe(400);
     const heartbeat = await fetch(`${base}/agent-b/heartbeat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify({ runtime: 'test-runtime', model_id: 'test-model' }) });
     expect(heartbeat.status).toBe(200);
     const received = (await (await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).json()).messages;
@@ -44,6 +45,18 @@ describe('signed agent social runtime', () => {
     const learningJson = await learning.json(); expect(learning.status).toBe(201); expect(learningJson).toMatchObject({ reflection_id: expect.any(String), message: { status: 'read', payload: { action: 'social.learning', epistemic_role: 'outcome' } } });
     const reflection = db.prepare('SELECT status, metadata FROM reflection_candidates WHERE id = ?').get(learningJson.reflection_id) as { status: string; metadata: string };
     expect(['candidate', 'review_required']).toContain(reflection.status); expect(JSON.parse(reflection.metadata)).toMatchObject({ empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true });
+  });
+
+  it('rejects replies without complete runtime provenance before persistence', async () => {
+    const tokenB = mintSpawnToken(secret, 'agent-b', 'social-runtime', 60_000);
+    await fetch(`${base}/agent-b/heartbeat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify({ runtime: 'test-runtime', model_id: 'test-model' }) });
+    const [question] = (await (await fetch(`${base}/agent-b/messages`, { headers: { 'X-Agent-Social-Token': tokenB } })).json()).messages;
+    const response = await fetch(`${base}/agent-b/messages/${question.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify({
+      answer: 'Use a negative control.', uncertainty: 'Unknown.', falsifiable_next_step: 'Run it.', creative_alternative: 'Blind it.', stop_condition: 'Same result.', delivery_lease_token: question.deliveryLeaseToken,
+    }) });
+    expect(response.status).toBe(400);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM agent_messages WHERE json_extract(payload_json, '$.reply_to') = ?").get(question.id)).toEqual({ n: 0 });
+    expect(db.prepare('SELECT status FROM agent_messages WHERE id = ?').get(question.id)).toEqual({ status: 'delivered' });
   });
 
   it('does not let a social heartbeat reactivate an operator-paused agent', async () => {
