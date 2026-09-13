@@ -331,20 +331,22 @@ export class GithubPrReviewService {
       fs.rmSync(bodyFile, { force: true });
     }
 
-    const conclusion = verdict === 'accepted' ? 'success' : verdict === 'rejected' ? 'failure' : 'neutral';
-    const checkPayload = {
-      name: 'djimitflo-review',
-      head_sha: input.headSha,
-      status: 'completed',
-      conclusion,
-      output: {
-        title: verdict === 'accepted' ? 'No blocking issues found' : verdict === 'rejected' ? 'Blocking issues found' : 'Needs a closer look',
-        summary: body,
-      },
+    // The Checks API (POST .../check-runs) only ever accepts GitHub App
+    // tokens — "OAuth apps and authenticated users are not able to create
+    // a check suite" per GitHub's own docs. A personal access token (ours)
+    // gets a hard 403 regardless of scopes, no matter what permissions are
+    // granted. The Commit Status API is the pre-Checks-API mechanism built
+    // for exactly this (PAT-authenticated) case and renders the same
+    // green/red dot on the PR.
+    const state = verdict === 'accepted' ? 'success' : verdict === 'rejected' ? 'failure' : 'pending';
+    const statusPayload = {
+      state,
+      context: 'djimitflo-review',
+      description: (verdict === 'accepted' ? 'No blocking issues found' : verdict === 'rejected' ? 'Blocking issues found' : 'Needs a closer look').slice(0, 140),
     };
     const raw = execFileSync('gh', [
-      'api', `repos/${input.owner}/${input.repo}/check-runs`, '--input', '-',
-    ], { input: JSON.stringify(checkPayload), encoding: 'utf8', timeout: GH_TIMEOUT_MS });
+      'api', `repos/${input.owner}/${input.repo}/statuses/${input.headSha}`, '--input', '-',
+    ], { input: JSON.stringify(statusPayload), encoding: 'utf8', timeout: GH_TIMEOUT_MS });
     const parsed = JSON.parse(raw) as { id?: number };
     return parsed.id != null ? String(parsed.id) : null;
   }
