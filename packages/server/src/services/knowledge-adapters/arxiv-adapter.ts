@@ -58,7 +58,8 @@ export class ArxivAdapter implements KnowledgeSourceAdapter {
   async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
     await this.enforceRateLimit();
     const params = new URLSearchParams({ search_query: `au:"${name.replace(/"/g, '')}"`, max_results: String(limit), start: '0', sortBy: 'submittedDate', sortOrder: 'descending' });
-    const response = await fetch(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(15_000) });
+    // arXiv regularly needs 15–30 s per author query; a short timeout would misreport a slow source as absent.
+    const response = await fetch(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(45_000) });
     if (!response.ok) throw new Error(`ARXIV_HTTP_${response.status}`);
     return parseArxivPapers(await response.text());
   }

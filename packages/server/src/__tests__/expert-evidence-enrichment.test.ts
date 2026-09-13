@@ -82,6 +82,13 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     const source = { async searchAuthorPapers(name: string) { return name === 'C Three' ? [] : [paper(`p-${name}`, 'AI security evaluations of frontier models', [name], ['cs.CR', 'cs.AI'], 'red teaming')]; } };
     const results = await new ExpertEvidenceEnrichmentService(db, { registry, source }).enrichBatch({ actor: 'ingestion:arxiv', limit: 2 });
     expect(results.map((result) => [result.canonical_name, result.lifecycle_state])).toEqual([['A One', 'CAPABILITY_INFERRED'], ['B Two', 'CAPABILITY_INFERRED']]);
+    // The next batch moves on to the untried identity; an unmatched one is marked attempted and not retried until retryBefore says so.
+    const service = new ExpertEvidenceEnrichmentService(db, { registry, source });
+    expect(service.pending()).toBe(1);
+    expect((await service.enrichBatch({ actor: 'ingestion:arxiv', limit: 2 })).map((result) => [result.canonical_name, result.reason])).toEqual([['C Three', 'no_author_match']]);
+    expect(service.pending()).toBe(0);
+    expect(await service.enrichBatch({ actor: 'ingestion:arxiv', limit: 2 })).toEqual([]);
+    expect((await service.enrichBatch({ actor: 'ingestion:arxiv', limit: 2, retryBefore: '2999-01-01' })).map((result) => result.canonical_name)).toEqual(['C Three']);
     // cs.CR maps to ai_security; "frontier models" is a frontier_model_engineering alias. "evaluations" alone is not an evals alias (no false positive).
     expect(results[0].capabilities.map((capability) => capability.id).sort()).toEqual(['ai_security', 'frontier_model_engineering']);
   });

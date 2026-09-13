@@ -63,6 +63,9 @@ export class ExpertEvidenceEnrichmentService {
     if (!expert) throw new Error('EXPERT_NOT_FOUND');
     const papers = await this.source.searchAuthorPapers(expert.canonical_name, input.maxPapers ?? 10);
     const identity = identityConfidence(papers, expert.canonical_name);
+    // Record the attempt on the identity so bounded batches move on instead of retrying the same unmatched names forever (§33, §51).
+    this.db.prepare("UPDATE expert_identities SET provenance_json = json_set(provenance_json, '$.enrichment', json(?)), updated_at = datetime('now') WHERE id = ?")
+      .run(JSON.stringify({ attempted_at: new Date().toISOString(), source: 'arxiv', papers_found: papers.length, papers_matched: identity.matched.length }), expertId);
     const base = { expert_id: expertId, canonical_name: expert.canonical_name, papers_found: papers.length, papers_matched: identity.matched.length, ai_share: identity.ai_share, identity_confidence: identity.confidence };
 
     if (!identity.matched.length) {
@@ -112,14 +115,21 @@ export class ExpertEvidenceEnrichmentService {
     return { ...base, lifecycle_state: this.registry.get(expertId)!.lifecycle_state, evidence_added: after - before, capabilities, capability_delta: capabilities.map((capability) => capability.id).filter((id) => !knownCapabilities.has(id)), reason: capabilities.length ? null : 'no_capability_derived' };
   }
 
-  /** Enrich a bounded batch of DISCOVERED experts, oldest first (§51: bounded, incremental). */
-  async enrichBatch(input: { actor: string; limit?: number; maxPapers?: number }): Promise<EnrichmentResult[]> {
-    const rows = this.db.prepare("SELECT id FROM expert_identities WHERE lifecycle_state = 'DISCOVERED' ORDER BY created_at ASC LIMIT ?").all(Math.max(1, Math.min(50, input.limit ?? 10))) as Array<{ id: string }>;
+  /** Enrich a bounded batch of DISCOVERED experts never attempted (or attempted before `retryBefore`), oldest first (§51: bounded, incremental). */
+  async enrichBatch(input: { actor: string; limit?: number; maxPapers?: number; retryBefore?: string }): Promise<EnrichmentResult[]> {
+    const rows = this.db.prepare(`SELECT id FROM expert_identities WHERE lifecycle_state = 'DISCOVERED'
+      AND (json_extract(provenance_json, '$.enrichment.attempted_at') IS NULL OR json_extract(provenance_json, '$.enrichment.attempted_at') < ?)
+      ORDER BY created_at ASC LIMIT ?`).all(input.retryBefore ?? '', Math.max(1, Math.min(50, input.limit ?? 10))) as Array<{ id: string }>;
     const results: EnrichmentResult[] = [];
     for (const row of rows) {
       try { results.push(await this.enrich(row.id, input)); } catch (error) { results.push({ expert_id: row.id, canonical_name: '', papers_found: 0, papers_matched: 0, ai_share: 0, identity_confidence: 0, lifecycle_state: 'DISCOVERED', evidence_added: 0, capabilities: [], capability_delta: [], reason: error instanceof Error ? error.message : 'ENRICH_FAILED' }); }
     }
     return results;
+  }
+
+  /** How many DISCOVERED identities still await a first enrichment attempt. */
+  pending(): number {
+    return (this.db.prepare("SELECT COUNT(*) AS n FROM expert_identities WHERE lifecycle_state = 'DISCOVERED' AND json_extract(provenance_json, '$.enrichment.attempted_at') IS NULL").get() as { n: number }).n;
   }
 
   /** Capability ids a paper supports: direct category mappings plus taxonomy aliases found in title/abstract. */
