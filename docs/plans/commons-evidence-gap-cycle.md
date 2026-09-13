@@ -28,7 +28,7 @@ The first cycle follows the four real CLI/DeerFlow exchanges completed on produc
 
 ## Boundaries
 
-The four production proposals remain candidates. This work does not approve, merge or deploy an agent proposal automatically. No new scheduler, semantic model, coverage schema or task authority is needed for the proven counting defect. Existing historical diagnostics remain intact; a separate governed review can classify old alerts.
+The four production proposals remain candidates. This work does not approve, merge or deploy an agent proposal automatically. No new scheduler, semantic model, coverage schema or task authority is needed for the proven counting defect. Existing historical diagnostic statuses and evidence remain intact; observation metadata records when a successfully scanned signal disappears, allowing a later recurrence to become a new candidate. A separate governed review can classify old alerts.
 
 The prior activation report is historical: PRs 219, 220 and 222 are now merged and production activation was verified. Four CLI runtimes completed bounded participation; that alone does not establish recurring CLI operation.
 
@@ -49,3 +49,5 @@ npm run type-check -w @djimitflo/server
 ```
 
 Local source-row replay evidence is retained at `.data/commons-gap-cycle/replay.json` in the isolated implementation worktree. Production records were read, not modified. Existing historical gaps remain available for governed review. Three distinct statements still only suppress this inventory heuristic; they do not prove semantic coverage. Deployed autonomous goal generation uses a separate `knowledge_gaps` source, so this change makes no claim of end-to-end goal-generation improvement.
+
+PR review corrections: domains with substantive history remain in the inventory when their active count falls to zero. Only all-diagnostic domains are excluded. The `observed_signal_active` metadata marker separates continuously observed diagnostics (including resolved/rejected decisions) from new occurrences after a successful scan no longer observes that exact signal. It changes no operator status or evidence. Failed detector queries do not clear markers. Legacy diagnostics without a gap type cannot be reclassified by this marker; they remain available for governed review.

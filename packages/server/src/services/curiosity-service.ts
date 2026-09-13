@@ -52,19 +52,32 @@ export class CuriosityService {
 
   async scanForGaps(): Promise<GapReport> {
     const gaps: Gap[] = [];
-    gaps.push(...this.detectCoverageGaps());
-    gaps.push(...this.detectConfidenceGaps());
-    gaps.push(...this.detectContradictionGaps());
-    gaps.push(...this.detectCompetenceGaps());
+    const observations: Array<[Gap['type'], Gap[] | null]> = [
+      ['coverage', this.detectCoverageGaps()], ['confidence', this.detectConfidenceGaps()],
+      ['contradiction', this.detectContradictionGaps()], ['competence', this.detectCompetenceGaps()],
+    ];
+    for (const [type, observed] of observations) {
+      if (observed === null) continue; // A failed query is not evidence that a signal disappeared.
+      gaps.push(...observed);
+      const signatures = JSON.stringify(observed.map(gap => JSON.stringify([gap.domain, `Knowledge gap: ${gap.description}`])));
+      this.db.prepare(`UPDATE swarm_claims
+        SET metadata = json_set(metadata, '$.observed_signal_active', json('false'))
+        WHERE predicate = 'gap' AND created_from = 'curiosity-service' AND json_valid(metadata)
+          AND json_extract(metadata, '$.gap_type') = ?
+          AND COALESCE(json_extract(metadata, '$.observed_signal_active'), 1) <> 0
+          AND json_array(subject_ref, claim) NOT IN (SELECT value FROM json_each(?))
+      `).run(type, signatures);
+    }
 
     let published = 0;
     for (const gap of gaps) {
       try {
         const claim = `Knowledge gap: ${gap.description}`;
-        // Keep unchanged operator decisions intact; a changed signal can create a new candidate.
+        // Keep continuously observed decisions intact; a disappeared signal can recur as a new candidate.
         const existing = this.db.prepare(`SELECT 1 FROM swarm_claims
           WHERE subject_ref = ? AND claim = ? AND predicate = 'gap' AND created_from = 'curiosity-service'
             AND invalidated_by IS NULL AND (valid_until IS NULL OR datetime(valid_until) >= datetime('now'))
+            AND COALESCE(json_extract(metadata, '$.observed_signal_active'), 1) <> 0
           LIMIT 1`).get(gap.domain, claim);
         if (existing) continue;
         this.intelligence.createClaim({
@@ -75,7 +88,7 @@ export class CuriosityService {
           confidence: gap.severity,
           evidence_refs: [],
           created_from: 'curiosity-service',
-          metadata: { gap_type: gap.type, ...(gap.type === 'coverage' ? { detection_method: 'count_heuristic', coverage_status: 'UNKNOWN' } : {}) },
+          metadata: { gap_type: gap.type, observed_signal_active: true, ...(gap.type === 'coverage' ? { detection_method: 'count_heuristic', coverage_status: 'UNKNOWN' } : {}) },
         });
         published++;
       } catch { /* skip duplicates */ }
@@ -84,12 +97,13 @@ export class CuriosityService {
     return { gapsFound: gaps.length, published, gaps };
   }
 
-  private detectCoverageGaps(): Gap[] {
+  private detectCoverageGaps(): Gap[] | null {
     const gaps: Gap[] = [];
     try {
       const domains = this.db.prepare(`
-        SELECT subject_ref, COUNT(DISTINCT json_array(lower(trim(claim)), COALESCE(predicate, ''), COALESCE(object, ''), COALESCE(scope, ''))) as cnt
-        FROM swarm_claims WHERE ${NON_DIAGNOSTIC} AND ${ACTIVE_CLAIM}
+        SELECT subject_ref, COUNT(DISTINCT CASE WHEN ${ACTIVE_CLAIM}
+          THEN json_array(lower(trim(claim)), COALESCE(predicate, ''), COALESCE(object, ''), COALESCE(scope, '')) END) as cnt
+        FROM swarm_claims WHERE ${NON_DIAGNOSTIC}
         GROUP BY subject_ref HAVING cnt < 3
       `).all() as Array<{ subject_ref: string; cnt: number }>;
       for (const d of domains) {
@@ -100,11 +114,11 @@ export class CuriosityService {
           description: `Sparse claim inventory: ${d.cnt} distinct normalized active statements in domain '${d.subject_ref}' (count heuristic < 3; coverage UNKNOWN)`,
         });
       }
-    } catch { /* best-effort */ }
+    } catch { return null; }
     return gaps;
   }
 
-  private detectConfidenceGaps(): Gap[] {
+  private detectConfidenceGaps(): Gap[] | null {
     const gaps: Gap[] = [];
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
     try {
@@ -121,11 +135,11 @@ export class CuriosityService {
           description: `Low confidence (${lc.avg_conf.toFixed(2)}) in domain '${lc.subject_ref}' — needs verification`,
         });
       }
-    } catch { /* best-effort */ }
+    } catch { return null; }
     return gaps;
   }
 
-  private detectContradictionGaps(): Gap[] {
+  private detectContradictionGaps(): Gap[] | null {
     const gaps: Gap[] = [];
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
     try {
@@ -143,11 +157,11 @@ export class CuriosityService {
           description: `${c.cnt} unresolved contradictions in '${c.subject_ref}'`,
         });
       }
-    } catch { /* best-effort */ }
+    } catch { return null; }
     return gaps;
   }
 
-  private detectCompetenceGaps(): Gap[] {
+  private detectCompetenceGaps(): Gap[] | null {
     const gaps: Gap[] = [];
     try {
       const caps = this.db.prepare('SELECT id, status, metadata FROM swarm_capabilities').all() as CapabilityRow[];
@@ -163,7 +177,7 @@ export class CuriosityService {
           });
         }
       }
-    } catch { /* best-effort */ }
+    } catch { return null; }
     return gaps;
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { CuriosityService } from '../services/curiosity-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
@@ -65,6 +65,42 @@ describe('G41: Curiosity Service', () => {
     expect(result.gaps[0].description).toContain('1 distinct');
   });
 
+  it('reports zero active statements in a domain whose last claim expired', async () => {
+    claim('expired-only', { valid_until: new Date(Date.now() - 1000).toISOString() });
+    const report = await curiosity.scanForGaps();
+    expect(report.gaps).toHaveLength(1);
+    expect(report.gaps[0].description).toContain('0 distinct normalized active statements');
+    expect((await curiosity.scanForGaps()).published).toBe(0);
+  });
+
+  it('publishes a new occurrence after a resolved signal disappeared on a successful scan', async () => {
+    claim('first'); await curiosity.scanForGaps();
+    db.prepare("UPDATE swarm_claims SET status = 'resolved' WHERE predicate = 'gap'").run();
+    const old = db.prepare("SELECT * FROM swarm_claims WHERE predicate = 'gap'").get() as any;
+    expect((await curiosity.scanForGaps()).published).toBe(0);
+    claim('second'); claim('third');
+    expect((await curiosity.scanForGaps()).gaps).toEqual([]);
+    expect(db.prepare('SELECT status,evidence_refs_json FROM swarm_claims WHERE id = ?').get(old.id)).toEqual({ status: old.status, evidence_refs_json: old.evidence_refs_json });
+    db.prepare("UPDATE swarm_claims SET valid_until = ? WHERE id IN ('second','third')").run(new Date(Date.now() - 1000).toISOString());
+    expect((await curiosity.scanForGaps()).published).toBe(1);
+    expect(db.prepare("SELECT status FROM swarm_claims WHERE predicate = 'gap' AND id <> ?").get(old.id)).toEqual({ status: 'proposed' });
+    expect((await curiosity.scanForGaps()).published).toBe(0);
+  });
+
+  it('does not treat a detector query failure as a disappeared signal', async () => {
+    claim('first'); await curiosity.scanForGaps();
+    db.prepare("UPDATE swarm_claims SET status = 'resolved' WHERE predicate = 'gap'").run();
+    const old = db.prepare("SELECT * FROM swarm_claims WHERE predicate = 'gap'").get();
+    const prepare = db.prepare.bind(db);
+    const failedQuery = vi.spyOn(db, 'prepare').mockImplementation(((sql: string) => {
+      if (sql.includes('COUNT(DISTINCT')) throw new Error('simulated query failure');
+      return prepare(sql);
+    }) as typeof db.prepare);
+    try { expect((await curiosity.scanForGaps()).published).toBe(0); } finally { failedQuery.mockRestore(); }
+    expect(db.prepare("SELECT * FROM swarm_claims WHERE predicate = 'gap'").get()).toEqual(old);
+    expect((await curiosity.scanForGaps()).published).toBe(0);
+  });
+
   it('keeps explicit predicate, object and scope distinctions without semantic scoring', async () => {
     claim('p1', { claim: 'same', predicate: 'observed', object: 'yes', scope: 'local' });
     claim('p2', { claim: 'same', predicate: 'observed', object: 'no', scope: 'local' });
@@ -76,13 +112,13 @@ describe('G41: Curiosity Service', () => {
     claim('first');
     await curiosity.scanForGaps();
     db.prepare("UPDATE swarm_claims SET status = ? WHERE created_from = 'curiosity-service'").run(status);
-    const original = db.prepare("SELECT * FROM swarm_claims WHERE created_from = 'curiosity-service'").get() as { id: string };
+    const original = db.prepare("SELECT * FROM swarm_claims WHERE created_from = 'curiosity-service'").get() as { id: string; metadata: string };
     expect((await curiosity.scanForGaps()).published).toBe(0);
     expect(db.prepare('SELECT * FROM swarm_claims WHERE id = ?').get(original.id)).toEqual(original);
     claim('second');
     expect((await curiosity.scanForGaps()).published).toBe(1);
     expect(db.prepare("SELECT status FROM swarm_claims WHERE created_from = 'curiosity-service' AND id <> ?").get(original.id)).toEqual({ status: 'proposed' });
-    expect(db.prepare('SELECT * FROM swarm_claims WHERE id = ?').get(original.id)).toEqual(original);
+    expect(db.prepare('SELECT * FROM swarm_claims WHERE id = ?').get(original.id)).toEqual({ ...original, metadata: JSON.stringify({ ...JSON.parse(original.metadata), observed_signal_active: false }) });
   });
 
   it('detects coverage gaps for domains with < 3 claims', async () => {
