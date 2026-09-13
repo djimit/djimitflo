@@ -51,6 +51,17 @@ export function summarizeRun(run: ExpertSwarmRun): { decision: string; perspecti
   };
 }
 
+/** One row per contested proposition with the number of expert pairs in conflict; the pairs stay in the run data. */
+export function groupDisagreements(items: Array<{ proposition: string; expert_a: string; expert_b: string; resolving_observation: string }>): Array<{ proposition: string; pairs: number; resolving_observation: string }> {
+  const grouped = new Map<string, { proposition: string; pairs: number; resolving_observation: string }>();
+  for (const item of items) {
+    const entry = grouped.get(item.proposition) ?? { proposition: item.proposition, pairs: 0, resolving_observation: item.resolving_observation };
+    entry.pairs += 1;
+    grouped.set(item.proposition, entry);
+  }
+  return [...grouped.values()];
+}
+
 /** Counts per state for the overview strip, in lifecycle order. */
 export function stateCounts(experts: ExpertSummary[]): Array<{ state: ExpertLifecycleState; count: number }> {
   return (Object.keys(STATE_TONE) as ExpertLifecycleState[]).map((state) => ({ state, count: experts.filter((expert) => expert.lifecycle_state === state).length })).filter((entry) => entry.count > 0);
@@ -268,7 +279,7 @@ export function FrontierExpertsPage() {
                     <div>
                       <h4 className="font-semibold text-foreground">Tegenspraak en onzekerheid</h4>
                       <ul className="mt-1 space-y-1 text-foreground-secondary">
-                        {run.council.disagreements.map((item, index) => <li key={index} className="text-status-error">{item.proposition} <span className="text-foreground-tertiary">— beslissende waarneming: {item.resolving_observation}</span></li>)}
+                        {groupDisagreements(run.council.disagreements).map((item) => <li key={item.proposition} className="text-status-error">{item.proposition} · {item.pairs} paar in tegenspraak <span className="text-foreground-tertiary">— beslissende waarneming: {item.resolving_observation}</span></li>)}
                         {run.council.agreements.map((item, index) => <li key={`a${index}`} className="text-status-success">{item.proposition} · {item.expert_ids.length} eens</li>)}
                         {run.council.uncertainties.map((item, index) => <li key={`u${index}`} className="text-foreground-tertiary">{item}</li>)}
                         {run.council.adversarial?.attacks.map((attack, index) => <li key={`x${index}`}>⚔ {attack.attack} <span className="text-foreground-tertiary">(gat: {attack.evidence_gap})</span></li>)}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExpertSummary, ExpertSwarmRun } from '../lib/api';
-import { NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
+import { groupDisagreements, NEXT_STATES, STATE_TONE, stateCounts, summarizeRun, tierLabel } from './FrontierExpertsPage';
 
 const expert = (id: string, state: ExpertSummary['lifecycle_state']): ExpertSummary => ({ id, canonical_name: id, lifecycle_state: state, identity_confidence: 0.9, version: 1, updated_at: '', capabilities: [], provenance_json: '{}' });
 
@@ -24,5 +24,6 @@ describe('frontier experts page helpers (§36: tentative never shown as verified
     expect(summarizeRun(run)).toEqual({ decision: 'CONTRADICTED', perspectives: 1, disagreements: 1, attacks: 1, rejected: 1, abstained: null });
     expect(summarizeRun({ ...run, council: { ...run.council!, abstained: true, reason: 'FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED', perspectives: [] } }).abstained).toBe('FRONTIER_EXPERTS_RUNTIME_NOT_CONFIGURED');
     expect(summarizeRun({ ...run, council: undefined }).perspectives).toBe(0);
+    expect(groupDisagreements([{ proposition: 'p', expert_a: 'a', expert_b: 'b', resolving_observation: 'o' }, { proposition: 'p', expert_a: 'c', expert_b: 'b', resolving_observation: 'o2' }, { proposition: 'q', expert_a: 'a', expert_b: 'd', resolving_observation: 'o3' }])).toEqual([{ proposition: 'p', pairs: 2, resolving_observation: 'o' }, { proposition: 'q', pairs: 1, resolving_observation: 'o3' }]);
   });
 });

@@ -60,7 +60,8 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | HTTP routes: list/get/resolve/transition/council | PROVEN (supertest; council flag-gated, abstains without runtime) |
 | Evolution: capability delta governed, status preserved on unchanged evidence (§54) | PROVEN |
 | Deprecation with typed reasons, history queryable AS OF (§55) | PROVEN |
-| UI (§36), scheduled re-enrichment trigger | NOT_PROVEN (not built, P2) |
+| UI (§36): registry, detail (provenance, claims, lifecycle, versions), resolver, governed actions, swarm runs | PROVEN locally (page rendered in Chrome against a seeded server: resolution, detail, contradicted run with rejected perspective; no console errors) |
+| Scheduled re-enrichment trigger | NOT_PROVEN (manual `enrichBatch`) |
 | Production activation | BLOCKED (merge, flag, runtime) |
 
 ## 10. Remaining gaps
