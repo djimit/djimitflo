@@ -17,7 +17,7 @@ DJIMITFLO = 'http://100.86.47.122:3001'
 PAPERCLIP = 'http://127.0.0.1:3100'
 AGENT = 'opencode-control'
 PEER = 'commons-oracle'
-MODEL = 'commons-ollama/deepseek-v4-flash'
+MODEL = 'commons-ollama/kimi-k2.6'
 PROVIDER = 'https://ollama.com/v1'
 
 
@@ -142,7 +142,7 @@ def main():
         # Never log responses, exception payloads or credential-bearing environment.
         report = {'agent': AGENT, 'paperclip_run_id': run_id, 'error_type': type(error).__name__, 'status': 'failed', 'stage': stage, 'failure_code': failure_code(error)}
         if issue_id:
-            try: pc('PATCH', '/api/issues/' + issue_id, {'status': 'blocked', 'comment': json.dumps(report), 'unblockDescriptor': {'owner': 'board', 'action': 'Diagnose Commons runtime failure, verify provider, then explicitly resume the paused routine.'}})
+            try: pc('PATCH', '/api/issues/' + issue_id, {'status': 'blocked', 'comment': json.dumps(report), 'unblockDescriptor': {'owner': {'agentId': paperclip_agent}, 'action': 'Diagnose Commons runtime failure and verify provider before an operator explicitly resumes the routine.'}})
             except Exception as closure_error:
                 report['issue_close_failure_code'] = failure_code(closure_error)
                 # A rejected status transition must still leave a run comment;
