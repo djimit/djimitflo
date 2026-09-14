@@ -1506,7 +1506,9 @@ export class SwarmStatusService {
 
   private loopNameForWorkItem(item: WorkItemRecord): LoopName {
     const candidate = String(item.recommended_loop || item.metadata.recommended_loop || '').trim();
-    return SUPPORTED_LOOP_NAMES.has(candidate as LoopName) ? candidate as LoopName : DEFAULT_LOOP_NAME;
+    if (!candidate) return DEFAULT_LOOP_NAME;
+    if (!SUPPORTED_LOOP_NAMES.has(candidate as LoopName)) throw new Error(`WORK_ITEM_LOOP_UNSUPPORTED:${candidate}`);
+    return candidate as LoopName;
   }
 
   private workerPoolRows(runtime?: WorkerRuntime): any[] {

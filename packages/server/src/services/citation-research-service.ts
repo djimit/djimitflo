@@ -1,11 +1,8 @@
 /**
- * CitationResearchService — citation-gated research pipeline.
+ * CitationResearchService — source registry, citation links and contradiction checks.
  *
- * Ensures every research claim has a verifiable source:
- * 1. Source registration with trust scoring
- * 2. Citation linking (claim → source)
- * 3. Contradiction detection across sources
- * 4. Research report generation with full audit trail
+ * Source trust is only a domain/type heuristic. Registered URLs do not verify
+ * claim content; claims stay unverified until a source-content verifier exists.
  *
  * Inspired by Hermes citation-gated research and Perplexity's
  * source-based answer generation.
@@ -20,7 +17,7 @@ interface Source {
   title: string;
   source_type: 'web' | 'document' | 'database' | 'api' | 'legal_database';
   trust_score: number; // 0-1
-  last_verified: string;
+  last_verified: string | null;
   metadata: Record<string, unknown>;
 }
 
@@ -65,19 +62,34 @@ export class CitationResearchService {
     url: string;
     title: string;
     source_type: Source['source_type'];
-    trust_score?: number;
     metadata?: Record<string, unknown>;
   }): Source {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(input.url.trim());
+    } catch {
+      throw new Error('RESEARCH_SOURCE_URL_INVALID');
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol) || parsedUrl.username || parsedUrl.password) {
+      throw new Error('RESEARCH_SOURCE_URL_INVALID');
+    }
+    if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 500) {
+      throw new Error('RESEARCH_SOURCE_TITLE_INVALID');
+    }
+    if (!['web', 'document', 'database', 'api', 'legal_database'].includes(input.source_type)) {
+      throw new Error('RESEARCH_SOURCE_TYPE_INVALID');
+    }
+
     const id = randomUUID();
     const now = new Date().toISOString();
 
     const source: Source = {
       id,
-      url: input.url,
-      title: input.title,
+      url: parsedUrl.toString(),
+      title: input.title.trim(),
       source_type: input.source_type,
-      trust_score: input.trust_score ?? this.estimateTrustScore(input.url, input.source_type),
-      last_verified: now,
+      trust_score: this.estimateTrustScore(parsedUrl.hostname, input.source_type),
+      last_verified: null,
       metadata: input.metadata || {},
     };
 
@@ -97,41 +109,48 @@ export class CitationResearchService {
     source_ids: string[];
     confidence?: number;
   }): Claim {
+    if (typeof input.text !== 'string' || !input.text.trim() || input.text.length > 10_000) {
+      throw new Error('RESEARCH_CLAIM_TEXT_INVALID');
+    }
+    if (!Array.isArray(input.source_ids) || input.source_ids.length === 0 || input.source_ids.length > 50
+      || input.source_ids.some((sourceId) => typeof sourceId !== 'string' || !sourceId.trim())) {
+      throw new Error('RESEARCH_SOURCES_REQUIRED');
+    }
+    if (input.confidence !== undefined && (!Number.isFinite(input.confidence) || input.confidence < 0 || input.confidence > 1)) {
+      throw new Error('RESEARCH_CLAIM_CONFIDENCE_INVALID');
+    }
+
+    const sourceIds = [...new Set(input.source_ids)];
+    const sourceRows = this.db.prepare(
+      `SELECT id FROM research_sources WHERE id IN (${sourceIds.map(() => '?').join(',')})`,
+    ).all(...sourceIds) as Array<{ id: string }>;
+    if (sourceRows.length !== sourceIds.length) throw new Error('RESEARCH_SOURCE_NOT_FOUND');
+
     const id = randomUUID();
     const now = new Date().toISOString();
-
-    // Calculate confidence based on source trust scores
-    const sourceScores = input.source_ids.map((sid) => {
-      const row = this.db.prepare('SELECT trust_score FROM research_sources WHERE id = ?').get(sid) as any;
-      return row?.trust_score ?? 0.5;
-    });
-
-    const avgSourceTrust = sourceScores.length > 0
-      ? sourceScores.reduce((a, b) => a + b, 0) / sourceScores.length
-      : 0.5;
-
     const claim: Claim = {
       id,
-      text: input.text,
-      confidence: input.confidence ?? avgSourceTrust,
-      source_ids: input.source_ids,
-      verified: sourceScores.length > 0,
+      text: input.text.trim(),
+      confidence: input.confidence ?? 0,
+      source_ids: sourceIds,
+      // A registered URL and domain-level trust estimate do not prove claim support.
+      verified: false,
       created_at: now,
     };
 
-    this.db.prepare(`
-      INSERT INTO research_claims (id, text, confidence, source_ids_json, verified, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(claim.id, claim.text, claim.confidence, JSON.stringify(claim.source_ids), claim.verified ? 1 : 0, now);
-
-    // Create citation links
-    for (const sourceId of input.source_ids) {
-      const citationId = randomUUID();
+    this.db.transaction(() => {
       this.db.prepare(`
-        INSERT INTO research_citations (id, claim_id, source_id, excerpt, relevance_score, verified, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `).run(citationId, claim.id, sourceId, '', avgSourceTrust, claim.verified ? 1 : 0, now);
-    }
+        INSERT INTO research_claims (id, text, confidence, source_ids_json, verified, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(claim.id, claim.text, claim.confidence, JSON.stringify(claim.source_ids), claim.verified ? 1 : 0, now);
+
+      for (const sourceId of sourceIds) {
+        this.db.prepare(`
+          INSERT INTO research_citations (id, claim_id, source_id, excerpt, relevance_score, verified, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(randomUUID(), claim.id, sourceId, '', 0, 0, now);
+      }
+    })();
 
     return claim;
   }
@@ -227,16 +246,34 @@ export class CitationResearchService {
     title: string;
     claim_ids?: string[];
   }): ResearchReport {
+    if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 500) {
+      throw new Error('RESEARCH_REPORT_TITLE_INVALID');
+    }
     const id = randomUUID();
     const now = new Date().toISOString();
 
     // Get claims
     let claims: Claim[];
-    if (input.claim_ids && input.claim_ids.length > 0) {
-      const placeholders = input.claim_ids.map(() => '?').join(',');
-      claims = (this.db.prepare(`SELECT * FROM research_claims WHERE id IN (${placeholders})`).all(...input.claim_ids) as any[]).map(parseClaim);
+    if (input.claim_ids !== undefined) {
+      if (!Array.isArray(input.claim_ids) || input.claim_ids.length === 0 || input.claim_ids.length > 100
+        || input.claim_ids.some((claimId) => typeof claimId !== 'string' || !claimId.trim())) {
+        throw new Error('RESEARCH_REPORT_CLAIM_IDS_INVALID');
+      }
+      const claimIds = [...new Set(input.claim_ids)];
+      const placeholders = claimIds.map(() => '?').join(',');
+      claims = (this.db.prepare(`SELECT * FROM research_claims WHERE id IN (${placeholders})`).all(...claimIds) as any[]).map(parseClaim);
+      if (claims.length !== claimIds.length) throw new Error('RESEARCH_CLAIM_NOT_FOUND');
     } else {
       claims = (this.db.prepare('SELECT * FROM research_claims ORDER BY created_at DESC LIMIT 50').all() as any[]).map(parseClaim);
+    }
+    if (claims.length === 0) throw new Error('RESEARCH_CLAIMS_REQUIRED');
+
+    // Only contradictions between claims included in this report are relevant.
+    const reportClaimIds = new Set(claims.map((claim) => claim.id));
+    const contradictions = this.detectContradictions().filter((contradiction) =>
+      reportClaimIds.has(contradiction.claim_a_id) && reportClaimIds.has(contradiction.claim_b_id));
+    if (contradictions.some((contradiction) => contradiction.severity === 'high')) {
+      throw new Error('RESEARCH_REPORT_HIGH_SEVERITY_CONTRADICTION');
     }
 
     // Get sources referenced by claims
@@ -247,18 +284,16 @@ export class CitationResearchService {
       if (row) sources.push(parseSource(row));
     }
 
-    // Detect contradictions
-    const contradictions = this.detectContradictions();
-
     // Calculate overall confidence
-    const overallConfidence = claims.length > 0
-      ? claims.reduce((sum, c) => sum + c.confidence, 0) / claims.length
+    const verifiedClaims = claims.filter((claim) => claim.verified);
+    const overallConfidence = verifiedClaims.length > 0
+      ? verifiedClaims.reduce((sum, claim) => sum + claim.confidence, 0) / verifiedClaims.length
       : 0;
 
     const report: ResearchReport = {
       id,
       title: input.title,
-      summary: `Research report with ${claims.length} claims from ${sources.length} sources. ${contradictions.length} contradictions detected.`,
+      summary: `Research report with ${claims.length} claims from ${sources.length} sources; ${claims.length - verifiedClaims.length} unverified. ${contradictions.length} contradictions detected.`,
       claims,
       sources,
       contradictions,
@@ -311,7 +346,7 @@ export class CitationResearchService {
 
   // ─── Private ──────────────────────────────────────────────────────────
 
-  private estimateTrustScore(url: string, sourceType: Source['source_type']): number {
+  private estimateTrustScore(hostname: string, sourceType: Source['source_type']): number {
     // Base trust by source type
     const baseTrust: Record<string, number> = {
       legal_database: 0.95,
@@ -325,11 +360,8 @@ export class CitationResearchService {
 
     // Boost for known trusted domains
     const trustedDomains = ['overheid.nl', 'rechtspraak.nl', 'wetten.overheid.nl', 'eur-lex.europa.eu', 'gov.uk', 'europa.eu'];
-    for (const domain of trustedDomains) {
-      if (url.includes(domain)) {
-        score = Math.min(1, score + 0.2);
-        break;
-      }
+    if (trustedDomains.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+      score = Math.min(1, score + 0.2);
     }
 
     return score;
@@ -415,7 +447,7 @@ function parseSource(row: any): Source {
     title: row.title,
     source_type: row.source_type,
     trust_score: row.trust_score,
-    last_verified: row.last_verified,
+    last_verified: row.last_verified ?? null,
     metadata: JSON.parse(row.metadata_json || '{}'),
   };
 }

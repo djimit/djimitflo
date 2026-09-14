@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(process.env.npm_package_version || '0.5.8'),
+    ...(process.env.VITEST ? { 'import.meta.env.VITE_API_BASE': JSON.stringify('/api') } : {}),
   },
   resolve: {
     dedupe: ['react', 'react-dom'],

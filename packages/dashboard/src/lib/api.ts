@@ -760,6 +760,11 @@ export type LureCast = {
   lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
   invitations: Array<{ agent_id: string; name: string; token: string; expires_at: string; poller_env: string }>;
 };
+export type JoinInvite = { code: string; label: string; expires_at: string; max_uses: number; join_url: string };
+export type JoinRequest = {
+  agent_id: string; name: string; description: string; capabilities: string[]; contact: string | null; invite_label: string;
+  status: 'pending' | 'approved' | 'rejected'; requested_at: string; decided_at: string | null; decided_by: string | null; ip: string;
+};
 
 export type AgentInteractionRecord = {
   id: string;
@@ -1628,6 +1633,18 @@ class ApiClient {
 
   async conveneExpertCouncil(topic: string, maxExperts = 5): Promise<ExpertSwarmRun> {
     return this.request('/swarms/expert/council', { method: 'POST', body: JSON.stringify({ topic, max_experts: maxExperts }) });
+  }
+
+  async getJoinRequests(): Promise<{ requests: JoinRequest[] }> {
+    return this.request('/swarm-v2/social/join-requests');
+  }
+
+  async createJoinInvite(input: { label?: string; max_uses?: number; ttl_ms?: number } = {}): Promise<JoinInvite> {
+    return this.request('/swarm-v2/social/join-invites', { method: 'POST', body: JSON.stringify(input) });
+  }
+
+  async decideJoinRequest(agentId: string, approve: boolean): Promise<JoinRequest> {
+    return this.request(`/swarm-v2/social/join-requests/${encodeURIComponent(agentId)}/decide`, { method: 'POST', body: JSON.stringify({ approve }) });
   }
 
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {
