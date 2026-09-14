@@ -58,7 +58,7 @@ export async function createModelPerspectiveRunner(env: NodeJS.ProcessEnv = proc
   const providers = providersModule.providerEnvFromEnv(env);
   if (!providersModule.isRuntimeConfigured(spec, providers)) return null;
   const runner: PerspectiveRunner = async (_role, system, user) => {
-    const result = await providersModule.chat(spec, providers, system, user);
+    const result = await providersModule.chat(spec, providers, system, user, undefined, undefined, undefined, { maxTokens: 4096 });
     try { return JSON.parse(result.content); } catch {
       const start = result.content.indexOf('{'); const end = result.content.lastIndexOf('}');
       return start >= 0 && end > start ? JSON.parse(result.content.slice(start, end + 1)) : null;

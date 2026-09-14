@@ -76,6 +76,16 @@ describe('social runtime providers', () => {
     expect(viaGemini).toEqual({ content: '{"answer":"g"}', run_id: 'r1', usage: { promptTokenCount: 4, candidatesTokenCount: 3 } });
   });
 
+  it('disables hidden thinking on Ollama and honours a caller-supplied output budget', async () => {
+    const capture: { url?: string; init?: RequestInit } = {};
+    await chat({ runtime: 'ollama', model: 'qwen3.5:cloud' }, env, 'sys', 'ask', undefined, fakeFetch({ message: { content: '{}' } }, capture), undefined, { maxTokens: 4096 });
+    const body = JSON.parse(String(capture.init?.body));
+    expect(body.think).toBe(false);
+    expect(body.options.num_predict).toBe(4096);
+    await chat({ runtime: 'ollama', model: 'qwen2.5:3b' }, env, 'sys', 'ask', undefined, fakeFetch({ message: { content: '{}' } }, capture));
+    expect(JSON.parse(String(capture.init?.body)).options.num_predict).toBe(700);
+  });
+
   it('surfaces HTTP failures with the provider name', async () => {
     const failing = (async () => new Response('nope', { status: 429 })) as unknown as typeof fetch;
     await expect(chat({ runtime: 'ollama', model: 'm' }, env, 's', 'p', undefined, failing)).rejects.toThrow('SOCIAL_RUNTIME_OLLAMA_HTTP_429');

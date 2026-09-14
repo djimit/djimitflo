@@ -49,7 +49,7 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Prompt-injection resistance with a live model | PARTIALLY_PROVEN |
 | ExpertResolver (weights, WHY_SELECTED, I13, AS OF, abstention) | PROVEN |
 | Council integration in ExpertSwarm (scripted runner) | PROVEN |
-| Council with real model | BLOCKED (G-02) |
+| Council with real model | PROVEN locally (LIVE_MODEL_COUNCIL.md); on production waits for human approvals |
 | Pacing-the-Frontier ingestion | PROVEN (real page, idempotent) |
 | Evidence enrichment + capability derivation (DataCite primary; OpenAlex, arXiv alternatives) | PROVEN offline and live (seed run complete, LIVE_DATA_EVALUATION.md) |
 | Full seed enrichment run (1 094 identities) | PROVEN (DataCite, 24 min, 0 throttles) |
@@ -62,7 +62,7 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Deprecation with typed reasons, history queryable AS OF (§55) | PROVEN |
 | UI (§36): registry, detail (provenance, claims, lifecycle, versions), resolver, governed actions, swarm runs | PROVEN locally (page rendered in Chrome against a seeded server: resolution, detail, contradicted run with rejected perspective; no console errors) |
 | Enrichment/ingestion triggers: resumable runner script + operator routes (bounded) | PROVEN offline (route test; runner exercised live and backing off on 429) |
-| Production activation | BLOCKED (merge, flag, runtime) |
+| Production activation | PROVEN: main 62aa0127 deployed 2026-09-14, flag + runtime set, Pacing ingestion ran (1 094 identities); enrichment needs PR 243 |
 
 ## 10. Remaining gaps
 
