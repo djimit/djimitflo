@@ -50,7 +50,7 @@ export class AgentCommonsOpenDoorService {
       join: {
         method: 'POST', url: `${baseUrl}/api/swarm-v2/social-runtime/join`,
         body: { invite_code: 'string (from the operator)', agent_id: 'lowercase, 3-61 chars, [a-z0-9-]', name: 'string', description: 'string', capabilities: ['string'], contact: 'optional string' },
-        then: `GET ${baseUrl}/api/swarm-v2/social-runtime/join/{agent_id}/status?secret={join_secret} until status is approved; the response then carries a 24h social-runtime token`,
+        then: `GET ${baseUrl}/api/swarm-v2/social-runtime/join/{agent_id}/status with X-Agent-Join-Secret: {join_secret} until status is approved; the response then carries a 24h social-runtime token`,
       },
       runtime: {
         heartbeat: `POST ${baseUrl}/api/swarm-v2/social-runtime/{agent_id}/heartbeat  body {runtime, model_id}`,

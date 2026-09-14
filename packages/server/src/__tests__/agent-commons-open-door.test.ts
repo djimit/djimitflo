@@ -28,6 +28,8 @@ describe('agent commons open door', () => {
     const card = await request(app).get('/api/swarm-v2/social-runtime/card');
     expect(card.status).toBe(200);
     expect(card.body.join.url).toMatch(/\/api\/swarm-v2\/social-runtime\/join$/);
+    expect(card.body.join.then).toContain('X-Agent-Join-Secret');
+    expect(card.body.join.then).not.toContain('?secret=');
     expect(card.body.runtime.reply_schema.answer).toBe('string');
 
     const invite = await request(app).post('/api/swarm-v2/social/join-invites').send({ label: 'www-pilot', max_uses: 1 });
@@ -43,9 +45,11 @@ describe('agent commons open door', () => {
     expect((await request(app).post('/api/swarm-v2/social-runtime/join').send({ invite_code: invite.body.code, agent_id: 'second', name: 'Second' })).status).toBe(401);
     expect(db.prepare("SELECT status FROM agents WHERE id = 'wanderer'").get()).toEqual({ status: 'paused' });
 
-    const pending = await request(app).get(`/api/swarm-v2/social-runtime/join/wanderer/status?secret=${knock.body.join_secret}`);
+    const statusUrl = '/api/swarm-v2/social-runtime/join/wanderer/status';
+    expect((await request(app).get(`${statusUrl}?secret=${knock.body.join_secret}`)).status).toBe(401);
+    const pending = await request(app).get(statusUrl).set('X-Agent-Join-Secret', knock.body.join_secret);
     expect(pending.body).toEqual({ agent_id: 'wanderer', status: 'pending' });
-    expect((await request(app).get('/api/swarm-v2/social-runtime/join/wanderer/status?secret=nope')).status).toBe(401);
+    expect((await request(app).get(statusUrl).set('X-Agent-Join-Secret', 'nope')).status).toBe(401);
 
     const requests = await request(app).get('/api/swarm-v2/social/join-requests');
     expect(requests.body.requests).toEqual([expect.objectContaining({ agent_id: 'wanderer', status: 'pending', invite_label: 'www-pilot', capabilities: ['philosophy'] })]);
@@ -55,7 +59,7 @@ describe('agent commons open door', () => {
     expect(decision.body).toMatchObject({ status: 'approved', decided_by: 'operator@test' });
     expect(db.prepare("SELECT status FROM agents WHERE id = 'wanderer'").get()).toEqual({ status: 'active' });
 
-    const approved = await request(app).get(`/api/swarm-v2/social-runtime/join/wanderer/status?secret=${knock.body.join_secret}`);
+    const approved = await request(app).get(statusUrl).set('X-Agent-Join-Secret', knock.body.join_secret);
     expect(approved.body.status).toBe('approved');
     expect(validateSpawnToken(secret, approved.body.token, 'wanderer', 'social-runtime')).toBe(true);
     expect(validateSpawnToken(secret, approved.body.token, 'other', 'social-runtime')).toBe(false);
@@ -75,7 +79,7 @@ describe('agent commons open door', () => {
     const rejected = await request(app).post('/api/swarm-v2/social/join-requests/intruder/decide').send({ approve: false });
     expect(rejected.body.status).toBe('rejected');
     expect(db.prepare("SELECT status FROM agents WHERE id = 'intruder'").get()).toEqual({ status: 'offline' });
-    expect((await request(app).get(`/api/swarm-v2/social-runtime/join/intruder/status?secret=${knock.body.join_secret}`)).body.status).toBe('rejected');
+    expect((await request(app).get('/api/swarm-v2/social-runtime/join/intruder/status').set('X-Agent-Join-Secret', knock.body.join_secret)).body.status).toBe('rejected');
     expect((await request(app).post('/api/swarm-v2/social/join-requests/ghost/decide').send({ approve: true })).status).toBe(404);
   });
 });

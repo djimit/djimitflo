@@ -296,7 +296,7 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   });
   router.get('/join/:agentId/status', (req: any, res) => {
     try {
-      res.set('Cache-Control', 'no-store').json(openDoor.status({ agentId: String(req.params.agentId), secret: String(req.query.secret || ''), ip: req.ip, baseUrl: baseUrl(req) }));
+      res.set('Cache-Control', 'no-store').json(openDoor.status({ agentId: String(req.params.agentId), secret: String(req.get('X-Agent-Join-Secret') || ''), ip: req.ip, baseUrl: baseUrl(req) }));
     } catch (error) {
       const code = error instanceof Error ? error.message : 'JOIN_STATUS_FAILED';
       res.status(code === 'JOIN_SECRET_INVALID' ? 401 : 500).json({ error: { code, message: code } });
