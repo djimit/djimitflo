@@ -1,6 +1,6 @@
 {
   "schema_version": 3,
-  "generated_at": "2026-09-12T19:48:17.634Z",
+  "generated_at": "2026-09-14T07:25:36.126Z",
   "evidence_limits": [
     "source_referenced means a static source-code match only; it is not proof a test ran, exercised the handler, or validated domain behavior.",
     "Runtime comparison covers explicit API method/path registrations; implicit HEAD/OPTIONS and startup /health, /metrics, /explore and static SPA middleware are outside this API fixture."
@@ -3504,6 +3504,38 @@
         "mounted_path": "/api/swarm-v2/comms/stats"
       },
       {
+        "id": "swarm-orchestration:GET:/social/commons",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/commons",
+        "mounted_path": "/api/swarm-v2/social/commons"
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/lures",
+        "mounted_path": "/api/swarm-v2/social/lures"
+      },
+      {
+        "id": "swarm-orchestration:GET:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/lures",
+        "mounted_path": "/api/swarm-v2/social/lures"
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/agents/:agentId/token",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/agents/:agentId/token",
+        "mounted_path": "/api/swarm-v2/social/agents/:agentId/token"
+      },
+      {
         "id": "swarm-orchestration:POST:/socialize",
         "module": "swarm-orchestration",
         "factory": "createSwarmOrchestrationRoutes",
@@ -3582,6 +3614,38 @@
         "method": "GET",
         "path": "/comms/stats",
         "mounted_path": "/api/swarm/comms/stats"
+      },
+      {
+        "id": "swarm-orchestration:GET:/social/commons",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/commons",
+        "mounted_path": "/api/swarm/social/commons"
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/lures",
+        "mounted_path": "/api/swarm/social/lures"
+      },
+      {
+        "id": "swarm-orchestration:GET:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/lures",
+        "mounted_path": "/api/swarm/social/lures"
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/agents/:agentId/token",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/agents/:agentId/token",
+        "mounted_path": "/api/swarm/social/agents/:agentId/token"
       },
       {
         "id": "swarm-orchestration:POST:/socialize",
@@ -5021,9 +5085,9 @@
     "unsupported": []
   },
   "routes": {
-    "total": 585,
-    "source_referenced": 585,
-    "module_covered": 0,
+    "total": 589,
+    "source_referenced": 588,
+    "module_covered": 1,
     "unclassified": 0,
     "critical_unclassified": [],
     "critical_exempted": [],
@@ -9700,6 +9764,8 @@
           "packages/server/src/__tests__/module-covered-routes.test.ts"
         ],
         "module_evidence": [
+          "packages/server/src/__tests__/github-pr-review-llm.test.ts",
+          "packages/server/src/__tests__/github-pr-review-webhook.test.ts",
           "packages/server/src/__tests__/github-webhooks.test.ts",
           "packages/server/src/__tests__/module-covered-routes.test.ts"
         ]
@@ -16820,6 +16886,96 @@
         "mounted_paths": [
           "/api/swarm-v2/comms/stats",
           "/api/swarm/comms/stats"
+        ],
+        "registration_scope": "api_source_declaration",
+        "evidence_kind": "static_source_reference_not_execution",
+        "critical": false,
+        "status": "source_referenced",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ],
+        "module_evidence": [
+          "packages/server/src/__tests__/agent-social-runtime.test.ts",
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ]
+      },
+      {
+        "id": "swarm-orchestration:GET:/social/commons",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/commons",
+        "mounted_paths": [
+          "/api/swarm-v2/social/commons",
+          "/api/swarm/social/commons"
+        ],
+        "registration_scope": "api_source_declaration",
+        "evidence_kind": "static_source_reference_not_execution",
+        "critical": false,
+        "status": "module_covered",
+        "exemption": null,
+        "evidence": [],
+        "module_evidence": [
+          "packages/server/src/__tests__/agent-social-runtime.test.ts",
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ]
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/lures",
+        "mounted_paths": [
+          "/api/swarm-v2/social/lures",
+          "/api/swarm/social/lures"
+        ],
+        "registration_scope": "api_source_declaration",
+        "evidence_kind": "static_source_reference_not_execution",
+        "critical": false,
+        "status": "source_referenced",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ],
+        "module_evidence": [
+          "packages/server/src/__tests__/agent-social-runtime.test.ts",
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ]
+      },
+      {
+        "id": "swarm-orchestration:GET:/social/lures",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "GET",
+        "path": "/social/lures",
+        "mounted_paths": [
+          "/api/swarm-v2/social/lures",
+          "/api/swarm/social/lures"
+        ],
+        "registration_scope": "api_source_declaration",
+        "evidence_kind": "static_source_reference_not_execution",
+        "critical": false,
+        "status": "source_referenced",
+        "exemption": null,
+        "evidence": [
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ],
+        "module_evidence": [
+          "packages/server/src/__tests__/agent-social-runtime.test.ts",
+          "packages/server/src/__tests__/swarm-orchestration-routes.test.ts"
+        ]
+      },
+      {
+        "id": "swarm-orchestration:POST:/social/agents/:agentId/token",
+        "module": "swarm-orchestration",
+        "factory": "createSwarmOrchestrationRoutes",
+        "method": "POST",
+        "path": "/social/agents/:agentId/token",
+        "mounted_paths": [
+          "/api/swarm-v2/social/agents/:agentId/token",
+          "/api/swarm/social/agents/:agentId/token"
         ],
         "registration_scope": "api_source_declaration",
         "evidence_kind": "static_source_reference_not_execution",

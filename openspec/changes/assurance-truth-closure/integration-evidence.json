@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-11T22:44:16.836Z",
-  "status": "pass",
+  "generated_at": "2026-09-14T07:25:40.565Z",
+  "status": "blocked",
   "probes": [
     {
       "id": "djimitflo",
@@ -10,7 +10,7 @@
       "target": "http://100.86.47.122:3001/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 276
+      "latency_ms": 565
     },
     {
       "id": "event_bus",
@@ -19,7 +19,7 @@
       "target": "http://100.86.47.122:8083/events/djimit.events?count=1",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 266
+      "latency_ms": 554
     },
     {
       "id": "paperclip",
@@ -28,34 +28,34 @@
       "target": "http://192.168.1.28:3100/api/health",
       "status": "pass",
       "http_status": 200,
-      "latency_ms": 296
+      "latency_ms": 574
     },
     {
       "id": "uams",
-      "kind": "http-contract",
+      "kind": "http",
       "required": true,
       "target": "http://100.77.58.72:8000/health",
-      "status": "pass",
-      "http_status": 200,
-      "latency_ms": 376
+      "status": "blocked",
+      "latency_ms": 3001,
+      "reason": "The operation was aborted due to timeout"
     },
     {
       "id": "ollama",
-      "kind": "http-contract",
+      "kind": "http",
       "required": true,
       "target": "http://100.77.58.72:11434/api/tags",
-      "status": "pass",
-      "http_status": 200,
-      "latency_ms": 279
+      "status": "blocked",
+      "latency_ms": 3000,
+      "reason": "The operation was aborted due to timeout"
     },
     {
       "id": "qdrant",
-      "kind": "http-contract",
+      "kind": "http",
       "required": true,
       "target": "http://100.77.58.72:6333/healthz",
-      "status": "pass",
-      "http_status": 200,
-      "latency_ms": 277
+      "status": "blocked",
+      "latency_ms": 3000,
+      "reason": "The operation was aborted due to timeout"
     },
     {
       "id": "litellm",
@@ -63,17 +63,17 @@
       "required": false,
       "target": "http://192.168.1.28:4000/health",
       "status": "unavailable",
-      "latency_ms": 274,
+      "latency_ms": 516,
       "reason": "fetch failed"
     },
     {
       "id": "context7",
-      "kind": "http",
+      "kind": "mcp-discovery",
       "required": false,
       "target": "https://mcp.context7.com/mcp",
-      "status": "fail",
-      "http_status": 405,
-      "latency_ms": 572
+      "status": "pass",
+      "http_status": 200,
+      "latency_ms": 818
     },
     {
       "id": "codex",
@@ -89,8 +89,8 @@
       "required": false,
       "target": "opencode",
       "status": "pass",
-      "version": "1.18.28"
+      "version": "1.18.30"
     }
   ],
-  "next_safe_action": "Verify deployed Djimitflo identity."
+  "next_safe_action": "Restore required workstation services, then rerun read-only probes."
 }

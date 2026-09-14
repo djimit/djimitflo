@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const root = resolve(import.meta.dirname, '..');
 const output = resolve(root, process.env.INTEGRATION_REPORT_PATH || 'openspec/changes/assurance-truth-closure/integration-evidence.json');
@@ -62,27 +63,77 @@ function binary(id, command, required) {
 
 const eventBusUrl = process.env.DJIMIT_EVENT_BUS_URL || 'http://100.86.47.122:8083';
 const eventStreamUrl = `${eventBusUrl.replace(/\/$/, '')}/events/${encodeURIComponent(process.env.DJIMIT_EVENT_STREAM || 'djimit.events')}?count=1`;
-const probes = await Promise.all([
-  http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true, async response => (await response.json()).status === 'healthy'),
-  eventStream(eventStreamUrl),
-  http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true, async response => { const body = await response.json(); return body.status === 'ok' && typeof body.commit === 'string'; }),
-  http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true, async response => (await response.json()).status === 'healthy'),
-  http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true, async response => Array.isArray((await response.json()).models)),
-  http('qdrant', `${process.env.QDRANT_URL || 'http://100.77.58.72:6333'}/healthz`, true, async response => (await response.text()).trim() === 'healthz check passed'),
-  http('litellm', `${process.env.LITELLM_URL || 'http://192.168.1.28:4000'}/health`, false),
-  http('context7', process.env.CONTEXT7_URL || 'https://mcp.context7.com/mcp', false),
-  Promise.resolve(binary('codex', process.env.CODEX_COMMAND || 'codex', true)),
-  Promise.resolve(binary('opencode', process.env.OPENCODE_COMMAND || 'opencode', false)),
-]);
-const status = probes.some(probe => probe.required && probe.status === 'fail') ? 'fail'
-  : probes.some(probe => probe.required && probe.status === 'blocked') ? 'blocked' : 'pass';
-const report = {
-  schema_version: 1,
-  generated_at: new Date().toISOString(),
-  status,
-  probes,
-  next_safe_action: status === 'pass' ? 'Verify deployed Djimitflo identity.' : 'Restore required workstation services, then rerun read-only probes.',
-};
-writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
-console.log(`${status.toUpperCase()} ${output}`);
-process.exitCode = status === 'pass' ? 0 : status === 'blocked' ? 2 : 1;
+export async function probeContext7(url = process.env.CONTEXT7_URL || 'https://mcp.context7.com/mcp') {
+  const started = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'MCP-Protocol-Version': '2026-07-28',
+        'Mcp-Method': 'server/discover',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'djimitflo-assurance-discover',
+        method: 'server/discover',
+        params: {
+          _meta: {
+            'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+            'io.modelcontextprotocol/clientInfo': { name: 'djimitflo-assurance', version: '0.5.8' },
+            'io.modelcontextprotocol/clientCapabilities': {},
+          },
+        },
+      }),
+      signal: AbortSignal.timeout(3000),
+    });
+    const message = await response.json();
+    const result = message?.result;
+    const valid = response.ok && message?.jsonrpc === '2.0'
+      && message.id === 'djimitflo-assurance-discover'
+      && Array.isArray(result?.supportedVersions)
+      && result.supportedVersions.includes('2026-07-28')
+      && result.capabilities && typeof result.capabilities === 'object';
+    return {
+      id: 'context7', kind: 'mcp-discovery', required: false, target: url,
+      status: valid ? 'pass' : 'fail', http_status: response.status,
+      latency_ms: Date.now() - started,
+      reason: valid ? undefined : message?.error?.message || 'MCP discovery contract mismatch',
+    };
+  } catch (error) {
+    return {
+      id: 'context7', kind: 'mcp-discovery', required: false, target: url, status: 'unavailable',
+      latency_ms: Date.now() - started, reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function main() {
+  const probes = await Promise.all([
+    http('djimitflo', `${process.env.DJIMITFLO_LIVE_URL || 'http://100.86.47.122:3001'}/health`, true, async response => (await response.json()).status === 'healthy'),
+    eventStream(eventStreamUrl),
+    http('paperclip', `${process.env.PAPERCLIP_URL || 'http://192.168.1.28:3100'}/api/health`, true, async response => { const body = await response.json(); return body.status === 'ok' && typeof body.commit === 'string'; }),
+    http('uams', `${process.env.UAMS_URL || 'http://100.77.58.72:8000'}/health`, true, async response => (await response.json()).status === 'healthy'),
+    http('ollama', `${process.env.OLLAMA_URL || 'http://100.77.58.72:11434'}/api/tags`, true, async response => Array.isArray((await response.json()).models)),
+    http('qdrant', `${process.env.QDRANT_URL || 'http://100.77.58.72:6333'}/healthz`, true, async response => (await response.text()).trim() === 'healthz check passed'),
+    http('litellm', `${process.env.LITELLM_URL || 'http://192.168.1.28:4000'}/health`, false),
+    probeContext7(),
+    Promise.resolve(binary('codex', process.env.CODEX_COMMAND || 'codex', true)),
+    Promise.resolve(binary('opencode', process.env.OPENCODE_COMMAND || 'opencode', false)),
+  ]);
+  const status = probes.some(probe => probe.required && probe.status === 'fail') ? 'fail'
+    : probes.some(probe => probe.required && probe.status === 'blocked') ? 'blocked' : 'pass';
+  const report = {
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    status,
+    probes,
+    next_safe_action: status === 'pass' ? 'Verify deployed Djimitflo identity.' : 'Restore required workstation services, then rerun read-only probes.',
+  };
+  writeFileSync(output, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`${status.toUpperCase()} ${output}`);
+  process.exitCode = status === 'pass' ? 0 : status === 'blocked' ? 2 : 1;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

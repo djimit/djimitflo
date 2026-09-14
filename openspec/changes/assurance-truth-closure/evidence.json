@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "status": "blocked",
-  "generated_at": "2026-09-11T22:44:12.467Z",
+  "generated_at": "2026-09-14T07:25:33.175Z",
   "source": {
-    "commit": "c0c8d72ba9bf4eba368c16c73b838ad4a36123c5",
+    "commit": "fd1dd87c9d26a15eb91052da64be0511dc37ea4e",
     "dirty": true,
-    "dirty_state_sha256": "70c66bdaef51225f6251e43fbe09b03dba2afa3c160574a15baeb99800dc43ad",
-    "package_lock_sha256": "85dd26902898d67c8e29741cae78469f8ec635e778839844cd7156abb73622a2"
+    "dirty_state_sha256": "2c189e77ed66850e7088b37037e2e27c219cb1b917367d8cff89f32b2deed01e",
+    "package_lock_sha256": "8824b135fc525774c63e922eb1eecae75c78326fd36b7fc71509961c25bf2aef"
   },
   "environment": {
     "node": "v22.23.2",
@@ -18,16 +18,16 @@
       "mandatory": true,
       "status": "pass",
       "evidence": "node=v22.23.2; required=>=22 <25",
-      "started_at": "2026-09-11T22:44:12.467Z",
-      "finished_at": "2026-09-11T22:44:12.467Z"
+      "started_at": "2026-09-14T07:25:33.175Z",
+      "finished_at": "2026-09-14T07:25:33.175Z"
     },
     {
       "id": "dependency_audit",
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-09-11T22:44:12.757Z",
-      "finished_at": "2026-09-11T22:44:13.293Z",
+      "started_at": "2026-09-14T07:25:33.421Z",
+      "finished_at": "2026-09-14T07:25:34.117Z",
       "evidence": "\n> djimitflo@0.5.8 audit:ci\n> node scripts/ci-audit.mjs\n\nNo unaccepted high/critical production advisories.\n\n"
     },
     {
@@ -35,44 +35,44 @@
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-09-11T22:44:13.293Z",
-      "finished_at": "2026-09-11T22:44:15.011Z",
-      "evidence": "\n> djimitflo@0.5.8 assurance:contracts\n> node scripts/contract-inventory.mjs\n\n{\n  \"output\": \"/Users/dlandman/djimitflo-audit-20260909/openspec/changes/assurance-truth-closure/contract-inventory.json\",\n  \"routes\": {\n    \"total\": 585,\n    \"tested\": 585,\n    \"critical_unclassified\": 0\n  },\n  \"mcp_tools\": {\n    \"total\": 56,\n    \"tested\": 56,\n    \"critical_unclassified\": 0\n  }\n}\n\n"
+      "started_at": "2026-09-14T07:25:34.117Z",
+      "finished_at": "2026-09-14T07:25:36.139Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:contracts\n> node scripts/contract-inventory.mjs\n\n{\n  \"output\": \"/Users/dlandman/djimitflo/openspec/changes/assurance-truth-closure/contract-inventory.json\",\n  \"routes\": {\n    \"total\": 589,\n    \"source_referenced\": 588,\n    \"critical_unclassified\": 0\n  },\n  \"mcp_tools\": {\n    \"total\": 56,\n    \"source_referenced\": 56,\n    \"critical_unclassified\": 0\n  }\n}\n\n"
     },
     {
       "id": "openmythos_evidence",
       "mandatory": true,
       "status": "blocked",
       "exit_code": 2,
-      "started_at": "2026-09-11T22:44:15.011Z",
-      "finished_at": "2026-09-11T22:44:16.161Z",
-      "evidence": "\n> djimitflo@0.5.8 assurance:openmythos\n> node scripts/openmythos-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo-audit-20260909/openspec/changes/assurance-truth-closure/openmythos-evidence.json\n\n"
+      "started_at": "2026-09-14T07:25:36.139Z",
+      "finished_at": "2026-09-14T07:25:37.455Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:openmythos\n> node scripts/openmythos-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo/openspec/changes/assurance-truth-closure/openmythos-evidence.json\n\n"
     },
     {
       "id": "integration_probes",
       "mandatory": true,
-      "status": "pass",
-      "exit_code": 0,
-      "started_at": "2026-09-11T22:44:16.161Z",
-      "finished_at": "2026-09-11T22:44:16.842Z",
-      "evidence": "\n> djimitflo@0.5.8 assurance:integrations\n> node scripts/integration-probes.mjs\n\nPASS /Users/dlandman/djimitflo-audit-20260909/openspec/changes/assurance-truth-closure/integration-evidence.json\n\n"
+      "status": "blocked",
+      "exit_code": 2,
+      "started_at": "2026-09-14T07:25:37.455Z",
+      "finished_at": "2026-09-14T07:25:48.067Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:integrations\n> node scripts/integration-probes.mjs\n\nBLOCKED /Users/dlandman/djimitflo/openspec/changes/assurance-truth-closure/integration-evidence.json\n\n"
     },
     {
       "id": "live_identity",
       "mandatory": true,
       "status": "blocked",
       "exit_code": 2,
-      "started_at": "2026-09-11T22:44:16.842Z",
-      "finished_at": "2026-09-11T22:44:17.053Z",
-      "evidence": "\n> djimitflo@0.5.8 assurance:live\n> node scripts/live-identity-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo-audit-20260909/openspec/changes/assurance-truth-closure/live-identity-evidence.json\n\n"
+      "started_at": "2026-09-14T07:25:48.067Z",
+      "finished_at": "2026-09-14T07:25:48.790Z",
+      "evidence": "\n> djimitflo@0.5.8 assurance:live\n> node scripts/live-identity-evidence.mjs\n\nBLOCKED /Users/dlandman/djimitflo/openspec/changes/assurance-truth-closure/live-identity-evidence.json\n\n"
     },
     {
       "id": "diff_check",
       "mandatory": true,
       "status": "pass",
       "exit_code": 0,
-      "started_at": "2026-09-11T22:44:17.053Z",
-      "finished_at": "2026-09-11T22:44:17.102Z",
+      "started_at": "2026-09-14T07:25:48.790Z",
+      "finished_at": "2026-09-14T07:25:48.869Z",
       "evidence": "\n"
     }
   ],
