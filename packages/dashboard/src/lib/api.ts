@@ -715,9 +715,12 @@ export type SocialThread = {
   learnings: number; messages: SocialMessage[];
 };
 
+export type CommonsAgentActivity = { id: string; to: string; action: string; timestamp: string; status: string };
+
 export type SocialAgentPresence = {
   id: string; name: string; status: string; capabilities: string[]; model: string;
   runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+  activity: CommonsAgentActivity[];
 };
 
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[] };

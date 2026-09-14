@@ -6,8 +6,8 @@ import type { SocialMessage, SocialAgentPresence, SocialThread } from '../lib/ap
 import { agentHue, Conversation, layoutConstellation, luredAgents, runtimeParticipation } from './AgentCommonsPage';
 
 const agents: SocialAgentPresence[] = [
-  { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true },
-  { id: 'b', name: 'B', status: 'active', capabilities: [], model: 'm', runtime: null, last_heartbeat_at: null, present: false },
+  { id: 'a', name: 'A', status: 'active', capabilities: [], model: 'm', runtime: 'codex', last_heartbeat_at: null, present: true, activity: [] },
+  { id: 'b', name: 'B', status: 'active', capabilities: [], model: 'm', runtime: null, last_heartbeat_at: null, present: false, activity: [] },
 ];
 const thread = (id: string, stage: SocialThread['stage'], participants: string[]): SocialThread => ({
   id, topic: 't', topic_ref: null, participants, stage, started_at: '2026-09-13T10:00:00Z', last_activity_at: '2026-09-13T10:00:00Z', learnings: 0, messages: [],
