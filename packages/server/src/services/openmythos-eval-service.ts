@@ -9,7 +9,7 @@
  *
  * Wave 1 features:
  * - JudgeService integration (4-dim scoring with contradiction detection)
- * - WorkerPool parallel execution (concurrency=10, timeout=120s)
+ * - WorkerPool parallel execution (concurrency env-configurable, default 2, timeout=120s)
  * - SwarmEventBus real-time events (eval:case:complete, eval:run:complete)
  */
 
@@ -128,7 +128,9 @@ export class OpenMythosEvalService {
     this.ollamaBreaker = new OllamaCircuitBreaker();
     this.corpusValidator = new CorpusSchemaValidator();
     this.workerPool = new WorkerPool({
-      concurrency: Number(process.env.OPENMYTHOS_WORKER_CONCURRENCY || '10'),
+      // CPU-only Ollama host (2 cores): parallelle generaties (>3) veroorzaken
+      // hanging calls die de circuit-breaker openen. Default 2, env-overschrijfbaar.
+      concurrency: Number(process.env.OPENMYTHOS_WORKER_CONCURRENCY || '2'),
       taskTimeoutMs: Number(process.env.OPENMYTHOS_WORKER_TIMEOUT_MS || '120000'),
       maxRetries: 2,
     });

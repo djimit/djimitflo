@@ -769,6 +769,40 @@ describe('workstation swarm resource plan', () => {
     }
   });
 
+  it('blocks work items that name an unavailable loop instead of routing them to the default loop', async () => {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO work_items (id, title, description, source, source_ref, risk_class, value_score, confidence, status, recommended_loop, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'wi-unsupported-loop', 'Validate outcome evidence', 'Run the outcome-specific validation loop.',
+      'outcome_observed', 'outcome-learning:fixture', 'medium', 75, 0.9, 'triaged', 'outcome-learning-loop', '{}', now, now
+    );
+
+    const response = await fetch(`${baseUrl}/swarms/scheduler/tick`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        max_items: 1,
+        plan_triaged: true,
+        prepare_planned: true,
+        repository_path: process.cwd(),
+        runtime: 'mock',
+      }),
+    });
+    expect(response.status).toBe(200);
+    const tick = await response.json() as any;
+
+    expect(tick.planned_work_items).toMatchObject([{ id: 'wi-unsupported-loop', status: 'planned' }]);
+    expect(tick.prepared_work_items).toMatchObject([{
+      id: 'wi-unsupported-loop',
+      status: 'blocked',
+      metadata: { prepare_blocked_reason: 'WORK_ITEM_LOOP_UNSUPPORTED:outcome-learning-loop' },
+    }]);
+    expect(db.prepare('SELECT COUNT(*) AS count FROM loop_runs').get()).toMatchObject({ count: 0 });
+    expect(db.prepare('SELECT COUNT(*) AS count FROM worker_leases').get()).toMatchObject({ count: 0 });
+  });
+
   it('worker pool runner drains allowed low-risk maker and checker leases with trace evidence', async () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-repo-'));
     const worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'djimitflo-runner-worktrees-'));
