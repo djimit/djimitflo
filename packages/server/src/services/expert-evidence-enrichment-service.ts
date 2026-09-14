@@ -62,6 +62,8 @@ export class ExpertEvidenceEnrichmentService {
 
   constructor(private readonly db: Database, deps: { registry?: FrontierExpertRegistryService; source?: AuthorPaperSource } = {}) {
     this.registry = deps.registry ?? new FrontierExpertRegistryService(db);
+    // The taxonomy is data, not schema: make sure it exists before any capability can be resolved (production had an empty table).
+    this.registry.seedTaxonomy();
     this.source = deps.source ?? new ArxivAdapter();
     this.sourceName = (this.source as { name?: string }).name ?? 'injected';
   }

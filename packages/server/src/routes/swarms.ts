@@ -230,6 +230,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
 
   // Frontier Expert Intelligence (§35): read-only retrieval is broad, mutation stays governed.
   const registry = () => new FrontierExpertRegistryService(db);
+  registry().seedTaxonomy(); // idempotent upsert so resolve/enrich work on a fresh production database
   const operatorActor = (req: any): string => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'EXPERT_OPERATOR_REQUIRED');
     return String(req.user.email || req.user.sub);
