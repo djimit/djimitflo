@@ -37,4 +37,8 @@ Service: `packages/server/src/services/pacing-frontier-ingestion-service.ts` · 
 - The self-stated title is a Tier-4 signal; affiliations remain at confidence 0.5 until an institutional page or profile (Tier 1) confirms them.
 - Live fetch is implemented but this report used the saved page from the same day to avoid a second request.
 
+## Enrichment addendum (2026-09-14)
+
+The 1 094 identities were enriched with DataCite DOI records (arXiv-native); outcome, namesake filtering and the resolution evaluation are in LIVE_DATA_EVALUATION.md. arXiv's own export API (429 after each single request) and OpenAlex (100 anonymous requests/day) were not viable at this scale; adapters for all three remain available (`--source datacite|openalex|arxiv`).
+
 Capability status: **PROVEN** (parser on the real page, idempotent ingestion in a real SQLite database with the production schema and migrations; no lifecycle advance beyond DISCOVERED).

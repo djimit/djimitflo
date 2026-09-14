@@ -1,6 +1,6 @@
 # Final validation — Frontier Expert Intelligence (§60, §61)
 
-Branch `feat/frontier-expert-intelligence` (base main ab9a8fb1, head af642fd2), 2026-09-14. Verdict: **NOT DONE by §60, hard gates PASS, no epistemic or security defect open; the remaining items are external blockers (arXiv rate limit, PR 223 model runtime) and P2 scope.**
+Branch `feat/frontier-expert-intelligence` (base main ab9a8fb1, head af642fd2), 2026-09-14. Verdict: **hard gates PASS, pipeline proven end-to-end on live data, no epistemic or security defect open; NOT DONE by §60 only because no human has yet approved an expert and the council has not run with a real model (PR 223 runtime).**
 
 ## 1. Architecture changes
 
@@ -51,9 +51,9 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Council integration in ExpertSwarm (scripted runner) | PROVEN |
 | Council with real model | BLOCKED (G-02) |
 | Pacing-the-Frontier ingestion | PROVEN (real page, idempotent) |
-| Evidence enrichment + capability derivation (OpenAlex primary, arXiv fallback) | PROVEN offline; live run in progress on the seed DB (G-01) |
-| Full seed enrichment run | IN PROGRESS via OpenAlex (arXiv throttled; G-01) |
-| Benchmark + hard gates | PROVEN (synthetic) / NOT_PROVEN (live data) |
+| Evidence enrichment + capability derivation (DataCite primary; OpenAlex, arXiv alternatives) | PROVEN offline and live (seed run complete, LIVE_DATA_EVALUATION.md) |
+| Full seed enrichment run (1 094 identities) | PROVEN (DataCite, 24 min, 0 throttles) |
+| Benchmark + hard gates | PROVEN (synthetic); live-data resolution PARTIALLY_PROVEN (no ACTIVE experts yet) |
 | §59 end-to-end scenario | PROVEN (scripted) / BLOCKED (live model) |
 | Skills (§34) via OKF/SkillService, injected into perspectives | PROVEN (14 skills validate; prompt injection of procedure tested) |
 | MCP read-only expert tools (§35) | PROVEN (4 tools, offline tests) |
