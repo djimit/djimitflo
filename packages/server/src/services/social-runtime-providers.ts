@@ -110,7 +110,9 @@ export function isRuntimeConfigured(spec: RuntimeSpec, env: ProviderEnv): boolea
   }
 }
 
-export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, prompt: string, signal?: AbortSignal, fetchImpl: typeof fetch = fetch, spawnImpl: typeof nodeSpawn = nodeSpawn): Promise<ChatResult> {
+export interface ChatOptions { /** Output budget; commons replies default to 700 tokens, council perspectives need more. */ maxTokens?: number }
+
+export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, prompt: string, signal?: AbortSignal, fetchImpl: typeof fetch = fetch, spawnImpl: typeof nodeSpawn = nodeSpawn, options: ChatOptions = {}): Promise<ChatResult> {
   const abort = signal ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]) : AbortSignal.timeout(TIMEOUT_MS);
   if (spec.runtime === 'claude-cli' || spec.runtime === 'codex-cli' || spec.runtime === 'gemini-cli') return chatCli(spec.runtime, spec.model, env, system, prompt, abort, spawnImpl);
   const post = async (url: string, headers: Record<string, string>, body: unknown) => {
@@ -128,7 +130,8 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
   switch (spec.runtime) {
     case 'ollama': {
       const data = await post(`${env.ollamaUrl}/api/chat`, {}, {
-        model: spec.model, stream: false, format: 'json', options: { temperature: 0.7, num_predict: 700 },
+        // think:false — thinking models otherwise spend the whole budget on hidden reasoning and return empty content.
+        model: spec.model, stream: false, format: 'json', think: false, options: { temperature: 0.7, num_predict: options.maxTokens ?? 700 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
       });
       return { content: data.message?.content || '', run_id: data.created_at || '', usage: numbers({ prompt_eval_count: data.prompt_eval_count, eval_count: data.eval_count, total_duration: data.total_duration }) };
@@ -138,7 +141,7 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
       const data = await post(`${env.anthropicBaseUrl}/v1/messages`, {
         'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01', 'anthropic-beta': 'server-side-fallback-2026-07-01',
       }, {
-        model: spec.model, max_tokens: 4096, fallbacks: 'default', system,
+        model: spec.model, max_tokens: options.maxTokens ?? 4096, fallbacks: 'default', system,
         messages: [{ role: 'user', content: prompt }],
       });
       if (data.stop_reason === 'refusal') throw new Error('SOCIAL_RUNTIME_ANTHROPIC_REFUSAL');
@@ -150,7 +153,7 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
       const base = spec.runtime === 'openai' ? env.openaiBaseUrl : env.compatibleBaseUrl;
       const key = spec.runtime === 'openai' ? env.openaiApiKey : env.compatibleApiKey;
       const data = await post(`${base}/chat/completions`, key ? { Authorization: `Bearer ${key}` } : {}, {
-        model: spec.model, response_format: { type: 'json_object' },
+        model: spec.model, response_format: { type: 'json_object' }, ...(options.maxTokens ? { max_completion_tokens: options.maxTokens } : {}),
         messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
       });
       const message = data.choices?.[0]?.message;
@@ -161,7 +164,7 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
       const data = await post(`${env.geminiBaseUrl}/models/${encodeURIComponent(spec.model)}:generateContent`, { 'x-goog-api-key': env.geminiApiKey }, {
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.7 },
+        generationConfig: { responseMimeType: 'application/json', temperature: 0.7, ...(options.maxTokens ? { maxOutputTokens: options.maxTokens } : {}) },
       });
       const content = (data.candidates?.[0]?.content?.parts || []).map((part: { text?: string }) => part.text || '').join('');
       return { content, run_id: data.responseId || '', usage: numbers(data.usageMetadata) };

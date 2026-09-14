@@ -103,6 +103,15 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     expect(identityConfidence([], 'x').confidence).toBe(0);
   });
 
+  it('works on a database whose taxonomy was never seeded (production regression)', async () => {
+    db.prepare('DELETE FROM expert_capability_taxonomy').run();
+    const expert = discovered('Fresh Person');
+    const service = new ExpertEvidenceEnrichmentService(db, { source: { async searchAuthorPapers() { return [paper('f1', 'Prompt injection defences for agents', ['Fresh Person'], ['cs.CR'])]; } } });
+    const result = await service.enrich(expert.id, { actor: 'ingestion:arxiv' });
+    expect(result.reason).toBeNull();
+    expect(result.capabilities.map((capability) => capability.id)).toContain('ai_security');
+  });
+
   it('enriches a bounded batch of discovered experts oldest-first', async () => {
     for (const name of ['A One', 'B Two', 'C Three']) discovered(name);
     const source = { async searchAuthorPapers(name: string) { return name === 'C Three' ? [] : [paper(`p-${name}`, 'AI security evaluations of frontier models', [name], ['cs.CR', 'cs.AI'], 'red teaming')]; } };
