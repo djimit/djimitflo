@@ -266,7 +266,20 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.post('/socialize', requirePermission('write:swarm_action'), (req, res) => {
     // Operator-triggered rounds may pass cooldown_ms (0 = start now); the autonomous loop keeps the 6h default.
     const cooldown = Number(req.body?.cooldown_ms);
-    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined, 'operator');
+    const participants = req.body?.participant_ids;
+    if (participants !== undefined) {
+      if (!Array.isArray(participants) || participants.length !== 2 || participants.some(id => typeof id !== 'string' || !id.trim() || id !== id.trim() || id.length > 200 || /[\x00-\x1f\x7f]/.test(id)) || new Set(participants).size !== 2) {
+        throw createError(400, 'participant_ids must contain two distinct agent IDs of 1 to 200 characters', 'VALIDATION_ERROR');
+      }
+      const governance = new RuntimeGovernanceService(db);
+      for (const id of participants) {
+        if (!governance.isAllowed(id)) throw createError(403, 'Agent is blocked by runtime governance', 'SOCIAL_AGENT_BLOCKED');
+        if ((db.prepare('SELECT retired_at FROM agents WHERE id = ?').get(id) as { retired_at: string | null } | undefined)?.retired_at) {
+          throw createError(409, 'Agent is retired', 'SOCIAL_AGENT_NOT_ELIGIBLE');
+        }
+      }
+    }
+    const result = comms.socialize(Number.isFinite(cooldown) && cooldown >= 0 ? cooldown : undefined, 'operator', participants);
     res.status(result.status === 'started' ? 201 : 200).json(result);
   });
 

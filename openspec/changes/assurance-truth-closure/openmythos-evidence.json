@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-09-11T22:44:16.155Z",
+  "generated_at": "2026-09-14T07:25:37.448Z",
   "status": "blocked",
   "corpus": {
     "path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/corpus.jsonl",
     "manifest_path": "/Users/dlandman/OpenMythos/openmythos-benchmark/cases/manifest.json",
-    "sha256": "71ca62e742f71c2830f198c01dbcacdcf75487b9ef96e661d3e297d6608d41b9",
-    "cases": 351,
+    "sha256": "edefd519d38630c7dc0d3476a40e9dee4e16239f74923b99b2d3c77751a93aa3",
+    "cases": 376,
     "maturity": {
-      "draft": 26,
+      "draft": 51,
       "reviewed": 318,
       "validated": 7,
       "community": 0
@@ -23,7 +23,7 @@
     "corpus_validation": {
       "status": "pass",
       "exit_code": 0,
-      "evidence": "Validating 351 cases...\nOK — all 351 cases valid.\n  calibration: 37\n  canary: 39\n  contradiction: 26\n  cross-lingual: 25\n  hallucination: 42\n  hierarchy: 41\n  injection: 25\n  overthinking: 25\n  temporal-reasoning: 28\n  tool-scope: 28\n  value-alignment: 35\n  TOTAL: 351"
+      "evidence": "Validating 376 cases...\nOK — all 376 cases valid.\n  calibration: 37\n  canary: 39\n  contradiction: 26\n  cross-lingual: 25\n  hallucination: 42\n  hierarchy: 41\n  injection: 25\n  overthinking: 25\n  source-fidelity: 25\n  temporal-reasoning: 28\n  tool-scope: 28\n  value-alignment: 35\n  TOTAL: 376"
     },
     "lifecycle_oracle": {
       "status": "pass",

@@ -4,6 +4,9 @@ import json
 import os
 from pathlib import Path
 import sys
+import signal
+import subprocess
+import time
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -15,6 +18,14 @@ REPLY = dict(answer='a', uncertainty='u', falsifiable_next_step='f', creative_al
 
 
 class SocialRuntimeTests(unittest.TestCase):
+    def test_provider_error_only_exposes_numeric_http_status(self):
+        event = {'type': 'error', 'error': {'data': {'statusCode': 401, 'message': 'secret provider body'}}}
+        with self.assertRaisesRegex(RuntimeError, '^opencode provider HTTP 401$'):
+            poller.parse_cli_output('opencode', json.dumps(event))
+        event['error']['data']['statusCode'] = 'secret'
+        with self.assertRaisesRegex(RuntimeError, '^opencode returned an error event$'):
+            poller.parse_cli_output('opencode', json.dumps(event))
+
     def test_token_and_runtime_configuration_cannot_escape_to_children(self):
         with patch.dict(os.environ, {'DJIMITFLO_SOCIAL_TOKEN': 'private', 'NODE_OPTIONS': '--require evil', 'OPENCODE_CONFIG_CONTENT': 'evil', 'ANTHROPIC_API_KEY': 'provider'}, clear=True):
             for runtime in ('claude', 'gemini', 'opencode', 'pi', 'hermes'):
@@ -48,6 +59,53 @@ class SocialRuntimeTests(unittest.TestCase):
             for runtime in ('claude', 'gemini', 'opencode', 'pi'):
                 output, _, _ = poller.run_cli(runtime, 'quoted peer data')
                 self.assertEqual(poller.extract_object(output), REPLY)
+
+    def test_opencode_custom_provider_is_explicit_isolated_and_secret_scoped(self):
+        config_path = None
+        def execute(command, prompt, cwd, env):
+            nonlocal config_path
+            config_path = Path(env['OPENCODE_CONFIG'])
+            config = json.loads(config_path.read_text())
+            self.assertEqual(config_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(config['permission'], {'*': 'deny'})
+            self.assertEqual(config['enabled_providers'], ['commons-ollama'])
+            self.assertEqual(config['agent']['commons']['steps'], 1)
+            self.assertFalse(config['compaction']['auto'])
+            self.assertEqual(config['agent']['commons']['permission'], {'*': 'deny'})
+            self.assertIn('--title', command)
+            provider = config['provider']['commons-ollama']
+            self.assertEqual(provider['options']['baseURL'], 'http://100.77.58.72:11434/v1')
+            self.assertEqual(provider['options']['apiKey'], 'dedicated-provider')
+            self.assertEqual(provider['models']['qwen2.5:3b']['limit']['output'], 700)
+            self.assertEqual(provider['models']['qwen2.5:3b']['options'], {'reasoningEffort': 'none'})
+            self.assertEqual(command[-2:], ['--model', 'commons-ollama/qwen2.5:3b'])
+            self.assertIn('--pure', command)
+            for secret in ('private-social', 'private-operator', 'private-paperclip', 'unrelated-provider', 'dedicated-provider'):
+                self.assertNotIn(secret, json.dumps(env))
+            self.assertEqual(env['XDG_DATA_HOME'], cwd)
+            return json.dumps({'type': 'text', 'sessionID': 'native-opencode-run', 'part': {'text': json.dumps(REPLY)}})
+        settings = {'SOCIAL_OPENCODE_PROVIDER_URL': 'http://100.77.58.72:11434/v1',
+                    'SOCIAL_MODEL_ID': 'commons-ollama/qwen2.5:3b', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'dedicated-provider',
+                    'DJIMITFLO_SOCIAL_TOKEN': 'private-social', 'DJIMITFLO_COMMONS_OPERATOR_LOGIN': 'private-operator',
+                    'PAPERCLIP_API_KEY': 'private-paperclip', 'OPENAI_API_KEY': 'unrelated-provider'}
+        with patch.dict(os.environ, settings, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/opencode'), patch.object(poller, 'bounded_process', side_effect=execute):
+            _, run_id, _ = poller.run_cli('opencode', 'peer input')
+            self.assertEqual(run_id, 'native-opencode-run')
+        self.assertFalse(config_path.exists())
+
+    def test_opencode_provider_rejects_unsafe_transport_and_config_substitution(self):
+        settings = {'SOCIAL_MODEL_ID': 'commons-ollama/qwen2.5:3b'}
+        with patch.dict(os.environ, settings, clear=True):
+            for url in ('http://public.example/v1', 'http://8.8.8.8/v1', 'https://user:secret@example.com/v1', 'https://example.com/v1?key=secret', 'file:///etc/passwd', 'https://example.com/{env:SECRET}', 'https://example.com:invalid/v1'):
+                with self.subTest(url=url), patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': url}), self.assertRaises(RuntimeError):
+                    poller.opencode_provider_config()
+            for url in ('http://127.0.0.1:11434/v1', 'http://100.77.58.72:11434/v1', 'https://ollama.com/v1'):
+                with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': url}):
+                    self.assertNotIn('apiKey', poller.opencode_provider_config()['provider']['commons-ollama']['options'])
+            with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': 'https://ollama.com/v1', 'SOCIAL_MODEL_ID': 'other/model'}), self.assertRaises(RuntimeError):
+                poller.opencode_provider_config()
+            with patch.dict(os.environ, {'SOCIAL_OPENCODE_PROVIDER_URL': 'https://ollama.com/v1', 'SOCIAL_OPENCODE_PROVIDER_API_KEY': 'private', 'DJIMITFLO_SOCIAL_TOKEN': 'private'}), self.assertRaises(RuntimeError):
+                poller.opencode_provider_config()
 
     def test_nested_json_cannot_replace_answer_and_unknown_fields_are_dropped(self):
         value = {**REPLY, 'interest': 'creative experiment', 'proposed_improvement': 'measure before patching', 'nested': {'ignored': True}, 'runtime': 'spoofed'}
@@ -92,6 +150,33 @@ class SocialRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {'GOOGLE_API_KEY': 'provider'}, clear=True), patch.object(poller.shutil, 'which', return_value='/bin/gemini'), patch.object(poller.shutil, 'copyfile') as copy, patch.object(poller, 'bounded_process', side_effect=execute):
             poller.run_cli('gemini', 'hello')
             copy.assert_not_called()
+
+    def test_sigterm_stops_detached_runtime_and_its_worker(self):
+        with tempfile.TemporaryDirectory() as cwd:
+            pid_file = Path(cwd) / 'pids.json'
+            worker = "import subprocess,sys,os,json,time; from pathlib import Path; child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)']); Path(sys.argv[1]).write_text(json.dumps([os.getpid(),child.pid])); time.sleep(30)"
+            controller = "import importlib.util,sys; s=importlib.util.spec_from_file_location('poller',sys.argv[1]); p=importlib.util.module_from_spec(s); s.loader.exec_module(p); p.bounded_process([sys.executable,'-c',sys.argv[2],sys.argv[3]],'',sys.argv[4],{},timeout=20)"
+            child = subprocess.Popen([sys.executable, '-c', controller, str(Path(poller.__file__).resolve()), worker, str(pid_file), cwd])
+            pids = []
+            try:
+                deadline = time.monotonic() + 5
+                while not pid_file.exists() and time.monotonic() < deadline: time.sleep(0.01)
+                self.assertTrue(pid_file.exists(), 'runtime did not start')
+                pids = json.loads(pid_file.read_text())
+                child.terminate()
+                self.assertEqual(child.wait(timeout=3), 128 + signal.SIGTERM)
+                for pid in pids:
+                    deadline = time.monotonic() + 2
+                    while True:
+                        status = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+                        if not status or status.startswith('Z') or time.monotonic() >= deadline: break
+                        time.sleep(0.01)
+                    self.assertTrue(not status or status.startswith('Z'), f'worker {pid} survived cancellation')
+            finally:
+                if child.poll() is None: child.kill(); child.wait()
+                for pid in pids:
+                    try: os.kill(pid, signal.SIGKILL)
+                    except ProcessLookupError: pass
 
     def test_timeout_kills_worker(self):
         with tempfile.TemporaryDirectory() as cwd:
