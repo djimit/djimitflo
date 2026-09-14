@@ -100,7 +100,7 @@ export class ExpertEvidenceEnrichmentService {
       const evidenceId = this.registry.addEvidence(expertId, {
         kind: 'paper', title: paper.title, url: paper.url, sourceRef: arxivShaped ? `arxiv:${paper.arxiv_id}` : paper.arxiv_id,
         canonicalOrigin: arxivShaped ? `https://arxiv.org/abs/${paper.arxiv_id.replace(/v\d+$/, '')}` : paper.url, retrievedAt: new Date().toISOString(),
-        metadata: { abstract: paper.summary.slice(0, 2_000), categories: paper.categories, primary_category: paper.primary_category, published: paper.published, authors: paper.authors.slice(0, 20), arxiv_id: paper.arxiv_id },
+        metadata: { abstract: paper.summary.slice(0, 2_000), categories: paper.categories, primary_category: paper.primary_category, published: paper.published, authors: paper.authors, arxiv_id: paper.arxiv_id },
       });
       for (const capability of this.capabilitiesFor(paper)) {
         const set = evidenceByCapability.get(capability) ?? new Set<string>();
@@ -168,6 +168,7 @@ export class ExpertEvidenceEnrichmentService {
     }
     // An inferred-only expert whose capabilities all fell away is no longer CAPABILITY_INFERRED (§54, I02).
     const current = this.registry.get(expertId)!;
+    if (supported.size && current.lifecycle_state === 'EVIDENCE_COLLECTED') this.registry.transition(expertId, 'CAPABILITY_INFERRED', { actor: input.actor, reason: 'recompute: capabilities recovered from stored evidence' });
     if (!supported.size && !keptGoverned.length && current.lifecycle_state === 'CAPABILITY_INFERRED') this.registry.transition(expertId, 'INSUFFICIENT_EVIDENCE', { actor: input.actor, reason: 'recompute: no capability supported by active AI evidence' });
     return { revoked, added, challenged_evidence: challenged, kept_governed_unsupported: keptGoverned };
   }

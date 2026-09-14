@@ -14,6 +14,15 @@ function fakeFetch(body: unknown, capture: { url?: string; init?: RequestInit } 
 }
 
 describe('social runtime providers', () => {
+  it('lets structured expert reports reserve output tokens without changing Commons defaults', async () => {
+    for (const expert of [false, true]) {
+      const capture: { init?: RequestInit } = {};
+      await chat({ runtime: 'ollama', model: 'qwen3.5:cloud', ...(expert ? { maxOutputTokens: 4096, think: false } : {}) }, env, 's', 'p', undefined, fakeFetch({ message: { content: '{}' } }, capture));
+      const body = JSON.parse(String(capture.init?.body));
+      expect(body.options.num_predict).toBe(expert ? 4096 : 700);
+      expect(body.think).toBe(expert ? false : undefined);
+    }
+  });
   it('parses runtime specs and per-resident overrides', () => {
     const fallback = { runtime: 'ollama' as const, model: 'qwen2.5:3b' };
     expect(parseRuntimeSpec('anthropic:claude-opus-5', fallback)).toEqual({ runtime: 'anthropic', model: 'claude-opus-5' });

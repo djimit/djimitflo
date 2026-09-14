@@ -17,7 +17,7 @@ import { tmpdir } from 'os';
 export type ProviderKind = 'ollama' | 'anthropic' | 'openai' | 'gemini' | 'openai-compatible' | 'claude-cli' | 'codex-cli' | 'gemini-cli';
 export type CliKind = Extract<ProviderKind, `${string}-cli`>;
 export const CLI_KINDS: CliKind[] = ['claude-cli', 'codex-cli', 'gemini-cli'];
-export interface RuntimeSpec { runtime: ProviderKind; model: string }
+export interface RuntimeSpec { runtime: ProviderKind; model: string; maxOutputTokens?: number; think?: boolean }
 export interface ChatResult { content: string; run_id: string; usage: Record<string, unknown> }
 export interface ProviderEnv {
   ollamaUrl: string;
@@ -128,7 +128,7 @@ export async function chat(spec: RuntimeSpec, env: ProviderEnv, system: string, 
   switch (spec.runtime) {
     case 'ollama': {
       const data = await post(`${env.ollamaUrl}/api/chat`, {}, {
-        model: spec.model, stream: false, format: 'json', options: { temperature: 0.7, num_predict: 700 },
+        model: spec.model, stream: false, format: 'json', think: spec.think, options: { temperature: 0.7, num_predict: spec.maxOutputTokens ?? 700 },
         messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
       });
       return { content: data.message?.content || '', run_id: data.created_at || '', usage: numbers({ prompt_eval_count: data.prompt_eval_count, eval_count: data.eval_count, total_duration: data.total_duration }) };

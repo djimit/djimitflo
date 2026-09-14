@@ -14,7 +14,6 @@ describe('frontier expert invariants (.codex/frontier-expert-intelligence.md §4
     db.exec(schema);
     runMigrations(db);
     registry = new FrontierExpertRegistryService(db);
-    registry.seedTaxonomy();
   });
 
   afterEach(() => db.close());
@@ -31,6 +30,8 @@ describe('frontier expert invariants (.codex/frontier-expert-intelligence.md §4
     expect(registry.resolveCapability('RLHF')).toBe('reinforcement_learning');
     expect(registry.resolveCapability('Mechanistic interpretability')).toBe('mechanistic_interpretability');
     expect(registry.resolveCapability('astrology')).toBeNull();
+    runMigrations(db);
+    expect(registry.seedTaxonomy()).toBe(0);
   });
 
   it('I01/I02: a signature alone never carries a capability, and a capability needs existing active Tier-1/2 evidence', () => {

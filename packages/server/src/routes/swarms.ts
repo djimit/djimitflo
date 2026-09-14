@@ -26,6 +26,7 @@ import { OpenCodeHealthService } from '../services/opencode-health-service';
 import { SwarmStatusService } from '../services/swarm-status-service';
 import { ExpertSwarmOrchestrator } from '../services/expert-swarm-orchestrator';
 import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifecycleState } from '../services/frontier-expert-registry-service';
+import { ExpertCouncilService } from '../services/expert-council-service';
 import { ExpertResolverService } from '../services/expert-resolver-service';
 import { PacingFrontierIngestionService } from '../services/pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from '../services/expert-evidence-enrichment-service';
@@ -249,6 +250,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
       snapshot: asOf ? reg.asOf(expert.id, asOf) : null,
       claims: db.prepare('SELECT * FROM expert_claims WHERE expert_id = ? ORDER BY created_at DESC LIMIT 100').all(expert.id),
       lifecycle: db.prepare('SELECT from_state, to_state, actor, reason, created_at FROM expert_lifecycle_events WHERE expert_id = ? ORDER BY created_at ASC').all(expert.id),
+      peer_reviews: (db.prepare("SELECT id, metadata FROM audit_events WHERE resource_id = ? AND action = 'frontier_expert_peer_review' ORDER BY timestamp DESC LIMIT 20").all(expert.id) as Array<{ id: string; metadata: string }>).map((row) => ({ ...JSON.parse(row.metadata), audit_id: row.id })),
     });
   }));
   router.post('/expert/resolve', requirePermission('read:evidence'), route((req, res) => {
@@ -287,6 +289,14 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const service = new ExpertEvidenceEnrichmentService(db, { source: new DataCiteAdapter() });
     const results = await service.enrichBatch({ actor: `ingestion:arxiv:${actor}`, limit, retryBefore: typeof req.body?.retry_before === 'string' ? req.body.retry_before : undefined });
     res.json({ results, pending: service.pending() });
+  }));
+  router.post('/expert/experts/:id/peer-review', requirePermission('write:swarm_action'), route(async (req, res) => {
+    const actor = operatorActor(req);
+    if (!frontierExpertsEnabled()) throw createError(409, 'Frontier experts are disabled', 'FRONTIER_EXPERTS_DISABLED');
+    const reviewerId = typeof req.body?.reviewer_id === 'string' ? req.body.reviewer_id.trim() : '';
+    if (!reviewerId) throw createError(400, 'reviewer_id is required', 'VALIDATION_ERROR');
+    try { res.json(await new ExpertCouncilService(db).reviewExpert(req.params.id, reviewerId, actor)); }
+    catch (error) { registryError(error); }
   }));
   router.post('/expert/council', requirePermission('write:swarm_action'), route(async (req, res) => {
     operatorActor(req);
