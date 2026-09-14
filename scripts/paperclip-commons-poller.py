@@ -17,7 +17,7 @@ DJIMITFLO = 'http://100.86.47.122:3001'
 PAPERCLIP = 'http://127.0.0.1:3100'
 AGENT = 'opencode-control'
 PEER = 'commons-oracle'
-MODEL = 'commons-ollama/qwen3-coder-next'
+MODEL = 'commons-ollama/kimi-k2.6'
 PROVIDER = 'https://ollama.com/v1'
 
 

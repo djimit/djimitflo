@@ -77,6 +77,7 @@ class SocialRuntimeTests(unittest.TestCase):
             self.assertEqual(provider['options']['baseURL'], 'http://100.77.58.72:11434/v1')
             self.assertEqual(provider['options']['apiKey'], 'dedicated-provider')
             self.assertEqual(provider['models']['qwen2.5:3b']['limit']['output'], 700)
+            self.assertEqual(provider['models']['qwen2.5:3b']['options'], {'reasoningEffort': 'none'})
             self.assertEqual(command[-2:], ['--model', 'commons-ollama/qwen2.5:3b'])
             self.assertIn('--pure', command)
             for secret in ('private-social', 'private-operator', 'private-paperclip', 'unrelated-provider', 'dedicated-provider'):
