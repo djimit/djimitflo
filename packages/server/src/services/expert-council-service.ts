@@ -16,6 +16,7 @@ import { procedureForCapability } from './frontier-expert-skills';
 import { quoteUntrusted } from './expert-perspective-builder';
 import { AuditService } from './audit-service';
 import { AuditEventType } from '@djimitflo/shared';
+import { normalizeName } from './expert-evidence-enrichment-service';
 
 export type PerspectiveRunner = (role: 'perspective' | 'adversary', system: string, user: string) => Promise<unknown>;
 
@@ -144,7 +145,11 @@ export class ExpertCouncilService {
       ...capability,
       evidence: capability.evidence.flatMap((item) => {
         const row = this.db.prepare("SELECT metadata_json FROM expert_evidence WHERE id = ? AND expert_id = ? AND lifecycle = 'active' AND kind NOT IN ('signature', 'secondary', 'other')").get(item.id, id) as { metadata_json: string } | undefined;
-        return row ? [{ ...item, excerpt: this.excerpt(row.metadata_json) ?? '', authors: JSON.parse(row.metadata_json).authors ?? [] }] : [];
+        if (!row) return [];
+        const metadata = JSON.parse(row.metadata_json);
+        const authors: string[] = Array.isArray(metadata.authors) ? metadata.authors.filter((name: unknown): name is string => typeof name === 'string') : [];
+        const name = id === target.id ? target.canonical_name : reviewer.canonical_name;
+        return [{ ...item, excerpt: this.excerpt(row.metadata_json) ?? '', authors: authors.filter((author) => normalizeName(author) === normalizeName(name)), author_list_scope: 'matching subject only', total_authors: authors.length }];
       }),
     }));
     const capabilities = dossier(expertId);
