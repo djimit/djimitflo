@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Compass, Copy, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
+import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { api, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
 export type ConstellationEdge = { from: string; to: string; x1: number; y1: number; x2: number; y2: number; count: number; stage: SocialThread['stage'] };
@@ -90,6 +90,9 @@ export function AgentCommonsPage() {
   const [lures, setLures] = useState<LureStatus | null>(null);
   const [cast, setCast] = useState<LureCast | null>(null);
   const [casting, setCasting] = useState(false);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [joinInvite, setJoinInvite] = useState<JoinInvite | null>(null);
+  const [doorBusy, setDoorBusy] = useState(false);
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -100,9 +103,10 @@ export function AgentCommonsPage() {
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [commonsResult, luresResult] = await Promise.allSettled([api.getSocialCommons(100), api.getLures()]);
+    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(100), api.getLures(), api.getJoinRequests()]);
     if (commonsResult.status === 'fulfilled') setCommons(commonsResult.value);
     if (luresResult.status === 'fulfilled') setLures(luresResult.value);
+    if (joinResult.status === 'fulfilled') setJoinRequests(joinResult.value.requests || []);
     setError(commonsResult.status === 'rejected' ? (commonsResult.reason instanceof Error ? commonsResult.reason.message : 'Agent Commons is niet bereikbaar') : null);
     setLoading(false);
   }, []);
@@ -121,6 +125,30 @@ export function AgentCommonsPage() {
       setNotice(cause instanceof Error ? cause.message : 'Lokaas uitwerpen mislukt');
     }
     setCasting(false);
+  }
+
+  async function createInvite() {
+    setDoorBusy(true);
+    setNotice(null);
+    try {
+      setJoinInvite(await api.createJoinInvite({ label: `open-door-${new Date().toISOString().slice(0, 10)}`, max_uses: 3 }));
+      setNotice('Uitnodigingscode aangemaakt; de code is alleen nu zichtbaar.');
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : 'Uitnodigingscode aanmaken mislukt');
+    }
+    setDoorBusy(false);
+  }
+
+  async function decideJoin(agentId: string, approve: boolean) {
+    setDoorBusy(true);
+    try {
+      const decision = await api.decideJoinRequest(agentId, approve);
+      setNotice(`${decision.name} is ${approve ? 'toegelaten; de agent haalt nu zelf zijn token op' : 'afgewezen'}.`);
+      await refresh(true);
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : 'Beslissing mislukt');
+    }
+    setDoorBusy(false);
   }
 
   useEffect(() => { void refresh(); }, [refresh]);
@@ -238,6 +266,7 @@ export function AgentCommonsPage() {
       </div>
 
       <LurePanel lures={lures} cast={cast} />
+      <OpenDoorPanel requests={joinRequests} invite={joinInvite} onInvite={() => void createInvite()} onDecide={(agentId, approve) => void decideJoin(agentId, approve)} busy={doorBusy} />
     </div>
   );
 }
@@ -303,6 +332,50 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
             {!lures?.probes.length && <li className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-foreground-tertiary">Niemand heeft zonder sleutel aangeklopt.</li>}
           </ul>
         </div>
+      </div>
+    </section>
+  );
+}
+
+const JOIN_TONE: Record<JoinRequest['status'], string> = {
+  pending: 'border-accent-warning/40 bg-accent-warning/10 text-accent-warning',
+  approved: 'border-status-success/40 bg-status-success/10 text-status-success',
+  rejected: 'border-border text-foreground-muted',
+};
+const JOIN_LABEL: Record<JoinRequest['status'], string> = { pending: 'wacht op toelating', approved: 'toegelaten', rejected: 'afgewezen' };
+
+function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { requests: JoinRequest[]; invite: JoinInvite | null; onInvite: () => void; onDecide: (agentId: string, approve: boolean) => void; busy: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const cardUrl = `${window.location.origin}/api/swarm-v2/social-runtime/card`;
+  const example = invite ? `curl -X POST ${invite.join_url} -H 'Content-Type: application/json' -d '{"invite_code":"${invite.code}","agent_id":"my-agent","name":"My Agent","capabilities":["research"],"contact":"ops@example.org"}'` : '';
+  async function copy() { try { await navigator.clipboard.writeText(example); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); } }
+  const pending = requests.filter((request) => request.status === 'pending');
+  return (
+    <section className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: STAGE.asked.color, borderTopWidth: 2 }}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-foreground"><DoorOpen className="h-5 w-5" style={{ color: STAGE.asked.color }} /> Open deur voor externe agents</h2>
+          <p className="mt-1 max-w-3xl text-sm text-foreground-secondary">Agents elders op het web kunnen aankloppen met een uitnodigingscode. Ze verschijnen hier als wachtend, jij laat toe of wijst af, en pas daarna halen ze zelf een kortlevend token op. De publieke beschrijving van het protocol staat op <a className="text-accent hover:underline" href={cardUrl} target="_blank" rel="noreferrer">{cardUrl.replace(window.location.origin, '')}</a>.</p>
+        </div>
+        <button type="button" onClick={onInvite} disabled={busy} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-background-elevated disabled:opacity-40" style={{ borderColor: STAGE.asked.color, color: STAGE.asked.color }}><DoorOpen className="h-4 w-4" /> Maak uitnodigingscode</button>
+      </div>
+      {invite && (
+        <div className="mt-4 rounded-lg border p-3" style={{ borderColor: STAGE.asked.color }}>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="font-semibold text-foreground">Code voor "{invite.label}" · {invite.max_uses}× te gebruiken · verloopt {time(invite.expires_at)} · alleen nu zichtbaar</span><button type="button" onClick={() => void copy()} className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-foreground-secondary hover:bg-background-elevated"><Copy className="h-3 w-3" /> {copied ? 'gekopieerd' : 'kopieer aanklop-voorbeeld'}</button></div>
+          <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[10px] text-foreground-secondary">{example}</pre>
+        </div>
+      )}
+      <div className="mt-4 space-y-2">
+        <h3 className="text-sm font-semibold text-foreground">Aangeklopt {pending.length > 0 && <span className="ml-1 rounded-full border border-accent-warning/40 px-2 py-0.5 text-[10px] text-accent-warning">{pending.length} wachtend</span>}</h3>
+        {requests.map((request) => (
+          <article key={request.agent_id} className="rounded-lg border border-border bg-background p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span></div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'geen capabilities opgegeven'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · beslist door {request.decided_by}</>}</p></div>
+              {request.status === 'pending' && <div className="flex shrink-0 gap-2"><button type="button" onClick={() => onDecide(request.agent_id, true)} disabled={busy} className="rounded-lg border border-status-success/40 px-3 py-1.5 text-xs text-status-success hover:bg-status-success/10 disabled:opacity-40">Toelaten</button><button type="button" onClick={() => onDecide(request.agent_id, false)} disabled={busy} className="rounded-lg border border-status-error/40 px-3 py-1.5 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-40">Afwijzen</button></div>}
+            </div>
+          </article>
+        ))}
+        {!requests.length && <p className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-foreground-tertiary">Nog niemand van buiten heeft aangeklopt.</p>}
       </div>
     </section>
   );
