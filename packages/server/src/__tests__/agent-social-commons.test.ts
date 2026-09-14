@@ -151,6 +151,21 @@ describe('agent commons read-model', () => {
     expect(fourth.messages[0].payload.evidence).toEqual(['claim:gap-1', 'okf:x']);
   });
 
+  it('shows non-social agent activity in the commons read-model', () => {
+    comms.send({ from: 'agent-a', to: 'agent-b', type: 'task', action: 'task.assigned', context: 'Review OKF index' });
+
+    const commons = comms.listSocialCommons();
+    const agentA = commons.agents.find((agent) => agent.id === 'agent-a');
+    expect(agentA?.activity).toHaveLength(1);
+    expect(agentA?.activity[0]).toEqual(expect.objectContaining({ to: 'agent-b', action: 'task.assigned' }));
+
+    // social messages stay in threads; non-social messages do not leak into threads.
+    comms.socialize(0);
+    const commons2 = comms.listSocialCommons();
+    const [thread] = commons2.threads;
+    expect(thread.messages.map((message) => message.action)).toEqual(['social.question', 'social.question']);
+  });
+
   it('reads the production agents schema capability column', () => {
     const productionDb = new Sqlite(':memory:');
     productionDb.exec(`

@@ -116,10 +116,22 @@ export interface SocialThread {
   messages: SocialMessage[];
 }
 
+export interface CommonsAgentActivity {
+  id: string;
+  to: string;
+  action: string;
+  timestamp: string;
+  status: string;
+}
+
 export interface SocialCommons {
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
+    // ponytail: activity = recent non-social agent_messages flow. Covers the Board-vs-Commons
+    // gap for messages. Lease/spawn/reflection events stay on the Interaction Board — upgrade
+    // to AgentInteractionLedgerService only if operators need those sources here too.
+    activity: CommonsAgentActivity[];
   }>;
   threads: SocialThread[];
 }
@@ -235,6 +247,21 @@ export class AgentCommunicationService {
    */
   listSocialCommons(limit = 50): SocialCommons {
     const heartbeatCutoff = Date.now() - 20 * 60_000;
+    const activityByAgent = new Map<string, CommonsAgentActivity[]>();
+    const activityRows = this.db.prepare(`
+      SELECT id, from_agent, to_agent, status, timestamp, json_extract(payload_json, '$.action') AS action
+      FROM agent_messages
+      WHERE COALESCE(json_extract(payload_json, '$.action'), '') NOT LIKE 'social.%'
+      ORDER BY timestamp DESC LIMIT 500
+    `).all() as Array<{ id: string; from_agent: string; to_agent: string; status: string; timestamp: string; action: string | null }>;
+    for (const row of activityRows) {
+      const entry: CommonsAgentActivity = {
+        id: String(row.id), to: String(row.to_agent), action: row.action || 'message',
+        timestamp: String(row.timestamp), status: String(row.status),
+      };
+      const list = activityByAgent.get(row.from_agent) || [];
+      if (list.length < 20) activityByAgent.set(row.from_agent, [...list, entry]);
+    }
     const agents = (this.db.prepare(`
       SELECT * FROM agents
       WHERE json_extract(COALESCE(metadata, '{}'), '$.social_runtime.enabled') = 1
@@ -247,6 +274,7 @@ export class AgentCommunicationService {
         capabilities: this.capabilities(row), model: this.string(social.model_id) || this.string(row.model),
         runtime: this.string(social.runtime) || null, last_heartbeat_at: lastHeartbeat,
         present: !!lastHeartbeat && Date.parse(lastHeartbeat) >= heartbeatCutoff,
+        activity: activityByAgent.get(String(row.id)) || [],
       };
     });
 

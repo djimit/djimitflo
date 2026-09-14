@@ -238,6 +238,7 @@ export function AgentCommonsPage() {
                 <li key={agent.id}><button type="button" onClick={() => { setFocusAgent(agent.id); setSelectedThread(null); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${focusAgent === agent.id ? 'bg-accent/10' : 'hover:bg-background-elevated'}`}>
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `hsl(${agentHue(agent.id)} 80% 60%)`, boxShadow: agent.present ? `0 0 8px hsl(${agentHue(agent.id)} 80% 60%)` : 'none', opacity: agent.present ? 1 : 0.4 }} />
                   <span className="truncate font-medium text-foreground">{agent.name}</span>
+                  {!!agent.activity?.length && <span className="truncate text-foreground-tertiary" title={agent.activity.map((a) => a.action).join(', ')}>{agent.activity[0].action}</span>}
                   <span className="ml-auto truncate text-foreground-tertiary">{agent.present ? agent.runtime || 'aanwezig' : 'stil'}</span>
                 </button></li>
               ))}
