@@ -55,7 +55,8 @@ export class OpenAlexAdapter {
   private rateLimitMs = 1_000;
   private lastRequest = 0;
 
-  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  /** OPENALEX_MAILTO joins OpenAlex's polite pool (higher, more predictable limits); an organisational contact, never a person's private address. */
+  constructor(private readonly fetchImpl: typeof fetch = fetch, private readonly mailto: string = process.env.OPENALEX_MAILTO || '') {}
 
   /** Newest works naming the person as an author; throws OPENALEX_HTTP_<status> so "unavailable" ≠ "no papers" (I10). */
   async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
@@ -65,6 +66,7 @@ export class OpenAlexAdapter {
     const params = new URLSearchParams({
       filter: `raw_author_name.search:${name.replace(/[",]/g, ' ').trim()}`, 'per-page': String(Math.min(50, limit * 2)), sort: 'publication_date:desc',
       select: 'id,doi,title,publication_date,authorships,primary_topic,topics,abstract_inverted_index',
+      ...(this.mailto ? { mailto: this.mailto } : {}),
     });
     const response = await this.fetchImpl(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(20_000), headers: { 'User-Agent': 'djimitflo-frontier-experts (OpenAlex works lookup)' } });
     if (!response.ok) throw new Error(`OPENALEX_HTTP_${response.status}`);

@@ -1,6 +1,6 @@
 /**
  * Bounded, resumable arXiv enrichment of DISCOVERED experts (§33, §51, E4).
- *   npx tsx src/scripts/enrich-experts.ts --db <path> [--source openalex|arxiv] [--batch 5] [--spacing-ms 60000] [--backoff-ms 900000] [--once] [--stop-file <path>] [--log <path>]
+ *   npx tsx src/scripts/enrich-experts.ts --db <path> [--source datacite|openalex|arxiv] [--batch 5] [--spacing-ms 60000] [--backoff-ms 900000] [--once] [--stop-file <path>] [--log <path>]
  * One arXiv request per expert, spaced by --spacing-ms; on HTTP 429 the runner backs off for --backoff-ms and
  * retries the same identities (they are only marked attempted after a completed request). Progress goes to --log as JSON lines.
  */
@@ -9,13 +9,14 @@ import Database from 'better-sqlite3';
 import { runMigrations } from '../database/migrate';
 import { ArxivAdapter } from '../services/knowledge-adapters/arxiv-adapter';
 import { OpenAlexAdapter } from '../services/knowledge-adapters/openalex-adapter';
+import { DataCiteAdapter } from '../services/knowledge-adapters/datacite-adapter';
 import { ExpertEvidenceEnrichmentService } from '../services/expert-evidence-enrichment-service';
 import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 
 const arg = (name: string, fallback: string) => { const index = process.argv.indexOf(`--${name}`); return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : fallback; };
 const dbPath = arg('db', '');
 if (!dbPath) { console.error('usage: enrich-experts --db <path>'); process.exit(2); }
-const sourceName = arg('source', 'openalex');
+const sourceName = arg('source', 'datacite');
 const batch = Number(arg('batch', '5'));
 const spacingMs = Number(arg('spacing-ms', '60000'));
 const backoffMs = Number(arg('backoff-ms', '900000'));
@@ -28,7 +29,7 @@ db.pragma('foreign_keys = ON');
 runMigrations(db);
 const registry = new FrontierExpertRegistryService(db);
 registry.seedTaxonomy();
-const adapter = sourceName === 'arxiv' ? new ArxivAdapter() : new OpenAlexAdapter();
+const adapter = sourceName === 'arxiv' ? new ArxivAdapter() : sourceName === 'openalex' ? new OpenAlexAdapter() : new DataCiteAdapter();
 let last = 0;
 const source = { name: sourceName, async searchAuthorPapers(name: string, limit?: number) {
   const wait = last + spacingMs - Date.now();
