@@ -14,15 +14,6 @@ function fakeFetch(body: unknown, capture: { url?: string; init?: RequestInit } 
 }
 
 describe('social runtime providers', () => {
-  it('lets structured expert reports reserve output tokens without changing Commons defaults', async () => {
-    for (const expert of [false, true]) {
-      const capture: { init?: RequestInit } = {};
-      await chat({ runtime: 'ollama', model: 'qwen3.5:cloud', ...(expert ? { maxOutputTokens: 4096, think: false } : {}) }, env, 's', 'p', undefined, fakeFetch({ message: { content: '{}' } }, capture));
-      const body = JSON.parse(String(capture.init?.body));
-      expect(body.options.num_predict).toBe(expert ? 4096 : 700);
-      expect(body.think).toBe(expert ? false : undefined);
-    }
-  });
   it('parses runtime specs and per-resident overrides', () => {
     const fallback = { runtime: 'ollama' as const, model: 'qwen2.5:3b' };
     expect(parseRuntimeSpec('anthropic:claude-opus-5', fallback)).toEqual({ runtime: 'anthropic', model: 'claude-opus-5' });
@@ -83,6 +74,16 @@ describe('social runtime providers', () => {
     expect((gemini.init?.headers as Record<string, string>)['x-goog-api-key']).toBe('g-key');
     expect(JSON.parse(String(gemini.init?.body)).generationConfig.responseMimeType).toBe('application/json');
     expect(viaGemini).toEqual({ content: '{"answer":"g"}', run_id: 'r1', usage: { promptTokenCount: 4, candidatesTokenCount: 3 } });
+  });
+
+  it('disables hidden thinking on Ollama and honours a caller-supplied output budget', async () => {
+    const capture: { url?: string; init?: RequestInit } = {};
+    await chat({ runtime: 'ollama', model: 'qwen3.5:cloud' }, env, 'sys', 'ask', undefined, fakeFetch({ message: { content: '{}' } }, capture), undefined, { maxTokens: 4096 });
+    const body = JSON.parse(String(capture.init?.body));
+    expect(body.think).toBe(false);
+    expect(body.options.num_predict).toBe(4096);
+    await chat({ runtime: 'ollama', model: 'qwen2.5:3b' }, env, 'sys', 'ask', undefined, fakeFetch({ message: { content: '{}' } }, capture));
+    expect(JSON.parse(String(capture.init?.body)).options.num_predict).toBe(700);
   });
 
   it('surfaces HTTP failures with the provider name', async () => {
