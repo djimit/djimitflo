@@ -43,6 +43,11 @@ describe('frontier expert routes (§35: broad reads, governed mutation)', () => 
     expect(detail.body.expert.lifecycle_state).toBe('ACTIVE');
     expect(detail.body.provenance[0].evidence.length).toBeGreaterThan(0);
     expect(detail.body.lifecycle.map((event: { to_state: string }) => event.to_state)).toContain('ACTIVE');
+    expect(detail.body.peer_reviews).toEqual([]);
+    process.env.DJIMITFLO_FRONTIER_EXPERTS_ENABLED = 'true';
+    const id = detail.body.expert.id;
+    expect((await request(app).post(`/swarms/expert/experts/${id}/peer-review`).send({ reviewer_id: id })).body.error.code).toBe('EXPERT_SELF_REVIEW_FORBIDDEN');
+    expect((await request(app).post(`/swarms/expert/experts/${id}/peer-review`).send({})).status).toBe(400);
     expect((await request(app).get('/swarms/expert/experts/expert:nope')).status).toBe(404);
   });
 

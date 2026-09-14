@@ -25,6 +25,25 @@ describe('expert council: independent perspectives, claim graph, disagreement, a
 
   afterEach(() => db.close());
 
+  it('cross-reviews two documented lenses, rejects self-review and invented evidence, and never approves either expert', async () => {
+    const target = activate('Ada Example', 'alignment', ['https://example.org/ada']);
+    const peer = activate('Grace Example', 'ai_security', ['https://example.org/grace']);
+    let badReference = false;
+    let uncertain = false;
+    const council = new ExpertCouncilService(db, { runner: async () => ({ checks: [{ capability_id: 'alignment', decision: uncertain ? 'uncertain' : 'supported', rationale: 'Assessment within the cited experimental scope.', evidence_refs: [badReference ? 'invented' : evidenceByExpert[target][0]], reviewer_evidence_refs: uncertain ? [] : evidenceByExpert[peer] }] }) });
+    await expect(council.reviewExpert(target, target, 'operator')).rejects.toThrow('EXPERT_SELF_REVIEW_FORBIDDEN');
+    const versions = [registry.get(target)!.version, registry.get(peer)!.version];
+    const report = await council.reviewExpert(target, peer, 'operator');
+    expect(report).toMatchObject({ expert_id: target, reviewer_id: peer, approval_granted: false, runtime: 'injected' });
+    expect(report.audit_id).toBeTruthy();
+    expect([registry.get(target)!.version, registry.get(peer)!.version]).toEqual(versions);
+    badReference = true;
+    await expect(council.reviewExpert(target, peer, 'operator')).rejects.toThrow('EXPERT_REVIEW_EVIDENCE_INVALID');
+    badReference = false;
+    uncertain = true;
+    expect((await council.reviewExpert(target, peer, 'operator')).checks[0].decision).toBe('uncertain');
+  });
+
   function activate(name: string, capability: string, papers: string[]): string {
     const expert = registry.discover({ canonicalName: name, provenance: { source: 'test' }, actor: 'ingestion:test' });
     registry.resolveIdentity(expert.id, { confidence: 0.95, actor: 'resolver' });

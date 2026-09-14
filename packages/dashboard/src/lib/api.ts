@@ -736,6 +736,7 @@ export type ExpertDetail = {
   snapshot: Record<string, unknown> | null;
   claims: ExpertClaim[];
   lifecycle: Array<{ from_state: string | null; to_state: string; actor: string; reason: string; created_at: string }>;
+  peer_reviews?: Array<{ audit_id: string; reviewer_id: string; runtime: string; expert_version: number; created_at: string; checks: Array<{ capability_id: string; decision: string; rationale: string; evidence_refs: string[]; reviewer_evidence_refs: string[] }> }>;
 };
 export type ExpertResolution = {
   question: string; abstained: boolean; reason: string | null; considered: number;

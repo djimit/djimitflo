@@ -25,6 +25,18 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
 
   afterEach(() => db.close());
 
+  it('recovers evidence collected before the taxonomy was populated without activating the expert', () => {
+    const expert = discovered('Jane Doe');
+    registry.resolveIdentity(expert.id, { confidence: 0.9, actor: 'resolver' });
+    registry.addEvidence(expert.id, { kind: 'paper', title: 'Reinforcement learning from human feedback', sourceRef: 'paper:recovery', metadata: { categories: ['cs.LG'] } });
+    registry.transition(expert.id, 'EVIDENCE_COLLECTED', { actor: 'ingestion' });
+    const service = new ExpertEvidenceEnrichmentService(db, { registry });
+    expect(service.recompute(expert.id, { actor: 'ingestion:recovery' }).added).toEqual(['reinforcement_learning']);
+    expect(registry.get(expert.id)!.lifecycle_state).toBe('CAPABILITY_INFERRED');
+    expect(service.recompute(expert.id, { actor: 'ingestion:recovery' }).added).toEqual([]);
+    expect(registry.get(expert.id)!.lifecycle_state).toBe('CAPABILITY_INFERRED');
+  });
+
   function discovered(name: string) {
     return registry.discover({ canonicalName: name, provenance: { source: 'pacingthefrontier', seed_title: 'Researcher, Lab' }, actor: 'ingestion:pacing' });
   }

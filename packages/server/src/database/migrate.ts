@@ -7,6 +7,7 @@ type BetterSqlite3Database = Database.Database;
 import { createPhase56Tables } from './migrate-phase56';
 import { seedMCPServers } from './seed-mcp-servers';
 import { resolveDbPath } from './path';
+import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 
 type ColumnSpec = {
   name: string;
@@ -1713,6 +1714,7 @@ export function runMigrations(db: BetterSqlite3Database) {
   createCalibrationTables(db);
   createOutcomeLearningTables(db);
   createFrontierExpertTables(db);
+  new FrontierExpertRegistryService(db).seedTaxonomy();
   createPerformanceIndexes(db);
 }
 
