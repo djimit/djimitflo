@@ -18,6 +18,10 @@ import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, typ
 import { SelfImprovementService } from './self-improvement-service';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
+import { applyPiiPass } from './federation/pii-pass';
+
+/** Externe lees-projecties draaien de PII-pass alleen als federatie is aangezet (bestaand intern gedrag ongewijzigd). */
+const FEDERATION_PII_MODE = process.env.DJIMITFLO_FEDERATION_ENABLED ? 'REDACT' : 'PASS';
 
 type MessageType = 'task' | 'result' | 'question' | 'alert' | 'handoff' | 'knowledge';
 type Priority = 1 | 2 | 3 | 4 | 5; // 1=critical, 5=low
@@ -327,7 +331,8 @@ export class AgentCommunicationService {
     }
     return {
       agents,
-      threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit)),
+      threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
+        .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
   }
 
