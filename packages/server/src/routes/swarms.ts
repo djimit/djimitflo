@@ -229,8 +229,10 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
   router.get('/expert/updates', requirePermission('read:evidence'), route((_req, res) => { res.json(new OkfKnowledgeUpdater(db).getUpdateHistory(20)); }));
 
   // Frontier Expert Intelligence (§35): read-only retrieval is broad, mutation stays governed.
-  const registry = () => new FrontierExpertRegistryService(db);
-  registry().seedTaxonomy(); // idempotent upsert so resolve/enrich work on a fresh production database
+  // Taxonomy seeding is lazy and idempotent: it runs on the first expert request, not at route creation, so
+  // route inventories and minimal test databases without the expert tables are unaffected.
+  let taxonomySeeded = false;
+  const registry = () => { const instance = new FrontierExpertRegistryService(db); if (!taxonomySeeded) { instance.seedTaxonomy(); taxonomySeeded = true; } return instance; };
   const operatorActor = (req: any): string => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'EXPERT_OPERATOR_REQUIRED');
     return String(req.user.email || req.user.sub);
