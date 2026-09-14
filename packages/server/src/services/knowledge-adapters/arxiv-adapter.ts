@@ -12,11 +12,57 @@ export function toArxivQuery(query: string): string {
   return terms.length ? terms.map((term) => `all:${term}`).join(' AND ') : `all:${query.trim()}`;
 }
 
+/** Author-centric view of an arXiv entry, used for expert evidence enrichment. */
+export interface ArxivPaper {
+  arxiv_id: string;
+  url: string;
+  title: string;
+  summary: string;
+  authors: string[];
+  categories: string[];
+  primary_category: string | null;
+  published: string | null;
+}
+
+/** Pure Atom parser for the author view; exported so enrichment can be tested without the network. */
+export function parseArxivPapers(xml: string): ArxivPaper[] {
+  const decode = (text: string) => text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  const tag = (entry: string, name: string) => { const match = entry.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`)); return match ? decode(match[1].replace(/\s+/g, ' ').trim()) : null; };
+  return xml.split('<entry>').slice(1).map((entry) => {
+    const id = tag(entry, 'id') || '';
+    const authors = [...entry.matchAll(/<author>\s*<name>([\s\S]*?)<\/name>/g)].map((match) => decode(match[1].replace(/\s+/g, ' ').trim()));
+    const categories = [...entry.matchAll(/<category[^>]*term="([^"]+)"/g)].map((match) => match[1]);
+    const primary = entry.match(/<arxiv:primary_category[^>]*term="([^"]+)"/);
+    return {
+      arxiv_id: id.split('/abs/').pop() || id, url: id, title: tag(entry, 'title') || '', summary: tag(entry, 'summary') || '',
+      authors, categories, primary_category: primary ? primary[1] : categories[0] ?? null, published: tag(entry, 'published'),
+    };
+  }).filter((paper) => paper.title && paper.arxiv_id);
+}
+
 export class ArxivAdapter implements KnowledgeSourceAdapter {
   name = 'arxiv';
-  private baseUrl = 'http://export.arxiv.org/api/query';
+  // arXiv now answers http with a 301 to https; go straight to https so redirects cannot drop the query.
+  private baseUrl = 'https://export.arxiv.org/api/query';
   private rateLimitMs = 6000; // 10 req/min
   private lastRequest = 0;
+
+  /**
+   * Papers listing the given person as an author (`au:"First Last"`), newest first.
+   * Unlike search(), a transport or HTTP failure throws (ARXIV_HTTP_<status>) so callers can tell
+   * "the source was unavailable" from "this person has no papers" (I10).
+   */
+  async searchAuthorPapers(name: string, limit: number = 10): Promise<ArxivPaper[]> {
+    await this.enforceRateLimit();
+    const params = new URLSearchParams({ search_query: `au:"${name.replace(/"/g, '')}"`, max_results: String(limit), start: '0', sortBy: 'submittedDate', sortOrder: 'descending' });
+    // arXiv regularly needs 15–30 s per author query; a short timeout would misreport a slow source as absent.
+    const response = await fetch(`${this.baseUrl}?${params}`, { signal: AbortSignal.timeout(45_000) });
+    if (!response.ok) throw new Error(`ARXIV_HTTP_${response.status}`);
+    return parseArxivPapers(await response.text());
+  }
 
   async search(query: string, limit: number = 5): Promise<KnowledgeResult[]> {
     await this.enforceRateLimit();

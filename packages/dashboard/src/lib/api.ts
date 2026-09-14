@@ -722,6 +722,34 @@ export type SocialAgentPresence = {
 
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[] };
 
+// Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
+export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';
+export type ExpertSummary = { id: string; canonical_name: string; lifecycle_state: ExpertLifecycleState; identity_confidence: number; version: number; updated_at: string; capabilities: string[]; provenance_json: string };
+export type ExpertEvidenceItem = { id: string; kind: string; tier: number; title: string; url: string | null; source_family: string };
+export type ExpertCapabilityProvenance = { capability_id: string; status: string; confidence: number; evidence: ExpertEvidenceItem[] };
+export type ExpertClaim = { id: string; subject: string; relation: string; object: string; polarity: string; conditions: string | null; scope: string | null; evidence_refs_json: string; confidence: number; criticality: string; support_status: string; created_at: string };
+export type ExpertDetail = {
+  expert: ExpertSummary & { aliases_json: string };
+  provenance: ExpertCapabilityProvenance[];
+  affiliations: Array<{ organization: string; role: string | null; valid_from: string | null; valid_to: string | null; source_ref: string }>;
+  versions: Array<{ version: number; change_summary: string; created_at: string }>;
+  snapshot: Record<string, unknown> | null;
+  claims: ExpertClaim[];
+  lifecycle: Array<{ from_state: string | null; to_state: string; actor: string; reason: string; created_at: string }>;
+};
+export type ExpertResolution = {
+  question: string; abstained: boolean; reason: string | null; considered: number;
+  capabilities: Array<{ id: string; score: number; matched: string[] }>;
+  weights: Record<string, number>;
+  experts: Array<{ expert_id: string; canonical_name: string; lifecycle_state: string; score: number; components: Record<string, number>; capabilities: Array<{ id: string; confidence: number }>; evidence: ExpertEvidenceItem[]; why_selected: string }>;
+};
+export type ExpertSwarmRun = {
+  id: string; topic: string; promotion_decision: string; knowledge_updated: boolean; knowledge_candidate_id: string | null; duration_ms: number; created_at: string;
+  verdict: { score: number; contradictions: string[]; verification_status: string; score_kind?: string };
+  expert_answers: Array<{ domain: string; source: string; confidence: number; evidence_refs?: string[]; metadata?: { expert_id?: string; why_selected?: string } }>;
+  council?: { abstained: boolean; reason: string | null; perspectives: Array<{ expert_id: string; canonical_name: string; why_selected: string; runtime: string; output: { analysis: string; uncertainties: string[]; falsification: string }; dropped_refs: string[] }>; claims: Array<{ id: string; expert_id: string; subject: string; relation: string; object: string; polarity: string; confidence: number }>; agreements: Array<{ proposition: string; expert_ids: string[] }>; disagreements: Array<{ proposition: string; expert_a: string; expert_b: string; resolving_observation: string }>; uncertainties: string[]; adversarial: { attacks: Array<{ claim_id: string; attack: string; evidence_gap: string }> } | null; rejected_perspectives?: Array<{ expert_id: string; reason: string }> };
+};
+
 export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null };
 export type LureStatus = {
   lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
@@ -1572,6 +1600,39 @@ class ApiClient {
 
   async castLure(): Promise<LureCast> {
     return this.request('/swarm-v2/social/lures', { method: 'POST', body: '{}' });
+  }
+
+  async listExperts(params: { state?: string; capability?: string; name?: string; limit?: number } = {}): Promise<{ experts: ExpertSummary[] }> {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]));
+    return this.request(`/swarms/expert/experts${query.size ? `?${query}` : ''}`);
+  }
+
+  async getExpert(id: string, asOf?: string): Promise<ExpertDetail> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}${asOf ? `?as_of=${encodeURIComponent(asOf)}` : ''}`);
+  }
+
+  async resolveExperts(question: string, maxExperts = 5): Promise<ExpertResolution> {
+    return this.request('/swarms/expert/resolve', { method: 'POST', body: JSON.stringify({ question, max_experts: maxExperts }) });
+  }
+
+  async transitionExpert(id: string, to: ExpertLifecycleState, reason?: string): Promise<ExpertSummary> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/transition`, { method: 'POST', body: JSON.stringify({ to, reason }) });
+  }
+
+  async reviewExpertCapability(id: string, capability: string, decision: 'checked' | 'approved' | 'revoked', reason?: string): Promise<{ capability_id: string; status: string }> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/capabilities/${encodeURIComponent(capability)}/review`, { method: 'POST', body: JSON.stringify({ decision, reason }) });
+  }
+
+  async deprecateExpert(id: string, reason: 'stale' | 'unsupported' | 'superseded' | 'misattributed', note?: string): Promise<ExpertSummary> {
+    return this.request(`/swarms/expert/experts/${encodeURIComponent(id)}/deprecate`, { method: 'POST', body: JSON.stringify({ reason, note }) });
+  }
+
+  async getExpertSwarmRuns(): Promise<ExpertSwarmRun[]> {
+    return this.request('/swarms/expert/history');
+  }
+
+  async conveneExpertCouncil(topic: string, maxExperts = 5): Promise<ExpertSwarmRun> {
+    return this.request('/swarms/expert/council', { method: 'POST', body: JSON.stringify({ topic, max_experts: maxExperts }) });
   }
 
   async getJoinRequests(): Promise<{ requests: JoinRequest[] }> {

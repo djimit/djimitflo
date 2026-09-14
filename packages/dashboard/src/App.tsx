@@ -36,6 +36,7 @@ const FleetCockpitPage = lazy(() => import('./pages/FleetCockpitPage').then((mod
 const SwarmResourcesPage = lazy(() => import('./pages/SwarmResourcesPage').then((module) => ({ default: module.SwarmResourcesPage })));
 const SwarmMissionControlPage = lazy(() => import('./pages/SwarmMissionControlPage').then((module) => ({ default: module.SwarmMissionControlPage })));
 const AgentCommonsPage = lazy(() => import('./pages/AgentCommonsPage').then((module) => ({ default: module.AgentCommonsPage })));
+const FrontierExpertsPage = lazy(() => import('./pages/FrontierExpertsPage').then((module) => ({ default: module.FrontierExpertsPage })));
 const InteractionBoardPage = lazy(() => import('./pages/InteractionBoardPage').then((module) => ({ default: module.InteractionBoardPage })));
 const ProofRunDetailPage = lazy(() => import('./pages/ProofRunDetailPage').then((module) => ({ default: module.ProofRunDetailPage })));
 const UsagePage = lazy(() => import('./pages/UsagePage').then((module) => ({ default: module.UsagePage })));
@@ -117,6 +118,8 @@ export function App() {
           <Route path="swarm-mission-control" element={<SwarmMissionControlPage />} />
           <Route path="interaction-board" element={<InteractionBoardPage />} />
           <Route path="agent-commons" element={<AgentCommonsPage />} />
+          <Route path="frontier-experts" element={<FrontierExpertsPage />} />
+          <Route path="frontier-experts/:expertId" element={<FrontierExpertsPage />} />
           <Route path="swarm-mission-control/proof-runs/:proofRunId" element={<ProofRunDetailPage />} />
           <Route path="workstation-urls" element={<WorkstationUrlsPage />} />
           <Route path="economy" element={<EconomyPage />} />

@@ -72,14 +72,16 @@ describeOrSkip('G93: Expert Swarm Orchestrator', () => {
     expect(result.verdict.reasoning).toBeDefined();
   });
 
-  it('stores knowledge when score >= 60', async () => {
+  it('never promotes knowledge by itself; evidence-backed output only becomes a review candidate', async () => {
     const result = await orchestrator.dispatch({
       topic: 'test topic',
       domains: ['physics'],
       sources: ['wikipedia'],
     });
 
-    expect(result.knowledge_updated).toBe(false);
+    expect(result.promotion_decision).not.toBe('VERIFIED_FOR_USE');
+    expect(result.knowledge_updated).toBe(result.promotion_decision === 'HUMAN_REVIEW_REQUIRED');
+    expect(db.prepare("SELECT COUNT(*) AS n FROM memory_candidates WHERE status = 'promoted'").get()).toEqual({ n: 0 });
   });
 
   it('tracks history', async () => {

@@ -1712,7 +1712,152 @@ export function runMigrations(db: BetterSqlite3Database) {
   createExplainRepoTables(db);
   createCalibrationTables(db);
   createOutcomeLearningTables(db);
+  createFrontierExpertTables(db);
   createPerformanceIndexes(db);
+}
+
+/**
+ * Frontier Expert Intelligence (reports/frontier-experts/DATA_MODEL.md).
+ * Identity, temporal affiliations, immutable evidence, evidence-derived capabilities,
+ * structured claims with relations, versions and an auditable lifecycle. Separate from
+ * swarm_capabilities (executable capabilities) and knowledge_claims (agent votes) on purpose.
+ */
+export function createFrontierExpertTables(db: BetterSqlite3Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS expert_capability_taxonomy (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      parent_id TEXT REFERENCES expert_capability_taxonomy(id),
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_identities (
+      id TEXT PRIMARY KEY,
+      canonical_name TEXT NOT NULL,
+      aliases_json TEXT NOT NULL DEFAULT '[]',
+      lifecycle_state TEXT NOT NULL DEFAULT 'DISCOVERED' CHECK(lifecycle_state IN (
+        'DISCOVERED', 'IDENTITY_RESOLVED', 'EVIDENCE_COLLECTED', 'CAPABILITY_INFERRED', 'CHECKED', 'APPROVED', 'ACTIVE',
+        'AMBIGUOUS', 'INSUFFICIENT_EVIDENCE', 'CONTRADICTED', 'STALE', 'REJECTED', 'REVOKED')),
+      identity_confidence REAL NOT NULL DEFAULT 0 CHECK(identity_confidence >= 0 AND identity_confidence <= 1),
+      provenance_json TEXT NOT NULL DEFAULT '{}',
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_identities_state ON expert_identities(lifecycle_state);
+    CREATE INDEX IF NOT EXISTS idx_expert_identities_name ON expert_identities(canonical_name);
+
+    CREATE TABLE IF NOT EXISTS expert_affiliations (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      organization TEXT NOT NULL,
+      role TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
+      source_ref TEXT NOT NULL,
+      retrieved_at TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_affiliations_expert ON expert_affiliations(expert_id);
+
+    CREATE TABLE IF NOT EXISTS expert_evidence (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT REFERENCES expert_identities(id),
+      kind TEXT NOT NULL CHECK(kind IN ('paper', 'institutional_page', 'technical_report', 'repository', 'presentation', 'profile', 'scholarly_metadata', 'secondary', 'signature', 'other')),
+      tier INTEGER NOT NULL CHECK(tier IN (1, 2, 3, 4)),
+      title TEXT NOT NULL,
+      url TEXT,
+      source_ref TEXT NOT NULL,
+      source_family TEXT NOT NULL,
+      canonical_origin TEXT NOT NULL,
+      retrieved_at TEXT NOT NULL,
+      content_hash TEXT,
+      lifecycle TEXT NOT NULL DEFAULT 'active' CHECK(lifecycle IN ('active', 'superseded', 'retracted', 'challenged')),
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_evidence_expert ON expert_evidence(expert_id);
+    CREATE INDEX IF NOT EXISTS idx_expert_evidence_family ON expert_evidence(source_family);
+
+    CREATE TABLE IF NOT EXISTS expert_capabilities (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      capability_id TEXT NOT NULL REFERENCES expert_capability_taxonomy(id),
+      confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+      evidence_refs_json TEXT NOT NULL CHECK(json_array_length(evidence_refs_json) > 0),
+      derived_by TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'inferred' CHECK(status IN ('inferred', 'checked', 'approved', 'revoked')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(expert_id, capability_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_claims (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT REFERENCES expert_identities(id),
+      subject TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      object TEXT NOT NULL,
+      conditions TEXT NOT NULL DEFAULT '',
+      scope TEXT NOT NULL DEFAULT '',
+      polarity TEXT NOT NULL DEFAULT 'asserts' CHECK(polarity IN ('asserts', 'denies', 'qualifies')),
+      temporal_scope TEXT,
+      evidence_refs_json TEXT NOT NULL CHECK(json_array_length(evidence_refs_json) > 0),
+      confidence REAL NOT NULL CHECK(confidence >= 0 AND confidence <= 1),
+      source_independence INTEGER NOT NULL DEFAULT 1,
+      support_status TEXT NOT NULL DEFAULT 'undetermined' CHECK(support_status IN ('supported', 'contradicted', 'qualified', 'undetermined')),
+      criticality TEXT NOT NULL DEFAULT 'normal' CHECK(criticality IN ('normal', 'critical')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_claims_expert ON expert_claims(expert_id);
+
+    CREATE TABLE IF NOT EXISTS expert_claim_relations (
+      id TEXT PRIMARY KEY,
+      from_claim_id TEXT NOT NULL REFERENCES expert_claims(id),
+      to_claim_id TEXT NOT NULL REFERENCES expert_claims(id),
+      relation TEXT NOT NULL CHECK(relation IN ('SUPPORTS', 'CONTRADICTS', 'QUALIFIES', 'ORTHOGONAL', 'UNDETERMINED')),
+      rationale TEXT NOT NULL DEFAULT '',
+      resolved_at TEXT,
+      resolved_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_versions (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      version INTEGER NOT NULL,
+      snapshot_json TEXT NOT NULL,
+      change_summary TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(expert_id, version)
+    );
+
+    CREATE TABLE IF NOT EXISTS expert_lifecycle_events (
+      id TEXT PRIMARY KEY,
+      expert_id TEXT NOT NULL REFERENCES expert_identities(id),
+      from_state TEXT,
+      to_state TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_lifecycle_expert ON expert_lifecycle_events(expert_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS expert_source_snapshots (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      entry_count INTEGER NOT NULL DEFAULT 0,
+      retrieved_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_expert_source_snapshots_source ON expert_source_snapshots(source, retrieved_at);
+  `);
 }
 
 /**
