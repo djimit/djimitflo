@@ -20,18 +20,18 @@ The recompute is offline (`--recompute`), idempotent (second pass: 0 changes) an
 
 ## Resolution on the 30 benchmark queries (K = 3)
 
-| metric | broad inference (before) | after recompute |
-|---|---|---|
-| in-domain queries | 27 | 27 |
-| abstained (in-domain) | 3 | 3 |
-| precision@3 (selected expert holds an expected capability family) | 0.986 | 0.944 |
-| recall@3 (expected families covered) | 0.944 | 0.903 |
-| candidates considered per query (mean) | 152.4 | 93.1 |
-| primary evidence ratio | 1.000 | 1.000 |
-| mean identity confidence of selected | 0.909 | 0.934 |
-| out-of-domain abstention | 3/3 | 3/3 |
+| metric | broad inference (before) | after recompute | after alias pass |
+|---|---|---|---|
+| in-domain queries | 27 | 27 | 27 |
+| abstained (in-domain) | 3 | 3 | 0 |
+| precision@3 (selected expert holds an expected capability family) | 0.986 | 0.944 | 0.988 |
+| recall@3 (expected families covered) | 0.944 | 0.903 | 0.932 |
+| candidates considered per query (mean) | 152.4 | 93.1 | 95.4 |
+| primary evidence ratio | 1.000 | 1.000 | 1.000 |
+| mean identity confidence of selected | 0.909 | 0.934 | 0.93 |
+| out-of-domain abstention | 3/3 | 3/3 | 3/3 |
 
-Reading: the "before" precision was inflated by over-broad capability inference (a person with eight capabilities matches almost any family). After the recompute the resolver still covers 24 of 27 in-domain queries with evidence-backed people whose capabilities come from paper titles and category codes. The three abstentions are honest: no signatory has DataCite evidence matching `automated_ai_research` or `recursive_self_improvement` phrases (the taxonomy aliases for those families are the next data fix). Off-target picks remain for `cyber_capabilities` (few signatories publish on it) — the resolver reports them as off-target rather than inventing a fit.
+Reading: the "before" precision was inflated by over-broad capability inference (a person with eight capabilities matches almost any family). After the recompute the resolver still covers 24 of 27 in-domain queries with evidence-backed people whose capabilities come from paper titles and category codes. The three abstentions after the recompute were honest: no phrase in the taxonomy caught the papers on automated research and self-improvement. An alias pass (CAPABILITY_TAXONOMY.md) followed by an offline recompute added 16 capabilities and removed all in-domain abstentions; the synthetic benchmark moved with it (P@3 0.728 → 0.741, R@3 0.821 → 0.84). Off-target picks remain for `cyber_capabilities` (few signatories publish on it) — the resolver reports them as off-target rather than inventing a fit.
 
 ## Identity-resolution sample (G-04)
 

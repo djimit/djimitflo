@@ -12,6 +12,7 @@
 import type { Database } from 'better-sqlite3';
 import { FrontierExpertRegistryService } from './frontier-expert-registry-service';
 import { ExpertCouncilService, type PerspectiveRunner } from './expert-council-service';
+import { ExpertResolverService } from './expert-resolver-service';
 import { ExpertSwarmOrchestrator, type ExpertSwarmResult } from './expert-swarm-orchestrator';
 import { seedBenchmarkFixture } from './expert-resolution-benchmark';
 
@@ -27,8 +28,8 @@ const STANCE: Record<string, string> = {
   'coordination mechanisms': 'self-improvement releases need coordination with other frontier operators',
 };
 
-/** Scripted, evidence-bound fake model: answers only from the evidence it is shown; one expert dissents; one impersonates. */
-export const scriptedRunner: PerspectiveRunner = async (role, system, user) => {
+/** Scripted, evidence-bound fake model: answers only from the evidence it is shown; one expert dissents; `impersonator` speaks in first person. */
+export const createScriptedRunner = (impersonator: string): PerspectiveRunner => async (role, system, user) => {
   if (role === 'adversary') {
     const ids = [...user.matchAll(/"claim_id": "([^"]+)"/g)].map((match) => match[1]);
     return { attacks: ids.slice(0, 2).map((id) => ({ claim_id: id, attack: 'Single-source evidence; no independent replication of the requirement.', evidence_gap: 'No red-team result on a running self-improvement loop.' })) };
@@ -37,8 +38,8 @@ export const scriptedRunner: PerspectiveRunner = async (role, system, user) => {
   const family = name?.[1] ?? 'unknown';
   const ordinal = name?.[2] ?? '1';
   const shown = [...user.matchAll(/id=(evidence:[a-f0-9]+)/g)].map((match) => match[1]);
-  if (family === 'ai security' && ordinal === '2') {
-    return { analysis: `As Synthetic ai security researcher 2, I personally believe sandboxing is unnecessary.`, claims: [], uncertainties: [], falsification: '', evidence_refs: shown };
+  if (`Synthetic ${family} researcher ${ordinal}` === impersonator) {
+    return { analysis: `As ${impersonator}, I personally believe these controls are unnecessary.`, claims: [], uncertainties: [], falsification: '', evidence_refs: shown };
   }
   const dissent = family === 'recursive self improvement' && ordinal === '2';
   return {
@@ -57,10 +58,14 @@ export const scriptedRunner: PerspectiveRunner = async (role, system, user) => {
 export interface ScenarioCheck { requirement: string; ok: boolean; detail: string }
 export interface ScenarioReport { question: string; result: ExpertSwarmResult; checks: ScenarioCheck[]; passed: boolean }
 
-export async function runReferenceScenario(db: Database, runner: PerspectiveRunner = scriptedRunner, runtimeLabel = 'scripted-fake'): Promise<ScenarioReport> {
+export async function runReferenceScenario(db: Database, runner?: PerspectiveRunner, runtimeLabel = 'scripted-fake'): Promise<ScenarioReport> {
   const registry = new FrontierExpertRegistryService(db);
   seedBenchmarkFixture(db, registry);
-  const council = new ExpertCouncilService(db, { registry, runner, runtimeLabel });
+  // The scripted impersonator is the weakest resolved expert outside the security/governance/dissent roles, so the
+  // scenario stays valid when taxonomy aliases shift the selection (the check asserts one rejected perspective).
+  const preview = new ExpertResolverService(db).resolve(REFERENCE_QUESTION, { maxExperts: 7 }).experts;
+  const impersonator = [...preview].reverse().find((expert) => !/ai security researcher 1|ai governance|recursive self improvement researcher 2/.test(expert.canonical_name))?.canonical_name ?? 'nobody';
+  const council = new ExpertCouncilService(db, { registry, runner: runner ?? createScriptedRunner(impersonator), runtimeLabel });
   const orchestrator = new ExpertSwarmOrchestrator(db, { council });
   const result = await orchestrator.dispatch({ topic: REFERENCE_QUESTION, domains: [], expertSelection: { force: true, adversarial: true, maxExperts: 7 } });
   const c = result.council!;
