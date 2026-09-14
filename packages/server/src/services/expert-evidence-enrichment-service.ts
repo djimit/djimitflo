@@ -34,6 +34,8 @@ const AI_CATEGORIES = new Set(['cs.AI', 'cs.LG', 'cs.CL', 'cs.CV', 'cs.NE', 'cs.
 /** OpenAlex topic / subfield names that count as AI-adjacent for identity confidence. */
 const AI_TOPIC = /artificial intelligence|machine learning|neural|deep learning|reinforcement learning|natural language|computer vision|language model|computer security|human-computer|robotics|information systems|software/i;
 const isAiCategory = (category: string) => AI_CATEGORIES.has(category) || AI_TOPIC.test(category);
+/** A paper counts as AI-related when any category code or topic label is AI-adjacent; non-AI papers under a matching name are namesake suspects (§12). */
+export const isAiPaper = (paper: Pick<ArxivPaper, 'categories' | 'primary_category'>) => paper.categories.some(isAiCategory) || (paper.primary_category ? isAiCategory(paper.primary_category) : false);
 /** arXiv categories that map directly onto a taxonomy capability. */
 const CATEGORY_CAPABILITY: Record<string, string> = { 'cs.CR': 'ai_security', 'cs.CY': 'ai_governance', 'cs.MA': 'multi_agent_systems', 'cs.HC': 'human_ai_interaction' };
 
@@ -48,7 +50,7 @@ export function identityConfidence(papers: ArxivPaper[], name: string): { matche
   const target = normalizeName(name);
   const matched = papers.filter((paper) => paper.authors.some((author) => normalizeName(author) === target));
   if (!matched.length) return { matched, ai_share: 0, confidence: 0 };
-  const ai = matched.filter((paper) => paper.categories.some(isAiCategory) || (paper.primary_category ? isAiCategory(paper.primary_category) : false)).length;
+  const ai = matched.filter(isAiPaper).length;
   const share = ai / matched.length;
   const confidence = Math.min(0.95, 0.55 + 0.35 * share + (matched.length >= 3 ? 0.05 : 0));
   return { matched, ai_share: Number(share.toFixed(2)), confidence: Number(confidence.toFixed(2)) };
@@ -92,7 +94,8 @@ export class ExpertEvidenceEnrichmentService {
     const before = (this.db.prepare("SELECT COUNT(*) AS n FROM expert_evidence WHERE expert_id = ? AND kind = 'paper'").get(expertId) as { n: number }).n;
     const knownCapabilities = new Set((this.db.prepare('SELECT capability_id FROM expert_capabilities WHERE expert_id = ?').all(expertId) as Array<{ capability_id: string }>).map((row) => row.capability_id));
     const evidenceByCapability = new Map<string, Set<string>>();
-    for (const paper of identity.matched) {
+    // Only AI-related papers become evidence; a medical or physics paper under the same name is far more likely a namesake than a second field.
+    for (const paper of identity.matched.filter(isAiPaper)) {
       const arxivShaped = /^\d{4}\.\d{4,5}(v\d+)?$/.test(paper.arxiv_id);
       const evidenceId = this.registry.addEvidence(expertId, {
         kind: 'paper', title: paper.title, url: paper.url, sourceRef: arxivShaped ? `arxiv:${paper.arxiv_id}` : paper.arxiv_id,
@@ -135,6 +138,37 @@ export class ExpertEvidenceEnrichmentService {
     return results;
   }
 
+  /**
+   * Re-derive capabilities from stored paper evidence without network (§54: taxonomy or rule changes). Non-AI papers are
+   * challenged (namesake suspects) so they stop qualifying; inferred capabilities no longer supported are revoked, while
+   * checked/approved ones are only reported (governance decides). Returns what changed per expert.
+   */
+  recompute(expertId: string, input: { actor: string }): { revoked: string[]; added: string[]; challenged_evidence: number; kept_governed_unsupported: string[] } {
+    const rows = this.db.prepare("SELECT id, title, metadata_json, lifecycle FROM expert_evidence WHERE expert_id = ? AND kind = 'paper'").all(expertId) as Array<{ id: string; title: string; metadata_json: string; lifecycle: string }>;
+    const papers = rows.map((row) => { const metadata = JSON.parse(row.metadata_json || '{}') as { abstract?: string; categories?: string[]; primary_category?: string | null; published?: string | null; arxiv_id?: string }; return { row, paper: { arxiv_id: metadata.arxiv_id ?? row.id, url: '', title: row.title, summary: metadata.abstract ?? '', authors: [], categories: metadata.categories ?? [], primary_category: metadata.primary_category ?? null, published: metadata.published ?? null } as ArxivPaper }; });
+    let challenged = 0;
+    for (const { row, paper } of papers) {
+      if (row.lifecycle === 'active' && !isAiPaper(paper)) { this.registry.markEvidence(row.id, 'challenged', input.actor); challenged += 1; row.lifecycle = 'challenged'; }
+    }
+    const supported = new Map<string, Set<string>>();
+    for (const { row, paper } of papers) {
+      if (row.lifecycle !== 'active') continue;
+      for (const capability of this.capabilitiesFor(paper)) { const set = supported.get(capability) ?? new Set<string>(); set.add(row.id); supported.set(capability, set); }
+    }
+    const existing = this.db.prepare("SELECT capability_id, status FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(expertId) as Array<{ capability_id: string; status: string }>;
+    const revoked: string[] = []; const keptGoverned: string[] = []; const added: string[] = [];
+    for (const capability of existing) {
+      if (supported.has(capability.capability_id)) continue;
+      if (capability.status === 'inferred') { this.db.prepare("UPDATE expert_capabilities SET status = 'revoked', updated_at = datetime('now') WHERE expert_id = ? AND capability_id = ?").run(expertId, capability.capability_id); revoked.push(capability.capability_id); }
+      else keptGoverned.push(capability.capability_id);
+    }
+    for (const [capability, refs] of supported) {
+      if (!existing.some((item) => item.capability_id === capability)) added.push(capability);
+      this.registry.inferCapability(expertId, { capability, confidence: Math.min(0.95, 0.5 + 0.15 * (refs.size - 1)), evidenceRefs: [...refs], derivedBy: 'recompute' });
+    }
+    return { revoked, added, challenged_evidence: challenged, kept_governed_unsupported: keptGoverned };
+  }
+
   /** How many DISCOVERED identities still await a first enrichment attempt. */
   pending(): number {
     return (this.db.prepare("SELECT COUNT(*) AS n FROM expert_identities WHERE lifecycle_state = 'DISCOVERED' AND json_extract(provenance_json, '$.enrichment.attempted_at') IS NULL").get() as { n: number }).n;
@@ -144,10 +178,13 @@ export class ExpertEvidenceEnrichmentService {
   capabilitiesFor(paper: ArxivPaper): string[] {
     const found = new Set<string>();
     for (const category of paper.categories) { const mapped = CATEGORY_CAPABILITY[category]; if (mapped) found.add(mapped); }
-    const text = `${paper.title} ${paper.summary}`.toLowerCase();
+    const title = paper.title.toLowerCase();
+    const text = `${title} ${paper.summary}`.toLowerCase();
     for (const row of this.db.prepare('SELECT id, label, aliases_json FROM expert_capability_taxonomy').all() as Array<{ id: string; label: string; aliases_json: string }>) {
       const phrases = [row.label.toLowerCase(), row.id.replace(/_/g, ' '), ...(JSON.parse(row.aliases_json) as string[]).map((alias) => alias.toLowerCase())].filter((phrase) => phrase.length > 3);
-      if (phrases.some((phrase) => new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(text))) found.add(row.id);
+      // A single generic word ("reasoning", "alignment") only counts in the title; multi-word phrases may match the abstract too.
+      const matches = (phrase: string) => new RegExp(`\\b${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:s|es)?\\b`).test(/\s/.test(phrase) ? text : title);
+      if (phrases.some(matches)) found.add(row.id);
     }
     return [...found];
   }

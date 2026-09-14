@@ -48,7 +48,8 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     const enrichment = new ExpertEvidenceEnrichmentService(db, { registry, source });
     const result = await enrichment.enrich(expert.id, { actor: 'ingestion:arxiv' });
     expect(result).toMatchObject({ papers_found: 3, papers_matched: 3, ai_share: 1, identity_confidence: 0.95, lifecycle_state: 'CAPABILITY_INFERRED', evidence_added: 3, reason: null });
-    expect(result.capabilities.map((capability) => capability.id).sort()).toEqual(['alignment', 'mechanistic_interpretability', 'scalable_oversight', 'scaling_laws']);
+    // 'alignment' appears only in an abstract as a bare word, so it is not inferred (title-only rule for generic single words).
+    expect(result.capabilities.map((capability) => capability.id).sort()).toEqual(['mechanistic_interpretability', 'scalable_oversight', 'scaling_laws']);
     const provenance = registry.provenance(expert.id);
     expect(provenance.every((capability) => capability.evidence.length > 0 && capability.evidence.every((item) => item.kind === 'paper' && item.tier === 1))).toBe(true);
     expect(provenance.find((capability) => capability.capability_id === 'scaling_laws')!.evidence.map((item) => item.title)).toEqual(['Scaling laws for neural language models']);
@@ -57,6 +58,26 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     expect(again.evidence_added).toBe(0);
     expect(registry.get(expert.id)!.lifecycle_state).toBe('CAPABILITY_INFERRED');
     expect(() => registry.transition(expert.id, 'ACTIVE', { actor: 'ingestion:arxiv' })).toThrow('EXPERT_TRANSITION_INVALID');
+  });
+
+  it('attaches only AI papers, matches generic single words in titles only, and recomputes offline after rule changes (§12, §54)', async () => {
+    const expert = discovered('Timothy Example');
+    const source = { async searchAuthorPapers() { return [
+      paper('a1', 'Reinforcement learning from human feedback at scale', ['Timothy Example'], ['cs.LG'], 'We discuss reasoning in passing.'),
+      paper('a2', 'Tear osmolarity trends after surgery', ['Timothy Example'], ['q-bio.TO'], 'ophthalmology'),
+      paper('a3', 'Chain of thought prompting elicits reasoning', ['Timothy Example'], ['cs.CL'], 'test-time compute'),
+    ]; } };
+    const service = new ExpertEvidenceEnrichmentService(db, { registry, source });
+    const result = await service.enrich(expert.id, { actor: 'ingestion:arxiv' });
+    expect(result).toMatchObject({ papers_matched: 3, evidence_added: 2, lifecycle_state: 'CAPABILITY_INFERRED' });
+    expect(result.capabilities.map((capability) => capability.id).sort()).toEqual(['reasoning', 'reinforcement_learning']); // "reasoning" only from the title (a3), not the abstract of a1
+    expect((db.prepare("SELECT COUNT(*) AS n FROM expert_evidence WHERE expert_id = ? AND title LIKE 'Tear%'").get(expert.id) as { n: number }).n).toBe(0);
+    // Recompute after a (simulated) stricter rule: drop the RL paper's evidence to STALE-equivalent by challenging it, then recompute revokes the unsupported inferred capability.
+    const rl = db.prepare("SELECT id FROM expert_evidence WHERE expert_id = ? AND title LIKE 'Reinforcement%'").get(expert.id) as { id: string };
+    registry.markEvidence(rl.id, 'challenged', 'checker');
+    const recomputed = service.recompute(expert.id, { actor: 'ingestion:recompute' });
+    expect(recomputed).toMatchObject({ revoked: ['reinforcement_learning'], added: [], challenged_evidence: 0, kept_governed_unsupported: [] });
+    expect((db.prepare("SELECT capability_id FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(expert.id) as Array<{ capability_id: string }>).map((row) => row.capability_id)).toEqual(['reasoning']);
   });
 
   it('fails closed on ambiguous names and attaches nothing (I03), and leaves unmatched names DISCOVERED (I10)', async () => {

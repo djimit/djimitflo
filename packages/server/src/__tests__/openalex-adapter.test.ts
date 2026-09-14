@@ -40,7 +40,7 @@ describe('OpenAlex works adapter as Tier-1 evidence source (§10, I10)', () => {
     const result = await service.enrich(expert.id, { actor: 'ingestion:openalex' });
     expect(calls[0]).toContain('raw_author_name.search');
     expect(result).toMatchObject({ papers_found: 2, papers_matched: 2, ai_share: 1, evidence_added: 2, lifecycle_state: 'CAPABILITY_INFERRED' });
-    expect(result.capabilities.map((capability) => capability.id)).toContain('ai_security');
+    expect(result.capabilities.map((capability) => capability.id)).toContain('ai_security'); // 'Universal Jailbreaks' in the title
     const evidence = db.prepare('SELECT source_ref, canonical_origin, source_family, tier FROM expert_evidence WHERE expert_id = ?').all(expert.id) as Array<{ source_ref: string; canonical_origin: string; source_family: string; tier: number }>;
     expect(evidence.sort((a, b) => a.source_ref.localeCompare(b.source_ref))).toEqual([
       { source_ref: 'arxiv:2601.04603', canonical_origin: 'https://arxiv.org/abs/2601.04603', source_family: 'arxiv.org', tier: 1 },

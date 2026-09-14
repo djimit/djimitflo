@@ -3,6 +3,7 @@
  *   npx tsx src/scripts/enrich-experts.ts --db <path> [--source datacite|openalex|arxiv] [--batch 5] [--spacing-ms 60000] [--backoff-ms 900000] [--once] [--stop-file <path>] [--log <path>]
  * One arXiv request per expert, spaced by --spacing-ms; on HTTP 429 the runner backs off for --backoff-ms and
  * retries the same identities (they are only marked attempted after a completed request). Progress goes to --log as JSON lines.
+ * `--recompute` re-derives capabilities from stored evidence offline (namesake papers challenged, unsupported inferred capabilities revoked).
  */
 import fs from 'fs';
 import Database from 'better-sqlite3';
@@ -23,6 +24,7 @@ const backoffMs = Number(arg('backoff-ms', '900000'));
 const stopFile = arg('stop-file', '');
 const logPath = arg('log', '');
 const once = process.argv.includes('--once');
+const recompute = process.argv.includes('--recompute');
 
 const db = new Database(dbPath);
 db.pragma('foreign_keys = ON');
@@ -41,6 +43,15 @@ const log = (entry: Record<string, unknown>) => { const line = JSON.stringify({ 
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 (async () => {
+  if (recompute) {
+    // Offline pass: re-derive capabilities from stored evidence after a rule or taxonomy change (§54); no network.
+    const ids = (db.prepare("SELECT DISTINCT expert_id FROM expert_evidence WHERE kind = 'paper'").all() as Array<{ expert_id: string }>).map((row) => row.expert_id);
+    const totals = { experts: ids.length, revoked: 0, added: 0, challenged_evidence: 0, kept_governed_unsupported: 0 };
+    for (const id of ids) { const result = service.recompute(id, { actor: 'ingestion:recompute' }); totals.revoked += result.revoked.length; totals.added += result.added.length; totals.challenged_evidence += result.challenged_evidence; totals.kept_governed_unsupported += result.kept_governed_unsupported.length; }
+    log({ event: 'recompute', ...totals });
+    db.close();
+    return;
+  }
   log({ event: 'start', source: sourceName, pending: service.pending(), batch, spacingMs, backoffMs });
   while (true) {
     if (stopFile && fs.existsSync(stopFile)) { log({ event: 'stop', reason: 'stop-file' }); break; }
