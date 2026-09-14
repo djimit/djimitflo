@@ -29,6 +29,7 @@ import { FrontierExpertRegistryService, frontierExpertsEnabled, type ExpertLifec
 import { ExpertResolverService } from '../services/expert-resolver-service';
 import { PacingFrontierIngestionService } from '../services/pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from '../services/expert-evidence-enrichment-service';
+import { OpenAlexAdapter } from '../services/knowledge-adapters/openalex-adapter';
 import { OkfKnowledgeUpdater } from '../services/okf-knowledge-updater';
 import { ServiceRefactoringAnalyzer } from '../services/service-refactoring-analyzer';
 import { EmergentSpecializationService } from '../services/emergent-specialization-service';
@@ -283,7 +284,7 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     const actor = operatorActor(req);
     const limit = req.body?.limit === undefined ? 3 : Number(req.body.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw createError(400, 'limit must be an integer between 1 and 5 (one arXiv request per expert, rate-limited)', 'VALIDATION_ERROR');
-    const service = new ExpertEvidenceEnrichmentService(db);
+    const service = new ExpertEvidenceEnrichmentService(db, { source: new OpenAlexAdapter() });
     const results = await service.enrichBatch({ actor: `ingestion:arxiv:${actor}`, limit, retryBefore: typeof req.body?.retry_before === 'string' ? req.body.retry_before : undefined });
     res.json({ results, pending: service.pending() });
   }));

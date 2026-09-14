@@ -31,11 +31,16 @@ export interface EnrichmentResult {
 }
 
 const AI_CATEGORIES = new Set(['cs.AI', 'cs.LG', 'cs.CL', 'cs.CV', 'cs.NE', 'cs.CR', 'cs.CY', 'cs.MA', 'cs.HC', 'cs.RO', 'stat.ML', 'cs.SE', 'cs.IR', 'cs.GT']);
+/** OpenAlex topic / subfield names that count as AI-adjacent for identity confidence. */
+const AI_TOPIC = /artificial intelligence|machine learning|neural|deep learning|reinforcement learning|natural language|computer vision|language model|computer security|human-computer|robotics|information systems|software/i;
+const isAiCategory = (category: string) => AI_CATEGORIES.has(category) || AI_TOPIC.test(category);
 /** arXiv categories that map directly onto a taxonomy capability. */
 const CATEGORY_CAPABILITY: Record<string, string> = { 'cs.CR': 'ai_security', 'cs.CY': 'ai_governance', 'cs.MA': 'multi_agent_systems', 'cs.HC': 'human_ai_interaction' };
 
 export function normalizeName(name: string): string {
-  return name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').replace(/\s+/g, ' ').trim();
+  const [last, first] = name.split(',');
+  const ordered = first !== undefined ? `${first} ${last}` : name;
+  return ordered.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z\s'-]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** Transparent identity heuristic (§12, §28): exact name matches only; AI-category share drives confidence. */
@@ -43,7 +48,7 @@ export function identityConfidence(papers: ArxivPaper[], name: string): { matche
   const target = normalizeName(name);
   const matched = papers.filter((paper) => paper.authors.some((author) => normalizeName(author) === target));
   if (!matched.length) return { matched, ai_share: 0, confidence: 0 };
-  const ai = matched.filter((paper) => paper.categories.some((category) => AI_CATEGORIES.has(category)) || (paper.primary_category ? AI_CATEGORIES.has(paper.primary_category) : false)).length;
+  const ai = matched.filter((paper) => paper.categories.some(isAiCategory) || (paper.primary_category ? isAiCategory(paper.primary_category) : false)).length;
   const share = ai / matched.length;
   const confidence = Math.min(0.95, 0.55 + 0.35 * share + (matched.length >= 3 ? 0.05 : 0));
   return { matched, ai_share: Number(share.toFixed(2)), confidence: Number(confidence.toFixed(2)) };
@@ -56,7 +61,9 @@ export class ExpertEvidenceEnrichmentService {
   constructor(private readonly db: Database, deps: { registry?: FrontierExpertRegistryService; source?: AuthorPaperSource } = {}) {
     this.registry = deps.registry ?? new FrontierExpertRegistryService(db);
     this.source = deps.source ?? new ArxivAdapter();
+    this.sourceName = (this.source as { name?: string }).name ?? 'injected';
   }
+  private readonly sourceName: string;
 
   async enrich(expertId: string, input: { actor: string; maxPapers?: number }): Promise<EnrichmentResult> {
     const expert = this.registry.get(expertId);
@@ -65,7 +72,7 @@ export class ExpertEvidenceEnrichmentService {
     const identity = identityConfidence(papers, expert.canonical_name);
     // Record the attempt on the identity so bounded batches move on instead of retrying the same unmatched names forever (§33, §51).
     this.db.prepare("UPDATE expert_identities SET provenance_json = json_set(provenance_json, '$.enrichment', json(?)), updated_at = datetime('now') WHERE id = ?")
-      .run(JSON.stringify({ attempted_at: new Date().toISOString(), source: 'arxiv', papers_found: papers.length, papers_matched: identity.matched.length }), expertId);
+      .run(JSON.stringify({ attempted_at: new Date().toISOString(), source: this.sourceName, papers_found: papers.length, papers_matched: identity.matched.length }), expertId);
     const base = { expert_id: expertId, canonical_name: expert.canonical_name, papers_found: papers.length, papers_matched: identity.matched.length, ai_share: identity.ai_share, identity_confidence: identity.confidence };
 
     if (!identity.matched.length) {
@@ -86,9 +93,10 @@ export class ExpertEvidenceEnrichmentService {
     const knownCapabilities = new Set((this.db.prepare('SELECT capability_id FROM expert_capabilities WHERE expert_id = ?').all(expertId) as Array<{ capability_id: string }>).map((row) => row.capability_id));
     const evidenceByCapability = new Map<string, Set<string>>();
     for (const paper of identity.matched) {
+      const arxivShaped = /^\d{4}\.\d{4,5}(v\d+)?$/.test(paper.arxiv_id);
       const evidenceId = this.registry.addEvidence(expertId, {
-        kind: 'paper', title: paper.title, url: paper.url, sourceRef: `arxiv:${paper.arxiv_id}`, canonicalOrigin: `https://arxiv.org/abs/${paper.arxiv_id.replace(/v\d+$/, '')}`,
-        sourceFamily: 'arxiv.org', retrievedAt: new Date().toISOString(),
+        kind: 'paper', title: paper.title, url: paper.url, sourceRef: arxivShaped ? `arxiv:${paper.arxiv_id}` : paper.arxiv_id,
+        canonicalOrigin: arxivShaped ? `https://arxiv.org/abs/${paper.arxiv_id.replace(/v\d+$/, '')}` : paper.url, retrievedAt: new Date().toISOString(),
         metadata: { abstract: paper.summary.slice(0, 2_000), categories: paper.categories, primary_category: paper.primary_category, published: paper.published, authors: paper.authors.slice(0, 20), arxiv_id: paper.arxiv_id },
       });
       for (const capability of this.capabilitiesFor(paper)) {
