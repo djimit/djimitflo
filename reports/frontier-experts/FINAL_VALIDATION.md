@@ -51,8 +51,8 @@ Disagreement is preserved as CONTRADICTS relations with both evidence sides and 
 | Council integration in ExpertSwarm (scripted runner) | PROVEN |
 | Council with real model | BLOCKED (G-02) |
 | Pacing-the-Frontier ingestion | PROVEN (real page, idempotent) |
-| arXiv enrichment + capability derivation | PROVEN offline / BLOCKED live (G-01) |
-| Full seed enrichment run | BLOCKED, runner active (G-01: arXiv throttles to ~1 request per 25 min for this client) |
+| Evidence enrichment + capability derivation (OpenAlex primary, arXiv fallback) | PROVEN offline; live run in progress on the seed DB (G-01) |
+| Full seed enrichment run | IN PROGRESS via OpenAlex (arXiv throttled; G-01) |
 | Benchmark + hard gates | PROVEN (synthetic) / NOT_PROVEN (live data) |
 | §59 end-to-end scenario | PROVEN (scripted) / BLOCKED (live model) |
 | Skills (§34) via OKF/SkillService, injected into perspectives | PROVEN (14 skills validate; prompt injection of procedure tested) |
