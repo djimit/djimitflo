@@ -12,6 +12,7 @@ import { createError } from '../middleware/error-handler';
 import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../services/spawn-token';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
+import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 
@@ -213,6 +214,34 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
     res.json(lure.status());
   });
 
+  // Open door: operator-issued invite codes let agents elsewhere on the web knock; every knock is approved by hand.
+  const openDoor = new AgentCommonsOpenDoorService(db, lure);
+  router.post('/social/join-invites', requirePermission('manage:tokens'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
+    const invite = openDoor.createInvite({
+      by: String(req.user?.email || req.user?.id || 'operator'), baseUrl: `${req.protocol}://${req.get('host')}`,
+      label: typeof req.body?.label === 'string' ? req.body.label : undefined,
+      ttlMs: Number.isFinite(Number(req.body?.ttl_ms)) ? Number(req.body.ttl_ms) : undefined,
+      maxUses: Number.isFinite(Number(req.body?.max_uses)) ? Number(req.body.max_uses) : undefined,
+    });
+    audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: 'social_join_invite_issued', resource_type: 'agent', resource_id: invite.label, user_id: req.user.sub, metadata: { expires_at: invite.expires_at, max_uses: invite.max_uses } });
+    res.set('Cache-Control', 'no-store').status(201).json(invite);
+  });
+  router.get('/social/join-requests', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ requests: openDoor.listRequests() });
+  });
+  router.post('/social/join-requests/:agentId/decide', requirePermission('manage:tokens'), (req: any, res) => {
+    if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
+    try {
+      const decision = openDoor.decide({ agentId: req.params.agentId, by: String(req.user?.email || req.user?.id || 'operator'), approve: req.body?.approve === true });
+      audit.record({ event_type: AuditEventType.CONFIG_CHANGED, action: decision.status === 'approved' ? 'social_join_approved' : 'social_join_rejected', resource_type: 'agent', resource_id: req.params.agentId, user_id: req.user.sub, metadata: { invite_label: decision.invite_label } });
+      res.json(decision);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_DECIDE_FAILED';
+      res.status(code === 'JOIN_REQUEST_NOT_FOUND' ? 404 : 500).json({ error: { code, message: code } });
+    }
+  });
+
   // Operator credential maintenance is separate from the scoped runtime callback surface.
   router.post('/social/agents/:agentId/token', requirePermission('manage:tokens'), (req, res) => {
     if (!req.user?.sub || (req.user as any).agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
@@ -263,6 +292,29 @@ export function createAgentSocialRuntimeRoutes(db: Database, runtimeGovernance =
   router.use(rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false }));
   const comms = new AgentCommunicationService(db);
   const lure = new AgentLureService(db, comms);
+  const openDoor = new AgentCommonsOpenDoorService(db, lure);
+  const baseUrl = (req: any) => `${req.protocol}://${req.get('host')}`;
+
+  // Public open-door surface: discovery card, knock with an invite code, poll for the decision.
+  router.get('/card', (req, res) => { res.json(openDoor.agentCard(baseUrl(req))); });
+  router.post('/join', (req: any, res) => {
+    try {
+      const body = req.body || {};
+      res.status(202).json(openDoor.join({ inviteCode: body.invite_code, agentId: body.agent_id, name: body.name, description: body.description, capabilities: body.capabilities, contact: body.contact, ip: req.ip }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_FAILED';
+      const status = code === 'JOIN_INVITE_INVALID' ? 401 : code === 'JOIN_AGENT_ID_TAKEN' ? 409 : code.startsWith('JOIN_') ? 400 : 500;
+      res.status(status).json({ error: { code: status === 500 ? 'JOIN_FAILED' : code, message: status === 500 ? 'JOIN_FAILED' : code } });
+    }
+  });
+  router.get('/join/:agentId/status', (req: any, res) => {
+    try {
+      res.set('Cache-Control', 'no-store').json(openDoor.status({ agentId: String(req.params.agentId), secret: String(req.get('X-Agent-Join-Secret') || ''), ip: req.ip, baseUrl: baseUrl(req) }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'JOIN_STATUS_FAILED';
+      res.status(code === 'JOIN_SECRET_INVALID' ? 401 : 500).json({ error: { code, message: code } });
+    }
+  });
 
   function authorized(req: any, res: any): boolean {
     const agentId = String(req.params.agentId || '');
