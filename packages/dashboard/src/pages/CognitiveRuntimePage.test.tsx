@@ -1,7 +1,15 @@
+const store: Record<string, string> = {};
+(globalThis as any).localStorage = {
+  getItem: (key: string) => store[key] ?? null,
+  setItem: (key: string, value: string) => { store[key] = String(value); },
+  removeItem: (key: string) => { delete store[key]; },
+  clear: () => { for (const key of Object.keys(store)) delete store[key]; },
+};
+const { CognitiveRuntimePage } = await import('./CognitiveRuntimePage');
+const { api } = await import('../lib/api');
+
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '../lib/api';
-import { CognitiveRuntimePage } from './CognitiveRuntimePage';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const stats = { totalEpisodes: 10, totalPatterns: 2, totalStrategies: 2, overallSuccessRate: 0.5, bestGoalType: 'fixture' };
