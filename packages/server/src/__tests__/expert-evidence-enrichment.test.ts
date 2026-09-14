@@ -78,6 +78,11 @@ describe('expert evidence enrichment (§10 §11 §28 I01 I02 I03 I10)', () => {
     const recomputed = service.recompute(expert.id, { actor: 'ingestion:recompute' });
     expect(recomputed).toMatchObject({ revoked: ['reinforcement_learning'], added: [], challenged_evidence: 0, kept_governed_unsupported: [] });
     expect((db.prepare("SELECT capability_id FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(expert.id) as Array<{ capability_id: string }>).map((row) => row.capability_id)).toEqual(['reasoning']);
+    // Challenge the last supporting paper too: nothing remains, so the expert drops out of CAPABILITY_INFERRED.
+    const cot = db.prepare("SELECT id FROM expert_evidence WHERE expert_id = ? AND title LIKE 'Chain%'").get(expert.id) as { id: string };
+    registry.markEvidence(cot.id, 'challenged', 'checker');
+    expect(service.recompute(expert.id, { actor: 'ingestion:recompute' }).revoked).toEqual(['reasoning']);
+    expect(registry.get(expert.id)!.lifecycle_state).toBe('INSUFFICIENT_EVIDENCE');
   });
 
   it('fails closed on ambiguous names and attaches nothing (I03), and leaves unmatched names DISCOVERED (I10)', async () => {

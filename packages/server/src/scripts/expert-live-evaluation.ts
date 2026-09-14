@@ -46,11 +46,12 @@ let seed = Number(arg('seed', '7'));
 const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
 const enriched = db.prepare("SELECT id, canonical_name, identity_confidence, provenance_json FROM expert_identities WHERE lifecycle_state IN ('CAPABILITY_INFERRED', 'EVIDENCE_COLLECTED') ORDER BY id").all() as Array<{ id: string; canonical_name: string; identity_confidence: number; provenance_json: string }>;
 const sample = [...enriched].sort(() => random() - 0.5).slice(0, sampleSize);
-console.log(`\n## Identity-resolution sample (${sample.length} of ${enriched.length} enriched; label manually: same person as the signatory?)\n\n| name | self-stated title (seed) | confidence | matched papers | newest matched paper | capabilities |\n|---|---|---|---|---|---|`);
+console.log(`\n## Identity-resolution sample (${sample.length} of ${enriched.length} enriched; label manually: same person as the signatory?)\n\n| name | self-stated title (seed) | confidence | active/matched papers | newest active paper | active capabilities |\n|---|---|---|---|---|---|`);
 for (const expert of sample) {
   const provenance = JSON.parse(expert.provenance_json) as { seed_title?: string; enrichment?: { papers_matched?: number } };
-  const newest = db.prepare("SELECT title FROM expert_evidence WHERE expert_id = ? AND kind = 'paper' ORDER BY json_extract(metadata_json, '$.published') DESC LIMIT 1").get(expert.id) as { title: string } | undefined;
-  const capabilities = (db.prepare('SELECT capability_id FROM expert_capabilities WHERE expert_id = ?').all(expert.id) as Array<{ capability_id: string }>).map((row) => row.capability_id);
-  console.log(`| ${expert.canonical_name} | ${(provenance.seed_title ?? '').replace(/\|/g, '/')} | ${expert.identity_confidence} | ${provenance.enrichment?.papers_matched ?? '?'} | ${(newest?.title ?? '').slice(0, 70).replace(/\|/g, '/')} | ${capabilities.join(', ')} |`);
+  const newest = db.prepare("SELECT title FROM expert_evidence WHERE expert_id = ? AND kind = 'paper' AND lifecycle = 'active' ORDER BY json_extract(metadata_json, '$.published') DESC LIMIT 1").get(expert.id) as { title: string } | undefined;
+  const active = (db.prepare("SELECT COUNT(*) AS n FROM expert_evidence WHERE expert_id = ? AND kind = 'paper' AND lifecycle = 'active'").get(expert.id) as { n: number }).n;
+  const capabilities = (db.prepare("SELECT capability_id FROM expert_capabilities WHERE expert_id = ? AND status != 'revoked'").all(expert.id) as Array<{ capability_id: string }>).map((row) => row.capability_id);
+  console.log(`| ${expert.canonical_name} | ${(provenance.seed_title ?? '').replace(/\|/g, '/')} | ${expert.identity_confidence} | ${active}/${provenance.enrichment?.papers_matched ?? '?'} | ${(newest?.title ?? '').slice(0, 70).replace(/\|/g, '/')} | ${capabilities.join(', ')} |`);
 }
 db.close();

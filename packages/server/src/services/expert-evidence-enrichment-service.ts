@@ -166,6 +166,9 @@ export class ExpertEvidenceEnrichmentService {
       if (!existing.some((item) => item.capability_id === capability)) added.push(capability);
       this.registry.inferCapability(expertId, { capability, confidence: Math.min(0.95, 0.5 + 0.15 * (refs.size - 1)), evidenceRefs: [...refs], derivedBy: 'recompute' });
     }
+    // An inferred-only expert whose capabilities all fell away is no longer CAPABILITY_INFERRED (§54, I02).
+    const current = this.registry.get(expertId)!;
+    if (!supported.size && !keptGoverned.length && current.lifecycle_state === 'CAPABILITY_INFERRED') this.registry.transition(expertId, 'INSUFFICIENT_EVIDENCE', { actor: input.actor, reason: 'recompute: no capability supported by active AI evidence' });
     return { revoked, added, challenged_evidence: challenged, kept_governed_unsupported: keptGoverned };
   }
 
