@@ -248,6 +248,8 @@ async function main() {
   // Public explore pages (unauthenticated, rate-limited)
   app.use('/explore', createExplorePublicRoutes(db));
 
+  let fleetWorker: ExplainerFleetWorker | undefined;
+
   // Explainer fleet worker — runs in EVERY runtime profile (Codex P1 fix: the
   // earlier bootstrap-only mount made explainer jobs idle in api/operator mode).
   // Opt out with DJIMITFLO_EXPLAINER_AUTONOMY=false; kill-switch still pauses it.
@@ -255,7 +257,7 @@ async function main() {
     if (process.env.DJIMITFLO_EXPLAINER_AUTONOMY === 'false') {
       console.log('ℹ️  Explainer fleet worker disabled via DJIMITFLO_EXPLAINER_AUTONOMY=false');
     } else {
-      const fleetWorker = ExplainerFleetWorker.create(db);
+      fleetWorker = ExplainerFleetWorker.create(db);
       fleetWorker.start();
       console.log('📖 Explainer fleet worker started (production entry point, honors kill-switch).');
     }
@@ -332,6 +334,7 @@ async function main() {
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('⚠️  SIGTERM received, shutting down gracefully...');
+    fleetWorker?.stop();
     // Upgraded sockets otherwise keep httpServer.close() waiting indefinitely.
     for (const socket of wss.clients) socket.close(1001, 'Server shutting down');
     const socketDeadline = setTimeout(() => {
