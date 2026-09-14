@@ -4,11 +4,19 @@ import { ExplainerFleetWorker } from "../services/explainer-fleet-worker";
 import { RepoExplainerScheduler } from "../services/repo-explainer-scheduler";
 import { BundleBuilder } from "../services/bundle-builder";
 import { ExplorePublicPageService } from "../services/explore-public-page-service";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
 describe("ExplainerFleetWorker", () => {
+  it("has one startup owner across runtime profiles and stops on shutdown", () => {
+    const entrypoint = readFileSync(join(__dirname, "../index.ts"), "utf8");
+    const autonomous = readFileSync(join(__dirname, "../bootstrap/autonomous-services.ts"), "utf8");
+    expect(entrypoint.match(/ExplainerFleetWorker\.create\(db\)/g)).toHaveLength(1);
+    expect(autonomous).not.toContain("ExplainerFleetWorker");
+    expect(entrypoint).toContain("fleetWorker?.stop()");
+  });
+
   it("consumes a scheduled task through the generation service", async () => {
     const db = createTestDb();
     db.prepare(`
