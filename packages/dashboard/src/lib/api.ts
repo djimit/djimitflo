@@ -1898,6 +1898,17 @@ class ApiClient {
     return this.request("/meta/stats");
   }
 
+  async getMetaTuningHistory(opts?: { goalType?: string; limit?: number }): Promise<{ enabled: false } | Array<{
+    goalType: string; tuningType: string; recommendedValue: unknown;
+    confidence: number; applied: boolean; createdAt: string;
+  }>> {
+    const query = new URLSearchParams();
+    if (opts?.goalType) query.set('goalType', opts.goalType);
+    if (opts?.limit !== undefined) query.set('limit', String(opts.limit));
+    const suffix = query.size > 0 ? `?${query}` : '';
+    return this.request(`/meta/tuning-history${suffix}`);
+  }
+
   async get<T>(endpoint: string): Promise<T> {
     return this.request(endpoint);
   }
