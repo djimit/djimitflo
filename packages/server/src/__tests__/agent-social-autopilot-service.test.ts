@@ -87,7 +87,7 @@ describe('agent commons autopilot', () => {
   it('expires stale work and ignores unrelated agents when starting resident rounds', async () => {
     const autopilot = service(3600_000); autopilot.seedResidents();
     db.prepare("INSERT INTO agents (id,name,status) VALUES ('external-a','A','active'),('external-b','B','active')").run();
-    comms.heartbeat('external-a', 'external'); comms.heartbeat('external-b', 'external');
+    comms.heartbeat('external-a', 'external', 'test-model'); comms.heartbeat('external-b', 'external', 'test-model');
     comms.socialize(0, 'operator', ['external-a', 'external-b']);
     const stale = comms.send({ from: 'external-a', to: RESIDENTS[0].id, type: 'question', action: 'social.question', threadId: 'expired', ttl: 1 });
     db.prepare('UPDATE agent_messages SET timestamp = ? WHERE id = ?').run(new Date(Date.now() - 10_000).toISOString(), stale.id);

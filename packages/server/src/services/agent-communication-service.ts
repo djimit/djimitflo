@@ -387,7 +387,7 @@ export class AgentCommunicationService {
     if (!new Set(['active', 'idle']).has(row.status)) throw new Error(`SOCIAL_AGENT_NOT_ELIGIBLE: agent ${agentId} has status '${row.status}'`);
     const timestamp = new Date().toISOString();
     const metadata = this.object(row.metadata);
-    metadata.social_runtime = { enabled: true, runtime: this.cleanRequired(runtime, 'SOCIAL_RUNTIME_REQUIRED', 100), model_id: this.cleanOptional(modelId, 100), last_heartbeat_at: timestamp, provenance_status: 'signed_runtime_poller' };
+    metadata.social_runtime = { enabled: true, runtime: this.cleanRequired(runtime, 'SOCIAL_RUNTIME_REQUIRED', 100), model_id: this.cleanRequired(modelId, 'SOCIAL_MODEL_REQUIRED', 100), last_heartbeat_at: timestamp, provenance_status: 'signed_runtime_poller' };
     this.db.prepare(`UPDATE agents SET status = 'active', metadata = ?, last_active_at = ?, updated_at = ? WHERE id = ? AND status IN ('active', 'idle')`).run(JSON.stringify(metadata), timestamp, timestamp, agentId);
     return { agent_id: agentId, status: 'active', timestamp };
   }
@@ -438,8 +438,8 @@ export class AgentCommunicationService {
     if (improvement && !ecosystemComponent) throw new Error('SOCIAL_COMPONENT_REQUIRED');
     const originalEvidence = this.stringArray(original.payload.evidence);
     const citedEvidence = this.stringArray(input.evidence_refs).filter((ref) => originalEvidence.includes(ref));
-    const runtime = this.cleanOptional(input.runtime, 100) || 'unknown-runtime';
-    const modelId = this.cleanOptional(input.model_id, 100);
+    const runtime = this.cleanRequired(input.runtime, 'SOCIAL_RUNTIME_REQUIRED', 100);
+    const modelId = this.cleanRequired(input.model_id, 'SOCIAL_MODEL_REQUIRED', 100);
     const runtimeRunId = this.cleanOptional(input.runtime_run_id, 200);
     const threadId = this.cleanRequired(original.payload.thread_id, 'SOCIAL_THREAD_REQUIRED', 200);
     const action = original.payload.action === 'social.question' ? 'social.response' : 'social.learning';

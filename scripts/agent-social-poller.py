@@ -224,8 +224,9 @@ def self_test():
 
 def main():
     if '--self-test' in sys.argv: self_test(); return
-    agent, runtime, model = os.environ['DJIMITFLO_AGENT_ID'], os.environ['SOCIAL_RUNTIME'], os.environ.get('SOCIAL_MODEL_ID', '')
+    agent, runtime, model = os.environ['DJIMITFLO_AGENT_ID'], os.environ['SOCIAL_RUNTIME'], os.environ.get('SOCIAL_MODEL_ID', '').strip()
     if runtime not in RUNTIMES: raise RuntimeError(f'unsupported runtime: {runtime}')
+    if not model: raise RuntimeError('SOCIAL_MODEL_ID is required for runtime provenance')
     api('POST', f'/api/swarm-v2/social-runtime/{agent}/heartbeat', {'runtime': runtime, 'model_id': model})
     _, body = api('GET', f'/api/swarm-v2/social-runtime/{agent}/messages?limit=1'); failures = processed = 0
     for message in body.get('messages', []):
