@@ -136,37 +136,44 @@ export class MemorySyncService {
   }
 
   private writeOKFConcept(task: any, machineId: string, agentType: string): void {
-    fs.mkdirSync(this.okfTasksDir, { recursive: true });
-    const filePath = path.join(this.okfTasksDir, `${task.id}.md`);
-    const description = (task.description || task.title || '').slice(0, 200);
-    const frontmatter = [
-      '---',
-      `type: CompletedTask`,
-      `title: ${yamlScalar(task.title || '')}`,
-      `description: ${yamlScalar(description)}`,
-      `resource: http://192.168.1.28:3001/api/tasks/${task.id}`,
-      `tags: [${machineId}, ${agentType}, ${task.status}]`,
-      `timestamp: ${new Date().toISOString()}`,
-      `trust_level: agent_generated`,
-      '---',
-    ].join('\n');
+    // OKF is a rebuildable projection: a missing/dangling knowledge base must not
+    // fail the whole sync (this is synchronous, so an uncaught throw would reject
+    // onTaskCompleted before Promise.allSettled can isolate it).
+    try {
+      fs.mkdirSync(this.okfTasksDir, { recursive: true });
+      const filePath = path.join(this.okfTasksDir, `${task.id}.md`);
+      const description = (task.description || task.title || '').slice(0, 200);
+      const frontmatter = [
+        '---',
+        `type: CompletedTask`,
+        `title: ${yamlScalar(task.title || '')}`,
+        `description: ${yamlScalar(description)}`,
+        `resource: http://192.168.1.28:3001/api/tasks/${task.id}`,
+        `tags: [${machineId}, ${agentType}, ${task.status}]`,
+        `timestamp: ${new Date().toISOString()}`,
+        `trust_level: agent_generated`,
+        '---',
+      ].join('\n');
 
-    const body = [
-      `# ${task.title || task.id}`,
-      '',
-      `**Status**: ${task.status}`,
-      `**Machine**: ${machineId}`,
-      `**Agent type**: ${agentType}`,
-      `**Created**: ${task.created_at}`,
-      `**Completed**: ${task.completed_at || 'N/A'}`,
-      '',
-      '## Description',
-      '',
-      task.description || '_No description_',
-      '',
-    ].join('\n');
+      const body = [
+        `# ${task.title || task.id}`,
+        '',
+        `**Status**: ${task.status}`,
+        `**Machine**: ${machineId}`,
+        `**Agent type**: ${agentType}`,
+        `**Created**: ${task.created_at}`,
+        `**Completed**: ${task.completed_at || 'N/A'}`,
+        '',
+        '## Description',
+        '',
+        task.description || '_No description_',
+        '',
+      ].join('\n');
 
-    fs.writeFileSync(filePath, `${frontmatter}\n\n${body}\n`, 'utf8');
-    console.log(`OKF concept written: tasks/${task.id}.md`);
+      fs.writeFileSync(filePath, `${frontmatter}\n\n${body}\n`, 'utf8');
+      console.log(`OKF concept written: tasks/${task.id}.md`);
+    } catch (e) {
+      console.warn(`OKF concept write failed for task ${task.id}:`, e instanceof Error ? e.message : String(e));
+    }
   }
 }
