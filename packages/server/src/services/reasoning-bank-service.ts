@@ -12,6 +12,13 @@ const COLLECTION_REASONING = 'djimitflo_reasoning';
 const EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
 const EMBED_DIM = EMBED_MODEL === 'nomic-embed-text' ? 768 : EMBED_MODEL === 'all-MiniLM-L6-v2' ? 384 : 1024;
 
+function qdrantHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const key = process.env.QDRANT_API_KEY;
+  if (key) headers['api-key'] = key;
+  return headers;
+}
+
 export class ReasoningBankService {
   private db: Database;
   private vectorMemory?: VectorMemoryService;
@@ -94,11 +101,11 @@ export class ReasoningBankService {
 
     // Upsert to Qdrant djimitflo_reasoning collection
     try {
-      const check = await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`);
+      const check = await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, { headers: qdrantHeaders() });
       if (check.status === 404) {
         await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: qdrantHeaders(),
           body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
         });
       } else if (check.ok) {
@@ -106,10 +113,10 @@ export class ReasoningBankService {
         const existing = (await check.json()) as any;
         const existingDim = existing?.result?.config?.params?.vectors?.size;
         if (existingDim && existingDim !== EMBED_DIM) {
-          await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, { method: 'DELETE' });
+          await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, { method: 'DELETE', headers: qdrantHeaders() });
           await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: qdrantHeaders(),
             body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
           });
         }
@@ -126,7 +133,7 @@ export class ReasoningBankService {
         const vector = embedJson.embedding;
         await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}/points`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: qdrantHeaders(),
           body: JSON.stringify({
             points: [{
               id: taskId,
@@ -193,7 +200,7 @@ export class ReasoningBankService {
 
       const searchRes = await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}/points/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: qdrantHeaders(),
         body: JSON.stringify({ vector, limit, with_payload: true, score_threshold: 0.5 }),
       });
       if (!searchRes.ok) return [];
