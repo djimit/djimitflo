@@ -109,10 +109,16 @@ export class ReasoningBankService {
           body: JSON.stringify({ vectors: { size: EMBED_DIM, distance: 'Cosine' } }),
         });
       } else if (check.ok) {
-        // Verify dimension matches; if not, recreate collection
+        // Verify dimension matches; if not, recreate ONLY when the collection is empty
+        // (never destroy populated data at a different dimension).
         const existing = (await check.json()) as any;
         const existingDim = existing?.result?.config?.params?.vectors?.size;
+        const count = existing?.result?.points_count ?? 0;
         if (existingDim && existingDim !== EMBED_DIM) {
+          if (count > 0) {
+            console.warn(`ReasoningBank Qdrant skipped for ${taskId}: collection is ${existingDim}-dim but embedding is ${EMBED_DIM}-dim (not recreating populated data)`);
+            return;
+          }
           await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, { method: 'DELETE', headers: qdrantHeaders() });
           await fetch(`${QDRANT_URL}/collections/${COLLECTION_REASONING}`, {
             method: 'PUT',

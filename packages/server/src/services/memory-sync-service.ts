@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { yamlScalar } from '../utils/yaml-scalar';
 
@@ -14,6 +15,48 @@ function authHeaders(apiKey: string | undefined, scheme: 'bearer' | 'api-key'): 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers[scheme === 'bearer' ? 'Authorization' : 'api-key'] = scheme === 'bearer' ? `Bearer ${apiKey}` : apiKey;
   return headers;
+}
+
+const EMBED_MODEL = process.env.DJIMITFLO_EMBED_MODEL || process.env.OLLAMA_EMBED_MODEL || 'snowflake-arctic-embed:s';
+const EMBED_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000;
+
+/**
+ * Task ids are not valid Qdrant point ids: they are UUIDs or composite strings
+ * like `loop-worker-<uuid>-<hex>`. Derive a stable UUIDv5-shaped id from the task
+ * id so upserts are deterministic and idempotent.
+ */
+function pointIdForTask(taskId: string): string {
+  const hex = createHash('sha256').update(taskId).digest('hex').slice(0, 32).split('');
+  hex[12] = '5';
+  hex[16] = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  const h = hex.join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/**
+ * Embed via Ollama using the same endpoint fallback as OllamaEmbeddingProvider.
+ * Returns null (never throws) so a missing embedding model degrades the Qdrant
+ * leg only; UAMS/OKF are unaffected.
+ */
+async function embedText(text: string): Promise<number[] | null> {
+  const base = (process.env.OLLAMA_URL || process.env.OLLAMA_HOST || 'http://127.0.0.1:11434').replace(/\/$/, '');
+  const call = async (path: string, body: Record<string, unknown>): Promise<Response> =>
+    fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+    });
+  try {
+    let res = await call('/api/embed', { model: EMBED_MODEL, input: text });
+    if (res.status === 404) res = await call('/api/embeddings', { model: EMBED_MODEL, prompt: text });
+    if (!res.ok) return null;
+    const payload = (await res.json()) as { embedding?: number[]; embeddings?: number[][] };
+    const vector = payload.embedding || payload.embeddings?.[0];
+    return vector?.length && vector.every((v) => Number.isFinite(v)) ? vector : null;
+  } catch {
+    return null;
+  }
 }
 
 export class MemorySyncService {
@@ -90,15 +133,6 @@ export class MemorySyncService {
 
   private async syncToQdrant(taskId: string, content: string, machineId: string, agentType: string): Promise<void> {
     const excerpt = content.slice(0, 500);
-    const payload = {
-      points: [
-        {
-          id: taskId,
-          vector: [], // will be filled by embedding pipeline
-          payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt },
-        },
-      ],
-    };
 
     const apiKey = process.env.QDRANT_API_KEY;
     const headers = authHeaders(apiKey, 'api-key');
@@ -106,20 +140,55 @@ export class MemorySyncService {
     const collection = 'djimitflo_swarm';
 
     try {
-      // Check if collection exists, create if not
+      const vector = await embedText(`${taskId} ${content}`);
+      if (!vector) {
+        console.warn(`Qdrant sync skipped for task ${taskId}: embedding unavailable (set DJIMITFLO_EMBED_MODEL to a served model)`);
+        return;
+      }
+
+      // Check if collection exists; only recreate an EMPTY mismatched collection
+      // (never destroy populated data at a different dimension).
       const checkRes = await fetch(`${base}/collections/${collection}`, { headers });
       if (checkRes.status === 404) {
-        await fetch(`${base}/collections/${collection}`, {
+        const createRes = await fetch(`${base}/collections/${collection}`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify({ vectors: { size: 384, distance: 'Cosine' } }),
+          body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
         });
-      } else if (!checkRes.ok) {
+        if (!createRes.ok) {
+          console.warn(`Qdrant sync failed for task ${taskId}: create ${createRes.status}`);
+          return;
+        }
+      } else if (checkRes.ok) {
+        const info = (await checkRes.json()) as { result?: { config?: { params?: { vectors?: { size?: number } } }; points_count?: number } };
+        const size = info.result?.config?.params?.vectors?.size;
+        const count = info.result?.points_count ?? 0;
+        if (typeof size === 'number' && size !== vector.length) {
+          if (count > 0) {
+            console.warn(`Qdrant sync skipped for task ${taskId}: collection is ${size}-dim but embedding is ${vector.length}-dim (not recreating populated data)`);
+            return;
+          }
+          await fetch(`${base}/collections/${collection}`, { method: 'DELETE', headers });
+          await fetch(`${base}/collections/${collection}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({ vectors: { size: vector.length, distance: 'Cosine' } }),
+          });
+        }
+      } else {
         console.warn(`Qdrant sync failed for task ${taskId}: collection check ${checkRes.status}`);
         return;
       }
 
-      // Upsert point (vector will be zero-filled until embedding pipeline runs)
+      const payload = {
+        points: [
+          {
+            id: pointIdForTask(taskId),
+            vector,
+            payload: { task_id: taskId, machine_id: machineId, agent_type: agentType, timestamp: new Date().toISOString(), content_excerpt: excerpt },
+          },
+        ],
+      };
       const upsertRes = await fetch(`${base}/collections/${collection}/points`, {
         method: 'PUT',
         headers,
