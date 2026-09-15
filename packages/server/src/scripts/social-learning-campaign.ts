@@ -51,7 +51,7 @@ try {
     writeJson(join(output, 'state.json'), service.getState());
     if (report.observation_window.complete) writeJson(join(output, 'report.json'), report);
     if (report.goal_batch) writeJson(join(output, 'djimitflo-goal-batch.json'), report.goal_batch);
-    console.log(JSON.stringify({ campaign_id: report.campaign_id, status: report.status, pairs: report.pairs.length, peer_signal: report.signals.peer_learning, outcome_signal: report.signals.operational_outcome_lift, checker: report.independent_checker.status, worldlab: report.worldlab?.status || 'UNDETERMINED', goal_batch: Boolean(report.goal_batch), report_hash: report.report_hash }));
+    console.log(JSON.stringify({ campaign_id: report.campaign_id, status: report.status, pairs: report.pairs.length, peer_signal: report.signals.peer_learning, peer_noncopy_sensitivity: report.signals.peer_learning_noncopy_sensitivity, outcome_signal: report.signals.operational_outcome_lift, checker: report.independent_checker.status, worldlab: report.worldlab?.status || 'UNDETERMINED', goal_batch: Boolean(report.goal_batch), report_hash: report.report_hash }));
   } else if (command === 'status') {
     console.log(JSON.stringify(service.getState()));
   } else {
