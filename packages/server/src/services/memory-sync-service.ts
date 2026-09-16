@@ -1,8 +1,8 @@
 import type { Database } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { createHash } from 'crypto';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { pointIdForTask as qdrantPointIdForTask } from '../utils/qdrant-point-id';
 import { yamlScalar } from '../utils/yaml-scalar';
 
 // Resolved per call so operators/tests can override without a rebuild.
@@ -27,16 +27,9 @@ const EMBED_TIMEOUT_MS = Number(process.env.EMBEDDING_TIMEOUT_MS) || 10_000;
 
 /**
  * Task ids are not valid Qdrant point ids: they are UUIDs or composite strings
- * like `loop-worker-<uuid>-<hex>`. Derive a stable UUIDv5-shaped id from the task
- * id so upserts are deterministic and idempotent.
+ * like `loop-worker-<uuid>-<hex>`. Derived id is stable => upserts are idempotent.
  */
-function pointIdForTask(taskId: string): string {
-  const hex = createHash('sha256').update(taskId).digest('hex').slice(0, 32).split('');
-  hex[12] = '5';
-  hex[16] = ((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
-  const h = hex.join('');
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
-}
+const pointIdForTask = qdrantPointIdForTask;
 
 /**
  * Embed via Ollama using the same endpoint fallback as OllamaEmbeddingProvider.
