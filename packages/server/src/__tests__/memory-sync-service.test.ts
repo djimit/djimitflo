@@ -55,6 +55,8 @@ afterEach(() => {
   delete process.env.QDRANT_URL;
   delete process.env.UAMS_API_KEY;
   delete process.env.QDRANT_API_KEY;
+  delete process.env.QDRANT_WRITE_URL;
+  delete process.env.QDRANT_WRITE_API_KEY;
   delete process.env.OKF_BASE;
   fs.rmSync(tmpOkf, { recursive: true, force: true });
 });
@@ -147,6 +149,28 @@ describe('MemorySyncService', () => {
 
     await expect(new MemorySyncService(fakeDb()).onTaskCompleted('task-1')).resolves.toBeUndefined();
     expect(warn.mock.calls.map((c) => String(c[0])).join('\n')).toContain('embedding unavailable');
+  });
+
+  it('uses the separate write target/key for Qdrant writes when configured', async () => {
+    process.env.QDRANT_URL = 'http://read.qdrant.test:6333';
+    process.env.QDRANT_API_KEY = 'read-key';
+    process.env.QDRANT_WRITE_URL = 'http://write.qdrant.test:6333';
+    process.env.QDRANT_WRITE_API_KEY = 'write-key';
+
+    const calls: Array<{ url: string; init: any }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+      calls.push({ url, init });
+      if (url.includes('/api/embed')) return { ok: true, status: 200, json: async () => ({ embeddings: [[0.1, 0.2, 0.3]] }) } as any;
+      return { ok: true, status: 200, json: async () => ({ result: { points_count: 0, config: { params: { vectors: { size: 3 } } } } }) } as any;
+    }));
+
+    await new MemorySyncService(fakeDb()).onTaskCompleted('task-1');
+
+    const upsert = calls.find((c) => c.url.endsWith('/collections/djimitflo_swarm/points'));
+    expect(upsert).toBeDefined();
+    expect(upsert!.url).toContain('write.qdrant.test');
+    expect(upsert!.init.headers['api-key']).toBe('write-key');
+    expect(calls.some((c) => c.url.includes('read.qdrant.test'))).toBe(false);
   });
 
   it('does not fail the sync when the OKF base is missing/dangling', async () => {
