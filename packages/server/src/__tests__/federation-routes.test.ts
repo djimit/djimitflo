@@ -85,4 +85,48 @@ describe('federation work distribution', () => {
       expect((await (await fetch(`${base}/capabilities`)).json()).capabilities).toMatchObject([{ id: 'cap-fixture', status: 'validated' }]);
     } finally { db.close(); }
   });
+
+  it('serves the live fleet from the agent-registry and fails closed when it is unreachable', async () => {
+    const previousRegistry = process.env.AGENT_REGISTRY_URL;
+
+    // A stand-in registry.
+    const registry = express();
+    registry.use(express.json());
+    registry.get('/agents', (_req, res) => res.json([
+      { name: 'djimitflo-vps', host: '100.86.47.122', framework: 'djimitflo', status: 'ONLINE', capabilities: ['orchestration'] },
+      { name: 'openclaw-workstation', host: '100.81.133.48', framework: 'openclaw', status: 'ONLINE', capabilities: [] },
+    ]));
+    servers.push(await new Promise<Server>(resolve => { const listening = registry.listen(0, () => resolve(listening)); }));
+    process.env.AGENT_REGISTRY_URL = `http://127.0.0.1:${(servers[servers.length - 1].address() as AddressInfo).port}`;
+
+    const db = createTestDb();
+    const app = express();
+    app.use(express.json());
+    const auth = { requireAuth: (_req: unknown, _res: unknown, next: () => void) => next() } as any;
+    app.use('/federation', createFederationRoutes(db, auth));
+    servers.push(await new Promise<Server>(resolve => { const listening = app.listen(0, () => resolve(listening)); }));
+    const base = `http://127.0.0.1:${(servers[servers.length - 1].address() as AddressInfo).port}/federation`;
+
+    try {
+      const live = await fetch(`${base}/fleet`);
+      expect(live.status).toBe(200);
+      const body = await live.json();
+      expect(body.ok).toBe(true);
+      expect(body.agents).toHaveLength(2);
+      expect(body.registry_url).toBe(process.env.AGENT_REGISTRY_URL);
+
+      // Unreachable registry -> explicit failure, never a silent empty success.
+      process.env.AGENT_REGISTRY_URL = 'http://127.0.0.1:1';
+      const down = await fetch(`${base}/fleet`);
+      expect(down.status).toBe(503);
+      const downBody = await down.json();
+      expect(downBody.ok).toBe(false);
+      expect(downBody.agents).toEqual([]);
+      expect(downBody.reason).toMatch(/registry_(unreachable|http_)/);
+    } finally {
+      if (previousRegistry === undefined) delete process.env.AGENT_REGISTRY_URL;
+      else process.env.AGENT_REGISTRY_URL = previousRegistry;
+      db.close();
+    }
+  });
 });
