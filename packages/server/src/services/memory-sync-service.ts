@@ -11,6 +11,11 @@ const DEFAULT_QDRANT_URL = 'http://192.168.1.28:6333';
 const uamsUrl = (): string => process.env.UAMS_URL || DEFAULT_UAMS_URL;
 const qdrantUrl = (): string => process.env.QDRANT_URL || DEFAULT_QDRANT_URL;
 
+// Writes may target a different Qdrant than reads (e.g. the read-only credential
+// is intentional, while writes go to the service store). Falls back to the read pair.
+const qdrantWriteUrl = (): string => process.env.QDRANT_WRITE_URL || qdrantUrl();
+const qdrantWriteApiKey = (): string | undefined => process.env.QDRANT_WRITE_API_KEY || process.env.QDRANT_API_KEY;
+
 function authHeaders(apiKey: string | undefined, scheme: 'bearer' | 'api-key'): Record<string, string> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (apiKey) headers[scheme === 'bearer' ? 'Authorization' : 'api-key'] = scheme === 'bearer' ? `Bearer ${apiKey}` : apiKey;
@@ -134,9 +139,9 @@ export class MemorySyncService {
   private async syncToQdrant(taskId: string, content: string, machineId: string, agentType: string): Promise<void> {
     const excerpt = content.slice(0, 500);
 
-    const apiKey = process.env.QDRANT_API_KEY;
+    const apiKey = qdrantWriteApiKey();
     const headers = authHeaders(apiKey, 'api-key');
-    const base = qdrantUrl();
+    const base = qdrantWriteUrl();
     const collection = 'djimitflo_swarm';
 
     try {
