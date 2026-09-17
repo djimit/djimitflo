@@ -951,7 +951,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const revisionResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: checker.id, verdict: 'needs_revision', notes: 'Draft wording is insufficient.' }),
+        body: JSON.stringify({ lease_id: checker.id, verdict: 'needs_revision', notes: 'Draft wording is insufficient.', manual_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review' } }),
     });
     expect(revisionResponse.status).toBe(200);
 
@@ -996,7 +996,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const acceptedRetryResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: retry.retry_checker.id, verdict: 'accepted', notes: 'Retry output accepted.' }),
+        body: JSON.stringify({ lease_id: retry.retry_checker.id, verdict: 'accepted', notes: 'Retry output accepted.', manual_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review' } }),
     });
     expect(acceptedRetryResponse.status).toBe(200);
 
@@ -1139,7 +1139,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const verdictResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: checker.id, verdict: 'needs_revision', notes: 'Escalate after first failed review.' }),
+        body: JSON.stringify({ lease_id: checker.id, verdict: 'needs_revision', notes: 'Escalate after first failed review.', manual_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review' } }),
     });
     expect(verdictResponse.status).toBe(200);
     const verdict = await verdictResponse.json() as any;
@@ -1649,7 +1649,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const checkerResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/checker-verdict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: checker.id, verdict: 'accepted', notes: 'Regular checker accepted.' }),
+        body: JSON.stringify({ lease_id: checker.id, verdict: 'accepted', notes: 'Regular checker accepted.', manual_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review' } }),
     });
     expect(checkerResponse.status).toBe(200);
 
@@ -1661,7 +1661,7 @@ describe('doc-drift-and-small-fix-loop', () => {
     const securityResponse = await fetch(`${baseUrl}/loops/runs/${run.id}/security-verdict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lease_id: securityChecker.id, verdict: 'accepted', notes: 'Security review accepted.' }),
+        body: JSON.stringify({ lease_id: securityChecker.id, verdict: 'accepted', notes: 'Security review accepted.', manual_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review' } }),
     });
     expect(securityResponse.status).toBe(200);
     const security = await securityResponse.json() as any;

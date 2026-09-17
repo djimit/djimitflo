@@ -1213,7 +1213,9 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
         GROUP BY fingerprint
       );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_self_improve_fingerprint_unique
-      ON self_improvements(fingerprint) WHERE fingerprint IS NOT NULL;
+      ON self_improvements(fingerprint)
+      WHERE fingerprint IS NOT NULL
+        AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating');
     CREATE INDEX IF NOT EXISTS idx_self_improve_status ON self_improvements(status);
     CREATE INDEX IF NOT EXISTS idx_self_improve_priority ON self_improvements(priority DESC);
   `);
