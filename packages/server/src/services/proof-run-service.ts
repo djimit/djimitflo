@@ -814,7 +814,11 @@ export class ProofRunService {
         },
       });
       this.memory.promote(candidate.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-      await this.memory.upsertToSwarmMemory(candidate.id); // learning flywheel: write promoted memory to the vector store so future runs retrieve it
+      const memResult = await this.memory.upsertToSwarmMemory(candidate.id);
+      if (!memResult.ok) {
+        base.memory_flywheel_degraded = true;
+        base.memory_flywheel_reason = memResult.reason || 'unknown';
+      }
       // G12: distill an actionable rule from this run's evidence (procedural memory).
       // This closes the self-improvement loop: the distilled rule is stored in the
       // procedural store and retrievable by future runs via ContextInjectionService
@@ -831,7 +835,11 @@ export class ProofRunService {
           metadata: base,
         });
         this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        await this.memory.upsertToSwarmMemory(distilled.id);
+        const distilledResult = await this.memory.upsertToSwarmMemory(distilled.id);
+        if (!distilledResult.ok) {
+          base.memory_flywheel_degraded = true;
+          base.memory_flywheel_reason = distilledResult.reason || 'unknown';
+        }
       } catch { /* best-effort: never fail the proof on distillation */ }
       const nestedProof = this.createNestedSpawnProof(loopRunId, proofRunId, runtime, base);
       await this.executeNestedSpawnProof(loopRunId, nestedProof, skipPermissions);
@@ -853,7 +861,11 @@ export class ProofRunService {
           metadata: { ...base, error: proofRunError.message },
         });
         this.memory.promote(failureRule.id, { sinks: ['qdrant'], approved_by: 'proof-run-service' });
-        await this.memory.upsertToSwarmMemory(failureRule.id);
+        const failureResult = await this.memory.upsertToSwarmMemory(failureRule.id);
+        if (!failureResult.ok) {
+          base.memory_flywheel_degraded = true;
+          base.memory_flywheel_reason = failureResult.reason || 'unknown';
+        }
       } catch { /* best-effort */ }
       if (proofRunError.message.startsWith('PROOF_RUN_RUNTIME_') || proofRunError.message === 'PROOF_RUN_VERIFICATION_BLOCKED' || proofRunError.message === 'PROOF_RUN_COMPLETE_FAILED') {
         throw proofRunError;
@@ -1239,7 +1251,11 @@ export class ProofRunService {
           metadata: { curator_active: true, curator_lease_id: curatorLeaseId },
         });
         this.memory.promote(distilled.id, { sinks: ['qdrant'], approved_by: 'memory_curator' });
-        await this.memory.upsertToSwarmMemory(distilled.id);
+        const curatedResult = await this.memory.upsertToSwarmMemory(distilled.id);
+        if (!curatedResult.ok) {
+          // memory flywheel degraded — proof still succeeds, but flag it in metadata for observability
+          // (no throw: curator distillation is best-effort; the flag surfaces in run metadata)
+        }
       }
     } catch { /* best-effort: never fail the proof on curator distillation */ }
   }

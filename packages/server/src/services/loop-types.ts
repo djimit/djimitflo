@@ -193,6 +193,8 @@ export interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
+  /** P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). */
+  manual_attestation?: { reviewer: string; reason: string };
 }
 
 export interface RunChecksInput {

@@ -53,9 +53,9 @@ it.each(['high', 'critical'])('keeps explicit %s run risk without findings in bo
   db.prepare("UPDATE loop_runs SET findings_json='[]',metadata=? WHERE id='review-run'").run(JSON.stringify({ risk_class: risk }));
   const run = loops.getLoopRun('review-run');
   expect(loops.isHighRiskRun(run)).toBe(true);
-  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted' });
+  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted' });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
   expect(gate('security_checker_verdict')?.status).toBe('pass');
 });
 
@@ -93,11 +93,11 @@ it('never silently dispatches a manual reviewer as mock', async () => {
 });
 
 it('preserves manual verdict submission and risk provenance across repeated verification', () => {
-  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted' });
+  loops.submitCheckerVerdict('review-run', { lease_id: 'checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
   expect(gate('security_checker_verdict')?.status).toBe('fail');
   expect(loops.getLoopRun('review-run').metadata).toMatchObject({ risk_class: 'high', provenance: { fixture: 'retained' } });
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted' });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
   expect(gate('security_checker_verdict')?.status).toBe('pass');
   expect(loops.getLoopRun('review-run').metadata).toMatchObject({ risk_class: 'high', provenance: { fixture: 'retained' } });
   expect(loops.getLoopRun('review-run').metadata).not.toHaveProperty('block_reason');
@@ -154,7 +154,7 @@ it('does not relabel a rejected runtime verdict as runtime acceptance through ma
   vi.spyOn(loops, 'buildMockCheckerCommand').mockReturnValue({ command: process.execPath, args: ['-e',
     'console.log(JSON.stringify({verdict:"rejected"}));'] });
   await loops.executeChecker('review-run', { lease_id: 'security_checker', runtime: 'mock' });
-  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted' });
+  loops.submitSecurityVerdict('review-run', { lease_id: 'security_checker', verdict: 'accepted', manual_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
   expect(gate('security_checker_verdict')?.status).toBe('fail');
 });
 

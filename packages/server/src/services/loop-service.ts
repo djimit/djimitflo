@@ -43,6 +43,7 @@ import type {
   RuntimeProcessHandle,
   RuntimeManifestAction,
   StartDocDriftLoopInput,
+  CheckerVerdictInput,
 } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
@@ -107,13 +108,6 @@ interface ExecuteMakerInput {
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
-}
-
-interface CheckerVerdictInput {
-  lease_id?: string;
-  maker_lease_id?: string;
-  verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
-  notes?: string;
 }
 
 interface RunChecksInput {
@@ -872,11 +866,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (checker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(checker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Checker verdict submitted: ${input.verdict}.`, {
@@ -925,11 +924,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (securityChecker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(securityChecker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'security_checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Security checker verdict submitted: ${input.verdict}.`, {

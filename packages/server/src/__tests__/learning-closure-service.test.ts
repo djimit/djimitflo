@@ -33,7 +33,12 @@ function seedRun(db: Database.Database, id: string, checkerAccepted = true, repo
     INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(`${id}-checker`, id, 'checker', 'manual', checkerAccepted ? 'completed' : 'prepared', checkerAccepted
-    ? JSON.stringify({ verdict: 'accepted', maker_lease_id: `${id}-maker` })
+    ? JSON.stringify({
+        verdict: 'accepted',
+        maker_lease_id: `${id}-maker`,
+        // P1a: manual verdicts require reviewer+reason attestation.
+        manual_review_attestation: { reviewer: 'test-reviewer', reason: 'test fixture: simulated human review attestation' },
+      })
     : JSON.stringify({ maker_lease_id: `${id}-maker` }), now, now);
   const assurance = new AgentAssuranceService(db);
   assurance.createTraceSpan({

@@ -36,7 +36,7 @@ beforeEach(() => {
         worktreePath: role === 'maker' ? worktree : null, branchName: null, now: new Date().toISOString(),
         metadata: role === 'maker' ? { assignment_file: assignment, diff_lines: 0, diff_max_lines: 20,
           deterministic_checks: [{ name: 'fixture', status: 'pass' }] } : { maker_lease_id: `maker-${index}` } });
-      loops.updateWorkerLeaseStatus(id, 'completed', role === 'maker' ? {} : { verdict: 'accepted' });
+      loops.updateWorkerLeaseStatus(id, 'completed', role === 'maker' ? {} : { verdict: 'accepted', manual_review_attestation: { reviewer: 'test-operator', reason: 'fixture manual review' } });
     }
   }
 });
