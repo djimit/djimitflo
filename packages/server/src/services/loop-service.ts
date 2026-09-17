@@ -43,6 +43,7 @@ import type {
   RuntimeProcessHandle,
   RuntimeManifestAction,
   StartDocDriftLoopInput,
+  CheckerVerdictInput,
 } from './loop-types';
 import type { LoopFinding } from './loop-discovery-service';
 import type { GoalRecord, GoalCreateInput, GoalUpdateInput, DecomposedLoopCandidate } from './goal-service';
@@ -107,13 +108,6 @@ interface ExecuteMakerInput {
 
 interface ExecuteCheckerInput extends ExecuteMakerInput {
   runtime?: 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
-}
-
-interface CheckerVerdictInput {
-  lease_id?: string;
-  maker_lease_id?: string;
-  verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
-  notes?: string;
 }
 
 interface RunChecksInput {
