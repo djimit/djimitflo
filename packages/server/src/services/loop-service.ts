@@ -872,11 +872,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (checker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(checker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Checker verdict submitted: ${input.verdict}.`, {
@@ -925,11 +930,16 @@ export class LoopService {
       throw new Error('CHECKER_MAKER_NOT_COMPLETED');
     }
 
+    if (securityChecker.runtime === 'manual' && (!input.manual_attestation?.reviewer || !input.manual_attestation?.reason)) {
+      throw new Error('MANUAL_VERDICT_ATTESTATION_REQUIRED');
+    }
+
     this.updateWorkerLeaseStatus(securityChecker.id, 'completed', {
       verdict: input.verdict,
       notes: input.notes || '',
       maker_lease_id: makerLeaseId,
       completed_at: new Date().toISOString(),
+      ...(input.manual_attestation ? { manual_review_attestation: input.manual_attestation } : {}),
     });
 
     this.recordLoopEvent(run.id, 'security_checker_verdict_submitted', input.verdict === 'accepted' ? 'info' : 'warning', `Security checker verdict submitted: ${input.verdict}.`, {
