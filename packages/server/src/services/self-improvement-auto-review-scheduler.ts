@@ -38,6 +38,7 @@ export interface AutoReviewTickResult {
 
 export class SelfImprovementAutoReviewScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
+  private running = false;
   private readonly improvements: SelfImprovementService;
   private readonly reviewer: SelfImprovementAgentReviewService;
   private readonly panels: SpecialistPanelService;
@@ -68,29 +69,44 @@ export class SelfImprovementAutoReviewScheduler {
     return Number.isFinite(minutes) && minutes > 0 ? minutes : 15;
   }
 
+  /**
+   * Guarded against overlap: unlike the other in-process schedulers (pure
+   * sync DB queries, effectively instant), this tick makes real LLM calls
+   * against a shared fleet Ollama host and can run longer than the poll
+   * interval. Without this guard, a slow tick would still be in flight when
+   * the next interval fires, and two concurrent reviewMissingSpecialists()
+   * calls on the same panel would race — same pattern as BoardHandoffService
+   * in bootstrap/autonomous-services.ts.
+   */
   async tick(): Promise<AutoReviewTickResult> {
-    const runId = randomUUID();
-    const result: AutoReviewTickResult = { reviewed: [], approved: [], failed: [] };
-    const proposed = this.improvements.listImprovements('proposed');
+    if (this.running) return { reviewed: [], approved: [], failed: [] };
+    this.running = true;
+    try {
+      const runId = randomUUID();
+      const result: AutoReviewTickResult = { reviewed: [], approved: [], failed: [] };
+      const proposed = this.improvements.listImprovements('proposed');
 
-    for (const proposal of proposed) {
-      try {
-        await this.reviewIfNeeded(proposal, runId, result);
-      } catch (err) {
-        result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
+      for (const proposal of proposed) {
+        try {
+          await this.reviewIfNeeded(proposal, runId, result);
+        } catch (err) {
+          result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
+        }
       }
-    }
 
-    for (const proposal of proposed) {
-      try {
-        const approved = this.improvements.agentApproveIfReady(proposal.id, runId);
-        if (approved) result.approved.push(proposal.id);
-      } catch (err) {
-        result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
+      for (const proposal of proposed) {
+        try {
+          const approved = this.improvements.agentApproveIfReady(proposal.id, runId);
+          if (approved) result.approved.push(proposal.id);
+        } catch (err) {
+          result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
+        }
       }
-    }
 
-    return result;
+      return result;
+    } finally {
+      this.running = false;
+    }
   }
 
   private async reviewIfNeeded(proposal: ImprovementProposal, runId: string, result: AutoReviewTickResult): Promise<void> {

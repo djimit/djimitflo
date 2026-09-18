@@ -104,6 +104,29 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     expect(result.reviewed.length).toBe(0);
   });
 
+  it('ignores an overlapping tick while one is already in flight', async () => {
+    improvement.generateFromReflection({
+      whatFailed: [], lessonsLearned: [],
+      proposedImprovements: ['Fix a security vulnerability in the token store'],
+    });
+    let resolveReview: (() => void) | null = null;
+    const slowReviewer = {
+      reviewMissingSpecialists: async (panelId: string, runId: string) => {
+        await new Promise<void>((resolve) => { resolveReview = resolve; });
+        return fakeReviewer('support').reviewMissingSpecialists(panelId, runId);
+      },
+    } as unknown as SelfImprovementAgentReviewService;
+    const scheduler = new SelfImprovementAutoReviewScheduler(db, slowReviewer);
+
+    const firstTick = scheduler.tick();
+    const secondTick = await scheduler.tick();
+    expect(secondTick).toEqual({ reviewed: [], approved: [], failed: [] });
+
+    resolveReview!();
+    const firstResult = await firstTick;
+    expect(firstResult.reviewed.length).toBe(1);
+  });
+
   it('falls back to a 15-minute interval for invalid configuration', () => {
     const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer());
     process.env.SELF_IMPROVEMENT_AUTO_REVIEW_INTERVAL_MINUTES = 'not-a-number';
