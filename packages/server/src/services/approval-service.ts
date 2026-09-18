@@ -1,5 +1,5 @@
 import type { Database } from 'better-sqlite3';
-import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, WebSocketEventType } from '@djimitflo/shared';
+import { ApprovalRequest, ApprovalRequestType, ApprovalStatus, AuditEventType, RiskAssessment, Task, TaskStatus, WebSocketEventType } from '@djimitflo/shared';
 import { randomUUID } from 'crypto';
 import { WebSocketService } from './websocket-service';
 import { AuditService } from './audit-service';
@@ -218,6 +218,29 @@ export class ApprovalService {
       task_id: expired.task_id,
       risk_level: expired.risk_level,
     });
+
+    // Bug fix: an expired approval used to leave its task stuck in
+    // 'awaiting_approval' forever — nothing else transitions the task once
+    // the one approval it was waiting on can no longer be acted on (the
+    // ApprovalCard UI only renders Approve/Deny buttons for status
+    // 'pending'). Mirror what a denial already does to the task (see
+    // ExecutionEngine.handleApprovalDecision's !approved branch): treat an
+    // unanswered approval the same as a denied one. Guarded on the task
+    // still being in 'awaiting_approval' so this can't clobber a task that
+    // moved on for an unrelated reason.
+    const taskUpdate = this.db.prepare(
+      "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = 'awaiting_approval'",
+    ).run(TaskStatus.CANCELLED, now, expired.task_id);
+    if (taskUpdate.changes) {
+      this.auditService.record({
+        event_type: AuditEventType.APPROVAL_EXPIRED,
+        action: 'task_cancelled_after_approval_expiry',
+        resource_type: 'task',
+        resource_id: expired.task_id,
+        task_id: expired.task_id,
+        risk_level: expired.risk_level,
+      });
+    }
     return expired;
   }
 
