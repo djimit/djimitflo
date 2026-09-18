@@ -43,6 +43,10 @@ function defaultModel(): string {
   return process.env.SELF_IMPROVEMENT_REVIEW_MODEL || 'qwen2.5:32b-instruct-q4_K_M';
 }
 
+function reviewTimeoutMs(): number {
+  return Number(process.env.SELF_IMPROVEMENT_REVIEW_TIMEOUT_MS) || 120_000;
+}
+
 async function callOllama(prompt: string): Promise<string> {
   const response = await fetch(`${defaultOllamaUrl()}/api/generate`, {
     method: 'POST',
@@ -54,6 +58,7 @@ async function callOllama(prompt: string): Promise<string> {
       format: 'json',
       options: { temperature: 0.2, num_predict: 1024 },
     }),
+    signal: AbortSignal.timeout(reviewTimeoutMs()),
   });
   if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
   const data = (await response.json()) as { response?: string };
