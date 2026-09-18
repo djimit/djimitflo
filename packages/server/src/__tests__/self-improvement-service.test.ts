@@ -131,6 +131,74 @@ describe('G71: Self Improvement', () => {
     expect((db.prepare('SELECT COUNT(*) AS count FROM goals WHERE improvement_id = ?').get(proposals[0].id) as { count: number }).count).toBe(1);
   });
 
+  it('allows a high-risk (security) proposal to reach goal consensus on unanimous high-confidence support', () => {
+    // Documents a deliberate policy change: computeConsensus() used to cap
+    // decision at 'backlog' for anything above risk_class 'low', regardless
+    // of review outcome. That ceiling was removed at explicit operator
+    // request — this proposal is 'security' (=> risk_class 'high') and must
+    // now be able to reach 'goal' and pass approveImprovement, not get stuck
+    // at 'backlog' forever.
+    const [proposal] = improvement.generateFromReflection({
+      whatFailed: [],
+      lessonsLearned: [],
+      proposedImprovements: ['Fix security vulnerability in the auth handler'],
+    });
+    expect(proposal.type).toBe('security');
+
+    const panels = new SpecialistPanelService(db);
+    const panel = panels.getPanel(proposal.panelId!);
+    expect(panel.risk_class).toBe('high');
+    for (const specialist of panel.panel) {
+      panels.submitReview(panel.id, {
+        specialist_id: specialist.id,
+        stance: 'support',
+        confidence: 0.9,
+        evidence_refs: proposal.evidenceRefs.length ? proposal.evidenceRefs : ['test:evidence'],
+      }, `reviewer-${specialist.id}`);
+    }
+    const ready = panels.getPanel(panel.id);
+    expect(ready.status).toBe('consensus_ready');
+    expect(ready.consensus.decision).toBe('goal');
+    expect(improvement.approveImprovement(proposal.id, 'admin-1')).toMatchObject({ status: 'scheduled' });
+  });
+
+  describe('agentApproveIfReady', () => {
+    function highRiskConsensusReadyProposal() {
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [],
+        proposedImprovements: ['Fix security vulnerability in the session store'],
+      });
+      const panels = new SpecialistPanelService(db);
+      const panel = panels.getPanel(proposal.panelId!);
+      for (const specialist of panel.panel) {
+        panels.submitReview(panel.id, {
+          specialist_id: specialist.id,
+          stance: 'support',
+          confidence: 0.9,
+          evidence_refs: proposal.evidenceRefs.length ? proposal.evidenceRefs : ['test:evidence'],
+        }, `agent:${specialist.id}:run-1`);
+      }
+      return proposal;
+    }
+
+    it('returns null when the panel is not consensus_ready yet', () => {
+      const proposals = improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix Z'] });
+      expect(improvement.agentApproveIfReady(proposals[0].id, 'run-1')).toBeNull();
+    });
+
+    it('approves autonomously once consensus is goal, using an approver identity distinct from every reviewer', () => {
+      const proposal = highRiskConsensusReadyProposal();
+      const result = improvement.agentApproveIfReady(proposal.id, 'run-1');
+      expect(result).toMatchObject({ status: 'scheduled', approvedBy: 'agent:approver:run-1' });
+    });
+
+    it('does not double-approve an already-scheduled proposal', () => {
+      const proposal = highRiskConsensusReadyProposal();
+      improvement.agentApproveIfReady(proposal.id, 'run-1');
+      expect(improvement.agentApproveIfReady(proposal.id, 'run-2')).toBeNull();
+    });
+  });
+
   it('retains duplicate reflection evidence without changing an existing review decision', () => {
     const reflection = { whatFailed: [], lessonsLearned: ['Candidate only'], proposedImprovements: ['Add peer evidence view'] };
     const [first] = improvement.generateFromReflection({ ...reflection, reflectionId: 'first' }, true);

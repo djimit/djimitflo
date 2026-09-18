@@ -117,6 +117,27 @@ export class SelfImprovementService {
 
   approveImprovement(id: string, approvedBy: string): ImprovementProposal {
     if (!approvedBy.trim()) throw new Error('SELF_IMPROVEMENT_OPERATOR_REQUIRED');
+    return this.authorizeGoal(id, approvedBy);
+  }
+
+  /**
+   * Autonomous counterpart to approveImprovement(): same consensus and
+   * reviewer-separation requirements, but callable without a human operator
+   * and without throwing when the panel simply isn't at consensus yet (that's
+   * the normal, frequent case for a scheduler polling proposals — not an
+   * error). `runId` scopes the approver identity so it's traceable to a
+   * specific scheduler tick, and — same as the reviewer-separation check
+   * below — is a distinct identity from every reviewer on this panel.
+   */
+  agentApproveIfReady(id: string, runId: string): ImprovementProposal | null {
+    const proposal = this.getImprovement(id);
+    if (proposal.status !== 'proposed' || !proposal.panelId) return null;
+    const panel = this.panels.getPanel(proposal.panelId);
+    if (panel.status !== 'consensus_ready' || panel.consensus.decision !== 'goal') return null;
+    return this.authorizeGoal(id, `agent:approver:${runId}`);
+  }
+
+  private authorizeGoal(id: string, approvedBy: string): ImprovementProposal {
     const proposal = this.getImprovement(id);
     if (proposal.status !== 'proposed') throw new Error('SELF_IMPROVEMENT_NOT_PROPOSED');
     if (!proposal.panelId) throw new Error('SELF_IMPROVEMENT_PANEL_REQUIRED');

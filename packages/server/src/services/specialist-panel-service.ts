@@ -534,7 +534,15 @@ export class SpecialistPanelService {
       decision = 'needs_more_evidence';
     } else if (supportCount === required && averageConfidence >= 0.8) {
       consensusLevel = 'strong';
-      decision = panel.risk_class === 'low' ? 'goal' : 'backlog';
+      // Was `panel.risk_class === 'low' ? 'goal' : 'backlog'` — a deliberate
+      // ceiling that made unanimous, high-confidence consensus on a
+      // medium/high/critical-risk panel land as 'backlog' rather than 'goal',
+      // no matter how strong the reviews were. Removed at explicit operator
+      // request to allow full autonomous goal-authorization regardless of
+      // risk class. This is a project-wide policy change (affects every
+      // panel, not just self-improvement ones) — see the PR this shipped in
+      // for the discussion of what that trades away.
+      decision = 'goal';
     } else if (supportCount >= Math.ceil(required * 0.66)) {
       consensusLevel = 'weak';
       decision = 'backlog';
