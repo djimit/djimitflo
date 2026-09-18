@@ -115,4 +115,46 @@ describe('SelfModificationPipeline', () => {
       last_seen_at: '2026-01-02T00:00:00.000Z',
     }]);
   });
+
+  describe('autoPlan', () => {
+    const insertOpportunity = (id: string, severity: 'low' | 'medium' | 'high' | 'critical') => {
+      db.prepare(`
+        INSERT INTO self_modification_opportunities
+        (id, type, severity, file_path, description, suggestion, estimated_effort)
+        VALUES (?, 'test_gap', ?, 'routes/example.ts', 'auto-plan test', 'test it', '1h')
+      `).run(id, severity);
+    };
+
+    it('creates plans for low/medium severity opportunities, skips high/critical', () => {
+      insertOpportunity('opp-low', 'low');
+      insertOpportunity('opp-medium', 'medium');
+      insertOpportunity('opp-high', 'high');
+      insertOpportunity('opp-critical', 'critical');
+
+      const created = pipeline.autoPlan();
+
+      expect(created.map((p) => p.opportunityId).sort()).toEqual(['opp-low', 'opp-medium']);
+      const planCount = (db.prepare('SELECT COUNT(*) as c FROM self_modification_plans').get() as { c: number }).c;
+      expect(planCount).toBe(2);
+    });
+
+    it('is idempotent: does not re-plan an opportunity that already has a plan', () => {
+      insertOpportunity('opp-1', 'low');
+      pipeline.autoPlan();
+      const secondRun = pipeline.autoPlan();
+
+      expect(secondRun).toEqual([]);
+      const planCount = (db.prepare('SELECT COUNT(*) as c FROM self_modification_plans').get() as { c: number }).c;
+      expect(planCount).toBe(1);
+    });
+
+    it('skips resolved opportunities', () => {
+      insertOpportunity('opp-resolved', 'low');
+      db.prepare("UPDATE self_modification_opportunities SET resolved_at = datetime('now') WHERE id = 'opp-resolved'").run();
+
+      const created = pipeline.autoPlan();
+
+      expect(created).toEqual([]);
+    });
+  });
 });
