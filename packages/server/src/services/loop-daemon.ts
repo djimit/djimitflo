@@ -5,6 +5,7 @@ import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { LoopEventService } from './loop-event-service';
 import { authorityGateForGoal } from './authority-gate';
 
 /**
@@ -308,8 +309,32 @@ export class LoopDaemon {
       if (allGatesPass) {
         try {
           const knowledge = new KnowledgeRuntimeService(this.db);
-          knowledge.closeLoop({ loop_run_id: run.id });
-        } catch { /* best-effort: learning closure is not fatal */ }
+          const closure = knowledge.closeLoop({ loop_run_id: run.id });
+          if (closure.status === 'blocked') {
+            // Previously silently discarded — this is the one signal that
+            // explains why loop_learning_closures stays near-empty even
+            // when most runs pass their gates. Not fatal for the daemon.
+            new LoopEventService(this.db).recordEvent(
+              run.id,
+              'learning_closure_blocked',
+              'info',
+              `Learning closure blocked: ${closure.blocked_reasons.join('; ') || 'no reason reported'}`,
+              { blocked_reasons: closure.blocked_reasons },
+            );
+          }
+        } catch (err) {
+          // Best-effort: learning closure is not fatal for the daemon, but
+          // record why it threw instead of discarding the error silently.
+          try {
+            new LoopEventService(this.db).recordEvent(
+              run.id,
+              'learning_closure_blocked',
+              'warning',
+              `Learning closure threw: ${err instanceof Error ? err.message : String(err)}`,
+              {},
+            );
+          } catch { /* logging must never break the daemon */ }
+        }
       }
 
       // 10. Update goal + run status.

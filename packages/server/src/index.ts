@@ -241,7 +241,9 @@ async function main() {
     metaOrchestration.start();
     executionEngine.setMetaOrchestration(metaOrchestration);
     recoverySvc.setMetaOrchestration(metaOrchestration);
-    new SelfModificationPipeline(db).analyze();
+    const selfModification = new SelfModificationPipeline(db);
+    selfModification.analyze();
+    selfModification.autoPlan();
   }
 
   // Proactive memory — relevance-scored, self-maintaining memory substrate (Vector 4)

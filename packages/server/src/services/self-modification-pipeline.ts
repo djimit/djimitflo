@@ -148,6 +148,33 @@ export class SelfModificationPipeline {
     return { opportunities, plans, implemented, tested, rejected };
   }
 
+  /**
+   * Auto-plan low/medium-severity opportunities that don't have a plan yet.
+   *
+   * Bridges the gap between `analyze()` (runs automatically on startup) and
+   * `createPlan()` (previously reachable only via the manual
+   * `POST /api/self-modification/plan` route, which nothing ever called).
+   * Scope is deliberately narrow: high/critical severity is left for a human
+   * to review and plan explicitly via the API — this method only removes the
+   * busywork of planning the routine, low-stakes opportunities. `execute()`
+   * stays disabled (see routes/self-modification.ts); a plan here is a
+   * reviewable artifact for a human to act on via PR, not an execution.
+   */
+  autoPlan(): ModificationPlan[] {
+    const candidates = this.db.prepare(`
+      SELECT o.id FROM self_modification_opportunities o
+      LEFT JOIN self_modification_plans p ON p.opportunity_id = o.id
+      WHERE o.resolved_at IS NULL AND o.severity IN ('low', 'medium') AND p.id IS NULL
+    `).all() as Array<{ id: string }>;
+
+    const created: ModificationPlan[] = [];
+    for (const { id } of candidates) {
+      const plan = this.createPlan(id);
+      if (plan) created.push(plan);
+    }
+    return created;
+  }
+
   // ─── Private ──────────────────────────────────────────────────────────
 
   private detectComplexityHotspots(): ImprovementOpportunity[] {
