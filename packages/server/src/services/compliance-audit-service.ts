@@ -10,6 +10,7 @@
 
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { GovernanceGateService } from './governance-gate-service';
 
 interface AuditEntry {
   id: string;
@@ -362,8 +363,16 @@ export class ComplianceAuditService {
   }
 
   private isRuntimeGovernanceActive(): boolean {
+    // Bug fix: this checked for a table named 'governance_policies', which
+    // has never existed in this schema (the real table is
+    // 'approval_policies') — so this always reported 'inactive' regardless
+    // of the actual state. Runtime governance enforcement is really: the
+    // governance gate is armed (GovernanceGateService, GOVERNANCE_GATE_ENABLED)
+    // and there's at least one approval policy for PolicyDecisionService to
+    // evaluate against.
     try {
-      const row = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='governance_policies'").get() as any;
+      if (!new GovernanceGateService(this.db).enabled()) return false;
+      const row = this.db.prepare('SELECT 1 FROM approval_policies LIMIT 1').get();
       return !!row;
     } catch {
       return false;
