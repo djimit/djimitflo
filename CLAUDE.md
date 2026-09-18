@@ -5,3 +5,11 @@
 
 This file loads project-specific instructions for Claude Code compatibility.
 Use `.github/copilot-instructions.md` as the source of truth for project rules.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+@AGENTS.md
+
+<!-- OPENWIKI:END -->

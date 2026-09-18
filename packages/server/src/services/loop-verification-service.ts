@@ -204,7 +204,13 @@ export class LoopVerificationService {
   public hasAcceptedReviewEvidence(lease: WorkerLeaseRecord): boolean {
     if (lease.status !== 'completed' || lease.metadata.verdict !== 'accepted') return false;
     // Manual review is an explicit, supported decision path, not runtime proof.
-    if (lease.runtime === 'manual') return true;
+    // P1a: require attestation — a named reviewer + a recorded reason. Without it, the
+    // manual bypass would silently skip all runtime evidence checks (G-audit P3.3).
+    if (lease.runtime === 'manual') {
+      const att = lease.metadata.manual_review_attestation as { reviewer?: unknown; reason?: unknown } | undefined;
+      return typeof att?.reviewer === 'string' && att.reviewer.length > 0
+        && typeof att?.reason === 'string' && att.reason.length > 0;
+    }
     const proof = lease.metadata;
     const contract = proof.runtime_contract as { available?: unknown; status?: unknown } | undefined;
     // Historical runtime verdicts lacking these observations remain blocked; an

@@ -40,10 +40,16 @@ describe('signed agent social runtime', () => {
     const responseJson = await response.json(); expect(response.status).toBe(201); expect(responseJson.message.payload).toMatchObject({ action: 'social.response', thread_id: 'social:test', reply_to: question.id, epistemic_role: 'proposal', params: { effect_scope: 'isolated', external_side_effects: false, response_kind: 'actual_runtime' } });
     expect((await fetch(responseUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenB }, body: JSON.stringify(responseBody) })).status).toBe(200);
     const [peerResponse] = (await (await fetch(`${base}/agent-a/messages`, { headers: { 'X-Agent-Social-Token': tokenA } })).json()).messages;
-    const learning = await fetch(`${base}/agent-a/messages/${peerResponse.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenA }, body: JSON.stringify({ ...responseBody, runtime: 'peer-runtime', delivery_lease_token: peerResponse.deliveryLeaseToken }) });
+    const learning = await fetch(`${base}/agent-a/messages/${peerResponse.id}/respond`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Social-Token': tokenA }, body: JSON.stringify({ ...responseBody, runtime: 'peer-runtime', delivery_lease_token: peerResponse.deliveryLeaseToken, ecosystem_component: 'agent-communication', proposed_improvement: 'Tighten lease fencing' }) });
     const learningJson = await learning.json(); expect(learning.status).toBe(201); expect(learningJson).toMatchObject({ reflection_id: expect.any(String), message: { status: 'read', payload: { action: 'social.learning', epistemic_role: 'outcome' } } });
     const reflection = db.prepare('SELECT status, metadata FROM reflection_candidates WHERE id = ?').get(learningJson.reflection_id) as { status: string; metadata: string };
     expect(['candidate', 'review_required']).toContain(reflection.status); expect(JSON.parse(reflection.metadata)).toMatchObject({ empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true });
+    // P2b: social.learning + proposed_improvement must trigger a self-improvement proposal linked via message payload.
+    const improvementId = learningJson.message.payload.params.improvement_id;
+    expect(typeof improvementId).toBe('string');
+    const si = db.prepare('SELECT status, fingerprint FROM self_improvements WHERE id = ?').get(improvementId) as { status: string; fingerprint: string } | undefined;
+    expect(si).toBeDefined();
+    expect(si!.fingerprint).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('does not let a social heartbeat reactivate an operator-paused agent', async () => {

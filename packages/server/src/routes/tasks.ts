@@ -153,6 +153,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       // Inject swarm context (Qdrant + OKF) if enabled
       let contextSnapshot;
+      let context_retrieval_degraded = false;
+      let context_retrieval_reason: string | undefined;
       try {
         contextSnapshot = await contextInjector.injectContextSnapshot(`${title} ${description}`, use_swarm_context);
       } catch (error) {
@@ -160,6 +162,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         // the task intake unavailable. The empty hash is still persisted so
         // the executor input has explicit, auditable provenance.
         console.warn('Task context retrieval unavailable:', error instanceof Error ? error.message : String(error));
+        context_retrieval_degraded = true;
+        context_retrieval_reason = error instanceof Error ? error.message : String(error);
         contextSnapshot = await contextInjector.injectContextSnapshot('', false);
       }
       // Context retrieval is advisory. A failed source must not prevent task
@@ -179,6 +183,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
           sources: contextSnapshot.sources,
           advisory: true,
           independently_reviewed: false,
+          degraded: context_retrieval_degraded,
+          degraded_reason: context_retrieval_reason,
           server_generated_at: new Date().toISOString(),
         },
       };
