@@ -30,6 +30,7 @@ import { MetaOrchestrationService } from './services/meta-orchestration-service'
 import { SelfModificationPipeline } from './services/self-modification-pipeline';
 import { ProactiveMemoryService } from './services/proactive-memory-service';
 import { ComplianceAuditService } from './services/compliance-audit-service';
+import { ComplianceReportScheduler } from './services/compliance-report-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -255,6 +256,11 @@ async function main() {
   // OpenMythos nightly eval — fills the governance leaderboard (default-off, see service header)
   if (autonomousRuntime && new OpenMythosNightlyService(db).start()) {
     console.log('🌙 OpenMythos nightly eval scheduler armed');
+  }
+
+  // Compliance report scheduler — periodic reporting, in-process (default-off, see service header)
+  if (new ComplianceReportScheduler(db).start()) {
+    console.log('📋 Compliance report scheduler armed');
   }
 
   // API routes
