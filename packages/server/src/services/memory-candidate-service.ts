@@ -135,6 +135,15 @@ export class MemoryCandidateService {
     ).all(capped) as any[]).map((row) => this.parse(row));
   }
 
+  /** Persists which specialist panel is reviewing this candidate, so a scheduler can reuse it across ticks instead of creating a new one each time. */
+  setReviewPanel(id: string, panelId: string): MemoryCandidateRecord {
+    const candidate = this.get(id);
+    const now = new Date().toISOString();
+    this.db.prepare('UPDATE memory_candidates SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify({ ...candidate.metadata, review_panel_id: panelId }), now, id);
+    return this.get(id);
+  }
+
   promote(id: string, input: MemoryPromotionInput = {}): { candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> } {
     const candidate = this.get(id);
     if (candidate.promotion_status === 'promoted') {

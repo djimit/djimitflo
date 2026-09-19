@@ -81,6 +81,24 @@ describe('SpecialistPanelBacklogScheduler', () => {
     expect(panels.getPanel(panel.id).status).toBe('consensus_ready');
   });
 
+  it('never touches a panel linked to a memory candidate', () => {
+    const panel = panels.createPanel({
+      topic: 'Run summary', question: 'Should this be promoted to durable memory?',
+      risk_class: 'low', specialist_ids: ['memory_scientist', 'security_reviewer'],
+      metadata: { memory_candidate_id: 'candidate-1' },
+    });
+    panels.submitReview(panel.id, { specialist_id: 'memory_scientist', stance: 'uncertain', confidence: 0.5, evidence_refs: ['x'] }, 'r1');
+    panels.submitReview(panel.id, { specialist_id: 'security_reviewer', stance: 'uncertain', confidence: 0.5, evidence_refs: ['x'] }, 'r2');
+    const ready = panels.getPanel(panel.id);
+    expect(ready.status).toBe('consensus_ready');
+    expect(ready.consensus.decision).not.toBe('goal');
+
+    const scheduler = new SpecialistPanelBacklogScheduler(db);
+    const result = scheduler.tick();
+    expect(result.projected).toEqual([]);
+    expect(panels.getPanel(panel.id).status).toBe('consensus_ready');
+  });
+
   it('does not touch a blocked panel', () => {
     const panel = panels.createPanel({
       topic: 'Risky change', question: 'Proceed?', risk_class: 'high',
