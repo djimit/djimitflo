@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { DollarSign } from 'lucide-react';
 import { api } from '../lib/api';
 
@@ -35,13 +35,39 @@ type EconomyResponse = {
   };
 };
 
+type AllocationResponse = {
+  budget: number;
+  budget_insufficient: boolean;
+  allocated: CapabilityEconomy[];
+  deferred: CapabilityEconomy[];
+};
+
 export function EconomyPage() {
   const [data, setData] = useState<EconomyResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [budgetInput, setBudgetInput] = useState('1.00');
+  const [allocation, setAllocation] = useState<AllocationResponse | null>(null);
+  const [allocating, setAllocating] = useState(false);
+  const [allocateError, setAllocateError] = useState<string | null>(null);
 
   useEffect(() => {
     api.request<EconomyResponse>('/swarms/economy').then(setData).catch(() => {}).finally(() => setLoading(false));
   }, []);
+
+  function handleAllocate(event: FormEvent) {
+    event.preventDefault();
+    const budget = Number(budgetInput);
+    if (!Number.isFinite(budget) || budget < 0) {
+      setAllocateError('Enter a non-negative dollar amount');
+      return;
+    }
+    setAllocateError(null);
+    setAllocating(true);
+    api.request<AllocationResponse>(`/swarms/economy/allocate?budget=${encodeURIComponent(budget)}`)
+      .then(setAllocation)
+      .catch((error) => setAllocateError(error instanceof Error ? error.message : 'Allocation failed'))
+      .finally(() => setAllocating(false));
+  }
 
   if (loading) return <div className="p-8 text-foreground-tertiary">Loading economy data...</div>;
   if (!data) return <div className="p-8 text-foreground-tertiary">No economy data available.</div>;
@@ -69,6 +95,59 @@ export function EconomyPage() {
           <div className="text-sm text-foreground-secondary mb-2">Total Dollars Spent</div>
           <div className="text-3xl font-bold text-foreground">${data.summary.total_dollars_spent?.toFixed(4) || '0.00'}</div>
         </div>
+      </div>
+
+      {/* Budget allocation */}
+      <div className="bg-background-secondary border border-border rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-foreground mb-1">Budget Allocation</h2>
+        <p className="text-sm text-foreground-secondary mb-4">
+          Given a dollar budget, which validated capabilities are worth funding right now? Ranked by competence per dollar.
+        </p>
+        <form onSubmit={handleAllocate} className="flex items-center gap-3 mb-4">
+          <span className="text-foreground-secondary">$</span>
+          <input
+            value={budgetInput}
+            onChange={(event) => setBudgetInput(event.target.value)}
+            className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground w-32"
+          />
+          <button
+            type="submit"
+            disabled={allocating}
+            className="text-sm px-3 py-2 rounded-md bg-accent text-white disabled:opacity-50"
+          >
+            {allocating ? 'Allocating…' : 'Allocate'}
+          </button>
+        </form>
+        {allocateError && <p className="text-xs text-red-400 mb-4">{allocateError}</p>}
+        {allocation && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-sm font-medium text-foreground mb-2">
+                Funded ({allocation.allocated.length})
+                {allocation.budget_insufficient && <span className="ml-2 text-xs text-yellow-400">budget insufficient for any capability</span>}
+              </div>
+              <ul className="space-y-1">
+                {allocation.allocated.map((cap) => (
+                  <li key={cap.capability_id} className="text-xs font-mono text-foreground-secondary flex justify-between">
+                    <span>{cap.capability_id.slice(0, 16)}</span>
+                    <span>${cap.p50_dollars.toFixed(4)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-sm font-medium text-foreground mb-2">Deferred ({allocation.deferred.length})</div>
+              <ul className="space-y-1">
+                {allocation.deferred.map((cap) => (
+                  <li key={cap.capability_id} className="text-xs font-mono text-foreground-tertiary flex justify-between">
+                    <span>{cap.capability_id.slice(0, 16)}</span>
+                    <span>${cap.p50_dollars.toFixed(4)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Per-capability */}
