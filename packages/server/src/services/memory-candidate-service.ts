@@ -120,6 +120,21 @@ export class MemoryCandidateService {
     return this.parse(row);
   }
 
+  /**
+   * Candidates eligible for unattended promotion: classify() only assigns
+   * status='candidate'/promotion_status='proposed' to non-sensitive
+   * operational_memory — engineering_rule/policy_rule/security-sensitive
+   * content is classified straight into 'review_required'/
+   * 'blocked_pending_human' and never appears here, so this list is already
+   * safe for an automated caller to attempt promote() on without a human.
+   */
+  listPendingPromotion(limit = 200): MemoryCandidateRecord[] {
+    const capped = Math.max(1, Math.min(limit, 500));
+    return (this.db.prepare(
+      "SELECT * FROM memory_candidates WHERE status = 'candidate' AND promotion_status = 'proposed' ORDER BY created_at ASC LIMIT ?"
+    ).all(capped) as any[]).map((row) => this.parse(row));
+  }
+
   promote(id: string, input: MemoryPromotionInput = {}): { candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> } {
     const candidate = this.get(id);
     if (candidate.promotion_status === 'promoted') {
