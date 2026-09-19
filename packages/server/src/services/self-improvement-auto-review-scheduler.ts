@@ -33,6 +33,7 @@ const MINUTE_MS = 60 * 1000;
 export interface AutoReviewTickResult {
   reviewed: string[];
   approved: string[];
+  parked: string[];
   failed: Array<{ id: string; error: string }>;
 }
 
@@ -79,11 +80,11 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
-    if (this.running) return { reviewed: [], approved: [], failed: [] };
+    if (this.running) return { reviewed: [], approved: [], parked: [], failed: [] };
     this.running = true;
     try {
       const runId = randomUUID();
-      const result: AutoReviewTickResult = { reviewed: [], approved: [], failed: [] };
+      const result: AutoReviewTickResult = { reviewed: [], approved: [], parked: [], failed: [] };
       const proposed = this.improvements.listImprovements('proposed');
 
       for (const proposal of proposed) {
@@ -96,11 +97,19 @@ export class SelfImprovementAutoReviewScheduler {
 
       for (const proposal of proposed) {
         try {
-          const approved = this.improvements.agentApproveIfReady(proposal.id, runId);
-          if (approved) result.approved.push(proposal.id);
+          const updated = this.improvements.agentApproveIfReady(proposal.id, runId);
+          if (updated?.status === 'scheduled') result.approved.push(proposal.id);
+          else if (updated?.status === 'needs_more_evidence') result.parked.push(proposal.id);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
         }
+      }
+
+      // Observability: this scheduler ran silently since it was deployed —
+      // a 6-day, 104-proposal backlog of dead-ended reviews went unnoticed
+      // as a result. Only log when something actually happened this tick.
+      if (result.reviewed.length || result.approved.length || result.parked.length || result.failed.length) {
+        console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} failed=${result.failed.length}`);
       }
 
       return result;

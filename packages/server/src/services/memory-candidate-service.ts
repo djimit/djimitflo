@@ -144,6 +144,25 @@ export class MemoryCandidateService {
     return this.get(id);
   }
 
+  /**
+   * The panel reviewed this candidate and did not reach 'goal' consensus.
+   * Moves promotion_status off 'proposed' so it stops looking like it's
+   * still awaiting its first review — mirrors the self-improvement pipeline's
+   * identical gap (SelfImprovementService.agentApproveIfReady), found in
+   * production with 104 proposals silently parked at 'proposed' for up to
+   * 6 days after review. Reuses the existing 'blocked_pending_review' value
+   * (same one classify() already assigns to engineering_rule candidates)
+   * rather than adding a new promotion_status — the column has a CHECK
+   * constraint, and this candidate's situation is exactly that: reviewed,
+   * blocked, not a hard rejection.
+   */
+  markNeedsMoreEvidence(id: string): MemoryCandidateRecord {
+    const now = new Date().toISOString();
+    this.db.prepare("UPDATE memory_candidates SET promotion_status = 'blocked_pending_review', updated_at = ? WHERE id = ?")
+      .run(now, id);
+    return this.get(id);
+  }
+
   promote(id: string, input: MemoryPromotionInput = {}): { candidate: MemoryCandidateRecord; sinks: Array<Record<string, unknown>> } {
     const candidate = this.get(id);
     if (candidate.promotion_status === 'promoted') {
