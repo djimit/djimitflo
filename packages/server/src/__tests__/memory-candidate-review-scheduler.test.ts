@@ -80,9 +80,20 @@ describe('MemoryCandidateReviewScheduler', () => {
     const s = scheduler(async () => needsEvidenceResponse('no clear evidence of durable value'));
     const result = await s.tick();
     expect(result.promoted).toEqual([]);
+    expect(result.parked).toEqual([candidate.id]);
     const stored = candidates.get(candidate.id);
     expect(stored.status).toBe('candidate');
-    expect(stored.promotion_status).toBe('proposed');
+    expect(stored.promotion_status).toBe('blocked_pending_review');
+  });
+
+  it('does not re-review a parked candidate on a later tick', async () => {
+    const candidate = operationalCandidate('Run summary C2');
+    const s = scheduler(async () => needsEvidenceResponse('no clear evidence of durable value'));
+    await s.tick();
+    expect(candidates.get(candidate.id).promotion_status).toBe('blocked_pending_review');
+    const second = await s.tick();
+    expect(second.reviewed).toEqual([]);
+    expect(second.parked).toEqual([]);
   });
 
   it('never reviews a candidate that classify() routed to review_required', async () => {

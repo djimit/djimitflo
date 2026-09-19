@@ -197,6 +197,27 @@ describe('G71: Self Improvement', () => {
       improvement.agentApproveIfReady(proposal.id, 'run-1');
       expect(improvement.agentApproveIfReady(proposal.id, 'run-2')).toBeNull();
     });
+
+    it('parks a proposal as needs_more_evidence when its panel reaches consensus without a goal decision, instead of leaving it stuck at proposed forever', () => {
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Investigate a vague performance concern'],
+      });
+      const panels = new SpecialistPanelService(db);
+      const panel = panels.getPanel(proposal.panelId!);
+      for (const specialist of panel.panel) {
+        panels.submitReview(panel.id, { specialist_id: specialist.id, stance: 'uncertain', confidence: 0.5, evidence_refs: ['test:evidence'] }, `agent:${specialist.id}:run-1`);
+      }
+      const ready = panels.getPanel(panel.id);
+      expect(ready.status).toBe('consensus_ready');
+      expect(ready.consensus.decision).not.toBe('goal');
+
+      const result = improvement.agentApproveIfReady(proposal.id, 'run-1');
+      expect(result).toMatchObject({ status: 'needs_more_evidence' });
+      expect(improvement.listImprovements('proposed').map((p) => p.id)).not.toContain(proposal.id);
+
+      // Parked, not re-attempted: a later tick is a no-op, not a repeated transition.
+      expect(improvement.agentApproveIfReady(proposal.id, 'run-2')).toBeNull();
+    });
   });
 
   it('retains duplicate reflection evidence without changing an existing review decision', () => {

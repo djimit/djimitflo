@@ -79,7 +79,7 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     expect(proposal.status).toBe('scheduled');
   });
 
-  it('leaves a proposal unapproved when reviews land on oppose', async () => {
+  it('parks a proposal as needs_more_evidence — not left stuck at proposed forever — when reviews land on oppose', async () => {
     improvement.generateFromReflection({
       whatFailed: [], lessonsLearned: [],
       proposedImprovements: ['Fix a security vulnerability in the auth handler'],
@@ -88,8 +88,9 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     const result = await scheduler.tick();
     expect(result.reviewed.length).toBe(1);
     expect(result.approved.length).toBe(0);
+    expect(result.parked.length).toBe(1);
     const [proposal] = improvement.listImprovements();
-    expect(proposal.status).toBe('proposed');
+    expect(proposal.status).toBe('needs_more_evidence');
   });
 
   it('isolates a per-proposal failure instead of aborting the whole tick', async () => {
@@ -120,7 +121,7 @@ describe('SelfImprovementAutoReviewScheduler', () => {
 
     const firstTick = scheduler.tick();
     const secondTick = await scheduler.tick();
-    expect(secondTick).toEqual({ reviewed: [], approved: [], failed: [] });
+    expect(secondTick).toEqual({ reviewed: [], approved: [], parked: [], failed: [] });
 
     resolveReview!();
     const firstResult = await firstTick;
