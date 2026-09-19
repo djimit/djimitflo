@@ -33,6 +33,7 @@ import { ComplianceAuditService } from './services/compliance-audit-service';
 import { ComplianceReportScheduler } from './services/compliance-report-scheduler';
 import { SelfHealingScheduler } from './services/self-healing-scheduler';
 import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
+import { SpecialistPanelBacklogScheduler } from './services/specialist-panel-backlog-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -274,6 +275,12 @@ async function main() {
   // + autonomous goal-authorization, in-process (default-off, see service header)
   if (new SelfImprovementAutoReviewScheduler(db).start()) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
+  }
+
+  // Specialist panel backlog scheduler — projects consensus_ready general
+  // panels into real work items, in-process (default-off, see service header)
+  if (new SpecialistPanelBacklogScheduler(db).start()) {
+    console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // API routes
