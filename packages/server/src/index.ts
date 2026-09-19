@@ -33,6 +33,7 @@ import { ComplianceAuditService } from './services/compliance-audit-service';
 import { ComplianceReportScheduler } from './services/compliance-report-scheduler';
 import { SelfHealingScheduler } from './services/self-healing-scheduler';
 import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
+import { FrontierExpertScheduler } from './services/frontier-expert-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -274,6 +275,13 @@ async function main() {
   // + autonomous goal-authorization, in-process (default-off, see service header)
   if (new SelfImprovementAutoReviewScheduler(db).start()) {
     console.log('🧭 Self-improvement auto-review scheduler armed');
+  }
+
+  // Frontier expert scheduler — automates discovery/enrichment/peer-review only;
+  // stops below the registry's hard approval/activation governance wall,
+  // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
+  if (new FrontierExpertScheduler(db).start()) {
+    console.log('🔭 Frontier expert scheduler armed');
   }
 
   // API routes
