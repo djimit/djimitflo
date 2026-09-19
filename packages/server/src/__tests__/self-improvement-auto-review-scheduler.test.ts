@@ -6,6 +6,7 @@ import { SelfImprovementService } from '../services/self-improvement-service';
 import { SpecialistPanelService } from '../services/specialist-panel-service';
 import { SelfImprovementAutoReviewScheduler } from '../services/self-improvement-auto-review-scheduler';
 import type { SelfImprovementAgentReviewService } from '../services/self-improvement-agent-review-service';
+import type { SelfImprovementRefinementService, RefinedProposalDraft } from '../services/self-improvement-refinement-service';
 
 describe('SelfImprovementAutoReviewScheduler', () => {
   let db: Database.Database;
@@ -20,7 +21,10 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     runMigrations(db);
     improvement = new SelfImprovementService(db);
     panels = new SpecialistPanelService(db);
-    for (const key of ['SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', 'SELF_IMPROVEMENT_AUTO_REVIEW_INTERVAL_MINUTES']) {
+    for (const key of [
+      'SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED', 'SELF_IMPROVEMENT_AUTO_REVIEW_INTERVAL_MINUTES',
+      'SELF_IMPROVEMENT_REFINEMENT_ENABLED', 'SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK',
+    ]) {
       prevEnv[key] = process.env[key];
       delete process.env[key];
     }
@@ -51,6 +55,29 @@ describe('SelfImprovementAutoReviewScheduler', () => {
         return updated;
       },
     } as unknown as SelfImprovementAgentReviewService;
+  }
+
+  /**
+   * Draft varies by the proposal being refined (mirrors reality: a real refiner's
+   * output depends on its input) so that refining several different proposals in
+   * one tick doesn't collide on fingerprint dedup — each child needs a distinct
+   * title/description just like each original proposal does.
+   */
+  function fakeRefiner(draft: RefinedProposalDraft | null | 'vary' = 'vary'): SelfImprovementRefinementService {
+    return {
+      refine: async (proposal: { id: string }) => draft === 'vary'
+        ? { title: `Refined: ${proposal.id}`, description: `Refined description for ${proposal.id}.`, rationale: 'Refined rationale.' }
+        : draft,
+    } as unknown as SelfImprovementRefinementService;
+  }
+
+  /** Creates a proposal and drives it straight to needs_more_evidence via a unanimous-oppose tick. */
+  async function parkedProposal(title: string) {
+    improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: [title] });
+    const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'));
+    await scheduler.tick();
+    const [proposal] = improvement.listImprovements('needs_more_evidence', 1);
+    return proposal;
   }
 
   it('does not arm when disabled (default off)', () => {
@@ -121,7 +148,7 @@ describe('SelfImprovementAutoReviewScheduler', () => {
 
     const firstTick = scheduler.tick();
     const secondTick = await scheduler.tick();
-    expect(secondTick).toEqual({ reviewed: [], approved: [], parked: [], failed: [] });
+    expect(secondTick).toEqual({ reviewed: [], approved: [], parked: [], refined: [], failed: [] });
 
     resolveReview!();
     const firstResult = await firstTick;
@@ -134,5 +161,97 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     expect(scheduler.intervalMinutes()).toBe(15);
     process.env.SELF_IMPROVEMENT_AUTO_REVIEW_INTERVAL_MINUTES = '-5';
     expect(scheduler.intervalMinutes()).toBe(15);
+  });
+
+  describe('refinement pass', () => {
+    it('does not attempt refinement when SELF_IMPROVEMENT_REFINEMENT_ENABLED is unset (default off)', async () => {
+      const parked = await parkedProposal('Fix a security vulnerability in refinement test off');
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      const result = await scheduler.tick();
+      expect(result.refined).toEqual([]);
+      expect(improvement.getImprovement(parked.id).refinedAt).toBeNull();
+    });
+
+    it('refines a parked proposal into a new proposed proposal when enabled, linking parent and child', async () => {
+      const parked = await parkedProposal('Fix a security vulnerability in refinement test A');
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      const result = await scheduler.tick();
+      expect(result.refined).toEqual([parked.id]);
+
+      const parent = improvement.getImprovement(parked.id);
+      expect(parent.refinedAt).not.toBeNull();
+
+      const child = improvement.listImprovements('proposed').find((p) => p.refinedFromId === parked.id);
+      expect(child).toBeTruthy();
+      expect(child!.source).toBe('refinement');
+      expect(child!.title).toBe(`Refined: ${parked.id}`);
+      expect(child!.evidenceRefs).toContain(`refinement-of:${parked.id}`);
+    });
+
+    it('does not re-refine a proposal that has already spawned a refinement', async () => {
+      const parked = await parkedProposal('Fix a security vulnerability in refinement test B');
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      await scheduler.tick();
+      const second = await scheduler.tick();
+      expect(second.refined).toEqual([]);
+    });
+
+    it('never refines a proposal that is itself already a refinement (no recursive chains)', async () => {
+      const parked = await parkedProposal('Fix a security vulnerability in refinement test C');
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      const first = await scheduler.tick();
+      expect(first.refined).toEqual([parked.id]);
+      // The child gets reviewed+parked in this same next tick; it must not also be refined.
+      const second = await scheduler.tick();
+      expect(second.refined).toEqual([]);
+      const child = improvement.listImprovements().find((p) => p.refinedFromId === parked.id)!;
+      expect(child.status).toBe('needs_more_evidence');
+    });
+
+    it('caps refinement attempts at SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK even with far more eligible proposals than the cap', async () => {
+      for (let i = 0; i < 5; i += 1) {
+        await parkedProposal(`Fix a security vulnerability in refinement-cap-${i}`);
+      }
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      process.env.SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK = '2';
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      const result = await scheduler.tick();
+      expect(result.refined).toHaveLength(2);
+    });
+
+    it('falls back to the default per-tick cap for invalid configuration, and enforces the hard ceiling', () => {
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer(), fakeRefiner());
+      process.env.SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK = 'not-a-number';
+      expect(scheduler.refinementMaxPerTick()).toBe(3);
+      process.env.SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK = '-5';
+      expect(scheduler.refinementMaxPerTick()).toBe(3);
+      process.env.SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK = '999';
+      expect(scheduler.refinementMaxPerTick()).toBe(10);
+    });
+
+    it('isolates a per-proposal refinement failure instead of aborting the tick', async () => {
+      await parkedProposal('Fix a security vulnerability in refinement-fail-1');
+      await parkedProposal('Fix a security vulnerability in refinement-fail-2');
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const throwingRefiner = { refine: async () => { throw new Error('model unreachable'); } } as unknown as SelfImprovementRefinementService;
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), throwingRefiner);
+      const result = await scheduler.tick();
+      expect(result.failed.length).toBe(2);
+      expect(result.refined).toEqual([]);
+    });
+
+    it('does not attempt refinement when the parked proposal panel has not reached consensus_ready (defensive)', async () => {
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix a security vulnerability in refinement-defensive'],
+      });
+      db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence' WHERE id = ?").run(proposal.id);
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
+      const result = await scheduler.tick();
+      expect(result.refined).toEqual([]);
+    });
   });
 });

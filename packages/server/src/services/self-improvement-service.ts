@@ -10,12 +10,16 @@ export interface ImprovementProposal {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement';
   status: ImprovementStatus;
   priority: number;
   evidenceRefs: string[];
   panelId: string | null;
   approvedBy: string | null;
+  /** Set once a refinement child has been created from this proposal — bounds refinement to at most one attempt. */
+  refinedAt: string | null;
+  /** Set when this proposal IS a refinement of another — prevents refinement chains. */
+  refinedFromId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -24,10 +28,13 @@ interface ImprovementRow {
   id: string; type: string; title: string; description: string; rationale: string;
   source: string; status: string; priority: number; evidence_refs_json?: string;
   panel_id?: string | null; approved_by?: string | null; created_at: string; updated_at?: string | null;
+  refined_at?: string | null; refined_from_id?: string | null;
 }
 
 type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' | 'rationale' | 'source' | 'priority'> & {
   evidenceRefs?: string[];
+  /** When set, links this new proposal to the parked proposal it refines and flags that parent as refined. */
+  refinedFromId?: string;
 };
 
 export class SelfImprovementService {
@@ -240,9 +247,49 @@ export class SelfImprovementService {
         metadata: { self_improvement_id: id },
       });
       this.db.prepare('UPDATE self_improvements SET panel_id = ? WHERE id = ?').run(panel.id, id);
+      if (input.refinedFromId) {
+        this.db.prepare('UPDATE self_improvements SET refined_from_id = ? WHERE id = ?').run(input.refinedFromId, id);
+        this.db.prepare('UPDATE self_improvements SET refined_at = ?, updated_at = ? WHERE id = ?').run(now, now, input.refinedFromId);
+      }
     });
     create();
     return this.getImprovement(id);
+  }
+
+  /**
+   * Turns a parked (needs_more_evidence) proposal's reviewer dissent into one
+   * refined follow-up proposal, so specific, actionable feedback ("lacks
+   * technical specifications for X") isn't just discarded — found on
+   * 2026-09-19/20: 0 of 357 proposals ever reached 'goal', all from vague
+   * reflections. Bounded to at most one refinement per original: guarded here
+   * against a proposal that's already spawned one (refinedAt set) or that is
+   * itself already a refinement (refinedFromId set) — no recursive chains.
+   */
+  refineFromDissent(parkedId: string, draft: { title: string; description: string; rationale: string }): ImprovementProposal | null {
+    const parked = this.getImprovement(parkedId);
+    if (parked.status !== 'needs_more_evidence') return null;
+    if (parked.refinedAt || parked.refinedFromId) return null;
+    return this.createProposal({
+      type: parked.type,
+      title: draft.title.slice(0, 80),
+      description: draft.description,
+      rationale: draft.rationale,
+      source: 'refinement',
+      priority: parked.priority,
+      evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`],
+      refinedFromId: parkedId,
+    });
+  }
+
+  /** Parked proposals eligible for exactly one refinement attempt, oldest first. */
+  getRefinementEligible(limit: number): ImprovementProposal[] {
+    const normalizedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    const rows = this.db.prepare(`
+      SELECT * FROM self_improvements
+      WHERE status = 'needs_more_evidence' AND refined_at IS NULL AND refined_from_id IS NULL
+      ORDER BY created_at ASC LIMIT ?
+    `).all(normalizedLimit);
+    return (rows as ImprovementRow[]).map((row) => this.rowToProposal(row));
   }
 
   private transition(id: string, status: ImprovementStatus): void {
@@ -273,6 +320,8 @@ export class SelfImprovementService {
       evidenceRefs: JSON.parse(row.evidence_refs_json || '[]'),
       panelId: row.panel_id || null,
       approvedBy: row.approved_by || null,
+      refinedAt: row.refined_at || null,
+      refinedFromId: row.refined_from_id || null,
       createdAt: row.created_at,
       updatedAt: row.updated_at || row.created_at,
     };

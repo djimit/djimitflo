@@ -12,28 +12,44 @@
  *
  * Each tick: for every 'proposed' self-improvement with a panel that isn't
  * consensus_ready yet, generate the missing specialist reviews; then, for
- * every 'proposed' self-improvement, attempt an agent approval (a no-op
- * unless its panel just reached consensus_ready with decision 'goal').
+ * every 'proposed' self-improvement, attempt an agent approval (parks it as
+ * 'needs_more_evidence' if its panel reached consensus_ready without 'goal');
+ * then, a bounded refinement pass — see SELF_IMPROVEMENT_REFINEMENT_ENABLED
+ * below.
  *
  * Default-off. Arm with:
  *   SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED=true
  *   SELF_IMPROVEMENT_AUTO_REVIEW_INTERVAL_MINUTES=15   (default 15 — LLM
  *                                                        calls are slower
  *                                                        than a DB query)
+ *
+ * Refinement pass (independently toggled, off by default):
+ *   SELF_IMPROVEMENT_REFINEMENT_ENABLED=true — turns a parked proposal's
+ *     specialist dissent into one refined follow-up (SelfImprovementRefinementService),
+ *     instead of discarding specific, actionable reviewer feedback. Found
+ *     2026-09-19/20: 0 of 357 proposals ever reached 'goal' with this off.
+ *   SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK=3 (default 3, hard ceiling 10) —
+ *     production had 200 proposals already parked the moment this shipped;
+ *     this caps LLM calls per tick so arming it doesn't fire ~200 at once
+ *     against the shared Ollama host (mirrors AgentSocialAutopilotService's
+ *     maxRepliesPerTick ceiling).
  */
 
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService, type ImprovementProposal } from './self-improvement-service';
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
+import { SelfImprovementRefinementService } from './self-improvement-refinement-service';
 import { SpecialistPanelService } from './specialist-panel-service';
 
 const MINUTE_MS = 60 * 1000;
+const REFINEMENT_MAX_PER_TICK_CEILING = 10;
 
 export interface AutoReviewTickResult {
   reviewed: string[];
   approved: string[];
   parked: string[];
+  refined: string[];
   failed: Array<{ id: string; error: string }>;
 }
 
@@ -42,11 +58,13 @@ export class SelfImprovementAutoReviewScheduler {
   private running = false;
   private readonly improvements: SelfImprovementService;
   private readonly reviewer: SelfImprovementAgentReviewService;
+  private readonly refiner: SelfImprovementRefinementService;
   private readonly panels: SpecialistPanelService;
 
-  constructor(db: Database, reviewer?: SelfImprovementAgentReviewService) {
+  constructor(db: Database, reviewer?: SelfImprovementAgentReviewService, refiner?: SelfImprovementRefinementService) {
     this.improvements = new SelfImprovementService(db);
     this.reviewer = reviewer ?? new SelfImprovementAgentReviewService(db);
+    this.refiner = refiner ?? new SelfImprovementRefinementService();
     this.panels = new SpecialistPanelService(db);
   }
 
@@ -70,6 +88,16 @@ export class SelfImprovementAutoReviewScheduler {
     return Number.isFinite(minutes) && minutes > 0 ? minutes : 15;
   }
 
+  private refinementEnabled(): boolean {
+    return process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED === 'true';
+  }
+
+  refinementMaxPerTick(): number {
+    const n = Number(process.env.SELF_IMPROVEMENT_REFINEMENT_MAX_PER_TICK ?? '3');
+    const normalized = Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+    return Math.min(REFINEMENT_MAX_PER_TICK_CEILING, normalized);
+  }
+
   /**
    * Guarded against overlap: unlike the other in-process schedulers (pure
    * sync DB queries, effectively instant), this tick makes real LLM calls
@@ -80,11 +108,11 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
-    if (this.running) return { reviewed: [], approved: [], parked: [], failed: [] };
+    if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], failed: [] };
     this.running = true;
     try {
       const runId = randomUUID();
-      const result: AutoReviewTickResult = { reviewed: [], approved: [], parked: [], failed: [] };
+      const result: AutoReviewTickResult = { reviewed: [], approved: [], parked: [], refined: [], failed: [] };
       const proposed = this.improvements.listImprovements('proposed');
 
       for (const proposal of proposed) {
@@ -105,17 +133,37 @@ export class SelfImprovementAutoReviewScheduler {
         }
       }
 
+      if (this.refinementEnabled()) {
+        const eligible = this.improvements.getRefinementEligible(this.refinementMaxPerTick());
+        for (const parked of eligible) {
+          try {
+            if (await this.refineOne(parked)) result.refined.push(parked.id);
+          } catch (err) {
+            result.failed.push({ id: parked.id, error: err instanceof Error ? err.message : String(err) });
+          }
+        }
+      }
+
       // Observability: this scheduler ran silently since it was deployed —
       // a 6-day, 104-proposal backlog of dead-ended reviews went unnoticed
       // as a result. Only log when something actually happened this tick.
-      if (result.reviewed.length || result.approved.length || result.parked.length || result.failed.length) {
-        console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} failed=${result.failed.length}`);
+      if (result.reviewed.length || result.approved.length || result.parked.length || result.refined.length || result.failed.length) {
+        console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} refined=${result.refined.length} failed=${result.failed.length}`);
       }
 
       return result;
     } finally {
       this.running = false;
     }
+  }
+
+  private async refineOne(parked: ImprovementProposal): Promise<boolean> {
+    if (!parked.panelId) return false;
+    const panel = this.panels.getPanel(parked.panelId);
+    if (panel.status !== 'consensus_ready') return false;
+    const draft = await this.refiner.refine(parked, panel.consensus.dissent);
+    if (!draft) return false;
+    return this.improvements.refineFromDissent(parked.id, draft) !== null;
   }
 
   private async reviewIfNeeded(proposal: ImprovementProposal, runId: string, result: AutoReviewTickResult): Promise<void> {
