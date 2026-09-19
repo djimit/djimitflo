@@ -1,9 +1,21 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
+import rateLimit from 'express-rate-limit';
 import type { Database } from 'better-sqlite3';
 import { AuthTokenPayload } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import type { AuthMiddleware } from '../middleware/auth';
+
+// express-rate-limit (rather than the in-repo RateLimiter) so CodeQL's
+// js/missing-rate-limiting recognizes it, same reasoning as metricsRateLimiter
+// in routes/metrics.ts. This is an admin-gated write, so a tighter budget
+// than a public read endpoint is appropriate.
+const createServerRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: false,
+  legacyHeaders: false,
+});
 
 function sanitizeMCPServer(server: any, isAdmin: boolean): any {
   if (isAdmin) return server;
@@ -117,7 +129,7 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
   // way to add one at all outside hardcoding database/seed-mcp-servers.ts and
   // redeploying (MCPServerCreateInput existed in @djimitflo/shared but nothing
   // ever used it).
-  router.post('/servers', requirePermission('manage:config'), (req, res, next) => {
+  router.post('/servers', createServerRateLimiter, requirePermission('manage:config'), (req, res, next) => {
     try {
       const { name, description, command, args, env, version, author, url, metadata: inputMetadata } = req.body || {};
       if (typeof name !== 'string' || !name.trim()) {
