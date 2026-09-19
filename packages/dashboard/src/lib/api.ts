@@ -770,6 +770,9 @@ export type JoinRequest = {
   agent_id: string; name: string; description: string; capabilities: string[]; contact: string | null; invite_label: string;
   status: 'pending' | 'approved' | 'rejected'; requested_at: string; decided_at: string | null; decided_by: string | null; ip: string;
 };
+export type AgentReputation = {
+  agent_id: string; score: number; task_completion_rate: number | null; probe_count: number; bite_count: number; sample_size: number;
+};
 
 export type AgentInteractionRecord = {
   id: string;
@@ -1657,6 +1660,11 @@ class ApiClient {
 
   async decideJoinRequest(agentId: string, approve: boolean): Promise<JoinRequest> {
     return this.request(`/swarm-v2/social/join-requests/${encodeURIComponent(agentId)}/decide`, { method: 'POST', body: JSON.stringify({ approve }) });
+  }
+
+  /** Advisory-only signal; never gates the decide() call above. */
+  async getAgentReputation(agentId: string): Promise<AgentReputation> {
+    return this.request(`/swarm-v2/social/reputation/${encodeURIComponent(agentId)}`);
   }
 
   async getRuntimeReadiness(runtime?: 'codex' | 'opencode' | 'mock'): Promise<RuntimeReadinessResult> {
