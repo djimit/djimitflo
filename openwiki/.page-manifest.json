@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "pages": {
+    "/openwiki/architecture/dashboard-frontend.md": {
+      "gitHead": "291ee8481c7ddcd668cfd55f5ee6f0883eb72d66",
+      "sourceFingerprint": "sha256:b0870ab7a4fae9fb9261dd3e6e69c774aeaffb2f557e1bf078bb7d00a49bdf92",
+      "pageVersion": "sha256:f71ff211196386574462bae9c5ca2e979fcdae8e134a9de709433ce91c0f93f6",
+      "completedBy": "openwiki/0.5.2",
+      "completedRunId": "8e7f4563-8267-4b17-a915-10252936403b"
+    },
+    "/openwiki/architecture/database-and-persistence.md": {
+      "pageVersion": "sha256:bfe81805f9a21619d2328fd03197f1167eac0f33e54e9a394471caf60d5f970d",
+      "completedBy": "openwiki/0.5.2",
+      "completedRunId": "8e7f4563-8267-4b17-a915-10252936403b",
+      "gitHead": "291ee8481c7ddcd668cfd55f5ee6f0883eb72d66",
+      "sourceFingerprint": "sha256:b0870ab7a4fae9fb9261dd3e6e69c774aeaffb2f557e1bf078bb7d00a49bdf92"
+    }
+  }
+}

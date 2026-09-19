@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:bfe81805f9a21619d2328fd03197f1167eac0f33e54e9a394471caf60d5f970d",
+  "claims": [
+    {
+      "id": "claim_2f05523c55e4494f91e455da3c2b3091",
+      "statement": "packages/server/src/database/index.ts exports initializeDatabase() which, on every server startup, first calls applyStagedRestore() to check for BACKUP_DIR/restore-pending.json before the database file is even opened; if the marker is absent it proceeds with a normal boot, and if present it validates both stagedDbPath and targetDbPath (rejecting NUL bytes, '..', or backslashes as path traversal) and requires the staged file to exist before atomically renaming it over the live database path.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L36-L87",
+          "version": "repo-lines-v1:sha256:09edc9ef0cd26cfb8462618a667df8c90e33859f26e54b7beb449e7f5af969f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNjViYmUyYjc0Nzg4ZmFkOTYwNTM4NTY4ZTE2ODY3NjY4YmYyYmYxNjc4ZTA3MzE2ODY1ZjQyOTA1MzI2ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1MjFlMGIwNzQ0NzY2ZTg5OTgyNzRiNTgwZDgxNTFmYmI1N2I2MmJmM2NkNjBkYTE4M2QwYzMwNzk2NjE0MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MzlhNDNmOTZjMTczNzY4ZTYxNGZiNDkwNjVkMGVkNGUxMjY1YmEyYTM2Yjg2YTQwOTAxY2I3YzVmYTUzMTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L89-L92",
+          "version": "repo-lines-v1:sha256:79d85a4eca6a3cade28ebc7f617f96ac0404255d4b81ba13957ddbe007f78a37:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzFiOTFjMTkyMDUwMDRjNDcxNTYxMzZlMzE5OTQ5NjNkMTdhYjVlZGI4MjBkZGM3NDlhYmNiZTgzZWRjNDJhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTQxNmFmMGJhZDZkMjcxMWQ0MWU1NWZkODdkYmI3ZTNkM2FiNzk4OGUzODExNGY5ODNiNmNjMWMwNmQ0NTE1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODk4YzljZDViYzQ5MjQ3ZjRmMDU4MWMzZDM2OWViNGJkMThmN2Y5NGFmNmI5MjhkODY1NjNhOTUxMzVmNzNiNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_73f32612aa02490f9740159ceeab95d4",
+      "statement": "If restore-marker validation fails (invalid marker, path traversal, or missing staged file), applyStagedRestore() renames the marker to 'restore-pending.json.failed' and leaves the current database untouched, preventing an invalid restore from retrying on every boot or partially applying.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L43-L86",
+          "version": "repo-lines-v1:sha256:77f238aa8847a37f84ae122c0f221376e5f49445a4dccfb8bccc0218b505b107:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NTk1ZjRlZTVmZjYzZDUwOTUwNDE5ZGMzNDQxNDUxMzg1MWRjOTczNmZkMTdhNGY3YmZhOTMwYjI2MWI2ZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlY2E3MTQwY2JlNTFjYzhkYzQxYTk5ZTU5ZGRmNjQ5YWRiN2U5MDc4OWRiNTYwYjRmMjc1MDQyNTZlNGU4MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyYzc1MmEzM2I3MzY4MDU3ZGNiOWM5MDI0MWJkNWE1ZDExMjFkMDA0YWY2YjA4Y2I5MTMzZTE1NGJhNmZmM2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_458c9ded192c49e398cc8135ef541b56",
+      "statement": "After opening the database with foreign_keys=ON and journal_mode=WAL, initializeDatabase() runs runPreSchemaMigrations(db) before executing the schema and explainerSchema SQL strings, because CREATE INDEX statements in schema.ts reference columns that must already exist on stale pre-existing tables (CREATE TABLE IF NOT EXISTS cannot retroactively add columns).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L104-L111",
+          "version": "repo-lines-v1:sha256:3a0064acaf212c7db73bb41b5db5f3820f59c16190b8c5adc7885f4833143842:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcyODQ0MzQ1Y2VkNjBlMzI0OWIyYTUyNzYwYWMwNTI1OTljODliMDQyNDllODM5ZDhlMmRiMjZjNTc4NDE3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTRlMGFhNTBhMTUwZGNjNjIzNDg4ZTJhODVhNWZhNGU1OGU0ZGNhOWM2NzJhY2Q5NzViMjc5OTZmMWU0M2I1ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdjNDc4NGJjZmUzYjNjMzQ4NTFlYzgzYTE0NzJjNmJkNTY3NzJjOWZmMWJjYTk4ZjBiNzY3MDk0YTRjMTBmZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2Q0YWViMmE4ZmYwN2IzMmEzOTg1NDc0YjVlMDlmYmQ0ZmM2NzIzOTRiZDVjYTk0Y2I4MmEzYmU2NWZjZjEwNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1424-L1434",
+          "version": "repo-lines-v1:sha256:b21848c45b6888ffb4fcd752eb1a6db0a9b530c17c42f1d5113158a7a5edea40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0MjQ1ZTdkYzA1ZWI3YWNhN2U5ODI3M2U0OTk4Yjc4ZmYyNmM3OTFlNTAzMzZmMjY0MzdlZDUyNjk1Y2I5YmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyMWIyNTQ1NzUxYzllOTRkNzUyMWQxMmEyNDM2MjA1YzZmZWExMzE2NGRkZGM4ZmZhOGI2MzJjYzAyM2U2MzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwMDhmYzcyMjE2YjBiYjY2YjlmZGQzZjk4YjgxY2YzODVhYzkzYTAzNmM5ZTZhZDFkZDc3OGFmNmM5NjRiMGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aa299033b4014f6fa9e27aafe7cdb44f",
+      "statement": "After schema execution, initializeDatabase() calls runMigrations(db) to apply the full additive migration chain (phase table creation, MCP server/default-policy seeding, multi-tenancy migration, frontier-expert taxonomy seeding, performance indexes), then ensureDatabaseInstanceId(db) to guarantee a persistent database identity, and if a restore was applied earlier in the same boot, records a best-effort BACKUP_RESTORE_COMPLETED audit event attributing the restore to the actor recorded in the marker.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L108-L140",
+          "version": "repo-lines-v1:sha256:561e9ac2100c8602a5e4e36a34bf64fdd610db1f5c32aad28c877248f2cf89f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMmViYTYxZTA4M2IxOTQ2ZWVjMzFiMDE1ODliNjI4YzYyNjJiNDYyYmExMWY1YzkwOGRiYjQyNWMwN2VmYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NTVjNjExOTY2MGM2MTRkMjg1NTU0ZTUxNzY5MDY2ZTk0ZmNiNzVmZjIxNWNjYzJmYTZiNDgzOGIxODc1NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkNWQxZjk3M2EyMWY2MDQyMzYxYmI4NmMzZjFhMjI5MDczOTNhYmY4M2FlYTZiMzQzOTM2OTZiYTliYTg0Y2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3YjQ5ZGZjZWI0MjU5OTlmODc0MzZkNTU4MmVkMGY5NDcyZWVkODczNjA1NmQ1Y2NjYzhjM2RjOTVhYzc0ODgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1692-L1730",
+          "version": "repo-lines-v1:sha256:54cd83c1d36ad4dc9e43b8b14a6e29c7907c7b68e9ad07e0116c95ae76fc4960:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMDA3YTM2MjIxMjY5MGM5Yzc5NmJmMjdmZDBjY2Q0MTg5NGM1NzU0OGJiMzc3ZTJhMWVjNTgyY2I1MmJkMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZjVmYmQzZGI1NWU1MWZjZmJlNWMwM2E4Zjc0ZDg4NzQxYTQxNTQ1MjlmYjY4NTllYWNhOTZlOTg0ZDQ3NjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0YWQ2YzA5MmVjNzYyNWFiNTI1ZjcwNGJhMzRjYjdkOTg1NDI4ZTU5Y2E4YzRkZTU1ODZhMTYxZDQwNTMyYTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b910885b4cc94ed383e2043581795ba9",
+      "statement": "database/path.ts resolves the SQLite file path (resolveDbPath) from DB_PATH or DJIMITFLO_DB, defaulting to <repo>/.data/djimitflo.sqlite, and the backup directory (resolveBackupDir) from BACKUP_DIR, defaulting to <repo>/.data/backups; monorepoRoot() detects the repository root regardless of whether the process cwd is packages/server.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/path.ts",
+          "version": "repo-file-v1:sha256:958f5fd167045f3c800cd204bacf2181f1ce02241722b5f2a0edc084eb239052"
+        }
+      ]
+    },
+    {
+      "id": "claim_3c1bfd0355ac4a20bea4b59a569783bd",
+      "statement": "schema.ts exports three idempotent SQL template strings (schema, explainerSchema, fullSchema = schema + explainerSchema); every table is defined with CREATE TABLE IF NOT EXISTS so re-running the schema string on an existing database is safe but never alters existing table shape.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L1-L36",
+          "version": "repo-lines-v1:sha256:cb80b9cbde0852ae5f0b1cc72e5b61eff3e8d6b7c22dadb3548464844001844d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwNzczODMxMjkzYjNmZDM2ZjA3OGJlZDU2M2FkYTBmNGJlMzExMDNlYjZhYTAyODBlYmM3NDUxOTIxNzc0YTkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L1000-L1000",
+          "version": "repo-lines-v1:sha256:0d0268289d93779169114f4d5422125fa0bbf87cb1fd2f58a10716d27116c5f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQwMjY4Mjg5ZDkzNzc5MTY5MTE0ZjRkNTQyMjEyNWZhMGJiZjg3Y2IxZmQyZjU4YTEwNzE2ZDI3MTE2YzVmNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGQwMjY4Mjg5ZDkzNzc5MTY5MTE0ZjRkNTQyMjEyNWZhMGJiZjg3Y2IxZmQyZjU4YTEwNzE2ZDI3MTE2YzVmNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjNmNWI2NmQ2ODczNTUxYzZlMzllZTk3YTY1MDZkMGJkOTNjMTUzMTA5MzYyYmNhNzMxYjEwZGIyZWIxOTM4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L794-L811",
+          "version": "repo-lines-v1:sha256:5ffe516da6e95625f80a0f18516cf9869b8d9ae3e2b88f30592a7327b0b25feb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjMDYxNWFkMTdhMDU0MGE4OTM5M2U4Yjg5MTZhOTZmYmY0Nzc4NDJjZWIxZmQ0OTY2MzY5MTM1NzIwYzNjNjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYzZjViNjZkNjg3MzU1MWM2ZTM5ZWU5N2E2NTA2ZDBiZDkzYzE1MzEwOTM2MmJjYTczMWIxMGRiMmViMTkzODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMGExYjhjMzVhZjZjYWQxMDAxZjg2OWM2OTgxMjJhY2MzOTkwZWMyOGI1N2JjY2IyYjFjMGRkOTQ5MDg0ZWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_46440570017945b28e40f82d40dcb399",
+      "statement": "migrate.ts provides addMissingColumns(db, table, columns), which reads PRAGMA table_info and issues ALTER TABLE ADD COLUMN only for columns missing on an already-existing table, and is a no-op when the table does not yet exist (because CREATE TABLE IF NOT EXISTS will create it fresh with all columns) — this is the general pattern used by dozens of createPhaseNN*Tables() functions to keep older databases in sync with newer schema shapes.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate-phase56.ts#L1-L60",
+          "version": "repo-lines-v1:sha256:d13474ca5df7cd31bd32bf30b9d20385c46ae88d09be5b52248ff0c76c118ee1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1YjZkYzk5ZWM0M2FlMjRlMzBmOGM0Njk4YzJmODBhNzUyYTVjM2RjYzhkYTcxMzRiZWVmMTc3NTYyZWJmNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ZmE4Y2ZlMjQxZGE5ZDQ5ZmMyNWM2MTQ0N2M1NjcwZTIzNmQ0YTk3MjRlZTM1MTM2YjI0NTIzNWM4OTk1ZGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1Y2IzMWQxYTBlZmNmNDU5MDJiZWFhZDAxZjA2MzA2NGNiZTkxMmE5YTBmZDQzMzM3OTMwMGJiMjYyOTMyMmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L85-L103",
+          "version": "repo-lines-v1:sha256:61828c2ef2687e258c46f5712ae76425261baabf231c982f5abf82f12c7fda98:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZmZjYjZlYmFjMTM2ODdkNjdhZDFjNzk0YTdiMDQyZWI1ODg4MzhlNDQxNjY0MDI0NDhmMWVmNDIwZTU0OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4NGQ0ZWJiMDg3OTg3MTY2MDRhN2E3ZDk3YzczODg5MGVlMmNiYmFiMTA5OWUzZjhkOGNiYmJiZmJkYjM4NjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiYjI1MTNkNjI5MDc3OTRiZmVlODVjYjM2NmU1NzVmMTk0ZTM0NDUxZWUyMGIxYmQzNzU2YmU5MmM1MDQ4MDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_716835fdf09d47f89ab23b26cdc982a4",
+      "statement": "migrate-v2.ts implements a separate, versioned migration framework (schema_migrations tracking table, Migration objects with up/down functions, applyMigration with transactional rollback on failure, getCurrentVersion/getAppliedMigrations) layered alongside migrate.ts's always-forward, always-idempotent ALTER/CREATE-IF-NOT-EXISTS approach.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate-v2.ts#L1-L60",
+          "version": "repo-lines-v1:sha256:2206d0766b6c1856f09d63505c59fed5f92a25a006727ad424d254c5133b1ff7:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkMWM0ODQ0YWFkZWQ5MTM1ZTY5ZDYxN2UxNjMxNTlhNzlmYTk1ZTQ5NTM2M2JhNDdmZmFjN2NhNzAzMGE1NmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5785067548d44f4e9af16972e51920a9",
+      "statement": "The project's README states the audited local schema contains 165 tables, a figure produced by static table-reachability tooling run against a disposable local database built from schema.ts plus migrate.ts, not a fixed constant enforced by the code; the count grows as new createPhaseNN*Tables() migrations are added, and deployment schemas may differ.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L36-L36",
+          "version": "repo-lines-v1:sha256:06b0d1350af48b9ebb398dcb77608e120c7334c46a6e95a3f1812e369e5de015:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZiMGQxMzUwYWY0OGI5ZWJiMzk4ZGNiNzc2MDhlMTIwYzczMzRjNDZhNmU5NWEzZjE4MTJlMzY5ZTVkZTAxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZiMGQxMzUwYWY0OGI5ZWJiMzk4ZGNiNzc2MDhlMTIwYzczMzRjNDZhNmU5NWEzZjE4MTJlMzY5ZTVkZTAxNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjU2Zjc5NGUzMDcyYjMzYjdmYzEzYzM3OGFiZDRhMWRhOTY3OGFiZGVjYTM4MGQ5ODhhODE0NjMxYzczNmMzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTNlODY1NzQ5NTFkMGViNTUzNjcxM2ZkNDVhMTI4ODcwYmY1Y2NiOThkOTRiYmU5OWI0ODlmNDNlYmZmZDExNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_312dde4bed374ae79f840957067cae9a",
+      "statement": "database/provenance.ts's ensureDatabaseInstanceId(db) persists a randomUUID() once into system_state.database_instance_id (INSERT-only when the key is absent), giving each database file a stable identity across restarts and schema migrations that only changes if the row is dropped or the file is replaced (e.g. via restore); getDatabaseProvenance(db) returns { instance_id, node_id, path, mode, commit_sha } where node_id defaults to os.hostname(), mode defaults to 'live', and commit_sha comes from DJIMITFLO_COMMIT_SHA.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/provenance.ts",
+          "version": "repo-file-v1:sha256:0b76b5a7c5a5ff3e9af6a8b69bc58ab3a4df608010025e2b0770f559c39f2d67"
+        }
+      ]
+    },
+    {
+      "id": "claim_de1050c82bc04a95ab8f487c795b1d05",
+      "statement": "GET /api/health/deep embeds getDatabaseProvenance(db) under a 'database' key in its authenticated response, alongside a separate buildProvenance() block derived from build-time env vars (DJIMITFLO_BUILD_COMMIT, DJIMITFLO_BUILD_SOURCE, DJIMITFLO_BUILD_TIME), letting operators compare the running artifact's baked-in commit against the runtime commit and the database's own recorded identity.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L109-L116",
+          "version": "repo-lines-v1:sha256:a888946c4cac507ba24c7bf767a22226c2c041f9bb6387ecfa2cafbbafc49534:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmViYmZiNTE3MzgzZDJiNGI3NjdlMWJmMzQ5OTY3Y2ExODEzYjc2Y2JkODc2OTFiOTM1OTY2YjFlZjcwMDMxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM4M2YzNTk3NTIzNDcyNDM0NDQxYjQ4NmI1NDk2NjQ1YzU4NmU2MGQ2MWI0ZmM5MjI3OTU3NWRiZjFhNTEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDlhN2ExMDdlMmE3ZDI0ZWExNjljYzQ2ZDM3OGY3YjVlOWRjYWEzNGU5NDg4NTBjZTQ3Y2U5OTZhZTYyYmU0MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L18-L38",
+          "version": "repo-lines-v1:sha256:851c55b92596f25684f67c540ddef3ec11a719ec45adb1e0a878f68d2c8c185f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0YzRhOTBkNGJmZDEyNmI1YzY4ZDFhY2Y1MmQzYTUxNWEwYTBkNDU2OWEwOTkzNTE2NGI1OTk1MTNkNDVlN2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJiMmMzNjczYjQyZTE3YzIyMDJlZTY0OTRjYmYwODhjYzIwYTRlZTNiMDkzZmE5YjkwMTlhNjBkMTg4YTU5ZTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_942143f6ff704cf8bf5053c19bba83bc",
+      "statement": "scripts/live-identity-evidence.mjs (the assurance:live check) calls the remote /api/health/deep endpoint and only considers deployment identity verified when the git working tree is clean, the full 40-character commit matches health.commit, the reported database is in mode 'live' with a matching commit_sha, and its instance_id matches an expected id (explicitly configured via DJIMITFLO_EXPECTED_DATABASE_INSTANCE_ID, or for loopback targets read directly from the local .data/djimitflo.sqlite's system_state row) with a passing local PRAGMA integrity_check.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/live-identity-evidence.mjs#L30-L84",
+          "version": "repo-lines-v1:sha256:19b54521814bf3f9c8b6a09ee9669b67b8312004c8cd8466366aacefcee0f822:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ZGRkMjY3ZDZmMDJmZTA3YTgwODhmNDQ0ZGVjMjRmODI4ODM1MjBkOTM5NDRmZjgyMDQ3MTkwMTMxNjQyMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYjlhMDY5NmFmZDQyZTVhMmQ5ZjU0NDVkMWI0NjRjODJiOWRiZmU4NjBhMGUxNGQyNzE5OTJhMTk4YTk2Y2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZlYmYwNTRiNDU4M2FlZDdmOWE4NjBjYmIzNzEzYTU5MjExMjNkZTY4ZGJjMzFlNWIyMDc4MDA2NmNhYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1NDQ1OGJkYTg0NDIzZWI2MGM1NDdiYzhjMDcxZDFhMjViYTU5NGRiZDQ3MjgyOTNkMzllZDcxNWU2NmFiZWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d7aedc91dc8140e3ab51ac68d0c23be1",
+      "statement": "The MCP server (packages/mcp-server/src/db.ts) builds its own parallel databaseProvenance(handle) from the same system_state.database_instance_id row, and requireLiveMode(handle) throws DJIMITFLO_LIVE_DATA_REQUIRED if not in live mode, DJIMITFLO_DATABASE_ID_REQUIRED if no instance id exists, or DJIMITFLO_DATABASE_ID_MISMATCH:<id> if DJIMITFLO_EXPECTED_INSTANCE_ID disagrees with the observed instance id; the djimitflo_mcp_doctor tool surfaces this provenance and flags a missing instance_id as a recommended remediation action.",
+      "evidence": [
+        {
+          "resource": "repo://packages/mcp-server/src/db.ts#L18-L47",
+          "version": "repo-lines-v1:sha256:b02b741f96abde77ca50e87953cf6129a597637b0bd0e00f410f5054df9f8d38:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1MWVkNTI5ODlkNWM2OWY1YzQ5MGNlMWQyZTE2YTI3MzllYmVlMmVhYTU0OWRmMDZjYjdkZjFkZTZmYzljMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NTM1YWZhOTIxYThhMjk1NzJjYzIwZTIwMGNmNjkwYTIwNTJkZThkNmY1NjlmZGM0MTY4ZTEyM2ZjYjY5OWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0MWIwODI1YTYxMzNiM2ExMTA1N2U1MjFhNzRhNTNjMzA3MDllNDI2YjBiY2VjOTNhNDFmNWUzM2UxZWY0YjQifQ"
+        },
+        {
+          "resource": "repo://packages/mcp-server/src/tools/governance.ts#L170-L254",
+          "version": "repo-lines-v1:sha256:cacd7a941b46cf1ea0904eeef19976c4cea395e50c44837811b19443803a2ac6:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYTkyODQ1M2E2ZGY2NDM3NzE0MTRlNjZhMzE3M2QxNGE2NzhhZWQ3ZGQ0ZTcxNDgwNWM1OWI2YzU0ZmYwNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczOGU5ZjQ0ZGY2Mzk4ZjgxZjg2NjM5YTI3N2FjYzQ2MzQ1NGFmOGJjMGE3NjhmZGM1YWQ1YTkzZTNiZTE0MjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyY2YyZjk4OGEyNDVjMDg1MThhYWYyYjY4ZGJiYWNhMTlkMWQyZjBlZTcxNmI5NDE3MDQ4YWNmNWY0NGU4MjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc4MWMzZGVlYTJkNjdmNzViOGRjOTVmYzlmMjIyZjAyOTc1YzFlZGM0ZjY2ZjI4YWZkNGEzNjE5YmE4ZDEyZGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_61dcdb02efb34bcf85d8381a55fa0291",
+      "statement": "audit_events (and the compliance_audit_log view over it) are hash-chained (previous_hash, hash, chain_sequence columns) and enforced append-only at the SQLite level: BEFORE UPDATE/BEFORE DELETE triggers on audit_events, and INSTEAD OF UPDATE/DELETE triggers on the compliance_audit_log view, both call RAISE(FAIL, ...) so any UPDATE or DELETE against either fails regardless of the calling code path; compliance_audit_log writes are redirected into audit_events via an INSTEAD OF INSERT trigger.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L344-L374",
+          "version": "repo-lines-v1:sha256:a8f36e9357d49b3978b6693c2eaf0a210e7b4859d119057757a064f7e6e2e58e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYTJhNTFjN2YwYjAwM2IxMjQxMDkzNWExNjM3MzU5NDZlYTVhODVmNDViMjIwODRjOThhZTIxNTFiNmEwZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0YmJlMTU2NDE2ZWFlMWFkMGE2NzVjYmQxNjljNDIzNDM3ODY0YTNjODkwYmIwZjc0NzFhMTVlODQyZGYwZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OTE3MmQyOTI4NmFkOWRkYjEwNDgwYzA5ZTcxOWRjNWVhNzFmZGE1MzBjODMwNWNhZjRiM2JhNzk5ZDUxM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4ZjE0ZjhiMWI1YWRmNGU2YTVjZmY1YjViOTg2ZjBiNWU1OWZhMmMwMGU5ZGM0ZWNhY2NlNjViZTBhMDYxMDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L551-L599",
+          "version": "repo-lines-v1:sha256:efe2196e53f8fa88313f11c0e5dc14409bd577a0fea5c467285ad32ad51ce03a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzZjVlY2Y3NDk0ODRhYTRkYmJlOTI0NWZjMDljZGQwMjQwYTRmN2Y1NjQ4YmVmNmE3MzI3MmJlZTQ3NjQ1OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NWViZTgyZmUwNWEyOGQ5Y2QzM2U3ZGI3Yzc3ZjQyZjQ1Y2Y1NDA3OGRjY2MzYTNlNmYxN2U0MWM0Y2E2MzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1OGUxMjk3NzY2NzRiMTc5NDY3YzY2MTYxMzFhNGM0MTIzMjYyODQ0MDA4ZDUzNDY1MTkyNWJhNTQ5NjhmNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_632f7168e267452ba413cac2e2386ded",
+      "statement": "ComplianceAuditService.ensureTables() includes a one-time migration path that detects a legacy standalone compliance_audit_log table, copies its rows into audit_events preserving chain order, then drops the old table and its triggers before recreating compliance_audit_log as a view, so upgrading an older database does not lose audit chain history.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L527-L549",
+          "version": "repo-lines-v1:sha256:ebb5838480c482ed6fc42ed9044e9a8d47d4dfdd0035bfba2aea3548adb76cf4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiZDEzNDZmNjNlODA5MDk0NTg1MmU5YjM4ZTRkMWZjMWQ5YmNjNTAxZDE0YjMxMmE3Mzg5ODgyODY1ZjRlY2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjZDg4NDA3N2FiMTc5ZGI2NzIyNTVkMDJjNThhMzkxMDllZTk2MDZmOTIxMWUwN2FjNWI0YTVlNzJmYTc1ZWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ece7b9fb9a2e463e9d1a3a81aa86f8c9",
+      "statement": "AuditAnchoringService computes a Merkle root over compliance_audit_log's hash-chained rows and exports it to an external webhook or SIEM endpoint with retry/backoff and a durable pending/confirmed/failed/dead_letter delivery state; a confirmed delivery reflects HTTP acceptance by the receiver, not independent WORM retention or remote Merkle verification.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/audit-anchoring.ts#L1-L11",
+          "version": "repo-lines-v1:sha256:bf4e9097c2b387b2c36a2dfd17503dc9df042985f5b874b237c98dd5666cfef0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwNDMwMDE1ZTY0MzgyNGVhODY3NDc4YTM0ZGIxNWE2OWE2MDUxYjdmMDM0ZDdiZTVmOWY2Y2I2N2MwMTZiM2MifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/audit-anchoring.ts#L80-L131",
+          "version": "repo-lines-v1:sha256:49274dc609ddfaef58d65523d4540b7b077a86c5a83383a4fdd327a35f66f434:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZTc1ZjhjMDU5NmUzZjM5N2Y1YjU5MmRjY2RhNGIxYWUwZjA1ZWQzMTQwYWU0MTUwMWM2YTIwNjcwMGFmYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NDIxNDE5ZTNjNjA0NDJlOThkZWQ3N2JkYzliMjU2YzU2ZDY5Y2MxNTgxYzc0MGM1YjE4NDVjM2RjNjNmYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNGE1MjllNzk3OTk4ZmE0ZDdiMWU4OWM0MDA4N2M0ODRjOTQyMDZlNWYwYzk3MDBlMTI3Nzg5NWE2NTM3MzAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_306609e699d1473990dc9bdbf332f216",
+      "statement": "BackupService.createBackup() produces a backup-YYYYMMDD-HHMMSS.tar.gz archive containing exactly manifest.json, djimitflo.sqlite, and checksums.sha256; the SQLite snapshot is produced via better-sqlite3's native db.backup(), which is safe to run against a live database under concurrent writes, and the manifest records per-table row counts, databaseSha256, appVersion, and fixed confidentiality warnings about password hashes/governance evidence, excluded secrets, and excluded repository working trees.",
+      "evidence": [
+        {
+          "resource": "repo://docs/backup-restore.md#L13-L19",
+          "version": "repo-lines-v1:sha256:7d5de8d8ec2deca2581d5aef6ce2a2d03c6cb9eeea2f1e8f39fcb7f30b734d21:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmMyNzk3OGI3ZGM2NGFmMzFkOGYwZDkzODY0ZDY3Yjg5MjZiMTFhZDhjYWI2NzU5ZDhhYjgzY2FkM2M0M2IyMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI5OTFmYjBiZGMyMDk2ZDlhZWQwNGM0YTVjZGE5Y2QxYmY3NjIyNGY2NDE3ZmYwNjc4ZTM4MjU1YTFlM2ViOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODRjYmM3YTJhMzEwMmQyMDRlMjYxYjY4MzY1OWUwODIzNTZmZThmZDE0ODE4NWY2YTY5NjBhNTZmNjdjNDQzNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzFkZDZiN2E4MDQwMzQzNWI1NTY1MGRmNDYzOWU0N2Q3NDg2ZDFiOGY4MWQyOGRjMWRkNjY1Njc0MjY2YWUzOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L420-L422",
+          "version": "repo-lines-v1:sha256:271d2e382168c4003cdf3ea7af9b7cfeb82329325f1750144002ba6f584d3c45:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmU2NDY5NzUzMTk5ZjVmNjFjMTdiMzM0M2RlMDZlMGQ4YTk2YmEwYjk2MDc5ZTg4ZWU5OGEyZmFhMzI1ZTk4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODcyM2RiYzhiN2UwOWViZDZhMmUxNGY5YTQ2OTM1N2Y3ODA2MjVjZTMyZjZlMmFmNDRkYTEzMjAwYmU1YmE2ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2QyM2ZkYmU4NGNhOTcxZDhmOGU1YjY4MzY5NTdhOWI0N2EyZjFjMGZhODI5ZjViODcwYmFmNzAzOTAxZmQ3MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L58-L62",
+          "version": "repo-lines-v1:sha256:60a4d400a6ea27ccf1e0d27ec9aae48081e1a2bdfd58f720f7f873152ca34b22:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTcxNGQ2NGViMTQxZTdjMDBhMTU1ZTY4NzRlYzhkMjNjYjliNzM3NDRmZGZiZGQ1YWYzNzdiZmNmOWNiMmM1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjY0MGY2NzRhNTgwNWIzNzQxZGIzZmZlYmE4OWY0MWQ0NWVmM2E0ZjRmOTk0MTE4M2MzY2E4ODY5YjMyZDVmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM4NzEwNGU4YjNhODgzYTEzNzc2NDZlOGRkZGM4OGNkNWYyNDJlNDk0OGM1ZWVmYWE5MTlkMDJiN2ZjZDJhNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L80-L146",
+          "version": "repo-lines-v1:sha256:565df598dbe5d0dd87e03b009c4bafc9e63fca15dfaf93827300b5329c4437b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzMmJlNWJjMGYwNDZiMDY1Mjg5NWQ1MWFkMzMyMDA5YjljNzI4NmM1ZjI1NjRmYWVhY2ZjYmMwYmNhMjE4NjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2YmNmN2Q0YWUxZmEwMDdmNjc4Y2UxOGM3MGJhYmM1MTM5ZmYyYjkwOTdlOTBkNjBjZWIyMWYxMzVkNjY0ZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_de5cb77135cc4bfaa4c9f67b8f45d600",
+      "statement": "Backup filenames are validated by both a fixed regex (^backup-\\d{8}-\\d{6}\\.tar\\.gz$) and validateFilename(), which additionally rejects any filename containing '/', '\\\\', '..', or that differs from its own basename; extractTarGzSafe() further rejects symlink/hardlink entries, entry names containing '/', '..', or '\\\\', duplicate entry names, and any entry name outside the fixed EXPECTED_ENTRIES allow-list during archive extraction.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L12-L14",
+          "version": "repo-lines-v1:sha256:b5dca0e22392dd4a38015f9bb6367e6bde95f27724440d31c359504b0b9937a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2E1ODdhMDk3MGY4MGM1YjRhZDdhNmNkMDJkNmE5ZWY1NTRmMjE1NDU2ZGQxNjFlODY5YjIyOTU0NTUwNmFlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzU2MmJlZjc1NDgzNGFiYmM2N2JlMjNiMmM1MTNlMDgzMTlmNzk2ZDZmOGZlNmE3MjQwMjBlNzQ0MjA4ODdjOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ2NGM0MTczMjJiYzc3ZDI2ZGMzMTdjZjVlZWU0MjViY2UzMDI3ZjA0Yzc2YzgxNTQyNDIxZTVhOWQxMDFhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGRkZTM0ZjE4MjEwYmVjNDYzZDM4ZDI0ZTExZDcxOGEyMTI2MTk2OTllN2I3MDQ1ZGQ1MzU4ZGEwMDk2OWQwNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L413-L418",
+          "version": "repo-lines-v1:sha256:2053ef8062bcebc9d59be862974a19531bb4816f15ded7eafb97ef1f1e5a4a7e:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzg2MzA0Zjk1OWE5MThjYjM3NmRjYTdhMTZlMjE5YzJhZGYxNWE5MmMzNjdhNDMxYzc3YTUzNTQ1ZmNlMmNhZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTdkODYzMmU1NGU5Mjk4YWJiOTU4NzI3ZTJkNTE0MDhhYmFmMTM2NjAzNTM3OTEwMTQwYWJmNjViMzBhYjYxMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDM0YTQ1YmM3MTVlNzY2YjJmNGFhMjEwZjFlNjkxODYzOGI3ZWRjYWU2ODM0ZGE4ODA3MmFkYTFmZjY3YTQzYiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L473-L521",
+          "version": "repo-lines-v1:sha256:cbbc198873244c3ec3d15079c55d3b9905129f6ccb3d1ce808352e5b654a4896:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MzZlNzkxMGMyZjJlMjdjNzM5ODlmMThmODAzYTIyMjI3YzU1YmM4NmJiZDIzNGI5ZmNiODFlZTVhMGYxODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyZWIwNjlmNTc5MzdkYWIxZjIzYmRiM2UzYzZhY2Y5Y2ZhM2YyMGJmZGU1NzY5NWExYjg3MGMwYjMyZWI0OGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b6be82b01bb44e538ae5b81caebf89ab",
+      "statement": "BackupService.validateBackup() checks checksums.sha256 against recomputed SHA-256 hashes, manifest presence/size/parseability, database file presence, an app-version major-version compatibility check, the manifest's own databaseSha256 against the extracted file, and finally opens the extracted SQLite file read-only to run PRAGMA integrity_check, returning the itemized list of any failures rather than failing fast on the first error.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L187-L301",
+          "version": "repo-lines-v1:sha256:078478b30ca15f9d3f5d26165a4320cf1c285f91432dcbe31a818597e193dd4d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YzRiY2QwNzgyZDgyNDYwMjY1NTgzNzczNjI2MzljMWNkOTBiNDgzMDUzNDVhMGZhNDljZWZjYzM5MjVmNzE1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI5N2Q4NjMyZTU0ZTkyOThhYmI5NTg3MjdlMmQ1MTQwOGFiYWYxMzY2MDM1Mzc5MTAxNDBhYmY2NWIzMGFiNjEzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYTRmNTM3ZDNlODcyZjRhY2FiZTZlNWRhZmE3ZDM1ODRhZTQ1NTQ3YzhlNzBjNzQ5MDRjNTc5ZDQ2ZDVmMGM3In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bb1bc54b04e49659ef06b25dc7fa762",
+      "statement": "BackupService.stageRestore() requires the literal confirmation string 'RESTORE', re-validates the target backup, and always creates a fresh safety backup of the current database (audited as backup_pre_restore_created) before extracting the requested archive to '<dbPath>.restore-pending' and writing restore-pending.json into BACKUP_DIR; it never modifies the live database file directly, so a restore always requires a server restart before initializeDatabase()'s applyStagedRestore() applies it.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L327-L411",
+          "version": "repo-lines-v1:sha256:111dc045093f8f149ccc4936b46af66f295f4999adadcfca21c0f5a4bb6ca2ca:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNlZTA0MmZiODIyZjMxYWIwZTcyNTMyOWVlYTkzNTNlNjk2ZDIyMmU4ZDc3ZGNiMjQxZTdiZDczYzMwMGJlYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZWIzZTcwODM1YzA0YzA0NzM1YjE2MzhhMWMxMjBjOWQwZjk2MzNiN2MzMjMwMDAyNGUwNzM0OTAyZjJmMmYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-19T12:23:47.840Z"
+  }
+}
