@@ -38,6 +38,14 @@
  * that scheduler would race this one to project the same panel into a
  * generic backlog work item.
  *
+ * A reviewed candidate whose panel reaches consensus_ready on anything
+ * other than 'goal' is parked (promotion_status -> 'blocked_pending_review')
+ * rather than left at 'proposed' forever — the self-improvement pipeline
+ * had exactly this gap and it produced a silent, unbounded backlog (104
+ * proposals stuck for up to 6 days) before anyone noticed. See
+ * MemoryCandidateService.markNeedsMoreEvidence().
+ *
+
  * Default-off. Arm with:
  *   MEMORY_CANDIDATE_REVIEW_ENABLED=true
  *   MEMORY_CANDIDATE_REVIEW_INTERVAL_MINUTES=15 (default — LLM calls are
@@ -57,6 +65,7 @@ const EVOLUTION_THRESHOLD = 5;
 export interface MemoryReviewTickResult {
   reviewed: string[];
   promoted: string[];
+  parked: string[];
   failed: Array<{ id: string; error: string }>;
   evolutionProposalGenerated: boolean;
 }
@@ -98,7 +107,7 @@ export class MemoryCandidateReviewScheduler {
 
   async tick(): Promise<MemoryReviewTickResult> {
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const result: MemoryReviewTickResult = { reviewed: [], promoted: [], failed: [], evolutionProposalGenerated: false };
+    const result: MemoryReviewTickResult = { reviewed: [], promoted: [], parked: [], failed: [], evolutionProposalGenerated: false };
 
     for (const candidate of this.candidates.listPendingPromotion()) {
       try {
@@ -114,6 +123,10 @@ export class MemoryCandidateReviewScheduler {
       result.failed.push({ id: 'evolution', error: err instanceof Error ? err.message : String(err) });
     }
 
+    if (result.reviewed.length || result.promoted.length || result.parked.length || result.failed.length || result.evolutionProposalGenerated) {
+      console.log(`🧬 memory-candidate review tick: reviewed=${result.reviewed.length} promoted=${result.promoted.length} parked=${result.parked.length} failed=${result.failed.length} evolutionProposal=${result.evolutionProposalGenerated}`);
+    }
+
     return result;
   }
 
@@ -123,9 +136,13 @@ export class MemoryCandidateReviewScheduler {
     result.reviewed.push(candidate.id);
 
     const panel = this.panels.getPanel(panelId);
-    if (panel.status === 'consensus_ready' && panel.consensus.decision === 'goal') {
+    if (panel.status !== 'consensus_ready') return;
+    if (panel.consensus.decision === 'goal') {
       this.candidates.promote(candidate.id, { approved_by: `${SCHEDULER_ACTOR}:${runId}` });
       result.promoted.push(candidate.id);
+    } else {
+      this.candidates.markNeedsMoreEvidence(candidate.id);
+      result.parked.push(candidate.id);
     }
   }
 

@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
 
-export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence';
 
 export interface ImprovementProposal {
   id: string;
@@ -128,13 +128,23 @@ export class SelfImprovementService {
    * error). `runId` scopes the approver identity so it's traceable to a
    * specific scheduler tick, and — same as the reviewer-separation check
    * below — is a distinct identity from every reviewer on this panel.
+   *
+   * Returns the updated proposal whenever this call changed its status
+   * (authorized as a goal, or parked as needs_more_evidence), null when
+   * there was nothing to do yet. Parking matters: without it a panel that
+   * reaches consensus_ready on anything other than 'goal' left the proposal
+   * at 'proposed' forever, silently re-checked every tick with no signal
+   * that it was effectively dead — found in production on 2026-09-19, where
+   * 104 reviewed proposals had sat unresolved for up to 6 days.
    */
   agentApproveIfReady(id: string, runId: string): ImprovementProposal | null {
     const proposal = this.getImprovement(id);
     if (proposal.status !== 'proposed' || !proposal.panelId) return null;
     const panel = this.panels.getPanel(proposal.panelId);
-    if (panel.status !== 'consensus_ready' || panel.consensus.decision !== 'goal') return null;
-    return this.authorizeGoal(id, `agent:approver:${runId}`);
+    if (panel.status !== 'consensus_ready') return null;
+    if (panel.consensus.decision === 'goal') return this.authorizeGoal(id, `agent:approver:${runId}`);
+    this.transition(id, 'needs_more_evidence');
+    return this.getImprovement(id);
   }
 
   private authorizeGoal(id: string, approvedBy: string): ImprovementProposal {
