@@ -56,6 +56,11 @@ async function callOllama(prompt: string): Promise<string> {
       prompt,
       stream: false,
       format: 'json',
+      // Reasoning models (e.g. qwen3.5:cloud) burn most of num_predict on an
+      // internal "thinking" trace before ever emitting the requested JSON —
+      // observed truncating the real response entirely on a review-length
+      // prompt. We want the structured answer, not the transcript.
+      think: false,
       options: { temperature: 0.2, num_predict: 1024 },
     }),
     signal: AbortSignal.timeout(reviewTimeoutMs()),
