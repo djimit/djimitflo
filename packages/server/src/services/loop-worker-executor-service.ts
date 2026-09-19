@@ -386,18 +386,20 @@ export class LoopWorkerExecutorService {
     }
 
     const taskId = `loop-worker-${lease.id}-${randomUUID().slice(0, 8)}`;
+    const agentId = this.resolveAgentId(runtime, lease.role);
     const now = new Date().toISOString();
     const environment = Object.fromEntries(Object.entries(this.loopService.buildNestedSpawnEnv(lease) || {})
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
     this.db.prepare(`
-      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at)
-      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?)
+      INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, agent_id, tags, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, 'pending', ?, ?, 'local', ?, ?, ?, ?, ?)
     `).run(
       taskId,
       `${lease.role} worker for ${run.loop_name}`,
       prompt,
       this.loopService.isHighRiskRun(run) ? 'high' : 'medium',
       this.loopService.isHighRiskRun(run) ? 'high' : 'low',
+      agentId,
       JSON.stringify(['loop-worker', lease.role, runtime]),
       JSON.stringify({ loop_run_id: run.id, lease_id: lease.id, workingDirectory: cwd, timeoutMs, skipPermissions, environment,
         ...(typeof lease.metadata.model === 'string' ? { model: lease.metadata.model } : {}),
@@ -423,6 +425,25 @@ export class LoopWorkerExecutorService {
 
     const completed = await execution.completion;
     return this.toRuntimeResult(completed);
+  }
+
+  /**
+   * `tasks.agent_id` was never populated for loop-worker tasks, so every
+   * such task showed as "Unassigned" on the dashboard even while a real
+   * runtime+role was actively executing it. There's no pre-existing `agents`
+   * row for a runtime like "codex" or "hermes" (the seeded agents are demo
+   * fixtures), so get-or-create a stable identity per runtime+role pair —
+   * e.g. "codex-maker" — the first time it's needed.
+   */
+  private resolveAgentId(runtime: string, role: string): string {
+    const name = `${runtime}-${role}`;
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT OR IGNORE INTO agents (id, name, description, status, capabilities, created_at, updated_at)
+      VALUES (?, ?, ?, 'active', ?, ?, ?)
+    `).run(id, name, `Auto-registered ${role} worker identity for the ${runtime} runtime.`, JSON.stringify([runtime, role]), now, now);
+    return (this.db.prepare('SELECT id FROM agents WHERE name = ?').get(name) as { id: string }).id;
   }
 
   private riskAssessmentText(lease: WorkerLeaseRecord, prompt: string): string {
