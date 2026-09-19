@@ -356,29 +356,31 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
     });
   }));
 
+  const computeCapabilityEconomy = () => intelligence.listCapabilities(500)
+    .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
+    .map((capability) => {
+      const competence = intelligence.measureCompetence(capability.id);
+      const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
+      const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
+      return {
+        capability_id: capability.id,
+        capability_kind: capability.kind,
+        status: capability.status,
+        n_runs: competence.n_runs,
+        n_completed: competence.n_completed,
+        success_rate: competence.success_rate,
+        p50_tokens: competence.p50_cost,
+        p95_tokens: competence.p95_cost,
+        p50_dollars: p50Dollars,
+        p95_dollars: p95Dollars,
+        verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
+          ? competence.n_completed / p50Dollars
+          : null,
+      };
+    });
+
   router.get('/economy', requirePermission('read:evidence'), route((_req, res) => {
-    const capabilities = intelligence.listCapabilities(500)
-      .filter((capability) => capability.status === 'validated' || capability.status === 'candidate')
-      .map((capability) => {
-        const competence = intelligence.measureCompetence(capability.id);
-        const p50Dollars = Number(capability.cost_model.p50_dollars) || 0;
-        const p95Dollars = Number(capability.cost_model.p95_dollars) || 0;
-        return {
-          capability_id: capability.id,
-          capability_kind: capability.kind,
-          status: capability.status,
-          n_runs: competence.n_runs,
-          n_completed: competence.n_completed,
-          success_rate: competence.success_rate,
-          p50_tokens: competence.p50_cost,
-          p95_tokens: competence.p95_cost,
-          p50_dollars: p50Dollars,
-          p95_dollars: p95Dollars,
-          verified_artifacts_per_dollar: competence.n_completed > 0 && p50Dollars > 0
-            ? competence.n_completed / p50Dollars
-            : null,
-        };
-      });
+    const capabilities = computeCapabilityEconomy();
     const loops = new LoopService(db);
     const recentRuns = loops.listLoopRuns().slice(0, 10).map((run) => {
       const metric = loops.computeEfficiencyMetric(run.id);
@@ -399,6 +401,36 @@ export function createSwarmRoutes(db: Database, auth?: AuthMiddleware, wsService
         total_verified_artifacts: recentRuns.reduce((sum, run) => sum + run.verified_artifacts, 0),
         total_dollars_spent: recentRuns.reduce((sum, run) => sum + run.dollars_spent, 0),
       },
+    });
+  }));
+
+  // LoopBudgetService.allocateDollarBudget() already existed (used internally
+  // while a loop run is choosing which findings to fund) but was never
+  // surfaced anywhere for an operator to ask "given $X right now, which
+  // validated capabilities are worth funding?" — reuses the same capability
+  // cost/competence data already computed for GET /economy above.
+  router.get('/economy/allocate', requirePermission('read:evidence'), route((req, res) => {
+    const budget = Number(req.query.budget);
+    if (!Number.isFinite(budget) || budget < 0) {
+      throw createError(400, 'budget query param must be a non-negative number', 'ECONOMY_ALLOCATE_BUDGET_INVALID');
+    }
+    const capabilities = computeCapabilityEconomy().filter((capability) => capability.p50_dollars > 0);
+    const loops = new LoopService(db);
+    const result = loops.allocateDollarBudget(
+      capabilities.map((capability) => ({
+        finding_id: capability.capability_id,
+        capability_id: capability.capability_id,
+        p50_dollars: capability.p50_dollars,
+        competence: capability.success_rate,
+      })),
+      budget
+    );
+    const byId = new Map(capabilities.map((capability) => [capability.capability_id, capability]));
+    res.json({
+      budget,
+      budget_insufficient: result.budgetInsufficient,
+      allocated: result.allocated.map((id) => byId.get(id)),
+      deferred: result.deferred.map((id) => byId.get(id)),
     });
   }));
 

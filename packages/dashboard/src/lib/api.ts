@@ -12,6 +12,7 @@ import type {
   TaskUpdateInput,
   Agent,
   MCPServer,
+  MCPServerCreateInput,
   MCPTool,
   ExecutionEvent,
   Approval,
@@ -1065,6 +1066,13 @@ class ApiClient {
   // MCP
   async getMCPServers(): Promise<{ servers: MCPServer[] }> {
     return this.request('/mcp/servers?refresh=true');
+  }
+
+  async createMCPServer(input: MCPServerCreateInput): Promise<{ server: MCPServer }> {
+    return this.request('/mcp/servers', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   }
 
   async getMCPTools(filters?: { serverId?: string; riskLevel?: string; permission?: string; q?: string }): Promise<{ tools: MCPTool[] }> {
