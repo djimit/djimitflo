@@ -13,6 +13,7 @@ import { mintSpawnToken, resolveSpawnTokenSecret, validateSpawnToken } from '../
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { AgentLureService } from '../services/agent-lure-service';
 import { AgentCommonsOpenDoorService } from '../services/agent-commons-open-door-service';
+import { AgentReputationService } from '../services/agent-reputation-service';
 import { AuditService } from '../services/audit-service';
 import { AuditEventType } from '@djimitflo/shared';
 
@@ -230,6 +231,23 @@ export function createSwarmOrchestrationRoutes(db: Database, auth?: AuthMiddlewa
   router.get('/social/join-requests', requirePermission('read:evidence'), (_req, res) => {
     res.json({ requests: openDoor.listRequests() });
   });
+
+  // Advisory-only trust signal, computed on read from data that already
+  // exists (task-completion counters, lure/probe history) — never wired
+  // into the decide() route below. The human stays the only one who
+  // approves or rejects a join request; this just gives them one more
+  // number to look at before deciding.
+  const reputation = new AgentReputationService(db);
+  router.get('/social/reputation/:agentId', requirePermission('read:evidence'), (req, res, next) => {
+    try {
+      res.json(reputation.computeReputation(req.params.agentId));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'AGENT_REPUTATION_FAILED';
+      if (code === 'AGENT_REPUTATION_AGENT_NOT_FOUND') { res.status(404).json({ error: { code, message: code } }); return; }
+      next(error);
+    }
+  });
+
   router.post('/social/join-requests/:agentId/decide', requirePermission('manage:tokens'), (req: any, res) => {
     if (!req.user?.sub || req.user.agent_id) throw createError(403, 'Operator authentication required', 'SOCIAL_OPERATOR_REQUIRED');
     try {

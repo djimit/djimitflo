@@ -34,6 +34,7 @@ import { ComplianceReportScheduler } from './services/compliance-report-schedule
 import { SelfHealingScheduler } from './services/self-healing-scheduler';
 import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
 import { FrontierExpertScheduler } from './services/frontier-expert-scheduler';
+import { SpecialistPanelBacklogScheduler } from './services/specialist-panel-backlog-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -282,6 +283,12 @@ async function main() {
   // in-process (default-off, gated on DJIMITFLO_FRONTIER_EXPERTS_ENABLED too, see service header)
   if (new FrontierExpertScheduler(db).start()) {
     console.log('🔭 Frontier expert scheduler armed');
+  }
+
+  // Specialist panel backlog scheduler — projects consensus_ready general
+  // panels into real work items, in-process (default-off, see service header)
+  if (new SpecialistPanelBacklogScheduler(db).start()) {
+    console.log('🗂️  Specialist panel backlog scheduler armed');
   }
 
   // API routes

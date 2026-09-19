@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Compass, Copy, DoorOpen, Eye, EyeOff, Lightbulb, Magnet, MessageCircle, RefreshCw, ShieldAlert, Sparkles, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { api, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
+import { api, type AgentReputation, type JoinInvite, type JoinRequest, type LureCast, type LureInvitee, type LureStatus, type SocialAgentPresence, type SocialCommons, type SocialMessage, type SocialThread } from '../lib/api';
 
 export type ConstellationNode = { id: string; name: string; x: number; y: number; present: boolean; lured: boolean; threads: number; hue: number };
 export type ConstellationEdge = { from: string; to: string; x1: number; y1: number; x2: number; y2: number; count: number; stage: SocialThread['stage'] };
@@ -96,6 +96,7 @@ export function AgentCommonsPage() {
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [capabilityQuery, setCapabilityQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -180,6 +181,11 @@ export function AgentCommonsPage() {
     [commons.threads, focusAgent],
   );
   const participation = useMemo(() => runtimeParticipation(commons.threads), [commons.threads]);
+  const filteredAgents = useMemo(() => {
+    const query = capabilityQuery.trim().toLowerCase();
+    if (!query) return commons.agents;
+    return commons.agents.filter((agent) => agent.capabilities.some((capability) => capability.toLowerCase().includes(query)));
+  }, [commons.agents, capabilityQuery]);
   const lured = useMemo(() => luredAgents(lures), [lures]);
   const constellation = useMemo(() => layoutConstellation(commons.agents, commons.threads, 320, lured), [commons, lured]);
   const active = threads.find((thread) => thread.id === selectedThread) || threads[0] || null;
@@ -233,15 +239,32 @@ export function AgentCommonsPage() {
           <section className="rounded-xl border border-border bg-background-secondary p-3">
             <div className="flex items-center justify-between px-1 pb-2"><h2 className="text-sm font-semibold text-foreground">Constellatie</h2>{focusAgent && <button type="button" onClick={() => setFocusAgent(null)} className="text-xs text-accent hover:underline">alles tonen</button>}</div>
             <Constellation nodes={constellation.nodes} edges={constellation.edges} focus={focusAgent} highlight={active?.participants || []} onSelect={(id) => { setFocusAgent((current) => current === id ? null : id); setSelectedThread(null); }} />
+            <input
+              type="text"
+              value={capabilityQuery}
+              onChange={(event) => setCapabilityQuery(event.target.value)}
+              placeholder="Zoek op capability..."
+              className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-foreground-tertiary"
+            />
             <ul className="mt-2 space-y-1">
-              {commons.agents.map((agent) => (
-                <li key={agent.id}><button type="button" onClick={() => { setFocusAgent(agent.id); setSelectedThread(null); }} className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${focusAgent === agent.id ? 'bg-accent/10' : 'hover:bg-background-elevated'}`}>
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `hsl(${agentHue(agent.id)} 80% 60%)`, boxShadow: agent.present ? `0 0 8px hsl(${agentHue(agent.id)} 80% 60%)` : 'none', opacity: agent.present ? 1 : 0.4 }} />
-                  <span className="truncate font-medium text-foreground">{agent.name}</span>
-                  {!!agent.activity?.length && <span className="truncate text-foreground-tertiary" title={agent.activity.map((a) => a.action).join(', ')}>{agent.activity[0].action}</span>}
-                  <span className="ml-auto truncate text-foreground-tertiary">{agent.present ? agent.runtime || 'aanwezig' : 'stil'}</span>
+              {filteredAgents.map((agent) => (
+                <li key={agent.id}><button type="button" onClick={() => { setFocusAgent(agent.id); setSelectedThread(null); }} className={`flex w-full flex-col gap-1 rounded-lg px-2 py-1.5 text-left text-xs ${focusAgent === agent.id ? 'bg-accent/10' : 'hover:bg-background-elevated'}`}>
+                  <span className="flex w-full items-center gap-2">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: `hsl(${agentHue(agent.id)} 80% 60%)`, boxShadow: agent.present ? `0 0 8px hsl(${agentHue(agent.id)} 80% 60%)` : 'none', opacity: agent.present ? 1 : 0.4 }} />
+                    <span className="truncate font-medium text-foreground">{agent.name}</span>
+                    {!!agent.activity?.length && <span className="truncate text-foreground-tertiary" title={agent.activity.map((a) => a.action).join(', ')}>{agent.activity[0].action}</span>}
+                    <span className="ml-auto truncate text-foreground-tertiary">{agent.present ? agent.runtime || 'aanwezig' : 'stil'}</span>
+                  </span>
+                  {!!agent.capabilities?.length && (
+                    <span className="flex flex-wrap gap-1 pl-4">
+                      {agent.capabilities.map((capability) => (
+                        <span key={capability} className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-foreground-tertiary">{capability}</span>
+                      ))}
+                    </span>
+                  )}
                 </button></li>
               ))}
+              {!filteredAgents.length && !!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">Geen agent met een capability die overeenkomt met "{capabilityQuery}".</li>}
               {!commons.agents.length && <li className="px-2 py-3 text-xs text-foreground-tertiary">Nog geen agent heeft zich gemeld. Een runtime meldt zich via een signed social-runtime heartbeat; daarna verschijnt hij hier.</li>}
             </ul>
           </section>
@@ -347,10 +370,23 @@ const JOIN_LABEL: Record<JoinRequest['status'], string> = { pending: 'wacht op t
 
 function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { requests: JoinRequest[]; invite: JoinInvite | null; onInvite: () => void; onDecide: (agentId: string, approve: boolean) => void; busy: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [reputations, setReputations] = useState<Record<string, AgentReputation | 'error'>>({});
   const cardUrl = `${window.location.origin}/api/swarm-v2/social-runtime/card`;
   const example = invite ? `curl -X POST ${invite.join_url} -H 'Content-Type: application/json' -d '{"invite_code":"${invite.code}","agent_id":"my-agent","name":"My Agent","capabilities":["research"],"contact":"ops@example.org"}'` : '';
   async function copy() { try { await navigator.clipboard.writeText(example); setCopied(true); window.setTimeout(() => setCopied(false), 1500); } catch { setCopied(false); } }
   const pending = requests.filter((request) => request.status === 'pending');
+
+  // Advisory-only: fetched for display next to the decide buttons below,
+  // never consulted by onDecide — the human makes the actual call.
+  useEffect(() => {
+    for (const request of pending) {
+      if (request.agent_id in reputations) continue;
+      api.getAgentReputation(request.agent_id)
+        .then((reputation) => setReputations((current) => ({ ...current, [request.agent_id]: reputation })))
+        .catch(() => setReputations((current) => ({ ...current, [request.agent_id]: 'error' })));
+    }
+  }, [pending.map((request) => request.agent_id).join(',')]);
+
   return (
     <section className="rounded-xl border border-border bg-background-secondary p-4" style={{ borderTopColor: STAGE.asked.color, borderTopWidth: 2 }}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -371,7 +407,7 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
         {requests.map((request) => (
           <article key={request.agent_id} className="rounded-lg border border-border bg-background p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span></div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'geen capabilities opgegeven'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · beslist door {request.decided_by}</>}</p></div>
+              <div className="min-w-0"><div className="flex flex-wrap items-center gap-2 text-sm"><span className="font-semibold text-foreground">{request.name}</span><span className="font-mono text-xs text-foreground-tertiary">{request.agent_id}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] ${JOIN_TONE[request.status]}`}>{JOIN_LABEL[request.status]}</span>{request.status === 'pending' && <ReputationBadge reputation={reputations[request.agent_id]} />}</div>{request.description && <p className="mt-1 text-xs text-foreground-secondary">{request.description}</p>}<p className="mt-1 text-[10px] text-foreground-tertiary">{request.capabilities.join(', ') || 'geen capabilities opgegeven'} · via "{request.invite_label}" · {request.ip} · {time(request.requested_at)}{request.contact && <> · {request.contact}</>}{request.decided_by && <> · beslist door {request.decided_by}</>}</p></div>
               {request.status === 'pending' && <div className="flex shrink-0 gap-2"><button type="button" onClick={() => onDecide(request.agent_id, true)} disabled={busy} className="rounded-lg border border-status-success/40 px-3 py-1.5 text-xs text-status-success hover:bg-status-success/10 disabled:opacity-40">Toelaten</button><button type="button" onClick={() => onDecide(request.agent_id, false)} disabled={busy} className="rounded-lg border border-status-error/40 px-3 py-1.5 text-xs text-status-error hover:bg-status-error/10 disabled:opacity-40">Afwijzen</button></div>}
             </div>
           </article>
@@ -379,6 +415,23 @@ function OpenDoorPanel({ requests, invite, onInvite, onDecide, busy }: { request
         {!requests.length && <p className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-foreground-tertiary">Nog niemand van buiten heeft aangeklopt.</p>}
       </div>
     </section>
+  );
+}
+
+/**
+ * Advisory-only: shows a computed signal derived from existing task-history
+ * and lure/probe data. Never gates onDecide above — the operator always
+ * decides; this is purely one more number to look at first.
+ */
+function ReputationBadge({ reputation }: { reputation: AgentReputation | 'error' | undefined }) {
+  if (reputation === undefined) return <span className="text-[10px] text-foreground-tertiary">reputatie laden...</span>;
+  if (reputation === 'error') return null;
+  const lowConfidence = reputation.sample_size < 3;
+  const color = reputation.score >= 0.65 ? 'text-status-success border-status-success/40' : reputation.score <= 0.35 ? 'text-status-error border-status-error/40' : 'text-foreground-tertiary border-border';
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[10px] ${color}`} title="Adviserende score op basis van taakgeschiedenis en lokaas/probe-gedrag; geen automatische beslissing.">
+      reputatie {reputation.score.toFixed(2)}{lowConfidence ? ' (weinig data)' : ''}
+    </span>
   );
 }
 

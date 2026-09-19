@@ -77,7 +77,7 @@ export function WorkstationUrlsPage() {
           <Server className="w-5 h-5 text-accent" /> Live Listening Ports
         </h2>
         {loading && ports.length === 0 ? (
-          <div className="text-center py-8 text-foreground-muted">Scanning workstation ports...</div>
+          <div className="text-center py-8 text-foreground-muted">Scanning ports on {source.host}...</div>
         ) : ports.length === 0 ? (
           <div className="text-center py-8 text-foreground-muted">No ports found</div>
         ) : (
