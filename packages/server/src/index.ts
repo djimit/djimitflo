@@ -32,6 +32,7 @@ import { ProactiveMemoryService } from './services/proactive-memory-service';
 import { ComplianceAuditService } from './services/compliance-audit-service';
 import { ComplianceReportScheduler } from './services/compliance-report-scheduler';
 import { SelfHealingScheduler } from './services/self-healing-scheduler';
+import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -267,6 +268,12 @@ async function main() {
   // Self-healing scheduler — periodic detect-and-fix (stale leases, etc.), in-process (default-off, see service header)
   if (new SelfHealingScheduler(db).start()) {
     console.log('🩺 Self-healing scheduler armed');
+  }
+
+  // Self-improvement auto-review scheduler — LLM-generated specialist reviews
+  // + autonomous goal-authorization, in-process (default-off, see service header)
+  if (new SelfImprovementAutoReviewScheduler(db).start()) {
+    console.log('🧭 Self-improvement auto-review scheduler armed');
   }
 
   // API routes
