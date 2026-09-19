@@ -299,6 +299,14 @@ export class SpecialistPanelService {
     return panel;
   }
 
+  /** Merges the given fields into a panel's metadata — e.g. bookkeeping flags a scheduler needs without a dedicated column. */
+  updateMetadata(id: string, metadata: Record<string, unknown>): SpecialistPanelRecord {
+    const panel = this.getPanel(id);
+    this.db.prepare('UPDATE specialist_panels SET metadata = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify({ ...panel.metadata, ...metadata }), new Date().toISOString(), id);
+    return this.getPanel(id);
+  }
+
   createPanel(input: SpecialistPanelCreateInput): SpecialistPanelRecord {
     if (!input.topic?.trim()) {
       throw new Error('SPECIALIST_PANEL_TOPIC_REQUIRED');

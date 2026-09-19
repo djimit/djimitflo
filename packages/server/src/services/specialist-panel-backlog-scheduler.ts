@@ -9,15 +9,18 @@
  * panel that reaches consensus_ready sits forever with no work item created
  * unless a human manually does it.
  *
- * Deliberately excludes any panel with metadata.self_improvement_id set —
- * those panels are exclusively owned by the self-improvement pipeline
- * (SelfImprovementAutoReviewScheduler / SelfImprovementService.
- * agentApproveIfReady / approveImprovement). projectPanelToBacklog() itself
- * has no such guard, so scanning ALL consensus_ready panels indiscriminately
- * would fast-track a self-improvement proposal still sitting at
- * 'needs_more_evidence' into a generic backlog work item — a shadow path
- * around that pipeline's own status tracking. This scheduler only ever
- * touches general panels created directly via POST /specialist-panels.
+ * Deliberately excludes any panel with metadata.self_improvement_id or
+ * metadata.memory_candidate_id set — those panels are exclusively owned by
+ * the self-improvement pipeline (SelfImprovementAutoReviewScheduler /
+ * SelfImprovementService.agentApproveIfReady / approveImprovement) and the
+ * memory-candidate review pipeline (MemoryCandidateReviewScheduler /
+ * MemoryCandidateService.promote) respectively. projectPanelToBacklog()
+ * itself has no such guard, so scanning ALL consensus_ready panels
+ * indiscriminately would fast-track one of those proposals/candidates still
+ * sitting at 'needs_more_evidence' into a generic backlog work item — a
+ * shadow path around that pipeline's own status tracking. This scheduler
+ * only ever touches general panels created directly via POST
+ * /specialist-panels.
  *
  * Default-off. Arm with:
  *   SPECIALIST_PANEL_BACKLOG_ENABLED=true
@@ -67,6 +70,7 @@ export class SpecialistPanelBacklogScheduler {
       panel.status === 'consensus_ready'
       && panel.consensus.decision !== 'blocked'
       && !panel.metadata.self_improvement_id
+      && !panel.metadata.memory_candidate_id
     );
     for (const panel of candidates) {
       try {

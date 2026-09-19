@@ -35,6 +35,7 @@ import { SelfHealingScheduler } from './services/self-healing-scheduler';
 import { SelfImprovementAutoReviewScheduler } from './services/self-improvement-auto-review-scheduler';
 import { FrontierExpertScheduler } from './services/frontier-expert-scheduler';
 import { SpecialistPanelBacklogScheduler } from './services/specialist-panel-backlog-scheduler';
+import { MemoryCandidateReviewScheduler } from './services/memory-candidate-review-scheduler';
 import { OpenMythosNightlyService } from './services/openmythos-nightly-service';
 import { CognitiveLoopClosureService } from './services/cognitive-loop-closure-service';
 import { MultiModelIntelligence } from './services/multi-model-intelligence';
@@ -289,6 +290,13 @@ async function main() {
   // panels into real work items, in-process (default-off, see service header)
   if (new SpecialistPanelBacklogScheduler(db).start()) {
     console.log('🗂️  Specialist panel backlog scheduler armed');
+  }
+
+  // Memory candidate review scheduler — real specialist-panel analysis for
+  // auto-promotion + a self-improvement evolution loop on the criteria,
+  // in-process (default-off, see service header)
+  if (new MemoryCandidateReviewScheduler(db).start()) {
+    console.log('🧬 Memory candidate review scheduler armed');
   }
 
   // API routes
