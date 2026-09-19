@@ -112,6 +112,7 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
 
 const VALID_IMPROVEMENT_STATUSES = new Set<ImprovementStatus>([
   'proposed', 'scheduled', 'executing', 'verified', 'evaluating', 'applied', 'rejected', 'no_change', 'regressed',
+  'needs_more_evidence',
 ]);
 
 function mapImprovementError(error: unknown): Error {

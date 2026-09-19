@@ -63,6 +63,14 @@ const selfImprovementColumns: ColumnSpec[] = [
   { name: 'updated_at', definition: "TEXT NOT NULL DEFAULT ''" },
 ];
 
+// Refinement loop: refined_at marks a parent once a refinement child exists for it;
+// refined_from_id marks a child as a refinement of that parent. Both nullable, both
+// checked before a refinement is attempted so a proposal is refined at most once.
+const selfImprovementRefinementColumns: ColumnSpec[] = [
+  { name: 'refined_at', definition: 'TEXT' },
+  { name: 'refined_from_id', definition: 'TEXT' },
+];
+
 const specialistReviewActorColumns: ColumnSpec[] = [
   { name: 'reviewer_actor', definition: 'TEXT' },
 ];
@@ -1186,6 +1194,8 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       evidence_refs_json TEXT NOT NULL DEFAULT '[]',
       panel_id TEXT,
       approved_by TEXT,
+      refined_at TEXT,
+      refined_from_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT ''
     );
@@ -1203,6 +1213,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // pre-existing self_improvements table (no fingerprint) otherwise breaks
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
+  addMissingColumns(db, 'self_improvements', selfImprovementRefinementColumns);
   // P1c: collapse duplicate fingerprints (keep newest row per fingerprint) so UNIQUE never aborts.
   db.exec(`
     DELETE FROM self_improvements

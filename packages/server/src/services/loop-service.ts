@@ -27,6 +27,7 @@ import { WorkerLeaseRepo } from './loop-worker-lease-repo';
 import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-service';
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
+import { SelfImprovementService } from './self-improvement-service';
 import type {
   LoopName,
   WorkerRole,
@@ -1019,6 +1020,29 @@ export class LoopService {
       deterministic_checks: checks,
       checks_completed_at: new Date().toISOString(),
     });
+
+    // Feed real build/test failures into the self-improvement pipeline.
+    // generateFromBuildErrors() existed but was never called anywhere in
+    // production — found 2026-09-20 alongside the discovery that every one
+    // of 357 self-improvement proposals came from vague reflection text.
+    // A real compiler/test error is exactly the concrete, quotable evidence
+    // that pipeline's reviewer gate rewards; this is a side effect of a
+    // check failure, not the method's purpose, so it's never allowed to
+    // affect the actual deterministic-checks result.
+    if (failed) {
+      try {
+        const summaries = checks
+          .filter((check) => check.status === 'fail')
+          .map((check) => {
+            const stderrPath = check.stderr_path as string;
+            const stderrTail = fs.existsSync(stderrPath) ? fs.readFileSync(stderrPath, 'utf8').slice(-1000) : '';
+            return `${check.name} failed (exit ${check.exit_status}) for run ${run.id}:\n${stderrTail}`.trim();
+          });
+        new SelfImprovementService(this.db).generateFromBuildErrors(summaries);
+      } catch {
+        // Never let self-improvement bookkeeping break the actual checks flow.
+      }
+    }
 
     this.db.prepare(`
       UPDATE loop_runs

@@ -1944,12 +1944,14 @@ export type ImprovementProposal = {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback';
-  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement';
+  status: 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence';
   priority: number;
   evidenceRefs: string[];
   panelId: string | null;
   approvedBy: string | null;
+  refinedAt: string | null;
+  refinedFromId: string | null;
   createdAt: string;
   updatedAt: string;
 };
