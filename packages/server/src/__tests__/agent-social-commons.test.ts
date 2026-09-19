@@ -53,7 +53,7 @@ describe('agent commons read-model', () => {
     const reply = {
       answer: 'Let peers compare retrieval failures.', uncertainty: 'No live measurements yet.',
       falsifiable_next_step: 'Compare ten known queries against the baseline.', creative_alternative: 'Try a blinded query set.',
-      stop_condition: 'Stop if recall regresses.', runtime: 'opencode',
+      stop_condition: 'Stop if recall regresses.', runtime: 'opencode', model_id: 'model-b',
       interest: 'Could peers identify missing retrieval evidence?', ecosystem_component: 'DjimitKBWiki',
       proposed_improvement: 'Add a retrieval evidence comparison view.', delivery_lease_token: question.deliveryLeaseToken,
     };
@@ -89,7 +89,7 @@ describe('agent commons read-model', () => {
     const round = comms.socialize(0);
     const reply = { answer: 'An unverified idea', uncertainty: 'Needs evidence', falsifiable_next_step: 'Compare with baseline',
       creative_alternative: 'Blind comparison', stop_condition: 'Any regression', ecosystem_component: 'Djimitflo',
-      proposed_improvement: 'Add a peer comparison view' };
+      proposed_improvement: 'Add a peer comparison view', runtime: 'test-runtime', model_id: 'test-model' };
     for (const agent of round.participants) {
       const [question] = comms.receiveSocial(agent, 1).filter(m => m.payload.action === 'social.question');
       comms.respondSocial(agent, question.id, { ...reply, delivery_lease_token: question.deliveryLeaseToken });
@@ -118,7 +118,7 @@ describe('agent commons read-model', () => {
 
   it('seeks out peers that have not met before the same pair talks again', () => {
     db.prepare("INSERT INTO agents (id, name, status, capabilities_json) VALUES ('agent-c', 'Agent C', 'active', '[]')").run();
-    comms.heartbeat('agent-c', 'ollama');
+    comms.heartbeat('agent-c', 'ollama', 'test-model');
     expect(comms.socialize(0).participants).toEqual(['agent-a', 'agent-b']);
     const second = comms.socialize(0);
     expect(second.status).toBe('started');
@@ -128,7 +128,7 @@ describe('agent commons read-model', () => {
   it('varies the topic: open gap first, then an unchallenged lesson, then rotating curiosity seeds', () => {
     const answer = (agentId: string, message: { id: string; deliveryLeaseToken?: string }) => comms.respondSocial(agentId, message.id, {
       answer: 'Lesson: cite before you claim.', uncertainty: 'u', falsifiable_next_step: 'f', creative_alternative: 'c', stop_condition: 's',
-      delivery_lease_token: message.deliveryLeaseToken,
+      runtime: 'test-runtime', model_id: 'test-model', delivery_lease_token: message.deliveryLeaseToken,
     });
     const first = comms.socialize(0);
     expect(first.topic).toBe('cross-agent learning in the Djimit ecosystem');
