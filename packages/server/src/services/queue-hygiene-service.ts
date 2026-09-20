@@ -29,13 +29,15 @@ export class QueueHygieneService {
 
   start(intervalMs = Number(process.env.QUEUE_HYGIENE_INTERVAL_MS) || 6 * 3600_000): void {
     if (this.timer || !queueHygieneEnabled()) return;
-    this.timer = setInterval(() => {
+    const run = () => {
       try {
         const r = this.sweep();
         if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated}`);
       } catch (err) { console.warn('Queue hygiene sweep failed:', err instanceof Error ? err.message : String(err)); }
-    }, intervalMs);
+    };
+    this.timer = setInterval(run, intervalMs);
     this.timer.unref?.();
+    setTimeout(run, 60_000).unref?.(); // first sweep shortly after boot instead of waiting a full interval
   }
 
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
