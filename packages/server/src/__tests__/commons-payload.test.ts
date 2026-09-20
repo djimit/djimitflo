@@ -21,7 +21,7 @@ describe('listSocialCommons payload', () => {
     expect(commons.total_threads).toBe(3);
     expect(commons.threads).toHaveLength(2);
     const long = commons.threads.flatMap((t) => t.messages).find((m) => m.text.length > 100)!;
-    expect(long.text.length).toBeLessThanOrEqual(501);
+    expect(long.text.length).toBeLessThanOrEqual(301);
     expect(long.text.endsWith('…')).toBe(true);
   });
 });

@@ -304,7 +304,7 @@ export class AgentCommunicationService {
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
 
-    const clip = (value: string, max = 500) => (value.length > max ? `${value.slice(0, max)}…` : value);
+    const clip = (value: string, max = 300) => (value.length > max ? `${value.slice(0, max)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
     const threads = new Map<string, SocialThread>();
     for (const row of rows) {
@@ -328,7 +328,7 @@ export class AgentCommunicationService {
       thread.messages.push({
         id: message.id, from: message.from, to: message.to, action: message.payload.action as SocialMessage['action'],
         timestamp: message.timestamp, status: message.status, reply_to: this.string(message.payload.reply_to) || null,
-        text: clip(this.string(message.payload.context), this.string(params.answer) ? 200 : 500), evidence: this.stringArray(message.payload.evidence),
+        text: clip(this.string(message.payload.context), this.string(params.answer) ? 120 : 300), evidence: this.stringArray(message.payload.evidence),
         answer: clip(this.string(params.answer)) || null, uncertainty: clip(this.string(params.uncertainty)) || null,
         falsifiable_next_step: clip(this.string(params.falsifiable_next_step)) || null,
         creative_alternative: clip(this.string(params.creative_alternative)) || null,
