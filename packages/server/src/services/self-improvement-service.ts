@@ -1,8 +1,9 @@
+import { assessGrounding, groundingRequired, GROUNDING_REQUIRED_SOURCES, type Grounding } from './proposal-grounding';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
 
-export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence';
+export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived';
 
 export interface ImprovementProposal {
   id: string;
@@ -35,6 +36,8 @@ type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' 
   evidenceRefs?: string[];
   /** When set, links this new proposal to the parked proposal it refines and flags that parent as refined. */
   refinedFromId?: string;
+  /** Explicit anchor (target/test/metric); see proposal-grounding.ts. */
+  grounding?: Partial<Grounding>;
 };
 
 export class SelfImprovementService {
@@ -223,7 +226,7 @@ export class SelfImprovementService {
       .update(`${input.source}\0${input.title.trim().toLowerCase()}\0${input.description.trim().toLowerCase()}`)
       .digest('hex');
     const duplicate = this.db.prepare(
-      "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating') LIMIT 1"
+      "SELECT id FROM self_improvements WHERE fingerprint = ? AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating', 'needs_grounding') LIMIT 1"
     ).get(fingerprint) as { id: string } | undefined;
     if (duplicate) {
       if (!includeExisting) return null;
@@ -252,6 +255,17 @@ export class SelfImprovementService {
     const id = randomUUID();
     const now = new Date().toISOString();
     const evidenceRefs = Array.from(new Set(input.evidenceRefs || []));
+    const grounding = assessGrounding({ description: input.description, rationale: input.rationale, evidenceRefs, grounding: input.grounding });
+    if (groundingRequired() && GROUNDING_REQUIRED_SOURCES.has(input.source) && !grounding) {
+      // Ungrounded free text never reaches the panel: park it visibly instead of spending reviews on it.
+      this.db.prepare(`
+        INSERT INTO self_improvements (
+          id, type, title, description, rationale, source, status, priority,
+          fingerprint, evidence_refs_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'needs_grounding', ?, ?, ?, ?, ?)
+      `).run(id, input.type, input.title, input.description, input.rationale, input.source, input.priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
+      return this.getImprovement(id);
+    }
     const riskClass = input.type === 'security' ? 'high' : 'low';
     const specialistIds = input.type === 'security'
       ? ['systems_architect', 'security_reviewer']
@@ -270,10 +284,10 @@ export class SelfImprovementService {
         question: `Should self-improvement proposal ${id} be authorized as a goal?`,
         risk_class: riskClass,
         specialist_ids: specialistIds,
-        context: { proposal_id: id, description: input.description, rationale: input.rationale, evidence_refs: evidenceRefs },
+        context: { proposal_id: id, description: input.description, rationale: input.rationale, evidence_refs: evidenceRefs, ...(grounding ? { grounding } : {}) },
         metadata: { self_improvement_id: id },
       });
-      this.db.prepare('UPDATE self_improvements SET panel_id = ? WHERE id = ?').run(panel.id, id);
+      this.db.prepare('UPDATE self_improvements SET panel_id = ?, grounding_json = ? WHERE id = ?').run(panel.id, grounding ? JSON.stringify(grounding) : null, id);
       if (input.refinedFromId) {
         this.db.prepare('UPDATE self_improvements SET refined_from_id = ? WHERE id = ?').run(input.refinedFromId, id);
         this.db.prepare('UPDATE self_improvements SET refined_at = ?, updated_at = ? WHERE id = ?').run(now, now, input.refinedFromId);
@@ -337,7 +351,7 @@ export class SelfImprovementService {
   private adjustPriorityForHistory(source: string, basePriority: number): number {
     const rows = this.db.prepare(`
       SELECT status, COUNT(*) as n FROM (
-        SELECT status FROM self_improvements WHERE source = ? AND status != 'proposed'
+        SELECT status FROM self_improvements WHERE source = ? AND status NOT IN ('proposed', 'archived', 'needs_grounding')
         ORDER BY created_at DESC LIMIT 20
       ) GROUP BY status
     `).all(source) as Array<{ status: string; n: number }>;

@@ -106,7 +106,8 @@ export class CuriosityService {
     // already prevents a still-open gap re-detected on the next cycle from
     // creating a duplicate proposal.
     try {
-      new SelfImprovementService(this.db).generateFromGaps(gaps);
+      // Coverage gaps come from a count heuristic (coverage UNKNOWN): not an actionable finding, keep them as claims only.
+      new SelfImprovementService(this.db).generateFromGaps(gaps.filter(gap => gap.type !== 'coverage'));
     } catch { /* best-effort */ }
 
     return { gapsFound: gaps.length, published, gaps };
