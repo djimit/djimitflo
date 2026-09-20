@@ -65,6 +65,8 @@ export interface SchedulerStatus {
   failed_today: number;
   budget: SchedulerBudget;
   paused: boolean;
+  /** Newest failed jobs with the reason stored on their task (29 failed silently on a missing corpus file). */
+  recent_failures: Array<{ full_name: string; error: string | null; finished_at: string | null }>;
 }
 
 export class RepoExplainerScheduler {
@@ -379,6 +381,11 @@ export class RepoExplainerScheduler {
       failed_today: Number(counts.failed_today ?? 0),
       budget: this.getBudget(now),
       paused: this.isPaused(),
+      recent_failures: this.db.prepare(`
+        SELECT REPLACE(t.remote_url, 'https://github.com/', '') AS full_name, t.error_message AS error, j.finished_at AS finished_at
+        FROM explainer_jobs j JOIN explainer_tasks t ON t.id = j.task_id
+        WHERE j.status = 'failed' ORDER BY j.finished_at DESC LIMIT 5
+      `).all() as SchedulerStatus['recent_failures'],
     };
   }
 

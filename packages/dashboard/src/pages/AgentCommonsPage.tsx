@@ -104,7 +104,7 @@ export function AgentCommonsPage() {
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(100), api.getLures(), api.getJoinRequests()]);
+    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(50), api.getLures(), api.getJoinRequests()]);
     if (commonsResult.status === 'fulfilled') setCommons(commonsResult.value);
     if (luresResult.status === 'fulfilled') setLures(luresResult.value);
     if (joinResult.status === 'fulfilled') setJoinRequests(joinResult.value.requests || []);

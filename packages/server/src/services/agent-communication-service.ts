@@ -282,16 +282,27 @@ export class AgentCommunicationService {
       };
     });
 
+    // Only load the messages of the newest `limit` threads (this used to read every social message
+    // ever sent and slice afterwards: ~1.5 MB per page load in production).
+    const threadLimit = Math.max(1, limit);
     const rows = this.db.prepare(`
+      WITH recent AS (
+        SELECT json_extract(payload_json, '$.thread_id') AS tid, MAX(timestamp) AS last_ts
+        FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text'
+        GROUP BY tid ORDER BY last_ts DESC LIMIT ?
+      )
       SELECT * FROM agent_messages
       WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
-        AND json_type(payload_json, '$.thread_id') = 'text'
+        AND json_extract(payload_json, '$.thread_id') IN (SELECT tid FROM recent)
       ORDER BY timestamp ASC
-    `).all() as Array<Record<string, unknown>>;
+    `).all(threadLimit) as Array<Record<string, unknown>>;
     const reflections = new Map((this.db.prepare(`
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
 
+    const clip = (value: string) => (value.length > 1_200 ? `${value.slice(0, 1_200)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
     const threads = new Map<string, SocialThread>();
     for (const row of rows) {
@@ -315,15 +326,15 @@ export class AgentCommunicationService {
       thread.messages.push({
         id: message.id, from: message.from, to: message.to, action: message.payload.action as SocialMessage['action'],
         timestamp: message.timestamp, status: message.status, reply_to: this.string(message.payload.reply_to) || null,
-        text: this.string(message.payload.context), evidence: this.stringArray(message.payload.evidence),
-        answer: this.string(params.answer) || null, uncertainty: this.string(params.uncertainty) || null,
-        falsifiable_next_step: this.string(params.falsifiable_next_step) || null,
-        creative_alternative: this.string(params.creative_alternative) || null,
-        stop_condition: this.string(params.stop_condition) || null,
+        text: clip(this.string(message.payload.context)), evidence: this.stringArray(message.payload.evidence),
+        answer: clip(this.string(params.answer)) || null, uncertainty: clip(this.string(params.uncertainty)) || null,
+        falsifiable_next_step: clip(this.string(params.falsifiable_next_step)) || null,
+        creative_alternative: clip(this.string(params.creative_alternative)) || null,
+        stop_condition: clip(this.string(params.stop_condition)) || null,
         runtime: this.string(params.runtime) || null, model_id: this.string(params.model_id) || null,
         reflection_id: reflection?.id || null, reflection_status: reflection?.status || null,
         interest: this.string(params.interest) || null, ecosystem_component: this.string(params.ecosystem_component) || null,
-        proposed_improvement: this.string(params.proposed_improvement) || null, improvement_id: this.string(params.improvement_id) || null,
+        proposed_improvement: clip(this.string(params.proposed_improvement)) || null, improvement_id: this.string(params.improvement_id) || null,
         improvement_status: improvement?.status || null, runtime_run_id: this.string(params.runtime_run_id) || null,
         provenance_status: this.string(params.provenance_status) || null,
       });
