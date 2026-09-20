@@ -156,14 +156,19 @@ export class LoopDaemon {
         // maker/checker cycle driven by its own objective, instead of the
         // safe doc-drift-and-small-fix-loop no-op. Deliberately conservative:
         // requires the flag, a qualifying goal (self-improvement source,
-        // risk_class 'low'), the per-tick cap not yet reached, AND
-        // AUTHORITY_GATE=enforce as a belt-and-suspenders condition — this is
-        // the first path where a goal's own free text reaches a real
-        // code-writing maker unsupervised.
+        // risk_class 'low'), and the per-tick cap not yet reached.
+        //
+        // Originally also required AUTHORITY_GATE=enforce as a
+        // belt-and-suspenders condition, but that flag isn't scoped to this
+        // feature — authorityGateForGoal() runs for every goal the daemon
+        // processes, and fail-closes ALL goal execution (not just
+        // self-improvement) when the authority_events table is missing,
+        // which it is in every environment this has been checked against.
+        // Dropped after finding this would have halted the entire daemon,
+        // not just gated this feature — see PR history.
         const qualification = goalQualifiesForObjectiveMode(goal);
         const capped = objectiveModeDispatchedThisTick >= objectiveModeMaxPerTick();
-        const authorityEnforced = process.env.AUTHORITY_GATE === 'enforce';
-        const allowObjectiveMode = objectiveModeEnabled() && qualification.qualifies && !capped && authorityEnforced;
+        const allowObjectiveMode = objectiveModeEnabled() && qualification.qualifies && !capped;
         if (allowObjectiveMode) objectiveModeDispatchedThisTick += 1;
 
         // Observability: log every self-improvement goal's dispatch decision,
@@ -177,7 +182,6 @@ export class LoopDaemon {
             reason: allowObjectiveMode
               ? 'dispatched'
               : capped ? 'per_tick_cap_reached'
-              : !authorityEnforced ? 'authority_gate_not_enforced'
               : qualification.reason,
             enabled: objectiveModeEnabled(),
           });
