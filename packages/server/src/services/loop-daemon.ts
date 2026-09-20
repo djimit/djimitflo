@@ -271,7 +271,9 @@ export class LoopDaemon {
       // driven by its own objective instead of the safe doc-drift no-op —
       // see objective-loop-gate.ts for the dispatch decision made in tick().
       const run = opts.allowObjectiveMode
-        ? this.loops.startObjectiveLoop({ goal_id: goal.id })
+        // Objective mode needs a real git checkout to create worktrees; process.cwd() is /app in the
+        // production image (not a repository). LOOP_DAEMON_REPOSITORY_PATH points at the checkout.
+        ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(process.env.LOOP_DAEMON_REPOSITORY_PATH ? { repository_path: process.env.LOOP_DAEMON_REPOSITORY_PATH } : {}) })
         : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
 
