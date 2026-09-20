@@ -4,6 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopDaemon } from '../services/loop-daemon';
 import { GoalService } from '../services/goal-service';
+import { CognitiveLoopClosureService } from '../services/cognitive-loop-closure-service';
 import type { LoopService } from '../services/loop-service';
 
 /**
@@ -42,14 +43,20 @@ describe('LoopDaemon failure logging', () => {
     };
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
+    const cognitive = new CognitiveLoopClosureService(db);
+    cognitive.start();
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await daemon.tick();
     daemon.stop();
+    cognitive.stop();
 
     const row = db.prepare("SELECT level, message FROM loop_events WHERE loop_run_id = 'run-1' AND event_type = 'goal_failed'").get() as { level: string; message: string } | undefined;
     expect(row?.level).toBe('error');
     expect(row?.message).toContain('boom: planning exploded');
     expect(errSpy.mock.calls.some(c => String(c[0]).includes('boom: planning exploded'))).toBe(true);
     expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
+    // The failed run also reaches the cognitive layer as an episode (it used to stay at 0).
+    const episode = db.prepare("SELECT outcome, goal_type FROM cognitive_episodes WHERE loop_run_id = 'run-1'").get() as { outcome: string; goal_type: string } | undefined;
+    expect(episode).toEqual({ outcome: 'failure', goal_type: 'doc_drift' });
   });
 });
