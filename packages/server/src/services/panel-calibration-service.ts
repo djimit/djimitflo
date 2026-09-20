@@ -5,7 +5,7 @@ import type { Database } from 'better-sqlite3';
  *
  * Each submitted support/oppose review is a probability claim that the proposal will succeed
  * (support -> confidence, oppose -> 1 - confidence). Success = the proposal reached
- * verified/evaluating/applied; failure = no_change/regressed/rejected. Parked/in-flight proposals
+ * verified/evaluating/applied; failure = regressed/rejected. Parked/in-flight proposals
  * have no outcome yet and are excluded. Brier = mean squared error (0 perfect, 0.25 = coin flip).
  * Only proposals that reached a goal have outcomes, so n is small by construction: report it.
  */
@@ -20,7 +20,9 @@ export interface SpecialistCalibration {
 }
 
 const SUCCESS = ['verified', 'evaluating', 'applied'];
-const FAILURE = ['no_change', 'regressed', 'rejected'];
+// no_change is deliberately unlabeled: 13 production proposals ended there only because the old doc-drift
+// dispatch never looked at their objective, which says nothing about the specialists' judgement.
+const FAILURE = ['regressed', 'rejected'];
 
 export class PanelCalibrationService {
   constructor(private readonly db: Database) {}

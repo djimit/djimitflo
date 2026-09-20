@@ -107,7 +107,7 @@ describe('G71: Self Improvement', () => {
     });
 
     it('lowers priority for a source that mostly parks or produces no change', () => {
-      seedResolvedHistory('reflection', [...Array(16).fill('needs_more_evidence'), ...Array(4).fill('no_change')]);
+      seedResolvedHistory('reflection', [...Array(16).fill('needs_more_evidence'), ...Array(4).fill('regressed')]);
       // successes 0, failures 4, parked 16 -> Beta(1, 13): mean 1/14
       expect(priorityFor()).toBeCloseTo(0.9 * (0.5 + 1 / 14), 5);
     });

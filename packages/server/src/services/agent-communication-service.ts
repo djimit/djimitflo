@@ -129,6 +129,8 @@ export interface CommonsAgentActivity {
 }
 
 export interface SocialCommons {
+  /** Threads that exist in total; `threads` only carries the newest ones. */
+  total_threads?: number;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
@@ -302,7 +304,7 @@ export class AgentCommunicationService {
       SELECT id, source_ref, status FROM reflection_candidates WHERE source_type = 'trace' AND source_ref LIKE 'message:%'
     `).all() as Array<{ id: string; source_ref: string; status: string }>).map((row) => [row.source_ref, row]));
 
-    const clip = (value: string) => (value.length > 1_200 ? `${value.slice(0, 1_200)}…` : value);
+    const clip = (value: string, max = 500) => (value.length > max ? `${value.slice(0, max)}…` : value);
     const stageRank = { asked: 0, responding: 1, learned: 2 } as const;
     const threads = new Map<string, SocialThread>();
     for (const row of rows) {
@@ -326,7 +328,7 @@ export class AgentCommunicationService {
       thread.messages.push({
         id: message.id, from: message.from, to: message.to, action: message.payload.action as SocialMessage['action'],
         timestamp: message.timestamp, status: message.status, reply_to: this.string(message.payload.reply_to) || null,
-        text: clip(this.string(message.payload.context)), evidence: this.stringArray(message.payload.evidence),
+        text: clip(this.string(message.payload.context), this.string(params.answer) ? 200 : 500), evidence: this.stringArray(message.payload.evidence),
         answer: clip(this.string(params.answer)) || null, uncertainty: clip(this.string(params.uncertainty)) || null,
         falsifiable_next_step: clip(this.string(params.falsifiable_next_step)) || null,
         creative_alternative: clip(this.string(params.creative_alternative)) || null,
@@ -340,8 +342,14 @@ export class AgentCommunicationService {
       });
       threads.set(threadId, thread);
     }
+    const totalThreads = (this.db.prepare(`
+      SELECT COUNT(DISTINCT json_extract(payload_json, '$.thread_id')) AS n FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+        AND json_type(payload_json, '$.thread_id') = 'text'
+    `).get() as { n: number }).n;
     return {
       agents,
+      total_threads: totalThreads,
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };

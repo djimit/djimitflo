@@ -740,7 +740,7 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
-export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[] };
+export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
 export type ExpertLifecycleState = 'DISCOVERED' | 'IDENTITY_RESOLVED' | 'EVIDENCE_COLLECTED' | 'CAPABILITY_INFERRED' | 'CHECKED' | 'APPROVED' | 'ACTIVE' | 'AMBIGUOUS' | 'INSUFFICIENT_EVIDENCE' | 'CONTRADICTED' | 'STALE' | 'REJECTED' | 'REVOKED';

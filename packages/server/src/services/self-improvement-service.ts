@@ -350,18 +350,17 @@ export class SelfImprovementService {
    */
   private adjustPriorityForHistory(source: string, basePriority: number): number {
     // Thompson sampling over the source's recent outcomes: success = the proposal survived
-    // verification, failure = it produced nothing/regressed/was rejected, parked counts half a
-    // failure. A struggling source is de-prioritised, an unproven one keeps exploring.
+    // verification, failure = it regressed/was rejected, parked counts half a failure (no_change is unlabeled). A struggling source is de-prioritised, an unproven one keeps exploring.
     const rows = this.db.prepare(`
       SELECT status, COUNT(*) as n FROM (
         SELECT status FROM self_improvements
-        WHERE source = ? AND status IN ('verified', 'evaluating', 'applied', 'no_change', 'regressed', 'rejected', 'needs_more_evidence')
+        WHERE source = ? AND status IN ('verified', 'evaluating', 'applied', 'regressed', 'rejected', 'needs_more_evidence')
         ORDER BY created_at DESC LIMIT 50
       ) GROUP BY status
     `).all(source) as Array<{ status: string; n: number }>;
     const count = (statuses: string[]) => rows.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row.n, 0);
     const successes = count(['verified', 'evaluating', 'applied']);
-    const failures = count(['no_change', 'regressed', 'rejected']);
+    const failures = count(['regressed', 'rejected']); // no_change is ambiguous (no-op scanner era), not evidence against a source
     const parked = count(['needs_more_evidence']);
     if (successes + failures + parked < 5) return basePriority; // not enough resolved history to judge yet
     const theta = this.sampleBeta(1 + successes, 1 + failures + 0.5 * parked);
