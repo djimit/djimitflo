@@ -308,9 +308,14 @@ export class LoopDaemon {
       // 4. Continue the loop — creates maker+checker leases (prepared status).
       // G28+G33: the planner selects the runtime per finding based on per-runtime
       // competence (not hardcoded 'codex'). The plan is produced inside continueLoopRun.
+      // A maker runtime is never inferred from a recommendation (loop-lifecycle-service): without an explicit
+      // one the lease is 'manual' and every daemon goal died with MANUAL_MAKER_REQUIRES_HUMAN (seen in the
+      // 2026-09-21 loop proof). LOOP_DAEMON_MAKER_RUNTIME is the operator's explicit choice, objective mode only.
+      const makerRuntime = opts.allowObjectiveMode ? (process.env.LOOP_DAEMON_MAKER_RUNTIME as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock' | undefined) : undefined;
       const prepared = this.loops.continueLoopRun(run.id, {
         max_assignments: 1,
         max_maker_workers: 1,
+        ...(makerRuntime ? { runtime: makerRuntime } : {}),
       });
 
       // 5. Find the prepared maker lease and execute it.

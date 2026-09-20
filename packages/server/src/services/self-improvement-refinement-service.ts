@@ -30,6 +30,9 @@ export interface RefinedProposalDraft {
   target?: string;
   acceptanceTest?: string;
   baselineMetric?: string;
+  runtimeCommand?: string;
+  artifactPath?: string;
+  budget?: string;
 }
 
 function defaultOllamaUrl(): string {
@@ -101,15 +104,16 @@ export class SelfImprovementRefinementService {
       '',
       'Produce ONE refined follow-up proposal that concretely addresses the gaps above, grounded only in the material given.',
       'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
-      '{"title": "...", "description": "...", "rationale": "...", "target": "...", "acceptance_test": "...", "baseline_metric": "..."}',
-      'target = the repo path or component this change belongs to, acceptance_test = one check that would prove it worked, baseline_metric = what is measured today.',
-      'Use null for any of the three that the given material does not support — never invent a file, test or metric.',
+      '{"title": "...", "description": "...", "rationale": "...", "target": "...", "acceptance_test": "...", "baseline_metric": "...", "runtime_command": "...", "artifact_path": "...", "budget": "..."}',
+      'target = the repo path or component this change belongs to, acceptance_test = one check that would prove it worked, baseline_metric = what is measured today,',
+      'runtime_command = the exact command that runs the check (with working directory), artifact_path = where its output/diff will be stored, budget = wall-clock/token limit for the worker.',
+      'Use null for any of these that the given material does not support — never invent a file, test or metric.',
     ].join('\n');
   }
 
   private parseResponse(raw: string): RefinedProposalDraft | null {
     const jsonText = this.extractJson(raw);
-    let candidate: (Partial<RefinedProposalDraft> & { acceptance_test?: unknown; baseline_metric?: unknown; target?: unknown }) | null = null;
+    let candidate: (Partial<RefinedProposalDraft> & { acceptance_test?: unknown; baseline_metric?: unknown; target?: unknown; runtime_command?: unknown; artifact_path?: unknown; budget?: unknown }) | null = null;
     try {
       candidate = jsonText ? JSON.parse(jsonText) : null;
     } catch {
@@ -122,7 +126,7 @@ export class SelfImprovementRefinementService {
     const rationale = typeof candidate.rationale === 'string' ? candidate.rationale.trim() : '';
     if (!title || !description || !rationale) return null;
     const optional = (value: unknown) => (typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'null' ? value.trim().slice(0, 300) : undefined);
-    return { title, description, rationale, target: optional(candidate.target), acceptanceTest: optional(candidate.acceptance_test), baselineMetric: optional(candidate.baseline_metric) };
+    return { title, description, rationale, target: optional(candidate.target), acceptanceTest: optional(candidate.acceptance_test), baselineMetric: optional(candidate.baseline_metric), runtimeCommand: optional(candidate.runtime_command), artifactPath: optional(candidate.artifact_path), budget: optional(candidate.budget) };
   }
 
   private extractJson(raw: string): string | null {
