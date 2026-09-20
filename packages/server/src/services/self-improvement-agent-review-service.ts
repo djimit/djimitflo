@@ -70,9 +70,12 @@ async function callOllama(prompt: string): Promise<string> {
   return data.response || '';
 }
 
+const MAX_GENERATION_ATTEMPTS = 3;
+
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
   private readonly callModel: ModelCaller;
+  private readonly generationFailures = new Map<string, number>();
 
   constructor(db: Database, callModel: ModelCaller = callOllama) {
     this.panels = new SpecialistPanelService(db);
@@ -86,7 +89,21 @@ export class SelfImprovementAgentReviewService {
     const missing = panel.panel.filter((profile) => !reviewed.has(profile.id));
 
     for (const profile of missing) {
-      const parsed = await this.reviewOne(panel, profile);
+      const outcome = await this.reviewOne(panel, profile);
+      if ('error' in outcome) {
+        // A failed model call is not a judgement. It used to be stored as a confidence-0 needs_evidence review
+        // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
+        // for good. Leave the seat empty so the next tick retries; only after MAX_GENERATION_ATTEMPTS in a row
+        // fall back to the recorded failure so a permanently broken proposal cannot spin forever.
+        const key = `${panel.id}:${profile.id}`;
+        const attempts = (this.generationFailures.get(key) ?? 0) + 1;
+        this.generationFailures.set(key, attempts);
+        if (attempts < MAX_GENERATION_ATTEMPTS) {
+          console.warn(`self-improvement review for ${profile.id} failed (attempt ${attempts}/${MAX_GENERATION_ATTEMPTS}), will retry: ${outcome.error}`);
+          continue;
+        }
+      }
+      const parsed = 'error' in outcome ? this.failureReview(outcome.error) : outcome;
       panel = this.panels.submitReview(
         panel.id,
         { specialist_id: profile.id, ...parsed },
@@ -96,19 +113,23 @@ export class SelfImprovementAgentReviewService {
     return panel;
   }
 
-  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile): Promise<ParsedReview> {
+  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile): Promise<ParsedReview | { error: string }> {
     try {
       const raw = await this.callModel(this.buildPrompt(panel, profile));
       return this.parseResponse(raw);
     } catch (err) {
-      return {
-        stance: 'needs_evidence',
-        confidence: 0,
-        findings: [`Review generation failed: ${err instanceof Error ? err.message : String(err)}`],
-        recommendations: ['Retry the automated review, or have a human complete this specialist role.'],
-        evidence_refs: [FALLBACK_EVIDENCE],
-      };
+      return { error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  private failureReview(error: string): ParsedReview {
+    return {
+      stance: 'needs_evidence',
+      confidence: 0,
+      findings: [`Review generation failed: ${error}`],
+      recommendations: ['Retry the automated review, or have a human complete this specialist role.'],
+      evidence_refs: [FALLBACK_EVIDENCE],
+    };
   }
 
   private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile): string {
