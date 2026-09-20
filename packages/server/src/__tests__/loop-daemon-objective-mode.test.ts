@@ -51,7 +51,7 @@ describe('LoopDaemon objective-mode dispatch', () => {
       pruneOrphanedWorktrees: vi.fn(),
     };
 
-    for (const key of ['SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK', 'AUTHORITY_GATE']) {
+    for (const key of ['SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK', 'AUTHORITY_GATE', 'LOOP_DAEMON_REPOSITORY_PATH']) {
       prevEnv[key] = process.env[key];
       delete process.env[key];
     }
@@ -95,6 +95,16 @@ describe('LoopDaemon objective-mode dispatch', () => {
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
     expect(stubLoops.startObjectiveLoop).toHaveBeenCalledWith({ goal_id: goal.id });
+    expect(stubLoops.startDocDriftAndSmallFixLoop).not.toHaveBeenCalled();
+  });
+
+  it('passes LOOP_DAEMON_REPOSITORY_PATH to objective mode only (doc-drift keeps its default)', async () => {
+    const goal = seedQualifyingGoal();
+    process.env.SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED = 'true';
+    process.env.LOOP_DAEMON_REPOSITORY_PATH = '/workspace/djimitflo';
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.startObjectiveLoop).toHaveBeenCalledWith({ goal_id: goal.id, repository_path: '/workspace/djimitflo' });
     expect(stubLoops.startDocDriftAndSmallFixLoop).not.toHaveBeenCalled();
   });
 
