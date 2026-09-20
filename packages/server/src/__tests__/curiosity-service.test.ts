@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { CuriosityService } from '../services/curiosity-service';
 import { SwarmIntelligenceService } from '../services/swarm-intelligence-service';
+import { SelfImprovementService } from '../services/self-improvement-service';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 
@@ -179,5 +180,41 @@ describe('G41: Curiosity Service', () => {
     curiosity.start();
     curiosity.stop();
     expect(true).toBe(true);
+  });
+
+  describe('feeding detected gaps into the reviewed self-improvement pipeline', () => {
+    // Found 2026-09-21: generateFromGaps() existed, tested, unused since
+    // before this session — scanForGaps()'s output only ever reached
+    // swarm_claims, never a place that could turn a gap into reviewed work.
+    const improvements = () => new SelfImprovementService(db);
+
+    it('creates a real self-improvement proposal from a detected gap', async () => {
+      claim('maker'); claim('checker');
+      const report = await curiosity.scanForGaps();
+      expect(report.gapsFound).toBeGreaterThan(0);
+      const proposals = improvements().listImprovements('proposed');
+      expect(proposals.length).toBeGreaterThan(0);
+      expect(proposals[0].source).toBe('gap_analysis');
+    });
+
+    it('does not create a duplicate proposal when the same still-open gap is re-detected on a later scan', async () => {
+      claim('maker'); claim('checker');
+      await curiosity.scanForGaps();
+      const afterFirst = improvements().listImprovements('proposed').length;
+      await curiosity.scanForGaps(); // same underlying claims, same gap, re-detected
+      expect(improvements().listImprovements('proposed').length).toBe(afterFirst);
+    });
+
+    it('still completes and returns its report even if proposal generation throws', async () => {
+      const spy = vi.spyOn(SelfImprovementService.prototype, 'generateFromGaps').mockImplementation(() => { throw new Error('simulated failure'); });
+      try {
+        claim('maker'); claim('checker');
+        const report = await curiosity.scanForGaps();
+        expect(report.gapsFound).toBeGreaterThan(0);
+        expect(report.published).toBeGreaterThan(0);
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });

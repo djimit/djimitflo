@@ -100,6 +100,32 @@ export class SelfImprovementService {
     });
   }
 
+  /**
+   * Routes security-scan findings through the same specialist-panel review
+   * gate every other self-improvement proposal gets. Before this,
+   * AutonomousGoalGenerator.generateFromSecurityFindings() created goals
+   * directly at risk_class:'high', fully autonomous, with no review at all —
+   * the one category most needing scrutiny skipped it entirely. Mirrors
+   * generateFromBuildErrors() exactly; createProposal()'s existing
+   * type==='security' handling already forces risk_class:'high' and
+   * specialist_ids:['systems_architect','security_reviewer'] — no new
+   * review logic needed.
+   */
+  generateFromSecurityFindings(findings: string[]): ImprovementProposal[] {
+    return findings.slice(0, 5).flatMap((finding) => {
+      const proposal = this.createProposal({
+        type: 'security',
+        title: `Security: ${finding.slice(0, 60)}`,
+        description: finding,
+        rationale: 'Security scan finding detected',
+        source: 'feedback',
+        priority: 0.95,
+        evidenceRefs: ['security-scan'],
+      });
+      return proposal ? [proposal] : [];
+    });
+  }
+
   listImprovements(status?: ImprovementStatus, limit = 100): ImprovementProposal[] {
     const normalizedLimit = Math.max(1, Math.min(Number(limit || 100), 500));
     const rows = status
@@ -230,6 +256,7 @@ export class SelfImprovementService {
     const specialistIds = input.type === 'security'
       ? ['systems_architect', 'security_reviewer']
       : ['systems_architect', 'runtime_engineer'];
+    const priority = this.adjustPriorityForHistory(input.source, input.priority);
 
     const create = this.db.transaction(() => {
       this.db.prepare(`
@@ -237,7 +264,7 @@ export class SelfImprovementService {
           id, type, title, description, rationale, source, status, priority,
           fingerprint, evidence_refs_json, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 'proposed', ?, ?, ?, ?, ?)
-      `).run(id, input.type, input.title, input.description, input.rationale, input.source, input.priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
+      `).run(id, input.type, input.title, input.description, input.rationale, input.source, priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
       const panel = this.panels.createPanel({
         topic: input.title,
         question: `Should self-improvement proposal ${id} be authorized as a goal?`,
@@ -290,6 +317,30 @@ export class SelfImprovementService {
       ORDER BY created_at ASC LIMIT ?
     `).all(normalizedLimit);
     return (rows as ImprovementRow[]).map((row) => this.rowToProposal(row));
+  }
+
+  /**
+   * The first real outcome-feedback signal in this pipeline: found
+   * 2026-09-21 that nothing reads past self_improvements/goals outcomes to
+   * adjust future proposal generation — every past result was write-only.
+   * Deliberately narrow: one signal (recent park rate for this source), one
+   * bounded adjustment (priority only, never suppresses a proposal or
+   * changes its content), applied uniformly across every source so a
+   * struggling source (including 'refinement' itself) shows up rather than
+   * being exempted from measurement.
+   */
+  private adjustPriorityForHistory(source: string, basePriority: number): number {
+    const rows = this.db.prepare(`
+      SELECT status, COUNT(*) as n FROM (
+        SELECT status FROM self_improvements WHERE source = ? AND status != 'proposed'
+        ORDER BY created_at DESC LIMIT 20
+      ) GROUP BY status
+    `).all(source) as Array<{ status: string; n: number }>;
+    const total = rows.reduce((sum, row) => sum + row.n, 0);
+    if (total < 5) return basePriority; // not enough resolved history to judge yet
+    const parked = rows.find((row) => row.status === 'needs_more_evidence')?.n ?? 0;
+    const parkRate = parked / total;
+    return parkRate > 0.7 ? Math.max(0.1, basePriority - 0.1) : basePriority;
   }
 
   private transition(id: string, status: ImprovementStatus): void {

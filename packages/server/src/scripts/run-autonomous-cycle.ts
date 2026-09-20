@@ -23,7 +23,7 @@ async function main() {
   console.log('📊 Step 1: Generating autonomous goals...');
   const generator = new AutonomousGoalGenerator(db);
   const generated = generator.generateAll();
-  console.log(`   Generated: ${generated.total} goals (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+  console.log(`   Generated: ${generated.total} goals (${generated.improvements} improvements, ${generated.security} security)`);
 
   if (generated.total === 0) {
     console.log('   No goals to execute. Cycle complete.');
