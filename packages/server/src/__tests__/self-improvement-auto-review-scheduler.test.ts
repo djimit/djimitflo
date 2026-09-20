@@ -148,7 +148,7 @@ describe('SelfImprovementAutoReviewScheduler', () => {
 
     const firstTick = scheduler.tick();
     const secondTick = await scheduler.tick();
-    expect(secondTick).toEqual({ reviewed: [], approved: [], parked: [], refined: [], failed: [] });
+    expect(secondTick).toEqual({ reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] });
 
     resolveReview!();
     const firstResult = await firstTick;
@@ -252,6 +252,18 @@ describe('SelfImprovementAutoReviewScheduler', () => {
       const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), fakeRefiner());
       const result = await scheduler.tick();
       expect(result.refined).toEqual([]);
+    });
+
+    it('reports refinementAttempted even when every attempt fails, so a persistently-broken refiner cannot go silent', async () => {
+      const parked = await parkedProposal('Fix a security vulnerability in refinement-silent-failure');
+      process.env.SELF_IMPROVEMENT_REFINEMENT_ENABLED = 'true';
+      const alwaysNullRefiner = fakeRefiner(null); // mirrors a misconfigured model: every call returns null, no thrown error
+      const scheduler = new SelfImprovementAutoReviewScheduler(db, fakeReviewer('oppose'), alwaysNullRefiner);
+      const result = await scheduler.tick();
+      expect(result.refined).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(result.refinementAttempted).toBe(1);
+      expect(improvement.getImprovement(parked.id).refinedAt).toBeNull();
     });
   });
 });

@@ -50,6 +50,17 @@ export interface AutoReviewTickResult {
   approved: string[];
   parked: string[];
   refined: string[];
+  /**
+   * Refinement attempts this tick (successful or not) — distinct from
+   * refined.length so a persistently-failing refiner is still visible in the
+   * tick log. Found in production: a refiner returning null on every call
+   * (e.g. a misconfigured model) contributes to neither `refined` nor
+   * `failed`, so without this the log-only-when-something-happened condition
+   * below would stay silent forever even while refinement is completely
+   * broken — exactly the kind of blind spot this scheduler's observability
+   * was added to catch.
+   */
+  refinementAttempted: number;
   failed: Array<{ id: string; error: string }>;
 }
 
@@ -108,11 +119,11 @@ export class SelfImprovementAutoReviewScheduler {
    * in bootstrap/autonomous-services.ts.
    */
   async tick(): Promise<AutoReviewTickResult> {
-    if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], failed: [] };
+    if (this.running) return { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
     this.running = true;
     try {
       const runId = randomUUID();
-      const result: AutoReviewTickResult = { reviewed: [], approved: [], parked: [], refined: [], failed: [] };
+      const result: AutoReviewTickResult = { reviewed: [], approved: [], parked: [], refined: [], refinementAttempted: 0, failed: [] };
       const proposed = this.improvements.listImprovements('proposed');
 
       for (const proposal of proposed) {
@@ -135,6 +146,7 @@ export class SelfImprovementAutoReviewScheduler {
 
       if (this.refinementEnabled()) {
         const eligible = this.improvements.getRefinementEligible(this.refinementMaxPerTick());
+        result.refinementAttempted = eligible.length;
         for (const parked of eligible) {
           try {
             if (await this.refineOne(parked)) result.refined.push(parked.id);
@@ -146,9 +158,12 @@ export class SelfImprovementAutoReviewScheduler {
 
       // Observability: this scheduler ran silently since it was deployed —
       // a 6-day, 104-proposal backlog of dead-ended reviews went unnoticed
-      // as a result. Only log when something actually happened this tick.
-      if (result.reviewed.length || result.approved.length || result.parked.length || result.refined.length || result.failed.length) {
-        console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} refined=${result.refined.length} failed=${result.failed.length}`);
+      // as a result. Only log when something actually happened this tick —
+      // refinementAttempted (not just refined) counts, so a refiner that's
+      // attempting but always failing (e.g. a misconfigured model) still
+      // shows up instead of going quiet.
+      if (result.reviewed.length || result.approved.length || result.parked.length || result.refined.length || result.refinementAttempted || result.failed.length) {
+        console.log(`🧭 self-improvement auto-review tick: reviewed=${result.reviewed.length} approved=${result.approved.length} parked=${result.parked.length} refined=${result.refined.length}/${result.refinementAttempted} failed=${result.failed.length}`);
       }
 
       return result;
