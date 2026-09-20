@@ -29,6 +29,7 @@ export interface FleetStatus {
   running_jobs: number;
   completed_today: number;
   failed_today: number;
+  recent_failures?: Array<{ full_name: string; error: string | null; finished_at: string | null }>;
   paused: boolean;
   budget: {
     llm_calls_used: number;
@@ -262,6 +263,17 @@ export function ExplainerFleetPage() {
       {error && (
         <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600">
           {error}
+        </div>
+      )}
+
+      {status?.recent_failures && status.recent_failures.length > 0 && (
+        <div role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
+          <div className="font-medium">Recent failed jobs</div>
+          <ul className="mt-1 space-y-1">
+            {status.recent_failures.map((failure, index) => (
+              <li key={`${failure.full_name}-${index}`}>{failure.full_name}: {failure.error ?? 'no reason recorded'}</li>
+            ))}
+          </ul>
         </div>
       )}
 

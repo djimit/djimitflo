@@ -3,6 +3,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Activity, GraduationCap, ListTodo, Users, Shield, ShieldCheck, CheckSquare, PlugZap, BarChart3, ScrollText, FolderGit, LogOut, DollarSign, Network, Cpu, Workflow, BrainCircuit, Gauge, BookUser, Brain, Menu, X, ClipboardCheck, MessageSquare, Sparkles } from 'lucide-react';
 import { useAuthStore } from '../lib/auth-store';
 import { OrganizationSelector } from './OrganizationSelector';
+import { api } from '../lib/api';
 
 export function Layout() {
   const location = useLocation();
@@ -10,6 +11,16 @@ export function Layout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => setMobileNavOpen(false), [location.pathname]);
+
+  // The authority ledger is provisioned outside this repo; hide its nav entry where the server says it is absent.
+  const [authorityAvailable, setAuthorityAvailable] = useState(true);
+  useEffect(() => {
+    let active = true;
+    api.getAuthorityStats().catch((error: unknown) => {
+      if (active && error instanceof Error && /not been provisioned|AUTHORITY_LEDGER_UNAVAILABLE/.test(error.message)) setAuthorityAvailable(false);
+    });
+    return () => { active = false; };
+  }, []);
   
   const isActive = (path: string) => {
     return location.pathname === path || location.pathname.startsWith(path + '/');
@@ -208,7 +219,8 @@ export function Layout() {
           />
           <details className="pt-2">
             <summary className="cursor-pointer px-3 py-2 text-sm text-foreground-secondary">Research &amp; evidence</summary>
-            <NavLink to="/authority" icon={<ShieldCheck className="w-5 h-5" />} label="Authority ledger" active={isActive('/authority')} />
+            <NavLink to="/improvement-funnel" icon={<Gauge className="w-5 h-5" />} label="Improvement funnel" active={isActive('/improvement-funnel')} />
+            {authorityAvailable && <NavLink to="/authority" icon={<ShieldCheck className="w-5 h-5" />} label="Authority ledger" active={isActive('/authority')} />}
             <NavLink to="/audit/logs" icon={<ScrollText className="w-5 h-5" />} label="Audit logs" active={isActive('/audit/logs')} />
             <NavLink to="/pipeline-builder" icon={<Workflow className="w-5 h-5" />} label="Pipeline drafts" active={isActive('/pipeline-builder')} />
             <NavLink to="/agi-reasoning" icon={<Brain className="w-5 h-5" />} label="Goal reasoning" active={isActive('/agi-reasoning')} />

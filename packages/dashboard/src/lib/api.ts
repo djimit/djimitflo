@@ -33,6 +33,22 @@ import type {
 import { API_BASE, authenticatedFetch } from './auth-store';
 export { API_BASE } from './auth-store';
 
+export type ImprovementFunnel = {
+  generatedAt: string;
+  proposals: { total: number; byStatus: Record<string, number> };
+  bySource: Array<{ source: string; total: number; parked: number; archived: number; needsGrounding: number; reachedGoal: number; verified: number; failed: number }>;
+  panel: { decisions: Record<string, number>; goalRate: number | null };
+  refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
+  goals: { fromSelfImprovement: Record<string, number> };
+  learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
+  queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+};
+
+export type SpecialistCalibration = {
+  specialistId: string; n: number; brier: number | null; meanPredicted: number | null; observedSuccessRate: number | null;
+  bins: Array<{ from: number; to: number; n: number; observed: number }>;
+};
+
 export type AgentGovernanceScore = {
   agentId: string;
   overallScore: number;
@@ -1240,6 +1256,15 @@ class ApiClient {
   }
 
   // Observability
+
+  // Improvement funnel + panel calibration (self-improvement chain, read-only)
+  async getImprovementFunnel(): Promise<ImprovementFunnel> {
+    return this.request('/self-improve/funnel');
+  }
+
+  async getPanelCalibration(): Promise<{ specialists: SpecialistCalibration[] }> {
+    return this.request('/self-improve/calibration');
+  }
 
   // Authority Ledger (2026-08-30)
   async getAuthorityStats(): Promise<Record<string, unknown>> {

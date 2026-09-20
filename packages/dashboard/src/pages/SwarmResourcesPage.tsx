@@ -48,7 +48,7 @@ export function SwarmResourcesPage() {
         api.getWorkItems({ limit: 50 }),
         api.getMemoryCandidates(25),
         api.getSpecialistCatalog(),
-        api.getSpecialistPanels(100),
+        api.getSpecialistPanels(25),
         api.getAssuranceSummary(),
       ]);
       setStatus(swarmStatus);

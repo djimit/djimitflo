@@ -10,6 +10,7 @@ import { ReconciliationService } from '../services/reconciliation-service';
 import { SelfImprovementService, type ImprovementStatus } from '../services/self-improvement-service';
 import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 import { PanelCalibrationService } from '../services/panel-calibration-service';
+import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 import { createError } from '../middleware/error-handler';
 
 function boundedLimit(value: unknown, fallback = 100): number {
@@ -36,6 +37,11 @@ export function createSelfImprovementRoutes(db: Database, auth?: AuthMiddleware)
       if (status && !VALID_IMPROVEMENT_STATUSES.has(status)) throw createError(400, 'Invalid improvement status', 'VALIDATION_ERROR');
       res.json({ proposals: improvements.listImprovements(status, boundedLimit(req.query.limit)) });
     } catch (error) { next(error); }
+  });
+
+  router.get('/funnel', requirePermission('read:evidence'), (_req, res, next) => {
+    try { res.json(new ImprovementFunnelService(db).compute()); }
+    catch (error) { next(error); }
   });
 
   router.get('/calibration', requirePermission('read:evidence'), (_req, res, next) => {
