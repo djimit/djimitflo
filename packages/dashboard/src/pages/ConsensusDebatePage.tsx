@@ -14,6 +14,7 @@ interface CouncilSession {
   final_confidence: number | null;
   cost_dollars: number;
   token_usage: number;
+  metadata?: { failure?: { message: string; phase: string } };
 }
 
 export function ConsensusDebatePage() {
@@ -100,6 +101,11 @@ export function ConsensusDebatePage() {
           {activeDebate ? (
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>{activeDebate.task_description}</h2>
+              {activeDebate.status === 'failed' && (
+                <p style={{ color: '#b91c1c', marginBottom: '12px' }}>
+                  Failed{activeDebate.metadata?.failure ? ` in ${activeDebate.metadata.failure.phase}: ${activeDebate.metadata.failure.message}` : ' (no reason recorded — created before failure logging)'}
+                </p>
+              )}
               {!activeDebate.final_output && (
                 <button onClick={() => void execute(activeDebate.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
                   <Play size={14} /> Run council

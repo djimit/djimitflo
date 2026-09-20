@@ -247,6 +247,7 @@ export class LoopDaemon {
    */
   private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
+    const startedAtMs = Date.now();
     const executionMode = opts.allowObjectiveMode ? 'objective' : 'doc_drift';
     try {
       // 1. Decompose the goal if not already decomposed.
@@ -381,6 +382,21 @@ export class LoopDaemon {
       const verification = this.loops.verifyLoopRun(run.id);
       const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
 
+      // 9a. Feed the cognitive layer: it only learns from 'loop_completed' bus events, which were
+      // previously sent solely by the human-approval completeLoopRun() route — so it stayed at 0
+      // episodes. Emit one per executed run (recordEpisode dedupes on loopRunId).
+      swarmEventBus.emit('loop_completed', {
+        loopRunId: run.id,
+        goalId: goal.id,
+        goalType: executionMode,
+        mode: 'closed',
+        status: allGatesPass ? 'completed' : 'failed',
+        durationMs: Date.now() - startedAtMs,
+        strategy: executionMode,
+        startedAt: new Date(startedAtMs).toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
         try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
@@ -447,6 +463,13 @@ export class LoopDaemon {
         } catch { /* best-effort: never mask the original failure */ }
       }
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'failed', failureMessage); } catch { /* best-effort learning */ }
+      if (runId) {
+        swarmEventBus.emit('loop_completed', {
+          loopRunId: runId, goalId: goal.id, goalType: executionMode, mode: 'closed', status: 'failed',
+          durationMs: Date.now() - startedAtMs, strategy: executionMode,
+          startedAt: new Date(startedAtMs).toISOString(), completedAt: new Date().toISOString(),
+        });
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
