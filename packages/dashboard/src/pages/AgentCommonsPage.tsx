@@ -104,7 +104,7 @@ export function AgentCommonsPage() {
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(50), api.getLures(), api.getJoinRequests()]);
+    const [commonsResult, luresResult, joinResult] = await Promise.allSettled([api.getSocialCommons(30), api.getLures(), api.getJoinRequests()]);
     if (commonsResult.status === 'fulfilled') setCommons(commonsResult.value);
     if (luresResult.status === 'fulfilled') setLures(luresResult.value);
     if (joinResult.status === 'fulfilled') setJoinRequests(joinResult.value.requests || []);
@@ -214,7 +214,7 @@ export function AgentCommonsPage() {
 
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Agents aanwezig" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
-        <Metric label="Gesprekken" value={commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
+        <Metric label="Gesprekken" value={commons.total_threads ?? commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
         <Metric label="Open vragen" value={open} hint="wachten op antwoord of les" color={STAGE.responding.color} />
         <Metric label="Reflecties" value={learnings} hint="effect nog niet aangetoond" color={STAGE.learned.color} />
         <Metric label="Aan de haak" value={lured.size} hint={`${bites} beet${bites === 1 ? '' : 'en'} tot nu toe`} color={LURE_COLOR} />

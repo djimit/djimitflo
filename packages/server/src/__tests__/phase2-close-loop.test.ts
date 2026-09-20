@@ -29,7 +29,8 @@ describe('PanelCalibrationService', () => {
 
   it('scores support/oppose against outcomes and ignores proposals without an outcome', () => {
     proposal('a', 'verified', [['arch', 'support', 0.9]]);       // p=.9,y=1 -> .01
-    proposal('b', 'no_change', [['arch', 'support', 0.8]]);      // p=.8,y=0 -> .64
+    proposal('b', 'rejected', [['arch', 'support', 0.8]]);       // p=.8,y=0 -> .64
+    proposal('e', 'no_change', [['arch', 'support', 0.9]]);      // ambiguous label: ignored
     proposal('c', 'regressed', [['arch', 'oppose', 0.9]]);       // p=.1,y=0 -> .01
     proposal('d', 'needs_more_evidence', [['arch', 'support', 0.9]]); // no outcome yet
     const [arch] = new PanelCalibrationService(db).compute();
