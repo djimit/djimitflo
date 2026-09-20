@@ -26,6 +26,10 @@ export interface RefinedProposalDraft {
   title: string;
   description: string;
   rationale: string;
+  /** Optional anchor (see proposal-grounding.ts): only what the model could take from the given material. */
+  target?: string;
+  acceptanceTest?: string;
+  baselineMetric?: string;
 }
 
 function defaultOllamaUrl(): string {
@@ -97,13 +101,15 @@ export class SelfImprovementRefinementService {
       '',
       'Produce ONE refined follow-up proposal that concretely addresses the gaps above, grounded only in the material given.',
       'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
-      '{"title": "...", "description": "...", "rationale": "..."}',
+      '{"title": "...", "description": "...", "rationale": "...", "target": "...", "acceptance_test": "...", "baseline_metric": "..."}',
+      'target = the repo path or component this change belongs to, acceptance_test = one check that would prove it worked, baseline_metric = what is measured today.',
+      'Use null for any of the three that the given material does not support — never invent a file, test or metric.',
     ].join('\n');
   }
 
   private parseResponse(raw: string): RefinedProposalDraft | null {
     const jsonText = this.extractJson(raw);
-    let candidate: Partial<RefinedProposalDraft> | null = null;
+    let candidate: (Partial<RefinedProposalDraft> & { acceptance_test?: unknown; baseline_metric?: unknown; target?: unknown }) | null = null;
     try {
       candidate = jsonText ? JSON.parse(jsonText) : null;
     } catch {
@@ -115,7 +121,8 @@ export class SelfImprovementRefinementService {
     const description = typeof candidate.description === 'string' ? candidate.description.trim() : '';
     const rationale = typeof candidate.rationale === 'string' ? candidate.rationale.trim() : '';
     if (!title || !description || !rationale) return null;
-    return { title, description, rationale };
+    const optional = (value: unknown) => (typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'null' ? value.trim().slice(0, 300) : undefined);
+    return { title, description, rationale, target: optional(candidate.target), acceptanceTest: optional(candidate.acceptance_test), baselineMetric: optional(candidate.baseline_metric) };
   }
 
   private extractJson(raw: string): string | null {
