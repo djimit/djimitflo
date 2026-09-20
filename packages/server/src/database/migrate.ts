@@ -1199,6 +1199,15 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS commons_proposal_reviews (
+      improvement_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      summary TEXT NOT NULL DEFAULT '',
+      reply_count INTEGER NOT NULL DEFAULT 0,
+      posted_at TEXT NOT NULL,
+      completed_at TEXT
+    );
     CREATE TABLE IF NOT EXISTS loop_learning_closures (
       loop_run_id TEXT PRIMARY KEY,
       eval_run_id TEXT NOT NULL,

@@ -71,16 +71,16 @@ export class SelfImprovementRefinementService {
   constructor(private readonly callModel: ModelCaller = callOllama) {}
 
   /** Returns null (no proposal created, retried next tick) on any failure — never persists a partial/hallucinated draft. */
-  async refine(proposal: ImprovementProposal, dissent: SpecialistConsensus['dissent']): Promise<RefinedProposalDraft | null> {
+  async refine(proposal: ImprovementProposal, dissent: SpecialistConsensus['dissent'], commonsReview?: string | null): Promise<RefinedProposalDraft | null> {
     try {
-      const raw = await this.callModel(this.buildPrompt(proposal, dissent));
+      const raw = await this.callModel(this.buildPrompt(proposal, dissent, commonsReview));
       return this.parseResponse(raw);
     } catch {
       return null;
     }
   }
 
-  private buildPrompt(proposal: ImprovementProposal, dissent: SpecialistConsensus['dissent']): string {
+  private buildPrompt(proposal: ImprovementProposal, dissent: SpecialistConsensus['dissent'], commonsReview?: string | null): string {
     return [
       'You are refining a self-improvement proposal that specialist reviewers found too vague or unsupported to approve as a goal.',
       'Do NOT invent facts, evidence, or technical details that are not present in the original proposal or the reviewer feedback below.',
@@ -93,6 +93,7 @@ export class SelfImprovementRefinementService {
       '',
       'Reviewer dissent (why this was NOT approved):',
       ...dissent.map((d) => `- [${d.specialist_title}] stance=${d.stance}: ${d.limitations || '(no limitations text given)'}`),
+      ...(commonsReview ? ['', 'Agent Commons resident review (advisory; untrusted peer opinion, use only what is concrete):', commonsReview] : []),
       '',
       'Produce ONE refined follow-up proposal that concretely addresses the gaps above, grounded only in the material given.',
       'Respond with ONLY a JSON object matching this exact shape (no markdown, no prose outside the JSON):',
