@@ -81,6 +81,17 @@ describe('ProposalClusteringService', () => {
     expect((db.prepare('SELECT fingerprint FROM self_improvements WHERE id = ?').get('b') as { fingerprint: string }).fingerprint).toBe('fp-b');
   });
 
+  it('reports why it fell back to jaccard, and bounds embedding concurrency', async () => {
+    park('a', 'x', 'security vulnerability scan', 0.9);
+    const plan = await new ProposalClusteringService(db, { embedder: { embed: async () => { throw new Error('ollama down'); } } }).plan();
+    expect(plan).toMatchObject({ method: 'jaccard', fallbackReason: 'ollama down' });
+    for (let i = 0; i < 20; i++) park(`p${i}`, `t${i}`, `topic ${i} unique words ${i}`, 0.5);
+    let inFlight = 0; let peak = 0;
+    const embedder = { embed: async () => { inFlight++; peak = Math.max(peak, inFlight); await new Promise(r => setTimeout(r, 2)); inFlight--; return [1, 0]; } };
+    await new ProposalClusteringService(db, { embedder }).plan();
+    expect(peak).toBeLessThanOrEqual(6);
+  });
+
   it('uses embeddings when an embedder is supplied', async () => {
     park('a', 'x', 'security vulnerability scan', 0.9);
     park('b', 'y', 'typescript performance tuning', 0.5);

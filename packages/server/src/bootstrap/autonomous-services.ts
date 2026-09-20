@@ -23,6 +23,7 @@ import { CuriosityService } from '../services/curiosity-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
 import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
 import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
+import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
   try {
@@ -82,6 +83,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Commons proposal review failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Queue hygiene: expires consumer-less work items, stale curiosity claims and unvalidated drafts. Default off.
+  try {
+    if (queueHygieneEnabled()) {
+      const hygiene = new QueueHygieneService(db);
+      hygiene.start();
+      lifecycleManager.register({ serviceName: 'QueueHygiene', stop: () => hygiene.stop() });
+      console.log('🧹 Queue hygiene on (work-item TTL, curiosity-claim expiry, draft-capability deprecation).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Queue hygiene failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   const intelligence = new SwarmIntelligenceService(db);

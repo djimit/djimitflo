@@ -15,6 +15,8 @@ export interface ClusterPlan {
   clusters: Array<{ clusterId: string; representativeId: string; memberIds: string[] }>;
   archiveCount: number;
   method: 'embedding' | 'jaccard';
+  /** Why embeddings were not used (only set when method is 'jaccard' although an embedder was given). */
+  fallbackReason?: string;
 }
 
 interface Row { id: string; title: string; description: string; priority: number; created_at: string; fingerprint: string | null }
@@ -42,15 +44,18 @@ export class ProposalClusteringService {
     const texts = rows.map(r => `${r.title}\n${r.description}`);
     let similarity: (i: number, j: number) => number;
     let method: ClusterPlan['method'] = 'jaccard';
+    let fallbackReason: string | undefined;
     let threshold = this.opts.jaccardThreshold ?? 0.6;
     try {
       if (this.opts.embedder && rows.length) {
-        const vectors = await Promise.all(texts.map(t => this.opts.embedder!.embed(t)));
+        // Bounded concurrency: a single Promise.all over ~700 texts overwhelmed the Ollama host in production.
+        const vectors = await this.embedAll(texts.map(t => t.slice(0, 1500)));
         similarity = (i, j) => cosineSimilarity(vectors[i], vectors[j]);
         method = 'embedding';
         threshold = this.opts.threshold ?? 0.88;
       } else throw new Error('no embedder');
-    } catch {
+    } catch (err) {
+      if (this.opts.embedder) fallbackReason = err instanceof Error ? err.message : String(err);
       const sets = texts.map(tokens);
       similarity = (i, j) => jaccard(sets[i], sets[j]);
     }
@@ -67,7 +72,20 @@ export class ProposalClusteringService {
       }
       if (members.length) clusters.push({ clusterId: `cluster:${rows[i].id}`, representativeId: rows[i].id, memberIds: members.map(j => rows[j].id) });
     }
-    return { total: rows.length, clusters, archiveCount: clusters.reduce((n, c) => n + c.memberIds.length, 0), method };
+    return { total: rows.length, clusters, archiveCount: clusters.reduce((n, c) => n + c.memberIds.length, 0), method, ...(fallbackReason ? { fallbackReason } : {}) };
+  }
+
+  private async embedAll(texts: string[], concurrency = 6): Promise<number[][]> {
+    const vectors: number[][] = new Array(texts.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < texts.length) {
+        const i = next++;
+        vectors[i] = await this.opts.embedder!.embed(texts[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, texts.length) }, worker));
+    return vectors;
   }
 
   /** Archives non-representatives. Reversible: originals are recorded in proposal_clusters. */
