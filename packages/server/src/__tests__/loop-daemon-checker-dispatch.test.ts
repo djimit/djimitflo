@@ -1,0 +1,148 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import Database from 'better-sqlite3';
+import { schema } from '../database/schema';
+import { runMigrations } from '../database/migrate';
+import { LoopDaemon } from '../services/loop-daemon';
+import { GoalService } from '../services/goal-service';
+import type { LoopService } from '../services/loop-service';
+
+/**
+ * Regression coverage for the fix to the root cause found 2026-09-20/21:
+ * LoopDaemon.executeGoal() created a checker lease (via continueLoopRun)
+ * but never dispatched it, so verifyLoopRun()'s checker_verdict gate could
+ * never pass and closeLoop() (gated on allGatesPass) was never reached —
+ * the real reason loop_learning_closures stayed near-empty despite most
+ * runs completing their maker side and passing deterministic checks.
+ *
+ * Checker leases are always created with runtime:'manual' regardless of
+ * the maker's runtime — by design, code review requires a human today.
+ * Automating checker dispatch is therefore a real autonomy expansion, not
+ * just a missing call, so it's gated behind LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED
+ * (default off) and — when armed — reuses whichever maker lease actually
+ * ran (original or retry) and its runtime, confirmed with the user rather
+ * than assumed.
+ *
+ * Uses a stubbed LoopService-shaped dependency to test dispatch ordering
+ * only — the real checker execution mechanics (evidence writes, gate
+ * outcomes) are covered separately in loop-service-checker-dispatch.test.ts.
+ */
+describe('LoopDaemon checker dispatch', () => {
+  let db: Database.Database;
+  let goals: GoalService;
+  let stubLoops: {
+    startDocDriftAndSmallFixLoop: ReturnType<typeof vi.fn>;
+    continueLoopRun: ReturnType<typeof vi.fn>;
+    executeWorker: ReturnType<typeof vi.fn>;
+    runDeterministicChecks: ReturnType<typeof vi.fn>;
+    retryLoopRun: ReturnType<typeof vi.fn>;
+    executeChecker: ReturnType<typeof vi.fn>;
+    verifyLoopRun: ReturnType<typeof vi.fn>;
+    pruneOrphanedWorktrees: ReturnType<typeof vi.fn>;
+  };
+  const prevEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    db.exec(schema);
+    runMigrations(db);
+    goals = new GoalService(db);
+
+    stubLoops = {
+      startDocDriftAndSmallFixLoop: vi.fn(() => ({
+        id: 'run-1',
+        findings: [{ id: 'finding-1', type: 'test_finding', severity: 'info', file: 'x', message: 'x', evidence: 'x', suggested_fix: 'x' }],
+      })),
+      continueLoopRun: vi.fn(() => ({
+        leases: [
+          { id: 'maker-1', role: 'maker', status: 'prepared', runtime: 'codex' },
+          { id: 'checker-1', role: 'checker', status: 'prepared', runtime: 'manual' },
+        ],
+      })),
+      executeWorker: vi.fn(async () => ({})),
+      runDeterministicChecks: vi.fn(() => ({ run: { status: 'completed' }, lease: {}, checks: [] })),
+      retryLoopRun: vi.fn(() => ({
+        retry_maker: { id: 'maker-2', role: 'maker', status: 'prepared', runtime: 'opencode' },
+        retry_checker: { id: 'checker-2', role: 'checker', status: 'prepared', runtime: 'manual' },
+      })),
+      executeChecker: vi.fn(async () => ({})),
+      verifyLoopRun: vi.fn(() => ({ gates: [] })), // allGatesPass=false — keeps this file focused on dispatch, not closeLoop
+      pruneOrphanedWorktrees: vi.fn(),
+    };
+
+    for (const key of ['LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED']) {
+      prevEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    db?.close();
+    for (const [key, value] of Object.entries(prevEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  function seedQualifyingGoal() {
+    const goal = goals.createGoal({
+      objective: 'Fix a small doc drift issue',
+      acceptance_criteria: ['Tests pass'],
+      risk_class: 'low',
+      metadata: {},
+    });
+    db.prepare("UPDATE goals SET status = 'decomposed' WHERE id = ?").run(goal.id);
+    return goal;
+  }
+
+  async function runOneTick(daemon: LoopDaemon) {
+    await daemon.tick();
+    daemon.stop();
+  }
+
+  it('never dispatches the checker by default (safe: preserves human review)', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.executeChecker).not.toHaveBeenCalled();
+  });
+
+  it('dispatches the checker using the maker\'s runtime once armed, with no retry', async () => {
+    seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'codex', timeout_ms: 120_000 });
+    expect(stubLoops.retryLoopRun).not.toHaveBeenCalled();
+  });
+
+  it('uses the retry maker\'s runtime for the checker, not the original, when a retry occurred', async () => {
+    seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    stubLoops.runDeterministicChecks.mockReturnValueOnce({ run: { status: 'blocked' }, lease: {}, checks: [] });
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.retryLoopRun).toHaveBeenCalled();
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'opencode', timeout_ms: 120_000 });
+  });
+
+  it('does not crash the daemon when the checker throws (best-effort)', async () => {
+    seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    stubLoops.executeChecker.mockRejectedValueOnce(new Error('some runtime failure'));
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await expect(runOneTick(daemon)).resolves.not.toThrow();
+    expect(stubLoops.verifyLoopRun).toHaveBeenCalled();
+  });
+
+  it('calls executeChecker before verifyLoopRun, so the checker_verdict gate reflects the real attempt', async () => {
+    seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    const callOrder: string[] = [];
+    stubLoops.executeChecker.mockImplementation(async () => { callOrder.push('executeChecker'); return {}; });
+    stubLoops.verifyLoopRun.mockImplementation(() => { callOrder.push('verifyLoopRun'); return { gates: [] }; });
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(callOrder).toEqual(['executeChecker', 'verifyLoopRun']);
+  });
+});
