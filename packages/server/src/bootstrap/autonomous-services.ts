@@ -110,7 +110,7 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
       console.warn('⚠️  Initial curiosity scan failed (non-fatal):', error instanceof Error ? error.message : String(error));
     }).then(() => {
       const generated = autonomousGoals.generateAll();
-      if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security, ${generated.curiosity} curiosity)`);
+      if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security)`);
     });
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));

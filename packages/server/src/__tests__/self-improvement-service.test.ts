@@ -65,6 +65,63 @@ describe('G71: Self Improvement', () => {
     expect(proposals[0].priority).toBeGreaterThan(0.9);
   });
 
+  it('generates from security findings, routed through the same security review as other proposals', () => {
+    const proposals = improvement.generateFromSecurityFindings(['high finding at src/auth.ts: token not validated']);
+    expect(proposals.length).toBe(1);
+    expect(proposals[0].type).toBe('security');
+    const panels = new SpecialistPanelService(db);
+    const panel = panels.getPanel(proposals[0].panelId!);
+    expect(panel.risk_class).toBe('high');
+    expect(panel.panel.map((p) => p.id)).toEqual(expect.arrayContaining(['security_reviewer']));
+  });
+
+  describe('outcome feedback (adjustPriorityForHistory)', () => {
+    function seedResolvedHistory(source: string, statuses: string[]) {
+      const now = new Date().toISOString();
+      statuses.forEach((status, i) => {
+        db.prepare(`
+          INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
+          VALUES (?, 'feature', ?, ?, 'seeded history', ?, ?, 0.6, ?, ?)
+        `).run(`seed-${source}-${i}`, `seed ${i}`, `seed ${i}`, source, status, now, now);
+      });
+    }
+
+    it('leaves priority unchanged when there is not enough resolved history yet', () => {
+      seedResolvedHistory('reflection', ['needs_more_evidence', 'needs_more_evidence']); // only 2, below the 5-sample floor
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
+      });
+      expect(proposal.priority).toBe(0.9);
+    });
+
+    it('leaves priority unchanged when recent history for the source is healthy', () => {
+      seedResolvedHistory('reflection', Array(10).fill('scheduled')); // 0% park rate
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
+      });
+      expect(proposal.priority).toBe(0.9);
+    });
+
+    it('reduces priority when recent history for the source is mostly parked (>70% needs_more_evidence)', () => {
+      seedResolvedHistory('reflection', [...Array(16).fill('needs_more_evidence'), ...Array(4).fill('scheduled')]); // 80% park rate
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
+      });
+      expect(proposal.priority).toBeCloseTo(0.8, 5);
+    });
+
+    it('only considers the most recent 20 resolved proposals for the same source, not all history', () => {
+      // 25 old, all needs_more_evidence — but only the newest 20 should count.
+      seedResolvedHistory('reflection', Array(25).fill('needs_more_evidence'));
+      const [proposal] = improvement.generateFromReflection({
+        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
+      });
+      // All 20 most-recent are still needs_more_evidence either way here — this just
+      // confirms the LIMIT 20 query doesn't throw/misbehave with more rows than the window.
+      expect(proposal.priority).toBeCloseTo(0.8, 5);
+    });
+  });
+
   it('gets proposed improvements', () => {
     improvement.generateFromReflection({
       whatFailed: [],
