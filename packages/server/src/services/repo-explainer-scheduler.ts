@@ -137,8 +137,17 @@ export class RepoExplainerScheduler {
       last_bundle_at: string | null;
     }>;
 
-    const candidates: RefreshCandidate[] = [];
+    // A task can own several bundles, so the bundle join above yields one row per bundle.
+    // Keep only the newest per repository: duplicates collide on the unique dedupe_key
+    // when scheduled (found in production: fleet/run and refresh-stale both returned 500).
+    const newestPerRepo = new Map<string, (typeof rows)[number]>();
     for (const row of rows) {
+      const seen = newestPerRepo.get(row.discovered_repository_id);
+      if (!seen || (row.last_bundle_at ?? "") > (seen.last_bundle_at ?? "")) newestPerRepo.set(row.discovered_repository_id, row);
+    }
+
+    const candidates: RefreshCandidate[] = [];
+    for (const row of newestPerRepo.values()) {
       const bundleMeta = row.bundle_metadata ? JSON.parse(row.bundle_metadata) : {};
       const lastBundleCommit = bundleMeta.source_commit ?? null;
       let reason: RefreshCandidate["reason"];
