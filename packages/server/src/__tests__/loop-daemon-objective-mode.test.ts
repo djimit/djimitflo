@@ -51,7 +51,7 @@ describe('LoopDaemon objective-mode dispatch', () => {
       pruneOrphanedWorktrees: vi.fn(),
     };
 
-    for (const key of ['SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK', 'AUTHORITY_GATE', 'LOOP_DAEMON_REPOSITORY_PATH']) {
+    for (const key of ['SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK', 'AUTHORITY_GATE', 'LOOP_DAEMON_REPOSITORY_PATH', 'LOOP_DAEMON_MAKER_RUNTIME']) {
       prevEnv[key] = process.env[key];
       delete process.env[key];
     }
@@ -106,6 +106,18 @@ describe('LoopDaemon objective-mode dispatch', () => {
     await runOneTick(daemon);
     expect(stubLoops.startObjectiveLoop).toHaveBeenCalledWith({ goal_id: goal.id, repository_path: '/workspace/djimitflo' });
     expect(stubLoops.startDocDriftAndSmallFixLoop).not.toHaveBeenCalled();
+  });
+
+  it('passes the operator-configured maker runtime to continueLoopRun for objective mode only', async () => {
+    seedQualifyingGoal();
+    process.env.SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED = 'true';
+    process.env.LOOP_DAEMON_MAKER_RUNTIME = 'opencode';
+    const continueLoopRun = vi.fn(() => { throw new Error('stop-after-capture'); });
+    const loops = { ...stubLoops, startObjectiveLoop: vi.fn(() => ({ id: 'objective-run-x', findings: [{ id: 'f1' }] })), continueLoopRun };
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const daemon = new LoopDaemon(db, loops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(continueLoopRun).toHaveBeenCalledWith('objective-run-x', { max_assignments: 1, max_maker_workers: 1, runtime: 'opencode' });
   });
 
   it('does not dispatch a non-self-improvement-sourced goal to startObjectiveLoop even when the flag is on', async () => {
