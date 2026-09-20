@@ -306,7 +306,7 @@ export class SelfImprovementService {
    * against a proposal that's already spawned one (refinedAt set) or that is
    * itself already a refinement (refinedFromId set) — no recursive chains.
    */
-  refineFromDissent(parkedId: string, draft: { title: string; description: string; rationale: string; target?: string; acceptanceTest?: string; baselineMetric?: string }): ImprovementProposal | null {
+  refineFromDissent(parkedId: string, draft: { title: string; description: string; rationale: string; target?: string; acceptanceTest?: string; baselineMetric?: string; runtimeCommand?: string; artifactPath?: string; budget?: string }): ImprovementProposal | null {
     const parked = this.getImprovement(parkedId);
     if (parked.status !== 'needs_more_evidence') return null;
     if (parked.refinedAt || parked.refinedFromId) return null;
@@ -319,7 +319,7 @@ export class SelfImprovementService {
       priority: parked.priority,
       evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`],
       refinedFromId: parkedId,
-      ...(draft.target ? { grounding: { target: draft.target, acceptanceTest: draft.acceptanceTest, baselineMetric: draft.baselineMetric } } : {}),
+      ...(draft.target ? { grounding: { target: draft.target, acceptanceTest: draft.acceptanceTest, baselineMetric: draft.baselineMetric, runtimeCommand: draft.runtimeCommand, artifactPath: draft.artifactPath, budget: draft.budget } } : {}),
     });
   }
 

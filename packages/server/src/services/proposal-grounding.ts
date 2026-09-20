@@ -12,6 +12,10 @@ export interface Grounding {
   target: string;
   acceptanceTest?: string;
   baselineMetric?: string;
+  /** What the specialist panel's runtime engineer asked for on a grounded proposal (2026-09-21 loop proof). */
+  runtimeCommand?: string;
+  artifactPath?: string;
+  budget?: string;
   derived: boolean;
 }
 
@@ -32,7 +36,8 @@ export function assessGrounding(input: {
   if (!input.evidenceRefs?.length) return null;
   const explicit = input.grounding?.target?.trim();
   if (explicit) {
-    return { target: explicit, acceptanceTest: input.grounding?.acceptanceTest, baselineMetric: input.grounding?.baselineMetric, derived: false };
+    const { acceptanceTest, baselineMetric, runtimeCommand, artifactPath, budget } = input.grounding ?? {};
+    return { target: explicit, acceptanceTest, baselineMetric, runtimeCommand, artifactPath, budget, derived: false };
   }
   const match = `${input.description}\n${input.rationale}`.match(REPO_PATH);
   return match ? { target: match[0], derived: true } : null;
