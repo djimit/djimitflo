@@ -22,6 +22,7 @@ import { TrajectoryStore } from '../services/trajectory-store';
 import { CuriosityService } from '../services/curiosity-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
 import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
+import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
   try {
@@ -69,6 +70,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Agent Commons autopilot failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Agent Commons reviews parked self-improvement proposals (advisory). Default off: COMMONS_PROPOSAL_REVIEW_ENABLED=true.
+  try {
+    if (commonsReviewEnabled()) {
+      const commonsReview = new CommonsProposalReviewService(db);
+      commonsReview.start();
+      lifecycleManager.register({ serviceName: 'CommonsProposalReview', stop: () => commonsReview.stop() });
+      console.log('🪐 Commons proposal review on (advisory; specialist panel remains the gate).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Commons proposal review failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   const intelligence = new SwarmIntelligenceService(db);

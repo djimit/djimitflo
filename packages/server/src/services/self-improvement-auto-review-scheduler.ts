@@ -41,6 +41,7 @@ import { SelfImprovementService, type ImprovementProposal } from './self-improve
 import { SelfImprovementAgentReviewService } from './self-improvement-agent-review-service';
 import { SelfImprovementRefinementService } from './self-improvement-refinement-service';
 import { SpecialistPanelService } from './specialist-panel-service';
+import { CommonsProposalReviewService } from './commons-proposal-review-service';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -71,12 +72,14 @@ export class SelfImprovementAutoReviewScheduler {
   private readonly reviewer: SelfImprovementAgentReviewService;
   private readonly refiner: SelfImprovementRefinementService;
   private readonly panels: SpecialistPanelService;
+  private readonly commons: CommonsProposalReviewService;
 
   constructor(db: Database, reviewer?: SelfImprovementAgentReviewService, refiner?: SelfImprovementRefinementService) {
     this.improvements = new SelfImprovementService(db);
     this.reviewer = reviewer ?? new SelfImprovementAgentReviewService(db);
     this.refiner = refiner ?? new SelfImprovementRefinementService();
     this.panels = new SpecialistPanelService(db);
+    this.commons = new CommonsProposalReviewService(db);
   }
 
   /** Arm the scheduler. Returns false (no-op) unless explicitly enabled. */
@@ -176,7 +179,7 @@ export class SelfImprovementAutoReviewScheduler {
     if (!parked.panelId) return false;
     const panel = this.panels.getPanel(parked.panelId);
     if (panel.status !== 'consensus_ready') return false;
-    const draft = await this.refiner.refine(parked, panel.consensus.dissent);
+    const draft = await this.refiner.refine(parked, panel.consensus.dissent, this.commons.getReviewSummary(parked.id));
     if (!draft) return false;
     return this.improvements.refineFromDissent(parked.id, draft) !== null;
   }

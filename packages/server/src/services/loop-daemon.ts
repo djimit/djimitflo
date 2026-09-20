@@ -6,6 +6,7 @@ import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
+import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { authorityGateForGoal } from './authority-gate';
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
@@ -380,6 +381,7 @@ export class LoopDaemon {
 
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
+        try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
         try {
           const knowledge = new KnowledgeRuntimeService(this.db);
           const closure = knowledge.closeLoop({ loop_run_id: run.id });
@@ -442,6 +444,7 @@ export class LoopDaemon {
           });
         } catch { /* best-effort: never mask the original failure */ }
       }
+      try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'failed', failureMessage); } catch { /* best-effort learning */ }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
