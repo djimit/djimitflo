@@ -15,6 +15,19 @@ import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import { AuditService } from '../services/audit-service';
 
+/**
+ * List views need the shape of a task's metadata, not its bulk: production metadata averaged ~14 KB per
+ * task (1.4 MB of a 1.5 MB response, fetched on every dashboard page). Values longer than `maxValueChars`
+ * are replaced by a marker; GET /tasks/:id and ?full=1 still return everything.
+ */
+export function slimMetadata(metadata: unknown, maxValueChars = 500): unknown {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  return Object.fromEntries(Object.entries(metadata as Record<string, unknown>).map(([key, value]) => {
+    const size = JSON.stringify(value ?? null).length;
+    return [key, size > maxValueChars ? `[truncated ${size} chars; fetch the task for the full value]` : value];
+  }));
+}
+
 function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
   if (value === undefined) return fallback;
   const parsed = Number(value);
@@ -91,7 +104,11 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       const tasks = db.prepare(query).all(...params);
 
-      const parsed = tasks.map((task: any) => parseTask(task));
+      const full = req.query.full === '1';
+      const parsed = tasks.map((task: any) => {
+        const t = parseTask(task);
+        return full ? t : { ...t, metadata: slimMetadata(t.metadata) };
+      });
 
       res.json({ tasks: parsed, total: tasks.length });
     } catch (error) {
