@@ -320,6 +320,7 @@ export class LoopDaemon {
       });
 
       // 7. Run deterministic checks (test, lint, type-check).
+      let activeMakerLease = makerLease;
       try {
         const checks = this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
@@ -341,9 +342,37 @@ export class LoopDaemon {
               lease_id: retryMaker.id,
               timeout_ms: 120_000,
             });
+            activeMakerLease = retryMaker;
           } catch { /* best-effort retry */ }
         }
       } catch { /* best-effort: checks are not fatal for the daemon */ }
+
+      // 8b. Dispatch the checker — gated, off by default. Checker leases are
+      // always created with runtime:'manual' (loop-lifecycle-service.ts),
+      // independent of whatever runtime the maker used — by design, code
+      // review requires a human today. Without this, no maker-completed run
+      // has ever had an accepted checker verdict: verifyLoopRun()'s
+      // checker_verdict gate could never pass, allGatesPass was always
+      // false, and closeLoop() (gated on allGatesPass) was never even
+      // reached — the real reason loop_learning_closures stayed near-empty.
+      // Found 2026-09-20/21, and explicitly confirmed with the user this is
+      // a real autonomy expansion (removes human review from verification),
+      // not a bug fix — so it stays off unless LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED
+      // is set, using the same runtime as whichever maker attempt actually
+      // ran (self-review, not an independent reviewer — the simplest
+      // automatable option, chosen deliberately over inventing a second
+      // "reviewer runtime" concept). executeChecker() already auto-discovers
+      // the current prepared checker lease (correctly picking up a retry's
+      // checker lease) and already writes the real checkpoint/trace-span/
+      // manifest evidence closeLoop() requires — no new writer needed.
+      if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true') {
+        try {
+          await this.loops.executeChecker(run.id, {
+            runtime: activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock',
+            timeout_ms: 120_000,
+          });
+        } catch { /* best-effort: verifyLoopRun's checker_verdict gate reflects reality below */ }
+      }
 
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
