@@ -57,6 +57,6 @@ describe('LoopDaemon failure logging', () => {
     expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).toBe('failed');
     // The failed run also reaches the cognitive layer as an episode (it used to stay at 0).
     const episode = db.prepare("SELECT outcome, goal_type FROM cognitive_episodes WHERE loop_run_id = 'run-1'").get() as { outcome: string; goal_type: string } | undefined;
-    expect(episode).toEqual({ outcome: 'failure', goal_type: 'doc_drift' });
+    expect(episode).toEqual({ outcome: 'failure', goal_type: 'doc-drift-and-small-fix-loop' });
   });
 });

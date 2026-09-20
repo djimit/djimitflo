@@ -85,6 +85,10 @@ export class SelfImprovementAutoReviewScheduler {
   /** Arm the scheduler. Returns false (no-op) unless explicitly enabled. */
   start(): boolean {
     if (process.env.SELF_IMPROVEMENT_AUTO_REVIEW_ENABLED !== 'true') return false;
+    // A judge from the same model as the writer shares its blind spots (LLM-as-judge self-preference).
+    const reviewModel = process.env.SELF_IMPROVEMENT_REVIEW_MODEL;
+    const writerModel = process.env.SELF_IMPROVEMENT_REFINEMENT_MODEL || reviewModel;
+    if (reviewModel && reviewModel === writerModel) console.warn(`⚠️  self-improvement review and refinement use the same model (${reviewModel}); use a different model family for independent review`);
     const intervalMs = this.intervalMinutes() * MINUTE_MS;
     this.timer = setInterval(() => void this.tick(), intervalMs);
     this.timer.unref();
