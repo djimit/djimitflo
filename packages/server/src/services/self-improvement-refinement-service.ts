@@ -33,7 +33,15 @@ function defaultOllamaUrl(): string {
 }
 
 function defaultModel(): string {
-  return process.env.SELF_IMPROVEMENT_REFINEMENT_MODEL || 'qwen2.5:32b-instruct-q4_K_M';
+  // Falls back to the review model before a hardcoded name: found in production
+  // that 'qwen2.5:32b-instruct-q4_K_M' (this service's own hardcoded default,
+  // and the review service's) doesn't exist on the deployed Ollama host at all —
+  // every refinement call 404'd and was silently swallowed to null by refine()'s
+  // catch. SELF_IMPROVEMENT_REVIEW_MODEL is already required to be a real,
+  // working model for review to function, so it's a safe fallback here too.
+  return process.env.SELF_IMPROVEMENT_REFINEMENT_MODEL
+    || process.env.SELF_IMPROVEMENT_REVIEW_MODEL
+    || 'qwen2.5:32b-instruct-q4_K_M';
 }
 
 function refinementTimeoutMs(): number {
