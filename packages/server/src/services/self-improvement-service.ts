@@ -311,11 +311,16 @@ export class SelfImprovementService {
   /** Parked proposals eligible for exactly one refinement attempt, oldest first. */
   getRefinementEligible(limit: number): ImprovementProposal[] {
     const normalizedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
+    // With Commons review enabled, refine only proposals whose review finished (or timed out),
+    // reviewed-first; otherwise behaviour is unchanged (oldest first).
+    const gated = process.env.COMMONS_PROPOSAL_REVIEW_ENABLED === 'true';
     const rows = this.db.prepare(`
-      SELECT * FROM self_improvements
-      WHERE status = 'needs_more_evidence' AND refined_at IS NULL AND refined_from_id IS NULL
-      ORDER BY created_at ASC LIMIT ?
-    `).all(normalizedLimit);
+      SELECT s.* FROM self_improvements s
+      LEFT JOIN commons_proposal_reviews r ON r.improvement_id = s.id
+      WHERE s.status = 'needs_more_evidence' AND s.refined_at IS NULL AND s.refined_from_id IS NULL
+        AND (? = 0 OR r.status IN ('completed', 'timeout'))
+      ORDER BY (r.status = 'completed') DESC, s.created_at ASC LIMIT ?
+    `).all(gated ? 1 : 0, normalizedLimit);
     return (rows as ImprovementRow[]).map((row) => this.rowToProposal(row));
   }
 
