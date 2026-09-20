@@ -432,6 +432,17 @@ export class LoopDaemon {
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
 
+      const failureMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[loop-daemon] goal ${goal.id} failed (run ${runId ?? 'none'}): ${failureMessage}`);
+      if (runId) {
+        try {
+          new LoopEventService(this.db).recordEvent(runId, 'goal_failed', 'error', failureMessage, {
+            goal_id: goal.id,
+            execution_mode: executionMode,
+          });
+        } catch { /* best-effort: never mask the original failure */ }
+      }
+
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
         goal_id: goal.id,
