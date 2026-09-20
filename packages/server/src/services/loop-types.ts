@@ -99,6 +99,14 @@ export interface StartDocDriftLoopInput {
     description: string;
     category: 'bug' | 'security' | 'performance' | 'refactor';
   };
+  /**
+   * Synthesizes a single LoopFinding from goal_id's objective instead of
+   * running discovery. Requires goal_id to resolve to a real goal — fails
+   * loudly (OBJECTIVE_MODE_REQUIRES_GOAL) rather than silently falling back
+   * to discovery, so an objective-mode run can never be mistaken for a
+   * doc-drift no-op. See LoopService.createObjectiveFinding().
+   */
+  objective_mode?: boolean;
 }
 
 export interface ContinueLoopInput {

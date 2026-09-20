@@ -7,6 +7,7 @@ import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
 import { authorityGateForGoal } from './authority-gate';
+import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -120,6 +121,7 @@ export class LoopDaemon {
       // G19: start as many goals as fit in the available slots.
       const slots = this.getAvailableSlots();
       const toStart = queue.slice(0, slots);
+      let objectiveModeDispatchedThisTick = 0;
 
       for (const goal of toStart) {
         // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
@@ -149,8 +151,40 @@ export class LoopDaemon {
         // Mark goal as active + start it asynchronously.
         this.activeGoals.add(goal.id);
         this.persistActiveGoals();
+
+        // Objective-mode dispatch decision: whether this goal reaches a real
+        // maker/checker cycle driven by its own objective, instead of the
+        // safe doc-drift-and-small-fix-loop no-op. Deliberately conservative:
+        // requires the flag, a qualifying goal (self-improvement source,
+        // risk_class 'low'), the per-tick cap not yet reached, AND
+        // AUTHORITY_GATE=enforce as a belt-and-suspenders condition — this is
+        // the first path where a goal's own free text reaches a real
+        // code-writing maker unsupervised.
+        const qualification = goalQualifiesForObjectiveMode(goal);
+        const capped = objectiveModeDispatchedThisTick >= objectiveModeMaxPerTick();
+        const authorityEnforced = process.env.AUTHORITY_GATE === 'enforce';
+        const allowObjectiveMode = objectiveModeEnabled() && qualification.qualifies && !capped && authorityEnforced;
+        if (allowObjectiveMode) objectiveModeDispatchedThisTick += 1;
+
+        // Observability: log every self-improvement goal's dispatch decision,
+        // not just the ones that succeed — closes the exact blind spot that
+        // let 10/10 goals silently produce identical doc-drift no-ops.
+        if (qualification.qualifies || objectiveModeEnabled()) {
+          swarmEventBus.emit('convergence', {
+            daemon: 'objective_mode_decision',
+            goal_id: goal.id,
+            allowed: allowObjectiveMode,
+            reason: allowObjectiveMode
+              ? 'dispatched'
+              : capped ? 'per_tick_cap_reached'
+              : !authorityEnforced ? 'authority_gate_not_enforced'
+              : qualification.reason,
+            enabled: objectiveModeEnabled(),
+          });
+        }
+
         // Non-blocking: start the goal and don't wait for it to finish.
-        this.executeGoal(goal).catch((err) => {
+        this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
         });
       }
@@ -206,8 +240,9 @@ export class LoopDaemon {
    * The daemon discovers findings, creates leases, executes the maker+checker, runs
    * deterministic checks, and certifies the result.
    */
-  private async executeGoal(goal: QueueEntry): Promise<void> {
+  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
+    const executionMode = opts.allowObjectiveMode ? 'objective' : 'doc_drift';
     try {
       // 1. Decompose the goal if not already decomposed.
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
@@ -226,10 +261,13 @@ export class LoopDaemon {
         this.decomposer.decomposeGoalToDAG(goal.id);
       }
 
-      // 2. Start the loop (discovers findings, creates the loop_run).
-      const run = this.loops.startDocDriftAndSmallFixLoop({
-        goal_id: goal.id,
-      });
+      // 2. Start the loop (discovers findings, creates the loop_run). A
+      // qualifying self-improvement goal reaches a real maker/checker cycle
+      // driven by its own objective instead of the safe doc-drift no-op —
+      // see objective-loop-gate.ts for the dispatch decision made in tick().
+      const run = opts.allowObjectiveMode
+        ? this.loops.startObjectiveLoop({ goal_id: goal.id })
+        : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
 
       // 3. Skip execution if no findings were discovered.
@@ -241,6 +279,7 @@ export class LoopDaemon {
           goal_id: goal.id,
           run_id: run.id,
           reason: 'no findings — goal completed (nothing to fix)',
+          execution_mode: executionMode,
         });
         return;
       }
@@ -251,6 +290,7 @@ export class LoopDaemon {
         run_id: run.id,
         objective: goal.objective,
         active_goals: this.activeGoals.size,
+        execution_mode: executionMode,
       });
 
       // 4. Continue the loop — creates maker+checker leases (prepared status).
@@ -351,6 +391,7 @@ export class LoopDaemon {
         run_id: run.id,
         certified: allGatesPass,
         gates: verification.gates.map(g => `${g.name}:${g.status}`),
+        execution_mode: executionMode,
       });
 
     } catch (error) {
@@ -363,6 +404,7 @@ export class LoopDaemon {
         goal_id: goal.id,
         run_id: runId,
         error: error instanceof Error ? error.message : String(error),
+        execution_mode: executionMode,
       });
     } finally {
       // G19: remove from active goals when done (success or failure).

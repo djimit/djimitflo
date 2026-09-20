@@ -406,9 +406,24 @@ export class LoopService {
     return this.startLoop({ ...input, loop_name: LOOP_NAME });
   }
 
+  /**
+   * Dispatches to a real maker/checker cycle driven by a goal's own
+   * objective, instead of a fixed scanner. Built after production evidence
+   * showed 10/10 self-improvement goals dispatched via
+   * startDocDriftAndSmallFixLoop() produced the byte-identical canned
+   * "no findings" result regardless of their actual objective — the
+   * scanner never looked at goal content at all. See createObjectiveFinding().
+   */
+  startObjectiveLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
+    return this.startLoop({ ...input, loop_name: LOOP_NAME, objective_mode: true });
+  }
+
   startLoop(input: StartDocDriftLoopInput = {}): LoopRunRecord {
     const contract = this.getLoopContract(input.loop_name || LOOP_NAME);
     const goal = input.goal_id ? this.getGoal(input.goal_id) : null;
+    if (input.objective_mode && !goal) {
+      throw createError(400, 'objective_mode requires a valid goal_id', 'OBJECTIVE_MODE_REQUIRES_GOAL');
+    }
     if (goal?.metadata.operator_paused === true) throw createError(409, 'LOOP_OPERATOR_PAUSED', 'LOOP_OPERATOR_PAUSED');
     if (goal) this.goals.assertDependenciesSatisfied(goal.id, goal.metadata);
     const repositoryPath = this.resolveRepositoryPath(input.repository_path || process.cwd());
@@ -421,7 +436,9 @@ export class LoopService {
 
     const findings = input.target_finding
       ? [this.createTargetFinding(repositoryPath, input.target_finding)]
-      : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
+      : input.objective_mode
+        ? [this.createObjectiveFinding(goal!)]
+        : this.discoverLoopFindings(contract.name, repositoryPath, maxFindings);
     const plan = this.createPlan(contract.name, findings);
     const gates: LoopGate[] = [
       { name: 'read_only_discovery', status: 'pass', evidence: 'Loop scanned files without editing repository content.' },
@@ -478,6 +495,11 @@ export class LoopService {
         risk_class: runRiskClass,
         contract,
         sovereign: input.sovereign === true,
+        // Durable record of which finding path produced this run — added
+        // after 10/10 self-improvement goals produced identical doc-drift
+        // no-ops with no way to distinguish "really nothing to fix" from
+        // "was never asked to look at anything real."
+        objective_mode: input.objective_mode === true,
       }),
       now,
       now,
@@ -1259,6 +1281,61 @@ export class LoopService {
       id: randomUUID(), type: `targeted_${target.category}_fix`, severity, file: path.relative(repositoryRealPath, realPath),
       message: description, evidence: 'Caller supplied a bounded fix request for this repository file.',
       suggested_fix: description, metadata: { targeted: true, category: target.category },
+    };
+  }
+
+  /**
+   * Synthesizes a LoopFinding from a goal's own free-text objective, instead
+   * of running a fixed scanner — the real gap behind 10/10 self-improvement
+   * goals ending at identical doc-drift no-ops. No real file_path is
+   * required: nothing downstream (writeWorkAssignment, LoopWorkerExecutorService)
+   * validates or scopes a diff to finding.file, so a descriptive sentinel is safe.
+   */
+  private createObjectiveFinding(goal: GoalRecord): LoopFinding {
+    const objective = goal.objective.trim();
+    if (!objective) throw createError(400, 'goal objective is required for objective-mode findings', 'OBJECTIVE_FINDING_EMPTY');
+
+    // Self-improvement goals only carry a short title as `objective` — the
+    // rich description/rationale lives in self_improvements, keyed by
+    // metadata.improvement_id (see autonomous-goal-generator.ts).
+    const improvementId = typeof goal.metadata.improvement_id === 'string' ? goal.metadata.improvement_id : null;
+    const improvement = improvementId
+      ? this.db.prepare('SELECT description, rationale, type FROM self_improvements WHERE id = ?').get(improvementId) as
+          { description?: string; rationale?: string; type?: string } | undefined
+      : undefined;
+
+    const severity: LoopFinding['severity'] =
+      goal.risk_class === 'high' || goal.risk_class === 'critical' ? 'error'
+      : goal.risk_class === 'medium' ? 'warning' : 'info';
+
+    const evidence = [
+      `Self-improvement goal ${goal.id} (source=${String(goal.metadata.source ?? 'unknown')}, risk_class=${goal.risk_class}).`,
+      improvement?.description ? `Original proposal: ${improvement.description}` : null,
+      improvement?.rationale ? `Rationale: ${improvement.rationale}` : null,
+      goal.constraints.length ? `Constraints: ${goal.constraints.join('; ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    return {
+      id: randomUUID(),
+      type: 'self_improvement_objective',
+      severity,
+      file: '(repository-wide objective; no single target file)',
+      message: objective,
+      evidence: evidence || 'No additional evidence beyond the goal objective was available.',
+      suggested_fix: goal.acceptance_criteria.length
+        ? `Satisfy: ${goal.acceptance_criteria.join('; ')}`
+        : objective,
+      metadata: {
+        objective_mode: true,
+        goal_id: goal.id,
+        source: goal.metadata.source ?? null,
+        improvement_id: improvementId,
+        // Force the existing high-risk gate (isHighRiskRun/highRiskReason) for
+        // security-typed proposals as defense-in-depth, even though such
+        // goals are already excluded from objective-mode dispatch by
+        // risk_class in objective-loop-gate.ts.
+        category: improvement?.type === 'security' ? 'security' : undefined,
+      },
     };
   }
 
