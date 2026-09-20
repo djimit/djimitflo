@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -72,10 +72,13 @@ describe('SelfImprovementAgentReviewService', () => {
     expect(updated.consensus.support_count).toBe(2);
   });
 
-  it('recovers from a throwing model call instead of leaving the specialist unreviewed', async () => {
+  it('a permanently throwing model call does not leave the specialist unreviewed forever (bounded retries, then the recorded failure)', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () => { throw new Error('network down'); });
-    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
+    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
     expect(updated.consensus.submitted_reviews).toBe(2);
     expect(updated.consensus.needs_evidence_count).toBe(2);
   });
@@ -92,5 +95,35 @@ describe('SelfImprovementAgentReviewService', () => {
     });
     await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(calls).toBe(1);
+  });
+
+  it('does not record a failed model call as a review: the seat stays open for a retry, then falls back after 3 attempts', async () => {
+    const { db, panel } = setup();
+    let calls = 0;
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => { calls++; throw new Error('fetch failed'); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const first = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    expect(first.reviews ?? []).toHaveLength(0);
+    expect(first.status).not.toBe('consensus_ready');
+    await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
+    const third = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
+    expect((third.reviews ?? []).length).toBe(2); // bounded: now the recorded failure is used
+    expect(third.reviews?.[0].findings.join()).toContain('Review generation failed: fetch failed');
+    expect(calls).toBe(6);
+    warn.mockRestore();
+  });
+
+  it('a later successful call fills the open seat with a real review', async () => {
+    const { db, panel } = setup();
+    let ok = false;
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => {
+      if (!ok) throw new Error('Ollama request failed: 404');
+      return JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['sound'], evidence_refs: ['context:rationale'] });
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-1')).reviews ?? []).toHaveLength(0);
+    ok = true;
+    const done = await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
+    expect(done.consensus.support_count).toBe(2);
   });
 });
