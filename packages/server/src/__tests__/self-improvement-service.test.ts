@@ -75,7 +75,7 @@ describe('G71: Self Improvement', () => {
     expect(panel.panel.map((p) => p.id)).toEqual(expect.arrayContaining(['security_reviewer']));
   });
 
-  describe('outcome feedback (adjustPriorityForHistory)', () => {
+  describe('outcome feedback (Thompson-sampling priority per source)', () => {
     function seedResolvedHistory(source: string, statuses: string[]) {
       const now = new Date().toISOString();
       statuses.forEach((status, i) => {
@@ -85,40 +85,51 @@ describe('G71: Self Improvement', () => {
         `).run(`seed-${source}-${i}`, `seed ${i}`, `seed ${i}`, source, status, now, now);
       });
     }
+    // Posterior mean instead of a random draw, so priorities are deterministic here.
+    const meanSampler = (a: number, b: number) => a / (a + b);
+    const priorityFor = () => new SelfImprovementService(db, meanSampler).generateFromReflection({
+      whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
+    })[0].priority;
 
     it('leaves priority unchanged when there is not enough resolved history yet', () => {
-      seedResolvedHistory('reflection', ['needs_more_evidence', 'needs_more_evidence']); // only 2, below the 5-sample floor
-      const [proposal] = improvement.generateFromReflection({
-        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
-      });
-      expect(proposal.priority).toBe(0.9);
+      seedResolvedHistory('reflection', ['needs_more_evidence', 'needs_more_evidence']); // below the 5-sample floor
+      expect(priorityFor()).toBe(0.9);
     });
 
-    it('leaves priority unchanged when recent history for the source is healthy', () => {
-      seedResolvedHistory('reflection', Array(10).fill('scheduled')); // 0% park rate
-      const [proposal] = improvement.generateFromReflection({
-        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
-      });
-      expect(proposal.priority).toBe(0.9);
+    it('ignores in-flight, archived and ungrounded rows (no outcome yet)', () => {
+      seedResolvedHistory('reflection', [...Array(10).fill('scheduled'), ...Array(10).fill('archived'), ...Array(10).fill('needs_grounding')]);
+      expect(priorityFor()).toBe(0.9);
     });
 
-    it('reduces priority when recent history for the source is mostly parked (>70% needs_more_evidence)', () => {
-      seedResolvedHistory('reflection', [...Array(16).fill('needs_more_evidence'), ...Array(4).fill('scheduled')]); // 80% park rate
-      const [proposal] = improvement.generateFromReflection({
-        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
-      });
-      expect(proposal.priority).toBeCloseTo(0.8, 5);
+    it('raises priority for a source whose proposals verify (posterior mean 11/12)', () => {
+      seedResolvedHistory('reflection', Array(10).fill('verified'));
+      expect(priorityFor()).toBe(1); // 0.9 * (0.5 + 0.917) clamped to 1
     });
 
-    it('only considers the most recent 20 resolved proposals for the same source, not all history', () => {
-      // 25 old, all needs_more_evidence — but only the newest 20 should count.
-      seedResolvedHistory('reflection', Array(25).fill('needs_more_evidence'));
-      const [proposal] = improvement.generateFromReflection({
-        whatFailed: [], lessonsLearned: [], proposedImprovements: ['Add try-catch to all handlers'],
-      });
-      // All 20 most-recent are still needs_more_evidence either way here — this just
-      // confirms the LIMIT 20 query doesn't throw/misbehave with more rows than the window.
-      expect(proposal.priority).toBeCloseTo(0.8, 5);
+    it('lowers priority for a source that mostly parks or produces no change', () => {
+      seedResolvedHistory('reflection', [...Array(16).fill('needs_more_evidence'), ...Array(4).fill('no_change')]);
+      // successes 0, failures 4, parked 16 -> Beta(1, 13): mean 1/14
+      expect(priorityFor()).toBeCloseTo(0.9 * (0.5 + 1 / 14), 5);
+    });
+
+    it('only considers the most recent 50 resolved proposals for the source', () => {
+      seedResolvedHistory('reflection', Array(60).fill('needs_more_evidence'));
+      expect(priorityFor()).toBeCloseTo(0.9 * (0.5 + 1 / 27), 5); // Beta(1, 1 + 0.5*50)
+    });
+  });
+
+  describe('recordOutcome', () => {
+    const seed = (id: string, status: string) => db.prepare(`
+      INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at)
+      VALUES (?, 'feature', 't', 'd', 'r', 'reflection', ?, 0.5, datetime('now'), datetime('now'))`).run(id, status);
+
+    it('moves an in-flight proposal to its outcome, and nothing else', () => {
+      seed('a', 'executing'); seed('b', 'needs_more_evidence'); seed('c', 'applied');
+      expect(improvement.recordOutcome('a', 'verified')).toBe(true);
+      expect(improvement.recordOutcome('b', 'regressed')).toBe(false);
+      expect(improvement.recordOutcome('c', 'regressed')).toBe(false);
+      expect(improvement.getImprovement('a').status).toBe('verified');
+      expect(improvement.getImprovement('c').status).toBe('applied');
     });
   });
 

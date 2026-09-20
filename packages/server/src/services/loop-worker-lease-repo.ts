@@ -76,10 +76,18 @@ export class WorkerLeaseRepo {
    */
   updateStatus(id: string, status: WorkerLeaseRecord['status'], metadataPatch: Record<string, unknown> = {}): void {
     const existing = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata?: string } | undefined;
-    const metadata = {
+    const metadata: Record<string, unknown> = {
       ...(existing ? JSON.parse(existing.metadata || '{}') : {}),
       ...metadataPatch,
     };
+    // 136 production leases failed with no stored reason: never record a failure without one.
+    if (status === 'failed' && !metadata.failure_reason && !metadata.failed_reason) {
+      metadata.failure_reason = String(metadata.execution_denied_reason ?? metadata.notes
+        ?? (metadata.runtime_contract_failed_at ? 'runtime_contract_unavailable_or_drifted' : null)
+        ?? (metadata.timed_out ? 'runtime_timed_out' : null)
+        ?? (typeof metadata.exit_status === 'number' && metadata.exit_status !== 0 ? `runtime_exit_status_${metadata.exit_status}` : null)
+        ?? 'unspecified: caller supplied no reason');
+    }
     this.db.prepare('UPDATE worker_leases SET status = ?, metadata = ?, updated_at = ? WHERE id = ?')
       .run(status, JSON.stringify(metadata), new Date().toISOString(), id);
   }

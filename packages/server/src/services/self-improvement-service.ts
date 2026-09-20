@@ -43,7 +43,7 @@ type ProposalInput = Pick<ImprovementProposal, 'type' | 'title' | 'description' 
 export class SelfImprovementService {
   private panels: SpecialistPanelService;
 
-  constructor(private db: Database) {
+  constructor(private db: Database, private readonly sampleBeta: (alpha: number, beta: number) => number = betaSample) {
     this.panels = new SpecialistPanelService(db);
   }
 
@@ -349,17 +349,30 @@ export class SelfImprovementService {
    * being exempted from measurement.
    */
   private adjustPriorityForHistory(source: string, basePriority: number): number {
+    // Thompson sampling over the source's recent outcomes: success = the proposal survived
+    // verification, failure = it produced nothing/regressed/was rejected, parked counts half a
+    // failure. A struggling source is de-prioritised, an unproven one keeps exploring.
     const rows = this.db.prepare(`
       SELECT status, COUNT(*) as n FROM (
-        SELECT status FROM self_improvements WHERE source = ? AND status NOT IN ('proposed', 'archived', 'needs_grounding')
-        ORDER BY created_at DESC LIMIT 20
+        SELECT status FROM self_improvements
+        WHERE source = ? AND status IN ('verified', 'evaluating', 'applied', 'no_change', 'regressed', 'rejected', 'needs_more_evidence')
+        ORDER BY created_at DESC LIMIT 50
       ) GROUP BY status
     `).all(source) as Array<{ status: string; n: number }>;
-    const total = rows.reduce((sum, row) => sum + row.n, 0);
-    if (total < 5) return basePriority; // not enough resolved history to judge yet
-    const parked = rows.find((row) => row.status === 'needs_more_evidence')?.n ?? 0;
-    const parkRate = parked / total;
-    return parkRate > 0.7 ? Math.max(0.1, basePriority - 0.1) : basePriority;
+    const count = (statuses: string[]) => rows.filter((row) => statuses.includes(row.status)).reduce((sum, row) => sum + row.n, 0);
+    const successes = count(['verified', 'evaluating', 'applied']);
+    const failures = count(['no_change', 'regressed', 'rejected']);
+    const parked = count(['needs_more_evidence']);
+    if (successes + failures + parked < 5) return basePriority; // not enough resolved history to judge yet
+    const theta = this.sampleBeta(1 + successes, 1 + failures + 0.5 * parked);
+    return Math.min(1, Math.max(0.1, basePriority * (0.5 + theta)));
+  }
+
+  /** Records what a goal's run actually achieved for its proposal (only from an in-flight state). */
+  recordOutcome(id: string, outcome: 'verified' | 'regressed' | 'no_change'): boolean {
+    const result = this.db.prepare("UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ('scheduled', 'executing')")
+      .run(outcome, new Date().toISOString(), id);
+    return result.changes === 1;
   }
 
   private transition(id: string, status: ImprovementStatus): void {
@@ -396,4 +409,24 @@ export class SelfImprovementService {
       updatedAt: row.updated_at || row.created_at,
     };
   }
+}
+
+/** Beta(alpha, beta) sample via two Gamma draws (Marsaglia-Tsang). Injectable for deterministic tests. */
+export function betaSample(alpha: number, beta: number, rng: () => number = Math.random): number {
+  const normal = () => Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
+  const gamma = (shape: number): number => {
+    if (shape < 1) return gamma(shape + 1) * Math.pow(rng(), 1 / shape);
+    const d = shape - 1 / 3;
+    const c = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      const x = normal();
+      const v = Math.pow(1 + c * x, 3);
+      if (v <= 0) continue;
+      const u = rng();
+      if (Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v)) return d * v;
+    }
+  };
+  const a = gamma(alpha);
+  const b = gamma(beta);
+  return a / (a + b);
 }

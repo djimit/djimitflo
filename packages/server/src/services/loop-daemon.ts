@@ -7,6 +7,7 @@ import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
+import { SelfImprovementService } from './self-improvement-service';
 import { authorityGateForGoal } from './authority-gate';
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
@@ -248,6 +249,8 @@ export class LoopDaemon {
   private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
     const startedAtMs = Date.now();
+    // The cognitive/meta layer keys tuning by the run's loop name (loop-service getActiveLoopTuning), not by execution mode.
+    let loopName = 'doc-drift-and-small-fix-loop';
     const executionMode = opts.allowObjectiveMode ? 'objective' : 'doc_drift';
     try {
       // 1. Decompose the goal if not already decomposed.
@@ -277,6 +280,7 @@ export class LoopDaemon {
         ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(process.env.LOOP_DAEMON_REPOSITORY_PATH ? { repository_path: process.env.LOOP_DAEMON_REPOSITORY_PATH } : {}) })
         : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
+      loopName = (run as { loop_name?: string }).loop_name ?? loopName;
 
       // 3. Skip execution if no findings were discovered.
       if (run.findings.length === 0) {
@@ -388,7 +392,7 @@ export class LoopDaemon {
       swarmEventBus.emit('loop_completed', {
         loopRunId: run.id,
         goalId: goal.id,
-        goalType: executionMode,
+        goalType: loopName,
         mode: 'closed',
         status: allGatesPass ? 'completed' : 'failed',
         durationMs: Date.now() - startedAtMs,
@@ -396,6 +400,12 @@ export class LoopDaemon {
         startedAt: new Date(startedAtMs).toISOString(),
         completedAt: new Date().toISOString(),
       });
+
+      // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
+      try {
+        const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : 'regressed');
+      } catch { /* best-effort learning */ }
 
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
@@ -465,7 +475,7 @@ export class LoopDaemon {
       try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'failed', failureMessage); } catch { /* best-effort learning */ }
       if (runId) {
         swarmEventBus.emit('loop_completed', {
-          loopRunId: runId, goalId: goal.id, goalType: executionMode, mode: 'closed', status: 'failed',
+          loopRunId: runId, goalId: goal.id, goalType: loopName, mode: 'closed', status: 'failed',
           durationMs: Date.now() - startedAtMs, strategy: executionMode,
           startedAt: new Date(startedAtMs).toISOString(), completedAt: new Date().toISOString(),
         });

@@ -104,10 +104,15 @@ export class MetaEvolutionService {
     const recurringGaps = this.db.prepare(`
       SELECT subject_ref, COUNT(*) as freq FROM swarm_claims
       WHERE claim_type = 'capability' AND created_at > datetime('now', '-30 days')
+        AND created_from <> 'curiosity-service'
       GROUP BY subject_ref HAVING freq >= 3
     `).all() as Array<{ subject_ref: string; freq: number }>;
+    // The curiosity scanner's own diagnostic claims are excluded above (they minted 100 noise drafts in production);
+    // additionally cap open meta-evolution drafts so a signal storm cannot flood the registry again.
+    const openDrafts = (this.db.prepare("SELECT COUNT(*) AS c FROM swarm_capabilities WHERE owner = 'meta-evolution' AND status = 'draft'").get() as { c: number }).c;
+    const draftBudget = Math.max(0, Number(process.env.META_EVOLUTION_MAX_OPEN_DRAFTS) || 20) - openDrafts;
 
-    for (const gap of recurringGaps) {
+    for (const gap of recurringGaps.slice(0, draftBudget)) {
       const existing = this.db.prepare('SELECT id FROM swarm_capabilities WHERE id = ?').get(`loop-contract-${gap.subject_ref}`);
       if (existing) continue;
 

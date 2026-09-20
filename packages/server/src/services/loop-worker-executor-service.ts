@@ -118,7 +118,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: makerLease.role, worker_runtime: makerLease.runtime, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeMaker' },
       });
-      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString() });
+      this.loopService.updateWorkerLeaseStatus(makerLease.id, 'failed', { runtime_adapter: makerLease.runtime, runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
@@ -160,6 +160,7 @@ export class LoopWorkerExecutorService {
       runtime_signal: result.signal, runtime_timed_out: result.timedOut, runtime_timed_out_at: result.timedOutAt,
       runtime_warnings: runtimeWarnings, token_efficiency: efficiency,
       runtime_usage: runtimeUsage || { usage_source: 'unknown' },
+      ...(failed ? { failure_reason: `maker_gate_failed:${gates.filter((gate) => gate.status === 'fail').map((gate) => gate.name).join(',')}` } : {}),
     };
 
     if (wasCancelled) {
@@ -233,7 +234,7 @@ export class LoopWorkerExecutorService {
         gateRefs: ['runtime_contract'], blockedReasons: ['runtime_contract_drift'],
         metadata: { worker_role: checker.role, worker_runtime: runtime, maker_lease_id: checker.metadata.maker_lease_id, reason: 'runtime_contract_unavailable_or_drifted', started_from: 'executeChecker' },
       });
-      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString() });
+      this.loopService.updateWorkerLeaseStatus(checker.id, 'failed', { runtime_contract: runtimeContract, runtime_contract_failed_at: new Date().toISOString(), failure_reason: 'runtime_contract_unavailable_or_drifted' });
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
