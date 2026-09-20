@@ -101,3 +101,21 @@ describe('ProposalClusteringService', () => {
     expect(plan.clusters).toHaveLength(0);
   });
 });
+
+describe('refinement carries grounding', () => {
+  it('parses target/test/metric from the model and stores it on the refined proposal (null means none)', async () => {
+    const { SelfImprovementRefinementService } = await import('../services/self-improvement-refinement-service');
+    const grounded = await new SelfImprovementRefinementService(async () => JSON.stringify({ title: 't', description: 'd', rationale: 'r', target: 'packages/server/src/x.ts', acceptance_test: 'npm test x', baseline_metric: 'null' })).refine(
+      { id: 'p', title: 'a', description: 'b', rationale: 'c' } as never, []);
+    expect(grounded).toMatchObject({ target: 'packages/server/src/x.ts', acceptanceTest: 'npm test x' });
+    expect(grounded?.baselineMetric).toBeUndefined();
+
+    const db = new Database(':memory:'); db.pragma('foreign_keys = ON'); db.exec(schema); runMigrations(db);
+    const svc = new SelfImprovementService(db);
+    db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, created_at, updated_at) VALUES ('parked', 'feature', 't', 'd', 'r', 'reflection', 'needs_more_evidence', 0.5, '[\"reflection:r1\"]', datetime('now'), datetime('now'))").run();
+    const child = svc.refineFromDissent('parked', grounded!)!;
+    const row = db.prepare('SELECT grounding_json FROM self_improvements WHERE id = ?').get(child.id) as { grounding_json: string };
+    expect(JSON.parse(row.grounding_json)).toMatchObject({ target: 'packages/server/src/x.ts', derived: false });
+    db.close();
+  });
+});
