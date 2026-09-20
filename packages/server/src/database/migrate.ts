@@ -66,6 +66,11 @@ const selfImprovementColumns: ColumnSpec[] = [
 // Refinement loop: refined_at marks a parent once a refinement child exists for it;
 // refined_from_id marks a child as a refinement of that parent. Both nullable, both
 // checked before a refinement is attempted so a proposal is refined at most once.
+// Grounding gate (proposal-grounding.ts): the explicit or derived target/test/metric a proposal is anchored to.
+const selfImprovementGroundingColumns: ColumnSpec[] = [
+  { name: 'grounding_json', definition: 'TEXT' },
+];
+
 const selfImprovementRefinementColumns: ColumnSpec[] = [
   { name: 'refined_at', definition: 'TEXT' },
   { name: 'refined_from_id', definition: 'TEXT' },
@@ -1208,6 +1213,14 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       posted_at TEXT NOT NULL,
       completed_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS proposal_clusters (
+      improvement_id TEXT PRIMARY KEY,
+      cluster_id TEXT NOT NULL,
+      representative_id TEXT NOT NULL,
+      original_status TEXT NOT NULL,
+      original_fingerprint TEXT,
+      archived_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS loop_learning_closures (
       loop_run_id TEXT PRIMARY KEY,
       eval_run_id TEXT NOT NULL,
@@ -1223,6 +1236,7 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   // CREATE INDEX idx_self_improve_fingerprint with "no such column".
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
   addMissingColumns(db, 'self_improvements', selfImprovementRefinementColumns);
+  addMissingColumns(db, 'self_improvements', selfImprovementGroundingColumns);
   // P1c: collapse duplicate fingerprints (keep newest row per fingerprint) so UNIQUE never aborts.
   db.exec(`
     DELETE FROM self_improvements
