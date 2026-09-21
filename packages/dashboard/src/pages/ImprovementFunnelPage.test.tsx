@@ -11,6 +11,8 @@ const funnel = {
   refinement: { originals: 1, children: 1, childOutcomes: { needs_more_evidence: 1 } },
   goals: { fromSelfImprovement: { completed: 2 } },
   learning: { cognitiveEpisodes: 5, cognitivePatterns: 0, cognitiveStrategies: 1, learningClosures: 2, memoryCandidates: {} },
+  kpi: { windowDays: 7, verified: 2, regressed: 1, regressionRate: 1 / 3, panels24h: 40, panels7d: 200, panelsPerVerified: 100, medianHoursToVerified: 3.5, approvalsPerRun: 1 },
+  hygiene: { zombieGoals: 4, staleRuns: 5, blockedBoardItems: 6 },
   queues: { openWorkItems: 3, workItemsByLoop: [{ loop: 'agent-board-review-loop', status: 'blocked', n: 3 }], commonsReviews: { completed: 4 } },
 };
 
