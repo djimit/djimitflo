@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Deterministic Paperclip process adapter: one OpenCode Commons inference per run.
+"""Deterministic scheduled Commons controller: one bounded OpenCode inference per run.
 
-Scheduling/admission belongs to Paperclip (maxDailyRuns=4, concurrency=1).
-Operator login is a Paperclip secret_ref; only this controller receives it.
+Runs from any scheduler (systemd timer, launchd, cron) on a host that has the OpenCode CLI. It replaces the former
+Paperclip process adapter: admission (daily cap) is enforced here, the operator login stays a secret only this
+controller receives, and the runtime child gets a 15-minute scoped token minted per run.
+
+Configuration (environment; secrets via a 0600 EnvironmentFile, never on the command line):
+  DJIMITFLO_COMMONS_OPERATOR_LOGIN   {"email":"...","password":"..."}   (required)
+  SOCIAL_OPENCODE_PROVIDER_API_KEY   provider key, handed only to the OpenCode child (optional)
+  DJIMITFLO_URL (default http://100.86.47.122:3001)   COMMONS_AGENT (opencode-control)   COMMONS_PEER (commons-oracle)
+  COMMONS_MODEL (commons-ollama/kimi-k2.6)   COMMONS_PROVIDER_URL (https://ollama.com/v1)   OPENCODE_BIN_PATH (/usr/bin/opencode)
+  COMMONS_MAX_RUNS_PER_DAY (4)   COMMONS_STATE_DIR (~/.local/state/commons-poller)
 """
+import datetime
 import importlib.util
 import json
 import os
@@ -13,18 +22,25 @@ import sys
 import urllib.error
 import urllib.request
 
-DJIMITFLO = 'http://100.86.47.122:3001'
-PAPERCLIP = 'http://127.0.0.1:3100'
-AGENT = 'opencode-control'
-PEER = 'commons-oracle'
-MODEL = 'commons-ollama/kimi-k2.6'
-PROVIDER = 'https://ollama.com/v1'
+DEFAULTS = {
+    'DJIMITFLO_URL': 'http://100.86.47.122:3001',
+    'COMMONS_AGENT': 'opencode-control',
+    'COMMONS_PEER': 'commons-oracle',
+    'COMMONS_MODEL': 'commons-ollama/kimi-k2.6',
+    'COMMONS_PROVIDER_URL': 'https://ollama.com/v1',
+    'OPENCODE_BIN_PATH': '/usr/bin/opencode',
+    'COMMONS_MAX_RUNS_PER_DAY': '4',
+}
+CONFIG = {}
+AGENT = DEFAULTS['COMMONS_AGENT']
+PEER = DEFAULTS['COMMONS_PEER']
+MODEL = DEFAULTS['COMMONS_MODEL']
+DJIMITFLO = DEFAULTS['DJIMITFLO_URL']
 
 
-def request(method, base, path, body=None, token=None, run_id=None):
+def request(method, base, path, body=None, token=None):
     headers = {'Content-Type': 'application/json'}
     if token: headers['Authorization'] = 'Bearer ' + token
-    if run_id: headers['X-Paperclip-Run-Id'] = run_id
     req = urllib.request.Request(base + path, method=method, headers=headers,
         data=None if body is None else json.dumps(body).encode())
     try:
@@ -45,7 +61,7 @@ def failure_code(error):
         'runtime evidence_refs must be an array': 'reply_invalid_evidence',
         'runtime exceeded bounded execution timeout': 'runtime_timeout',
         'opencode returned an error event': 'provider_error_event',
-        'Paperclip run agent mismatch': 'run_identity_mismatch',
+        'daily run cap reached': 'daily_cap',
     }
     if message in known: return known[message]
     if re.fullmatch(r'opencode failed with exit -?\d+', message): return 'runtime_exit'
@@ -53,24 +69,39 @@ def failure_code(error):
 
 
 def isolate_environment():
+    """Take the secrets out of the process environment before anything else can inherit them."""
+    global CONFIG, AGENT, PEER, MODEL, DJIMITFLO
     login = json.loads(os.environ.pop('DJIMITFLO_COMMONS_OPERATOR_LOGIN'))
     provider_key = os.environ.pop('SOCIAL_OPENCODE_PROVIDER_API_KEY', '')
-    run_id = os.environ.get('PAPERCLIP_RUN_ID', '')
-    run_token = os.environ.pop('PAPERCLIP_API_KEY', '')
-    agent_id = os.environ.get('PAPERCLIP_AGENT_ID', '')
+    CONFIG = {key: os.environ.get(key, default) for key, default in DEFAULTS.items()}
+    CONFIG['COMMONS_STATE_DIR'] = os.environ.get('COMMONS_STATE_DIR') or str(Path.home() / '.local' / 'state' / 'commons-poller')
+    AGENT, PEER, MODEL, DJIMITFLO = CONFIG['COMMONS_AGENT'], CONFIG['COMMONS_PEER'], CONFIG['COMMONS_MODEL'], CONFIG['DJIMITFLO_URL']
     inherited = {key: os.environ[key] for key in ('PATH', 'HOME', 'LANG', 'SSL_CERT_FILE', 'SSL_CERT_DIR') if key in os.environ}
     os.environ.clear()
     os.environ.update(inherited)
-    os.environ.update(DJIMITFLO_URL=DJIMITFLO, DJIMITFLO_AGENT_ID=AGENT,
-        SOCIAL_RUNTIME='opencode', SOCIAL_MODEL_ID=MODEL,
-        SOCIAL_OPENCODE_PROVIDER_URL=PROVIDER, OPENCODE_BIN_PATH='/usr/bin/opencode')
+    os.environ.update(DJIMITFLO_URL=DJIMITFLO, DJIMITFLO_AGENT_ID=AGENT, SOCIAL_RUNTIME='opencode', SOCIAL_MODEL_ID=MODEL,
+        SOCIAL_OPENCODE_PROVIDER_URL=CONFIG['COMMONS_PROVIDER_URL'], OPENCODE_BIN_PATH=CONFIG['OPENCODE_BIN_PATH'])
     if provider_key:
         os.environ['SOCIAL_OPENCODE_PROVIDER_API_KEY'] = provider_key
     if not isinstance(login, dict) or set(login) != {'email', 'password'} or not all(isinstance(v, str) and v for v in login.values()):
         raise RuntimeError('Invalid operator login configuration')
-    if not run_id or not run_token or not agent_id:
-        raise RuntimeError('Paperclip run identity required')
-    return login, run_id, run_token, agent_id
+    return login
+
+
+def admit_run(state_dir, today=None, now=None):
+    """Daily admission cap (was Paperclip's maxDailyRuns): counts attempts per UTC day in a small state file."""
+    day = today or datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+    limit = int(CONFIG.get('COMMONS_MAX_RUNS_PER_DAY') or DEFAULTS['COMMONS_MAX_RUNS_PER_DAY'])
+    path = Path(state_dir) / f'{AGENT}.json'
+    try: state = json.loads(path.read_text())
+    except (OSError, ValueError): state = {}
+    if state.get('day') != day: state = {'day': day, 'runs': 0}
+    if state['runs'] >= limit:
+        return False
+    state['runs'] += 1
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state))
+    return True
 
 
 def poll_once(poller, operator, progress=lambda stage: None):
@@ -106,23 +137,16 @@ def poll_once(poller, operator, progress=lambda stage: None):
 
 
 def main():
-    login, run_id, run_token, paperclip_agent = isolate_environment()
-    issue_id = None
-    stage = 'paperclip_run_read'
+    stage = 'configuration'
     def progress(value):
         nonlocal stage
         stage = value
-    def pc(method, path, body=None):
-        return request(method, PAPERCLIP, path, body, run_token, run_id)
     try:
-        run = pc('GET', '/api/heartbeat-runs/' + run_id)
-        if run.get('agentId') != paperclip_agent: raise RuntimeError('Paperclip run agent mismatch')
-        candidate_issue = (run.get('contextSnapshot') or {}).get('issueId')
-        if candidate_issue:
-            progress('issue_checkout')
-            pc('POST', '/api/issues/' + candidate_issue + '/checkout',
-               {'agentId': paperclip_agent, 'expectedStatuses': ['todo', 'in_progress', 'backlog']})
-            issue_id = candidate_issue
+        login = isolate_environment()
+        progress('admission')
+        if not admit_run(CONFIG['COMMONS_STATE_DIR']):
+            print(json.dumps({'agent': AGENT, 'processed': 0, 'model_calls': 0, 'reason': 'daily_cap'}))
+            return 0
         progress('operator_login')
         operator = request('POST', DJIMITFLO, '/api/auth/login', login)['token']
         login.clear()
@@ -133,24 +157,11 @@ def main():
         poller = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(poller)
         result = poll_once(poller, operator, progress)
-        result.update(paperclip_run_id=run_id, token_renewed=True, token_ttl_ms=900000)
-        if issue_id:
-            progress('issue_done')
-            pc('PATCH', '/api/issues/' + issue_id, {'status': 'done', 'comment': json.dumps(result)})
+        result.update(token_renewed=True, token_ttl_ms=900000)
         print(json.dumps(result))
     except Exception as error:
         # Never log responses, exception payloads or credential-bearing environment.
-        report = {'agent': AGENT, 'paperclip_run_id': run_id, 'error_type': type(error).__name__, 'status': 'failed', 'stage': stage, 'failure_code': failure_code(error)}
-        if issue_id:
-            try: pc('PATCH', '/api/issues/' + issue_id, {'status': 'blocked', 'comment': json.dumps(report), 'unblockDescriptor': {'owner': {'agentId': paperclip_agent}, 'action': 'Diagnose Commons runtime failure and verify provider before an operator explicitly resumes the routine.'}})
-            except Exception as closure_error:
-                report['issue_close_failure_code'] = failure_code(closure_error)
-                # A rejected status transition must still leave a run comment;
-                # Paperclip otherwise starts a missing-comment remediation run.
-                try: pc('POST', '/api/issues/' + issue_id + '/comments', {'body': json.dumps(report)})
-                except Exception as comment_error:
-                    report['issue_comment_failure_code'] = failure_code(comment_error)
-        print(json.dumps(report), file=sys.stderr)
+        print(json.dumps({'agent': AGENT, 'error_type': type(error).__name__, 'status': 'failed', 'stage': stage, 'failure_code': failure_code(error)}), file=sys.stderr)
         return 1
     finally:
         os.environ.pop('DJIMITFLO_SOCIAL_TOKEN', None)
