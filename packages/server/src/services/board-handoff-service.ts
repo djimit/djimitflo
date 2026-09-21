@@ -140,7 +140,7 @@ export class BoardHandoffService {
             epistemic_role: role,
             evidence_refs: evidenceRefs,
             occurred_at: row.timestamp,
-            downstream_targets: ['EVE-V', 'Paperclip', 'content-publication', 'revenue-leads'],
+            downstream_targets: ['EVE-V', 'Djimitflo', 'content-publication', 'revenue-leads'],
           },
         }, BOARD_HANDOFF_AUTHORITY);
         this.db.prepare(`UPDATE board_handoff_claims SET status = 'created', work_item_id = ?, updated_at = datetime('now') WHERE source_ref = ?`)
@@ -167,7 +167,7 @@ export class BoardHandoffService {
           risk_class: created.work_item.risk_class,
           confidence: created.work_item.confidence,
           value_score: created.work_item.value_score,
-          downstream_targets: ['EVE-V', 'Paperclip', 'content-publication', 'revenue-leads'],
+          downstream_targets: ['EVE-V', 'Djimitflo', 'content-publication', 'revenue-leads'],
           evidence_refs: evidenceRefs,
           thread_id: this.string(payload?.thread_id ?? payload?.threadId),
           epistemic_role: role,

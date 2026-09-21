@@ -1,3 +1,4 @@
+import { WorkItemService } from './work-item-service';
 import type { Database } from 'better-sqlite3';
 import { z } from 'zod';
 import { OutcomeLearningService } from './outcome-learning-service';
@@ -61,6 +62,28 @@ export class ExternalEventIngestService {
     this.timer = null;
   }
 
+  /**
+   * Native work intake for roborev review findings (they used to be shipped to Paperclip as issues).
+   * Idempotent on the event's dedupe_key; a malformed finding is skipped, never thrown.
+   */
+  private materializeRoborevFinding(event: Record<string, unknown>): void {
+    try {
+      const title = typeof event.task_title === 'string' ? event.task_title.trim() : '';
+      const dedupeKey = typeof event.dedupe_key === 'string' ? event.dedupe_key.trim() : '';
+      if (!title || !dedupeKey) return;
+      const severity = String(event.severity || 'medium');
+      new WorkItemService(this.db).upsertBySourceRef({
+        title: title.slice(0, 200),
+        description: typeof event.context === 'string' && event.context.trim() ? event.context : title,
+        source: 'roborev', source_ref: dedupeKey,
+        risk_class: severity === 'critical' ? 'critical' : severity === 'high' ? 'high' : severity === 'low' ? 'low' : 'medium',
+        status: 'candidate',
+        recommended_loop: event.task_type === 'review_fix' ? 'repo-maintenance-loop' : 'research-loop',
+        metadata: { repo: event.repo ?? null, sha: event.sha ?? null, finding_class: event.finding_class ?? null, affected_files: Array.isArray(event.affected_files) ? event.affected_files.map(String) : [], task_type: event.task_type ?? null },
+      });
+    } catch { /* never let one finding break event ingestion */ }
+  }
+
   async pollOnce(): Promise<number> {
     const cursorKey = `external_event_ingest_cursor:${this.stream}`;
     const cursor = (this.db.prepare('SELECT value FROM system_state WHERE key = ?').get(cursorKey) as { value?: string } | undefined)?.value;
@@ -102,6 +125,7 @@ export class ExternalEventIngestService {
         const eventType = String(event.event_type || '');
         if (!id || (!eventType.startsWith('paperclip.')
           && eventType !== 'outcome.observed'
+          && eventType !== 'roborev.finding'
           && eventType !== 'agent.board.handoff.created'
           && eventType !== 'eve-v.board.handoff.received')) continue;
         let normalizedEvent = event;
@@ -112,6 +136,7 @@ export class ExternalEventIngestService {
           normalizedEvent = { ...event, ...parsed.data };
         }
         const aggregateVersion = Number(normalizedEvent.aggregate_version);
+        if (eventType === 'roborev.finding') this.materializeRoborevFinding(normalizedEvent);
         inserted += insert.run(
           id,
           eventType,

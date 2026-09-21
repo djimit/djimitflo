@@ -10,6 +10,7 @@
  * blocked token — logged, never escalated.
  */
 
+import { paperclipExportEnabled } from './paperclip-legacy';
 import { randomUUID } from 'crypto';
 import { appendFileSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
@@ -141,7 +142,8 @@ export class AgentLureService {
 
   private exportPaperclip(path: string | null | undefined, lure: { lureId: string; topic: string; topicRef: string; invited: string[] }): boolean {
     if (path === null || !lure.invited.length) return false;
-    const target = path || process.env.DENNIS_AGENT_PAPERCLIP_PENDING || `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl`;
+    const target = path || process.env.DENNIS_AGENT_PAPERCLIP_PENDING || (paperclipExportEnabled() ? `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl` : null);
+    if (!target) return false; // legacy Paperclip export is off: the lure itself is already recorded in social_lures
     const envelope = {
       event: 'social.invite', task_title: `Agent Commons: connect ${lure.invited.length} silent agent(s) to peer learning`,
       task_type: 'skill_candidate', priority: 'low', severity: 'low', status: 'backlog', dedupe_key: `agent-commons:${lure.lureId}`,
