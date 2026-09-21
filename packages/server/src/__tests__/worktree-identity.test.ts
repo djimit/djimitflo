@@ -16,7 +16,7 @@ it('snapshots a dirty source worktree without any global git identity (productio
   git(repo, 'init', '-q'); git(repo, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--allow-empty', '-qm', 'init');
   fs.writeFileSync(path.join(repo, 'dirty.txt'), 'x'); git(repo, 'add', 'dirty.txt'); // uncommitted change to snapshot
   const home = path.join(dir, 'home'); fs.mkdirSync(home);
-  Object.assign(process.env, { HOME: home, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', LOOP_WORKTREE_ROOT: path.join(dir, 'wt') });
+  Object.assign(process.env, { HOME: home, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'user.useConfigOnly', GIT_CONFIG_VALUE_0: 'true', // never guess an identity from user@host LOOP_WORKTREE_ROOT: path.join(dir, 'wt') });
   for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'EMAIL']) delete process.env[k];
   const wm = new WorktreeManager(createTestDb());
   const wt = wm.createWorktree(repo, 'run1', 'f1', 'branch-f1', false);
