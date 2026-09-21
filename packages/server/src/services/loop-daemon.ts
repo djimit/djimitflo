@@ -114,6 +114,7 @@ export class LoopDaemon {
     this.pruneWorktrees();
 
     try {
+      this.resumeApprovalBlockedGoals();
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();
@@ -210,6 +211,53 @@ export class LoopDaemon {
     this.scheduleNext();
   }
 
+  /**
+   * The execution engine asks a human before a worker runs (approval policy). That is a wait, not a failure:
+   * the goal used to be marked failed and its proposal parked (the approval then expired unseen, 2026-09-21).
+   * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
+   */
+  private blockForApproval(goal: QueueEntry, runId: string): boolean {
+    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' ORDER BY created_at DESC LIMIT 1").get(runId) as { id: string; metadata: string } | undefined;
+    const approvalId = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string }).approval_id : undefined;
+    if (!lease || !approvalId) return false; // cannot resume without knowing what to wait for: fail as before
+    const waiting = { approval_id: approvalId, run_id: runId, lease_id: lease.id, since: new Date().toISOString() };
+    this.db.prepare("UPDATE goals SET status = 'blocked', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval', json(?)), updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(waiting), new Date().toISOString(), goal.id);
+    try {
+      new LoopEventService(this.db).recordEvent(runId, 'goal_awaiting_approval', 'warning', `Waiting for human approval ${approvalId}`, { goal_id: goal.id, approval_id: approvalId });
+    } catch { /* best-effort */ }
+    console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
+    swarmEventBus.emit('convergence', { daemon: 'goal_awaiting_approval', goal_id: goal.id, run_id: runId, approval_id: approvalId });
+    return true;
+  }
+
+  /** approved + task finished -> requeue the goal on its existing run; denied/expired -> fail it. Otherwise keep waiting. */
+  private resumeApprovalBlockedGoals(): void {
+    const rows = this.db.prepare("SELECT id, metadata FROM goals WHERE status = 'blocked' AND json_extract(metadata, '$.awaiting_approval') IS NOT NULL").all() as Array<{ id: string; metadata: string }>;
+    for (const row of rows) {
+      const waiting = (JSON.parse(row.metadata || '{}') as { awaiting_approval?: { approval_id: string; run_id: string; lease_id: string } }).awaiting_approval;
+      if (!waiting) continue;
+      const approval = this.db.prepare('SELECT status, task_id FROM approvals WHERE id = ?').get(waiting.approval_id) as { status: string; task_id: string } | undefined;
+      const now = new Date().toISOString();
+      if (!approval || approval.status === 'pending') continue;
+      if (approval.status === 'approved') {
+        // Approving resumes the task inside the engine; continue only once it reached a terminal state, then
+        // executeViaEngine returns the stored result instead of running the maker twice.
+        const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(approval.task_id) as { status: string } | undefined;
+        if (!task || !['completed', 'failed', 'cancelled'].includes(task.status)) continue;
+        this.db.prepare("UPDATE goals SET status = 'decomposed', metadata = json_set(json_remove(metadata, '$.awaiting_approval'), '$.resume_run_id', ?), updated_at = ? WHERE id = ?")
+          .run(waiting.run_id, now, row.id);
+        continue;
+      }
+      // denied | expired: the human gate said no (or nobody answered in time)
+      this.db.prepare("UPDATE goals SET status = 'failed', metadata = json_remove(metadata, '$.awaiting_approval'), updated_at = ? WHERE id = ?").run(now, row.id);
+      const reason = `approval ${approval.status}`;
+      try { new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_failed', 'error', reason, { goal_id: row.id, approval_id: waiting.approval_id }); } catch { /* best-effort */ }
+      try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
+      swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
+    }
+  }
+
   private scheduleNext(): void {
     // Allow tick to run even when not started (for testing)
     this.timer = setTimeout(() => this.tick(), this.pollMs);
@@ -274,7 +322,10 @@ export class LoopDaemon {
       // qualifying self-improvement goal reaches a real maker/checker cycle
       // driven by its own objective instead of the safe doc-drift no-op —
       // see objective-loop-gate.ts for the dispatch decision made in tick().
-      const run = opts.allowObjectiveMode
+      const resumeRunId = typeof goal.metadata?.resume_run_id === 'string' ? goal.metadata.resume_run_id : null;
+      const run = resumeRunId
+        ? this.loops.getLoopRun(resumeRunId) // approved: continue the same run, its maker lease is prepared
+        : opts.allowObjectiveMode
         // Objective mode needs a real git checkout to create worktrees; process.cwd() is /app in the
         // production image (not a repository). LOOP_DAEMON_REPOSITORY_PATH points at the checkout.
         ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(process.env.LOOP_DAEMON_REPOSITORY_PATH ? { repository_path: process.env.LOOP_DAEMON_REPOSITORY_PATH } : {}) })
@@ -312,11 +363,13 @@ export class LoopDaemon {
       // one the lease is 'manual' and every daemon goal died with MANUAL_MAKER_REQUIRES_HUMAN (seen in the
       // 2026-09-21 loop proof). LOOP_DAEMON_MAKER_RUNTIME is the operator's explicit choice, objective mode only.
       const makerRuntime = opts.allowObjectiveMode ? (process.env.LOOP_DAEMON_MAKER_RUNTIME as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock' | undefined) : undefined;
-      const prepared = this.loops.continueLoopRun(run.id, {
-        max_assignments: 1,
-        max_maker_workers: 1,
-        ...(makerRuntime ? { runtime: makerRuntime } : {}),
-      });
+      const prepared = resumeRunId
+        ? { run, leases: this.loops.listWorkerLeases(run.id) }
+        : this.loops.continueLoopRun(run.id, {
+          max_assignments: 1,
+          max_maker_workers: 1,
+          ...(makerRuntime ? { runtime: makerRuntime } : {}),
+        });
 
       // 5. Find the prepared maker lease and execute it.
       const makerLease = prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
@@ -463,6 +516,7 @@ export class LoopDaemon {
       });
 
     } catch (error) {
+      if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
