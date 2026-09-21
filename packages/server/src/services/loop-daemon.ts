@@ -223,7 +223,7 @@ export class LoopDaemon {
    * the goal used to be marked failed and its proposal parked (the approval then expired unseen, 2026-09-21).
    * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
    */
-  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' = 'maker'): boolean {
+  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' | 'security_checker' = 'maker'): boolean {
     const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
     const leaseMeta = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string; execution_task_id?: string }) : {};
     // The engine records the approval on the task; not every lease path copies it onto the lease metadata (the checker's doesn't).
@@ -446,21 +446,30 @@ export class LoopDaemon {
       // checker lease) and already writes the real checkpoint/trace-span/
       // manifest evidence closeLoop() requires — no new writer needed.
       if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true') {
-        try {
-          await this.loops.executeChecker(run.id, {
-            runtime: activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock',
-            timeout_ms: 120_000,
-          });
-        } catch (error) {
-          // The checker is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
-          // (previously swallowed here, so the run was verified without a verdict and failed).
-          if (error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, run.id, 'checker')) return;
-          // Best-effort otherwise (verifyLoopRun's checker_verdict gate reflects reality below) — but never silently:
-          // a swallowed dispatch error made the 2026-09-21 loop proof undiagnosable.
+        const runtime = activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
+        const leaseDone = (role: string) => Boolean(this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'completed' LIMIT 1").get(run.id, role));
+        const dispatch = async (role: 'checker' | 'security_checker', leaseId?: string): Promise<boolean> => {
           try {
-            new LoopEventService(this.db).recordEvent(run.id, 'checker_dispatch_failed', 'warning',
-              `Automated checker dispatch failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id });
-          } catch { /* logging must never break the daemon */ }
+            await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: 120_000 });
+          } catch (error) {
+            // A reviewer is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
+            // (previously swallowed here, so the run was verified without a verdict and failed).
+            if (error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, run.id, role)) return true;
+            // Best-effort otherwise (verifyLoopRun's verdict gates reflect reality below) — but never silently:
+            // a swallowed dispatch error made the 2026-09-21 loop proof undiagnosable.
+            try {
+              new LoopEventService(this.db).recordEvent(run.id, 'checker_dispatch_failed', 'warning',
+                `Automated ${role} dispatch failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id });
+            } catch { /* logging must never break the daemon */ }
+          }
+          return false;
+        };
+        // A run resumed after a reviewer's approval already has the earlier reviewer's verdict: don't dispatch it twice.
+        if (!leaseDone('checker') && await dispatch('checker')) return;
+        // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
+        if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
+          const security = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'security_checker' AND status = 'prepared' ORDER BY created_at DESC LIMIT 1").get(run.id) as { id: string } | undefined;
+          if (security && await dispatch('security_checker', security.id)) return;
         }
       }
 
