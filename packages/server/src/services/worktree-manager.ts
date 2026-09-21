@@ -122,7 +122,9 @@ export class WorktreeManager {
 
     if (trackedDiff.length === 0 && copied === 0) return;
     this.git(worktreePath, ['add', '.']);
-    this.git(worktreePath, ['commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify']);
+    // Explicit identity: production containers have no global git identity, and the checker worktree (cut from the
+    // maker's dirty worktree) died here with "Author identity unknown" (2026-09-21 loop proof).
+    this.git(worktreePath, ['-c', 'user.name=djimitflo', '-c', 'user.email=djimitflo@localhost', 'commit', '-m', 'Snapshot source working tree into worker worktree', '--no-verify']);
   }
 
   /**
