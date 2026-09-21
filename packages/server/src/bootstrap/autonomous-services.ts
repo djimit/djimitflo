@@ -24,6 +24,7 @@ import { BoardHandoffService } from '../services/board-handoff-service';
 import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
 import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
+import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
 export function initAutonomousServices(db: any, recoverySvc: LoopService): void {
   try {
@@ -95,6 +96,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Queue hygiene failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Scheduled knowledge maintenance (OKF drift, wiki delta, OKF lint) -> work items. Default off.
+  try {
+    if (maintenanceEnabled()) {
+      const maintenance = new KnowledgeMaintenanceService(db);
+      maintenance.start();
+      lifecycleManager.register({ serviceName: 'KnowledgeMaintenance', stop: () => maintenance.stop() });
+      console.log('📚 Knowledge maintenance on (okf_sync_drift, wiki_delta, okf_lint).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Knowledge maintenance failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   const intelligence = new SwarmIntelligenceService(db);
