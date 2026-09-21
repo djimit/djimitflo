@@ -224,8 +224,13 @@ export class LoopDaemon {
    * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
    */
   private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' = 'maker'): boolean {
-    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? AND json_extract(metadata, '$.approval_id') IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
-    const approvalId = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string }).approval_id : undefined;
+    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
+    const leaseMeta = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string; execution_task_id?: string }) : {};
+    // The engine records the approval on the task; not every lease path copies it onto the lease metadata (the checker's doesn't).
+    const approvalId = leaseMeta.approval_id
+      ?? (leaseMeta.execution_task_id
+        ? (this.db.prepare('SELECT id FROM approvals WHERE task_id = ? ORDER BY created_at DESC LIMIT 1').get(leaseMeta.execution_task_id) as { id: string } | undefined)?.id
+        : undefined);
     if (!lease || !approvalId) return false; // cannot resume without knowing what to wait for: fail as before
     const waiting = { approval_id: approvalId, run_id: runId, lease_id: lease.id, since: new Date().toISOString() };
     this.db.prepare("UPDATE goals SET status = 'blocked', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval', json(?)), updated_at = ? WHERE id = ?")
