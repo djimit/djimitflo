@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ApprovalRequest } from '@djimitflo/shared';
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
+import { APPROVALS_CHANGED, minutesUntil } from '../hooks/usePendingApprovals';
 
 interface ApprovalCardProps {
   approval: ApprovalRequest;
@@ -22,6 +23,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       const updated = await api.approveRequestExplicit(approval.id);
       setApproval(updated);
       onUpdated?.(updated);
+      window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to approve request');
     } finally {
@@ -40,6 +42,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       const updated = await api.denyRequestExplicit(approval.id, reason.trim());
       setApproval(updated);
       onUpdated?.(updated);
+      window.dispatchEvent(new Event(APPROVALS_CHANGED));
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to deny request');
     } finally {
@@ -77,7 +80,7 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
           </div>
         </div>
         {status === 'pending' && approval.expires_at && (
-          <div className="flex items-center gap-1 text-xs text-foreground-muted">
+          <div className={`flex items-center gap-1 text-xs ${(minutesUntil(approval.expires_at) ?? 99) <= 15 ? 'font-semibold text-status-error' : 'text-foreground-muted'}`}>
             <Clock className="w-3 h-3" />
             <span>Expires {formatExpiry(approval.expires_at)}</span>
           </div>
@@ -88,6 +91,17 @@ export function ApprovalCard({ approval: incomingApproval, onUpdated }: Approval
       <p className="text-sm text-foreground-secondary mb-3">
         {approval.request_message}
       </p>
+
+      {/* What will actually run (autonomous worker executions) */}
+      {approval.context && (
+        <dl aria-label="Execution context" className="mb-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded border border-border bg-background p-3 text-xs">
+          {approval.context.proposal_title && (<><dt className="text-foreground-tertiary">Proposal</dt><dd className="text-foreground">{approval.context.proposal_title}</dd></>)}
+          {approval.context.goal_objective && (<><dt className="text-foreground-tertiary">Goal</dt><dd className="text-foreground">{approval.context.goal_objective}</dd></>)}
+          {(approval.context.lease_role || approval.context.runtime) && (<><dt className="text-foreground-tertiary">Worker</dt><dd className="text-foreground">{[approval.context.lease_role, approval.context.runtime].filter(Boolean).join(' · ')}</dd></>)}
+          {approval.context.working_directory && (<><dt className="text-foreground-tertiary">Directory</dt><dd className="break-all font-mono text-foreground">{approval.context.working_directory}</dd></>)}
+          {approval.context.prompt_preview && (<><dt className="text-foreground-tertiary">Instruction</dt><dd className="whitespace-pre-wrap text-foreground-secondary">{approval.context.prompt_preview}</dd></>)}
+        </dl>
+      )}
 
       {/* Request Data */}
       {Object.keys(approval.request_data).length > 0 && (
