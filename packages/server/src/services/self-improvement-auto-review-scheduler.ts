@@ -42,6 +42,8 @@ import { SelfImprovementAgentReviewService } from './self-improvement-agent-revi
 import { SelfImprovementRefinementService } from './self-improvement-refinement-service';
 import { SpecialistPanelService } from './specialist-panel-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { proposalPrescreen } from './judgments/proposal-prescreen';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -73,8 +75,10 @@ export class SelfImprovementAutoReviewScheduler {
   private readonly refiner: SelfImprovementRefinementService;
   private readonly panels: SpecialistPanelService;
   private readonly commons: CommonsProposalReviewService;
+  private readonly db: Database;
 
   constructor(db: Database, reviewer?: SelfImprovementAgentReviewService, refiner?: SelfImprovementRefinementService) {
+    this.db = db;
     this.improvements = new SelfImprovementService(db);
     this.reviewer = reviewer ?? new SelfImprovementAgentReviewService(db);
     this.refiner = refiner ?? new SelfImprovementRefinementService();
@@ -135,6 +139,9 @@ export class SelfImprovementAutoReviewScheduler {
 
       for (const proposal of proposed) {
         try {
+          // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks).
+          if (judgmentMode(proposalPrescreen.id) !== 'off') await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
+            { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }).catch(() => null);
           await this.reviewIfNeeded(proposal, runId, result);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
