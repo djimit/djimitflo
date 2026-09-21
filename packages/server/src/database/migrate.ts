@@ -1278,6 +1278,13 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       published_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    CREATE TABLE IF NOT EXISTS judgments (
+      id TEXT PRIMARY KEY, judgment TEXT NOT NULL, subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, state_hash TEXT NOT NULL,
+      mode TEXT NOT NULL, decision TEXT NOT NULL, reason TEXT, answers_json TEXT, error TEXT,
+      input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0, latency_ms INTEGER NOT NULL DEFAULT 0, model TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_judgments_subject ON judgments(judgment, subject_id, created_at);
     CREATE TABLE IF NOT EXISTS registry_agents (
       name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
       version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
