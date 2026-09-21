@@ -1278,6 +1278,11 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       published_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
+    CREATE TABLE IF NOT EXISTS registry_agents (
+      name TEXT PRIMARY KEY, host TEXT NOT NULL DEFAULT '', runtime TEXT NOT NULL DEFAULT '', framework TEXT NOT NULL DEFAULT '',
+      version TEXT NOT NULL DEFAULT '', capabilities_json TEXT NOT NULL DEFAULT '[]', api_endpoint TEXT NOT NULL DEFAULT '',
+      raw_json TEXT NOT NULL DEFAULT '{}', synced_at TEXT NOT NULL
+    );
   `);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks

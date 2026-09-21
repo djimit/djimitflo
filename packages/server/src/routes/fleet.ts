@@ -6,6 +6,7 @@ import { Router } from 'express';
 import type { Database } from 'better-sqlite3';
 import type { AuthMiddleware } from '../middleware/auth';
 import { FleetMeshService } from '../services/fleet-mesh-service';
+import { AgentRegistrySyncService } from '../services/agent-registry-sync-service';
 
 const nonEmpty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 const stringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(nonEmpty);
@@ -19,6 +20,11 @@ export function createFleetRoutes(db: Database, auth?: AuthMiddleware): Router {
   // GET /api/fleet/status — fleet status summary
   router.get('/status', requirePermission('read:evidence'), (_req, res) => {
     res.json(service.getStatus());
+  });
+
+  // GET /api/fleet/registry — mirror of the Djimit agent registry (pull-only sync)
+  router.get('/registry', requirePermission('read:evidence'), (_req, res) => {
+    res.json({ agents: new AgentRegistrySyncService(db).list() });
   });
 
   // GET /api/fleet/nodes — list all fleet nodes

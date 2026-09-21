@@ -24,6 +24,7 @@ import { BoardHandoffService } from '../services/board-handoff-service';
 import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
 import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
+import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -85,6 +86,17 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Commons proposal review failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  try {
+    if (registryUrl()) {
+      const registrySync = new AgentRegistrySyncService(db);
+      registrySync.start();
+      lifecycleManager.register({ serviceName: 'AgentRegistrySync', stop: () => registrySync.stop() });
+      console.log('🛰️ Agent registry sync on (pull-only).');
+    }
+  } catch (error) {
+    console.error('Agent registry sync failed to start:', error);
   }
 
   // Djimitflo domain events on the Djimit event bus (work items, approvals, goals) via an outbox. Default off.
