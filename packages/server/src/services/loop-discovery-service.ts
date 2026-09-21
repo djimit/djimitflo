@@ -223,8 +223,12 @@ export class LoopDiscoveryService {
   private discoverOkfSynchronization(repositoryPath: string, maxFindings: number): LoopFinding[] {
     const findings: LoopFinding[] = [];
     // The canonical OKF root is <repo>/knowledge; packages/knowledge is the legacy location (kept as a fallback).
-    const canonicalDir = path.join(repositoryPath, 'knowledge');
-    const knowledgeDir = fs.existsSync(canonicalDir) ? canonicalDir : path.join(repositoryPath, 'packages', 'knowledge');
+    const root = path.resolve(repositoryPath);
+    const canonicalDir = path.resolve(root, 'knowledge');
+    const legacyDir = path.resolve(root, 'packages', 'knowledge');
+    // Both candidates are constant children of the repository root; refuse anything that resolves outside it.
+    const inside = (dir: string) => dir.startsWith(root + path.sep);
+    const knowledgeDir = inside(canonicalDir) && fs.existsSync(canonicalDir) ? canonicalDir : legacyDir;
     const label = path.relative(repositoryPath, knowledgeDir);
     if (!fs.existsSync(knowledgeDir)) {
       findings.push(this.createFinding('okf_root_missing', 'warning', repositoryPath, knowledgeDir,
