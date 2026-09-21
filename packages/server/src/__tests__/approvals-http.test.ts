@@ -117,10 +117,6 @@ describe('approval HTTP role visibility and independent decision', () => {
       expect((await fetch(`${base}${path}`)).status, path).toBe(401);
       expect((await fetch(`${base}${path}`, { headers: { authorization: 'Bearer invalid' } })).status, path).toBe(401);
     }
-    // Existing externally provisioned ledger contract, confined to this fixture.
-    db.exec(`CREATE TABLE authority_events (id TEXT PRIMARY KEY, event_id TEXT, correlation_id TEXT, sequence INTEGER,
-      occurred_at TEXT, previous_state TEXT, requested_state TEXT, policy_decision TEXT, actor_subject TEXT,
-      actor_type TEXT, actor_issuer TEXT, source_system TEXT)`);
     for (const path of ['/authority/stats', '/authority/trace/test', '/authority/events']) {
       expect((await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${tokens.get(UserRole.AUDITOR)}` } })).status).toBe(200);
     }
