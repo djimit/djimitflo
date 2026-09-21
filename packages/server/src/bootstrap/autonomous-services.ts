@@ -23,6 +23,7 @@ import { CuriosityService } from '../services/curiosity-service';
 import { BoardHandoffService } from '../services/board-handoff-service';
 import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services/agent-social-autopilot-service';
 import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
+import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -84,6 +85,19 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Commons proposal review failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Djimitflo domain events on the Djimit event bus (work items, approvals, goals) via an outbox. Default off.
+  try {
+    if (eventPublishEnabled()) {
+      const outbox = new EventOutboxService(db);
+      outbox.start();
+      const unsubscribe = bridgeGoalEvents(db);
+      lifecycleManager.register({ serviceName: 'EventOutbox', stop: () => { outbox.stop(); unsubscribe(); } });
+      console.log('📣 Event publishing on (djimitflo.work_item/approval/goal events -> event bus).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Event publishing failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Queue hygiene: expires consumer-less work items, stale curiosity claims and unvalidated drafts. Default off.
