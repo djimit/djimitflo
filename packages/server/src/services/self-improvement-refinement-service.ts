@@ -18,6 +18,7 @@
  * job, not this service's.
  */
 
+import { generateText, llmEndpoints } from './llm-fallback';
 import type { ImprovementProposal } from './self-improvement-service';
 import type { ModelCaller } from './self-improvement-agent-review-service';
 import type { SpecialistConsensus } from './specialist-panel-service';
@@ -56,22 +57,10 @@ function refinementTimeoutMs(): number {
 }
 
 async function callOllama(prompt: string): Promise<string> {
-  const response = await fetch(`${defaultOllamaUrl()}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: defaultModel(),
-      prompt,
-      stream: false,
-      format: 'json',
-      think: false,
-      options: { temperature: 0.2, num_predict: 1024 },
-    }),
-    signal: AbortSignal.timeout(refinementTimeoutMs()),
-  });
-  if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
-  const data = (await response.json()) as { response?: string };
-  return data.response || '';
+  return generateText(
+    { prompt, model: defaultModel(), temperature: 0.2, maxTokens: 1024, timeoutMs: refinementTimeoutMs() },
+    { endpoints: llmEndpoints(defaultOllamaUrl()) },
+  );
 }
 
 export class SelfImprovementRefinementService {
