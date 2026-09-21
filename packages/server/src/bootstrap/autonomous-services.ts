@@ -25,6 +25,7 @@ import { AgentSocialAutopilotService, autopilotConfigFromEnv } from '../services
 import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/commons-proposal-review-service';
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
+import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
 
@@ -110,6 +111,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Event publishing failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Disk guard: one work item + bus event per day when the data volume passes 80 % / 90 %. Default off.
+  try {
+    if (diskGuardEnabled()) {
+      const diskGuard = new DiskGuardService(db);
+      diskGuard.start();
+      lifecycleManager.register({ serviceName: 'DiskGuard', stop: () => diskGuard.stop() });
+      console.log('💾 Disk guard on (warn >= 80 %, critical >= 90 %).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Disk guard failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Queue hygiene: expires consumer-less work items, stale curiosity claims and unvalidated drafts. Default off.
