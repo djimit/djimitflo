@@ -18,6 +18,7 @@
  * validation.
  */
 
+import { generateText, llmEndpoints } from './llm-fallback';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 
@@ -48,26 +49,10 @@ function reviewTimeoutMs(): number {
 }
 
 async function callOllama(prompt: string): Promise<string> {
-  const response = await fetch(`${defaultOllamaUrl()}/api/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: defaultModel(),
-      prompt,
-      stream: false,
-      format: 'json',
-      // Reasoning models (e.g. qwen3.5:cloud) burn most of num_predict on an
-      // internal "thinking" trace before ever emitting the requested JSON —
-      // observed truncating the real response entirely on a review-length
-      // prompt. We want the structured answer, not the transcript.
-      think: false,
-      options: { temperature: 0.2, num_predict: 1024 },
-    }),
-    signal: AbortSignal.timeout(reviewTimeoutMs()),
-  });
-  if (!response.ok) throw new Error(`Ollama request failed: ${response.status}`);
-  const data = (await response.json()) as { response?: string };
-  return data.response || '';
+  return generateText(
+    { prompt, model: defaultModel(), temperature: 0.2, maxTokens: 1024, timeoutMs: reviewTimeoutMs() },
+    { endpoints: llmEndpoints(defaultOllamaUrl()) },
+  );
 }
 
 const MAX_GENERATION_ATTEMPTS = 3;
