@@ -223,7 +223,7 @@ export class AgentCommunicationService {
     const picked = interest ? null : this.pickTopic();
     const topic = interest ? this.cleanOptional(interestParams.interest, 1_000) : picked!.topic;
     const ecosystemComponent = this.cleanOptional(interestParams.ecosystem_component, 200);
-    const ecosystemContext = 'Djimitflo: agent runtime/orchestration; Paperclip: governed work coordination; DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
+    const ecosystemContext = 'Djimitflo: the core (work control, approvals, agent runtime and governed execution); DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
     const topicRef = interest ? `message:${interest.id}` : picked!.topicRef;
     const evidence = interest ? [topicRef] : picked!.evidence;
     const correlationId = `social:${randomUUID()}`;
@@ -387,7 +387,7 @@ export class AgentCommunicationService {
     // ponytail: static curiosity seeds; replace with OKF/knowledge-drift signals once those emit gap claims.
     const seeds = [
       'cross-agent learning in the Djimit ecosystem',
-      'what evidence a Paperclip task must carry before an agent may act on it',
+      'what evidence a Djimitflo work item must carry before an agent may act on it',
       'when a reflection candidate deserves promotion and who may decide',
       'which signals reveal an agent drifting from its declared capabilities',
       'how repeated roborev findings should turn into a reusable skill',

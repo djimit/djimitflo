@@ -49,7 +49,8 @@ describe('agent commons read-model', () => {
   it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {
     comms.socialize(0);
     const [question] = comms.receiveSocial('agent-b');
-    expect(question.payload.params.ecosystem_context).toContain('Paperclip');
+    expect(question.payload.params.ecosystem_context).toContain('the core (work control, approvals');
+    expect(question.payload.params.ecosystem_context).not.toContain('Paperclip');
     const reply = {
       answer: 'Let peers compare retrieval failures.', uncertainty: 'No live measurements yet.',
       falsifiable_next_step: 'Compare ten known queries against the baseline.', creative_alternative: 'Try a blinded query set.',
