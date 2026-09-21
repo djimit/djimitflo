@@ -63,7 +63,10 @@ describe('LoopDaemon waits for worker approval', () => {
   it('blocks (not fails) when the automated checker needs its own approval, and waits on the checker approval', async () => {
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
     seedRunWithApprovalLease(); // maker lease-a with approval appr-1 in metadata
-    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('lease-c', 'run-a', 'checker', 'opencode', 'prepared', '{\"approval_id\":\"appr-2\"}', datetime('now'), datetime('now'))").run();
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('lease-c', 'run-a', 'checker', 'opencode', 'prepared', '{\"execution_task_id\":\"task-c\"}', datetime('now'), datetime('now'))").run();
+    // the checker lease carries only the task id; the approval hangs off the task
+    db.prepare("INSERT INTO tasks (id, title, description, status, priority, risk_level, execution_mode, tags, metadata, created_at, updated_at) VALUES ('task-c', 't', 'd', 'awaiting_approval', 'low', 'high', 'local', '[]', '{}', datetime('now'), datetime('now'))").run();
+    db.prepare("INSERT INTO approvals (id, task_id, status, risk_level, request_type, request_message, request_data, created_at, updated_at) VALUES ('appr-2', 'task-c', 'pending', 'high', 'high_risk_action', 'm', '{}', datetime('now'), datetime('now'))").run();
     const maker = { id: 'lease-a', role: 'maker', status: 'prepared', runtime: 'opencode' };
     const loops = {
       startObjectiveLoop: vi.fn(() => ({ id: 'run-a', findings: [{ id: 'f1' }] })),
