@@ -47,4 +47,20 @@ describe('P1c: self_improvements fingerprint UNIQUE', () => {
       db.prepare("INSERT INTO self_improvements (id, type, title, description, rationale, source, fingerprint) VALUES ('y', 't', 't', 'd', 'r', 's', 'fpX')").run()
     ).toThrow(/UNIQUE/);
   });
+
+  it('never deletes parked or finished proposals just because a newer one shares their fingerprint', () => {
+    runMigrations(db);
+    db.exec('DROP INDEX IF EXISTS idx_self_improve_fingerprint_unique');
+    const insert = db.prepare(
+      "INSERT INTO self_improvements (id, type, title, description, rationale, source, status, fingerprint, created_at) VALUES (?, 't', 't', 'd', 'r', 's', ?, 'same-text', ?)"
+    );
+    insert.run('parked', 'needs_more_evidence', '2026-01-01');
+    insert.run('done', 'no_change', '2026-01-02');
+    insert.run('old-live', 'proposed', '2026-01-03');
+    insert.run('new-live', 'proposed', '2026-01-04');
+    runMigrations(db); // every deploy runs this
+    runMigrations(db);
+    const ids = (db.prepare("SELECT id FROM self_improvements WHERE fingerprint = 'same-text' ORDER BY id").all() as { id: string }[]).map((r) => r.id);
+    expect(ids).toEqual(['done', 'new-live', 'parked']); // history kept, only the live duplicate collapsed
+  });
 });
