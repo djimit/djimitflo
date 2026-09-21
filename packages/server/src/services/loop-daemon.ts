@@ -223,8 +223,8 @@ export class LoopDaemon {
    * the goal used to be marked failed and its proposal parked (the approval then expired unseen, 2026-09-21).
    * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
    */
-  private blockForApproval(goal: QueueEntry, runId: string): boolean {
-    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = 'maker' ORDER BY created_at DESC LIMIT 1").get(runId) as { id: string; metadata: string } | undefined;
+  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' = 'maker'): boolean {
+    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? AND json_extract(metadata, '$.approval_id') IS NOT NULL ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
     const approvalId = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string }).approval_id : undefined;
     if (!lease || !approvalId) return false; // cannot resume without knowing what to wait for: fail as before
     const waiting = { approval_id: approvalId, run_id: runId, lease_id: lease.id, since: new Date().toISOString() };
@@ -379,13 +379,15 @@ export class LoopDaemon {
         });
 
       // 5. Find the prepared maker lease and execute it.
-      const makerLease = prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      // A run resumed after the checker's approval already has a completed maker: don't run it twice.
+      const makerAlreadyDone = resumeRunId ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
+      const makerLease = makerAlreadyDone ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
       }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
-      await this.loops.executeWorker(run.id, {
+      if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: 300_000, // 5 min timeout for production goals
         diff_max_lines: 200,
@@ -444,7 +446,12 @@ export class LoopDaemon {
             runtime: activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock',
             timeout_ms: 120_000,
           });
-        } catch { /* best-effort: verifyLoopRun's checker_verdict gate reflects reality below */ }
+        } catch (error) {
+          // The checker is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
+          // (previously swallowed here, so the run was verified without a verdict and failed).
+          if (error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, run.id, 'checker')) return;
+          /* best-effort otherwise: verifyLoopRun's checker_verdict gate reflects reality below */
+        }
       }
 
       // 9. Verify the run (G3.4 convergence verification).
