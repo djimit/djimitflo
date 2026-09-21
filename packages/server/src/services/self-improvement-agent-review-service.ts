@@ -71,6 +71,7 @@ async function callOllama(prompt: string): Promise<string> {
 }
 
 const MAX_GENERATION_ATTEMPTS = 3;
+const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
@@ -95,6 +96,12 @@ export class SelfImprovementAgentReviewService {
         // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
         // for good. Leave the seat empty so the next tick retries; only after MAX_GENERATION_ATTEMPTS in a row
         // fall back to the recorded failure so a permanently broken proposal cannot spin forever.
+        // A connectivity failure (host down, timeout) says nothing about the proposal: wait it out without
+        // spending attempts, or a 45-minute outage would park every proposal in review (seen 2026-09-21).
+        if (CONNECTIVITY_ERROR.test(outcome.error)) {
+          console.warn(`self-improvement review for ${profile.id} skipped, model host unreachable (${outcome.error}); will retry next tick`);
+          continue;
+        }
         const key = `${panel.id}:${profile.id}`;
         const attempts = (this.generationFailures.get(key) ?? 0) + 1;
         this.generationFailures.set(key, attempts);

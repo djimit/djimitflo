@@ -100,7 +100,7 @@ describe('SelfImprovementAgentReviewService', () => {
   it('does not record a failed model call as a review: the seat stays open for a retry, then falls back after 3 attempts', async () => {
     const { db, panel } = setup();
     let calls = 0;
-    const reviewer = new SelfImprovementAgentReviewService(db, async () => { calls++; throw new Error('fetch failed'); });
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => { calls++; throw new Error('Ollama request failed: 404'); });
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const first = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(first.reviews ?? []).toHaveLength(0);
@@ -108,7 +108,7 @@ describe('SelfImprovementAgentReviewService', () => {
     await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
     const third = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
     expect((third.reviews ?? []).length).toBe(2); // bounded: now the recorded failure is used
-    expect(third.reviews?.[0].findings.join()).toContain('Review generation failed: fetch failed');
+    expect(third.reviews?.[0].findings.join()).toContain('Review generation failed: Ollama request failed: 404');
     expect(calls).toBe(6);
     warn.mockRestore();
   });
@@ -125,5 +125,15 @@ describe('SelfImprovementAgentReviewService', () => {
     ok = true;
     const done = await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
     expect(done.consensus.support_count).toBe(2);
+  });
+
+  it('an unreachable model host never spends attempts: no review is recorded however long the outage lasts', async () => {
+    const { db, panel } = setup();
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => { throw new Error('fetch failed'); });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-0');
+    for (let i = 1; i <= 6; i++) updated = await reviewer.reviewMissingSpecialists(panel.id, `run-${i}`);
+    expect(updated.reviews ?? []).toHaveLength(0);
+    expect(updated.status).not.toBe('consensus_ready');
   });
 });
