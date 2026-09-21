@@ -1,3 +1,5 @@
+import { recordAuthorityEvent } from './authority-ledger-service';
+import { enqueueEvent } from './event-outbox-service';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SelfImprovementService } from './self-improvement-service';
@@ -44,11 +46,12 @@ export class AutonomousGoalGenerator {
       return 0;
     }
 
+    const goalId = randomUUID();
     this.db.prepare(`
       INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at)
       VALUES (?, ?, 'created', ?, ?, '{}', ?, ?, datetime('now'), datetime('now'))
     `).run(
-      randomUUID(),
+      goalId,
       improvement.title,
       improvement.priority > 0.9 ? 'high' : improvement.priority > 0.7 ? 'medium' : 'low',
       JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
@@ -56,6 +59,9 @@ export class AutonomousGoalGenerator {
       JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
     );
     this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+    // The panel authorised this goal: record it as the PLAN_APPROVED ALLOW the (optional) authority gate looks for.
+    recordAuthorityEvent(this.db, { correlationId: goalId, artifactId: goalId, actorSubject: 'specialist-panel', actorType: 'agent', requestedState: 'PLAN_APPROVED', decision: 'ALLOW', payload: { improvement_id: id, title: improvement.title }, evidenceRefs: [`improvement:${id}`] });
+    enqueueEvent(this.db, { type: 'djimitflo.goal.created', aggregateId: goalId, payload: { goal_id: goalId, improvement_id: id, title: improvement.title, source: 'self-improvement' } });
     return 1;
   }
 
