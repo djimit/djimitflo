@@ -1230,6 +1230,45 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       score_delta REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS authority_events (
+      id TEXT PRIMARY KEY,
+      api_version TEXT NOT NULL DEFAULT 'djimit.io/v1alpha1',
+      kind TEXT NOT NULL DEFAULT 'LifecycleEvent',
+      event_id TEXT NOT NULL UNIQUE,
+      correlation_id TEXT NOT NULL,
+      causation_id TEXT,
+      sequence INTEGER NOT NULL,
+      occurred_at TEXT NOT NULL,
+      actor_subject TEXT NOT NULL,
+      actor_type TEXT NOT NULL CHECK(actor_type IN ('human','agent','service','ci')),
+      actor_issuer TEXT NOT NULL DEFAULT 'djimitflo',
+      artifact_id TEXT NOT NULL,
+      artifact_version INTEGER NOT NULL DEFAULT 1,
+      artifact_digest TEXT,
+      previous_state TEXT,
+      requested_state TEXT NOT NULL,
+      policy_decision TEXT NOT NULL CHECK(policy_decision IN ('ALLOW','DENY','HOLD')),
+      payload_digest TEXT NOT NULL,
+      payload_json TEXT,
+      evidence_refs_json TEXT NOT NULL DEFAULT '[]',
+      source_system TEXT NOT NULL DEFAULT 'djimitflo',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(correlation_id, sequence)
+    );
+    CREATE INDEX IF NOT EXISTS idx_authority_events_correlation ON authority_events(correlation_id, sequence);
+    CREATE TABLE IF NOT EXISTS event_outbox (
+      event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      aggregate_id TEXT NOT NULL,
+      correlation_id TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      published_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_event_outbox_status ON event_outbox(status, created_at);
   `);
   // Add missing columns BEFORE creating indexes that reference them — a stale
   // pre-existing self_improvements table (no fingerprint) otherwise breaks

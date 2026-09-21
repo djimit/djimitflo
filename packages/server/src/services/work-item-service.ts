@@ -1,3 +1,4 @@
+import { enqueueEvent } from './event-outbox-service';
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 
@@ -177,7 +178,9 @@ export class WorkItemService {
       now
     );
 
-    return this.get(id);
+    const created = this.get(id);
+    enqueueEvent(this.db, { type: 'djimitflo.work_item.created', aggregateId: id, payload: { work_item_id: id, title: created.title, source: created.source, source_ref: created.source_ref, risk_class: created.risk_class, status: created.status, recommended_loop: created.recommended_loop } });
+    return created;
   }
 
   createIfMissingBySourceRef(
