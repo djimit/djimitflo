@@ -1213,6 +1213,15 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
       posted_at TEXT NOT NULL,
       completed_at TEXT
     );
+    CREATE TABLE IF NOT EXISTS knowledge_maintenance_runs (
+      job TEXT NOT NULL,
+      period TEXT NOT NULL,
+      status TEXT NOT NULL,
+      findings INTEGER NOT NULL DEFAULT 0,
+      detail_json TEXT NOT NULL DEFAULT '{}',
+      ran_at TEXT NOT NULL,
+      PRIMARY KEY (job, period)
+    );
     CREATE TABLE IF NOT EXISTS proposal_clusters (
       improvement_id TEXT PRIMARY KEY,
       cluster_id TEXT NOT NULL,

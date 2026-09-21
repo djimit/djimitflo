@@ -126,6 +126,7 @@ export class ExternalEventIngestService {
         if (!id || (!eventType.startsWith('paperclip.')
           && eventType !== 'outcome.observed'
           && eventType !== 'roborev.finding'
+          && eventType !== 'wiki.page.changed'
           && eventType !== 'agent.board.handoff.created'
           && eventType !== 'eve-v.board.handoff.received')) continue;
         let normalizedEvent = event;
