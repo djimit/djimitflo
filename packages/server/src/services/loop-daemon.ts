@@ -9,6 +9,13 @@ import { LoopEventService } from './loop-event-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { authorityGateForGoal } from './authority-gate';
+/** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
+ *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
+export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
+  const scripts = (env.LOOP_DAEMON_CHECK_SCRIPTS || '').split(',').map((v) => v.trim()).filter(Boolean);
+  const timeout = Number(env.LOOP_DAEMON_CHECK_TIMEOUT_MS);
+  return { ...(scripts.length ? { scripts } : {}), timeout_ms: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 120_000 };
+}
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /**
@@ -390,7 +397,7 @@ export class LoopDaemon {
       try {
         const checks = this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
-          timeout_ms: 120_000,
+          ...daemonCheckOptions(),
         });
 
         // 8. If checks fail, retry once (G3 feedback law).
@@ -406,7 +413,7 @@ export class LoopDaemon {
             });
             this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
-              timeout_ms: 120_000,
+              ...daemonCheckOptions(),
             });
             activeMakerLease = retryMaker;
           } catch { /* best-effort retry */ }
