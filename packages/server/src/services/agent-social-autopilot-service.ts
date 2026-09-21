@@ -58,6 +58,13 @@ export const RESIDENTS = [
 
 const REQUIRED_FIELDS = ['answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition'] as const;
 
+/** Failover runtime for residents: SOCIAL_AUTOPILOT_FALLBACK_RUNTIME (a provider kind) + SOCIAL_AUTOPILOT_FALLBACK_MODEL. */
+export function autopilotFallbackSpec(env: NodeJS.ProcessEnv = process.env): RuntimeSpec | null {
+  const runtime = (env.SOCIAL_AUTOPILOT_FALLBACK_RUNTIME || '').trim().toLowerCase();
+  const model = (env.SOCIAL_AUTOPILOT_FALLBACK_MODEL || '').trim();
+  return (PROVIDER_KINDS as string[]).includes(runtime) && model ? { runtime: runtime as ProviderKind, model } : null;
+}
+
 export function autopilotConfigFromEnv(env: NodeJS.ProcessEnv = process.env): AutopilotConfig {
   const runtimeText = (env.SOCIAL_AUTOPILOT_RUNTIME || 'off').trim().toLowerCase();
   const runtime: ProviderKind | 'off' = (PROVIDER_KINDS as string[]).includes(runtimeText) ? runtimeText as ProviderKind : 'off';
@@ -135,7 +142,16 @@ export class AgentSocialAutopilotService {
     };
     this.comms = deps.comms || new AgentCommunicationService(db);
     this.governance = deps.governance || new RuntimeGovernanceService(db);
-    this.chat = deps.chat || ((system, prompt, signal, spec) => providerChat(spec, this.config.providers, system, prompt, signal));
+    this.chat = deps.chat || (async (system, prompt, signal, spec) => {
+      try {
+        return await providerChat(spec, this.config.providers, system, prompt, signal);
+      } catch (error) {
+        // Optional failover (SOCIAL_AUTOPILOT_FALLBACK_RUNTIME/_MODEL) when the primary host is unreachable or errors out.
+        const fallback = autopilotFallbackSpec();
+        if (!fallback || (fallback.runtime === spec.runtime && fallback.model === spec.model) || !isRuntimeConfigured(fallback, this.config.providers)) throw error;
+        return providerChat(fallback, this.config.providers, system, prompt, signal);
+      }
+    });
   }
 
   /** Which runtime speaks for an agent: the per-agent override, else the autopilot default. */
