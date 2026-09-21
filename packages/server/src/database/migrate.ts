@@ -1237,13 +1237,17 @@ function createSelfImprovementTables(db: BetterSqlite3Database) {
   addMissingColumns(db, 'self_improvements', selfImprovementColumns);
   addMissingColumns(db, 'self_improvements', selfImprovementRefinementColumns);
   addMissingColumns(db, 'self_improvements', selfImprovementGroundingColumns);
-  // P1c: collapse duplicate fingerprints (keep newest row per fingerprint) so UNIQUE never aborts.
+  // P1c: collapse duplicate fingerprints among LIVE rows (keep the newest) so the partial UNIQUE index never aborts.
+  // Only live statuses can collide with that index. This used to delete every older row sharing a fingerprint
+  // regardless of status, on every boot: parked/finished proposals vanished when a later one with the same text
+  // was created (303 panels orphaned in production, goals pointing at missing proposals, 2026-09-21).
   db.exec(`
     DELETE FROM self_improvements
     WHERE fingerprint IS NOT NULL
+      AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating')
       AND ROWID NOT IN (
         SELECT MAX(ROWID) FROM self_improvements
-        WHERE fingerprint IS NOT NULL
+        WHERE fingerprint IS NOT NULL AND status IN ('proposed', 'scheduled', 'executing', 'verified', 'evaluating')
         GROUP BY fingerprint
       );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_self_improve_fingerprint_unique
