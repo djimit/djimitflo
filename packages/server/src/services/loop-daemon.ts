@@ -455,7 +455,12 @@ export class LoopDaemon {
           // The checker is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
           // (previously swallowed here, so the run was verified without a verdict and failed).
           if (error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, run.id, 'checker')) return;
-          /* best-effort otherwise: verifyLoopRun's checker_verdict gate reflects reality below */
+          // Best-effort otherwise (verifyLoopRun's checker_verdict gate reflects reality below) — but never silently:
+          // a swallowed dispatch error made the 2026-09-21 loop proof undiagnosable.
+          try {
+            new LoopEventService(this.db).recordEvent(run.id, 'checker_dispatch_failed', 'warning',
+              `Automated checker dispatch failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id });
+          } catch { /* logging must never break the daemon */ }
         }
       }
 
