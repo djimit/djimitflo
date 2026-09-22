@@ -10,6 +10,11 @@ export interface ImprovementFunnel {
   refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
+  kpi: {
+    windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number;
+    panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null;
+  };
+  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
 }
 
@@ -47,6 +52,30 @@ export class ImprovementFunnelService {
     const one = (sql: string) => this.rows<{ n: number }>(sql)[0]?.n ?? 0;
     const workItemsByLoop = this.rows<{ loop: string; status: string; n: number }>(
       "SELECT COALESCE(recommended_loop, 'none') AS loop, status, COUNT(*) AS n FROM work_items WHERE status IN ('candidate','triaged','planned','leased','blocked') GROUP BY 1, 2 ORDER BY n DESC LIMIT 12");
+    const now = Date.now();
+    const iso = (ms: number) => new Date(now - ms).toISOString();
+    const DAY = 86_400_000;
+    const verified7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(7 * DAY)}'`);
+    const regressed7 = one(`SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'regressed' AND updated_at >= '${iso(7 * DAY)}'`);
+    const panels7 = one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(7 * DAY)}'`);
+    const hours = this.rows<{ h: number }>(`SELECT (julianday(updated_at) - julianday(created_at)) * 24 AS h FROM self_improvements WHERE status IN ('verified', 'evaluating', 'applied') AND updated_at >= '${iso(30 * DAY)}' AND updated_at > created_at ORDER BY h`).map((r) => r.h);
+    const approvals = this.rows<{ approvals: number; runs: number }>(`
+      SELECT COUNT(*) AS approvals, COUNT(DISTINCT json_extract(t.metadata, '$.loop_run_id')) AS runs FROM approvals a JOIN tasks t ON t.id = a.task_id
+      WHERE a.status = 'approved' AND a.created_at >= '${iso(7 * DAY)}' AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') IS NOT NULL`)[0];
+    const kpi: ImprovementFunnel['kpi'] = {
+      windowDays: 7, verified: verified7, regressed: regressed7,
+      regressionRate: verified7 + regressed7 ? regressed7 / (verified7 + regressed7) : null,
+      panels24h: one(`SELECT COUNT(*) AS n FROM specialist_panels WHERE created_at >= '${iso(DAY)}'`), panels7d: panels7,
+      panelsPerVerified: verified7 ? Math.round(panels7 / verified7) : null,
+      medianHoursToVerified: hours.length ? Math.round(hours[Math.floor(hours.length / 2)] * 10) / 10 : null,
+      approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
+    };
+    const hygiene: ImprovementFunnel['hygiene'] = {
+      zombieGoals: one(`SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
+        OR (status = 'blocked' AND updated_at < '${iso(7 * DAY)}' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL)`),
+      staleRuns: one(`SELECT COUNT(*) AS n FROM loop_runs WHERE (status = 'interrupted' AND updated_at < '${iso(2 * DAY)}') OR (status = 'planning' AND updated_at < '${iso(DAY)}')`),
+      blockedBoardItems: one("SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
+    };
     return {
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
@@ -65,6 +94,7 @@ export class ImprovementFunnelService {
         learningClosures: one('SELECT COUNT(*) AS n FROM loop_learning_closures'),
         memoryCandidates: this.counts('SELECT status AS k, COUNT(*) AS n FROM memory_candidates GROUP BY status'),
       },
+      kpi, hygiene,
       queues: {
         openWorkItems: workItemsByLoop.reduce((a, r) => a + r.n, 0),
         workItemsByLoop,

@@ -4,7 +4,7 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { LoopDaemon } from '../services/loop-daemon';
 import { GoalService } from '../services/goal-service';
-import type { LoopService } from '../services/loop-service';
+import { LoopService } from '../services/loop-service';
 
 /**
  * Regression coverage for the fix to the root cause found 2026-09-20/21:
@@ -97,6 +97,7 @@ describe('LoopDaemon checker dispatch', () => {
 
   async function runOneTick(daemon: LoopDaemon) {
     await daemon.tick();
+    await new Promise((resolve) => setImmediate(resolve)); // executeGoal is fire-and-forget: let it finish
     daemon.stop();
   }
 
@@ -144,5 +145,16 @@ describe('LoopDaemon checker dispatch', () => {
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
     expect(callOrder).toEqual(['executeChecker', 'verifyLoopRun']);
+  });
+});
+
+describe('checker verdict extraction from an opencode event stream', () => {
+  it('finds the one-line JSON verdict after a prose paragraph in the same text part', () => {
+    const db0 = new Database(':memory:'); db0.exec(schema); runMigrations(db0);
+    const svc = new LoopService(db0);
+    const text = 'The diff is test-only.\n\n{"verdict":"accepted","notes":"ok"}';
+    const stdout = [JSON.stringify({ type: 'step_start' }), JSON.stringify({ type: 'text', part: { type: 'text', text } })].join('\n');
+    expect(svc.extractCheckerVerdict(stdout)).toBe('accepted');
+    expect(svc.extractCheckerNotes(stdout)).toBe('ok');
   });
 });
