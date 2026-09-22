@@ -22,4 +22,17 @@ describe('ImprovementFunnelService', () => {
     expect(funnel.bySource.find((s) => s.source === 'feedback')).toMatchObject({ total: 3, reachedGoal: 3, verified: 1, failed: 1 });
     expect(funnel.panel.goalRate).toBeNull();
   });
+
+  it('reports the yield KPIs and zombie counters', () => {
+    const now = new Date().toISOString();
+    const stamp = (id: string) => db.prepare('UPDATE self_improvements SET updated_at = ?, created_at = ? WHERE id = ?').run(now, new Date(Date.now() - 4 * 3_600_000).toISOString(), id);
+    seed('v1', 'reflection', 'verified'); seed('v2', 'reflection', 'verified'); seed('r1', 'reflection', 'regressed');
+    ['v1', 'v2', 'r1'].forEach(stamp);
+    db.prepare("INSERT INTO goals (id, objective, risk_class, status, metadata, created_at, updated_at) VALUES ('gz', 'o', 'low', 'running', '{}', '2026-01-01', '2026-01-01')").run();
+    db.prepare("INSERT INTO loop_runs (id, goal_id, loop_name, mode, status, created_at, updated_at) VALUES ('rz', 'gz', 'x', 'closed', 'interrupted', '2026-01-01', '2026-01-01')").run();
+    const { kpi, hygiene } = new ImprovementFunnelService(db).compute();
+    expect(kpi).toMatchObject({ verified: 2, regressed: 1, medianHoursToVerified: 4 });
+    expect(kpi.regressionRate).toBeCloseTo(1 / 3);
+    expect(hygiene).toMatchObject({ zombieGoals: 1, staleRuns: 1 });
+  });
 });
