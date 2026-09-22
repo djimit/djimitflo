@@ -18,7 +18,10 @@
  * validation.
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { generateText, llmEndpoints } from './llm-fallback';
+import { prepareState } from './typesafe-client';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 
@@ -56,6 +59,29 @@ async function callOllama(prompt: string): Promise<string> {
 }
 
 const MAX_GENERATION_ATTEMPTS = 3;
+
+const EXCERPT_CHARS = 6000;
+const SENSITIVE_PATH = /(^|\/)(\.env|node_modules|\.git)(\/|$)|secret|credential|password|\.pem$|id_rsa|\.key$/i;
+
+/**
+ * Panels kept answering needs_evidence on fully grounded proposals because they never saw the target file
+ * ("provide the source code of ..."; 2026-09-22, both test-gap proposals). Grounded proposals now carry an excerpt of
+ * their target. The target comes from a proposal (semi-trusted text), so: relative repo paths only, resolved inside the
+ * repository root, no sensitive names, size-capped and secret-scrubbed before it reaches any model.
+ */
+export function readTargetExcerpt(target: unknown, repoRoot = process.env.REVIEW_EVIDENCE_REPO_PATH || process.env.LOOP_DAEMON_REPOSITORY_PATH): string | null {
+  if (typeof target !== 'string' || !repoRoot || !/^[A-Za-z0-9_.\/-]+$/.test(target) || target.includes('..') || target.startsWith('/') || SENSITIVE_PATH.test(target)) return null;
+  const root = path.resolve(repoRoot);
+  const file = path.resolve(root, target);
+  if (!file.startsWith(root + path.sep)) return null;
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size > 2_000_000) return null;
+    const text = fs.readFileSync(file, 'utf8');
+    const lines = text.split('\n').length;
+    return `Target file ${target} (${lines} lines${text.length > EXCERPT_CHARS ? `, first ${EXCERPT_CHARS} characters` : ''}):\n${prepareState(text.slice(0, EXCERPT_CHARS))}`;
+  } catch { return null; }
+}
 const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
 export class SelfImprovementAgentReviewService {
@@ -135,6 +161,7 @@ export class SelfImprovementAgentReviewService {
       `Panel topic: ${panel.topic}`,
       `Question to answer: ${panel.question}`,
       `Context: ${JSON.stringify(panel.context)}`,
+      ...(this.targetEvidence(panel) ? ['', this.targetEvidence(panel) as string, 'The target source is provided above: judge the proposal against it and do not ask for the source code again.'] : []),
       '',
       'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
       "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
@@ -147,6 +174,11 @@ export class SelfImprovementAgentReviewService {
       'evidence_refs must cite something concrete from the context above (e.g. a specific fact from the',
       'description/rationale) — do not leave it empty and do not invent evidence that is not in the context.',
     ].join('\n');
+  }
+
+  private targetEvidence(panel: SpecialistPanelRecord): string | null {
+    const grounding = (panel.context as { grounding?: { target?: unknown } } | undefined)?.grounding;
+    return readTargetExcerpt(grounding?.target);
   }
 
   private parseResponse(raw: string): ParsedReview {

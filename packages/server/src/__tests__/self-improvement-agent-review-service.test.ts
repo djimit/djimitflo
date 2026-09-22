@@ -137,3 +137,35 @@ describe('SelfImprovementAgentReviewService', () => {
     expect(updated.status).not.toBe('consensus_ready');
   });
 });
+
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { readTargetExcerpt } from '../services/self-improvement-agent-review-service';
+
+describe('grounded proposals carry an excerpt of their target', () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'evidence-'));
+  fs.mkdirSync(path.join(repo, 'packages/x'), { recursive: true });
+  fs.writeFileSync(path.join(repo, 'packages/x/a.ts'), 'export const a = 1; // token: hunter2secret\n');
+  fs.writeFileSync(path.join(repo, '.env'), 'SECRET=1');
+
+  it('reads a repo-relative target, scrubs secrets, and refuses traversal, absolute and sensitive paths', () => {
+    const excerpt = readTargetExcerpt('packages/x/a.ts', repo) as string;
+    expect(excerpt).toContain('export const a = 1'); expect(excerpt).not.toContain('hunter2secret');
+    for (const bad of ['../etc/passwd', '/etc/passwd', '.env', 'packages/../.env', 'packages/x/missing.ts', 'a b', 42, null]) expect(readTargetExcerpt(bad, repo)).toBeNull();
+    expect(readTargetExcerpt('packages/x/a.ts', undefined)).toBeNull();
+  });
+
+  it('puts the excerpt into the reviewer prompt so the panel stops asking for the source', async () => {
+    process.env.REVIEW_EVIDENCE_REPO_PATH = repo;
+    try {
+      const { db, panels } = setup();
+      const panel = panels.createPanel({ topic: 't', question: 'q', risk_class: 'low', specialist_ids: ['systems_architect', 'security_reviewer'], metadata: {},
+        context: { description: 'Add tests', rationale: 'r', grounding: { target: 'packages/x/a.ts' } } });
+      const prompts: string[] = [];
+      const reviewer = new SelfImprovementAgentReviewService(db, async (prompt) => { prompts.push(prompt); return JSON.stringify({ stance: 'support', confidence: 0.8, findings: ['ok'], evidence_refs: ['a.ts'] }); });
+      await reviewer.reviewMissingSpecialists(panel.id, 'run-x');
+      expect(prompts[0]).toContain('Target file packages/x/a.ts'); expect(prompts[0]).toContain('do not ask for the source code again');
+    } finally { delete process.env.REVIEW_EVIDENCE_REPO_PATH; }
+  });
+});
