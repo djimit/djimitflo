@@ -43,6 +43,7 @@ import { SelfImprovementRefinementService } from './self-improvement-refinement-
 import { SpecialistPanelService } from './specialist-panel-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { judgmentMode, runJudgment } from './judgment-service';
+import { AutonomousGoalGenerator } from './autonomous-goal-generator';
 import { proposalPrescreen } from './judgments/proposal-prescreen';
 
 const MINUTE_MS = 60 * 1000;
@@ -151,7 +152,14 @@ export class SelfImprovementAutoReviewScheduler {
       for (const proposal of proposed) {
         try {
           const updated = this.improvements.agentApproveIfReady(proposal.id, runId);
-          if (updated?.status === 'scheduled') result.approved.push(proposal.id);
+          if (updated?.status === 'scheduled') {
+            result.approved.push(proposal.id);
+            // Turn the approved proposal into a goal now instead of waiting up to an hour for the learning loop (time-to-verified).
+            // The approval gate before the maker is unchanged: this only removes idle time.
+            if (process.env.SELF_IMPROVEMENT_GOAL_ON_APPROVE === 'true') {
+              try { new AutonomousGoalGenerator(this.db).generateImprovement(proposal.id); } catch { /* the hourly loop remains the fallback */ }
+            }
+          }
           else if (updated?.status === 'needs_more_evidence') result.parked.push(proposal.id);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
