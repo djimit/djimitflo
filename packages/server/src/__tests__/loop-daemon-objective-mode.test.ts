@@ -138,9 +138,9 @@ describe('LoopDaemon objective-mode dispatch', () => {
     expect(stubLoops.startDocDriftAndSmallFixLoop).toHaveBeenCalled();
   });
 
-  it('enforces the per-tick cap across a batch of qualifying goals', async () => {
-    seedQualifyingGoal();
-    seedQualifyingGoal();
+  it('defers (does not downgrade to the doc-drift no-op) a qualifying goal that lost the per-tick cap', async () => {
+    const first = seedQualifyingGoal();
+    const second = seedQualifyingGoal();
     process.env.SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED = 'true';
     process.env.SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK = '1';
 
@@ -152,11 +152,13 @@ describe('LoopDaemon objective-mode dispatch', () => {
       const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
       await runOneTick(daemon);
       expect(stubLoops.startObjectiveLoop).toHaveBeenCalledTimes(1);
-      expect(stubLoops.startDocDriftAndSmallFixLoop).toHaveBeenCalledTimes(1);
+      expect(stubLoops.startDocDriftAndSmallFixLoop).not.toHaveBeenCalled(); // used to run here and mark the proposal no_change
       const cappedDecision = decisions.find(
-        (d) => d.daemon === 'objective_mode_decision' && d.reason === 'per_tick_cap_reached',
+        (d) => d.daemon === 'objective_mode_decision' && d.reason === 'deferred_per_tick_cap',
       );
       expect(cappedDecision).toBeTruthy();
+      const statuses = [first.id, second.id].map((id) => (db.prepare('SELECT status FROM goals WHERE id = ?').get(id) as { status: string }).status);
+      expect(statuses.filter((st) => st === 'decomposed')).toHaveLength(1); // the deferred goal waits for the next tick
     } finally {
       unsubscribe();
     }
