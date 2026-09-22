@@ -77,12 +77,20 @@ export class LoopRecoveryService {
   private queries: LoopRunQueryService;
   private mutations: LoopRunMutationService;
   private experience: ExperienceRetrievalService;
+  private db: Database;
 
   constructor(db: Database) {
+    this.db = db;
     this.leases = new WorkerLeaseRepo(db);
     this.queries = new LoopRunQueryService(db);
     this.mutations = new LoopRunMutationService(db);
     this.experience = new ExperienceRetrievalService(db);
+  }
+
+  private isAwaitingApproval(runId: string): boolean {
+    try {
+      return Boolean(this.db.prepare("SELECT 1 FROM goals WHERE status = 'blocked' AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval.run_id') = ? LIMIT 1").get(runId));
+    } catch { return false; } // minimal schemas without a goals table
   }
 
   /**
@@ -112,6 +120,9 @@ export class LoopRecoveryService {
     for (const run of activeRuns) {
       if (run.status === 'planning') continue;
       if (liveRunIds.has(run.id)) continue;
+      // A run whose goal deliberately waits for a human approval is idle, not orphaned: a restart must not flip it to
+      // 'interrupted' (it lost its place in the approval flow and later got cancelled by the zombie reaper).
+      if (this.isAwaitingApproval(run.id)) continue;
       this.mutations.updateStatus(run.id, 'interrupted', {
         interrupted_reason: 'server_restart',
         interrupted_at: now,
