@@ -44,7 +44,7 @@ import { SpecialistPanelService } from './specialist-panel-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { AutonomousGoalGenerator } from './autonomous-goal-generator';
-import { proposalPrescreen } from './judgments/proposal-prescreen';
+import { namedPathsExist, proposalPrescreen } from './judgments/proposal-prescreen';
 
 const MINUTE_MS = 60 * 1000;
 const REFINEMENT_MAX_PER_TICK_CEILING = 10;
@@ -142,7 +142,8 @@ export class SelfImprovementAutoReviewScheduler {
         try {
           // System One pre-screen: shadow mode records what it WOULD decide next to the panel's real outcome (fail-open, never blocks).
           if (judgmentMode(proposalPrescreen.id) !== 'off') await runJudgment(this.db, proposalPrescreen, { type: 'self_improvement', id: proposal.id },
-            { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }).catch(() => null);
+            { proposal: { type: proposal.type, title: proposal.title, description: proposal.description, rationale: proposal.rationale } }, undefined,
+            process.env.LOOP_REPOSITORY_PATH ? { pathExists: namedPathsExist(`${proposal.description ?? ''} ${proposal.rationale ?? ''}`, process.env.LOOP_REPOSITORY_PATH) } : undefined).catch(() => null);
           await this.reviewIfNeeded(proposal, runId, result);
         } catch (err) {
           result.failed.push({ id: proposal.id, error: err instanceof Error ? err.message : String(err) });
