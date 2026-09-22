@@ -158,9 +158,6 @@ export class LoopDaemon {
         }
         // originele loop-body volgt hieronder
 
-        // Mark goal as active + start it asynchronously.
-        this.activeGoals.add(goal.id);
-        this.persistActiveGoals();
 
         // Objective-mode dispatch decision: whether this goal reaches a real
         // maker/checker cycle driven by its own objective, instead of the
@@ -178,8 +175,19 @@ export class LoopDaemon {
         // not just gated this feature — see PR history.
         const qualification = goalQualifiesForObjectiveMode(goal);
         const capped = objectiveModeDispatchedThisTick >= objectiveModeMaxPerTick();
+        // A qualifying goal that only lost the per-tick cap must WAIT for the next tick. It used to fall through to the
+        // doc-drift no-op, which "completed with no changes required" and marked its proposal no_change (2026-09-22: a
+        // valid test-gap proposal was wasted this way, and the system learned a wrong lesson from it).
+        if (objectiveModeEnabled() && qualification.qualifies && capped) {
+          swarmEventBus.emit('convergence', { daemon: 'objective_mode_decision', goal_id: goal.id, allowed: false, reason: 'deferred_per_tick_cap', enabled: true });
+          continue;
+        }
         const allowObjectiveMode = objectiveModeEnabled() && qualification.qualifies && !capped;
         if (allowObjectiveMode) objectiveModeDispatchedThisTick += 1;
+
+        // Mark goal as active + start it asynchronously.
+        this.activeGoals.add(goal.id);
+        this.persistActiveGoals();
 
         // Observability: log every self-improvement goal's dispatch decision,
         // not just the ones that succeed — closes the exact blind spot that
