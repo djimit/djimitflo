@@ -2351,8 +2351,12 @@ export class LoopService {
         const candidates = [parsed, typeof part === 'object' && part ? part as Record<string, unknown> : undefined,
           item?.type === 'agent_message' ? item : undefined];
         const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
-        if (typeof text === 'string' && text.trim().startsWith('{')) {
-          candidates.push(JSON.parse(text) as Record<string, unknown>);
+        if (typeof text === 'string') {
+          // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
+          const jsonLine = text.trim().startsWith('{') ? text.trim() : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
+          if (jsonLine) {
+            try { candidates.push(JSON.parse(jsonLine) as Record<string, unknown>); } catch { /* not a verdict line */ }
+          }
         }
         const payload = candidates.find((candidate) => candidate && (
           typeof candidate.verdict === 'string'
