@@ -106,6 +106,21 @@ describe('SelfImprovementAutoReviewScheduler', () => {
     expect(proposal.status).toBe('scheduled');
   });
 
+  it('does not create a goal at approval time by default (the hourly loop does)', async () => {
+    improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix a security vulnerability in the session store'] });
+    await new SelfImprovementAutoReviewScheduler(db, fakeReviewer('support')).tick();
+    expect(db.prepare('SELECT COUNT(*) n FROM goals WHERE improvement_id IS NOT NULL').get()).toEqual({ n: 0 });
+  });
+
+  it('creates the goal immediately after approval when SELF_IMPROVEMENT_GOAL_ON_APPROVE is on', async () => {
+    process.env.SELF_IMPROVEMENT_GOAL_ON_APPROVE = 'true';
+    try {
+      improvement.generateFromReflection({ whatFailed: [], lessonsLearned: [], proposedImprovements: ['Fix a security vulnerability in the session store'] });
+      await new SelfImprovementAutoReviewScheduler(db, fakeReviewer('support')).tick();
+      expect(db.prepare('SELECT COUNT(*) n FROM goals WHERE improvement_id IS NOT NULL').get()).toEqual({ n: 1 });
+    } finally { delete process.env.SELF_IMPROVEMENT_GOAL_ON_APPROVE; }
+  });
+
   it('parks a proposal as needs_more_evidence — not left stuck at proposed forever — when reviews land on oppose', async () => {
     improvement.generateFromReflection({
       whatFailed: [], lessonsLearned: [],

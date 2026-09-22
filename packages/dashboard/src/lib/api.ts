@@ -41,6 +41,8 @@ export type ImprovementFunnel = {
   refinement: { originals: number; children: number; childOutcomes: Record<string, number> };
   goals: { fromSelfImprovement: Record<string, number> };
   learning: { cognitiveEpisodes: number; cognitivePatterns: number; cognitiveStrategies: number; learningClosures: number; memoryCandidates: Record<string, number> };
+  kpi: { windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number; panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null };
+  hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
 };
 
