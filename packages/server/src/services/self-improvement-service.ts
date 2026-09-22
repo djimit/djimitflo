@@ -88,6 +88,14 @@ export class SelfImprovementService {
     });
   }
 
+  /** Deterministic, fully grounded gap proposal (target + runtime command + artifact + budget) from a machine source. */
+  generateFromGroundedGap(gap: { title: string; description: string; rationale: string; evidenceRef: string; grounding: Partial<Grounding> }): ImprovementProposal | null {
+    return this.createProposal({
+      type: 'feature', title: gap.title, description: gap.description, rationale: gap.rationale,
+      source: 'gap_analysis', priority: 0.6, evidenceRefs: [gap.evidenceRef], grounding: gap.grounding,
+    });
+  }
+
   generateFromBuildErrors(errors: string[]): ImprovementProposal[] {
     return errors.slice(0, 5).flatMap((error) => {
       const proposal = this.createProposal({
