@@ -63,6 +63,21 @@ export function ImprovementFunnelPage() {
           </div>
 
           <section>
+            <h2 className="text-lg font-semibold mb-2">Yield (last {funnel.kpi.windowDays} days)</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Stat label="Verified" value={funnel.kpi.verified} hint={`${funnel.kpi.regressed} regressed${funnel.kpi.regressionRate === null ? '' : ` (${Math.round(funnel.kpi.regressionRate * 100)}%)`}`} />
+              <Stat label="Panel reviews" value={funnel.kpi.panels24h} hint={`24 h · ${funnel.kpi.panels7d} in 7 d${funnel.kpi.panelsPerVerified === null ? '' : ` · ${funnel.kpi.panelsPerVerified} per verified`}`} />
+              <Stat label="Median hours to verified" value={funnel.kpi.medianHoursToVerified ?? '—'} />
+              <Stat label="Approvals per run" value={funnel.kpi.approvalsPerRun ?? '—'} />
+            </div>
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              <Stat label="Zombie goals" value={funnel.hygiene.zombieGoals} hint="running >24 h / blocked >7 d without a wait reason" />
+              <Stat label="Stale runs" value={funnel.hygiene.staleRuns} hint="interrupted >48 h / planning >24 h" />
+              <Stat label="Blocked board items" value={funnel.hygiene.blockedBoardItems} hint="expire after 14 d" />
+            </div>
+          </section>
+
+          <section>
             <h2 className="text-lg font-semibold mb-2">By source</h2>
             <table className="w-full text-sm">
               <thead><tr className="text-left text-foreground-tertiary"><th>Source</th><th>Total</th><th>Parked</th><th>Needs grounding</th><th>Archived</th><th>Reached goal</th><th>Verified</th><th>Failed</th></tr></thead>

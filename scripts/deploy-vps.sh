@@ -47,6 +47,19 @@ PREV_SHORT="$(sed -n 's/^ *image: djimitflo:main-\([0-9a-f]*\).*/\1/p' compose.y
 PREV_FULL="$(sed -n 's/^ *DJIMITFLO_COMMIT_SHA: \([0-9a-f]*\).*/\1/p' compose.yml | head -n 1)"
 [ -n "$PREV_SHORT" ] && [ -n "$PREV_FULL" ] || { echo "cannot read current image/commit from compose.yml" >&2; exit 1; }
 [ "$PREV_SHORT" != "$SHORT" ] || { echo "already deployed: $SHORT" >&2; exit 1; }
+# Old builds (3 GB image + a clone each) filled the disk on 2026-09-21: SQLite hit disk I/O errors and the rollback target
+# crash-looped too. Keep the newest 4 images/clones (plus the running and previous ones) and refuse to build without headroom.
+prune_old_builds() {
+  local keep_re="djimitflo:main-($SHORT|$PREV_SHORT)$"
+  docker images --format '{{.Repository}}:{{.Tag}}' | grep '^djimitflo:main-' | grep -Ev "$keep_re" \
+    | while read -r img; do echo "$(docker image inspect -f '{{.Created}}' "$img") $img"; done | sort -r | tail -n +5 | cut -d' ' -f2- \
+    | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done
+  ls -dt runtime-source-* 2>/dev/null | grep -Ev "runtime-source-($SHORT|$PREV_SHORT)$" | tail -n +5 | xargs -r rm -rf
+  docker image prune -f >/dev/null 2>&1 || true
+}
+AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"
+if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds; AVAIL_KB="$(df --output=avail -k "$ROOT" | tail -n 1 | tr -d ' ')"; fi
+[ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
 (cd "runtime-source-$SHORT" && docker build -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
@@ -62,7 +75,7 @@ docker compose up -d --force-recreate djimitflo 2>&1 | tail -n 1
 for _ in $(seq 1 12); do
   sleep 5
   STATE="$(docker inspect -f '{{.State.Health.Status}}' djimitflo-live 2>/dev/null || true)"
-  [ "$STATE" = "healthy" ] && { echo "deployed $SHORT (healthy)"; exit 0; }
+  [ "$STATE" = "healthy" ] && { prune_old_builds; echo "deployed $SHORT (healthy)"; exit 0; }
 done
 echo "NOT healthy after 60s (state: ${STATE:-unknown}); rolling back to $PREV_SHORT" >&2
 cp "compose.yml.bak-$SHORT" compose.yml
