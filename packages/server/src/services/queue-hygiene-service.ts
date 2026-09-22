@@ -16,7 +16,13 @@ export const WORK_ITEM_TTL_DAYS: Record<string, number> = {
 const CLAIM_TTL_DAYS = 14;
 const DRAFT_CAPABILITY_TTL_DAYS = 30;
 
-export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number }
+export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number; goalsReaped: number; runsReaped: number }
+
+// Zombie thresholds (prod 2026-09-22: 12 goals `running` for 9-14 days, 20 `blocked` without a wait reason, 204 `interrupted` runs).
+const RUNNING_GOAL_STALE_HOURS = 24;
+const BLOCKED_GOAL_STALE_DAYS = 7;
+const INTERRUPTED_RUN_STALE_HOURS = 48;
+const PLANNING_RUN_STALE_HOURS = 24;
 
 export function queueHygieneEnabled(): boolean {
   return process.env.QUEUE_HYGIENE_ENABLED === 'true';
@@ -32,7 +38,7 @@ export class QueueHygieneService {
     const run = () => {
       try {
         const r = this.sweep();
-        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated}`);
+        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated || r.goalsReaped || r.runsReaped) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated} goals=${r.goalsReaped} runs=${r.runsReaped}`);
       } catch (err) { console.warn('Queue hygiene sweep failed:', err instanceof Error ? err.message : String(err)); }
     };
     this.timer = setInterval(run, intervalMs);
@@ -63,6 +69,42 @@ export class QueueHygieneService {
       UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ?
       WHERE status = 'draft' AND owner = 'meta-evolution' AND created_at < ?
     `).run(iso, cutoff(DRAFT_CAPABILITY_TTL_DAYS)).changes;
-    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts };
+    const zombies = this.sweepZombies(now);
+    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts, ...zombies };
+  }
+
+  /**
+   * Goals and runs nobody is working on anymore get an honest terminal status and a reason (metadata.reaped), so the
+   * funnel and the daemon stop counting them as in flight. A goal that waits for an approval is never touched.
+   */
+  sweepZombies(now = new Date()): { goalsReaped: number; runsReaped: number } {
+    const iso = now.toISOString();
+    const ago = (ms: number) => new Date(now.getTime() - ms).toISOString();
+    const H = 3_600_000;
+    const tag = (reason: string) => `json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.reaped', '${reason}', '$.reaped_at', ?)`;
+    const goalsRunning = this.db.prepare(`
+      UPDATE goals SET status = 'failed', metadata = ${tag('stale_running')}, updated_at = ?
+      WHERE status = 'running' AND updated_at < ?
+        AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= ?)
+    `).run(iso, iso, ago(RUNNING_GOAL_STALE_HOURS * H), ago(RUNNING_GOAL_STALE_HOURS * H)).changes;
+    const goalsBlocked = this.db.prepare(`
+      UPDATE goals SET status = 'cancelled', metadata = ${tag('stale_blocked')}, updated_at = ?
+      WHERE status = 'blocked' AND updated_at < ? AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval') IS NULL
+    `).run(iso, iso, ago(BLOCKED_GOAL_STALE_DAYS * 24 * H)).changes;
+    // A proposal whose goal was reaped goes back to the parked pool instead of staying `executing` forever.
+    this.db.prepare(`
+      UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ?
+      WHERE status = 'executing' AND id IN (SELECT improvement_id FROM goals WHERE improvement_id IS NOT NULL AND status IN ('failed', 'cancelled')
+        AND json_extract(COALESCE(NULLIF(metadata, ''), '{}'), '$.reaped_at') = ?)
+    `).run(iso, iso);
+    const runsInterrupted = this.db.prepare(`
+      UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('stale_interrupted')}, updated_at = ?
+      WHERE status = 'interrupted' AND updated_at < ?
+    `).run(iso, iso, ago(INTERRUPTED_RUN_STALE_HOURS * H)).changes;
+    const runsPlanning = this.db.prepare(`
+      UPDATE loop_runs SET status = 'failed', metadata = ${tag('stale_planning')}, updated_at = ?
+      WHERE status = 'planning' AND updated_at < ?
+    `).run(iso, iso, ago(PLANNING_RUN_STALE_HOURS * H)).changes;
+    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning };
   }
 }
