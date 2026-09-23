@@ -12,6 +12,20 @@ describe('ImprovementFunnelService', () => {
   const seed = (id: string, source: string, status: string) => db.prepare(
     "INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', ?, ?, 0.5, datetime('now'), datetime('now'))").run(id, source, status);
 
+  it('reports TypeSafe judgment agreement with final outcomes, skipping open outcomes, uncertain and pre-#334 checker rows', () => {
+    seed('p-good', 'gap_analysis', 'verified'); seed('p-bad', 'reflection', 'archived'); seed('p-open', 'reflection', 'scheduled');
+    const j = (id: string, judgment: string, subject: string, decision: string, at = new Date().toISOString(), latency = 400) => db.prepare(
+      "INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, latency_ms, created_at) VALUES (?, ?, 'x', ?, 'h', 'shadow', ?, ?, ?)").run(id, judgment, subject, decision, latency, at);
+    j('1', 'proposal_prescreen', 'p-good', 'yes'); j('2', 'proposal_prescreen', 'p-bad', 'yes'); j('3', 'proposal_prescreen', 'p-open', 'no');
+    j('4', 'proposal_prescreen', 'p-bad', 'uncertain');
+    db.prepare("INSERT INTO loop_runs (id, loop_name, mode, status, created_at, updated_at) VALUES ('r1', 'doc-drift-and-small-fix-loop', 'closed', 'completed', datetime('now'), datetime('now'))").run();
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, created_at, updated_at) VALUES ('l1', 'r1', 'checker', 'opencode', 'completed', datetime('now'), datetime('now'))").run();
+    j('5', 'checker_second_opinion', 'l1', 'yes'); j('6', 'checker_second_opinion', 'l1', 'no', '2026-09-23T18:04:00Z');
+    const js = new ImprovementFunnelService(db).compute().judgments;
+    expect(js.find((x) => x.judgment === 'proposal_prescreen')).toMatchObject({ total: 4, withOutcome: 2, agreement: 0.5, medianLatencyMs: 400 });
+    expect(js.find((x) => x.judgment === 'checker_second_opinion')).toMatchObject({ total: 2, withOutcome: 1, agreement: 1 });
+  });
+
   it('aggregates conversion per source and survives an empty database', () => {
     expect(new ImprovementFunnelService(db).compute().proposals.total).toBe(0);
     seed('a', 'reflection', 'needs_more_evidence'); seed('b', 'reflection', 'archived'); seed('c', 'reflection', 'needs_grounding');
