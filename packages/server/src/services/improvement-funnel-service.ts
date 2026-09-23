@@ -16,7 +16,18 @@ export interface ImprovementFunnel {
   };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
+  judgments: Array<{ judgment: string; total: number; byDecision: Record<string, number>; medianLatencyMs: number | null; withOutcome: number; agreement: number | null }>;
 }
+
+/** How a judgment's subject resolves to a final outcome: true = positive, false = negative, null = still open / no outcome. */
+const OUTCOME_SQL: Record<string, string> = {
+  proposal_prescreen: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
+  reflection_triage: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
+  checker_second_opinion: `SELECT CASE WHEN r.status = 'completed' THEN 1 WHEN r.status IN ('blocked','failed','cancelled') THEN 0 END AS o FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.id = ?`,
+};
+/** Before #334 the checker opinion saw an empty diff for new files; those rows say nothing about the model (ADR 0002). */
+const EXCLUDE_BEFORE: Record<string, string> = { checker_second_opinion: '2026-09-23T18:30:00Z' };
 
 const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'applied', 'no_change', 'regressed'];
 
@@ -29,6 +40,28 @@ export class ImprovementFunnelService {
 
   private counts(sql: string): Record<string, number> {
     return Object.fromEntries(this.rows<{ k: string | null; n: number }>(sql).map((r) => [r.k ?? 'unknown', r.n]));
+  }
+
+  judgmentAgreement(): ImprovementFunnel['judgments'] {
+    const rows = this.rows<{ judgment: string; subject_id: string; decision: string; latency_ms: number | null; created_at: string }>(
+      'SELECT judgment, subject_id, decision, latency_ms, created_at FROM judgments ORDER BY judgment');
+    const byJudgment = new Map<string, typeof rows>();
+    for (const r of rows) byJudgment.set(r.judgment, [...(byJudgment.get(r.judgment) ?? []), r]);
+    return [...byJudgment.entries()].map(([judgment, list]) => {
+      const byDecision: Record<string, number> = {};
+      for (const r of list) byDecision[r.decision] = (byDecision[r.decision] ?? 0) + 1;
+      const lat = list.map((r) => r.latency_ms).filter((v): v is number => typeof v === 'number').sort((a, b) => a - b);
+      let withOutcome = 0; let agree = 0;
+      const sql = OUTCOME_SQL[judgment];
+      if (sql) for (const r of list) {
+        if (r.decision !== 'yes' && r.decision !== 'no') continue;
+        if (EXCLUDE_BEFORE[judgment] && r.created_at < EXCLUDE_BEFORE[judgment]) continue;
+        const o = this.rows<{ o: number | null }>(sql, r.subject_id)[0]?.o;
+        if (o === null || o === undefined) continue;
+        withOutcome += 1; if ((r.decision === 'yes') === (o === 1)) agree += 1;
+      }
+      return { judgment, total: list.length, byDecision, medianLatencyMs: lat.length ? lat[Math.floor(lat.length / 2)] : null, withOutcome, agreement: withOutcome ? agree / withOutcome : null };
+    });
   }
 
   compute(): ImprovementFunnel {
@@ -77,6 +110,7 @@ export class ImprovementFunnelService {
       blockedBoardItems: one("SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
     };
     return {
+      judgments: this.judgmentAgreement(),
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
