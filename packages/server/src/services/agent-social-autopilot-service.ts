@@ -10,6 +10,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { commonsContribution } from './judgments/commons-contribution';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
 import {
@@ -243,8 +245,9 @@ export class AgentSocialAutopilotService {
             continue;
           }
           const reply = extractReply(content);
-          this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
+          const sent = this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
           result.replies += 1;
+          if (!sent.duplicate && judgmentMode(commonsContribution.id) !== 'off') void this.judgeContribution(sent.message.id, message).catch(() => null);
         } catch {
           if (controller.signal.aborted) break;
           result.failures += 1;
@@ -263,6 +266,19 @@ export class AgentSocialAutopilotService {
       this.busy = false;
       this.activeTick = null;
     }
+  }
+
+  /** Shadow guardrail: what does this reply add to its thread? Fire-and-forget, never affects the round. */
+  private async judgeContribution(replyId: string, original: AgentMessage): Promise<void> {
+    const threadId = String(original.payload?.thread_id || '');
+    const rows = this.db.prepare(`SELECT id, json_extract(payload_json, '$.params.answer') AS answer FROM agent_messages
+      WHERE json_extract(payload_json, '$.thread_id') = ? AND json_extract(payload_json, '$.action') IN ('social.response', 'social.learning')
+      ORDER BY timestamp ASC, rowid ASC`).all(threadId) as Array<{ id: string; answer: string | null }>;
+    const reply = rows.find((r) => r.id === replyId);
+    if (!reply?.answer) return;
+    const earlier = rows.filter((r) => r.id !== replyId && r.answer).slice(-6).map((r) => String(r.answer).slice(0, 400));
+    const topic = String((original.payload?.params as Record<string, unknown> | undefined)?.topic || '').slice(0, 500);
+    await runJudgment(this.db, commonsContribution, { type: 'agent_message', id: replyId }, { topic, earlier, message: String(reply.answer).slice(0, 1_500) });
   }
 
   private inFlight(agentIds: string[]): boolean {

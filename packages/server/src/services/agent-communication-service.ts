@@ -365,6 +365,11 @@ export class AgentCommunicationService {
     const gap = this.db.prepare(`
       SELECT id, claim, evidence_refs_json FROM swarm_claims
       WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+        -- discuss each gap once (prod 2026-09-23: the newest gap was re-picked every round, 264 repeated threads)
+        AND ('claim:' || id) NOT IN (
+          SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
+          WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text'
+        )
       ORDER BY created_at DESC LIMIT 1
     `).get() as { id: string; claim: string; evidence_refs_json: string } | undefined;
     if (gap) {
