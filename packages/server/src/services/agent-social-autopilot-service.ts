@@ -12,6 +12,7 @@
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { commonsContribution } from './judgments/commons-contribution';
+import { commonsIdea } from './judgments/commons-idea';
 import { AgentCommunicationService, type AgentMessage, type SocialRuntimeReply } from './agent-communication-service';
 import { RuntimeGovernanceService } from './runtime-governance-service';
 import {
@@ -122,6 +123,12 @@ function tryParse(text: string): Record<string, unknown> | null {
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
     } catch { return null; }
   }
+}
+
+/** True when a reply's answer is the peer's answer again (case and whitespace ignored). */
+export function isEcho(answer: unknown, peerAnswer: unknown): boolean {
+  const norm = (v: unknown) => String(v ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return norm(answer).length > 0 && norm(answer) === norm(peerAnswer);
 }
 
 export class AgentSocialAutopilotService {
@@ -245,9 +252,15 @@ export class AgentSocialAutopilotService {
             continue;
           }
           const reply = extractReply(content);
+          // Prod 2026-09-23: residents' "learning" replies often copied the peer answer word for word. Not sent: a copy is
+          // not an evaluation (the thread simply ends without a learning).
+          if (isEcho(reply.answer, (message.payload?.params as Record<string, unknown> | undefined)?.answer)) { result.failures += 1; continue; }
           const sent = this.comms.respondSocial(agent.id, message.id, { ...reply, runtime: spec.runtime, model_id: spec.model, runtime_run_id: run_id, usage, delivery_lease_token: message.deliveryLeaseToken });
           result.replies += 1;
           if (!sent.duplicate && judgmentMode(commonsContribution.id) !== 'off') void this.judgeContribution(sent.message.id, message).catch(() => null);
+          const idea = typeof reply.proposed_improvement === 'string' ? reply.proposed_improvement.trim() : '';
+          if (!sent.duplicate && idea && judgmentMode(commonsIdea.id) !== 'off')
+            void runJudgment(this.db, commonsIdea, { type: 'agent_message', id: sent.message.id }, { idea: idea.slice(0, 1_500) }).catch(() => null);
         } catch {
           if (controller.signal.aborted) break;
           result.failures += 1;
