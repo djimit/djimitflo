@@ -2273,7 +2273,7 @@ export class LoopService {
 
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
-    const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
     const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
       ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
       : '';
@@ -2448,6 +2448,10 @@ export class LoopService {
 
   public git(repositoryPath: string, args: string[]): string {
     return this.persistence.git(repositoryPath, args);
+  }
+
+  public workingTreeDiff(repositoryPath: string): string {
+    return this.persistence.workingTreeDiff(repositoryPath);
   }
 
   public titleForFinding(finding: LoopFinding): string {
