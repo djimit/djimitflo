@@ -2192,6 +2192,7 @@ export class LoopService {
       '',
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
+      '- Do not run npm install/ci or edit package.json/package-lock.json: dependencies are already installed in this worktree.',
       '- Run relevant deterministic checks before handing off to checker.',
       '- Checker approval is required before completion.',
       '',
@@ -2353,10 +2354,12 @@ export class LoopService {
         const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
         if (typeof text === 'string') {
           // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
-          const jsonLine = text.trim().startsWith('{') ? text.trim() : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
-          if (jsonLine) {
-            try { candidates.push(JSON.parse(jsonLine) as Record<string, unknown>); } catch { /* not a verdict line */ }
-          }
+          // Models also drop the final brace of the verdict line (prod 2026-09-23: an 'accepted' security verdict was lost and
+          // counted as insufficient_evidence): try every '{' line from last to first, with one repaired closing brace.
+          const lines = text.trim().startsWith('{') ? [text.trim()] : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).reverse();
+          const verdictLine = lines.map((l) => [l, `${l}}`].map((c) => { try { return JSON.parse(c) as Record<string, unknown>; } catch { return undefined; } }).find(Boolean))
+            .find((p) => p && (typeof p.verdict === 'string' || typeof p.checker_verdict === 'string'));
+          if (verdictLine) candidates.push(verdictLine);
         }
         const payload = candidates.find((candidate) => candidate && (
           typeof candidate.verdict === 'string'

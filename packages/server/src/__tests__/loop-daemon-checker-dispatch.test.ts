@@ -157,4 +157,15 @@ describe('checker verdict extraction from an opencode event stream', () => {
     expect(svc.extractCheckerVerdict(stdout)).toBe('accepted');
     expect(svc.extractCheckerNotes(stdout)).toBe('ok');
   });
+
+  it('recovers a verdict whose final brace the model dropped, and prefers the last verdict line (prod 2026-09-23)', () => {
+    const db0 = new Database(':memory:'); db0.exec(schema); runMigrations(db0);
+    const svc = new LoopService(db0);
+    const text = 'Checked the source.\n\n{"verdict":"needs_revision","notes":"draft"}\n\n{"verdict":"accepted","notes":"final","usage":{"total_tokens":2}';
+    const stdout = [JSON.stringify({ type: 'step_start' }), JSON.stringify({ type: 'text', part: { type: 'text', text } })].join('\n');
+    expect(svc.extractCheckerVerdict(stdout)).toBe('accepted');
+    expect(svc.extractCheckerNotes(stdout)).toBe('final');
+    const garbage = [JSON.stringify({ type: 'text', part: { type: 'text', text: 'no verdict here {not json' } })].join('\n');
+    expect(svc.extractCheckerVerdict(garbage)).toBe('insufficient_evidence');
+  });
 });
