@@ -2289,6 +2289,7 @@ export class LoopService {
       `Maker lease: ${maker.id}`,
       '',
       'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree. To run tests, install dependencies here with `npm ci --legacy-peer-deps` first; lockfile rewrites are reverted automatically.',
       checker.role === 'security_checker'
         ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
         : 'Your technical verdict is not human approval or permission to merge.',
