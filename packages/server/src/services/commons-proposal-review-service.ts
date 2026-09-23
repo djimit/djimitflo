@@ -26,6 +26,11 @@ export type MemoryPort = Pick<MemoryCandidateService, 'create'>;
 
 export interface CommonsReviewTick { collected: number; timedOut: number; posted: number }
 
+/** Failures of the platform, not of the proposal (prod 2026-09-23: root-owned .git after a deploy, expired approvals). */
+const INFRA_FAILURE_RE = /WORKTREE_CREATE_FAILED|cannot lock ref|RUNTIME_UNAVAILABLE|requested runtime is unavailable|ECONNREFUSED|ETIMEDOUT|ENOSPC|approval expired/i;
+export const isInfrastructureFailure = (detail: string): boolean => INFRA_FAILURE_RE.test(detail);
+const MAX_INFRA_RETRIES = 2;
+
 export class CommonsProposalReviewService {
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -88,8 +93,15 @@ export class CommonsProposalReviewService {
     const imp = this.db.prepare('SELECT id, title, description FROM self_improvements WHERE id = ?').get(goal.improvement_id) as { id: string; title: string; description: string } | undefined;
     if (!imp) return;
     if (outcome === 'failed') {
-      this.db.prepare("UPDATE self_improvements SET status = 'needs_more_evidence', updated_at = ? WHERE id = ? AND status = 'executing'")
-        .run(new Date().toISOString(), imp.id);
+      // An infrastructure failure says nothing about the proposal: re-schedule it (bounded) instead of parking it for good.
+      const failedGoals = (this.db.prepare("SELECT COUNT(*) n FROM goals WHERE (improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ?) AND status IN ('failed', 'cancelled')").get(imp.id, imp.id) as { n: number }).n;
+      const retry = isInfrastructureFailure(detail) && failedGoals <= MAX_INFRA_RETRIES;
+      this.db.transaction(() => {
+        const moved = this.db.prepare("UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status = 'executing'")
+          .run(retry ? 'scheduled' : 'needs_more_evidence', new Date().toISOString(), imp.id).changes;
+        // free the unique goals.improvement_id slot for the retry goal; metadata.improvement_id keeps the history (and the retry count)
+        if (retry && moved) this.db.prepare("UPDATE goals SET improvement_id = NULL, metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.improvement_id', ?) WHERE id = ?").run(imp.id, goalId);
+      })();
     }
     if (!commonsReviewEnabled()) return;
     const review = this.getReviewSummary(imp.id);
