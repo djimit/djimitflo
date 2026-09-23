@@ -17,7 +17,7 @@ describe('agent commons autopilot', () => {
   const service = (cooldown = 0, chat?: ChatFn, maxRepliesPerTick = 4) => new AgentSocialAutopilotService(db, {
     runtime: 'ollama', model: 'test-model', ollamaUrl: 'http://ollama.invalid', agents: 'residents',
     intervalMs: 60_000, roundCooldownMs: cooldown, maxRepliesPerTick, seedResidents: true,
-  }, { comms, chat: chat || (async (_system, prompt) => { prompts.push(prompt); return { content: `Sure! ${reply(prompt.slice(0, 20))}`, run_id: 'run-1', usage: { eval_count: 5 } }; }) });
+  }, { comms, chat: chat || (async (_system, prompt) => { prompts.push(prompt); return { content: `Sure! ${reply(`${prompt.slice(0, 20)} #${prompts.length}`)}`, run_id: 'run-1', usage: { eval_count: 5 } }; }) });
 
   beforeEach(() => {
     db = createTestDb();
