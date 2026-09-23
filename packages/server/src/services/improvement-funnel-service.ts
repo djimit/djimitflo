@@ -25,6 +25,8 @@ const OUTCOME_SQL: Record<string, string> = {
   proposal_prescreen: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
   reflection_triage: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
   checker_second_opinion: `SELECT CASE WHEN r.status = 'completed' THEN 1 WHEN r.status IN ('blocked','failed','cancelled') THEN 0 END AS o FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.id = ?`,
+  // plan E3: agreement of the shadow auto-approve rule with the operator's real decision
+  auto_approve_shadow: `SELECT CASE WHEN status = 'approved' THEN 1 WHEN status IN ('denied','rejected','expired') THEN 0 END AS o FROM approvals WHERE id = ?`,
 };
 /** Before #334 the checker opinion saw an empty diff for new files; those rows say nothing about the model (ADR 0002). */
 const EXCLUDE_BEFORE: Record<string, string> = { checker_second_opinion: '2026-09-23T18:30:00Z' };
