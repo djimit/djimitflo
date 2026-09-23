@@ -2,6 +2,7 @@ import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { failureCause } from './judgments/failure-cause';
 import { MemoryCandidateService } from './memory-candidate-service';
+import { SelfImprovementService } from './self-improvement-service';
 
 /**
  * Outcome-driven dream state (plan E11), step 1–2: replay the recent failed/blocked loop runs and classify each once with
@@ -12,6 +13,15 @@ import { MemoryCandidateService } from './memory-candidate-service';
 const MAX_PER_REPLAY = 25;
 const MIN_RECURRENCE = 2;
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
+
+/** Where a platform-level fix for each cause belongs, from the 2026-09-22/24 diagnoses (plan E11 step 4). */
+const CAUSE_TARGETS: Record<string, { target: string; test: string; hint: string }> = {
+  parse_error: { target: 'packages/server/src/services/loop-service.ts', test: 'loop-daemon-checker-dispatch.test.ts', hint: 'extractCheckerPayload: reviewer output that carries a verdict must still be read' },
+  environment_noise: { target: 'packages/server/src/services/loop-worker-executor-service.ts', test: 'loop-maker-lockfile.test.ts', hint: 'keep unrelated workspace changes (installs, lockfiles) out of the reviewed diff' },
+  missing_context: { target: 'packages/server/src/services/loop-service.ts', test: 'loop-working-tree-diff.test.ts', hint: 'buildCheckerPrompt: give reviewers the evidence they need (diff incl. new files, checks)' },
+  infra: { target: 'packages/server/src/services/worktree-manager.ts', test: 'loop-services.test.ts', hint: 'worktree/permission/runtime preconditions that made the run fail before any work' },
+};
+export const dreamProposalsEnabled = (): boolean => process.env.DREAM_STATE_PROPOSALS_ENABLED === 'true';
 
 export const dreamStateEnabled = (): boolean => process.env.DREAM_STATE_ENABLED === 'true';
 
@@ -91,6 +101,7 @@ export class DreamStateService {
       groups.set(key, g);
     }
     const memory = new MemoryCandidateService(this.db);
+    const improvements = dreamProposalsEnabled() ? new SelfImprovementService(this.db) : null;
     let created = 0;
     for (const [key, g] of groups) {
       if (g.n < MIN_RECURRENCE) continue;
@@ -107,6 +118,21 @@ export class DreamStateService {
         });
         created += 1;
       } catch { /* e.g. secret detector: skip, never break the replay */ }
+      // Step 4: a recurring *platform* cause with a known home becomes one grounded fix proposal (governed by the panel).
+      const home = CAUSE_TARGETS[g.cause];
+      if (improvements && home && g.platform * 2 >= g.n) {
+        const command = `npx vitest run src/__tests__/${home.test}`;
+        try {
+          improvements.generateFromDreamCause({
+            title: `Fix recurring loop failure: ${g.cause} at ${g.gate}`.slice(0, 80),
+            description: `${g.n} ${g.loop} runs in the last ${days} days failed with cause "${g.cause}" at gate "${g.gate}". Where to look: ${home.hint}. `
+              + `RUNTIME COMMAND: from packages/server run \`${command}\` (exit 0 = pass). Add a regression test for the failure mode in that file.`,
+            rationale: `Recurring platform fault (${g.platform}/${g.n} judged platform_fault) found by the dream state; the proposal itself is not at fault.`,
+            evidenceRef: sourceRef,
+            grounding: { target: home.target, acceptanceTest: command, runtimeCommand: command, budget: 'one maker lease, <= 20 minutes, one checker + security checker' },
+          });
+        } catch { /* never break the replay */ }
+      }
     }
     return created;
   }

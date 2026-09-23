@@ -68,3 +68,20 @@ it('a cause that recurs at the same gate becomes one engineering-rule memory can
     .toEqual([{ title: 'Recurring loop failure: environment_noise at checker_verdict', memory_type: 'engineering_rule' }]);
   expect(svc.consolidate()).toBe(0); // not again within the window
 });
+
+it('with DREAM_STATE_PROPOSALS_ENABLED a recurring platform cause also yields one grounded fix proposal', () => {
+  process.env.DREAM_STATE_PROPOSALS_ENABLED = 'true';
+  try {
+    for (const id of ['p1', 'p2']) {
+      db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'blocked', ?, ?, ?)`)
+        .run(id, JSON.stringify([{ name: 'checker_verdict', status: 'fail' }]), now(), now());
+      db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'failure_cause', 'loop_run', ?, 'h', 'shadow', 'yes', 'cause=parse_error conf=0.80 platform_fault=0.90', ?)`)
+        .run(`jp-${id}`, id, now());
+    }
+    new DreamStateService(db).consolidate();
+    const p = db.prepare("SELECT source, status, grounding_json FROM self_improvements WHERE source = 'dream_state'").all() as Array<{ source: string; status: string; grounding_json: string }>;
+    expect(p).toHaveLength(1);
+    expect(JSON.parse(p[0].grounding_json).target).toBe('packages/server/src/services/loop-service.ts');
+    expect(p[0].status).toBe('proposed'); // goes to the specialist panel like every proposal
+  } finally { delete process.env.DREAM_STATE_PROPOSALS_ENABLED; }
+});

@@ -13,7 +13,7 @@ export interface ImprovementProposal {
   title: string;
   description: string;
   rationale: string;
-  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement';
+  source: 'reflection' | 'invention' | 'gap_analysis' | 'feedback' | 'refinement' | 'dream_state';
   status: ImprovementStatus;
   priority: number;
   evidenceRefs: string[];
@@ -95,6 +95,14 @@ export class SelfImprovementService {
     return this.createProposal({
       type: 'feature', title: gap.title, description: gap.description, rationale: gap.rationale,
       source: 'gap_analysis', priority: 0.6, evidenceRefs: [gap.evidenceRef], grounding: gap.grounding,
+    });
+  }
+
+  /** Grounded fix proposal for a recurring loop-failure cause found by the dream state (plan E11 step 4). */
+  generateFromDreamCause(input: { title: string; description: string; rationale: string; evidenceRef: string; grounding: Partial<Grounding> }): ImprovementProposal | null {
+    return this.createProposal({
+      type: 'bug_fix', title: input.title, description: input.description, rationale: input.rationale,
+      source: 'dream_state', priority: 0.7, evidenceRefs: [input.evidenceRef], grounding: input.grounding,
     });
   }
 
