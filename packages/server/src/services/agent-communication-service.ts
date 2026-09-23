@@ -12,6 +12,7 @@
  * 5. TTL expiration — stale messages auto-expire
  */
 
+import { buildEvidencePack, evidencePackEnabled } from './commons-evidence-pack';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
@@ -232,10 +233,11 @@ export class AgentCommunicationService {
     const secondId = String(second.id);
     const firstPerspective = this.uniquePerspective(first, second);
     const secondPerspective = this.uniquePerspective(second, first);
+    const evidencePack = evidencePackEnabled() ? buildEvidencePack(this.db) : null;
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
