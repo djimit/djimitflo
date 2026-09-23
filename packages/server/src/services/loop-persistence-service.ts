@@ -29,6 +29,28 @@ export class LoopPersistenceService {
   ) {}
 
   /**
+   * The maker's full working-tree change: tracked edits plus NEW (untracked) files. `git diff` alone omits new files, so a
+   * test-only change showed up as "No diff available" to the checkers (prod 2026-09-23) and as 0 lines to the diff budget
+   * gate. Read-only: untracked files are rendered with `git diff --no-index`, the index is never touched.
+   */
+  workingTreeDiff(repositoryPath: string, maxNewFiles = 50): string {
+    const tracked = this.git(repositoryPath, ['diff', '--', '.']);
+    const untracked = this.git(repositoryPath, ['ls-files', '--others', '--exclude-standard', '--', '.']).split('\n').filter(Boolean);
+    const added = untracked.slice(0, maxNewFiles).map((file) => {
+      try {
+        return execFileSync('git', ['-C', repositoryPath, 'diff', '--no-index', '--', '/dev/null', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      } catch (error) {
+        // exit 1 = "files differ", which is the expected outcome here
+        const out = (error as { stdout?: Buffer | string }).stdout?.toString() || '';
+        if ((error as { status?: number }).status === 1 && out) return out.trim();
+        throw error;
+      }
+    });
+    if (untracked.length > maxNewFiles) added.push(`# ${untracked.length - maxNewFiles} more new file(s) not shown`);
+    return [tracked, ...added].filter(Boolean).join('\n');
+  }
+
+  /**
    * Execute a git command in a repository.
    */
   git(repositoryPath: string, args: string[]): string {

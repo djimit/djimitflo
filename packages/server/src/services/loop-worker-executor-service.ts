@@ -133,7 +133,7 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(makerLease, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
-    const diff = this.loopService.git(makerLease.worktree_path!, ['diff', '--', '.']);
+    const diff = this.loopService.workingTreeDiff(makerLease.worktree_path!);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
     const exitStatus = result.exitCode;
@@ -525,7 +525,7 @@ export class LoopWorkerExecutorService {
       const packetFile = typeof maker.metadata.assignment_packet_file === 'string' ? maker.metadata.assignment_packet_file : '';
       let task = packetFile && fs.existsSync(packetFile) ? fs.readFileSync(packetFile, 'utf8') : '';
       try { const f = JSON.parse(task)?.finding; if (f?.message) task = [f.message, f.suggested_fix].filter(Boolean).join('\n'); } catch { /* raw packet text */ }
-      const diff = maker.worktree_path ? this.loopService.git(maker.worktree_path, ['diff', '--', '.']) : '';
+      const diff = maker.worktree_path ? this.loopService.workingTreeDiff(maker.worktree_path) : '';
       const state = checkerSecondOpinionState(task, diff, maker.metadata.deterministic_checks || []);
       await runJudgment(this.db, checkerSecondOpinion, { type: 'worker_lease', id: checker.id }, state, undefined, { checkerVerdict, loopRunId: run.id });
     } catch { /* shadow judgment must never affect the loop */ }
