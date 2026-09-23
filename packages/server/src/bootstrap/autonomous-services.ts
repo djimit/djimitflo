@@ -26,6 +26,7 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
@@ -124,6 +125,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Test-gap source failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Outcome-driven dream state (plan E11): replay failed runs and classify their causes (shadow). Default off.
+  try {
+    if (dreamStateEnabled()) {
+      const dreamState = new DreamStateService(db);
+      dreamState.start();
+      lifecycleManager.register({ serviceName: 'DreamState', stop: () => dreamState.stop() });
+      console.log('🌙 Dream state on (failure-cause replay every 6 h).');
+    }
+  } catch (error) {
+    console.warn('⚠️  Dream state failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Disk guard: one work item + bus event per day when the data volume passes 80 % / 90 %. Default off.
