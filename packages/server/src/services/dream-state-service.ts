@@ -32,19 +32,28 @@ export class DreamStateService {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const runs = this.db.prepare(`SELECT id, loop_name, status, gates_json, goal_id FROM loop_runs
       WHERE status IN ('blocked', 'failed') AND updated_at >= ?
-        AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run')
+        -- classified once, except that an 'uncertain' result gets one more try (the state was enriched on 2026-09-24)
+        AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run'
+          GROUP BY subject_id HAVING SUM(decision != 'uncertain') > 0 OR COUNT(*) >= 2)
       ORDER BY updated_at DESC LIMIT ?`).all(since, limit) as Array<{ id: string; loop_name: string; status: string; gates_json: string | null; goal_id: string | null }>;
     return runs.map((r) => {
       let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
       try { gates = JSON.parse(r.gates_json || '[]'); } catch { /* keep empty */ }
       const leases = this.db.prepare(`SELECT role, status, json_extract(metadata, '$.verdict') AS verdict,
-        COALESCE(json_extract(metadata, '$.notes'), json_extract(metadata, '$.failure_reason'), '') AS notes
-        FROM worker_leases WHERE loop_run_id = ?`).all(r.id) as Array<{ role: string; status: string; verdict: string | null; notes: string }>;
+        COALESCE(json_extract(metadata, '$.notes'), json_extract(metadata, '$.failure_reason'), '') AS notes,
+        json_extract(metadata, '$.deterministic_checks') AS checks
+        FROM worker_leases WHERE loop_run_id = ?`).all(r.id) as Array<{ role: string; status: string; verdict: string | null; notes: string; checks: string | null }>;
+      // Prod 2026-09-24: 17/23 classifications were `uncertain` where the state held only gate names; the run's own events
+      // and check results are what a human reads to diagnose, so they go into the state too (still clipped, no raw logs).
+      const events = (this.db.prepare(`SELECT event_type, message FROM loop_events WHERE loop_run_id = ? ORDER BY created_at DESC LIMIT 8`).all(r.id) as Array<{ event_type: string; message: string }>)
+        .reverse().map((e) => `${e.event_type}: ${clip(e.message, 200)}`);
+      const checks = (raw: string | null) => { try { return (JSON.parse(raw || '[]') as Array<{ name?: string; status?: string; exit_status?: number }>).map((c) => `${c.name}=${c.status}${c.exit_status ? ` (exit ${c.exit_status})` : ''}`); } catch { return []; } };
       const goalFailure = r.goal_id ? (this.db.prepare(`SELECT message FROM loop_events WHERE loop_run_id = ? AND event_type = 'goal_failed' ORDER BY created_at DESC LIMIT 1`).get(r.id) as { message: string } | undefined)?.message : undefined;
       return { id: r.id, state: { run: {
         loop: r.loop_name, status: r.status,
         failed_gates: gates.filter((g) => g.status !== 'pass').map((g) => `${g.name}: ${clip(g.evidence, 300)}`),
-        workers: leases.map((l) => ({ role: l.role, status: l.status, verdict: l.verdict, notes: clip(l.notes, 400) })),
+        workers: leases.map((l) => ({ role: l.role, status: l.status, verdict: l.verdict, notes: clip(l.notes, 400), ...(l.checks ? { checks: checks(l.checks) } : {}) })),
+        events,
         goal_failure: clip(goalFailure, 300),
       } } };
     });

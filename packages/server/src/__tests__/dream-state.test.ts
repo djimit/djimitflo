@@ -18,6 +18,7 @@ beforeEach(() => {
   run('r-ok', 'completed', []);
   db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at)
     VALUES ('l1', 'r-blocked', 'checker', 'opencode', 'completed', ?, ?, ?)`).run(JSON.stringify({ verdict: 'insufficient_evidence', notes: 'Maker diff artifact is missing' }), now(), now());
+  db.prepare(`INSERT INTO loop_events (id, loop_run_id, event_type, level, message, created_at) VALUES ('e1', 'r-blocked', 'checker_dispatch_failed', 'warning', 'Automated checker dispatch failed: CHECKER_LEASE_NOT_FOUND', ?)`).run(now());
 });
 afterEach(() => { delete process.env.TYPESAFE_API_KEY; delete process.env.TYPESAFE_FAILURE_CAUSE_MODE; vi.unstubAllGlobals(); db.close(); });
 
@@ -27,6 +28,7 @@ it('collects only failed/blocked runs, with failed gates and worker verdicts as 
   const run = (pending[0].state as { run: { failed_gates: string[]; workers: Array<{ verdict: string }> } }).run;
   expect(run.failed_gates).toEqual(['checker_verdict: insufficient_evidence: No diff available']);
   expect(run.workers[0].verdict).toBe('insufficient_evidence');
+  expect((pending[0].state as { run: { events: string[] } }).run.events).toEqual(['checker_dispatch_failed: Automated checker dispatch failed: CHECKER_LEASE_NOT_FOUND']);
 });
 
 it('off by default; in shadow it classifies each failed run once', async () => {
@@ -39,4 +41,13 @@ it('off by default; in shadow it classifies each failed run once', async () => {
   expect(db.prepare("SELECT decision, reason FROM judgments WHERE judgment = 'failure_cause'").get())
     .toEqual({ decision: 'yes', reason: 'cause=missing_context conf=0.90 platform_fault=0.80' });
   expect(await svc.replay()).toEqual({ candidates: 0, classified: 0 }); // never twice
+});
+
+it('an uncertain classification gets exactly one more try', async () => {
+  process.env.TYPESAFE_FAILURE_CAUSE_MODE = 'shadow';
+  vi.stubGlobal('fetch', reply('wrong_approach', 0.3, 0.5));
+  const svc = new DreamStateService(db);
+  expect(await svc.replay()).toEqual({ candidates: 1, classified: 1 }); // uncertain
+  expect(await svc.replay()).toEqual({ candidates: 1, classified: 1 }); // one retry
+  expect(await svc.replay()).toEqual({ candidates: 0, classified: 0 }); // then done
 });
