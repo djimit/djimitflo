@@ -1,6 +1,7 @@
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { failureCause } from './judgments/failure-cause';
+import { MemoryCandidateService } from './memory-candidate-service';
 
 /**
  * Outcome-driven dream state (plan E11), step 1–2: replay the recent failed/blocked loop runs and classify each once with
@@ -9,11 +10,12 @@ import { failureCause } from './judgments/failure-cause';
  *   DREAM_STATE_ENABLED=true to schedule (every 6 h, first run 2 min after boot); TYPESAFE_FAILURE_CAUSE_MODE=shadow to classify.
  */
 const MAX_PER_REPLAY = 25;
+const MIN_RECURRENCE = 2;
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
 
 export const dreamStateEnabled = (): boolean => process.env.DREAM_STATE_ENABLED === 'true';
 
-export interface ReplayResult { candidates: number; classified: number }
+export interface ReplayResult { candidates: number; classified: number; consolidated?: number }
 
 export class DreamStateService {
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -64,6 +66,48 @@ export class DreamStateService {
     const pending = this.pendingFailures();
     let classified = 0;
     for (const p of pending) if (await runJudgment(this.db, failureCause, { type: 'loop_run', id: p.id }, p.state)) classified += 1;
-    return { candidates: pending.length, classified };
+    return { candidates: pending.length, classified, consolidated: this.consolidate() };
+  }
+
+  /**
+   * Step 3: a cause that recurs (>= MIN_RECURRENCE confident classifications in 7 days for the same cause + failed gate)
+   * becomes one memory candidate (engineering_rule), at most once per 7 days per key. Candidates still go through the
+   * normal review/promotion before any decision reads them (E8).
+   */
+  consolidate(days = 7): number {
+    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    const rows = this.db.prepare(`SELECT j.reason, r.gates_json, r.loop_name FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
+      WHERE j.judgment = 'failure_cause' AND j.decision != 'uncertain' AND j.created_at >= ?`).all(since) as Array<{ reason: string | null; gates_json: string | null; loop_name: string }>;
+    const groups = new Map<string, { cause: string; gate: string; loop: string; n: number; platform: number }>();
+    for (const r of rows) {
+      const cause = /cause=([a-z_]+)/.exec(r.reason || '')?.[1];
+      if (!cause) continue;
+      let gates: Array<{ name?: string; status?: string }> = [];
+      try { gates = JSON.parse(r.gates_json || '[]'); } catch { /* none */ }
+      const gate = gates.find((g) => g.status === 'fail')?.name ?? 'no_failed_gate';
+      const key = `${cause}:${gate}`;
+      const g = groups.get(key) ?? { cause, gate, loop: r.loop_name, n: 0, platform: 0 };
+      g.n += 1; if (Number(/platform_fault=([0-9.]+)/.exec(r.reason || '')?.[1] ?? 0) > 0.5) g.platform += 1;
+      groups.set(key, g);
+    }
+    const memory = new MemoryCandidateService(this.db);
+    let created = 0;
+    for (const [key, g] of groups) {
+      if (g.n < MIN_RECURRENCE) continue;
+      const sourceRef = `dream:cause:${key}`;
+      if (this.db.prepare('SELECT 1 FROM memory_candidates WHERE source_ref = ? AND created_at >= ?').get(sourceRef, since)) continue;
+      try {
+        memory.create({
+          title: `Recurring loop failure: ${g.cause} at ${g.gate}`.slice(0, 200),
+          content: `In the last ${days} days ${g.n} ${g.loop} runs failed with cause "${g.cause}" at gate "${g.gate}"`
+            + ` (${g.platform}/${g.n} judged a platform fault). Check this before approving or reviewing similar runs; `
+            + `a platform fault needs a platform fix, not a new attempt at the same change.`,
+          memory_type: 'engineering_rule', source_ref: sourceRef,
+          metadata: { origin: 'dream-state', cause: g.cause, gate: g.gate, occurrences: g.n, platform_fault_count: g.platform },
+        });
+        created += 1;
+      } catch { /* e.g. secret detector: skip, never break the replay */ }
+    }
+    return created;
   }
 }

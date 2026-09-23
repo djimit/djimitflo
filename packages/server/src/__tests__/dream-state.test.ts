@@ -37,17 +37,34 @@ it('off by default; in shadow it classifies each failed run once', async () => {
   expect(await svc.replay()).toEqual({ candidates: 0, classified: 0 });
   expect(f).not.toHaveBeenCalled();
   process.env.TYPESAFE_FAILURE_CAUSE_MODE = 'shadow';
-  expect(await svc.replay()).toEqual({ candidates: 1, classified: 1 });
+  expect(await svc.replay()).toMatchObject({ candidates: 1, classified: 1 });
   expect(db.prepare("SELECT decision, reason FROM judgments WHERE judgment = 'failure_cause'").get())
     .toEqual({ decision: 'yes', reason: 'cause=missing_context conf=0.90 platform_fault=0.80' });
-  expect(await svc.replay()).toEqual({ candidates: 0, classified: 0 }); // never twice
+  expect(await svc.replay()).toMatchObject({ candidates: 0, classified: 0 }); // never twice
 });
 
 it('an uncertain classification gets exactly one more try', async () => {
   process.env.TYPESAFE_FAILURE_CAUSE_MODE = 'shadow';
   vi.stubGlobal('fetch', reply('wrong_approach', 0.3, 0.5));
   const svc = new DreamStateService(db);
-  expect(await svc.replay()).toEqual({ candidates: 1, classified: 1 }); // uncertain
-  expect(await svc.replay()).toEqual({ candidates: 1, classified: 1 }); // one retry
-  expect(await svc.replay()).toEqual({ candidates: 0, classified: 0 }); // then done
+  expect(await svc.replay()).toMatchObject({ candidates: 1, classified: 1 }); // uncertain
+  expect(await svc.replay()).toMatchObject({ candidates: 1, classified: 1 }); // one retry
+  expect(await svc.replay()).toMatchObject({ candidates: 0, classified: 0 }); // then done
+});
+
+it('a cause that recurs at the same gate becomes one engineering-rule memory candidate, once', () => {
+  const add = (id: string, reason: string) => {
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'blocked', ?, ?, ?)`)
+      .run(id, JSON.stringify([{ name: 'checker_verdict', status: 'fail' }]), now(), now());
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'failure_cause', 'loop_run', ?, 'h', 'shadow', 'yes', ?, ?)`)
+      .run(`j-${id}`, id, reason, now());
+  };
+  add('c1', 'cause=environment_noise conf=0.80 platform_fault=0.90');
+  add('c2', 'cause=environment_noise conf=0.75 platform_fault=0.85');
+  add('c3', 'cause=wrong_approach conf=0.70 platform_fault=0.10'); // once only: no rule
+  const svc = new DreamStateService(db);
+  expect(svc.consolidate()).toBe(1);
+  expect(db.prepare("SELECT title, memory_type FROM memory_candidates WHERE source_ref LIKE 'dream:cause:%'").all())
+    .toEqual([{ title: 'Recurring loop failure: environment_noise at checker_verdict', memory_type: 'engineering_rule' }]);
+  expect(svc.consolidate()).toBe(0); // not again within the window
 });
