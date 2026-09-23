@@ -4,7 +4,8 @@ import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { TypeSafeClient, prepareState, resetTypesafeBreaker } from '../services/typesafe-client';
 import { runJudgment, band } from '../services/judgment-service';
-import { proposalPrescreen } from '../services/judgments/proposal-prescreen';
+import { namedPathsExist, proposalPrescreen } from '../services/judgments/proposal-prescreen';
+import { join } from 'path';
 
 let db: Database.Database;
 const noul = (p: number) => ({ type: 'noul', noul: p });
@@ -44,3 +45,13 @@ it('fail-open: an API error returns null, is recorded, and the breaker opens aft
   expect(f.mock.calls.length).toBe(calls); // breaker open: no further requests
   expect(db.prepare("SELECT COUNT(*) n FROM judgments WHERE decision = 'error'").get()).toEqual({ n: 4 });
 }, 20_000);
+it('file existence is checked in code, not asked of the model', async () => {
+  const root = join(__dirname, '..', '..', '..', '..');
+  expect(namedPathsExist('touch packages/server/src/services/judgment-service.ts', root)).toBe(true);
+  expect(namedPathsExist('touch packages/server/src/services/does-not-exist.ts', root)).toBe(false);
+  expect(namedPathsExist('improve reliability in general', root)).toBeUndefined();
+  expect(namedPathsExist('see ../../../etc/passwd.md', root)).toBe(false);
+  const answers = { names_file: noul(0.95), verifiable: noul(0.9), concrete: noul(0.9), sensitive: noul(0.05) };
+  expect((await runJudgment(db, proposalPrescreen, { type: 't', id: 'x1' }, {}, client(ok(answers)), { pathExists: false }))?.reason).toBe('named file does not exist in the repository');
+  expect((await runJudgment(db, proposalPrescreen, { type: 't', id: 'x2' }, {}, client(ok(answers)), { pathExists: true }))?.decision).toBe('yes');
+});
