@@ -133,6 +133,13 @@ export class LoopWorkerExecutorService {
         this.riskAssessmentText(makerLease, prompt));
 
     const { stdoutPath, stderrPath } = this.writeOutput(run.id, makerLease.id, 'worker-output', result.stdout || '', result.stderr || '');
+    // A lockfile rewrite without a dependency change is install noise (prod 2026-09-23: npm install flipped hasInstallScript),
+    // never the intended change; restore it so a test-only diff stays test-only, and record that we did.
+    const changed = this.loopService.git(makerLease.worktree_path!, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
+    if (changed.includes('package-lock.json') && !changed.includes('package.json')) {
+      this.loopService.git(makerLease.worktree_path!, ['checkout', '--', 'package-lock.json']);
+      this.loopService.recordLoopEvent(run.id, 'maker_lockfile_restored', 'warning', 'package-lock.json changed without a package.json change; restored before review.', { maker_lease_id: makerLease.id });
+    }
     const diff = this.loopService.workingTreeDiff(makerLease.worktree_path!);
     const diffLines = diff ? diff.split(/\r?\n/).filter(Boolean).length : 0;
     const diffMaxLines = Math.max(1, Math.min(input.diff_max_lines || 200, 2_000));
