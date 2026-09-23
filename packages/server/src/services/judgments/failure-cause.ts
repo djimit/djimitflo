@@ -14,7 +14,7 @@ export const failureCause: JudgmentDef = {
   questions: {
     cause: {
       type: 'choice',
-      instructions: 'What is the main reason the loop run in `run` failed or was blocked?',
+      instructions: 'Using `run.events`, `run.failed_gates` and `run.workers`, what is the main reason the loop run in `run` failed or was blocked?',
       criteria: {
         infra: 'The platform could not do its job: permissions, missing worktree, service unreachable, expired approval, disk.',
         environment_noise: 'Unrelated changes appeared in the workspace (for example a lockfile rewritten by an install), not the intended change.',
