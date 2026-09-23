@@ -34,3 +34,12 @@ it('combines tracked edits and new files, and caps the number of new files', () 
   expect(diff).toContain('n1.ts'); expect(diff).toContain('n2.ts'); expect(diff).not.toContain('n3.ts');
   expect(diff).toContain('# 1 more new file(s) not shown');
 });
+
+it('notes untracked symlinks (worktree node_modules) instead of failing', () => {
+  const p = new LoopPersistenceService(repo);
+  fs.symlinkSync(os.tmpdir(), path.join(repo, 'node_modules'));
+  fs.writeFileSync(path.join(repo, 'b.ts'), 'export const b = 1;\n');
+  const diff = p.workingTreeDiff(repo);
+  expect(diff).toContain('# new symlink: node_modules');
+  expect(diff).toContain('+export const b = 1;');
+});

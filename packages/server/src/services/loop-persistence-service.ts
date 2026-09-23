@@ -37,13 +37,16 @@ export class LoopPersistenceService {
     const tracked = this.git(repositoryPath, ['diff', '--', '.']);
     const untracked = this.git(repositoryPath, ['ls-files', '--others', '--exclude-standard', '--', '.']).split('\n').filter(Boolean);
     const added = untracked.slice(0, maxNewFiles).map((file) => {
+      // worktrees carry untracked symlinks (node_modules) that `git diff --no-index` cannot render: note them, never fail
+      let stat: fs.Stats;
+      try { stat = fs.lstatSync(path.join(repositoryPath, file)); } catch { return `# new entry: ${file} (unreadable)`; }
+      if (!stat.isFile()) return `# new ${stat.isSymbolicLink() ? 'symlink' : 'entry'}: ${file}`;
       try {
         return execFileSync('git', ['-C', repositoryPath, 'diff', '--no-index', '--', '/dev/null', file], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       } catch (error) {
         // exit 1 = "files differ", which is the expected outcome here
         const out = (error as { stdout?: Buffer | string }).stdout?.toString() || '';
-        if ((error as { status?: number }).status === 1 && out) return out.trim();
-        throw error;
+        return (error as { status?: number }).status === 1 && out ? out.trim() : `# new file: ${file} (diff unavailable)`;
       }
     });
     if (untracked.length > maxNewFiles) added.push(`# ${untracked.length - maxNewFiles} more new file(s) not shown`);
