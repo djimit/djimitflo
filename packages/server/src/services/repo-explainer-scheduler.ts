@@ -381,11 +381,14 @@ export class RepoExplainerScheduler {
       failed_today: Number(counts.failed_today ?? 0),
       budget: this.getBudget(now),
       paused: this.isPaused(),
+      // Only failures that still matter: last 7 days, and the task has not completed since (prod 2026-09-24: the list kept
+      // showing the 2026-09-12 missing-corpus ENOENT for repos that had published bundles long since).
       recent_failures: this.db.prepare(`
         SELECT REPLACE(t.remote_url, 'https://github.com/', '') AS full_name, t.error_message AS error, j.finished_at AS finished_at
         FROM explainer_jobs j JOIN explainer_tasks t ON t.id = j.task_id
-        WHERE j.status = 'failed' ORDER BY j.finished_at DESC LIMIT 5
-      `).all() as SchedulerStatus['recent_failures'],
+        WHERE j.status = 'failed' AND t.status <> 'completed' AND COALESCE(j.finished_at, j.updated_at) >= ?
+        ORDER BY COALESCE(j.finished_at, j.updated_at) DESC LIMIT 5
+      `).all(new Date(now.getTime() - 7 * 86_400_000).toISOString()) as SchedulerStatus['recent_failures'],
     };
   }
 
