@@ -209,8 +209,10 @@ export class AgentCommunicationService {
       if (score > pairScore) { pair = [agents[left], agents[right]]; pairScore = score; }
     }
 
+    // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
+    const failure = process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null;
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
-    const interest = this.db.prepare(`
+    const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
       WHERE json_extract(m.payload_json, '$.action') IN ('social.response', 'social.learning')
         AND length(trim(COALESCE(json_extract(m.payload_json, '$.params.interest'), ''))) > 0
@@ -221,7 +223,7 @@ export class AgentCommunicationService {
       ORDER BY m.timestamp ASC, m.rowid ASC LIMIT 1
     `).get(String(pair[0].id), String(pair[1].id)) as { id: string; payload_json: string } | undefined;
     const interestParams = this.object(this.object(interest?.payload_json).params);
-    const picked = interest ? null : this.pickTopic();
+    const picked = failure ?? (interest ? null : this.pickTopic());
     const topic = interest ? this.cleanOptional(interestParams.interest, 1_000) : picked!.topic;
     const ecosystemComponent = this.cleanOptional(interestParams.ecosystem_component, 200);
     const ecosystemContext = 'Djimitflo: the core (work control, approvals, agent runtime and governed execution); DjimitKBWiki: knowledge cockpit; Qdrant/GraphStore: memory and causality. Treat component roles as orientation, verify current functionality before proposing changes.';
@@ -362,6 +364,27 @@ export class AgentCommunicationService {
    * then the newest candidate lesson nobody has challenged yet, then a rotating
    * ecosystem question so consecutive rounds do not repeat the same prompt.
    */
+  /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
+  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[] } | null {
+    try {
+      const row = this.db.prepare(`
+        SELECT j.subject_id AS run_id, j.reason, r.loop_name, r.gates_json FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
+        WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND j.created_at >= ?
+          AND ('run:' || j.subject_id) NOT IN (
+            SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
+            WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text')
+        ORDER BY j.created_at DESC LIMIT 1
+      `).get(new Date(Date.now() - 7 * 86_400_000).toISOString()) as { run_id: string; reason: string | null; loop_name: string; gates_json: string | null } | undefined;
+      if (!row) return null;
+      let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
+      try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
+      const failed = gates.filter((g) => g.status === 'fail').map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
+      const topicRef = `run:${row.run_id}`;
+      const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
+      return { topic, topicRef, evidence: [topicRef] };
+    } catch { return null; } // judgments table may not exist on older instances
+  }
+
   private pickTopic(): { topic: string; topicRef: string; evidence: string[] } {
     const clean = (references: string[]) => references.map((reference) => this.cleanOptional(reference, 200)).filter(Boolean).slice(0, 20);
     const gap = this.db.prepare(`
