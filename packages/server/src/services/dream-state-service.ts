@@ -32,7 +32,7 @@ export class DreamStateService {
     const since = new Date(Date.now() - days * 86_400_000).toISOString();
     const runs = this.db.prepare(`SELECT id, loop_name, status, gates_json, goal_id FROM loop_runs
       WHERE status IN ('blocked', 'failed') AND updated_at >= ?
-        -- classified once, except that an `uncertain` result gets one more try (the state was enriched on 2026-09-24)
+        -- classified once, except that an 'uncertain' result gets one more try (the state was enriched on 2026-09-24)
         AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run'
           GROUP BY subject_id HAVING SUM(decision != 'uncertain') > 0 OR COUNT(*) >= 2)
       ORDER BY updated_at DESC LIMIT ?`).all(since, limit) as Array<{ id: string; loop_name: string; status: string; gates_json: string | null; goal_id: string | null }>;
