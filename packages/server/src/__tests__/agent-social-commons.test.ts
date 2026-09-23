@@ -150,6 +150,8 @@ describe('agent commons read-model', () => {
     const fourth = comms.socialize(0);
     expect(fourth.topic).toBe('The OKF index lacks provenance for imported skills');
     expect(fourth.messages[0].payload.evidence).toEqual(['claim:gap-1', 'okf:x']);
+    // a gap is discussed once: the next round moves on instead of re-picking the newest gap (prod: 264 repeated threads)
+    expect(comms.socialize(0).topic).not.toBe('The OKF index lacks provenance for imported skills');
   });
 
   it('shows non-social agent activity in the commons read-model', () => {
