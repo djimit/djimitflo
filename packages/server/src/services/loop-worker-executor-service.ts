@@ -288,6 +288,11 @@ export class LoopWorkerExecutorService {
     const runtimeWarnings = this.loopService.extractRuntimeWarnings(result.stdout || '', result.stderr || '');
     const verdict = exitStatus === 0 && !timedOut ? this.loopService.extractCheckerVerdict(result.stdout || '') : 'insufficient_evidence';
     if (runtime !== 'mock' && judgmentMode(checkerSecondOpinion.id) !== 'off') void this.recordSecondOpinion(run, maker, checker, verdict);
+    const checkerChanged = this.loopService.git(checkerWorktree, ['diff', '--name-only', '--', '.']).split('\n').filter(Boolean);
+    if (checkerChanged.includes('package-lock.json') && !checkerChanged.includes('package.json')) {
+      this.loopService.git(checkerWorktree, ['checkout', '--', 'package-lock.json']);
+      this.loopService.recordLoopEvent(run.id, 'checker_lockfile_restored', 'warning', `${reviewRole} rewrote package-lock.json (install noise); restored before the read-only check.`, { checker_lease_id: checker.id });
+    }
     const checkerStatus = this.loopService.git(checkerWorktree, ['status', '--porcelain=v1', '--untracked-files=all']);
     const checkerDiffStat = this.loopService.git(checkerWorktree, ['diff', '--stat', 'HEAD', '--', '.']);
     const checkerReadOnly = checkerStatus.length === 0;
