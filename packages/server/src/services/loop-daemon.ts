@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { recordAutoApproveShadow } from './autonomy-shadow-service';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
@@ -246,6 +247,7 @@ export class LoopDaemon {
     try {
       new LoopEventService(this.db).recordEvent(runId, 'goal_awaiting_approval', 'warning', `Waiting for human approval ${approvalId}`, { goal_id: goal.id, approval_id: approvalId });
     } catch { /* best-effort */ }
+    recordAutoApproveShadow(this.db, goal.id, runId, approvalId); // plan E3: shadow only, never approves
     console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
     swarmEventBus.emit('convergence', { daemon: 'goal_awaiting_approval', goal_id: goal.id, run_id: runId, approval_id: approvalId });
     return true;
