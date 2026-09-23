@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { prepareState } from './typesafe-client';
+import { buildDecisionContext } from './decision-context-service';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 
@@ -89,7 +90,7 @@ export class SelfImprovementAgentReviewService {
   private readonly callModel: ModelCaller;
   private readonly generationFailures = new Map<string, number>();
 
-  constructor(db: Database, callModel: ModelCaller = callOllama) {
+  constructor(private readonly db: Database, callModel: ModelCaller = callOllama) {
     this.panels = new SpecialistPanelService(db);
     this.callModel = callModel;
   }
@@ -99,9 +100,13 @@ export class SelfImprovementAgentReviewService {
     let panel = this.panels.getPanel(panelId);
     const reviewed = new Set((panel.reviews || []).map((review) => review.specialist_id));
     const missing = panel.panel.filter((profile) => !reviewed.has(profile.id));
+    // one advisory lookup per panel (not per specialist); null unless TYPESAFE_DECISION_CONTEXT_MODE=enforce
+    const lessons = missing.length
+      ? (await buildDecisionContext(this.db, { type: 'specialist_panel', id: panel.id }, { topic: panel.topic, context: panel.context }).catch(() => null))?.text
+      : undefined;
 
     for (const profile of missing) {
-      const outcome = await this.reviewOne(panel, profile);
+      const outcome = await this.reviewOne(panel, profile, lessons);
       if ('error' in outcome) {
         // A failed model call is not a judgement. It used to be stored as a confidence-0 needs_evidence review
         // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
@@ -131,9 +136,9 @@ export class SelfImprovementAgentReviewService {
     return panel;
   }
 
-  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile): Promise<ParsedReview | { error: string }> {
+  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
     try {
-      const raw = await this.callModel(this.buildPrompt(panel, profile));
+      const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
       return this.parseResponse(raw);
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
@@ -150,7 +155,7 @@ export class SelfImprovementAgentReviewService {
     };
   }
 
-  private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile): string {
+  private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): string {
     return [
       `You are acting as an independent "${profile.title}" reviewer on a governance panel.`,
       `Your domains: ${profile.domains.join(', ')}.`,
@@ -162,6 +167,7 @@ export class SelfImprovementAgentReviewService {
       `Question to answer: ${panel.question}`,
       `Context: ${JSON.stringify(panel.context)}`,
       ...(this.targetEvidence(panel) ? ['', this.targetEvidence(panel) as string, 'The target source is provided above: judge the proposal against it and do not ask for the source code again.'] : []),
+      ...(lessons ? ['', lessons] : []),
       '',
       'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
       "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
