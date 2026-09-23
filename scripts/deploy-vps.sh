@@ -62,7 +62,7 @@ if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds; AVAIL_KB="$(df --output=a
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
-(cd "runtime-source-$SHORT" && docker build -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
+(cd "runtime-source-$SHORT" && docker build --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
 # The container runs as uid 1001; objective-mode needs a writable .git for git worktrees.
 chown -R 1001:1001 "runtime-source-$SHORT"
 cp compose.yml "compose.yml.bak-$SHORT"
