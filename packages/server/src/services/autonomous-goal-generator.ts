@@ -38,7 +38,8 @@ export class AutonomousGoalGenerator {
     if (!improvement) return 0;
 
     const existing = this.db.prepare(
-      "SELECT id, improvement_id FROM goals WHERE improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ? LIMIT 1"
+      // a failed/cancelled goal does not block a retry (infrastructure failures re-schedule the proposal)
+      "SELECT id, improvement_id FROM goals WHERE (improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ?) AND status NOT IN ('failed', 'cancelled') LIMIT 1"
     ).get(id, id) as { id: string; improvement_id: string | null } | undefined;
     if (existing) {
       if (!existing.improvement_id) this.db.prepare('UPDATE goals SET improvement_id = ? WHERE id = ?').run(id, existing.id);
