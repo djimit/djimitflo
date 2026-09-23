@@ -147,6 +147,19 @@ describe('G127: Continuous Learning Loop', () => {
     expect((db.prepare('SELECT COUNT(*) AS count FROM self_improvements').get() as { count: number }).count).toBe(1);
   });
 
+  it('legacy dream ranking and SEGML are off unless explicitly enabled (plan E14)', async () => {
+    const spy = { runCycle: () => { throw new Error('legacy dream must not run'); }, exportPending: () => { throw new Error('no export'); } };
+    Object.assign(loop as unknown as { dreams: unknown; dreamTasks: unknown }, { dreams: spy, dreamTasks: spy });
+    const result = await loop.runCycle();
+    expect(result.dreamOpportunitiesGenerated).toBe(0);
+    expect(result.dreamTasksPlanned).toBe(0);
+    loop.start();
+    expect((loop as unknown as { segmlTimer: unknown }).segmlTimer).toBeNull();
+    loop.stop();
+    process.env.SEGML_ENABLED = 'true';
+    try { loop.start(); expect((loop as unknown as { segmlTimer: unknown }).segmlTimer).not.toBeNull(); } finally { loop.stop(); delete process.env.SEGML_ENABLED; }
+  });
+
   it('start/stop timer', () => {
     loop.start();
     loop.stop();
