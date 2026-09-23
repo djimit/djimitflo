@@ -2,6 +2,10 @@ name: OpenWiki Update
 
 on:
   workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama Cloud model id (default: repo variable OPENWIKI_MODEL_ID, else kimi-k3)"
+        required: false
   schedule:
     - cron: "0 8 * * *"
 
@@ -36,12 +40,12 @@ jobs:
         run: openwiki code --update --print
         env:
           # Ollama Cloud (OpenAI-compatible). GitHub runners cannot reach the Tailnet/LAN Ollama hosts,
-          # so this must be the hosted endpoint. glm-5.3 returns well-formed tool calls (checked 2026-09-23);
-          # OpenRouter was dropped after its key started returning 401. Fallback model: kimi-k3.
+          # so this must be the hosted endpoint. kimi-k3 completes the OpenWiki run (run 35824396170, 2026-09-23); glm-5.3 ends the planner without submit_plan;
+          # OpenRouter was dropped after its key started returning 401. Try others via the dispatch input.
           OPENWIKI_PROVIDER: openai-compatible
           OPENAI_COMPATIBLE_BASE_URL: https://ollama.com/v1
           OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
-          OPENWIKI_MODEL_ID: "glm-5.3"
+          OPENWIKI_MODEL_ID: ${{ inputs.model || vars.OPENWIKI_MODEL_ID || 'kimi-k3' }}
 
       - name: Remove transient OpenWiki run state
         if: ${{ !cancelled() }}
