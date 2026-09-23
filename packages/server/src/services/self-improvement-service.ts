@@ -2,6 +2,8 @@ import { assessGrounding, groundingRequired, GROUNDING_REQUIRED_SOURCES, type Gr
 import { createHash, randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService } from './specialist-panel-service';
+import { judgmentMode, runJudgment } from './judgment-service';
+import { reflectionTriage } from './judgments/reflection-triage';
 
 export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived';
 
@@ -272,6 +274,9 @@ export class SelfImprovementService {
           fingerprint, evidence_refs_json, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 'needs_grounding', ?, ?, ?, ?, ?)
       `).run(id, input.type, input.title, input.description, input.rationale, input.source, input.priority, fingerprint, JSON.stringify(evidenceRefs), now, now);
+      // shadow: record what this parked proposal is, to calibrate a ground-or-archive rule (fire-and-forget, fail-open)
+      if (judgmentMode(reflectionTriage.id) !== 'off') void runJudgment(this.db, reflectionTriage, { type: 'self_improvement', id },
+        { proposal: { title: input.title, description: input.description, rationale: input.rationale } }).catch(() => null);
       return this.getImprovement(id);
     }
     const riskClass = input.type === 'security' ? 'high' : 'low';
