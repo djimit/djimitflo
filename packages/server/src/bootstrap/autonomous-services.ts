@@ -27,6 +27,7 @@ import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../se
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
+import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
 import { QueueHygieneService, queueHygieneEnabled } from '../services/queue-hygiene-service';
 import { KnowledgeMaintenanceService, maintenanceEnabled } from '../services/knowledge-maintenance-service';
@@ -137,6 +138,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Dream state failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // Way out of needs_grounding based on reflection_triage (plan E2/E9c). Default off.
+  try {
+    if (needsGroundingTriageEnabled()) {
+      const triage = new NeedsGroundingTriageService(db);
+      triage.start();
+      lifecycleManager.register({ serviceName: 'NeedsGroundingTriage', stop: () => triage.stop() });
+      console.log('🧭 needs_grounding triage on (every 6 h, max 10 per run).');
+    }
+  } catch (error) {
+    console.warn('⚠️  needs_grounding triage failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Disk guard: one work item + bus event per day when the data volume passes 80 % / 90 %. Default off.
