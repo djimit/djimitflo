@@ -224,9 +224,13 @@ export class AgentCommunicationService {
     }
 
     // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
-    const failure = (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null)
-      // G10: then a parked proposal that needs a target file and a test, with code-search candidates as evidence.
-      ?? (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
+    // Work topics: undiscussed failures (E9e) and parked proposals to ground (G10). They alternate: prod 2026-09-24 had ~30
+    // undiscussed failed runs queued, so "failures first" meant grounding never got a turn.
+    const failureTopic = () => (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null);
+    const groundingTopic = () => (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
+    const lastWasFailure = String((this.db.prepare(`SELECT json_extract(payload_json, '$.params.topic_ref') AS r FROM agent_messages
+      WHERE json_extract(payload_json, '$.action') = 'social.question' ORDER BY timestamp DESC, rowid DESC LIMIT 1`).get() as { r: string | null } | undefined)?.r ?? '').startsWith('run:');
+    const failure = lastWasFailure ? (groundingTopic() ?? failureTopic()) : (failureTopic() ?? groundingTopic());
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
