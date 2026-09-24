@@ -12,7 +12,7 @@ import { SelfImprovementService } from './self-improvement-service';
  */
 export const testGapSourceEnabled = (): boolean => process.env.TEST_GAP_SOURCE_ENABLED === 'true';
 
-export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number }
+export interface TestGap { service: string; sourcePath: string; testPath: string; exports: string[]; loc: number; kind?: 'untested' | 'exports' }
 
 const SERVICES_DIR = 'packages/server/src/services';
 const TESTS_DIR = 'packages/server/src/__tests__';
@@ -40,6 +40,35 @@ export function discoverTestGaps(repoPath: string): TestGap[] {
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service)); // smallest, most self-contained first
 }
 
+/**
+ * J3: the second grounded lane. A service with tests can still export functions no test ever names. Same contract as a
+ * test gap (one new test file, one command), so the loop's only working lane gets more work without new risk. The test
+ * goes into a new `<service>.exports.test.ts`, never into an existing test file.
+ */
+const MAX_EXPORT_GAP_LOC = 600;
+export function discoverExportGaps(repoPath: string): TestGap[] {
+  const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
+  if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
+  const tests = fs.readdirSync(testsDir).filter((f) => /\.test\.tsx?$/.test(f)).map((f) => fs.readFileSync(path.join(testsDir, f), 'utf8'));
+  const tested = new Set(tests.flatMap((t) => [...t.matchAll(/\/services\/([A-Za-z0-9_-]+)(?:['"/])/g)].map((m) => m[1])));
+  const allTests = tests.join('\n');
+  const gaps: TestGap[] = [];
+  for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
+    const service = file.replace(/\.ts$/, '');
+    if (!tested.has(service)) continue; // untested services are discoverTestGaps' job
+    const text = fs.readFileSync(path.join(servicesDir, file), 'utf8');
+    const loc = text.split('\n').length;
+    if (loc > MAX_EXPORT_GAP_LOC) continue;
+    // One-line env-flag readers (`export const xEnabled = () => process.env.X === 'true'`) are not worth a loop run.
+    const fns = [...text.matchAll(/export\s+(?:async\s+)?function\s+(\w+)[^\n]*|export\s+const\s+(\w+)\s*=\s*(?:async\s*)?\([^\n]*/g)]
+      .filter((m) => !m[0].includes('process.env')).map((m) => m[1] ?? m[2]);
+    const untested = fns.filter((fn) => !new RegExp(`\\b${fn}\\b`).test(allTests)).slice(0, 3);
+    if (!untested.length) continue;
+    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.exports.test.ts`, exports: untested, loc, kind: 'exports' });
+  }
+  return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
+}
+
 export class TestGapSourceService {
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly db: Database) {}
@@ -63,19 +92,26 @@ export class TestGapSourceService {
     if (inFlight >= maxInFlight) return { created: 0, skipped: 'enough proposals in flight' };
     const improvements = new SelfImprovementService(this.db);
     let created = 0;
-    for (const gap of discoverTestGaps(repo)) {
+    // Untested services first, then untested exports of tested services (J3: TEST_GAP_EXPORTS_ENABLED).
+    const gaps = [...discoverTestGaps(repo), ...(process.env.TEST_GAP_EXPORTS_ENABLED === 'true' ? discoverExportGaps(repo) : [])];
+    for (const gap of gaps) {
       if (createdToday + created >= maxPerDay || inFlight + created >= maxInFlight) break;
-      // a file that ever had a test-gap proposal (any outcome) is never proposed again automatically
-      if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%test-gap:${gap.service}"%`)) continue;
-      const command = `npx vitest run src/__tests__/${gap.service}.test.ts`;
+      const ref = gap.kind === 'exports' ? `test-gap:${gap.service}#exports` : `test-gap:${gap.service}`;
+      // a file that ever had a test-gap proposal of this kind (any outcome) is never proposed again automatically
+      if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%${ref}"%`)) continue;
+      const testFile = path.basename(gap.testPath);
+      const command = `npx vitest run src/__tests__/${testFile}`;
       const budget = 'one maker lease, <= 10 minutes wall clock, <= 30k tokens, one checker lease; abort if any file other than the new test file changes';
-      const description = `Add ${gap.testPath} covering the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')}). Test-only; no production code edits. `
+      const covering = gap.kind === 'exports' ? `the untested exported functions ${gap.exports.join(', ')} of ${gap.sourcePath} (no existing test names them)` : `the public behaviour of ${gap.sourcePath} (exports: ${gap.exports.join(', ')})`;
+      const description = `Add ${gap.testPath} covering ${covering}. Test-only; no production code edits. `
         + `RUNTIME COMMAND: from packages/server run \`${command}\` (exit 0 = pass, Node 22, no network, no env flags needed). `
         + `ARTIFACT: the vitest stdout captured by the worker, plus the git diff of the single new test file (expected < 150 lines added). BUDGET: ${budget}.`;
       const proposal = improvements.generateFromGroundedGap({
-        title: `Add unit tests for services/${gap.service}.ts`, description,
-        rationale: `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,
-        evidenceRef: `test-gap:${gap.service}`,
+        title: gap.kind === 'exports' ? `Test untested exports of services/${gap.service}.ts` : `Add unit tests for services/${gap.service}.ts`, description,
+        rationale: gap.kind === 'exports'
+          ? `${gap.exports.join(', ')} in ${gap.sourcePath} are exported but no test names them; a test-only change is verifiable by one command`
+          : `${gap.sourcePath} (${gap.loc} lines) is not imported by any test; a test-only change is verifiable by one command`,
+        evidenceRef: ref,
         grounding: { target: gap.sourcePath, acceptanceTest: command, runtimeCommand: command, artifactPath: gap.testPath, budget },
       });
       if (proposal) created += 1;
