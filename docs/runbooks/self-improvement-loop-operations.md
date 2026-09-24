@@ -28,6 +28,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `TEST_GAP_SOURCE_ENABLED` | deterministic, fully grounded test-only proposals (max 2/day, 2 in flight) |
 | `LOOP_REVIEWER_APPROVAL_INHERIT` | one human approval per run; reviewers inherit it |
 | `LOOP_REVIEWER_TIMEOUT_MS` | time a daemon-dispatched checker/security checker gets (default 300 000, max 900 000) |
+| `LOOP_EVOLVE_ENABLED`, `LOOP_EVOLVE_SPECIES` | evolve-loop pilot (test-gap goals): extra makers per species (`runtime[@model]`, max 2); fitness in code picks the one maker that goes to review |
 | `LOOP_AUTO_DRAFT_PR_ENABLED` | a run that passes every gate is pushed to its branch and opened as a *draft* PR (needs `GITHUB_REPOSITORY` + `GITHUB_TOKEN` with contents + pull-requests write); the merge stays human |
 | `QUEUE_HYGIENE_ENABLED` | 6-hourly sweep: work-item TTL, zombie goals/runs |
 | `DISK_GUARD_ENABLED` | warn at 80 %, critical at 90 % disk |
