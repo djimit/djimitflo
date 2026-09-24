@@ -742,7 +742,7 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number };
+export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
