@@ -37,10 +37,18 @@ jobs:
       - name: Run OpenWiki
         id: openwiki
         continue-on-error: true
-        run: openwiki code --update --print
+        # `--update` only works on an existing wiki. main has no generated pages yet, so every run since 2026-09-23 generated
+        # pages under --update and then crashed rolling them back (ENOENT on openwiki/<dir>/*.md) — runs 35824396170,
+        # 2026-09-23 13:30 and 2026-09-24 13:25. The first run therefore uses --init; later runs update.
+        run: |
+          if find openwiki -name '*.md' ! -name INSTRUCTIONS.md -print -quit 2>/dev/null | grep -q .; then
+            openwiki code --update --print
+          else
+            openwiki code --init --print
+          fi
         env:
           # Ollama Cloud (OpenAI-compatible). GitHub runners cannot reach the Tailnet/LAN Ollama hosts,
-          # so this must be the hosted endpoint. kimi-k3 completes the OpenWiki run (run 35824396170, 2026-09-23); glm-5.3 ends the planner without submit_plan;
+          # so this must be the hosted endpoint. glm-5.3 ends the planner without submit_plan; kimi-k3 plans and writes pages.
           # OpenRouter was dropped after its key started returning 401. Try others via the dispatch input.
           OPENWIKI_PROVIDER: openai-compatible
           OPENAI_COMPATIBLE_BASE_URL: https://ollama.com/v1
