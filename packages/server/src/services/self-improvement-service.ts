@@ -60,7 +60,13 @@ export class SelfImprovementService {
       reflection.loopRunId && `loop:${reflection.loopRunId}`,
       reflection.reflectionId && `reflection:${reflection.reflectionId}`,
     ].filter((ref): ref is string => Boolean(ref));
+    // J4: a daily cap on reflection proposals (REFLECTION_PROPOSALS_MAX_PER_DAY, unset = no cap). Prod 2026-09-24: 139 a day,
+    // almost all parked in needs_grounding, 0 ever verified; the grounding guild (G10) can only drain a bounded inflow.
+    const cap = Number(process.env.REFLECTION_PROPOSALS_MAX_PER_DAY);
+    const createdToday = () => (this.db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE source = 'reflection' AND created_at >= ?")
+      .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
     return reflection.proposedImprovements.flatMap((description) => {
+      if (Number.isFinite(cap) && cap >= 0 && createdToday() >= cap) return [];
       const type = this.classifyImprovement(description);
       const proposal = this.createProposal({
         type,

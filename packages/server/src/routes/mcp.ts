@@ -5,6 +5,7 @@ import type { Database } from 'better-sqlite3';
 import { AuthTokenPayload } from '@djimitflo/shared';
 import { AuthorizationService } from '../services/authorization-service';
 import type { AuthMiddleware } from '../middleware/auth';
+import { openApiUrl, syncOpenApiCatalog } from '../services/mcp-openapi-catalog';
 
 // express-rate-limit (rather than the in-repo RateLimiter) so CodeQL's
 // js/missing-rate-limiting recognizes it, same reasoning as metricsRateLimiter
@@ -101,6 +102,12 @@ export function createMCPRoutes(db: Database, auth?: AuthMiddleware): Router {
             const running = probe.accepts(response.status);
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
               .run(running ? 'running' : 'error', now, running ? null : `HTTP ${response.status} from ${probe.url}`, now, server.id);
+            // First import of a reachable sidecar's OpenAPI operations. Only while it has no tools, so an operator's
+            // permission changes are never overwritten by a later refresh.
+            if (running && openApiUrl(server.url, meta) && !db.prepare('SELECT 1 FROM mcp_tools WHERE server_id = ? LIMIT 1').get(server.id)) {
+              const synced = await syncOpenApiCatalog(db, { id: server.id, url: server.url, metadata: meta });
+              if (typeof synced === 'string') db.prepare('UPDATE mcp_servers SET error_message = ? WHERE id = ?').run(`tool catalog not synced: ${synced}`, server.id);
+            }
           } catch (error) {
             db.prepare('UPDATE mcp_servers SET status = ?, last_ping_at = ?, error_message = ?, updated_at = ? WHERE id = ?')
               .run('error', now, error instanceof Error ? error.message : 'Health probe failed', now, server.id);
