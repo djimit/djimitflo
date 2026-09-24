@@ -389,9 +389,14 @@ export class SelfImprovementService {
     return Math.min(1, Math.max(0.1, basePriority * (0.5 + theta)));
   }
 
-  /** Records what a goal's run actually achieved for its proposal (only from an in-flight state). */
+  /**
+   * Records what a goal's run actually achieved for its proposal (only from an in-flight state).
+   * 'verified' also overrides a 'regressed': a later passing verification of the same work is the truer outcome
+   * (2026-09-24: a verify racing a still-running security checker recorded 'regressed' for two verified runs).
+   */
   recordOutcome(id: string, outcome: 'verified' | 'regressed' | 'no_change'): boolean {
-    const result = this.db.prepare("UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ('scheduled', 'executing')")
+    const from = outcome === 'verified' ? "('scheduled', 'executing', 'regressed')" : "('scheduled', 'executing')";
+    const result = this.db.prepare(`UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ${from}`)
       .run(outcome, new Date().toISOString(), id);
     return result.changes === 1;
   }

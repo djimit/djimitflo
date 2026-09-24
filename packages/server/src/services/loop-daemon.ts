@@ -483,6 +483,16 @@ export class LoopDaemon {
         }
       }
 
+      // 9-. A reviewer still running belongs to another pass over this run (e.g. an approval resume); verifying now
+      // fails its verdict gate and records a false 'regressed'. That pass verifies when its reviewer finishes.
+      const reviewerRunning = this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'running' LIMIT 1").get(run.id);
+      if (reviewerRunning) {
+        try {
+          new LoopEventService(this.db).recordEvent(run.id, 'verify_deferred', 'info', 'Verification deferred: a reviewer lease is still running.', { goal_id: goal.id });
+        } catch { /* logging must never break the daemon */ }
+        return;
+      }
+
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
       const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
