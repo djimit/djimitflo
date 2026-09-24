@@ -1,8 +1,10 @@
+import fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { failureCause } from './judgments/failure-cause';
 import { MemoryCandidateService } from './memory-candidate-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { redactSecrets } from './secret-patterns';
 
 /**
  * Outcome-driven dream state (plan E11), step 1–2: replay the recent failed/blocked loop runs and classify each once with
@@ -13,6 +15,19 @@ import { SelfImprovementService } from './self-improvement-service';
 const MAX_PER_REPLAY = 25;
 const MIN_RECURRENCE = 2;
 const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
+/** Last `n` chars of a worker's stderr, secrets redacted: the state goes to an external judgment API. */
+const stderrTail = (file: unknown, n = 600): string | undefined => {
+  if (typeof file !== 'string' || !file) return undefined;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const size = fs.fstatSync(fd).size; const len = Math.min(size, 4096); const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      const tail = redactSecrets(buf.toString('utf8')).redacted.replace(/\s+/g, ' ').trim();
+      return tail ? tail.slice(-n) : undefined;
+    } finally { fs.closeSync(fd); }
+  } catch { return undefined; }
+};
 
 /** Where a platform-level fix for each cause belongs, from the 2026-09-22/24 diagnoses (plan E11 step 4). */
 const CAUSE_TARGETS: Record<string, { target: string; test: string; hint: string }> = {
@@ -45,6 +60,8 @@ export class DreamStateService {
     const runs = this.db.prepare(`SELECT id, loop_name, status, gates_json, goal_id FROM loop_runs
       WHERE status IN ('blocked', 'failed') AND updated_at >= ?
         -- classified once, except that an 'uncertain' result gets one more try (the state was enriched on 2026-09-24)
+        -- a run that never leased a worker has nothing to diagnose (13/32 'uncertain' on prod 2026-09-24)
+        AND EXISTS (SELECT 1 FROM worker_leases WHERE loop_run_id = loop_runs.id)
         AND id NOT IN (SELECT subject_id FROM judgments WHERE judgment = 'failure_cause' AND subject_type = 'loop_run'
           GROUP BY subject_id HAVING SUM(decision != 'uncertain') > 0 OR COUNT(*) >= 2)
       ORDER BY updated_at DESC LIMIT ?`).all(since, limit) as Array<{ id: string; loop_name: string; status: string; gates_json: string | null; goal_id: string | null }>;
@@ -53,8 +70,11 @@ export class DreamStateService {
       try { gates = JSON.parse(r.gates_json || '[]'); } catch { /* keep empty */ }
       const leases = this.db.prepare(`SELECT role, status, json_extract(metadata, '$.verdict') AS verdict,
         COALESCE(json_extract(metadata, '$.notes'), json_extract(metadata, '$.failure_reason'), '') AS notes,
-        json_extract(metadata, '$.deterministic_checks') AS checks
-        FROM worker_leases WHERE loop_run_id = ?`).all(r.id) as Array<{ role: string; status: string; verdict: string | null; notes: string; checks: string | null }>;
+        json_extract(metadata, '$.deterministic_checks') AS checks,
+        json_extract(metadata, '$.exit_status') AS exit_status, json_extract(metadata, '$.timed_out') AS timed_out,
+        json_extract(metadata, '$.execution_denied_reason') AS denied, json_extract(metadata, '$.stderr_path') AS stderr_path
+        FROM worker_leases WHERE loop_run_id = ?`).all(r.id) as Array<{ role: string; status: string; verdict: string | null; notes: string; checks: string | null;
+          exit_status: number | null; timed_out: number | null; denied: string | null; stderr_path: string | null }>;
       // Prod 2026-09-24: 17/23 classifications were `uncertain` where the state held only gate names; the run's own events
       // and check results are what a human reads to diagnose, so they go into the state too (still clipped, no raw logs).
       const events = (this.db.prepare(`SELECT event_type, message FROM loop_events WHERE loop_run_id = ? ORDER BY created_at DESC LIMIT 8`).all(r.id) as Array<{ event_type: string; message: string }>)
@@ -64,7 +84,14 @@ export class DreamStateService {
       return { id: r.id, state: { run: {
         loop: r.loop_name, status: r.status,
         failed_gates: gates.filter((g) => g.status !== 'pass').map((g) => `${g.name}: ${clip(g.evidence, 300)}`),
-        workers: leases.map((l) => ({ role: l.role, status: l.status, verdict: l.verdict, notes: clip(l.notes, 400), ...(l.checks ? { checks: checks(l.checks) } : {}) })),
+        // Prod 2026-09-24: still mostly 'uncertain' (infra vs missing_context) — a failed worker's own error was never shown.
+        workers: leases.map((l) => {
+          const failed = l.status === 'failed';
+          const stderr = failed ? stderrTail(l.stderr_path) : undefined;
+          return { role: l.role, status: l.status, verdict: l.verdict, notes: clip(l.notes, 400), ...(l.checks ? { checks: checks(l.checks) } : {}),
+            ...(l.exit_status != null ? { exit_status: l.exit_status } : {}), ...(l.timed_out ? { timed_out: true } : {}),
+            ...(l.denied ? { denied: clip(l.denied, 200) } : {}), ...(stderr ? { stderr_tail: stderr } : {}) };
+        }),
         events,
         goal_failure: clip(goalFailure, 300),
       } } };
