@@ -68,7 +68,7 @@ describe('agent commons autopilot', () => {
     expect(last).toMatchObject({ replies: 0, round_started: true });
     const actions = db.prepare("SELECT json_extract(payload_json, '$.action') AS action FROM agent_messages ORDER BY timestamp ASC").all() as Array<{ action: string }>;
     expect(actions.map((row) => row.action)).toEqual(['social.question', 'social.question', 'social.response', 'social.response', 'social.learning', 'social.learning', 'social.question', 'social.question']);
-    expect((db.prepare('SELECT COUNT(*) AS n FROM reflection_candidates').get() as { n: number }).n).toBe(2);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM reflection_candidates').get() as { n: number }).n).toBe(1); // E9g: one per thread
     const commons = comms.listSocialCommons();
     expect(commons.threads).toHaveLength(2);
     expect(commons.threads.some(thread => thread.topic === 'Compare peer evidence quality')).toBe(true);
