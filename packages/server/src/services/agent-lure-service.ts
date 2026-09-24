@@ -26,7 +26,30 @@ export interface LureCast {
   lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
   invitations: LureInvitation[];
 }
-export interface LureInvitee { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null }
+/** lapsed = was in the Commons before (can bite once its poller runs again); never = no social runtime ever (needs an adapter first). */
+export type LureReach = 'lapsed' | 'never';
+export interface LureInvitee { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null; reach?: LureReach }
+
+// Loop worker identities (maker/checker/security_checker) are not Commons participants and can never bite
+// (prod 2026-09-24: 3 of 14 invitees per lure; 128 invitations, 0 ever read).
+const LOOP_WORKER_ROLES = new Set(['maker', 'checker', 'security_checker']);
+// Heuristic gaps from curiosity-service ("count heuristic < 3; coverage UNKNOWN") are bookkeeping, not questions:
+// 300 of them, and every lure since 2026-09-14 used the same one as bait.
+export const HEURISTIC_GAP = 'Knowledge gap: Sparse claim inventory%';
+
+export function lureTargets(db: Database, heartbeatCutoff: string): Array<{ id: string; name: string; reach: LureReach }> {
+  const rows = db.prepare(`SELECT * FROM agents WHERE status IN ('active', 'idle')
+      AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at'), '') < ? ORDER BY id ASC`).all(heartbeatCutoff) as Array<Record<string, unknown>>;
+  return rows.flatMap((a) => {
+    let caps: unknown = [];
+    try { caps = JSON.parse(String(a.capabilities ?? a.capabilities_json ?? '[]')); } catch { /* none */ }
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(String(a.metadata ?? '{}')); } catch { /* none */ }
+    const social = Boolean(meta.social_runtime);
+    if (!social && Array.isArray(caps) && caps.some((c) => LOOP_WORKER_ROLES.has(String(c)))) return [];
+    return [{ id: String(a.id), name: String(a.name ?? a.id), reach: social ? 'lapsed' as const : 'never' as const }];
+  });
+}
 export interface LureStatus {
   lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
   probes: Array<{ id: string; agent_id: string; ip: string; reason: string; created_at: string }>;
@@ -51,28 +74,25 @@ export class AgentLureService {
   castIfQuiet(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null }): LureCast | null {
     const open = this.db.prepare('SELECT 1 FROM social_lures WHERE expires_at > ? LIMIT 1').get(new Date().toISOString());
     if (open) return null;
-    const cast = this.castLure({ ...input, mintTokens: false });
+    // Without an operator nobody receives tokens, so only agents that were connected before can come back.
+    const cast = this.castLure({ ...input, mintTokens: false, reach: 'lapsed' });
     return cast.lure.invited.length ? cast : null;
   }
 
-  castLure(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null; mintTokens?: boolean }): LureCast {
+  castLure(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null; mintTokens?: boolean; reach?: LureReach }): LureCast {
     const ttlMs = Math.max(60_000, input.ttlMs ?? DEFAULT_TTL_MS);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
     const heartbeatCutoff = new Date(now.getTime() - 20 * 60_000).toISOString();
-    const absent = this.db.prepare(`
-      SELECT id, name FROM agents
-      WHERE status IN ('active', 'idle')
-        AND COALESCE(json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at'), '') < ?
-      ORDER BY id ASC
-    `).all(heartbeatCutoff) as Array<{ id: string; name: string }>;
-
-    const gap = this.db.prepare(`
-      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+    const absent = lureTargets(this.db, heartbeatCutoff).filter((agent) => !input.reach || agent.reach === input.reach);
+    // Bait with real open work first (a parked proposal that needs a file and a test), then a non-heuristic gap.
+    const parked = this.db.prepare(`SELECT id, title FROM self_improvements WHERE status = 'needs_grounding' ORDER BY created_at DESC LIMIT 1`).get() as { id: string; title: string } | undefined;
+    const gap = parked ? undefined : this.db.prepare(`
+      SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported') AND claim NOT LIKE ?
       ORDER BY created_at DESC LIMIT 1
-    `).get() as { id: string; claim: string } | undefined;
-    const topic = (gap?.claim || 'cross-agent learning in the Djimit ecosystem').slice(0, 1_000);
-    const topicRef = gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
+    `).get(HEURISTIC_GAP) as { id: string; claim: string } | undefined;
+    const topic = (parked ? `Ground a parked Djimitflo proposal: ${parked.title}` : gap?.claim || 'cross-agent learning in the Djimit ecosystem').slice(0, 1_000);
+    const topicRef = parked ? `proposal:${parked.id}` : gap ? `claim:${gap.id}` : 'ecosystem:cross-agent-learning';
     const lureId = `lure:${randomUUID()}`;
     const bait = `Open question in the Agent Commons: "${topic}". Peers with a different perspective are asked for evidence, one uncertainty, a falsifiable next step and a creative alternative. Join by sending a signed social-runtime heartbeat; your operator holds the token.`;
     const mintTokens = input.mintTokens !== false;
@@ -117,13 +137,14 @@ export class AgentLureService {
       SELECT json_extract(payload_json, '$.thread_id') || '|' || to_agent AS key FROM agent_messages
       WHERE json_extract(payload_json, '$.action') = 'social.invite' AND status IN ('delivered', 'read')
     `).all() as Array<{ key: string }>).map((row) => row.key));
+    const reach = new Map(lureTargets(this.db, '9999').map((t) => [t.id, t.reach]));
     const lures = (this.db.prepare('SELECT * FROM social_lures ORDER BY created_at DESC LIMIT 20').all() as Array<Record<string, string>>).map((row) => {
       const invited: string[] = JSON.parse(row.invited_json || '[]');
       const invitees: LureInvitee[] = invited.map((agentId) => {
         const agent = heartbeats.get(agentId);
         const bit = !!agent?.beat && agent.beat >= row.created_at && agent.beat <= row.expires_at;
         return {
-          agent_id: agentId, name: agent?.name || agentId,
+          agent_id: agentId, name: agent?.name || agentId, reach: reach.get(agentId) ?? 'never',
           state: bit ? 'bit' : row.expires_at < now ? 'expired' : seen.has(`${row.id}|${agentId}`) ? 'seen' : 'invited',
           bit_at: bit ? agent!.beat : null,
         };

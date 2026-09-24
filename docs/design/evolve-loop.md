@@ -1,6 +1,6 @@
 # Design: evolve-loop (plan E13) — several makers, one objective, fitness decides
 
-Status: design, 2026-09-24. Implementation behind `LOOP_EVOLVE_ENABLED` (default off).
+Status: steps 1–3 implemented (2026-09-24), behind `LOOP_EVOLVE_ENABLED` (default off). Step 4 (mutation score) and 5 (funnel) open.
 
 ## Why
 
@@ -50,8 +50,10 @@ objective, an objective fitness function, and the winner carried forward (heredi
 
 ## Implementation steps
 
-1. `EvolveFitnessService` (pure: inputs → ranked list) + tests.
-2. Lease preparation: `N` makers when `goal.metadata.evolve === true` and the flag is on.
-3. Selection hook after all makers finished their deterministic checks: rank, supersede losers, emit `evolve_selected`.
+1. ✅ `EvolveFitnessService` (pure: inputs → ranked list) + tests (#355).
+2. ✅ Sibling makers: `retryLoopRun(..., { sibling: true })` adds a maker of another species (`LOOP_EVOLVE_SPECIES`,
+   `runtime[@model]`, max 2 extra) for test-gap goals or `goal.metadata.evolve === true` (`evolve-selection.ts`).
+3. ✅ Selection in the daemon after all makers ran their checks: rank, winner un-superseded, losers superseded and their
+   reviewer leases cancelled, `evolve_selected` / `evolve_no_winner` event with the fitness table.
 4. Mutation score step (optional per objective; skipped if Stryker is unavailable in the worktree).
 5. Funnel: evolve runs, winner species, fitness distribution.

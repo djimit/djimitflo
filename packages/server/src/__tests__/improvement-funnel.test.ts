@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import { SkillEvolutionEngine } from '../services/skill-evolution-engine';
 import { ImprovementFunnelService } from '../services/improvement-funnel-service';
 
 describe('ImprovementFunnelService', () => {
@@ -47,6 +48,17 @@ describe('ImprovementFunnelService', () => {
     const { kpi, hygiene } = new ImprovementFunnelService(db).compute();
     expect(kpi).toMatchObject({ verified: 2, regressed: 1, medianHoursToVerified: 4 });
     expect(kpi.regressionRate).toBeCloseTo(1 / 3);
+    expect(kpi).toMatchObject({ runs: 0, runSuccessRate: null, tokensPerVerified: null }); // no skill_outcomes yet
     expect(hygiene).toMatchObject({ zombieGoals: 1, staleRuns: 1 });
   });
+});
+
+it('J6: cost per verified change comes from the per-run skill outcomes', () => {
+  const db2 = new Database(':memory:'); db2.exec(schema); runMigrations(db2);
+  const skills = new SkillEvolutionEngine(db2);
+  skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:opencode', { success: true, tokensUsed: 30_000, durationMs: 1, domain: 'd' });
+  skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:opencode', { success: false, tokensUsed: 10_000, durationMs: 1, domain: 'd' });
+  db2.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, created_at, updated_at) VALUES ('v', 'feature', 't', 'd', 'r', 'gap_analysis', 'verified', 0.5, ?, ?)`).run(new Date().toISOString(), new Date().toISOString());
+  expect(new ImprovementFunnelService(db2).compute().kpi).toMatchObject({ runs: 2, runSuccessRate: 0.5, tokensPerVerified: 40_000 });
+  db2.close();
 });

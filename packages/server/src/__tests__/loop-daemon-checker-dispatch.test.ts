@@ -155,6 +155,19 @@ describe('LoopDaemon checker dispatch', () => {
     expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
   });
 
+  it('evolve (E13): with LOOP_EVOLVE_ENABLED an eligible goal gets a sibling maker per species before the checker', async () => {
+    const goal = seedQualifyingGoal();
+    db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);
+    process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'opencode@ollama/kimi-k2.6:cloud';
+    try {
+      const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+      await runOneTick(daemon);
+      expect(stubLoops.retryLoopRun).toHaveBeenCalledWith('run-1', { maker_lease_id: 'maker-1', sibling: true, runtime: 'opencode', model: 'ollama/kimi-k2.6:cloud' });
+      expect(stubLoops.executeWorker).toHaveBeenCalledTimes(2);
+      expect(stubLoops.runDeterministicChecks).toHaveBeenCalledWith('run-1', expect.objectContaining({ lease_id: 'maker-2' }));
+    } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
+  });
+
   it('defers verification while another pass still runs a reviewer (prod 2026-09-24: false regressed)', async () => {
     const goal = seedQualifyingGoal();
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';

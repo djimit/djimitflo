@@ -233,6 +233,12 @@ export function AgentCommonsPage() {
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_verified}</strong> geverifieerd</span>
             <span className="text-xs text-foreground-tertiary">({stats.proposals_archived} gearchiveerd)</span>
           </div>
+          {!!stats.guild?.length && (
+            <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
+              <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Geldig</th><th>Geverifieerd</th></tr></thead>
+              <tbody>{stats.guild.map((g) => <tr key={g.agent} className="border-t border-border"><td className="py-1 font-mono">{g.agent}</td><td>{g.groundings}</td><td>{g.valid}</td><td>{g.verified}</td></tr>)}</tbody>
+            </table>
+          )}
         </section>
       )}
 
@@ -357,7 +363,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
             <article key={lure.id} className="rounded-lg border border-border bg-background p-3">
               <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} gebeten</span></div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}</span>)}
+                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · nooit verbonden' : ''}</span>)}
               </div>
               <p className="mt-2 text-[10px] text-foreground-tertiary">door {lure.created_by} · {time(lure.created_at)} · verloopt {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
             </article>

@@ -60,7 +60,13 @@ export class SelfImprovementService {
       reflection.loopRunId && `loop:${reflection.loopRunId}`,
       reflection.reflectionId && `reflection:${reflection.reflectionId}`,
     ].filter((ref): ref is string => Boolean(ref));
+    // J4: a daily cap on reflection proposals (REFLECTION_PROPOSALS_MAX_PER_DAY, unset = no cap). Prod 2026-09-24: 139 a day,
+    // almost all parked in needs_grounding, 0 ever verified; the grounding guild (G10) can only drain a bounded inflow.
+    const cap = Number(process.env.REFLECTION_PROPOSALS_MAX_PER_DAY);
+    const createdToday = () => (this.db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE source = 'reflection' AND created_at >= ?")
+      .get(new Date(Date.now() - 86_400_000).toISOString()) as { n: number }).n;
     return reflection.proposedImprovements.flatMap((description) => {
+      if (Number.isFinite(cap) && cap >= 0 && createdToday() >= cap) return [];
       const type = this.classifyImprovement(description);
       const proposal = this.createProposal({
         type,
@@ -341,6 +347,22 @@ export class SelfImprovementService {
       evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`],
       refinedFromId: parkedId,
       ...(draft.target ? { grounding: { target: draft.target, acceptanceTest: draft.acceptanceTest, baselineMetric: draft.baselineMetric, runtimeCommand: draft.runtimeCommand, artifactPath: draft.artifactPath, budget: draft.budget } } : {}),
+    });
+  }
+
+  /**
+   * G10: a Commons thread named the file and the test for a parked (needs_grounding) proposal, checked in code
+   * (commons-grounding.ts). One grounded refinement per original, which goes to the specialist panel like any proposal.
+   */
+  groundFromCommons(parkedId: string, grounding: { target: string; acceptanceTest: string }, evidenceRef: string): ImprovementProposal | null {
+    const parked = this.getImprovement(parkedId);
+    if (parked.status !== 'needs_grounding' || parked.refinedAt || parked.refinedFromId) return null;
+    return this.createProposal({
+      type: parked.type, title: parked.title.slice(0, 80), description: parked.description,
+      rationale: `${parked.rationale}\n\nGrounded by Agent Commons: target ${grounding.target}, test ${grounding.acceptanceTest}.`,
+      source: 'refinement', priority: parked.priority,
+      evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`, evidenceRef],
+      refinedFromId: parkedId, grounding,
     });
   }
 

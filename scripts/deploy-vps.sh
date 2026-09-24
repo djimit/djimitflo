@@ -11,6 +11,7 @@
 # Dry-run by default (prints the remote script). Usage:
 #   scripts/deploy-vps.sh <40-char-sha>                # dry run
 #   scripts/deploy-vps.sh <40-char-sha> --apply        # deploy
+#   scripts/deploy-vps.sh <40-char-sha> --apply --local  # deploy from the VPS itself (scripts/auto-deploy.sh)
 # Overrides (env): DEPLOY_HOST (root@100.86.47.122) DEPLOY_PORT (22122)
 #   DEPLOY_KEY (~/.ssh/id_ed25519_vps) DEPLOY_ROOT (/srv/djimitflo) DEPLOY_REPO_URL
 #
@@ -92,6 +93,10 @@ main() {
     echo "# dry run — would run on ${DEPLOY_HOST}:${DEPLOY_PORT} (root ${DEPLOY_ROOT}, sha ${sha}); use --apply"
     remote_script
     return 0
+  fi
+  if [ "${3:-}" = "--local" ]; then
+    remote_script | bash -s -- "$DEPLOY_ROOT" "$sha" "$DEPLOY_REPO_URL"
+    return
   fi
   remote_script | ssh -o IdentitiesOnly=yes -i "$DEPLOY_KEY" -p "$DEPLOY_PORT" "$DEPLOY_HOST" bash -s -- "$DEPLOY_ROOT" "$sha" "$DEPLOY_REPO_URL"
 }
