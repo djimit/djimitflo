@@ -742,7 +742,7 @@ export type SocialAgentPresence = {
   activity: CommonsAgentActivity[];
 };
 
-export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number };
+export type CommonsStats = { threads_7d: number; open_7d: number; learnings_7d: number; proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number; guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }> };
 export type SocialCommons = { agents: SocialAgentPresence[]; threads: SocialThread[]; total_threads?: number; stats?: CommonsStats };
 
 // Frontier Expert Intelligence (§36): states other than ACTIVE are tentative and shown as such.
@@ -774,7 +774,7 @@ export type ExpertSwarmRun = {
   council?: { abstained: boolean; reason: string | null; perspectives: Array<{ expert_id: string; canonical_name: string; why_selected: string; runtime: string; output: { analysis: string; uncertainties: string[]; falsification: string }; dropped_refs: string[] }>; claims: Array<{ id: string; expert_id: string; subject: string; relation: string; object: string; polarity: string; confidence: number }>; agreements: Array<{ proposition: string; expert_ids: string[] }>; disagreements: Array<{ proposition: string; expert_a: string; expert_b: string; resolving_observation: string }>; uncertainties: string[]; adversarial: { attacks: Array<{ claim_id: string; attack: string; evidence_gap: string }> } | null; rejected_perspectives?: Array<{ expert_id: string; reason: string }> };
 };
 
-export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null };
+export type LureInvitee = { agent_id: string; name: string; state: 'invited' | 'seen' | 'bit' | 'expired'; bit_at: string | null; reach?: 'lapsed' | 'never' };
 export type LureStatus = {
   lures: Array<{ id: string; topic: string; topic_ref: string; created_by: string; created_at: string; expires_at: string; bites: number; invitees: LureInvitee[] }>;
   probes: Array<{ id: string; agent_id: string; ip: string; reason: string; created_at: string }>;

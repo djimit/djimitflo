@@ -40,11 +40,34 @@ export const dreamProposalsEnabled = (): boolean => process.env.DREAM_STATE_PROP
 
 export const dreamStateEnabled = (): boolean => process.env.DREAM_STATE_ENABLED === 'true';
 
-export interface ReplayResult { candidates: number; classified: number; consolidated?: number }
+export interface ReplayResult { candidates: number; classified: number; consolidated?: number; verdict?: DreamVerdict }
+
+/**
+ * G13a (after ruvnet/dream-machine): every dream pass ends in exactly one verdict and one ledger row, never silence.
+ * The question it answers: did this pass produce a new, evidence-backed lesson?
+ *   ACCEPT        a recurring cause was consolidated into a new engineering rule
+ *   REJECT        failed runs were examined, nothing new came out (all uncertain, or no cause recurs yet)
+ *   INCONCLUSIVE  nothing could be examined (no candidates, or the judge returned nothing)
+ */
+export type DreamVerdict = 'ACCEPT' | 'REJECT' | 'INCONCLUSIVE';
+
+export function dreamVerdict(r: { candidates: number; classified: number; confident: number; consolidated: number }): { verdict: DreamVerdict; reason: string } {
+  if (r.consolidated > 0) return { verdict: 'ACCEPT', reason: `${r.consolidated} new engineering rule(s) from recurring causes` };
+  if (r.candidates === 0) return { verdict: 'INCONCLUSIVE', reason: 'no new failed runs to examine' };
+  if (r.classified === 0) return { verdict: 'INCONCLUSIVE', reason: `${r.candidates} candidate(s), but the judge returned nothing` };
+  return { verdict: 'REJECT', reason: `${r.classified} examined, ${r.confident} confidently classified, no cause recurs enough for a new rule` };
+}
 
 export class DreamStateService {
   private timer: ReturnType<typeof setInterval> | null = null;
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database) {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS dream_ledger (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, verdict TEXT NOT NULL,
+      reason TEXT NOT NULL, candidates INTEGER NOT NULL, classified INTEGER NOT NULL, confident INTEGER NOT NULL, consolidated INTEGER NOT NULL)`);
+  }
+
+  ledger(limit = 7): Array<{ created_at: string; verdict: DreamVerdict; reason: string; candidates: number; classified: number; confident: number; consolidated: number }> {
+    return this.db.prepare('SELECT created_at, verdict, reason, candidates, classified, confident, consolidated FROM dream_ledger ORDER BY id DESC LIMIT ?').all(limit) as ReturnType<DreamStateService['ledger']>;
+  }
 
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !dreamStateEnabled()) return;
@@ -101,9 +124,16 @@ export class DreamStateService {
   async replay(): Promise<ReplayResult> {
     if (judgmentMode(failureCause.id) === 'off') return { candidates: 0, classified: 0 };
     const pending = this.pendingFailures();
-    let classified = 0;
-    for (const p of pending) if (await runJudgment(this.db, failureCause, { type: 'loop_run', id: p.id }, p.state)) classified += 1;
-    return { candidates: pending.length, classified, consolidated: this.consolidate() };
+    let classified = 0; let confident = 0;
+    for (const p of pending) {
+      const j = await runJudgment(this.db, failureCause, { type: 'loop_run', id: p.id }, p.state);
+      if (j) { classified += 1; if (j.decision !== 'uncertain') confident += 1; }
+    }
+    const consolidated = this.consolidate();
+    const { verdict, reason } = dreamVerdict({ candidates: pending.length, classified, confident, consolidated });
+    this.db.prepare('INSERT INTO dream_ledger (created_at, verdict, reason, candidates, classified, confident, consolidated) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(new Date().toISOString(), verdict, reason, pending.length, classified, confident, consolidated);
+    return { candidates: pending.length, classified, consolidated, verdict };
   }
 
   /**

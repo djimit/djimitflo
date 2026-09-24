@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { SelfImprovementService } from './self-improvement-service';
+import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 import { applyPiiPass } from './federation/pii-pass';
@@ -132,6 +133,8 @@ export interface CommonsAgentActivity {
 export interface CommonsStats {
   threads_7d: number; open_7d: number; learnings_7d: number;
   proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
+  guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
 }
 
 export interface SocialCommons {
@@ -221,7 +224,9 @@ export class AgentCommunicationService {
     }
 
     // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
-    const failure = process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null;
+    const failure = (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null)
+      // G10: then a parked proposal that needs a target file and a test, with code-search candidates as evidence.
+      ?? (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
@@ -250,13 +255,14 @@ export class AgentCommunicationService {
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
+    const contexts = picked && 'contexts' in picked ? (picked as { contexts: [string, string] }).contexts : null;
     const messages = this.db.transaction(() => [
-      question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
-      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
+      question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
+      question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
@@ -393,28 +399,51 @@ export class AgentCommunicationService {
         SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
         WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
     `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
-    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0 };
+    let guild: CommonsStats['guild'] = [];
+    try {
+      guild = this.db.prepare(`
+        SELECT m.from_agent AS agent, COUNT(*) AS groundings, SUM(j.decision = 'yes') AS valid,
+          SUM(s.status = 'verified') AS verified
+        FROM judgments j
+        JOIN agent_messages m ON m.id = json_extract(j.answers_json, '$.message_id')
+        LEFT JOIN self_improvements s ON s.id = json_extract(j.answers_json, '$.refinement_id')
+        WHERE j.judgment = 'commons_grounding'
+        GROUP BY m.from_agent ORDER BY verified DESC, valid DESC, groundings DESC
+      `).all() as NonNullable<CommonsStats['guild']>;
+    } catch { /* no judgments table yet */ }
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
   /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
-  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[] } | null {
+  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[]; signature: string } | null {
     try {
-      const row = this.db.prepare(`
+      const rows = this.db.prepare(`
         SELECT j.subject_id AS run_id, j.reason, r.loop_name, r.gates_json FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
         WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND j.created_at >= ?
           AND ('run:' || j.subject_id) NOT IN (
             SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
             WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text')
-        ORDER BY j.created_at DESC LIMIT 1
-      `).get(new Date(Date.now() - 7 * 86_400_000).toISOString()) as { run_id: string; reason: string | null; loop_name: string; gates_json: string | null } | undefined;
-      if (!row) return null;
-      let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
-      try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
-      const failed = gates.filter((g) => g.status === 'fail').map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
-      const topicRef = `run:${row.run_id}`;
-      const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
-      return { topic, topicRef, evidence: [topicRef] };
+        ORDER BY j.created_at DESC LIMIT 20
+      `).all(new Date(Date.now() - 7 * 86_400_000).toISOString()) as Array<{ run_id: string; reason: string | null; loop_name: string; gates_json: string | null }>;
+      // G10e: one thread per kind of failure per day. Prod 2026-09-24: four threads on the same blocked-at-checker failure,
+      // differing only in the confidence number. Kind = loop + failed gates + cause.
+      const seen = this.db.prepare(`SELECT 1 FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'
+        AND json_extract(payload_json, '$.params.failure_signature') = ? AND timestamp >= ? LIMIT 1`);
+      const since = new Date(Date.now() - 86_400_000).toISOString();
+      for (const row of rows) {
+        let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
+        try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
+        const failedGates = gates.filter((g) => g.status === 'fail');
+        const signature = `${row.loop_name}|${failedGates.map((g) => g.name).sort().join('+')}|${/cause=([a-z_]+)/.exec(row.reason ?? '')?.[1] ?? 'unknown'}`;
+        if (seen.get(signature, since)) continue;
+        const failed = failedGates.map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
+        const topicRef = `run:${row.run_id}`;
+        const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
+        return { topic, topicRef, evidence: [topicRef], signature };
+      }
+      return null;
     } catch { return null; } // judgments table may not exist on older instances
   }
 
@@ -423,6 +452,7 @@ export class AgentCommunicationService {
     const gap = this.db.prepare(`
       SELECT id, claim, evidence_refs_json FROM swarm_claims
       WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+        AND claim NOT LIKE 'Knowledge gap: Sparse claim inventory%' -- count heuristic, not a question (see agent-lure-service)
         -- discuss each gap once (prod 2026-09-23: the newest gap was re-picked every round, 264 repeated threads)
         AND ('claim:' || id) NOT IN (
           SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
@@ -536,13 +566,25 @@ export class AgentCommunicationService {
       if (action === 'social.learning') {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
-        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
-        // Proposal-review threads must not spawn proposals about proposals.
-        if (improvement && !this.string(original.payload.params?.topic_ref).startsWith('improvement:')) {
+        // E9g: one reflection per thread. Both learners of a thread wrote one on the same topic (prod 2026-09-24: 1,174
+        // candidates, none reviewed); the second learning still counts as a learning, it just does not add a candidate.
+        const threadHasReflection = this.db.prepare(`SELECT 1 FROM reflection_candidates rc JOIN agent_messages m ON rc.source_ref = 'message:' || m.id
+          WHERE json_extract(m.payload_json, '$.thread_id') = ? LIMIT 1`).get(threadId);
+        if (!threadHasReflection) reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
+        const topicRef = this.string(original.payload.params?.topic_ref);
+        if (topicRef.startsWith('proposal:')) {
+          // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
+          const parkedId = topicRef.slice('proposal:'.length);
+          let refinementId: string | null = null;
+          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
+          message.payload.params.improvement_id = refinementId ?? parkedId;
+          this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+        } else if (improvement && !topicRef.startsWith('improvement:')) {
+          // Proposal-review threads must not spawn proposals about proposals.
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
-            reflectionId,
+            reflectionId: reflectionId ?? undefined,
           }, true);
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;

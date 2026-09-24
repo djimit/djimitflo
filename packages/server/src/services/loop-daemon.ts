@@ -10,6 +10,7 @@ import { LoopEventService } from './loop-event-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
+import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
@@ -444,6 +445,27 @@ export class LoopDaemon {
           } catch { /* best-effort retry */ }
         }
       } catch { /* best-effort: checks are not fatal for the daemon */ }
+
+      // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
+      // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
+      const species = !makerAlreadyDone && evolveEligible(this.db, goal.id) ? evolveSpecies() : [];
+      if (species.length) {
+        const contenders = [activeMakerLease.id];
+        for (const sp of species) {
+          try {
+            const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
+            // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
+            contenders.push(sibling.id);
+            await this.loops.executeWorker(run.id, { lease_id: sibling.id, timeout_ms: 300_000, diff_max_lines: 200, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) });
+            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
+          } catch (error) {
+            try { new LoopEventService(this.db).recordEvent(run.id, 'evolve_sibling_failed', 'warning', `Evolve sibling ${sp.runtime}${sp.model ? `@${sp.model}` : ''} failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id }); } catch { /* logging */ }
+          }
+        }
+        const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
+        const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
+        if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
+      }
 
       // 8b. Dispatch the checker — gated, off by default. Checker leases are
       // always created with runtime:'manual' (loop-lifecycle-service.ts),
