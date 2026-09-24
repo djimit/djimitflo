@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { SelfImprovementService } from './self-improvement-service';
+import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 import { applyPiiPass } from './federation/pii-pass';
@@ -129,9 +130,20 @@ export interface CommonsAgentActivity {
   status: string;
 }
 
+export interface CommonsStats {
+  threads_7d: number; open_7d: number; learnings_7d: number;
+  proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+}
+
 export interface SocialCommons {
   /** Threads that exist in total; `threads` only carries the newest ones. */
   total_threads?: number;
+  /**
+   * Totals over all threads of the last 7 days, not over the loaded page (prod 2026-09-24: the page summed learnings over the
+   * newest 40 threads, so "Reflecties 40" and "Open vragen 0" were artefacts of the page size). The funnel shows what Commons
+   * ideas became: proposal → out of needs_grounding → verified.
+   */
+  stats?: CommonsStats;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
@@ -210,7 +222,9 @@ export class AgentCommunicationService {
     }
 
     // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
-    const failure = process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null;
+    const failure = (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null)
+      // G10: then a parked proposal that needs a target file and a test, with code-search candidates as evidence.
+      ?? (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
@@ -243,9 +257,10 @@ export class AgentCommunicationService {
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
+    const contexts = picked && 'contexts' in picked ? (picked as { contexts: [string, string] }).contexts : null;
     const messages = this.db.transaction(() => [
-      question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
-      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
+      question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
+      question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
@@ -354,6 +369,7 @@ export class AgentCommunicationService {
     return {
       agents,
       total_threads: totalThreads,
+      stats: this.commonsStats() ?? undefined,
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
@@ -364,6 +380,27 @@ export class AgentCommunicationService {
    * then the newest candidate lesson nobody has challenged yet, then a rotating
    * ecosystem question so consecutive rounds do not repeat the same prompt.
    */
+  commonsStats(): CommonsStats | null {
+    try {
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const t = this.db.prepare(`
+      SELECT COUNT(*) AS threads, SUM(learned = 0) AS open, COALESCE(SUM(learned), 0) AS learnings FROM (
+        SELECT json_extract(payload_json, '$.thread_id') AS tid, SUM(json_extract(payload_json, '$.action') = 'social.learning') AS learned
+        FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text' AND timestamp >= ?
+        GROUP BY tid)
+    `).get(since) as { threads: number; open: number | null; learnings: number };
+    const p = this.db.prepare(`
+      SELECT COUNT(*) AS n, SUM(status NOT IN ('needs_grounding', 'archived')) AS grounded, SUM(status = 'verified') AS verified, SUM(status = 'archived') AS archived
+      FROM self_improvements WHERE id IN (
+        SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
+    `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0 };
+    } catch { return null; } // minimal schemas (no self_improvements) still get the overview
+  }
+
   /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
   private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[] } | null {
     try {
@@ -504,8 +541,16 @@ export class AgentCommunicationService {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
         reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
-        // Proposal-review threads must not spawn proposals about proposals.
-        if (improvement && !this.string(original.payload.params?.topic_ref).startsWith('improvement:')) {
+        const topicRef = this.string(original.payload.params?.topic_ref);
+        if (topicRef.startsWith('proposal:')) {
+          // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
+          const parkedId = topicRef.slice('proposal:'.length);
+          let refinementId: string | null = null;
+          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
+          message.payload.params.improvement_id = refinementId ?? parkedId;
+          this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+        } else if (improvement && !topicRef.startsWith('improvement:')) {
+          // Proposal-review threads must not spawn proposals about proposals.
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
