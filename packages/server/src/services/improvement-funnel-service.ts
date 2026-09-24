@@ -13,6 +13,8 @@ export interface ImprovementFunnel {
   kpi: {
     windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number;
     panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null;
+    /** J6: what a verified change costs — maker tokens and runs over the window (skill_outcomes, one row per run). */
+    runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
   };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
@@ -42,6 +44,14 @@ export class ImprovementFunnelService {
 
   private counts(sql: string): Record<string, number> {
     return Object.fromEntries(this.rows<{ k: string | null; n: number }>(sql).map((r) => [r.k ?? 'unknown', r.n]));
+  }
+
+  private runCost(since: string, verified: number): { runs: number; runSuccessRate: number | null; tokensPerVerified: number | null } {
+    try {
+      const r = this.db.prepare('SELECT COUNT(*) AS runs, SUM(success) AS ok, SUM(tokens_used) AS tokens FROM skill_outcomes WHERE skill_id LIKE ? AND created_at >= ?')
+        .get('loop-maker:%', since) as { runs: number; ok: number | null; tokens: number | null };
+      return { runs: r.runs, runSuccessRate: r.runs ? (r.ok ?? 0) / r.runs : null, tokensPerVerified: verified && r.tokens ? Math.round(r.tokens / verified) : null };
+    } catch { return { runs: 0, runSuccessRate: null, tokensPerVerified: null }; } // skill_outcomes is created lazily
   }
 
   judgmentAgreement(): ImprovementFunnel['judgments'] {
@@ -104,6 +114,7 @@ export class ImprovementFunnelService {
       panelsPerVerified: verified7 ? Math.round(panels7 / verified7) : null,
       medianHoursToVerified: hours.length ? Math.round(hours[Math.floor(hours.length / 2)] * 10) / 10 : null,
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
+      ...this.runCost(iso(7 * DAY), verified7),
     };
     const hygiene: ImprovementFunnel['hygiene'] = {
       zombieGoals: one(`SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
