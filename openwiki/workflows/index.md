@@ -1,0 +1,4 @@
+# Files
+
+- [Approval Request & Decision Flow](approval-decision-flow.md) - The operator-facing approval lifecycle — how the server creates requests transactionally, realizes their 1-hour expiry, and applies decisions atomically with a data-layer self-approval ban — plus the authority-ledger/event-outbox records and the REST, dashboard, WebSocket, and Telegram surfaces operators use to act on them.
+- [Maker–Checker Loop Execution (Doc Drift / Self-Improvement / Issue Loops)](maker-checker-loop.md) - How a closed-loop run proceeds end to end — finding discovery, per-finding git worktrees, maker worker dispatch with diff caps, checker and security-checker verdicts, deterministic verification gates, draft-PR hand-off, and learning closure — plus the daemon, escalation, and approval paths that gate every transition.
