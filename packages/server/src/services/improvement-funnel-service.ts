@@ -21,6 +21,11 @@ export interface ImprovementFunnel {
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
   /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
   judgments: Array<{ judgment: string; total: number; byDecision: Record<string, number>; medianLatencyMs: number | null; withOutcome: number; agreement: number | null }>;
+  /**
+   * E11 step 5: calibration per panel specialist against what the proposal became. A vote is right when `support` met a
+   * verified outcome or `oppose` met a regressed one; mean confidence next to accuracy shows over-confidence.
+   */
+  panelCalibration: Array<{ specialist: string; votes: number; withOutcome: number; accuracy: number | null; meanConfidence: number | null }>;
   /** Last dream passes, one verdict each (G13a). */
   dreamLedger: ReturnType<DreamStateService['ledger']>;
 }
@@ -55,6 +60,22 @@ export class ImprovementFunnelService {
         .get('loop-maker:%', since) as { runs: number; ok: number | null; tokens: number | null };
       return { runs: r.runs, runSuccessRate: r.runs ? (r.ok ?? 0) / r.runs : null, tokensPerVerified: verified && r.tokens ? Math.round(r.tokens / verified) : null };
     } catch { return { runs: 0, runSuccessRate: null, tokensPerVerified: null }; } // skill_outcomes is created lazily
+  }
+
+  panelCalibration(): ImprovementFunnel['panelCalibration'] {
+    try {
+      const rows = this.db.prepare(`
+        SELECT r.specialist_id AS specialist, COUNT(*) AS votes,
+          SUM(s.status IN ('verified', 'regressed')) AS withOutcome,
+          SUM((r.stance = 'support' AND s.status = 'verified') OR (r.stance = 'oppose' AND s.status = 'regressed')) AS right,
+          AVG(CASE WHEN s.status IN ('verified', 'regressed') THEN r.confidence END) AS meanConfidence
+        FROM specialist_reviews r JOIN self_improvements s ON s.panel_id = r.panel_id
+        WHERE r.status = 'submitted'
+        GROUP BY r.specialist_id ORDER BY votes DESC`).all() as Array<{ specialist: string; votes: number; withOutcome: number | null; right: number | null; meanConfidence: number | null }>;
+      return rows.map((r) => ({ specialist: r.specialist, votes: r.votes, withOutcome: r.withOutcome ?? 0,
+        accuracy: r.withOutcome ? (r.right ?? 0) / r.withOutcome : null,
+        meanConfidence: r.meanConfidence === null ? null : Math.round(r.meanConfidence * 100) / 100 }));
+    } catch { return []; }
   }
 
   judgmentAgreement(): ImprovementFunnel['judgments'] {
@@ -128,6 +149,7 @@ export class ImprovementFunnelService {
     return {
       judgments: this.judgmentAgreement(),
       dreamLedger: new DreamStateService(this.db).ledger(),
+      panelCalibration: this.panelCalibration(),
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
