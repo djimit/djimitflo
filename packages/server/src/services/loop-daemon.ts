@@ -18,6 +18,12 @@ export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scri
   const timeout = Number(env.LOOP_DAEMON_CHECK_TIMEOUT_MS);
   return { ...(scripts.length ? { scripts } : {}), timeout_ms: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 120_000 };
 }
+
+/** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
+export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
+}
 import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /**
@@ -461,7 +467,7 @@ export class LoopDaemon {
         const leaseDone = (role: string) => Boolean(this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'completed' LIMIT 1").get(run.id, role));
         const dispatch = async (role: 'checker' | 'security_checker', leaseId?: string): Promise<boolean> => {
           try {
-            await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: 120_000 });
+            await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: daemonReviewerTimeoutMs() });
           } catch (error) {
             // A reviewer is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
             // (previously swallowed here, so the run was verified without a verdict and failed).

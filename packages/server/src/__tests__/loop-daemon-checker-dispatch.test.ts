@@ -113,7 +113,7 @@ describe('LoopDaemon checker dispatch', () => {
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
-    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'codex', timeout_ms: 120_000 });
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'codex', timeout_ms: 300_000 });
     expect(stubLoops.retryLoopRun).not.toHaveBeenCalled();
   });
 
@@ -124,7 +124,7 @@ describe('LoopDaemon checker dispatch', () => {
     const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
     await runOneTick(daemon);
     expect(stubLoops.retryLoopRun).toHaveBeenCalled();
-    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'opencode', timeout_ms: 120_000 });
+    expect(stubLoops.executeChecker).toHaveBeenCalledWith('run-1', { runtime: 'opencode', timeout_ms: 300_000 });
   });
 
   it('does not crash the daemon when the checker throws (best-effort)', async () => {
