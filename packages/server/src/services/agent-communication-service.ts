@@ -423,6 +423,7 @@ export class AgentCommunicationService {
     const gap = this.db.prepare(`
       SELECT id, claim, evidence_refs_json FROM swarm_claims
       WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported')
+        AND claim NOT LIKE 'Knowledge gap: Sparse claim inventory%' -- count heuristic, not a question (see agent-lure-service)
         -- discuss each gap once (prod 2026-09-23: the newest gap was re-picked every round, 264 repeated threads)
         AND ('claim:' || id) NOT IN (
           SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
