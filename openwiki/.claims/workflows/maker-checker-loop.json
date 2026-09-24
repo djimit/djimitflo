@@ -1,0 +1,336 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:4441c9dbde3939e023c7342ba67943637071d82cbdc466d695c0b04729530f6f",
+  "claims": [
+    {
+      "id": "claim_8773284b56a447bfb51d227fd83eab43",
+      "statement": "Every loop run shares one closed-loop lifecycle (planning → running → verifying → ready_for_human_merge → completed, plus blocked/escalated/cancelled/interrupted) and can never merge or deploy itself: the no_automatic_merge gate is hard-wired to pass and completeLoopRun throws LOOP_HUMAN_APPROVAL_REQUIRED without an explicit human_approval_ref.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L731-L754",
+          "version": "repo-lines-v1:sha256:6548dde1f061501a7c25c919dfcd703cc90d5cf1ae3d263860c94538cb739a1b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwMTkwZjc3ZjgyY2M2ODA3ZDhmYzE5MGMwOTI5NGIyZTVkN2FmMTMxZjQzMTZjOGU4YzAzN2Y5Mjg3YjdmNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5ZTI5NGE0MTA1MjA3ZWYxNDIzNDczMjZhOGE2NjdlY2U4NzUzMzI4NWM1MTM0MjVjNzJhZTQ1OWQ2YTIyODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyYjNkM2E3NjJiNzUzYjlmYzY3YTUyZGI5ZjgyNzQzMmY0MzIyOWQ4YTNmMTk5ZDY0ZTgwY2ExMmI3YTQ1YzkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-types.ts#L15-L15",
+          "version": "repo-lines-v1:sha256:1b9e4203410dd9dedea45274b09a8bdc6034d40b46f829169c9f079c8ca2f54b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI5ZTQyMDM0MTBkZDlkZWRlYTQ1Mjc0YjA5YThiZGM2MDM0ZDQwYjQ2ZjgyOTE2OWM5ZjA3OWM4Y2EyZjU0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI5ZTQyMDM0MTBkZDlkZWRlYTQ1Mjc0YjA5YThiZGM2MDM0ZDQwYjQ2ZjgyOTE2OWM5ZjA3OWM4Y2EyZjU0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU1YmY4OWUzYTNjMmMwZDFhZTUxYmY0OGM1NjkzYzg2MWIwZTllNjdhNzU1Y2RiYTcwYzcxODZkZWYzNGVjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWVjYmE0NDExMTMyNjM5ZTMxNTYyNzg4M2E1ZDJmMGE3ODczZmE1NjJjMjIwNGVhNzMzM2VkN2NhNzQ2NTY3YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L119-L123",
+          "version": "repo-lines-v1:sha256:c23cee4e4a228f6c6bdfc04d27bbdacfdfd8f30a257d46972e93752d976c3f81:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1YjhjNWJmODYzNzQzNjcxZGVmM2Y2MzBlYjIzMmQ1OWE3YTYzNGEwNzBmYzQzNmVlYzM3YTg2NzRlNmMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk3OGUyNTAzYjhjZjM3YTA2ZjdkNmYwYTNhNmI2ZmUzNTY5MWZiY2FiNTBiODc3NWNhYjZmYWJjNzFjNTkyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWZmZTAyM2M5Y2VlNWNkMmVmYjYyODRkYjllZTcyNGY3YWExMDRhNjY4NDllN2RjNmVjNGFmNTNiZWUzZjE0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODc3M2FlNjJhZGJmNjc0OTMzOTU4MWU3MDlmMTAzY2RjMDQ2ZWUxZDM2MDM1YjhjODg1YTFiNmJlNWNhZmY0NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_25a88a6bac0a4df8a917ab172de06db3",
+      "statement": "LoopService is a facade over focused sub-services: LoopDiscoveryService (findings), LoopLifecycleService (continue/retry/split lease and worktree creation), LoopWorkerExecutorService (maker/checker execution and gates), LoopVerificationService (completion gates/certification), LoopBudgetService (budgets and failure-threshold escalation), WorktreeManager (worktrees), and KnowledgeRuntimeService (learning closure). The operator API surface is createLoopRoutes (POST /loops/start, /runs/:id/continue|retry|split|verify|execute-maker|execute-worker|execute-checker|checker-verdict|security-verdict|run-checks|complete|stop).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/loops.ts#L121-L306",
+          "version": "repo-lines-v1:sha256:1060747e58fd5255d9ad75e9f7904f05f4f5151f1f4307fcf57cc15f60a8e2cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1YjIwYjVmMDEwMmRkZWJhMzI2NGZiZDViN2NmMmJmOTIwZDQ2MDYxNmRjM2ExNTc0MmFlYzU3YTkyYzgyN2VjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzYTNlNDZmOTQyNzZiNmY2ZjRlZDFmMDJhZjc4YmVmNmEyZWUxYzQzOWRkNTU4NGI5NzM5NDgzMTMyMTRkMmI3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3MjBmYzllNjdkYjA3ZWQyMzliYjNhZDIzMTJlYWFiOWE3MGUxZjZmYmEwMTI4OGIwYmE2ZTYxZDdmOGVlNzg4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiMGVjZTc3ZDY1NDk0ZjE1MWQ4NWY0MDc4MTFmNDdiYjA2MzdlNzRmNTA5NWM1YTIxYzViZDAyY2U4NzRjMDMwIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L245-L301",
+          "version": "repo-lines-v1:sha256:ef97e1270ca44732edfed2181b3c2e5a790c602a90fc4f9d375aedc4da7e4ece:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZDNkNTM2MWZmZGJkMzRiOGUzNjJlZDY0ZGUwMzY4ZGVkMWMwYWI5MjYwYmI5ZTczZDQ3N2Y1ZjNmODZiZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4YTkxNzU5NzJmZTE1ZTJhOTY0MWFiMTMxZjU3MWU2YzdjYWJjYTA2ODM3NjJlYmE1ZjIzNTNlNDgzYzNkNTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxY2NmMWVlZjNhMzQxMGI2ZjNiNTFmYTI3MzAwNzUyNGNhNDIyMGYwOTBhNTFlOGM0NGJjMzAwN2UyZjg3ZjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b78e98b74a48418aa92c4597dd5b9494",
+      "statement": "The README's three named loops are three finding sources over one pipeline: the Doc Drift loop scans markdown for TODO/FIXME markers, npm-run references missing from package.json scripts, and broken relative links; the Self-Improvement loop synthesizes one bound finding from a goal's objective (objective_mode, requiring goal_id) instead of scanning; and the GitHub path imports issues as untrusted inbox work items (execution_started: false) while pull_request events auto-start a repo-maintenance-loop run via target_finding on a stable anchor file.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L59-L63",
+          "version": "repo-lines-v1:sha256:8c75c320f8e038e47baf68d49904469724b134d73a1e36a24183ba5e49d53012:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQyOTJhNTRlZWVjMTUxYjNhMjZmOWVkMDJkNTJlYjk2YzY4MDAyZDliNDM1NWU5MzQ2ZWU2N2Q4NDEwYzFjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM4NjFmNjliM2Y2NDJkMjhjZGI5MTI5NDE5MDY2NDFiMjdkYmE3NzliMDM2YjlhNzNhODY2NDc1YTlhZGU3ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWIxYjAyNGUxOTExY2JjMThiZDlkY2NiYzgwMjkyODhkMzJkZjA1M2MzMGI2YWI1NzYwZmRhZjI4Zjc3MzI1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTUwYWMyMmNkM2ZkNWRhZmM3ZTA3NTE5NDUyOTUzNGE4ZjcxNzg5ODNjNWIyMDhlM2RkOWNjNjg5ZjBiNjk1OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L130-L139",
+          "version": "repo-lines-v1:sha256:a1f2019281fb2851fa39ec328eda2dfd87bcdafcbb50aa334492e034d1d1babd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlNzExMjdmN2Y1ZjE3MTdiOTZlN2U5NzY5MGE3ZDE4MWE1MDcyMzdmY2FkMTg4NDBiYmIwOTM0MDIyYTkyMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NGUzMzY1OTFhOThkNzVhZDdhNTgwOWFjODJjOGVjMTg4NjJhYmI2MGQ1NjkzMzMzNzgyMDFmNmM1N2FiNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2MmZiMmM4NGU2NTIwYWJmNzFjNDVmYmRjNGQ4NjcxOTU4ZDA5MWUyZGNmYzQ5YTNhNWRjZmVkYzk0NjQ1ZWUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/github-webhooks.ts#L154-L189",
+          "version": "repo-lines-v1:sha256:c6b67125b0f822f7f1e426b23a04344020ca58016a9d133ab7ce8272452ca550:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYmU1ZjRlNjIxYmJhZWU5MTgxMzY2MWI1ZDRhNzQ4MzhhMzJkZTViNWY1MTQ3NmIxNjMyZTFkMjBjZjgyMDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNjA0ZTliOWZlYWFhMjNkODYwZTlhZWM4ZDZlYWEyMjI0ZTNlMTdjZjI2MDIxZDg1ODQ3NjBmNzk5Y2U2MmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhlMDkwYzY4M2E1NThmMTE2ZmE0NTJiMmViY2FkN2M1MDU2NTlkZDUyNWJhZTU0YmYxOGU1MTMyNTE1ODlmNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxOTFjMzlhYTA5NTljOWMxZGQ5NTBmYWZhZjRiYzA5MTcwZjU4OTMyNmYwY2ZlMTZjN2Y4MTdmYTUzYzIwODcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-discovery-service.ts#L58-L113",
+          "version": "repo-lines-v1:sha256:48ff6dbc31a61a4d5653c2bd37a4329a1e8805cbcaf722c2642b9aafd3e9f442:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjOTEyZjQ1MzM2ZmM5YThjZjg1N2Q4ZDRhZDA4OWJlNzU5MjhiYTlhNGE4ZDdjYTdlZDBkNThkMDBhNDA3N2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdjNDhmOWZiNTY0YjI2MDMxZGE5ODY1OTQ2YmFhNWI0YThkNmY1MGNjMGI1NjU5OGEwZDMxZTJiZmMxZWYxYmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1294-L1340",
+          "version": "repo-lines-v1:sha256:1d679b01aafaf5bc4605845631c3a507fad5755f09246b9232a91a25fd124337:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1ZTZjMzY1YTgxMjllYmY3YmNmNmU0M2NhOTA1ZmEyY2UwNWQ1ZmM5YjhlN2JkYzdiM2IzZTQyZDcwY2I0ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIwZTYzYzA3YmQ3OWM5ZjE4N2Q5N2U3ZWFmNjc5OTNkMjFhZGUyYWM2ZTFhZTdhY2IxMjEyMDgxZWJjNWRiZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFjM2NlMTlhZjRjZGUyNzBmNDc2NjgzNzlkMTc5MGNhMmRkYzQxYzc4YTQ4ZWQzYjQ1YWUyNmZhMTM1ZjYyYjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a6fdb51f1a9740339bd1a3834d996404",
+      "statement": "Seven closed-loop contracts in LOOP_CONTRACTS (doc-drift, repo-maintenance, skill-quality, mcp-connector-validation, security-regression, okf-synchronization, overwatch-policy-drift) declare per-loop actions_allowed, actions_forbidden, verification, escalation and stop_conditions; createPlan stamps every finding with requires_human_approval_before_merge and a named maker/checker role pair.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L137-L243",
+          "version": "repo-lines-v1:sha256:aae0c259e9bf50eae57e4993330bb3e262816b3d56e37a75244a9f9e69985d47:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjNGZlZjljYTkxNGI4MTUyNDBlYWQ3MGUwZjRlZjExY2JhNzNmNmYzMGQxNGZmNTg2Yjc0Yzc2Y2ZmZmQ3OTk3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMDJkMmMwZDZkYzVlNzRkOTJmYTE0YjkxZGJlYTI2NDA5MGJlYjM1ZmRiOTE4OGQ5YjM0MTE4MWRjZTlmNGNlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzYzM1MThlYjk4NzdjNTc4ZmZkZWRjMzE4NmQ3NmM1ZGQ5YTU1ZTFlYThmNTk3MmMwNDZkNzA1OTdkNTUzMjZkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjM5Mzk5YmMzZTkxMWY5YmYwMjA2MTFhYWVjZDcwYTZiMTA3ZjY1M2QwYTE5YjU0YTEwNTNiZDkwMTdjYTYxIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1592-L1614",
+          "version": "repo-lines-v1:sha256:360527a79f9bce4249fa7b2ace2a76231d5e0f6f81a7939cae34985d6fe1c2c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0MzQ4NGRiN2EzZmY3MmZiM2ZhNTJkYTUwY2RiMzlmMmYwMDg5NGUxMjY2OTgwNzA3MzhjOTc3YTViMzg0OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhOWI2MzE0ZDYyYWIzOGM2NzZlODVhODU5ZTI4MzQwYzQxZmJjOTQ3NTAwNmFjNThlYWFkMjA1M2VjYmRjODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1YWQ1YTQyNmFiZjg3M2RkZTY5NTIwOTc2NmUwYzhiYzA1Mzc2YmQ2MzUyM2MzNDZjZmRlM2Q5MWI5MzhiYTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_edf94031d9b64b768946c6bb77fc182e",
+      "statement": "continueLoopRun is the single lease-creation path: it refuses paused/escalated/over-budget/failed-gate runs, creates an isolated git worktree per finding (branch agent/loop/<runId>-<finding>) with untracked-file snapshotting and path-traversal guards, writes .djimitflo/LOOP_WORK.md and ASSIGNMENT_PACKET.json, and inserts a maker lease with the requested runtime plus a checker lease that is always runtime 'manual'; high-risk runs additionally get a security_checker lease, also manual.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L27-L127",
+          "version": "repo-lines-v1:sha256:de419b2df2fedce38703ab525a9b924910201b58daa31b43160d498ed8477e94:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0YTZkYjcyYjE0OTI3MzA0ZmQ2ZGI2MmZmMTVlZjYxMDRhNDJkY2UwYmJhMWE4ZWMyZTkzMTdhYWRhYjRhODlkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0MjA2YjRlNmQyZWExOGYzYmEyMTU5ZTI0MWFkYmY5NzUwNDVkYzE0M2VlMDZkNjhhNjUzZjQwMWM4YmZjZGM2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiY2UwY2Y3NmI2N2JhZDVlYTkxZTJmYjRiOTE4ZjNhZjYyY2UyMjk1ZTIxNWZhZDQzNWFhZWE4OGM1Nzg5MmUwIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/worktree-manager.ts#L29-L75",
+          "version": "repo-lines-v1:sha256:69e9c38a3346b6d05de86d30ed5cbda7a8976a616fcb5f56550002fa0eadea97:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUyMzJlM2M4MjA1ZTQ0YjQ3MDFkZmQ4ODQ4ZjIwODAyYWQ3MjUyYmYwMGI0ODRkYzg4MjZjNDYzMjdjMDA0NTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZjc5YzAzNGIwNzY1YTc5NzZmYjlmZTAxMmYxNmQ3NTAxYTJiOTBjZDliNTkwN2U5MmMyNDljOGIyOGM4NDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1OWRjNThiYTEzY2JmOTI0OWVmOTJjODI2MDBhMTliNTBmMDk1MDI2YzQ3NmFhMjAwYTAxY2Y1OTBlOGQ5ZGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_85c9f69ba5d847ddb4787fa9cd0aed25",
+      "statement": "High-risk classification is multi-source: the run's risk_class, the linked goal's risk_class, a finding marked category 'security', or sensitive keywords (auth/secret/token/policy/infra/…) in finding text; this drives the security_checker lease requirement and the security_checker_verdict gate.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L97-L104",
+          "version": "repo-lines-v1:sha256:b191102aa6c6f7c240068641635bf7603ebfadffdc5441a890ac5bbe47cb049e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2VkOTQzZTcyNTVhMzY1MWE3NmNlNDA4OTdmNTZlNWZhMGZiZTljZGJhYTAwNjJjNzgyYjNiNmZlM2QxZDQzYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ5NzNkYThjM2RhMzAwMTcxMzFiNjE0Y2I3OGUyNDE0NmZmNDE2MTQ4NmRhOTU5Y2U5M2EwYzYwZjMzZWE0ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2JmOGZhNjgxMDNkMWViMDY0N2I2ZjI0ZThiYmY2OTZlMGQyYjU1YTFiODMwMDRmMzhjNDRmMWE2ZjhkZDIxMSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1552-L1585",
+          "version": "repo-lines-v1:sha256:e5a837f60e8948fc131b1ea81b97004dddab0c4cc502d1dce3540db377994c65:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2Y2Y4NWI4MjJiOGNkMTljNDJjMTE0ZmI3NjJhNThmZmQ4YWQ3Y2FkYmQ5YWEwZWU3MTYzMWMzYjVjMWIzOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4OGQ0ZmJjMzZmYTgzYzY0ZjNiNjczYTJjNzU2MWVkMjI3YTAwZmI1MzE2NDBhNzQ2ZDhlMmZjOTBkMjU5NWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_207fcbbe4c5d47ea838d7889effcb911",
+      "statement": "executeMaker enforces gates that bound blast radius: maker_runtime_exit_zero, diff_under_threshold (diff_max_lines default 200, clamped 1–2000), token_budget, runtime_warning_gate, and the structural no_automatic_merge; it fail-closes on an unavailable or drifted runtime contract (RUNTIME_CONTRACT_DRIFTED), and restores a package-lock.json rewrite that lacks a package.json change as install noise before computing the diff.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L136-L145",
+          "version": "repo-lines-v1:sha256:0f92df4ea21f22a959444f215d24aec41dadbb43a0fea24d3aa4f3a5a35310d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5ODA5ZTY4OWM2NGI0OTJmODk4ZGVjZDhiZjNjODU1YjVlYzc3NGU2NzY5YWJmNjI1Mjg0ZDZmN2UwOTQzMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3YThkNzdkNjgwMDQ4Y2QyNzkxZTRmMWQxNWRmODAyZTdmNTIxNDY0OGFkMDlmOTlhMTg4MGI3ZGZmYTAxOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwMDE4NjkzNzQ0Y2E5NmU2MDRjOTBmODkzNjVjY2Q2M2Q4Njc5ODQ1MmI1ZTQwY2JhYWI0ZjExZWRjZjcxMzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2OGY5MWQ0NDNmMTJjNmIwNWZkNzhiMmNhNTk0ZDY5YjFmMmE0ZTgwYzg1OTlkOTFmZjJkZTcwYmE1ZTA0ZTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L59-L200",
+          "version": "repo-lines-v1:sha256:bee296f347a155b3e080381e61340ca2e20eea34316dc63e0032a6a880e71a40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDc4YTI3OWE5YTA3MTYzZWMxN2ZlZmQ4OTg2Mzg4ZTI0MTMxYjNhZjdkODVkZThlM2NhN2QxMDU3ODJiODM5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZjNjNTZmM2QzYTBmMThmNDczZGVjNWQ2MDgwZWQ4ZTg2MWUwNmIyNmQ3NjI4YjE2NjQ3MDRmZTI4ZjRhNzQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDhkNmMxZTAzZjA0NzUwMTNhYWM4ZGU4ZDA3ZDE5NzBhMTYwNDA5YWEyNGJjMzQxNmRiMWFiMDY1YzU3MmVmIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_df86147254fe4535bea5a6dd1a516086",
+      "statement": "Worker runtime children run with default-deny permission bypass (skip_permissions only honored when RUNTIME_ALLOW_SKIP_PERMISSIONS=true) and receive only an allowlisted environment instead of the server's process env.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1779-L1821",
+          "version": "repo-lines-v1:sha256:95224509be36ecfb3894c202efa22a5d0bade7fc78a6c74b90a4c3408e9bfb8a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YTU5YmZmMzMzMzcxNzI1YjIwZTZmMzM0NDc1ZjYxZTdiNTM3YzgzYjIzNmVhZDllY2EwOWQ3YjA4ZjQxMzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjYTQ4NWUxZTQyYjI1MGZkZWVhZjM5YjFmYTA3NjY3NjZjYmZhNzQ0YjBhZDA4YWFiNmU4ZTIyMzA1ZGQ2OWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmNzg0OTVlYzc2MzA0ZTE2OTc4MTYwNWEzNmY0NDNlZTJjZGQzZjQ4NDIzZWM2Y2EzNDg3NWQ3YjE3NDAyMWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b77179443cf6460a85aee37fb198dd1e",
+      "statement": "executeChecker enforces reviewer independence and dispatch rules: the checker lease must be prepared and linked to a completed maker, receives its own worktree (branched from the maker's) that must be realpath-distinct from every other lease's worktree (CHECKER_WORKTREE_NOT_INDEPENDENT), a manual lease cannot be dispatched without an explicit runtime (CHECKER_RUNTIME_REQUIRED, never silently as mock), and a continuation must reuse the originally dispatched runtime (CHECKER_RUNTIME_MISMATCH).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-security-checker.test.ts#L161-L166",
+          "version": "repo-lines-v1:sha256:f243c133c635b949c6effed37f4412491584edb81e1961f4d0f65c2cfdf9f2dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTA0OTU5MzRjOThkMDlkZTQwNGFhODMxMTEyYmU0ZTc1MmI3YTVlNTc0MDY4YTg5ZDJhZTU1MTIyYTNiM2ViYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGUwZGY3YzVkZjRmMTUzODcyYmQ0MmEyMGY5MWQ4OGExMzk2MTgwMWI5ZTlhZjU1YzhhZTI5NzZiOTdlYTQyNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk4N2MyODQ2ZDNhNDEzNzExYTQ4MzRjZWY3ZjdhMThjZjE1NDcwMDUwYzFkMzJiZWY4ZGRmNzI0MGY2N2MyZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-security-checker.test.ts#L90-L93",
+          "version": "repo-lines-v1:sha256:97a94b4644882ff826c9893a7f05e275c1399cf096886151e5a5698778ff879b:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzdjODQwZWM3YzQ2ZGQ2OTE4NmRiNGRhODc4ZjVkMzRlN2JjMDNhMDk0M2YwZjFiYzIwYWMzMWNjYzU3MDg1NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWViNTc1MDgxNGQ0NGQ4NTAwZTgxNTYyMmViNjNjMjE0ZmFiNTRmN2YxNGY2NjhlZDJhYTMzM2YwNWM0N2FmZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTM4OTExYjM5NTc3ZGE4NzM4ZDcyYjdiMWRjOTY5MDFkNDU2ZDYyZjE1NTY0MGQ5NDE5M2FjZWE0NGJlYzVmMyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L202-L264",
+          "version": "repo-lines-v1:sha256:1a3e6ce0b98b3d0502853dceb1d449f3ddb7809254a260c4f294dd2eea7eb9a9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiMjEwOTFjZWI0NDU5YTA3NzIzNWE1Mjg5ZjU3YzQ1OWEzNWE1ODg4ZDIxNzJhOTZkZmQyZjc5NGZkYmE0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2ZDc2MmU4MTQ3ZmI2NzEyOTEzYjY0MmI3MGVmMTA1MzIzYjY1YjE4YjFiZjNlYWRkNDk0YjExODZjMTZmZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlNzc3NDY0OWY2NjM4YmY1ZThhYjZjNmE0NDVlYzYzYTc3OWMwZTcyMmNhNTAyZDliOWMwMTc5MDVlNTc0YjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjNGFhNGU1NzgxNmMwNDllYzMwYWYzMGVmNTdiMjU0MGEwOWEzY2JmYjM0NzkzOTc0MzlhMzRkYjdkY2I4OWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7571b8b8dd324dfa9e970e52d1583a1b",
+      "statement": "Checker verdicts are fail-closed: stdout is parsed for accepted/needs_revision/rejected/insufficient_evidence with anything unrecognized becoming insufficient_evidence; a checker whose worktree git status is not clean fails the read_only contract; and the security checker prompt explicitly states its verdict is not human approval or permission to merge.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2291-L2295",
+          "version": "repo-lines-v1:sha256:1da23c13299c85b9f2408a139c8d854a90b707f21338e10ca71b0db229cf12a9:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2Y2NjIzYjMwMTA1NTBiODBlODlkZjkxNDlmMzlhOTc0NDI1NGRmMDcyYzRlMTBiYzUzMmRhMmE3YTk5OWM5MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjFkMDBiOTcyODAxY2MzMzRmMzdlZmFlMjgxNDUyMjA0MTNhNmRmMTNmMDU4OTVhZDI3M2M3OGZhNDkwZDA2MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmU2MTM5Yzg2OTcwNzYwNDdiZjI5MGZhZGJkYWJkNWY1MDVhMjFmYTQ3NmRhYjFiZmM4ODk1ZjI1NWVmMjUzNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTg0NmI5Y2YxNGExZTRjZjllZjcyYjZkMDA2ZTM5N2IyNTZiYTY3OGUxZTkzYmY2ZDg1NDNhZjJhOTRhMDJmZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2327-L2376",
+          "version": "repo-lines-v1:sha256:2e2b0789212b5a340ef134679d9ac3e1281cca966c4ed6bda8fd5f5349f9a76b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhNmU3Zjg5NDlkOTgwNGQxM2JmNzY1MGJkODQ3N2Y2YmM4NTRlZWM0ZWQwYzhkYTk4ZDg3ZDBmNjMyZWQ5NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhNTk1NWVjNDY0ZWJkZTNkZTFhZWE5NzA0ZWRkNTA2YWIyMzA5MjRhMjVkM2QzMTFhZTg4MzM4OTIzYzk1OWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L291-L313",
+          "version": "repo-lines-v1:sha256:43e523aff56adfaf9a2f517222d4db719d70bbaa096f0965b845e2233783f144:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4MDZmY2M0ZjU1OGZhZjYyZWUyYjcyNGM1MWQzNWFmODY2NzY5MzQwZGMzMjU0ZjA2ODNjOGI2NzlkNGYyMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NTkyODBmNjE1NmMxZjY1MWI1MjJiMWIxODYxNjNiNjZkYjQ1YWRiZmE5YmM2NzFiZWQwNzM1MjllZWMxZDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwNmEzNzVlZmNjZDgyY2MxMzJiYmIwMzI4MjFhMjYwMTkyOGNhYWZiYTU5Y2UyNTlhNTA3ZGNmZmY5Yjg4YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3NmI3ZjFmMDNiY2JmZWFlYmQ4ZmJiODk2ZjFjYTU2ZTZjY2NkYTkxYmYyZDNkYzNiZmI3OWMyMzk0YTYxNDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_968eb49ba4694e94bc8507260f70ad0f",
+      "statement": "hasAcceptedReviewEvidence requires full runtime proof for runtime verdicts (exit 0, not timed out, runtime_verdict accepted, read_only_contract_passed, valid runtime contract, existing stdout log on disk, adapter matches lease runtime), while manual leases require an attestation of named reviewer plus reason; a manual submission therefore cannot relabel a rejected runtime verdict as accepted.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-security-checker.test.ts#L132-L159",
+          "version": "repo-lines-v1:sha256:4fe5b74dd1c0ff0e562c61ace67ee61632a6052ae8df5e26d56e6b0cb650b024:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU4ZGY4YjQxMjc2OGIzODNmZjMxNDFjMzI0ZTg0NTVkNjY2NmIyNTcyYjE3MmYxYmJkYjY2ZGEwNmQxOGVlNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmZDdlMjgwNjRmNzRiZTc2NmMzNjNiZDY0ZmYzYTVjZmIyYzU2ZmQxNmJmODEwN2NhZjU3MzYyNGZmOTdmYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzMTM5ZjYxNzY5NmViZGZmNmZhYmUwOWE1NGQ4ZmYxNWMxY2JmYmMyMTkwMjY4YjQyOGZhY2U5ZTQ1NDgzM2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L204-L223",
+          "version": "repo-lines-v1:sha256:76ea083f1d3904bbd5232ccd5e23f9d41e8abe013c06933c587af71adc9d036c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYTllNzMyODFjZGZmZjQwY2FlY2NjZjRjYjUyYjk0ZjI0ODg4MWU0MDU0ZGMwZGUzZmZhYTRlZmJkNTE2ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkYjNlN2NkMGMzYTYyMzA0NzY2ODE2MWQxMDRlOTlkODYyMDljYTNlNzc1NGEyNWIxMTlhNDkwNzg3ODA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4MjA2MDU3MTliZTQzZWEwNWE5NTEwOGVlMjk2MmU2NGM2NWI1MTY1NjkxYjc5MTFmZGI2YjAyZjhkNzUzMTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cf336b15efe149e89bbbaae67edc2f2d",
+      "statement": "Verify gates evaluated by verifyLoopRun are run_not_cancelled, maker_completion (every non-superseded maker), maker_checker_separation, worktree_isolation, assignment_file_present, diff_threshold_all_makers, checker_verdict, tests_lint_typecheck, security_checker_verdict (skipped unless high-risk), and no_automatic_merge; superseded makers and their reviewers are excluded so a fully reviewed retry can certify, and completeLoopRun is the only terminal transition and requires human_approval_ref.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-verification-completion.test.ts#L91-L105",
+          "version": "repo-lines-v1:sha256:7cef6290c79b6dae22317aff407498575305b148147306e09a4b05c4f17d32e1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYWMwMjA1NjYwN2ZiZjAxOTI4NDUwMWU2M2FjNTc0MDQ2YmFhZmY0ZjFjY2M4MzE2MDViYjg4MGM2OThiYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxOTgyNmZmYzg2OTgwZGJiZTBlOWJiY2Y4ZmVlMjI4OTAxY2ZmOTZmMjdhNDlmMzc1NjVmMDJlYzZiZjc5NzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhYTBjNGFiYzhhMzZiMzk4ZmMxZTE0ZGQ1YWUzNTMwZTY2ZTdkY2VhNDYzY2UxYWI0ZGM0NjI1ZTA5NjI3ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0OTZhMDMwNTY3MWRkZGJjZWIyZGQ0ZjQ2OGYwN2I2MWE3MTk1NmYxZTM1ZDBhNzRjZDJlMTk0OTIyZmQzZmUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L37-L166",
+          "version": "repo-lines-v1:sha256:fd01a556209607beddf9f7b7b11ddb667c8ee3ecfc93ddcd2a226efc8ec31f7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4YjNmMTMxNDQ2ZmM4ZWFmYzQ2MWIzODBkNmM0NDYxZDdmZTNlODk1NzI0YjViYThiNDNmYTk2NzAyNGM4ZDNkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2OTAzODc1NjllNWQwYjMwZDBmMjhiYTlkM2QxNWViYjhlMGI4NjhjZTZkZmZmN2E4ZDljYzFlOWU2NjFlYzI3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NmY2NGY4OTQxY2I2ODljOTViODBjMmZiYWIyODM1NjQ4NTk3MGVjM2Y5NjI2MDljZmMwOGQwOWMwNjg3YmFiIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e27d16ca85b04f8ba67be6bfcd1722bd",
+      "statement": "runDeterministicChecks runs npm scripts (default test/lint/type-check) in the maker worktree with a per-script timeout (default 120 s, clamped to 600 s), records missing scripts as skipped rather than failed, flips the maker lease to failed on any failure, and feeds failing stderr tails into the self-improvement pipeline via generateFromBuildErrors as best-effort.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L978-L1090",
+          "version": "repo-lines-v1:sha256:3817b98a67448ca16334d4b13a738b65b63c5174846b5a3dc3262a6db8975409:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4NDIzYjRmNzhlNjQzMmQ1YTYwODM4ZTA3M2ZkNDdhZGM2M2RlMGYzNzNmYmMwOTg2ZTljNWIwNGU0OWM3ZTYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZWVlZmRkNTExM2Q5OTA1NmYxZTE5ZGUxYjdkNWJlZGU2ZTBhMzAxZjllOGY3YmU0ZWFkM2Y4ZjhkYTg2NmM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNDhlZWQ4NDQ5NTM0MDQ3YjhlNDgxNjcxNmM3NGU1YTYwMDEzNDk1MWY4OGU0NjdiNTFlNGU0YWFjNGEzZGRlIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_248fd361c73b49ee9599509e43f34291",
+      "statement": "Daemon-side knobs: daemonCheckOptions scopes deterministic checks via LOOP_DAEMON_CHECK_SCRIPTS (comma-separated) and LOOP_DAEMON_CHECK_TIMEOUT_MS (clamp 600 s); daemonReviewerTimeoutMs honors LOOP_REVIEWER_TIMEOUT_MS with a 300 s default calibrated from production reviewer timings (45–119 s; 2/7 reviews hit the old fixed 120 s) and a 900 s ceiling.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-daemon-check-options.test.ts#L1-L17",
+          "version": "repo-lines-v1:sha256:3d3bee9e1c5cd43f59f1b1f1310ca4c17383b246641fbacd61a1254307bb6f7e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlNzNhZjQ4NTkzM2ZjMTZmMmFmNTU3OWJiODE5OGE0NjAwZDRlMzljYjgxOWE0MGI2YTA0OTRiYmVjZDcyNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L15-L27",
+          "version": "repo-lines-v1:sha256:3c5af63bd6fb436bbbe150e4204790c6f80adb86905eca9c15bcffdf03667f53:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMjVjYjU2MzdiM2M2OWJlMTNjZjgyMzEzMDc0Mjk1NWVlNGY3MDg5M2FhMGQ4NDVkZDE5MjZiMTNlYWRiMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxZWM1MWIyMjE3NjgzZDcyMmM1ZTlhMjZjNTU2ZmI5MWI5MjBhNzg4ZWM3ODIwYTQ0MDQzOTU1YzA2ZjJhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4Y2Q4ZTBiMGI2MDRjNTE1M2EyNmY5ZTFiMWQ3ZDQ2YTg4MDlmMjQxMTRjYTZhOTIzMTJiMjA0ZDc5YjdlZWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6641ed58f4d14520b7e9546c07c639f4",
+      "statement": "escalateIfFailureThresholdExceeded counts failed maker leases plus checker/security_checker verdicts of needs_revision, rejected, or insufficient_evidence against a per-run threshold and sets the run status to escalated; continueLoopRun then fails closed with LOOP_ESCALATED_REQUIRES_HUMAN until an operator retries, splits, or cancels.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-budget-service.ts#L268-L304",
+          "version": "repo-lines-v1:sha256:ecfc953ad4874f597e9b980d437a80fe99908fc3050ed4893d2dc5f86918c198:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxNjFkMjc0NTQ4ZGIzMTRiNjUwNjFhZWQ2YzBjOTBjYzI0OTg0ODNkMjFjY2E1ZTI5MTE5Mjk4ZTQyYzNiMjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDcwYTJmZmJiNDIwYzI5Y2Q4YzlkMzFiNTZjNmM4MDM1MjdmN2UyYjI0ZTNiNjBiZTAwYmI0NDE4OGYyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1342-L1352",
+          "version": "repo-lines-v1:sha256:d85dc44054af8413d107f8211f504c5fb99d459d78b3c069864163019bc6857b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1MDkxYWY1OWVmZGNhMzVjYTA2OWU3NTZlMTEwNTU5Nzc1NDhmZmEyMzgwZTRjMWM0NWJhYzVjZWFkYTNjZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ3NWU3OTQ3OWQ1MjhlOGVhMmVjNmU4MmUxZjc5MTI1ZmQ1NjkyNGNiODdhMWJjODhkODAzMzQ2NTU1YTYzYzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f6197848e704458593e9a3a9febdb867",
+      "statement": "LoopDraftPrService (default off behind LOOP_AUTO_DRAFT_PR_ENABLED) turns a ready_for_human_merge/completed run into a GitHub draft PR: it pushes only the maker's real files (excluding node_modules symlinks and lockfile install noise) under a djimitflo-loop commit identity, passes the token only as a one-off http.extraheader never persisted to git config, is idempotent per run via metadata.pr_url, requires GITHUB_REPOSITORY/GITHUB_TOKEN, and records a draft_pr_failed loop event instead of throwing on failure. The merge stays human; the draft PR is only the hand-off.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-draft-pr-service.test.ts#L37-L60",
+          "version": "repo-lines-v1:sha256:651bc610cc0b2a4c0cb378b73e693ee9ec610ca6a81c21b0cf23ca4064f26cf6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZTA5OThiNDE2YjZiZmMwMzBlMzM1MjMyYmI2Yjg3MTAxNmZkOGI5MjEyOTAyOWE0M2M4YjQyOTdiY2Q0MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjODgzYWUzODVjYzNkMTM5NjVmMDA1YWY0NmY5NDVkYzg0ZTUyZGI5MzhiNDA3YzMxODJhMjI0ZTBjNzIzZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L12-L66",
+          "version": "repo-lines-v1:sha256:1b4109db3c0ccafab53f3fb0ee6f21ae40e3f67598a840c9c3dfbac6cee10911:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4MTczMzA3MTJmZjFiOGY4YjJhMjhmNTViYjcxZjE4Y2Y5Y2UxMDkwMDYxMjdiYjYzOWI2ODlhMTVmYjNiNGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU2N2Y2YmY1NjU1YWU4YzUxYzY4NDcwODQxZjAzNzJmODBlNmFiYmEyODNlY2IzMzgyODIwYzFhNjIzNmI1NGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4317b12da9ac4edc83bfd7bef2bd7ea9",
+      "statement": "KnowledgeRuntimeService.closeLoop runs in a single transaction: it revalidates the run's current evidence (terminal reviewed status, not operator-paused, all makers completed, accepted checker evidence per maker, accepted security checker evidence for high-risk runs, no unresolved gates, non-empty trace spans/checkpoints/runner manifests) and returns status blocked with reasons creating nothing if any check fails; otherwise it runs a loop-learning eval with score delta versus the previous eval, writes a ReflectionCandidate and an operational-memory MemoryCandidate, creates a repair work item on regression (repo-maintenance-loop) or a skill-promotion work item on improvement (skill-quality-loop), persists one row in loop_learning_closures, and binds a linked verified self-improvement proposal to status evaluating with loop/eval/reflection evidence refs — never applied, never merged. Replaying a stored closure revalidates before returning it.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/learning-closure-service.test.ts#L61-L139",
+          "version": "repo-lines-v1:sha256:562469fce7640578fb7b5e77bd27cf1c71cb9997a0c0574d316f77d5b423717c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIwMDQ5NWE4ODJiMDY1MmRlZjhmNjYxZTBkOGRhN2ZiZTM3N2ZhMTFmODc5YzI1ODA1MzE2NTQzOWYxMzIyOTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlZjU5ZGJkNzcyMDkyZGE3ZWU1NjBkYjM4MTQ3MDA5ODExNTBlYjBhOWM4OGFiZjI0MDQ4MzRjNjc4NDRmMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1ZDI0MGEyNzYyOWJjOTE1ZjhlNDJiNWRmYTY1MGJmNmRlODIzYWE4ZGIyZTJmYzQwNmY2YTAyODQ0OTFmNWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/knowledge-runtime-service.ts#L194-L352",
+          "version": "repo-lines-v1:sha256:f79d6f3cc0ad41d94c4af40f6b3cb22658aa854546b1a5049be10c86b5eb7226:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwOTVkMGE1NzM3NDg4NTgyMjcyMTVjNDMzYzQ5YWExNzMxNzI4NDhhZjVjZjI2NGY2ZDY1MGQ3NTcxZjhlNDFjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZWVlZmRkNTExM2Q5OTA1NmYxZTE5ZGUxYjdkNWJlZGU2ZTBhMzAxZjllOGY3YmU0ZWFkM2Y4ZjhkYTg2NmM4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyYjk4OTI4YmYxNjM0ZGMxZTU4MzFiZTQ2NDMzMDc1OWRjMDJjZmRmZDc5OGYwZWE1MGVmZThiZDFhYjUyMDZiIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_635c06db9aa14340a9b461ea0298a9f5",
+      "statement": "LoopDaemon polls the goal queue (GOAL_QUEUE_POLL_MS default 5 s, GOAL_MAX_CONCURRENT default 4), applies the fail-closed authorityGateForGoal per goal, and executeGoal runs decompose → start loop → continueLoopRun → execute maker → runDeterministicChecks (with one retry on blocked) → optional checker dispatch → verifyLoopRun → learning/draft-PR → goal/run status update; goals with no findings are completed as no-ops.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L128-L236",
+          "version": "repo-lines-v1:sha256:a125bc1db0da0d5679c58398351a6ee68222b09fe80398269fe404cd31c7373a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxZWI5ZWIwYWEwZDVlODVlYTJmYjI3Zjk0Y2M1NzgyMzE1ZmM1MTM2YzFlYWVhYjhkNThmMmRlNjc0NzNkZGQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkM2I0NzlkZjhiY2E1M2ZkMGY4MmFhOGI2NjdjOTAxNmNhNjg1M2IxNjU0NjY5YzFkNmQ2N2FmMThmZTZhMWMyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzZTkwODUwNzhjNzQwNTlhZWVkYWNjYWUwNTIzZDQ0OGM0MmFlYWYwZTdkYTE2MzBkMjYwZjQ0NzFjNjAyZGZkIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L327-L639",
+          "version": "repo-lines-v1:sha256:208d26eff40d4ae19b1b620ad0659f56072ba3fe18a3299e6bc6d314c6d1eb92:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyZTY0YzhmZGI2MmQ1OWI5NzczYzlmMDcyM2Q0ODFkNTgyNDBkNDBhMWI4ZDFmMTNkNTc3MmY0ODYzN2RiZTU5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxZDk1NTZkNWQ0NjI1YjExMDU1ZWI5NGU4YTk1NmJmNzNkNWNhNjQ0NzA2ZDQ1ZjMzY2M2MTU5MWNiNzM5ODcyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJjNDEyYWE4NGJhZjY3NTAxZGNhMmZlNmYwMTVjM2QzNmM4ZDQ4OTkwNWMyYTM4MWYzNDhlOTg4OGI5YzY1MWJlIn0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L56-L103",
+          "version": "repo-lines-v1:sha256:9b0ba85302ed881b43f7dc058ed9a9923ef57adcac9581d7c4d57db66176c24a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4OTk4MzhlY2NkMTk5OGQwMzU2Y2I5ZWFkMGU0ODkxNTdmZDEwMWIzZjVmZmZmMDBiMTQ4YWQyMTcxNDk0YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZjZkZWQ4ZDFkZGZhOGMyNjU5MTA2Mzg2MGE5OWJkOTA4OTQzYzQwNWZhMDM5MDllYjhkZWJkYTBhNWY5YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkNDM4MjAyODAzZmU1YzgxYjI5NzU5ZDM2OWRhMjkxNDg2MjExMDlkZjAwZTI2YjdmZDEwMDIxZjkzYmMwYzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8fd059bbcf904381a26f797326e4aa9c",
+      "statement": "Automated checker dispatch is a deliberate autonomy expansion: checker leases are always created runtime 'manual' (code review requires a human by design), so the daemon only dispatches them when LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED=true (default off), reusing the actual maker attempt's runtime with daemonReviewerTimeoutMs; the security checker has its own flag LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED. The previously missing dispatch (daemon created the checker lease but never ran it) was the root cause of checker_verdict never passing and loop_learning_closures staying near-empty.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-daemon-checker-dispatch.test.ts#L104-L148",
+          "version": "repo-lines-v1:sha256:1e9e938c0791cb1a5f0328e73ef691e7c193ff20ed6b6cb9f8d56224d0b723b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0MDhlMjE3NmJlOWM0OTlkN2JjOGMxMjllNzJkZmEzZjllMTFiM2Y2NzdlZjExMjY3M2FmMzUzYjRkYTJhYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhMDgyNzgwMjkxYjE0YjFmNmVlMjExYjA0MzZhYTE5MTI1YzU1ODQ5NDRiMDU0N2FjODk0YzJiNjU5ODk0YTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4ZjgyODdjNmY4YmRlNzVhMTZiMjY1NjExZTcyMjgzMzBmMzg3NDcxMjViZTAxMWI3MWU1YmJmYjg4NzU5M2IifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-service-checker-dispatch.test.ts#L53-L84",
+          "version": "repo-lines-v1:sha256:09768056783bb12607aad72e5c035c27883f499136eb8e2d892c1490391e4249:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyZWM4YjhhY2YwZjRjZTI4NTJkZDM5OTQxN2Y3M2Q4MzZmZTExOTQ3MThmZTc1NDQzMTNmYjBmNmFlZmFhNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ZjA2MmQ3Y2I5NWE0MDMwNWY5MDdlMDViZTExOTA0N2RlOTU5NzI4OGJmNTdjMzZhOTkzODQ0ODljYjM0MGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L448-L492",
+          "version": "repo-lines-v1:sha256:ce21dfbea4ee47b12e80be27136c6d62bb20f6ce53361bfa6c2510175f26bfd7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YThiOWU0NTdjMjVmZTJlY2E1ZDI0NWRmNmUxZjdkZWUyNzZiZDM5YWM3MmZkMTY4NmU5ZjQ1OGQ2YTQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwOTliMDg0OTk2MTUyZDc0YTIxZmUwNTEzYTBhM2NkMmRhOTU5MzNlMTgxMTVjZDIwM2Q3YWNiN2QwZTkzMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fc4ec0fb08d94542964b80329fc6aac5",
+      "statement": "A worker whose execution is gated by the ExecutionEngine approval policy is a wait, not a failure: LOOP_WORKER_APPROVAL_REQUIRED parks the goal as blocked with an awaiting_approval record (blockForApproval), resumeApprovalBlockedGoals requeues it once the approval is decided and the task is terminal, denied/expired approvals fail the goal, and a reviewer lease still running defers verification rather than recording a false regressed outcome.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L238-L289",
+          "version": "repo-lines-v1:sha256:4a4bc346332050e896775adeadd4b853dd7ed2ae6b44e99204e76749684cbf24:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4MDYzZGU5YTdmZTM2MDJjNzZmODRiZWFlNmU4ZjJhM2RlZTA2ZDIyNDAwZWIzNmUzMmViMDE0MDc0NzBiYjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmZjBmZWE0NzVmMmMyOTVkNmFmMmRkYTVkMTRkYTVmOGJmMGYzOTBjMjEwNGZiZDc3NjBhNjU3Y2M5MzRkYzIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L494-L502",
+          "version": "repo-lines-v1:sha256:487561d4140bf38cddf47432ef5596e3e083c28a38da5bd07797f456c13fa2e9:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTQ5NmQzNTBiYjU2NjA0NjhlZmVhMWI1ZjdmYjY2YzgxMzYyMjZlMjhhYjQ5ZTIyNzAyMjBjNTI1ZmVlOTc2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWI2MmY2MGQ4NTkwYTU3OWNmNDZmOGQ2NzM3OGM0YzU3MmI5NjJjZWNjZGI5MGM3YTVmN2I0MmI5NjA3ODJhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDEzNDFkMGM1ODgyZTkxYTY2YzYwY2I4NjAyMGIyNDdmMGFmYzMzNmNkZjc2YzBhZTE4YmNkMjBhYzhmZTFkNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWU3Mzc4N2E2YjE5MDQxZTg5N2U0ZjYxYWIzYzcxZDk2MWIzMDJhNmExZGI4MTU5YzI0Mjg0N2JkNjY3MGJkMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L385-L401",
+          "version": "repo-lines-v1:sha256:0f3991267c4acc7d47864b37c4721c04299361006c741ee332a16ae5b2c92804:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0NWU4OGQ2NzAyMGVkZjY1OGU5ZWZhY2Q1YmY2ZGRiNjRlMDlkNzFhMzgyMzQyMGUwM2VhZTVhMTMwMjhmYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlMWI4YTZlNmU4YzkwM2M2YTk5YmQyMTBhYjVmMTAyNDQ4NzM4ZDE0YTlhMDc3OTQ1Y2UxYWNhYzQxOWFkOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYjdjZTQ2NzFhNTNmZmExMTc1ODA4OTU1YWZlNDUxOGNhOWJkYjI0NWNjNDdlZDJkZmY4OWQyMDRmY2E4NDYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f358403d1a9747969612f024256bccd7",
+      "statement": "Loop run state is durable in SQLite (loop_runs with status/findings/plan/gates/next_actions/metadata, worker_leases, append-only loop_events) with on-disk evidence under LOOP_EVIDENCE_ROOT (default .data/agent-evidence/agentic-control-loop-fleet) and a LOOP_STATE.md per run; orphaned worktrees are pruned past a grace period (LOOP_WORKTREE_MAX_AGE_HOURS, 24 h) and recoverInterruptedRuns marks crash-orphaned runs interrupted and their leases failed so they stop reporting as active.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L128-L134",
+          "version": "repo-lines-v1:sha256:803dc104964aae960a24fe8e02fb2c55e416e561e3051b5bbb03fe10d6a34fe1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzllYjM2M2Q3NWUxNzI4ZmY1NThmNDczZDgzYzM2YmJlOTcyMzQyOTVmN2M4M2EzODI5MTUzOGUwYmFmMGU5MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjQxNzg0MzVhMDY1ODcwZDViODZjODc2ZWI5YThkMDVkYTU2OWNiNmZhY2Q3N2ZkN2UyNzFlNTI2NzgyNDk3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmUzZDBjYjc1MTJmYTExYWJiMTlhNzA2ZWQ5MDUzNDQ0YjkyZTQzYjY3ZDYyZjIyNWJkNzZlMjhkNTkyYjhmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDk4YjRkZTFlODVmYTM5NzNjYzZlM2ZmYzBjMmYzZTRjZDY3MzVjMzNmZGQ2OTY5ZjdjNzhkNmNmNzJmODE4YiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L353-L383",
+          "version": "repo-lines-v1:sha256:f2eab27258db23a6d9f6a5851b47ed9a25d63f40b424746c80d7b69bc7a05768:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YmJhM2Y5MDU4NzVhYWQ3ZjA0MzBjOTY0ZDg1MjU1NjhjNzUxODJmNmRmMTBmMzg3ODI1YzUzNWVkMWNlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzOGQwOGI5M2RhOTgyN2Q3OThmYjgwY2VmOGYwMzA5MWY5NTQ3YzQ2YzI1YjY2Y2I4NDY0YWY1M2FjOGNjMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4NjY2ODhjNGU3ZjlhZjFiYmY1ZDg1MTQ5Yzk2MTRkZjY1MzFjNjA5ZmQ0ZjgwODkzNTRmY2EwMmI0N2Q4OWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L460-L507",
+          "version": "repo-lines-v1:sha256:392517f99cbb5fc1867adbb547822361a9404b3c9addf77941279a50e3e3f46a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMThiY2JlNTdhOTRmNWY5NmNlMjkxYzA4NTUxNGJjZmE3ZDI5YWVmMDYyNGY0MDc0NWEyZmUxMWQ2MTI1NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0ZTQyMDhjZDZmZmI4YzRhMzU0N2IyZjU0YWRhMTk5NzhjM2YzNjVlNzhmOTUwMmVmNTE0NWNkZDJhYTg1NDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmZWI3Y2FlNDJkMzkyM2ZkNjkxMTIzODEyOWJmMjM5NTFhZTZiZmRlNzM0ZDZkY2E3MzY3YmZmOTUyZTRlMjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0NTUxZjEyNjFjNjM4MmU3YWU0YjcxODAxMDFjZTU2MzNjYjEwMjdkYzU1N2I5YTQyYjZhNTM5OGIyMDQ1YzUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

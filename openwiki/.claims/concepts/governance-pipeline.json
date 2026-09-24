@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:a2a6dfc8f0f1a49347ba2dcd8b052665a10e0acb19814664af9a4aeb4c1ecfd0",
+  "claims": [
+    {
+      "id": "claim_0246c3f0ed8e442893cc280dca959af0",
+      "statement": "ExecutionEngine.executeTask enforces a fixed preflight governance order: in-memory/durable duplicate and running-state guards, execution_recovery_hold and deep_agent_assurance_hold metadata checks (throwing EXECUTION_RECOVERY_REQUIRED / DEEP_AGENT_ASSURANCE_HOLD), a pending execution-only approval check, a runtime-governance isAllowed check that cancels the task when the assigned agent is quarantined or circuit-breaker-tripped, then CommandRiskClassifier.assessTask, PolicyDecisionService.evaluate, and GovernanceGateService tightening before queueing the task.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L243-L340",
+          "version": "repo-lines-v1:sha256:f8b1db12261d62cb0211812769c16cf29fc020ced76a0aa2f7f9f62f981e0ce0:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNzk3MDU5ZjZhYmRkZDk3NjZkOGU5ZGQyZmEwNDhhNzI4M2FjYTY3YzI0MjMxMWJmNzdkMzEyMDBjZTM5NzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNhM2M4YmU0YTNjZDRjYjJhN2VkNTk1OWE4OGE4YThiZTcwZDQ3ZWU3MmNjODk2ZjFmYWJhMTU1NDY0NTJlMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwMGU3YmVhY2YwYWZlZGM5OGQ2Y2YzNmQ1ZmI0Mzk5OTlmYzc4NGJmNDM5MTNlNTE5ODEzYjBkMWM3ZjBlNDEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-governance-service.ts#L138-L141",
+          "version": "repo-lines-v1:sha256:ab4a9d3f9f084c18d2d74652ce3bb5344b1757e5a7b97769582584cb8391554f:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2MyZjE2YmZjMjEyMDM5ZGUxNDY0ZjA2YTE2YTgzYWQyZGEzNzZjNWY0NTM4ZTQyYzE4ZWU5NGI1ZmUwMTliYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU1YzRkN2M5NWY1MTJhYzk0NmQ3M2MyYzFmNGFiNWVjMGVlZmM5YzkxYWYxYWVkYjI5MDllYzNkNzUxZjU4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzEzZGU3ZjM2NjBlOWRkOWVmMDEwZGExY2VjYTc4ZGQ3MWZhYjhjZDZlM2JhZDhhY2MyZjFlNjM0YWQ4NzVkYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f0fbc4c661dc42c3b8a09074f3a4519e",
+      "statement": "CommandRiskClassifier screens commands against ordered regex tiers (critical patterns and outside-workspace writes recommend deny; high and medium mutation patterns recommend require_approval; read-only patterns recommend allow) and is fail-closed: an unrecognized command defaults to MEDIUM risk with require_approval, never allow.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/command-risk-classifier.ts#L9-L76",
+          "version": "repo-lines-v1:sha256:fa0364e9bade2699a72fe1750269f122a5dae20f959149ac133092435ddc953a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyMjQxNGE5M2JiODIyM2EyYzliYTY2YzliOThkZDljZThlNmRhNzQ3ZTI5YzVhZjU3YTM3YTY4YzU4Yzc5ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MTY5Yzc1ZmQ1YjE0MWU5YjJjNjAyOTc2YjRiMjZkYzBlYzQwZGIwMTg4ZjUxZjI2NDMyOTQ1OWU0MzQ5ODUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2OWU5NzNmMTI2MGY2NDliNDY0YTlhMTcxNmYwZTRhOTUwNzRhMDczMmUzZDFjY2JlYWE4YjA0OWUxODNkZTMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_33eac3f9681d4207b91ff5f80ca58a47",
+      "statement": "CommandRiskClassifier.assessTask elevates risk for sensitive keywords and local opencode execution, treats review_only tasks as low risk, defers to classify() when task.metadata.requested_command is present, and forces recommended_decision to deny whenever the resulting risk level is CRITICAL.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/command-risk-classifier.ts#L78-L135",
+          "version": "repo-lines-v1:sha256:b53e0cebec666a42b44c87c0d5e207e619c55ca4ac7526390df1a3c278154b57:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3ZmMzMjEyMjcwYzA3MzMxNTcxNmIzNjhmMTdlMDA1OTA1MDYxZjgyNTFkNWJkZWM0OTZlNGJmOGYyNzBhOGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI4YTIyNzEyNGQ1NmEzYmEwMGUxYWNjYzc5ZTI5YjVmMTFkYTc5ZTUyN2VmMjk1NTE1OWY2Y2ZiM2U4N2Y3YTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8966fad26a174d769e8d960263da1663",
+      "statement": "PolicyDecisionService.evaluate loads enabled approval_policies ordered by priority DESC then created_at DESC, applies the first matching policy, compiles policy match_pattern through ReDoSGuard (dangerous or invalid patterns never match), overrides to deny when the tool is in the policy's blocked_tools, and falls back to the classifier's recommended_decision when no policy matches.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/policy-decision-service.ts#L20-L52",
+          "version": "repo-lines-v1:sha256:1ce69ede6536e333a009f504fb72da97191a7fd6af511f1052b63430ddea2799:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzYjg5NmEyNWU2ZTUyOWJjNzUwZTNmOTc2N2IwMDg1Y2UwNTg1MDkxZjRjZmM1ODk4MDM5ZWVkZmU1YzA3ODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllYzRlMzJlMzBmYzNiZjkxZWQyMTg4MTdkMzQwNGFlMjY2NTJkMzMzMWU0NWNhOGU4ODU0ZWZhY2NhMjljOWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViZjY5Y2UwZTZjOGJkYTliNzA2OTE0OTllYzNiMGEzYmZkNGE4N2I4NzAxYzFjYzE5OGM1Yjc4OTVlN2QzNTkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/redos-guard.ts#L33-L37",
+          "version": "repo-lines-v1:sha256:80006396b0bb299bdcb9321f2f38a7612503c5e2ffabfc124644feb400509a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDhmNTcwZjUzOWEwYmRiNzcxOTY5ODY0NDJjYjhkNGM2N2FhZmMyMGRhZGY3ZmJjNmNmNjk3YTUyODMxNDE2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjI3NWEyNjAxN2E2NWE0ZGY3MTk1MDVlNzk5Y2I5NDA1NzBlYjJiMTY3ZDczZThkYzM1ODk5YjMyODhlNTY3YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3fde79b076b04726b78d7296949ea00c",
+      "statement": "GovernanceGateService is default-off (GOVERNANCE_GATE_ENABLED=true arms it), looks up OpenMythos benchmark evidence by task agent_id then nightly:<model> from GOVERNANCE_GATE_MODEL_MAP then metadata subject_model, returns allow when no evidence exists, and when the latest score is below the floor returns require_approval with a trend and optionally flagRetirement after three consecutive below-floor declining runs — it only ever tightens allow to require_approval and never loosens a deny or approval outcome.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L319-L339",
+          "version": "repo-lines-v1:sha256:6cb36d6b88c288b2d767b082d402192f9ab1e355ee3164283d49932bc6c40b37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhZmNjZWUyZTQ1N2IxZDg4NGEzNWI1MWQ1ZTRjZTRlYmRhNTM3YTAxYjk1OWI1YTc4ODExMWQ3MmNiYjI1NzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzZTRiYmYzYjNhOGI3NmEyYzIwM2IyYTU0NjNjMmM0YTRjNGJhY2JiMzI4NGUyMjQzOGIzOGZkZTg0Y2FiMjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUyN2JmMDIzYmZlYWJlOWY5ZjI1MzA3NGQxMjM5NjI1ZGU2MDg3NTA2NTc3YjAzOWEzMTNkNDk3Y2Q4MTJiNTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/governance-gate-service.ts#L1-L30",
+          "version": "repo-lines-v1:sha256:c895ea83a6fe536e534c332c1622324d31c62309cb1b020bea2e5b6099a5dc1a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMGIyODNhZDljODQ4ZDljOWVkZTFiN2U3MzNkOWY0YmVmNDhkOWM1MTAyM2Q2YWJiYzRkZjBjODMxZDc3NWMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/governance-gate-service.ts#L54-L141",
+          "version": "repo-lines-v1:sha256:944bb4f417abf2e88201b4d42e35d4603ca0842f020cfe08888b03e59d5d6c3e:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhNzQ1MDU1YTljOWRiYzQyNGEwODI5YzQyMmY0MThiMmFiYmNjMmJlMmNiZDdlMjA1Yjc2YTNhMWQwZDIwYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlMjVmNDEwMzc5Zjg2MDM5MDZmNWM2YTA4ZTIwY2M2YWMzOWMzNTRkNTI2ODA3MzI0ZGJhYzA2NTBhYmQ0ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_26e24cb5e3a54900910e90eef18f8b6a",
+      "statement": "GOVERNANCE_GATE_FLOOR defaults to 3, calibrated for a 0-5 score scale while observed openmythos_eval_runs.overall_score values range roughly 0-95, and floor() accepts any finite non-negative value (a former <=5 clamp was removed), so operators must set the floor explicitly when arming the gate or it only catches near-zero runs.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/governance-gate-service.ts#L58-L66",
+          "version": "repo-lines-v1:sha256:324af4c7b2317f1188924c2844e1aebd78525f50bbddd844e00425c2ee437739:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTZjYjRmZjcxMWVjYWI2ZmJhNjg5MTAzODE0NTI3NzQyYmExNTlhZmY2YjNmZmY4YzBlMjk1NjkxY2U1ZjFkNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMThiMWQ3ZWE0OTM1YmQ4OWMxMTRhZjk2YTg4NjQ0MGE5ZGY1NDI0YWVhZjRmMjk0ZDU5YTJhYjMyNGM3MjdiMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2FiNGRiZTFiZDRjNTg1MDhiOTAyNmYxYzVjYmU4MWYyODA5YTZjZjMwZDViMjI1YjZjZDYzNDFmMzk2YmVjMCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/governance-gate-service.ts#L9-L22",
+          "version": "repo-lines-v1:sha256:1290c3e01ee539cb6ff33358db2ccdb9951d14b53cf322b46efaef972badac8f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhNzJiYzVkZWY3YzAyODhlN2QwNjU3MWJkMTZmZDliNDg2Y2YxN2RmOGY0MTdkMzUxMDc5ZmI5NjY5NDJiNTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyM2NiNGMxM2Q2Nzc1OWQ1NGY3NjcxZDQ0MDM0OTcyZDA5MDNhMzlkMDhhZmFlNzNiYjk4MWViOWFiMGRjZjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViMzlhNTRmMmUwNzc5MWQxY2U3NGY1YzhhMjgwZGNkY2U2MTJkMjI5MGM1YmNjOTdjNTc0NWQ2ZWUzYzgxYjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRiNGY4YWMxZjU2N2U0OWZlMjEwNzEyZjg5MzdmODBhZjkxMmU4YjIyOWYwM2JkMmQ1MTNlMzNkZDUxOWEzY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b030f3306944a7a907a6877fccdefcc",
+      "statement": "ToolBroker.evaluateToolCall rate-limits per principal (100 requests per 60s sliding window plus 10-per-second burst, throwing RateLimitExceeded), defaults to deny for unknown tools, escalates allow to require_approval at or above require_approval_above_risk (default HIGH), blocks self-allow after more than 5 allow decisions by the same principal on a task within one hour (separation of duties), and persists every decision with an immutable dec-<uuid> decision id in tool_broker_decisions.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L124-L160",
+          "version": "repo-lines-v1:sha256:fc485fe64f2911b8329a04a4cc57c61378c51c2e333230a40b7488b606d81aca:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyMDcyYjZmMmU3NDMwZTgxOTExNWZlODQ4NDM4MjFiODYwM2FiZDQxODFhMzQyZjU0ZWI1ZTUyOTU2NWMxYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhMGFkZTU5MGViOGNhMzU4NDJmMjA2YzU2OWYwYTY4MGYwZmU1OWM0OTk3ZGY4ZjE3YjUzN2NiOTNlMmRlZjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0YjA5N2E2ZDEyNjVhZjFkZjIxMDg1ZDYwYjRmZTVhMWI0OWViOWFjYTYzYzUwZjRhZWU4ZTQyZmIxMjQxNzcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L184-L235",
+          "version": "repo-lines-v1:sha256:2c42e2b325b42c52acb1887c3fd34c61a4d24e2f5763378a32fb6a54aba9a80c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNTdiYjJmYWQyYmFiZWUwNmE5MTRjZDUxNzhkNWRiMzNiM2Y2MmNjZGEzZjRkMzEzYzYxNjgyNzllZTVkMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxZjZmYjE0MWMwNGVjYWViN2M0NTI1MzdjMzVmNzEwZjFhZmIwNjg1NTZmYTBmYWNjNDZhNGJiMjA3ZDhiMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg0MDJmNDBmNzg1MWQ5ZDE4NzNmMWI3OGFjODY0YWI3YTZkNmVkODQ3N2Y2OGY2M2U2MDA3YmU2ZmIxNzU0MWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L289-L299",
+          "version": "repo-lines-v1:sha256:8646cdc994df5b88ad445dad55c723481ed10257df91fdeda8e76242ccc309b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4YWNhMTE2ODAyOTA1NWU0YWM2ZjlmMmYwNDg5MDQzMmI1YzZhZTVjMDUxOWQ1MmMxYzA5YWQ5ZTg5YjhhNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ZWI2ZWJkNDMyZGJiY2FhYmU5NGYwMDZjMGVlMDIxYzYxZTNjMzM1YWQzOTRlYTFmNjA5YWQ4ODY0ZjI0MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNTBkNDQxYmJiM2M3MDIyY2YwNjY0YTNkZDE3M2E0NmYzZWI3NjA1NmUyYmFlNDJlOWMzYTJhNGEwZGZkY2UifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L72-L104",
+          "version": "repo-lines-v1:sha256:c0c5f4b582631787ee8c66c3eec0ddeddcfcbf5461ddb0b31302ed776ffbf31c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYzljOTU4ZGFiYTc3M2FhZTE3YjYwYWZlMzNjNjBlNTVhM2QwYzdiNzIzMWJmM2M5YTJmZjM2M2VhZjYyNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU0YzM1MzI5MDkzY2ZiYjg0MmU0NGU2M2MxZjAwMGJjYzgxZWYyZWI1ZTBhMzk0ZGViMTViYmM3ZmFhMzc5ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3YjBlYmI4ZmFiMTQ1NDAxN2JmODY2OWViYWVkZGUzYzQ5YTNjMTZjZDM3MTkxOGFlN2FiNjBjZDk5NGE4NDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8e33403144af46558ff1e356999b2474",
+      "statement": "ToolBroker capability tokens issued on allow are durable rows in tool_broker_capability_tokens scoped to category:tool, task, and principal with a 900-second default TTL; validateCapabilityToken requires tool, task, and presenting principal to all match and deletes expired tokens, and reevaluateOnParameterChange deletes the original token and re-runs the full evaluation when parameters change.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L244-L274",
+          "version": "repo-lines-v1:sha256:1d06b8a62f563668f77ee691b728f997f87d432bacc1ff6cbb535c3c3cb4ad8d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzRiM2Y5MmY1MzFjNWIzOGNiZDE2NzhmZjkwZGRjYTMxODI0NGRiYmI3ZmFhYmE0NTRkYWZiNzVlYTEyYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMjViNTY3NDAwYmQ2MjUyNDUyMzEwZDAyZjY4ZDRkZDA0MGNmNzc5YTEyMGE2M2MzMzEwZjIxYThhNGVmMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNzY0MjU2YmJkMTIxMGQ1MDg5ZTU2YjZmMDU4ODgwYmI3ZmNkNTk5NjBmN2EwODBkYTMyNmY4NDdkMTZlOGYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L301-L335",
+          "version": "repo-lines-v1:sha256:3eab3b3628c273d46848646b87b41cdd5ee8e5bc32f9e2733608cc8f6becb76a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MDkzNzA1MGIyZWJkMGEyMTkxMjE3NDcwZTg1OWY2NjBlYmM4MTQ3YmRiZDMzMTIxOTg4NmUzOTdiNWU4MGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1ODRkYmFlZDM1MGViNTczOGJlOTQxNjQ0NGJjNWE3ZjRhMjJjZmIwZTliODczOWE1OThkYWEzMTZlMTljMmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjMzUwYjA4N2ZhNWJiZDBhNDZmMGJjODJhNmQ3MWU3Njg2YmRlM2FkOTExMTI2OWQ2ZGYzNDJhNDc2YmVjZjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a8b6e4401f9c48e08760ca92dbd89a4d",
+      "statement": "CLI executors do not mediate their internal tools through ToolBroker, so constructing a broker in ExecutionEngine does not enforce per-tool policy; callers must call evaluateToolCall before execution and validateCapabilityToken at the effect boundary themselves.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L122-L124",
+          "version": "repo-lines-v1:sha256:3227ba137e7602db014c42d84fa5751ec48b1ace7b5f33feddeeb174d145eba2:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjhlYWMwOWYxZThlNDFjYjRiZThiN2VhMTQ3YTExODI2NmU5Y2ZlYWE1Yzg1YTA3NTE3Y2Y3MjRjMzlhZTU4YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzU4Y2QzMWY0YjczMzJkNjNhMGY5OWNlMGY4MDkyMmU5MGE1YjNmMmNiNTQwYTEyMjlhNTllNjJlNzkzNmRmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU3NzllZTg5Zjc1NTU0NWQ0MWYyYzA4MmFmZDE0YzlkYTJlM2ZiNzQxOWE2N2M4YmI3M2IyYWQ0M2NjOTEwZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/tool-broker.ts#L1-L17",
+          "version": "repo-lines-v1:sha256:00dacb2a5c74a50c3456149e6d205d8ba44f3233898c75e3176b376079c87305:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjExMDBkNDExYTBhODJlMDQ5OTU4OGEyNjI1ZDc1MWUwMzBjZDNjYjI4MDMwNDRmZDExYjE4ZDEwZmQxYTVkY2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ba75aca6bf124406892d363913073abf",
+      "statement": "ApprovalService.createApproval stamps a fixed 1-hour expires_at and writes the approval row plus its canonical audit entry in a single immediate transaction, so a failed audit insert rolls back the approval; WebSocket broadcast and authority-ledger/outbox records happen only after commit and broadcast failure is logged but never undoes the decision.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L38-L54",
+          "version": "repo-lines-v1:sha256:1211449ca05e02ba267d4b201ca3aa1a21591ecb80cdf2cf6202bfbec9c7a4b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4YmZlNDJlMTNhNzI0MjJkNTc3YjlhMjU4MDY0MWRhNzUyODg0MmNhZmFjZjAyZjIyMWQzZWJiYWZmNWUwMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYmRmY2ZjZmFhZjBmMTc3MmI3ZjQxZTk1NWI2OTM2YWFlYmY4MDIwM2M2MWE4ZGUyNGUyNzIzMzY2NzYzYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxOTllMzg5M2NiMjE2ZWI5ZjdiNmIyZmMxYjNjZGM2MGEzODY3NzAwYTdlMDEyMzA1ZGY1NTMzYzJlMjUxOWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L265-L273",
+          "version": "repo-lines-v1:sha256:3c36d7f92ad2b4f7dd1eb97ee3bf0bdde2c79a344e034e7c29617a24f4d85330:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzgzYTAxYTczNWEyMmY2OTg3ZDJiNDMwMDVhZTI2ZDc2ZGU1ZjllY2FlYjA2YzNjMDQyZWFkYTc2Njg2ZTZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDA3NDNhMjk2MjA4Mjk5OTkwZWRmNGI3OTVkNzY4OGE3MzgyMzI2Y2I2ODAxNDAwYmFhMjQ4YzI0OTk0ZTg3OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTFhZWQ3N2JmZjM3NmMzMTBkZjEzZmEwNDIyOTkzMmIwZGFlNjViNmNiNGY0MWJlMTg4N2M4MThmNDE5MjI3MyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L122",
+          "version": "repo-lines-v1:sha256:8c5f8c2e2f4b8840d0d5f1309402417124e157e0a22fa5bf537f4a31eb8fb282:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmMDI1NTkxZjIxMzJmMDYwNzFiZTE1MWU2NWUxOTIxNTE2YjNhZDcyN2I3Y2ZmNmI2ZmI3NDg3M2Y4ZmM3OTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e717964116004341988b90dfac2c981a",
+      "statement": "ApprovalService.decideApproval runs in an immediate transaction, rejects decisions on expired approvals (persisting expiry and audit before throwing APPROVAL_EXPIRED), enforces self-approval prevention at the data layer by throwing SELF_APPROVAL_FORBIDDEN when decidedBy equals requested_by, and refuses to process a non-pending approval twice.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L134-L212",
+          "version": "repo-lines-v1:sha256:7d258384306fd85b771a2de04405c71da8274745d7c6f8db9e546f4e7eda0cf1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyNGI3MmIxYmY1NDNmMjUwODM0N2MzYmI4YjY1MWQ2MDAzOGQ3OTM3MGJhNjA2NDJjZmJmZTBmM2RlMmQ2ZDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI2NTdlODE5OTY2NWIwN2YxMDA3MzBkZTFmNTJhNmUzMGVjY2Q4Mzg4MzZmZTUxYmZmNThmNTA1YWYzMWM1NmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdlZGEyNjI3YjQ5NTBkYmM4NWNjMDU5ZGM5YmFiMDRkNjFkMzlmZTg3ZGViMTVlNGY4MDNiMmM2NGMzYjg3NDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f9a7ea7ab40f4547bf82cf460d124fef",
+      "statement": "Approval expiry is realized lazily on read or on a decision attempt, and realize-expiry cancels a task still in awaiting_approval (guarded so tasks that moved on are untouched) with its own task_cancelled_after_approval_expiry audit row, mirroring what a denial does.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L77-L96",
+          "version": "repo-lines-v1:sha256:c164e937f2e7f52c4147a1919f5bdb7016c50ed507e2f765e6040ff6158370d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NjFhMWQ1OGNkZmM4ZGEyMTc4ZTM0NDU3MGFiZTQzZmE2YTQwZDM2NWE1M2M3NTlmZWZkYzcxZjVjODQyYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhNDE0ZjYzMGZlZWZiYTk1YzYwZmE5MjM2MzU4ZTA5ZWM3NGYxYTQ0ZWFkYWIxNzAxZTRkMGRkOWM4OTE1ODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlM2I1ZDBlZGNiNDc1N2NlYWJlYjU4OGI2NmY0MjVhYjZjODQ1ZWIyOTE1Y2IzOTE2YjNjNjRlYzVlYWRmMzUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L214-L263",
+          "version": "repo-lines-v1:sha256:3b26638133a6b3833d10c64cb662b205df351b402d8d1c4f9bf03f62f4a3ca15:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlOTBiMTVjNWFmMThiNjQ0OTBkZjVjMWVhZDcwOWM3OTJmNmE4MTQzZThjMTRlNThmMzdiYWJmOTBjYTRjZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlODczNDZhZjVjYWRiN2VmNjQyNjY3MjE0OTA5M2NhN2EwZjdjZmE2MGJlYzBkMDM3MDRmNzVkMDJhZDMwZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkMjAxNjIyNjVmYWYzMmRiMGJjOGY4Yzg1M2M2NTEwNDYxMzk3ZGM3MWY2MWRiYmE4NmE5MGViZDczYzIyMWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L42-L49",
+          "version": "repo-lines-v1:sha256:36d964102434da86788e95f33c6b30ac9e0ba93f54fd5ecaf9642639600d75fb:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiODA1ZjU5YjVmYWJmNTAwMGJiZTY3MmY1MWYwNDY5NjI4Zjg3MGM5N2RkZDNiODU2OWYzY2ZkN2U5M2VjMTUzYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUxYTM2ZTA4OWQ0MzZkZGQyZjRkODU2NzU0N2FjMWQwMjg2OWIwOTRlNzYwMzMyMjdhZjJmZDU0NmI3ZDBmOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTlhYjNiOWI0YzIxYjA0N2M2MDZhZjNjNDI3NTMyOGMyOGE0NjNhOTM5ZWYxMDBkMTRjNTlmODhhNDYwYmU4NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8ae6d686bb584f3b8663f53c468a44eb",
+      "statement": "Manual-action approvals (metadata.manual_action: true, created via POST /api/approvals) never gate or resume execution: getLatestPendingForTask with executionOnly filters them via a json_type(metadata, '$.manual_action') != 'true' predicate before LIMIT so a newer manual review cannot hide an older execution gate, and handleApprovalDecision records their decisions as evidence and returns without dispatching.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L838-L849",
+          "version": "repo-lines-v1:sha256:b72fd905c3d36c8c46d837c6a7edc7da813b0b6fbb25e7cd3ede05db4075bd06:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZWYxMDJlMTcyYzU3MjkyOTZjZDEwNmVmMTczNzdlMTNkZjJhMTFlMzA2MDU2MWFmZjQwZTk5NzgxOGQ5MTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1Y2I2NDY2YTI5MjY5NGE3OTU3ZDNiNjMyMmIzZTc3MjNiODg0YWMxODMxN2QyZTg0ZTQ4ZDBkZmM0NDE1MGQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/approvals.ts#L31-L58",
+          "version": "repo-lines-v1:sha256:88ed24f09ce14253596d82086005a4d68c475574bc4dcf46b2092471d4147208:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjMDg1NWY5MTkwZGNiZmM1ODY4MThiMGY4MTI4MWM4ZDc2Y2Y1MjMwNjhkOWE3NDVlYWU0Njk3ZjUwMjRmNTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2NmJjYjdlZDVmMWQxNjI0ODI5M2E3M2Q5NTdjYmQwOTY1NDA2ODk1ZGVhMWRkMmQ0ZGI2MWRkZDM5MGEzMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxM2M1NGI1NmYwMmJkNWFmNzU5YzhkZTMzMjhmNDc4OTNhZmFhYzI2NzQ0MDM1N2JhNzUyZTg2MmU3MjJmZDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzNWNhYTZlNjEwZGMzZTM3NThmZGY4Y2MxYWVkODU0ZDUxZTM3NmM1NGQxODU1ZmQxYmRmOTVhNDJmNTBiNzEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L50-L57",
+          "version": "repo-lines-v1:sha256:23514a01a354803b010daa5612aee86baa38e9bdd91eb68bbc677e4a317aec88:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTU4ZjI0ZTA3YjAxNGM4ODc1YTJkOTNkNzg4ZmM3ZjMxMjUyNmRmZTgzOTJmMTY0MjhjYzYyZWRjN2E1MzYwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGM4NTk2ODM4YzE1MzNmY2JhNjBhNzViMTAyYWY4OGZhZTg4MWJmN2Y1NTEzNWE0NGY4ZTNjMGFiNzVkMzA1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTYwMzJiOTVjNzNiMWIzNWY5ZDIwM2FhMzllNTI1NDMyMjgxM2VmMTRhMDkxODM3YzFiZTkzODM1MDU3ZTYxMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ0NmM4NGQ5MGM3MjgzMzM4MzIwZjZhM2ZhNjlkY2U2YjkxYmE3MTk3MTVhMGUzYWIwN2ViMDEwZDM1M2FmMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_45eba5a694da474887888e1b475995ac",
+      "statement": "Each approval lifecycle step is mirrored best-effort (never blocking the approval) to the append-only authority_events ledger with a sha-256 payload digest and per-correlation sequence, and to the event_outbox as djimitflo.approval.* events that are only enqueued when EVENT_PUBLISH_ENABLED=true and drained later to the external DJIMIT_EVENT_BUS_URL.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L124-L132",
+          "version": "repo-lines-v1:sha256:9e49b2cb1dbad1afd4843c07fcc49e75d75796a3ad99ac0a99266005fa08036c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQxYzJjZWFmNzYzOTBiNDVhOGQzZWEwMmM1ZDUyNTk3MzFmNzViOTZmODBlZTBlZmViNzAzZjI0ODAwNWU1NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGUxZmVhODJlOGM2YzdmMGUxNzhhMjU0ZTM3MTgzNTJlYzIxYzJiNjI4MmI4MTE4MmFiNDM1MzY2NjA0MTRmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGU1YzI4YmFmZjg5NTJhMThhYjMyODMxZWUyYTk1NDBjNzZmYWFkMzIyZGMyNzA2NTc1ZmEyZmY2ODc5NzljMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/authority-ledger-service.ts#L24-L41",
+          "version": "repo-lines-v1:sha256:c88da17c17ebeb998e0232004340bff5bbd671755d98566c019a4a0e2f76ee28:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzMzkyZDQyNGRmMGYxNjI3OWJkOTQ2NjY1NDMwNTg2M2ZhZjk4MGY1ZjNiMmE1N2Y1NGRkMTM2ODllNDQyNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYjhjOTI2YzI3MmQ4ZGFlYzg4NzM5NjgxY2M4YzAxZGZlYzNjZWMwMjhiYWRhOWM5MTA4OWEyMGM5MDk4ZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwZjk5ZmJhOTMzOTQ0YjY5MDU5MjA0M2YzYzI4ZDEzY2IwYzQxM2Q2NGZmNGE2YjFmNTUyOTRhMmExMDExZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/event-outbox-service.ts#L12-L23",
+          "version": "repo-lines-v1:sha256:97e0692b3971f39682a587f73df3f8da723202e4426f9858cc7e31c48860f573:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NjY0MzRmYThiNWE1MmEyNzdiZjMzNGJhNzU4MjZlNDNiNDNjMzdkYjA5NzRhYWJjYjg2MzU0NmU4NTc1YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlMzk2OTg1N2FiZjc3OTZjNmVkYzgyYTY0ZmMxMzNkN2E3ZTUwNjVmNmZmYTVkMjkyZmE1OTVjMmRiYjQ1NzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0OWRkM2QxZWU1YTY0NDUxYWJiYTIzNGU3ODRlMzhmNjkzNmJmM2FhZGFhZWVmNzZhZjYwMjk3Mzc4NjY4YmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e6f698ac7524f7290738399cbe79ec2",
+      "statement": "ExecutionEngine.hasApprovedStart treats an approval as a valid execution grant only if it matches the executor kind, is not a manual action, has not expired, and its stored executionInputHash equals a fresh sha-256 hash of the task's dispatch-relevant fields — so any edit to title, description, tags, or instructive metadata, any executor-kind change, or expiry forces a new approval before dispatch.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/execution-approval-binding.test.ts#L34-L62",
+          "version": "repo-lines-v1:sha256:fbd50963eb767db126a9db4493acd2bdc83a5716bdc7660fe2f9253061b0582b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczZGZmNDM1OTliN2ZhMGE1MWEzNWQ3YjZlY2JlODQ1ODJjZjQ5ZjM2YjVmNjgzNDU2ZWJhYWMxMWNjZmZkMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmODg2YmU1NTBhMWM5NmNiN2U4MzQyNTY3NTJmZTJmMTg1NGYzNmQ2MDlhNmNhZTUyMDM3Y2MzN2FlZDZjMzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4ZDIzMTg1ZTE2YjkxOWFhMjk5YWI5OTljZWY3MTNlZWFiOTMyNjc2ZmM2NGFiODU2YjVhMzczODNjOWM0YWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L1467-L1496",
+          "version": "repo-lines-v1:sha256:e1cc2cf8ab9216581702652fc0caa44729772cdaed17f71a0f896697d36f027c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2OTY3YjUzZWUzMjY3ODhhZDk1ZTI0NDJiZDA1Mzk2MzNlNjBiN2VlZjgyMDc1NzRjMWMyNGFkNTkzNzFjNjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0NzExM2YyZTQ3ZmJlNTQzNzhjODdmZDU4NDYwMjFmZTVhMzVhMDk3MDZjYzczODE3NDhlN2ZkYTZmNjExMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhjYjkyYjIwMjBlODdiNGRmZGNmZGI4ZjQ3NGQ1NWZiNmE4ZTk1MWQ5OGQzMjI5MTFiMjUxYzg2ZTI1YmUyMzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_726fcaa1615f4fd691a3c4b2453abd3e",
+      "statement": "executeTask revalidates admission after the runtimeConcurrencySemaphore capacity wait: the execution input hash must be unchanged and risk classification, policy evaluation, and gate assessment run again, with a tightened outcome aborting via EXECUTION_POLICY_DENIED or EXECUTION_APPROVAL_STALE rather than dispatching on stale authority; a granted approval resumes by re-entering executeTask.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L463-L513",
+          "version": "repo-lines-v1:sha256:c1062503f96f03b0ae8de5e3352a98c96309a8cc7e6a97e6a48bffba79fb38cc:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3MDIyZDE1YTIwNTY0ODUwNGVmNzMyNjliZjFmZjIzNTFhNmE5NDg1NDYxMjUxMzEzZDUyMzAwYTQyNTE2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNjBlNzczNzQzYjQwMDc5MzIxYzRlYWUxZDgwMGMzNGZmZGIwYzdkMzhkMjJjMmI5ODA1ZmQ1OTgwNWRiYzgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/execution-engine.ts#L909-L910",
+          "version": "repo-lines-v1:sha256:ed121ca2a83e3ffb7cb66f1ebc9449cd2b55aa3cb3ecaa7e29fd5fc21085512c:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWYzNTNkYzM3YWFjY2NiOGRmODExMTAxMTNhODI3NmM0OWEwNWE1MGZiMjNhOTcxZDA2MzUwZGQwYmQ2YzA4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWJlMDljZjI2ZTllMDMyMTdmODhkZjQ1ZmJhNmRkN2I1NzVkZjRhOTE4ODE4ZGQ0MGVlYzRjNTZhM2ZhMzA2YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGNmZTcyMjNhYjA4ODVjMDc0MmJjOTA5OGYxYTAwMTQwMWZmNzNkOTQ5NGNjM2U4YjIyNjBiY2RlNjZmMzNiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWIwZmQ2OTY5MTg2YTAyMjAxODBhMzBjMDgxZGQzZjI4YmNmMGU4ZGM0YWEwOGUzYjdlOTY5MGJlMDY0YjMyMyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9023ebffebf4f49b53b7429b5cf1190",
+      "statement": "AuditService is a façade over ComplianceAuditService: record() maps AuditEventCreateInput to appendEntry, deriving outcome from the event type (denied/violation to denied, failed/error to failure, else success) and defaulting actor to system, while both read and write the same audit_events table.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/audit-service.ts#L5-L35",
+          "version": "repo-lines-v1:sha256:c3c668b22077abe95500028f629f3027283236f75181b6801d163ffca812b71e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViZjAxZGJhZjQ4NDQwZjhmZGU4MTZhODY4NmM5MjhiNWEzODUxZTI5NzBhZGI3NzhkNWI5ZWIwMzAyYzRhYTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4NDZlODJkZjk4OWQyNzU4MDQxM2VkY2U4NTBjYTFmYzRhOGEzZWYyMGNhZjNmMTgzZDQwODRlN2NhNTNjNjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZjNjMTc0ZDFlZDkyNTM5MWM5ZWZkN2Q3OWUwMDM1MmEyOGM0ZjI3NmM1Nzk2MmMyNjQ5NTcwMjYyYzQyYzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1798df4f8f714cc4b7898c151764e055",
+      "statement": "ComplianceAuditService.appendEntry hash-chains every audit_events row: previousHash is the latest entry's hash (or 'genesis'), hash is sha-256 over canonical JSON with deeply sorted keys, chain_sequence is MAX+1, SQLite triggers on audit_events and the compliance_audit_log view raise errors on UPDATE/DELETE making the log append-only, and verifyChain replays the chain checking linkage and recomputed hashes.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L130-L162",
+          "version": "repo-lines-v1:sha256:df5e147a9bc9b27ef270cbeb4dafe0248340eb61cdf4bddc1753d9ddaa078c21:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyZjVjOTlmMGU4M2FiNzgyMGQ3YmNjNGViMjE1M2Y2NWRjY2Y4ODQ4M2ZmZTVkNTVlYjBkOTA4NDM3ZmJkNTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjMmRiZWM2ZGFmYzcwZDNkY2ZjMTQxN2JmNmFlZGY5ZmM5ZGVjZTk0YmVjYzc1MmI3MTNiMDc5ZTE0OWYzMjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlN2RkZjUzMDg5MWQzZWMzOTUyZTU5NjIzYzY5MzkxMWI3MTlkYzgyOGU3OTkxY2IyZmZjM2QwNDkyN2Y0YTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L53-L125",
+          "version": "repo-lines-v1:sha256:8e5733134771d3162453b65e5df315575f45bc1d0d5280f95d451ef9ff59417e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjMmRmYzQ1ZWQ0NzljOTRlOGE4M2Y1NDc1Y2Y2MTc1NzFjNDhhZjBhY2Q0MjI3NWIxY2YyOGVhNGIwOWUxZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzNmQzMmQwNDEyYTJmYmUyM2M4OTBhYjIwZmIzZTYzYjM0YjZjZTMyOGE2ZWQ4MTZkNTg4YzY2NTRmYmYyYWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4MmY3OGJiZjc1ZmNmMDkwYzYxM2IwZmQ5NjU0NDQ4YjZiMDhhMmExMTJjMWE2MmJiOTA3ZjQ0YmQwNDQyMDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L551-L599",
+          "version": "repo-lines-v1:sha256:efe2196e53f8fa88313f11c0e5dc14409bd577a0fea5c467285ad32ad51ce03a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzZjVlY2Y3NDk0ODRhYTRkYmJlOTI0NWZjMDljZGQwMjQwYTRmN2Y1NjQ4YmVmNmE3MzI3MmJlZTQ3NjQ1OGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1NWViZTgyZmUwNWEyOGQ5Y2QzM2U3ZGI3Yzc3ZjQyZjQ1Y2Y1NDA3OGRjY2MzYTNlNmYxN2U0MWM0Y2E2MzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1OGUxMjk3NzY2NzRiMTc5NDY3YzY2MTYxMzFhNGM0MTIzMjYyODQ0MDA4ZDUzNDY1MTkyNWJhNTQ5NjhmNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhOTI5M2ZkODA1NGI2ZTQ3MjQ4MzczZjM5ZjRkZDc3ODAwMTA1ZWI3NTgzNDg2ODcyNTQyODVjZDEyODJiNzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_63ba2ac3c70148a2a5471e4417287ec3",
+      "statement": "AuditAnchoringService computes a Merkle root over the compliance_audit_log hash chain and delivers it to a configured webhook or SIEM endpoint with exponential-backoff retries and a persisted dead-letter queue; a confirmed anchor means HTTP acceptance only (not WORM retention or remote verification), and retry timers are process-local.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/audit-anchoring.ts#L1-L11",
+          "version": "repo-lines-v1:sha256:bf4e9097c2b387b2c36a2dfd17503dc9df042985f5b874b237c98dd5666cfef0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwNDMwMDE1ZTY0MzgyNGVhODY3NDc4YTM0ZGIxNWE2OWE2MDUxYjdmMDM0ZDdiZTVmOWY2Y2I2N2MwMTZiM2MifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/audit-anchoring.ts#L80-L131",
+          "version": "repo-lines-v1:sha256:49274dc609ddfaef58d65523d4540b7b077a86c5a83383a4fdd327a35f66f434:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5ZTc1ZjhjMDU5NmUzZjM5N2Y1YjU5MmRjY2RhNGIxYWUwZjA1ZWQzMTQwYWU0MTUwMWM2YTIwNjcwMGFmYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2NDIxNDE5ZTNjNjA0NDJlOThkZWQ3N2JkYzliMjU2YzU2ZDY5Y2MxNTgxYzc0MGM1YjE4NDVjM2RjNjNmYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlNGE1MjllNzk3OTk4ZmE0ZDdiMWU4OWM0MDA4N2M0ODRjOTQyMDZlNWYwYzk3MDBlMTI3Nzg5NWE2NTM3MzAifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}
