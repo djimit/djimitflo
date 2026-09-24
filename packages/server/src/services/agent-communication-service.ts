@@ -133,6 +133,8 @@ export interface CommonsAgentActivity {
 export interface CommonsStats {
   threads_7d: number; open_7d: number; learnings_7d: number;
   proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
+  guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
 }
 
 export interface SocialCommons {
@@ -397,7 +399,20 @@ export class AgentCommunicationService {
         SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
         WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
     `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
-    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0 };
+    let guild: CommonsStats['guild'] = [];
+    try {
+      guild = this.db.prepare(`
+        SELECT m.from_agent AS agent, COUNT(*) AS groundings, SUM(j.decision = 'yes') AS valid,
+          SUM(s.status = 'verified') AS verified
+        FROM judgments j
+        JOIN agent_messages m ON m.id = json_extract(j.answers_json, '$.message_id')
+        LEFT JOIN self_improvements s ON s.id = json_extract(j.answers_json, '$.refinement_id')
+        WHERE j.judgment = 'commons_grounding'
+        GROUP BY m.from_agent ORDER BY verified DESC, valid DESC, groundings DESC
+      `).all() as NonNullable<CommonsStats['guild']>;
+    } catch { /* no judgments table yet */ }
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 
@@ -551,7 +566,11 @@ export class AgentCommunicationService {
       if (action === 'social.learning') {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
-        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
+        // E9g: one reflection per thread. Both learners of a thread wrote one on the same topic (prod 2026-09-24: 1,174
+        // candidates, none reviewed); the second learning still counts as a learning, it just does not add a candidate.
+        const threadHasReflection = this.db.prepare(`SELECT 1 FROM reflection_candidates rc JOIN agent_messages m ON rc.source_ref = 'message:' || m.id
+          WHERE json_extract(m.payload_json, '$.thread_id') = ? LIMIT 1`).get(threadId);
+        if (!threadHasReflection) reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
         const topicRef = this.string(original.payload.params?.topic_ref);
         if (topicRef.startsWith('proposal:')) {
           // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
@@ -565,7 +584,7 @@ export class AgentCommunicationService {
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
-            reflectionId,
+            reflectionId: reflectionId ?? undefined,
           }, true);
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;
