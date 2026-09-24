@@ -9,6 +9,7 @@ import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
  *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
@@ -516,6 +517,26 @@ export class LoopDaemon {
       try {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
         if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : 'regressed');
+      } catch { /* best-effort learning */ }
+
+      // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
+      // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
+      try {
+        const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
+        const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        // One outcome per run: two daemon passes can finish the same run.
+        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? LIMIT 1').get(skillId, run.id)) skills.recordOutcome(skillId, {
+          success: allGatesPass,
+          tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
+          durationMs: Date.now() - startedAtMs,
+          domain: loopName,
+          taskId: run.id,
+          agentId: activeMakerLease.id,
+          ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
+          evidenceRefs: [`loop_run:${run.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+        });
       } catch { /* best-effort learning */ }
 
       // 9b. Close learning loop (reflection + memory + follow-up).

@@ -147,6 +147,14 @@ describe('LoopDaemon checker dispatch', () => {
     expect(callOrder).toEqual(['executeChecker', 'verifyLoopRun']);
   });
 
+  it('records one skill outcome per run for its maker skill (loop × runtime), E10', async () => {
+    seedQualifyingGoal();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    const rows = db.prepare('SELECT skill_id, success, task_id, agent_id, domain FROM skill_outcomes').all();
+    expect(rows).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:codex', success: 0, task_id: 'run-1', agent_id: 'maker-1', domain: 'doc-drift-and-small-fix-loop' }]);
+  });
+
   it('defers verification while another pass still runs a reviewer (prod 2026-09-24: false regressed)', async () => {
     const goal = seedQualifyingGoal();
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
