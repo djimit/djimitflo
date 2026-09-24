@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
 import { resetTypesafeBreaker } from '../services/typesafe-client';
-import { DreamStateService } from '../services/dream-state-service';
+import { DreamStateService, dreamVerdict } from '../services/dream-state-service';
 
 let db: Database.Database;
 const now = () => new Date().toISOString();
@@ -105,4 +105,18 @@ it('with DREAM_STATE_PROPOSALS_ENABLED a recurring platform cause also yields on
     expect(JSON.parse(p[0].grounding_json).target).toBe('packages/server/src/services/loop-service.ts');
     expect(p[0].status).toBe('proposed'); // goes to the specialist panel like every proposal
   } finally { delete process.env.DREAM_STATE_PROPOSALS_ENABLED; }
+});
+
+it('every pass ends in exactly one verdict and one ledger row (G13a, after dream-machine)', async () => {
+  expect(dreamVerdict({ candidates: 3, classified: 3, confident: 2, consolidated: 1 }).verdict).toBe('ACCEPT');
+  expect(dreamVerdict({ candidates: 0, classified: 0, confident: 0, consolidated: 0 }).verdict).toBe('INCONCLUSIVE');
+  expect(dreamVerdict({ candidates: 2, classified: 0, confident: 0, consolidated: 0 })).toEqual({ verdict: 'INCONCLUSIVE', reason: '2 candidate(s), but the judge returned nothing' });
+  expect(dreamVerdict({ candidates: 2, classified: 2, confident: 0, consolidated: 0 }).verdict).toBe('REJECT');
+
+  process.env.TYPESAFE_FAILURE_CAUSE_MODE = 'shadow';
+  vi.stubGlobal('fetch', reply('missing_context', 0.9, 0.8));
+  const svc = new DreamStateService(db);
+  expect((await svc.replay()).verdict).toBe('REJECT');       // examined one run, no cause recurs yet
+  expect((await svc.replay()).verdict).toBe('INCONCLUSIVE'); // nothing new to examine
+  expect(svc.ledger().map((r) => [r.verdict, r.candidates, r.confident])).toEqual([['INCONCLUSIVE', 0, 0], ['REJECT', 1, 1]]);
 });
