@@ -40,7 +40,9 @@ describe('G127: Continuous Learning Loop', () => {
     const pending = `${process.env.TMPDIR || '/tmp'}/lure-loop-${Date.now()}.jsonl`;
     process.env.DENNIS_AGENT_PAPERCLIP_PENDING = pending;
     try {
-      db.prepare("INSERT INTO agents (id, name, description, status) VALUES ('quiet-a', 'Quiet A', '', 'active'), ('quiet-b', 'Quiet B', '', 'idle')").run();
+      // lapsed Commons members (had a social runtime); never-connected agents are not lured autonomously
+      const lapsed = JSON.stringify({ social_runtime: { enabled: true, last_heartbeat_at: '2026-09-13T19:33:37.041Z' } });
+      db.prepare("INSERT INTO agents (id, name, description, status, metadata) VALUES ('quiet-a', 'Quiet A', '', 'active', ?), ('quiet-b', 'Quiet B', '', 'idle', ?)").run(lapsed, lapsed);
       const first = await loop.runCycle();
       expect(first.socialExchangesStarted).toBe(0);
       expect(first.luresCast).toBe(1);

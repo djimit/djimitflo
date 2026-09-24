@@ -357,7 +357,7 @@ function LurePanel({ lures, cast }: { lures: LureStatus | null; cast: LureCast |
             <article key={lure.id} className="rounded-lg border border-border bg-background p-3">
               <div className="flex flex-wrap items-start justify-between gap-2"><p className="text-sm text-foreground">{lure.topic}</p><span className="shrink-0 text-xs" style={{ color: LURE_COLOR }}>{lure.bites}/{lure.invitees.length} gebeten</span></div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}</span>)}
+                {lure.invitees.map((invitee) => <span key={invitee.agent_id} title={invitee.bit_at ? `gebeten ${time(invitee.bit_at)}` : INVITEE_LABEL[invitee.state]} className={`rounded-full border px-2 py-0.5 text-[10px] ${INVITEE_TONE[invitee.state]}`}>{invitee.name} · {INVITEE_LABEL[invitee.state]}{invitee.reach === 'never' ? ' · nooit verbonden' : ''}</span>)}
               </div>
               <p className="mt-2 text-[10px] text-foreground-tertiary">door {lure.created_by} · {time(lure.created_at)} · verloopt {time(lure.expires_at)} · <code>{lure.topic_ref}</code></p>
             </article>
