@@ -62,3 +62,22 @@ it('J6: cost per verified change comes from the per-run skill outcomes', () => {
   expect(new ImprovementFunnelService(db2).compute().kpi).toMatchObject({ runs: 2, runSuccessRate: 0.5, tokensPerVerified: 40_000 });
   db2.close();
 });
+
+it('E11/5: calibrates each panel specialist against what the proposal became', () => {
+  const db3 = new Database(':memory:'); db3.pragma('foreign_keys = OFF'); db3.exec(schema); runMigrations(db3);
+  const now = new Date().toISOString();
+  const proposal = (id: string, status: string) => {
+    db3.prepare(`INSERT INTO specialist_panels (id, topic, question, status, risk_class, panel_json, context_json, consensus_json, metadata, created_at, updated_at) VALUES (?, 't', 'q', 'goal_created', 'low', '[]', '{}', '{}', '{}', ?, ?)`).run(`panel-${id}`, now, now);
+    db3.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, panel_id, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', 'gap_analysis', ?, 0.5, ?, ?, ?)`).run(id, status, `panel-${id}`, now, now);
+  };
+  const vote = (id: string, specialist: string, stance: string, confidence: number) => db3.prepare(`INSERT INTO specialist_reviews (id, panel_id, specialist_id, specialist_title, stance, confidence, status) VALUES (?, ?, ?, ?, ?, ?, 'submitted')`)
+    .run(`${specialist}-${id}`, `panel-${id}`, specialist, specialist, stance, confidence);
+  proposal('a', 'verified'); proposal('b', 'regressed'); proposal('c', 'needs_more_evidence');
+  vote('a', 'architect', 'support', 0.9); vote('b', 'architect', 'support', 0.9); vote('c', 'architect', 'support', 0.5);
+  vote('a', 'runtime', 'support', 0.6); vote('b', 'runtime', 'oppose', 0.7);
+  expect(new ImprovementFunnelService(db3).compute().panelCalibration).toEqual([
+    { specialist: 'architect', votes: 3, withOutcome: 2, accuracy: 0.5, meanConfidence: 0.9 },  // confident, half right
+    { specialist: 'runtime', votes: 2, withOutcome: 2, accuracy: 1, meanConfidence: 0.65 },
+  ]);
+  db3.close();
+});
