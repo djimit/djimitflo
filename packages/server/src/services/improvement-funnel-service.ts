@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { DreamStateService } from './dream-state-service';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
 
@@ -18,6 +19,8 @@ export interface ImprovementFunnel {
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
   /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
   judgments: Array<{ judgment: string; total: number; byDecision: Record<string, number>; medianLatencyMs: number | null; withOutcome: number; agreement: number | null }>;
+  /** Last dream passes, one verdict each (G13a). */
+  dreamLedger: ReturnType<DreamStateService['ledger']>;
 }
 
 /** How a judgment's subject resolves to a final outcome: true = positive, false = negative, null = still open / no outcome. */
@@ -113,6 +116,7 @@ export class ImprovementFunnelService {
     };
     return {
       judgments: this.judgmentAgreement(),
+      dreamLedger: new DreamStateService(this.db).ledger(),
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
