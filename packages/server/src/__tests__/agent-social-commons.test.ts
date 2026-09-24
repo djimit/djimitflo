@@ -44,6 +44,8 @@ describe('agent commons read-model', () => {
     expect(learning.reflection_id).toBeTruthy();
     expect(learning.creative_alternative).toBe('Blind the evaluator.');
     expect(learning.answer).not.toContain('abcdefghijklmnop');
+    // totals come from the server, not from the loaded page (prod 2026-09-24: "Reflecties 40" was the page size)
+    expect(commons.stats).toMatchObject({ threads_7d: 1, open_7d: 0, learnings_7d: 1, proposals_verified: 0 });
   });
 
   it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {

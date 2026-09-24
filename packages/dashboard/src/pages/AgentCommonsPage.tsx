@@ -190,8 +190,10 @@ export function AgentCommonsPage() {
   const constellation = useMemo(() => layoutConstellation(commons.agents, commons.threads, 320, lured), [commons, lured]);
   const active = threads.find((thread) => thread.id === selectedThread) || threads[0] || null;
   const present = commons.agents.filter((agent) => agent.present).length;
-  const learnings = commons.threads.reduce((sum, thread) => sum + thread.learnings, 0);
-  const open = commons.threads.filter((thread) => thread.stage !== 'learned').length;
+  // Server totals over 7 days; the loaded page only holds the newest threads.
+  const stats = commons.stats;
+  const learnings = stats?.learnings_7d ?? commons.threads.reduce((sum, thread) => sum + thread.learnings, 0);
+  const open = stats?.open_7d ?? commons.threads.filter((thread) => thread.stage !== 'learned').length;
   const bites = (lures?.lures || []).reduce((sum, lure) => sum + lure.bites, 0);
 
   return (
@@ -215,11 +217,24 @@ export function AgentCommonsPage() {
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <Metric label="Agents aanwezig" value={present} hint={`${commons.agents.length} aangemeld`} color={STAGE.learned.color} />
         <Metric label="Gesprekken" value={commons.total_threads ?? commons.threads.length} hint="alle social threads" color={STAGE.asked.color} />
-        <Metric label="Open vragen" value={open} hint="wachten op antwoord of les" color={STAGE.responding.color} />
-        <Metric label="Reflecties" value={learnings} hint="effect nog niet aangetoond" color={STAGE.learned.color} />
+        <Metric label="Open vragen" value={open} hint={stats ? `van ${stats.threads_7d} gesprekken, 7 dagen` : 'wachten op antwoord of les'} color={STAGE.responding.color} />
+        <Metric label="Reflecties" value={learnings} hint={stats ? 'lessen, laatste 7 dagen' : 'effect nog niet aangetoond'} color={STAGE.learned.color} />
         <Metric label="Aan de haak" value={lured.size} hint={`${bites} beet${bites === 1 ? '' : 'en'} tot nu toe`} color={LURE_COLOR} />
         <Metric label="Probes" value={lures?.probe_count || 0} hint="afgewezen toegangspogingen" color="rgb(239 68 68)" />
       </section>
+
+      {stats && (
+        <section className="rounded-xl border border-border bg-background-secondary p-4" aria-label="Opbrengst voor Djimitflo">
+          <h2 className="text-sm font-semibold text-foreground">Opbrengst voor Djimitflo</h2>
+          <p className="mt-1 text-xs text-foreground-secondary">Wat de ideeën uit de Commons werden: voorstel → gegrond (uit needs_grounding) → geverifieerd door de loop.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals}</strong> voorstellen</span><span aria-hidden>→</span>
+            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_grounded}</strong> gegrond</span><span aria-hidden>→</span>
+            <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_verified}</strong> geverifieerd</span>
+            <span className="text-xs text-foreground-tertiary">({stats.proposals_archived} gearchiveerd)</span>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-xl border border-border bg-background-secondary p-4">
         <h2 className="text-sm font-semibold text-foreground">Deelname per runtime en model</h2>
