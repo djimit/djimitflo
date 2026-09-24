@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
-import { TestGapSourceService, discoverTestGaps } from '../services/test-gap-source-service';
+import { TestGapSourceService, discoverExportGaps, discoverTestGaps } from '../services/test-gap-source-service';
 
 let db: Database.Database; let repo: string;
 const body = (n: number, exp = 'export class X {}') => `${exp}\n${'// filler\n'.repeat(n)}`;
@@ -40,4 +40,23 @@ it('creates fully grounded proposals (they pass the grounding gate), never twice
   process.env.TEST_GAP_MAX_PER_DAY = '5';
   expect(svc.run().created).toBe(1); // beta next; alpha is never proposed again
   expect(svc.run().created).toBe(0);
+});
+
+it('J3: finds exported functions of tested services that no test names, and proposes them behind TEST_GAP_EXPORTS_ENABLED', () => {
+  write('packages/server/src/services/gamma.ts', `export const gamma = 1;\nexport function covered() {}\nexport function orphanA() {}\nexport const orphanB = async (x: number) => x;\nexport const flagEnabled = (): boolean => process.env.FLAG === 'true';\n${'// filler\n'.repeat(40)}`); // flag readers are skipped
+  write('packages/server/src/__tests__/gamma.test.ts', "import { gamma, covered } from '../services/gamma';\ncovered();\n");
+  expect(discoverExportGaps(repo)).toEqual([expect.objectContaining({ service: 'gamma', kind: 'exports', exports: ['orphanA', 'orphanB'],
+    testPath: 'packages/server/src/__tests__/gamma.exports.test.ts' })]);
+  process.env.TEST_GAP_MAX_PER_DAY = '5'; process.env.TEST_GAP_MAX_IN_FLIGHT = '5';
+  const svc = new TestGapSourceService(db);
+  expect(svc.run().created).toBe(2); // alpha + beta only: the export lane is off by default
+  process.env.TEST_GAP_EXPORTS_ENABLED = 'true';
+  try {
+    expect(svc.run().created).toBe(1);
+    const row = db.prepare("SELECT title, description, evidence_refs_json FROM self_improvements WHERE title LIKE 'Test untested exports%'").get() as Record<string, string>;
+    expect(row.title).toBe('Test untested exports of services/gamma.ts');
+    expect(row.description).toContain('src/__tests__/gamma.exports.test.ts');
+    expect(row.evidence_refs_json).toContain('test-gap:gamma#exports');
+    expect(svc.run().created).toBe(0); // never twice
+  } finally { delete process.env.TEST_GAP_EXPORTS_ENABLED; delete process.env.TEST_GAP_MAX_IN_FLIGHT; }
 });

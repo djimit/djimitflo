@@ -566,7 +566,11 @@ export class AgentCommunicationService {
       if (action === 'social.learning') {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
-        reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
+        // E9g: one reflection per thread. Both learners of a thread wrote one on the same topic (prod 2026-09-24: 1,174
+        // candidates, none reviewed); the second learning still counts as a learning, it just does not add a candidate.
+        const threadHasReflection = this.db.prepare(`SELECT 1 FROM reflection_candidates rc JOIN agent_messages m ON rc.source_ref = 'message:' || m.id
+          WHERE json_extract(m.payload_json, '$.thread_id') = ? LIMIT 1`).get(threadId);
+        if (!threadHasReflection) reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
         const topicRef = this.string(original.payload.params?.topic_ref);
         if (topicRef.startsWith('proposal:')) {
           // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
@@ -580,7 +584,7 @@ export class AgentCommunicationService {
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
-            reflectionId,
+            reflectionId: reflectionId ?? undefined,
           }, true);
           if (proposal) {
             message.payload.params.improvement_id = proposal.id;
