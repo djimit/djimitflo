@@ -133,6 +133,8 @@ export interface CommonsAgentActivity {
 export interface CommonsStats {
   threads_7d: number; open_7d: number; learnings_7d: number;
   proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+  /** G10i: reputation from outcomes — per agent, groundings delivered, how many passed the code check, how many got verified. */
+  guild?: Array<{ agent: string; groundings: number; valid: number; verified: number }>;
 }
 
 export interface SocialCommons {
@@ -397,7 +399,20 @@ export class AgentCommunicationService {
         SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
         WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
     `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
-    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0 };
+    let guild: CommonsStats['guild'] = [];
+    try {
+      guild = this.db.prepare(`
+        SELECT m.from_agent AS agent, COUNT(*) AS groundings, SUM(j.decision = 'yes') AS valid,
+          SUM(s.status = 'verified') AS verified
+        FROM judgments j
+        JOIN agent_messages m ON m.id = json_extract(j.answers_json, '$.message_id')
+        LEFT JOIN self_improvements s ON s.id = json_extract(j.answers_json, '$.refinement_id')
+        WHERE j.judgment = 'commons_grounding'
+        GROUP BY m.from_agent ORDER BY verified DESC, valid DESC, groundings DESC
+      `).all() as NonNullable<CommonsStats['guild']>;
+    } catch { /* no judgments table yet */ }
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0,
+      guild: guild.map((g) => ({ ...g, valid: g.valid ?? 0, verified: g.verified ?? 0 })) };
     } catch { return null; } // minimal schemas (no self_improvements) still get the overview
   }
 

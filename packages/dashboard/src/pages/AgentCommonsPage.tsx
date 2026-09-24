@@ -233,6 +233,12 @@ export function AgentCommonsPage() {
             <span className="rounded bg-background px-2 py-1"><strong>{stats.proposals_verified}</strong> geverifieerd</span>
             <span className="text-xs text-foreground-tertiary">({stats.proposals_archived} gearchiveerd)</span>
           </div>
+          {!!stats.guild?.length && (
+            <table className="mt-3 w-full text-xs" aria-label="Groundings per agent">
+              <thead><tr className="text-left text-foreground-tertiary"><th className="py-1">Agent</th><th>Groundings</th><th>Geldig</th><th>Geverifieerd</th></tr></thead>
+              <tbody>{stats.guild.map((g) => <tr key={g.agent} className="border-t border-border"><td className="py-1 font-mono">{g.agent}</td><td>{g.groundings}</td><td>{g.valid}</td><td>{g.verified}</td></tr>)}</tbody>
+            </table>
+          )}
         </section>
       )}
 

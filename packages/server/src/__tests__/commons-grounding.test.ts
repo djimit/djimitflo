@@ -87,4 +87,6 @@ it('end to end: a grounding round asks for TARGET/TEST and its learning makes no
   expect(learning.message.payload.params.improvement_id).toBe('p-1');
   expect(db.prepare('SELECT COUNT(*) AS n FROM self_improvements').get()).toEqual({ n: 1 }); // no proposal about the proposal
   expect(db.prepare("SELECT decision FROM judgments WHERE judgment = 'commons_grounding'").get()).toEqual({ decision: 'yes' });
+  // G10i: reputation from outcomes, per agent
+  expect(comms.listSocialCommons().stats?.guild).toEqual([{ agent: 'agent-a', groundings: 1, valid: 1, verified: 0 }]);
 });
