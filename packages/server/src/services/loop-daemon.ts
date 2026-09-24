@@ -9,6 +9,7 @@ import { KnowledgeRuntimeService } from './knowledge-runtime-service';
 import { LoopEventService } from './loop-event-service';
 import { CommonsProposalReviewService } from './commons-proposal-review-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { LoopDraftPrService } from './loop-draft-pr-service';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
@@ -548,6 +549,8 @@ export class LoopDaemon {
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
         try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
+        // G4: hand verified work to a human as a draft PR (default off; records draft_pr_failed on any problem).
+        try { await new LoopDraftPrService(this.db).openForRun(run.id); } catch { /* never fail the daemon over a PR */ }
         try {
           const knowledge = new KnowledgeRuntimeService(this.db);
           const closure = knowledge.closeLoop({ loop_run_id: run.id });
