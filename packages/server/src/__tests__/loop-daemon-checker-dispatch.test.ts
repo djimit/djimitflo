@@ -168,6 +168,24 @@ describe('LoopDaemon checker dispatch', () => {
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 
+  it('E12: with LOOP_BANDIT_ENABLED the chosen maker species is written onto the prepared maker lease', async () => {
+    seedQualifyingGoal();
+    db.pragma('foreign_keys = OFF');
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'prepared', '{}')").run();
+    const skills = new (await import('../services/skill-evolution-engine')).SkillEvolutionEngine(db);
+    for (let i = 0; i < 25; i++) skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:opencode', { success: true, tokensUsed: 0, durationMs: 1, domain: 'd', model: 'm2' });
+    for (let i = 0; i < 25; i++) skills.recordOutcome('loop-maker:doc-drift-and-small-fix-loop:codex', { success: false, tokensUsed: 0, durationMs: 1, domain: 'd' });
+    (stubLoops as unknown as { assertRuntimeAvailable: () => void }).assertRuntimeAvailable = () => undefined;
+    process.env.LOOP_BANDIT_ENABLED = 'true'; process.env.LOOP_BANDIT_SPECIES = 'codex,opencode@m2';
+    try {
+      const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+      await runOneTick(daemon);
+      const lease = db.prepare("SELECT runtime, json_extract(metadata, '$.model') AS model FROM worker_leases WHERE id = 'maker-1'").get();
+      expect(lease).toEqual({ runtime: 'opencode', model: 'm2' });
+      expect(db.prepare("SELECT event_type FROM loop_events WHERE event_type = 'bandit_selected'").get()).toEqual({ event_type: 'bandit_selected' });
+    } finally { delete process.env.LOOP_BANDIT_ENABLED; delete process.env.LOOP_BANDIT_SPECIES; }
+  });
+
   it('defers verification while another pass still runs a reviewer (prod 2026-09-24: false regressed)', async () => {
     const goal = seedQualifyingGoal();
     process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
