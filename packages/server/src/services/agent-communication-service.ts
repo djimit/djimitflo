@@ -253,7 +253,7 @@ export class AgentCommunicationService {
     const question = (from: string, to: string, context: string) => this.send({
       from, to, type: 'question', action: 'social.question', context, evidence, threadId: correlationId,
       epistemicRole: 'question', ttl: 86_400,
-      params: { topic, topic_ref: topicRef, ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
+      params: { topic, topic_ref: topicRef, ...(picked && 'signature' in picked ? { failure_signature: (picked as { signature: string }).signature } : {}), ecosystem_component: ecosystemComponent, ecosystem_context: ecosystemContext, ...(evidencePack ? { evidence_pack: evidencePack } : {}), effect_scope: 'isolated', facilitated_by: facilitatorTrigger === 'operator' ? 'operator-socialize-route' : 'continuous-learning-loop', board_summary: context },
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
@@ -402,23 +402,33 @@ export class AgentCommunicationService {
   }
 
   /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
-  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[] } | null {
+  private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[]; signature: string } | null {
     try {
-      const row = this.db.prepare(`
+      const rows = this.db.prepare(`
         SELECT j.subject_id AS run_id, j.reason, r.loop_name, r.gates_json FROM judgments j JOIN loop_runs r ON r.id = j.subject_id
         WHERE j.judgment = 'failure_cause' AND j.subject_type = 'loop_run' AND j.created_at >= ?
           AND ('run:' || j.subject_id) NOT IN (
             SELECT json_extract(payload_json, '$.params.topic_ref') FROM agent_messages
             WHERE json_extract(payload_json, '$.action') = 'social.question' AND json_type(payload_json, '$.params.topic_ref') = 'text')
-        ORDER BY j.created_at DESC LIMIT 1
-      `).get(new Date(Date.now() - 7 * 86_400_000).toISOString()) as { run_id: string; reason: string | null; loop_name: string; gates_json: string | null } | undefined;
-      if (!row) return null;
-      let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
-      try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
-      const failed = gates.filter((g) => g.status === 'fail').map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
-      const topicRef = `run:${row.run_id}`;
-      const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
-      return { topic, topicRef, evidence: [topicRef] };
+        ORDER BY j.created_at DESC LIMIT 20
+      `).all(new Date(Date.now() - 7 * 86_400_000).toISOString()) as Array<{ run_id: string; reason: string | null; loop_name: string; gates_json: string | null }>;
+      // G10e: one thread per kind of failure per day. Prod 2026-09-24: four threads on the same blocked-at-checker failure,
+      // differing only in the confidence number. Kind = loop + failed gates + cause.
+      const seen = this.db.prepare(`SELECT 1 FROM agent_messages WHERE json_extract(payload_json, '$.action') = 'social.question'
+        AND json_extract(payload_json, '$.params.failure_signature') = ? AND timestamp >= ? LIMIT 1`);
+      const since = new Date(Date.now() - 86_400_000).toISOString();
+      for (const row of rows) {
+        let gates: Array<{ name?: string; status?: string; evidence?: string }> = [];
+        try { gates = JSON.parse(row.gates_json || '[]'); } catch { /* none */ }
+        const failedGates = gates.filter((g) => g.status === 'fail');
+        const signature = `${row.loop_name}|${failedGates.map((g) => g.name).sort().join('+')}|${/cause=([a-z_]+)/.exec(row.reason ?? '')?.[1] ?? 'unknown'}`;
+        if (seen.get(signature, since)) continue;
+        const failed = failedGates.map((g) => `${g.name}: ${String(g.evidence ?? '').slice(0, 160)}`).join('; ') || 'none recorded';
+        const topicRef = `run:${row.run_id}`;
+        const topic = this.cleanOptional(`A ${row.loop_name} run failed (${row.reason ?? 'cause unknown'}). Failed gates: ${failed}. What is the smallest change to Djimitflo that would prevent this, and how would we check that it worked?`, 1_000);
+        return { topic, topicRef, evidence: [topicRef], signature };
+      }
+      return null;
     } catch { return null; } // judgments table may not exist on older instances
   }
 
