@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
@@ -29,6 +32,24 @@ it('collects only failed/blocked runs, with failed gates and worker verdicts as 
   expect(run.failed_gates).toEqual(['checker_verdict: insufficient_evidence: No diff available']);
   expect(run.workers[0].verdict).toBe('insufficient_evidence');
   expect((pending[0].state as { run: { events: string[] } }).run.events).toEqual(['checker_dispatch_failed: Automated checker dispatch failed: CHECKER_LEASE_NOT_FOUND']);
+});
+
+it('shows a failed worker its own error (redacted stderr tail, exit status) and skips runs that never had a worker', () => {
+  const err = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dream-')), 'stderr.log');
+  const key = 'ghp_' + 'x'.repeat(36);
+  fs.writeFileSync(err, `${'noise '.repeat(2000)}\nError: EACCES: permission denied, open '/data/loop-worktrees/a/.git/index' token=${key}\n`);
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('r-maker', 'doc-drift-and-small-fix-loop', 'closed', 'blocked', '[]', ?, ?)`).run(now(), now());
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('l2', 'r-maker', 'maker', 'opencode', 'failed', ?, ?, ?)`)
+    .run(JSON.stringify({ exit_status: 1, timed_out: false, stderr_path: err }), now(), now());
+  db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES ('r-empty', 'doc-drift-and-small-fix-loop', 'closed', 'blocked', ?, ?, ?)`)
+    .run(JSON.stringify([{ name: 'artifact_minimums', status: 'pending' }]), now(), now());
+  const pending = new DreamStateService(db).pendingFailures();
+  expect(pending.map((p) => p.id).sort()).toEqual(['r-blocked', 'r-maker']);
+  const maker = (pending.find((p) => p.id === 'r-maker')!.state as { run: { workers: Array<Record<string, unknown>> } }).run.workers[0];
+  expect(maker.exit_status).toBe(1);
+  expect(maker.stderr_tail).toContain('EACCES: permission denied');
+  expect(maker.stderr_tail).not.toContain(key);
+  expect(String(maker.stderr_tail).length).toBeLessThanOrEqual(600);
 });
 
 it('off by default; in shadow it classifies each failed run once', async () => {
