@@ -106,3 +106,13 @@ it('failure and grounding topics alternate, so a failure backlog cannot starve g
   const refs = [0, 1, 2].map(() => comms.socialize(0).messages[0].payload.params.topic_ref as string);
   expect(refs.map((r) => r.split(':')[0])).toEqual(['run', 'proposal', 'run']);
 });
+
+it('K3: wiki pages that cite a candidate file join the evidence and the question', () => {
+  write('openwiki/operations/hygiene.md', '---\ntype: concept\nsources:\n  - id: s1\n    resource: repo://packages/server/src/services/queue-hygiene-service.ts\n---\n# Hygiene\n');
+  write('openwiki/concepts/other.md', '---\nsources:\n  - id: s2\n    resource: repo://packages/server/src/services/other.ts\n---\n# Other\n');
+  park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
+  const t = pickGroundingTopic(db, root)!;
+  expect(t.evidence).toContain('wiki:openwiki/operations/hygiene.md');
+  expect(t.evidence).not.toContain('wiki:openwiki/concepts/other.md');
+  expect(t.contexts[0]).toContain('The project wiki explains them in: openwiki/operations/hygiene.md');
+});
