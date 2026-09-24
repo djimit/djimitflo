@@ -129,9 +129,20 @@ export interface CommonsAgentActivity {
   status: string;
 }
 
+export interface CommonsStats {
+  threads_7d: number; open_7d: number; learnings_7d: number;
+  proposals: number; proposals_grounded: number; proposals_verified: number; proposals_archived: number;
+}
+
 export interface SocialCommons {
   /** Threads that exist in total; `threads` only carries the newest ones. */
   total_threads?: number;
+  /**
+   * Totals over all threads of the last 7 days, not over the loaded page (prod 2026-09-24: the page summed learnings over the
+   * newest 40 threads, so "Reflecties 40" and "Open vragen 0" were artefacts of the page size). The funnel shows what Commons
+   * ideas became: proposal → out of needs_grounding → verified.
+   */
+  stats?: CommonsStats;
   agents: Array<{
     id: string; name: string; status: string; capabilities: string[]; model: string;
     runtime: string | null; last_heartbeat_at: string | null; present: boolean;
@@ -354,6 +365,7 @@ export class AgentCommunicationService {
     return {
       agents,
       total_threads: totalThreads,
+      stats: this.commonsStats() ?? undefined,
       threads: [...threads.values()].sort((left, right) => right.last_activity_at.localeCompare(left.last_activity_at)).slice(0, Math.max(1, limit))
         .map((thread) => ({ ...thread, messages: thread.messages.map((m) => applyPiiPass(m, FEDERATION_PII_MODE).payload as SocialMessage) })),
     };
@@ -364,6 +376,27 @@ export class AgentCommunicationService {
    * then the newest candidate lesson nobody has challenged yet, then a rotating
    * ecosystem question so consecutive rounds do not repeat the same prompt.
    */
+  commonsStats(): CommonsStats | null {
+    try {
+    const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const t = this.db.prepare(`
+      SELECT COUNT(*) AS threads, SUM(learned = 0) AS open, COALESCE(SUM(learned), 0) AS learnings FROM (
+        SELECT json_extract(payload_json, '$.thread_id') AS tid, SUM(json_extract(payload_json, '$.action') = 'social.learning') AS learned
+        FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') IN ('social.question', 'social.response', 'social.learning')
+          AND json_type(payload_json, '$.thread_id') = 'text' AND timestamp >= ?
+        GROUP BY tid)
+    `).get(since) as { threads: number; open: number | null; learnings: number };
+    const p = this.db.prepare(`
+      SELECT COUNT(*) AS n, SUM(status NOT IN ('needs_grounding', 'archived')) AS grounded, SUM(status = 'verified') AS verified, SUM(status = 'archived') AS archived
+      FROM self_improvements WHERE id IN (
+        SELECT json_extract(payload_json, '$.params.improvement_id') FROM agent_messages
+        WHERE json_extract(payload_json, '$.action') = 'social.learning' AND json_type(payload_json, '$.params.improvement_id') = 'text')
+    `).get() as { n: number; grounded: number | null; verified: number | null; archived: number | null };
+    return { threads_7d: t.threads, open_7d: t.open ?? 0, learnings_7d: t.learnings, proposals: p.n, proposals_grounded: p.grounded ?? 0, proposals_verified: p.verified ?? 0, proposals_archived: p.archived ?? 0 };
+    } catch { return null; } // minimal schemas (no self_improvements) still get the overview
+  }
+
   /** Newest dream-state failure (failure_cause judgment, last 7 days) whose run has not been discussed yet. */
   private pickFailureTopic(): { topic: string; topicRef: string; evidence: string[] } | null {
     try {
