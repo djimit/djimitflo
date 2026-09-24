@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import { boardMessageFingerprint, boardProtocolError, boardReplyTargetError, type BoardEpistemicRole } from './board-protocol';
 import { SelfImprovementService } from './self-improvement-service';
+import { commonsGroundingAgendaEnabled, pickGroundingTopic, recordCommonsGrounding } from './commons-grounding';
 import { AgentAssuranceService } from './agent-assurance-service';
 import { redactSecrets } from './secret-patterns';
 import { applyPiiPass } from './federation/pii-pass';
@@ -221,7 +222,9 @@ export class AgentCommunicationService {
     }
 
     // Plan E9e: a real, undiscussed failure from the dream state comes before self-generated interests.
-    const failure = process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null;
+    const failure = (process.env.COMMONS_AGENDA_FROM_FAILURES === 'true' ? this.pickFailureTopic() : null)
+      // G10: then a parked proposal that needs a target file and a test, with code-search candidates as evidence.
+      ?? (commonsGroundingAgendaEnabled() ? pickGroundingTopic(this.db) : null);
     // Agent interests are messages, not a second task queue. Discuss each once before recycling gaps.
     const interest = failure ? undefined : this.db.prepare(`
       SELECT m.id, m.payload_json FROM agent_messages m
@@ -254,9 +257,10 @@ export class AgentCommunicationService {
       facilitatorCommit: process.env.DJIMITFLO_COMMIT_SHA || '',
       facilitatorTrigger,
     });
+    const contexts = picked && 'contexts' in picked ? (picked as { contexts: [string, string] }).contexts : null;
     const messages = this.db.transaction(() => [
-      question(firstId, secondId, `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
-      question(secondId, firstId, `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
+      question(firstId, secondId, contexts?.[0] ?? `How can your ${secondPerspective} perspective challenge "${topic}"? Share evidence, one uncertainty and a falsifiable next step.`),
+      question(secondId, firstId, contexts?.[1] ?? `What creative alternative would your ${firstPerspective} perspective test for "${topic}"? Build on or dispute the peer idea, suggest an interest for a future round, and include evidence and a stop condition.`),
     ])();
     return { status: 'started', correlation_id: correlationId, topic, participants: [firstId, secondId], messages, reason: null };
   }
@@ -537,8 +541,16 @@ export class AgentCommunicationService {
         this.db.prepare("UPDATE agent_messages SET status = 'read' WHERE id = ?").run(message.id);
         message.status = 'read';
         reflectionId = new AgentAssuranceService(this.db).createReflection({ source_type: 'trace', source_ref: `message:${message.id}`, lesson: answer, evidence_refs: evidence, metadata: { correlation_id: threadId, agent_id: agentId, peer_agent_id: original.from, empirical_status: 'UNDETERMINED', promotion_allowed: false, actual_runtime: true, ecosystem_component: ecosystemComponent, falsifiable_next_step: nextStep, uncertainty, stop_condition: stopCondition } }).id;
-        // Proposal-review threads must not spawn proposals about proposals.
-        if (improvement && !this.string(original.payload.params?.topic_ref).startsWith('improvement:')) {
+        const topicRef = this.string(original.payload.params?.topic_ref);
+        if (topicRef.startsWith('proposal:')) {
+          // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
+          const parkedId = topicRef.slice('proposal:'.length);
+          let refinementId: string | null = null;
+          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
+          message.payload.params.improvement_id = refinementId ?? parkedId;
+          this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
+        } else if (improvement && !topicRef.startsWith('improvement:')) {
+          // Proposal-review threads must not spawn proposals about proposals.
           const [proposal] = new SelfImprovementService(this.db).generateFromReflection({
             whatFailed: [], lessonsLearned: [`Unverified peer proposal: ${answer}`, `Uncertainty: ${uncertainty}`],
             proposedImprovements: [`${ecosystemComponent}: ${improvement}\nTest: ${nextStep}\nStop condition: ${stopCondition}`],
