@@ -23,6 +23,7 @@ const RUNNING_GOAL_STALE_HOURS = 24;
 const BLOCKED_GOAL_STALE_DAYS = 7;
 const INTERRUPTED_RUN_STALE_HOURS = 48;
 const PLANNING_RUN_STALE_HOURS = 24;
+const ORPHAN_RUNNING_RUN_HOURS = 6;
 
 export function queueHygieneEnabled(): boolean {
   return process.env.QUEUE_HYGIENE_ENABLED === 'true';
@@ -105,6 +106,14 @@ export class QueueHygieneService {
       UPDATE loop_runs SET status = 'failed', metadata = ${tag('stale_planning')}, updated_at = ?
       WHERE status = 'planning' AND updated_at < ?
     `).run(iso, iso, ago(PLANNING_RUN_STALE_HOURS * H)).changes;
-    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning };
+    // A 'running' run whose workers are all finished (none prepared/running) is orphaned — e.g. its leases were cancelled
+    // (prod 2026-09-24: 3978a793 stayed 'running' 10 h after both leases were cancelled). A run waiting for an approval
+    // still has a prepared lease, so it is never touched.
+    const runsOrphaned = this.db.prepare(`
+      UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('orphan_running')}, updated_at = ?
+      WHERE status = 'running' AND updated_at < ?
+        AND NOT EXISTS (SELECT 1 FROM worker_leases l WHERE l.loop_run_id = loop_runs.id AND l.status IN ('prepared', 'running'))
+    `).run(iso, iso, ago(ORPHAN_RUNNING_RUN_HOURS * H)).changes;
+    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning + runsOrphaned };
   }
 }
