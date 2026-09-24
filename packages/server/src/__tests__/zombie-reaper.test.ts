@@ -38,3 +38,14 @@ it('closes stale interrupted/planning runs and parks the proposal of a reaped go
   expect(status('self_improvements', 'p1')).toBe('needs_more_evidence');
   expect(svc.sweepZombies(NOW)).toEqual({ goalsReaped: 0, runsReaped: 0 });
 });
+it('cancels a running run whose workers are all finished, never one with a prepared or running worker', () => {
+  const lease = (id: string, runId: string, st: string) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES (?, ?, 'maker', 'opencode', ?)").run(id, runId, st);
+  goal('g', 'decomposed', 1);
+  run('r-orphan', 'g', 'running', 10); lease('l1', 'r-orphan', 'cancelled');
+  run('r-waiting', 'g', 'running', 10); lease('l2', 'r-waiting', 'prepared'); // awaiting approval
+  run('r-busy', 'g', 'running', 10); lease('l3', 'r-busy', 'running');
+  run('r-young', 'g', 'running', 2); lease('l4', 'r-young', 'cancelled');
+  expect(new QueueHygieneService(db).sweepZombies(NOW).runsReaped).toBe(1);
+  expect(status('loop_runs', 'r-orphan')).toBe('cancelled');
+  for (const id of ['r-waiting', 'r-busy', 'r-young']) expect(status('loop_runs', id)).toBe('running');
+});
