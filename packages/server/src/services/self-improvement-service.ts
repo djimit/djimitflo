@@ -344,6 +344,22 @@ export class SelfImprovementService {
     });
   }
 
+  /**
+   * G10: a Commons thread named the file and the test for a parked (needs_grounding) proposal, checked in code
+   * (commons-grounding.ts). One grounded refinement per original, which goes to the specialist panel like any proposal.
+   */
+  groundFromCommons(parkedId: string, grounding: { target: string; acceptanceTest: string }, evidenceRef: string): ImprovementProposal | null {
+    const parked = this.getImprovement(parkedId);
+    if (parked.status !== 'needs_grounding' || parked.refinedAt || parked.refinedFromId) return null;
+    return this.createProposal({
+      type: parked.type, title: parked.title.slice(0, 80), description: parked.description,
+      rationale: `${parked.rationale}\n\nGrounded by Agent Commons: target ${grounding.target}, test ${grounding.acceptanceTest}.`,
+      source: 'refinement', priority: parked.priority,
+      evidenceRefs: [...parked.evidenceRefs, `refinement-of:${parkedId}`, evidenceRef],
+      refinedFromId: parkedId, grounding,
+    });
+  }
+
   /** Parked proposals eligible for exactly one refinement attempt, oldest first. */
   getRefinementEligible(limit: number): ImprovementProposal[] {
     const normalizedLimit = Math.max(1, Math.min(Number(limit) || 10, 50));
