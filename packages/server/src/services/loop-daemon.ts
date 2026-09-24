@@ -11,6 +11,7 @@ import { CommonsProposalReviewService } from './commons-proposal-review-service'
 import { SelfImprovementService } from './self-improvement-service';
 import { LoopDraftPrService } from './loop-draft-pr-service';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
+import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
 import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
 /** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
@@ -408,6 +409,24 @@ export class LoopDaemon {
       const makerLease = makerAlreadyDone ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
+      }
+
+      // 5b. E12 (LOOP_BANDIT_ENABLED): the maker species is chosen by outcome — Thompson over skill_outcomes, challengers
+      // capped until they have enough runs. Never overrides the operator's LOOP_DAEMON_MAKER_RUNTIME.
+      if (!makerAlreadyDone && !makerRuntime) {
+        const choice = chooseSpecies(this.db, loopName, banditSpecies());
+        if (choice) {
+          try {
+            this.loops.assertRuntimeAvailable(choice.species.runtime);
+            this.db.prepare(`UPDATE worker_leases SET runtime = ?, metadata = json_set(json_remove(COALESCE(metadata, '{}'), '$.model'), '$.bandit', json(?))
+              WHERE id = ? AND status = 'prepared'`).run(choice.species.runtime, JSON.stringify({ reason: choice.reason, posterior: choice.posterior }), makerLease.id);
+            if (choice.species.model) this.db.prepare(`UPDATE worker_leases SET metadata = json_set(metadata, '$.model', ?) WHERE id = ?`).run(choice.species.model, makerLease.id);
+            (makerLease as { runtime: string }).runtime = choice.species.runtime;
+            new LoopEventService(this.db).recordEvent(run.id, 'bandit_selected', 'info', `Maker species ${speciesKey(choice.species)}: ${choice.reason}`, { posterior: choice.posterior });
+          } catch (error) {
+            try { new LoopEventService(this.db).recordEvent(run.id, 'bandit_skipped', 'warning', `Bandit choice ${speciesKey(choice.species)} not applied: ${error instanceof Error ? error.message : String(error)}`, {}); } catch { /* logging */ }
+          }
+        }
       }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
