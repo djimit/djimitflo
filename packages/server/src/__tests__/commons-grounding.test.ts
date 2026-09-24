@@ -90,3 +90,19 @@ it('end to end: a grounding round asks for TARGET/TEST and its learning makes no
   // G10i: reputation from outcomes, per agent
   expect(comms.listSocialCommons().stats?.guild).toEqual([{ agent: 'agent-a', groundings: 1, valid: 1, verified: 0 }]);
 });
+
+it('failure and grounding topics alternate, so a failure backlog cannot starve grounding', () => {
+  process.env.COMMONS_AGENDA_GROUNDING = 'true'; process.env.COMMONS_AGENDA_FROM_FAILURES = 'true';
+  park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
+  const now = new Date().toISOString();
+  for (const id of ['r1', 'r2']) {
+    db.prepare(`INSERT INTO loop_runs (id, loop_name, mode, status, gates_json, created_at, updated_at) VALUES (?, 'doc-drift-and-small-fix-loop', 'closed', 'blocked', ?, ?, ?)`)
+      .run(id, JSON.stringify([{ name: id === 'r1' ? 'checker_verdict' : 'maker_completion', status: 'fail' }]), now, now);
+    db.prepare(`INSERT INTO judgments (id, judgment, subject_type, subject_id, state_hash, mode, decision, reason, created_at) VALUES (?, 'failure_cause', 'loop_run', ?, 'h', 'shadow', 'yes', 'cause=infra conf=0.9 platform_fault=0.9', ?)`).run(`j-${id}`, id, now);
+  }
+  db.prepare(`INSERT INTO agents (id, name, description, status, capabilities) VALUES ('agent-a', 'A', 'a', 'active', '["security"]'), ('agent-b', 'B', 'b', 'active', '["ux"]')`).run();
+  const comms = new AgentCommunicationService(db);
+  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  const refs = [0, 1, 2].map(() => comms.socialize(0).messages[0].payload.params.topic_ref as string);
+  expect(refs.map((r) => r.split(':')[0])).toEqual(['run', 'proposal', 'run']);
+});
