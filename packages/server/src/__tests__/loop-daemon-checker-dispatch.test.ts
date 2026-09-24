@@ -146,6 +146,17 @@ describe('LoopDaemon checker dispatch', () => {
     await runOneTick(daemon);
     expect(callOrder).toEqual(['executeChecker', 'verifyLoopRun']);
   });
+
+  it('defers verification while another pass still runs a reviewer (prod 2026-09-24: false regressed)', async () => {
+    const goal = seedQualifyingGoal();
+    process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED = 'true';
+    db.pragma('foreign_keys = OFF'); // the stubbed run has no loop_runs row
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES ('sec-1', 'run-1', 'security_checker', 'opencode', 'running')").run();
+    const daemon = new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 });
+    await runOneTick(daemon);
+    expect(stubLoops.verifyLoopRun).not.toHaveBeenCalled();
+    expect((db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string }).status).not.toBe('failed');
+  });
 });
 
 describe('checker verdict extraction from an opencode event stream', () => {

@@ -131,6 +131,14 @@ describe('G71: Self Improvement', () => {
       expect(improvement.getImprovement('a').status).toBe('verified');
       expect(improvement.getImprovement('c').status).toBe('applied');
     });
+
+    it('lets a later verified outcome override a premature regressed, not the reverse', () => {
+      seed('r', 'regressed'); seed('v', 'verified');
+      expect(improvement.recordOutcome('r', 'verified')).toBe(true);
+      expect(improvement.recordOutcome('v', 'regressed')).toBe(false);
+      expect(improvement.getImprovement('r').status).toBe('verified');
+      expect(improvement.getImprovement('v').status).toBe('verified');
+    });
   });
 
   it('gets proposed improvements', () => {
