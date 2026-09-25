@@ -31,6 +31,7 @@ import { FrontierExpertRegistryService, frontierExpertsEnabled } from './frontie
 import { PacingFrontierIngestionService } from './pacing-frontier-ingestion-service';
 import { ExpertEvidenceEnrichmentService } from './expert-evidence-enrichment-service';
 import { ExpertSourceUnitsService, sourceUnitsEnabled } from './expert-source-units-service';
+import { TechniqueCardService, techniqueCardsEnabled } from './technique-card-service';
 import { ExpertCouncilService } from './expert-council-service';
 
 const MINUTE_MS = 60 * 1000;
@@ -124,6 +125,15 @@ export class FrontierExpertScheduler {
         if (units.papers || units.repositories) console.log(`🔭 frontier expert units: +${units.papers} paper(s), +${units.repositories} repositor(ies)`);
       } catch (err) {
         result.failed.push({ stage: 'enrich', error: `source units: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+    // E3: technique cards (claims + contradictions) from paper units, via the council runtime (default off)
+    if (techniqueCardsEnabled()) {
+      try {
+        const cards = await new TechniqueCardService(this.db).extractBatch(5);
+        if (cards.claims) console.log(`🔭 technique cards: +${cards.cards} card(s), +${cards.claims} claim(s), ${cards.contradictions} contradiction(s)`);
+      } catch (err) {
+        result.failed.push({ stage: 'enrich', error: `technique cards: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
     await this.reviewCapabilityInferred(result);

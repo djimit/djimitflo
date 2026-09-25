@@ -141,6 +141,9 @@ export class SelfImprovementAgentReviewService {
   private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
     try {
       const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
+      // prod 2026-09-25 (sample logged since #416): the "unreadable" answers were empty responses — a transient model
+      // failure, treated like an unreachable host (no attempt spent, never recorded as a vote)
+      if (!raw.trim()) return { error: 'empty model response (timed out)' };
       // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
       // of a 6/6 lane); retry it like a failed call.
       const parsed = this.parseResponse(raw);
