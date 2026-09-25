@@ -10,6 +10,9 @@ import type { Database } from 'better-sqlite3';
  * K2 (LOOP_MEMORY_RULES_ENABLED) — memory that is read: at most 3 distinct engineering rules promoted in the last 14 days,
  *    each read logged in memory_access_log. Older rules are left out on purpose: prod held 38 promoted rules with only 8
  *    distinct texts, several of them stale platform facts ("not a git repository").
+ * M5 — memory under selection: a rule's fitness = runs that read it and verified minus runs that read it and regressed
+ *    (reads are logged as `loop-maker:<run id>`). Fit rules (> 0) survive past the 14-day trial and come first; a rule
+ *    with fitness <= -2 is never shown again; the last slot always goes to the newest untried rule (exploration).
  */
 export interface AssignmentContext { examples: string[]; rules: Array<{ id: string; text: string }> }
 
@@ -32,15 +35,22 @@ export function assignmentContext(db: Database, run: { id: string; goal_id: stri
     }
     if (env.LOOP_MEMORY_RULES_ENABLED === 'true') {
       const since = new Date(Date.now() - RULE_MAX_AGE_DAYS * 86_400_000).toISOString();
-      const rows = db.prepare(`SELECT id, content FROM memory_candidates WHERE status = 'promoted' AND memory_type = 'engineering_rule' AND created_at >= ?
-        ORDER BY created_at DESC LIMIT 20`).all(since) as Array<{ id: string; content: string }>;
+      const rows = db.prepare(`SELECT m.id, m.content, m.created_at,
+          COALESCE(SUM(CASE s.status WHEN 'verified' THEN 1 WHEN 'regressed' THEN -1 ELSE 0 END), 0) AS fitness, COUNT(a.id) AS reads
+        FROM memory_candidates m
+        LEFT JOIN memory_access_log a ON a.candidate_id = m.id
+        LEFT JOIN loop_runs r ON a.agent_id = 'loop-maker:' || r.id
+        LEFT JOIN goals g ON g.id = r.goal_id
+        LEFT JOIN self_improvements s ON s.id = g.improvement_id
+        WHERE m.status = 'promoted' AND m.memory_type = 'engineering_rule'
+        GROUP BY m.id
+        HAVING fitness > 0 OR (m.created_at >= ? AND fitness > -2)
+        ORDER BY fitness DESC, m.created_at DESC LIMIT 40`).all(since) as Array<{ id: string; content: string; created_at: string; fitness: number; reads: number }>;
       const seen = new Set<string>();
-      for (const r of rows) {
-        const text = r.content.replace(/\s+/g, ' ').trim();
-        if (seen.has(text)) continue;
-        seen.add(text); out.rules.push({ id: r.id, text: text.slice(0, 300) });
-        if (out.rules.length === 3) break;
-      }
+      const distinct = rows.filter((r) => { const t = r.content.replace(/\s+/g, ' ').trim(); return seen.has(t) ? false : (seen.add(t), true); });
+      const untried = distinct.filter((r) => r.reads === 0).sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+      const picked = distinct.filter((r) => r !== untried).slice(0, untried ? 2 : 3).concat(untried ? [untried] : []);
+      out.rules = picked.map((r) => ({ id: r.id, text: r.content.replace(/\s+/g, ' ').trim().slice(0, 300) }));
       const log = db.prepare('INSERT INTO memory_access_log (id, candidate_id, agent_id, accessed_at) VALUES (?, ?, ?, ?)');
       for (const r of out.rules) log.run(randomUUID(), r.id, agentId, new Date().toISOString());
     }

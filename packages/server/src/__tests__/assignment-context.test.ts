@@ -46,3 +46,22 @@ it('K2: recent, distinct rules only, and every read is logged', () => {
   expect(ctx.rules.map((r) => r.text).sort()).toEqual(['Restore the lockfile when only package-lock.json changed.', 'Reviewers need 300 s.']);
   expect(db.prepare("SELECT COUNT(*) AS n FROM memory_access_log WHERE agent_id = 'maker-1'").get()).toEqual({ n: 2 });
 });
+
+it('M5: rules are selected by the outcomes of the runs that read them', () => {
+  const read = (rule: string, run: string, status: string) => {
+    proposal(`p-${run}`, status, ['test-gap:x']);
+    db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'completed', '{}', ?, ?, ?)`).run(`g-${run}`, `p-${run}`, now, now);
+    db.prepare(`INSERT INTO loop_runs (id, goal_id, loop_name, mode, status) VALUES (?, ?, 'doc-drift-and-small-fix-loop', 'closed', 'completed')`).run(run, `g-${run}`);
+    db.prepare(`INSERT INTO memory_access_log (id, candidate_id, agent_id, accessed_at) VALUES (?, ?, ?, ?)`).run(`a-${run}-${rule}`, rule, `loop-maker:${run}`, now);
+  };
+  rule('fit-old', 'Old but proven rule.', old); read('fit-old', 'w1', 'verified'); read('fit-old', 'w2', 'verified');
+  read('r3', 'l1', 'regressed'); read('r3', 'l2', 'regressed'); // unfit: -2
+  read('r1', 'n1', 'executing'); // tried, fitness 0
+  rule('fresh', 'Brand new untried rule.', now);
+  const texts = assignmentContext(db, { id: 'run', goal_id: 'g1' }, checkout, 'maker', { LOOP_MEMORY_RULES_ENABLED: 'true' }).rules.map((r) => r.text);
+  expect(texts[0]).toBe('Old but proven rule.'); // survives past the trial because it is fit
+  expect(texts).not.toContain('Reviewers need 300 s.'); // selected out
+  expect(texts).not.toContain('fatal: not a git repository'); // stale and never proven
+  expect(texts.at(-1)).toBe('Brand new untried rule.'); // exploration slot
+  expect(texts).toHaveLength(3);
+});
