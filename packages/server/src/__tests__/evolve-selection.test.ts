@@ -2,6 +2,9 @@ import { afterEach, beforeEach, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { evolveEligible, evolveSpecies, selectEvolveWinner } from '../services/evolve-selection';
 
 let db: Database.Database;
@@ -29,9 +32,9 @@ it('species come from LOOP_EVOLVE_SPECIES only when enabled, at most two extra m
 it('only test-gap goals (or goals marked evolve) are eligible', () => {
   const si = (id: string, refs: string[]) => db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, created_at, updated_at) VALUES (?, 'feature', 't', 'd', 'r', 'gap_analysis', 'executing', 0.5, ?, ?, ?)`).run(id, JSON.stringify(refs), now, now);
   const goal = (id: string, improvementId: string | null, metadata: object = {}) => db.prepare(`INSERT INTO goals (id, objective, risk_class, status, metadata, improvement_id, created_at, updated_at) VALUES (?, 'o', 'low', 'running', ?, ?, ?, ?)`).run(id, JSON.stringify(metadata), improvementId, now, now);
-  si('p-tg', ['test-gap:board-protocol']); si('p-other', ['reflection:x']);
-  goal('g-tg', 'p-tg'); goal('g-other', 'p-other'); goal('g-flag', null, { evolve: true });
-  expect([evolveEligible(db, 'g-tg'), evolveEligible(db, 'g-other'), evolveEligible(db, 'g-flag')]).toEqual([true, false, true]);
+  si('p-tg', ['test-gap:board-protocol']); si('p-other', ['reflection:x']); si('p-mut', ['mutation-gap:secret-patterns']);
+  goal('g-tg', 'p-tg'); goal('g-other', 'p-other'); goal('g-flag', null, { evolve: true }); goal('g-mut', 'p-mut');
+  expect([evolveEligible(db, 'g-tg'), evolveEligible(db, 'g-other'), evolveEligible(db, 'g-flag'), evolveEligible(db, 'g-mut')]).toEqual([true, false, true, true]);
 });
 
 it('the fittest maker stays the only non-superseded one; losers are superseded and their reviewers cancelled', () => {
@@ -53,4 +56,14 @@ it('no eligible maker: nothing changes and the run fails like a single-maker run
   expect(selectEvolveWinner(db, 'run-1', ['m-a'])).toBeNull();
   expect(status('c-a')).toBe('prepared');
   expect(db.prepare("SELECT event_type FROM loop_events WHERE loop_run_id = 'run-1'").get()).toEqual({ event_type: 'evolve_no_winner' });
+});
+
+it('N7: losing species are recorded as outcomes, and a measured mutation score outranks a smaller diff', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'evolve-'));
+  const out = (score: number) => { const f = path.join(dir, `${score}.log`); fs.writeFileSync(f, `{"mutation_gain":{"before":30,"after":${score},"pass":true}}\n`); return f; };
+  const mut = (diff: number, score: number, extra: object = {}) => ok(diff, { deterministic_checks: [{ name: 'test', status: 'pass' }, { name: 'test:mutation:grounded', status: 'pass', stdout_path: out(score) }], ...extra });
+  maker('m-small', 'opencode', mut(10, 45)); maker('m-strong', 'codex', mut(60, 70, { model: 'gpt-5' }));
+  expect(selectEvolveWinner(db, 'run-1', ['m-small', 'm-strong'])).toBe('m-strong');
+  expect(db.prepare('SELECT skill_id, success, agent_id FROM skill_outcomes').all()).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:opencode', success: 0, agent_id: 'm-small' }]);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
