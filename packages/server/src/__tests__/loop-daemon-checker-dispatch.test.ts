@@ -168,6 +168,35 @@ describe('LoopDaemon checker dispatch', () => {
     } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
   });
 
+  it('N6: an evolve sibling asking for approval inherits the auto-approved scope of the first maker; elsewhere it still fails', async () => {
+    const goal = seedQualifyingGoal();
+    db.prepare("UPDATE goals SET metadata = '{\"evolve\":true}' WHERE id = ?").run(goal.id);
+    db.pragma('foreign_keys = OFF');
+    const scope = 'packages/server/src/__tests__/x.test.ts';
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-1', 'run-1', 'maker', 'codex', 'completed', ?)").run(JSON.stringify({ auto_approved_scope: scope }));
+    db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata) VALUES ('maker-2', 'run-1', 'maker', 'opencode', 'prepared', '{\"approval_id\":\"appr-sib\"}')").run();
+    let siblingCalls = 0;
+    stubLoops.executeWorker.mockImplementation(async (_run: string, input: { lease_id: string }) => {
+      if (input.lease_id === 'maker-2' && siblingCalls++ === 0) throw new Error('LOOP_WORKER_APPROVAL_REQUIRED');
+      return {};
+    });
+    const decide = vi.fn(async () => null);
+    (stubLoops as unknown as { decideWorkerApproval: typeof decide }).decideWorkerApproval = decide;
+    process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'opencode';
+    try {
+      await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
+      expect(decide).toHaveBeenCalledWith('appr-sib', true, 'autonomy:test-gap-rule-v1', expect.stringContaining('maker-1'));
+      expect(siblingCalls).toBe(2);
+      expect(stubLoops.runDeterministicChecks).toHaveBeenCalledWith('run-1', expect.objectContaining({ lease_id: 'maker-2' }));
+      expect(db.prepare("SELECT json_extract(metadata, '$.auto_approved_scope') AS s FROM worker_leases WHERE id = 'maker-2'").get()).toEqual({ s: scope });
+      // without a J5 scope on the first maker the sibling is not approved
+      db.prepare("UPDATE worker_leases SET metadata = '{}' WHERE id = 'maker-1'").run(); decide.mockClear(); siblingCalls = 0;
+      db.prepare("UPDATE goals SET status = 'decomposed' WHERE id = ?").run(goal.id);
+      await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));
+      expect(decide).not.toHaveBeenCalled();
+    } finally { delete process.env.LOOP_EVOLVE_ENABLED; delete process.env.LOOP_EVOLVE_SPECIES; }
+  });
+
   it('E12: with LOOP_BANDIT_ENABLED the chosen maker species is written onto the prepared maker lease', async () => {
     seedQualifyingGoal();
     db.pragma('foreign_keys = OFF');

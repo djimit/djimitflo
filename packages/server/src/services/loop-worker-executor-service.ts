@@ -124,6 +124,11 @@ export class LoopWorkerExecutorService {
       throw new Error('RUNTIME_CONTRACT_DRIFTED');
     }
 
+    // a deploy between preparing and running (e.g. a maker waiting for its approval) leaves the worktree unlinked
+    if (run.repository_path && makerLease.worktree_path && makerLease.branch_name
+      && this.loopService.repairWorktree(run.repository_path, makerLease.worktree_path, makerLease.branch_name)) {
+      this.loopService.recordLoopEvent(run.id, 'worktree_repaired', 'warning', 'Maker worktree was unlinked from the runtime repository (a deploy in between); re-registered on its branch.', { maker_lease_id: makerLease.id });
+    }
     const timeoutMs = Math.max(1_000, Math.min(input.timeout_ms || 120_000, 600_000));
     const prompt = fs.readFileSync(this.loopService.resolveWorkAssignmentPath(makerLease), 'utf8');
     const skipPermissions = this.loopService.resolveSkipPermissions(input.skip_permissions);

@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, type Stats } from 'fs';
+import { cpSync, existsSync, mkdirSync, renameSync, statSync, readdirSync, rmSync, symlinkSync, lstatSync, copyFileSync, type Stats } from 'fs';
 import path from 'path';
 import type { Database } from 'better-sqlite3';
 
@@ -72,6 +72,28 @@ export class WorktreeManager {
       }
     }
     throw new Error(`WORKTREE_CREATE_FAILED: ${lastError?.message ?? 'unknown'}`);
+  }
+
+  /**
+   * Each deploy mounts a fresh clone as the runtime repository, so a worktree prepared before a deploy (a maker that
+   * waited hours for its approval) points at git metadata that no longer exists (prod 2026-09-25: "the repo exists but
+   * doesn't have the worktrees directory"). Re-register it in the current repository on the same branch and put its
+   * files back (assignment, any earlier work). Returns true when a repair was needed.
+   */
+  repairWorktree(repositoryPath: string, worktreePath: string, branchName: string): boolean {
+    if (!existsSync(worktreePath)) return false;
+    try { this.git(worktreePath, ['rev-parse', '--git-dir']); return false; } catch { /* broken link: repair below */ }
+    const repositoryRoot = this.git(repositoryPath, ['rev-parse', '--show-toplevel']).trim();
+    const aside = `${worktreePath}.broken-${Date.now()}`;
+    renameSync(worktreePath, aside);
+    try {
+      this.git(repositoryRoot, ['worktree', 'prune']);
+      this.git(repositoryRoot, ['worktree', 'add', '-B', branchName, worktreePath, 'HEAD']);
+      cpSync(aside, worktreePath, { recursive: true, force: true, verbatimSymlinks: true, filter: (src) => path.basename(src) !== '.git' });
+    } finally {
+      rmSync(aside, { recursive: true, force: true });
+    }
+    return true;
   }
 
   /**
