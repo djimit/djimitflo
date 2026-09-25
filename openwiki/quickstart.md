@@ -5,7 +5,7 @@ description: Entry point to the DjimFlo wiki. Explains what DjimFlo is (a resear
 tags: [quickstart, orientation, governance, agent-orchestration, wiki]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json
@@ -19,7 +19,7 @@ sources:
     resource: repo://packages/shared/package.json
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 ---
 
 # DjimFlo Wiki Quickstart
@@ -84,10 +84,11 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 - **`/openwiki/architecture/`** — structural maps: monorepo layout, runtime
   profiles, server startup composition, and the SQLite data model.
 - **`/openwiki/concepts/`** — invariants and domain models: the governance
-  pipeline, security model, roles/permissions, executor adapters, loop
-  lifecycle, nested spawn/swarm trees, and learning subsystems.
+  pipeline, roles/permissions, executor adapters, loop lifecycle, and nested
+  spawn/swarm trees.
 - **`/openwiki/workflows/`** — end-to-end operational flows: task execution,
-  approval decisions, maker–checker loops, and the goal→swarm lifecycle.
+  approval decisions, maker–checker loops, and the autonomous improvement
+  pipeline.
 - **`/openwiki/operations/`** — operator runbooks: local development,
   configuration reference, backup/restore, knowledge runtime operations.
 - **`/openwiki/integrations/`** — external surfaces: HTTP/WebSocket API,
@@ -104,20 +105,18 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | See how the server boots, wires services, and shuts down | [Server Runtime & Startup Composition](architecture/server-runtime.md) |
 | Understand the SQLite schema, migrations, and provenance | [SQLite Data Model, Migrations & Provenance](architecture/data-model.md) |
 | Understand the pre-execution governance spine (risk → policy → gate → ToolBroker → approval → audit) | [Governance Pipeline](concepts/governance-pipeline.md) |
-<!-- openwiki: broken internal link [concepts/security-model.md] file "concepts/security-model.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Review security invariants, trust boundaries, and known gaps | [Security Model, Trust Boundaries & Invariants](concepts/security-model.md) |
+| Review security invariants, trust boundaries, and known gaps | [Governance Pipeline](concepts/governance-pipeline.md) and [Roles, JWT Sessions & WebSocket Auth](concepts/roles-and-permissions.md) |
 | Understand roles, JWT sessions, RBAC, and WebSocket auth | [AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth](concepts/roles-and-permissions.md) |
 | Add or understand an agent runtime / executor adapter | [Agent Runtimes & Executor Adapters](concepts/runtime-executors.md) |
 | Understand loop runs, leases, worktrees, and crash recovery | [Loop Domain Model](concepts/loop-lifecycle.md) |
 | Understand nested spawning, swarm trees, and spawn budgets | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) |
-<!-- openwiki: broken internal link [concepts/learning-subsystems.md] file "concepts/learning-subsystems.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Understand memory sync, learning, and evolution subsystems | [Memory, Learning & Evolution Subsystems](concepts/learning-subsystems.md) |
+| Understand memory sync, learning, and evolution subsystems | [Knowledge Runtime & OKF Bundle Operations](operations/knowledge-runtime.md) |
 <!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
 | Trace a task from API call through execution to audit | [Task Execution Lifecycle](workflows/task-execution-lifecycle.md) |
 | Understand the approval lifecycle across REST / WS / dashboard / Telegram | [Approval Request & Decision Flow](workflows/approval-decision-flow.md) |
 | Understand doc-drift / self-improvement / issue loops end to end | [Maker–Checker Loop Execution](workflows/maker-checker-loop.md) |
-<!-- openwiki: broken internal link [workflows/swarm-goal-lifecycle.md] file "workflows/swarm-goal-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Understand autonomous goal → swarm → daemon operation | [Goal → Swarm → Parallel Daemon Lifecycle](workflows/swarm-goal-lifecycle.md) |
+| Understand autonomous goal → daemon → earned-autonomy operation (bandit selection, evolve lanes, J5 auto-approve, auto-deploy) | [Autonomous Goal → Daemon → Earned-Autonomy Pipeline](workflows/autonomous-improvement-pipeline.md) |
+| Understand swarm trees, nested spawn delegation, and the daemon's goal dispatch | [Nested Spawn & Swarm Trees](concepts/nested-spawn-hierarchy.md) and [Maker–Checker Loop Execution](workflows/maker-checker-loop.md) |
 | Set up local development, build, and run tests | [Local Development, Build & Test Commands](operations/local-development.md) |
 | Look up environment variables and dangerous knobs | [Configuration & Environment Variable Reference](operations/configuration-reference.md) |
 | Back up, restore, or manage data retention | [Backup, Restore & Data Retention](operations/backup-restore.md) |
@@ -125,8 +124,7 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 | Explore the REST/WebSocket API surface | [HTTP/WebSocket API Surface & Route Inventory](integrations/exposed-surface.md) |
 | Integrate GitHub webhooks / PR review | [GitHub Integration](integrations/github-webhooks.md) |
 | Connect Claude Code / Cursor / VS Code via MCP | [MCP Server Package](integrations/mcp-server.md) |
-<!-- openwiki: broken internal link [integrations/telegram-bot.md] file "integrations/telegram-bot.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-| Set up the Telegram bot gateway | [Telegram Bot Gateway](integrations/telegram-bot.md) |
+| Set up the Telegram bot gateway or webhook route | [Telegram Bot Gateway & Webhook Route](integrations/telegram-bot.md) |
 | Understand how correctness is verified and gated | [Test Strategy, Assurance Scripts & Mutation Gate](testing/test-strategy.md) |
 
 ## Where to start
@@ -139,13 +137,14 @@ The wiki mirrors the system's architecture. Pages are grouped into domains:
 - **Operating a deployment?** Start with
   [Configuration & Environment Variable Reference](operations/configuration-reference.md)
   and [Backup, Restore & Data Retention](operations/backup-restore.md).
-- **Making a change to execution or governance?** Read
-<!-- openwiki: broken internal link [concepts/security-model.md] file "concepts/security-model.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-  [Security Model](concepts/security-model.md) and
-  [Governance Pipeline](concepts/governance-pipeline.md) first, then the
+- **Making a change to execution or governance?** Read the
+  [Governance Pipeline](concepts/governance-pipeline.md) and
+  [Roles & Permissions](concepts/roles-and-permissions.md) first, then the
 <!-- openwiki: broken internal link [workflows/task-execution-lifecycle.md] file "workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
   [Task Execution Lifecycle](workflows/task-execution-lifecycle.md).
+- **Working on autonomous operation?** Read the
+  [Autonomous Goal → Daemon → Earned-Autonomy Pipeline](workflows/autonomous-improvement-pipeline.md)
+  alongside [Maker–Checker Loop Execution](workflows/maker-checker-loop.md).
 - **Evaluating assurance?** Read the
   [Test Strategy](testing/test-strategy.md) alongside the
-<!-- openwiki: broken internal link [concepts/security-model.md] file "concepts/security-model.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-  [Security Model](concepts/security-model.md).
+  [Governance Pipeline](concepts/governance-pipeline.md).

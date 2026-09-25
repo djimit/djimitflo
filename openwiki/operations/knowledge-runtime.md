@@ -5,7 +5,7 @@ description: How to operate the DjimFlo knowledge substrate — the OKF bundle l
 tags: [okf, knowledge-runtime, capability-sync, validation, drift, mcp, operations, governance]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-d554b7e49c0422f3a614813f
     resource: repo://packages/knowledge/skills/python-fix.md
@@ -31,7 +31,7 @@ sources:
     resource: repo://packages/server/src/services/okf-knowledge-updater.ts
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 ---
 
 # Knowledge Runtime & OKF Bundle Operations
@@ -45,10 +45,12 @@ the canonical OKF base, runs an operator-managed Python validator against it,
 projects the markdown files into the `swarm_capabilities` registry, and reports
 health and drift. This page covers the bundle layout, path invariants, the
 sync pipeline, the health report, scheduled maintenance, and the MCP `okf_*`
-tools. For the learning loops that *produce* knowledge, see
-<!-- openwiki: broken internal link [/openwiki/concepts/learning-subsystems.md] file "/openwiki/concepts/learning-subsystems.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-[Learning Subsystems](/openwiki/concepts/learning-subsystems.md); for the MCP
-server itself, see [MCP Server Integration](/openwiki/integrations/mcp-server.md).
+tools. For the learning closure that *produces* knowledge from completed
+loops, see the
+[learning-closure section](/openwiki/workflows/maker-checker-loop.md#run-completion-draft-pr-hand-off-and-learning-closure)
+of the maker–checker workflow and the
+[Loop Domain Model](/openwiki/concepts/loop-lifecycle.md); for the MCP server
+itself, see [MCP Server Integration](/openwiki/integrations/mcp-server.md).
 
 ## OKF bundle layout
 
@@ -230,11 +232,11 @@ in the composed app):
 - `GET /runtime-readiness` (`read:evidence`) — agent-runtime contracts, not OKF.
 
 Service errors are mapped to HTTP codes: missing base → 404, legacy path →
-409, validation failure → 422, missing loop id → 400. The platform
-`/health/ready` aggregator (`routes/health.ts`) folds the runtime in as the
-`knowledgeRuntime` check: `exists === false` or validation not `pass` flips
-readiness to 503; a passing-but-drifting runtime degrades to `ok` with the
-blocked reasons as the message.
+409, validation failure → 422, missing loop id → 400. The platform deep-health
+aggregator `GET /health/deep` (`routes/health.ts`) folds the runtime in as the
+`knowledgeRuntime` check: `exists === false` or validation not `pass` marks it
+`error` and flips the overall response to 503; a passing-but-drifting runtime
+reports `ok` with the blocked reasons as the message.
 
 There is no HTTP route that *requires* a sync: `KnowledgeMaintenanceService`
 (`packages/server/src/services/knowledge-maintenance-service.ts`) replaces the
@@ -292,9 +294,10 @@ bundle tree, whereas the server enumerates only the six known folders.
   accepted checker/security-checker evidence, gates, and trace/checkpoint/
   manifest evidence counts before baselining a `loop-learning` eval, writing a
   reflection and memory candidate, and opening regression-repair or
-  skill-promotion work items. Its details belong to
-<!-- openwiki: broken internal link [/openwiki/concepts/learning-subsystems.md] file "/openwiki/concepts/learning-subsystems.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-  [Learning Subsystems](/openwiki/concepts/learning-subsystems.md); operationally,
+  skill-promotion work items. The full lifecycle of the loop run it closes —
+  and the `LoopDaemon` queue that feeds runs into closure — is documented in
+  [Maker–Checker Loop Execution](/openwiki/workflows/maker-checker-loop.md) and
+  the [Loop Domain Model](/openwiki/concepts/loop-lifecycle.md); operationally,
   "Close completed loops through learning closure" is the health report's
   steady-state next action.
 

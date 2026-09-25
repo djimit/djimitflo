@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b78c8d959a2d4c10361826573ec8c071d0959d8b43ab17e0c156e4a27d9378cc",
+  "pageVersion": "sha256:6898dc53d4bdba79786c4fc576e00a55334e9b1f6c49fd1a5c14828a67454235",
   "claims": [
     {
       "id": "claim_662ff36ed9c94fe291ee7fea898f9dda",
@@ -196,23 +196,31 @@
     },
     {
       "id": "claim_26b2b2a5dfbb466d9dedddb79bd13799",
-      "statement": "The Dockerfile is a two-stage build: a builder stage installs all dependencies and runs the same npm run build workspace chain, and a runner stage installs production dependencies only, smoke-tests better-sqlite3 with an in-memory open, pins global agent CLIs (@openai/codex, opencode-ai) and the gh CLI, bakes build provenance env vars (DJIMITFLO_BUILD_COMMIT/TIME/SOURCE) from VCS_REF/BUILD_TIME/BUILD_SOURCE build args, and runs as the non-root djimitflo user with ENTRYPOINT docker-entrypoint.sh and CMD node packages/server/dist/index.js.",
+      "statement": "The Dockerfile is a two-stage build: a builder stage installs all dependencies (with the python3/make/g++ native toolchain) and runs the same npm run build workspace chain, and a runner stage upgrades the base image, installs exactly ca-certificates git python3-minimal curl procps via apt, pins the gh CLI as a static .deb via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version), pins the global agent runtime CLIs @openai/codex@0.146.0, opencode-ai@1.18.10 and @anthropic-ai/claude-code@2.1.282 with immediate git/codex/opencode/claude --version probes, creates the non-root djimitflo user/group at uid/gid 1001 and chowns /data to it, installs production dependencies only with better-sqlite3 smoke-tested via an in-memory open before the build toolchain is purged, bakes build provenance env vars (DJIMITFLO_COMMIT_SHA, DJIMITFLO_BUILD_COMMIT/TIME/SOURCE) from the VCS_REF/BUILD_TIME/BUILD_SOURCE build args, and runs as the non-root djimitflo user with VOLUME /data, ENTRYPOINT docker-entrypoint.sh and CMD node packages/server/dist/index.js.",
       "evidence": [
         {
           "resource": "repo://Dockerfile#L137-L154",
           "version": "repo-lines-v1:sha256:aa6b71387bda3532d17fdc3dd4150a40a74fe965881b5d442bc1ff428854d140:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyYjEzOWYxMDk5NGFiYzYyYmVlMDJlYzQ0OTliZWM0MWQ0MTY4MWQzMDZhNDQ2ZWJmZDMwMjYwYTJmNWRiZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2YTZmNWFlMDQxZjJjMzQ5ZTY0NDNjYjFlZjJiZjc2NGE4OTZkMmE4MmZlZjI2YWMxYmRmOWFkZDNlOTFlOWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhNjVlNmYxNjVmMjM4NWRhMzRhNDBlM2MwZTVjYTU4ZGUyYTg0YWQ0ZWUyYjNlOWM0M2IyNDVlZmE2MDIyZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://Dockerfile#L49-L53",
-          "version": "repo-lines-v1:sha256:b633a93efe223fe77dbe6beae30ce76fc7359bf4dbfdeeecc254e1b3bb128c2f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI1YmQzMGI2NmJmNjAyN2IxMzJiZDBjZTMyZjYwNzk4MGU5Y2YxYWRhOTIzMThjZTQxYmQxNWNjYzJlZjhhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTBiMTg5YzkzMzgzNTBhMzg2ODRiNTYzOWYxMDYxNDc5ZThjM2NiMTJiZjZmMjg0YTIzYzUxMDEzMTlkNDQ1YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNmMjFkMjEwMDI2OWJjOWIzMmUxZTk1ZTUyMTU2ZGM2NWUxMTU3ZTBmNDUwMjk4ODgwMzkzZjExOTQ1ZTE5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2E4MmY5ZGM3ZTE3NGYyMDQ0MzZjM2RmYWM1ZGVmYjg1MDI2YzcxNjg1YWYzNzY5NTZlY2VkYWVmOTI4ODgwMSJ9"
+          "resource": "repo://Dockerfile#L49-L50",
+          "version": "repo-lines-v1:sha256:70899b75faf40b455f83880c3524a7e21af08efd4265cf4fafa0a6b8e89acdea:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzI1YmQzMGI2NmJmNjAyN2IxMzJiZDBjZTMyZjYwNzk4MGU5Y2YxYWRhOTIzMThjZTQxYmQxNWNjYzJlZjhhMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTNlYWExYWYwMDc0NDBmZDUyZjBiOTUyZTY3ZTIyM2M3ZmM5ZTU2NDQ4YzI3YmU5MzAwMzBiNmUxMzQyYWI2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDNmMjFkMjEwMDI2OWJjOWIzMmUxZTk1ZTUyMTU2ZGM2NWUxMTU3ZTBmNDUwMjk4ODgwMzkzZjExOTQ1ZTE5MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWFmOGZhNmU1OWZhMGM4M2MwMzkyMGU2ODlhNzhhMTQyZWIwN2UwMjEzMjFjZjNhZTc4MmI1YzZkY2E1OGQ5ZSJ9"
         },
         {
-          "resource": "repo://Dockerfile#L66-L83",
-          "version": "repo-lines-v1:sha256:4a66422a6514155449476d17b49df6429f9a3766278795d7ee7d36b3fd33c42c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1YWY5MWMwMzE2MDMyN2YyMjI0OWY5MDdkMGQ4MDcyZjE2NzNhNjU0OGJiNDY2MGEyYmEwOTBmNGEwZDliM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU1MGQ4NDRiNTc5Njk2MWZhOWM4ZDUzYTA5NjAwZmFkOGIyOTNhN2E0YzFkMTNkYmVkYTlhOWZjYjM3MjVjOTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkNDI5MGVhZjNhMzk4MmNkZmZiMmU1MjMxYjA2MDk3MzFhYTI0MTdjNzAyZmY5NmJmNmUwN2MxYmFhYmE5NDEifQ"
+          "resource": "repo://Dockerfile#L57-L64",
+          "version": "repo-lines-v1:sha256:af00300bbcf59164f9364af9040d897ad45df39569394d3c672b365507e319af:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2RjNmU5ZmIwNjU0MjY4NWU5MTI3MmI5MGVjYTY3YWEyODVhMTE1ZDYxMjBiNzIyYzU3NmU2YWViNWZiZTI0NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E4MmY5ZGM3ZTE3NGYyMDQ0MzZjM2RmYWM1ZGVmYjg1MDI2YzcxNjg1YWYzNzY5NTZlY2VkYWVmOTI4ODgwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDU1M2ExNzJlN2VmNDBmYThiMGU2Zjg3MjYxMGUyMzVhYTQzMGM1N2NhMWE5OWRkOWM4ZGIyOTY0OTcxZWU2NiJ9"
         },
         {
-          "resource": "repo://Dockerfile#L96-L100",
-          "version": "repo-lines-v1:sha256:f8af2f7f0b0ff03ddca66ae41d70c5537d6e3bcafba5268d51bdba286fd427e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzY5Njk3NzhmZDE2NmY0MDU0MjhkMzA1NjhhMGYwZGY3YTZlZDUwNjkyNjMxZGYwOWNlNTk5MmNjNjQxNjA4YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTNmM2I4ZjJhYmFhMmY4MmE2NmZiOWRjYzUzYjRkZTVmYzkyZTE1MjViMDI5OGI1OGQwMzM4YWQzYjM3YzAxNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWJhNjExYjU0MzJkYmU1ODc5Yzc4YTBjMGY0NTAxNTFmNDkwYmI3MTM0ODUzYmJjYTg4OTU3ZWU4NTM2MTkwYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTJlZjQ4YTU1NWVjNzAxNzJhM2FkMmJlMjU2YmYwN2MwZjU0YzE3ZWQwNzU3MmZiYjEwNWI5Y2U0ZmY2YzI1ZSJ9"
+          "resource": "repo://Dockerfile#L66-L85",
+          "version": "repo-lines-v1:sha256:e38575e22e53386b026b0bf19376e524330e16151afde41c5b07125d1d370b70:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5MzJlNWM5YmY3ZGY2YWYyMzVmMDc0NDg0ZTRiZWE1YTMxOWM0YTZlMGMyZGQzZDhmNjI2ZmI3MWIxOGQyY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3Nzg4YTVjMGYwN2FmZTEzOWM2NjVlNGUxYTczYjg2YzEzN2I2Njk0ODAyYTNlYjZkNGQ0ZGQ3ZWY5YTUzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4MGU2MTIwMTg0YTQwNThjYzZjNGRjYzE5MDMyMWNlMDk4ZGJlZWY4N2IxNWJhYWNkOGRmOWU3OWIwYzhlZWEifQ"
+        },
+        {
+          "resource": "repo://Dockerfile#L9-L16",
+          "version": "repo-lines-v1:sha256:4949aa255d8ff94150413d643a9ac7c0bd479e137d836fd8d7a62812c2157e43:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWUwMTU5Y2Q5NzFhYzQ2OTUzZjcyNDRmNTI1ODI1MDEwYzEyZTViYmZjNWZkMDUxYjE3NzU1M2RkOTdkNWEyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTI0OWJhNTM4MGExMDM2ZTE3MTVlMTc0MjI5ZWI4MzMwNGU4OTNkZGNiM2VlZmFhZjQxYmNlNzA4YTdkZmQ0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzA0OWY1MzAxYzY1NzRlOGVkMTZkZjM0YjJmOGVkNmZhZGQ3MDgxN2NjYmVjNDhmZGQyNjA5MDQ0YjkyN2JjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmY1ZDI0Y2M1NTZhN2I3NWI2NmNlNjRkMzlhZTEwMWNhZWNhNmI1YjQwZDQ1ZDUzMzhjYWIyNmYxOTM3YTJlZSJ9"
+        },
+        {
+          "resource": "repo://Dockerfile#L96-L108",
+          "version": "repo-lines-v1:sha256:81a0196abf26827d4511dd1ed241b9589e23355a137d4cf3c3efc8ce769ffd5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2OTY5Nzc4ZmQxNjZmNDA1NDI4ZDMwNTY4YTBmMGRmN2E2ZWQ1MDY5MjYzMWRmMDljZTU5OTJjYzY0MTYwOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZTcwMmJiZjIxZmRiN2FhN2QwMzZmNjllYzZjMWJlMTBmZDQ0YmZmMDVjMTQ3YWNhNDk3M2U3OTNiNjA0NjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFiYTYxMWI1NDMyZGJlNTg3OWM3OGEwYzBmNDUwMTUxZjQ5MGJiNzEzNDg1M2JiY2E4ODk1N2VlODUzNjE5MGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NjQzMWM2NzhmNDU3ZmFmN2UwYzNhZDM4YzgyNzc4M2FhMTI3Mzg0MzEyMDdjNjhmZDRjMmJkOGYyMjE0MDMifQ"
         }
       ]
     },
@@ -245,26 +253,94 @@
       ]
     },
     {
-      "id": "claim_dfa13a92900c4747973e6f57ab066fb9",
-      "statement": ".env.docker.example is the container configuration template (copied to .env.docker before docker compose up -d): it sets production paths under /data and /app, requires a strong JWT_SECRET, documents EventBus ingest variables, and states OpenCode is not installed in the image by default — the binary must be mounted or a custom image derived.",
+      "id": "claim_efaf592d4f854c8c82996e77d8f89fa9",
+      "statement": "The root npm run test pipeline is a chained script that runs script-level selftests before any workspace test: bash scripts/deploy-vps.selftest.sh (fixture-compose checks of the VPS deployer scripts/deploy-vps.sh, including image/commit/mount rewrite and rollback), bash scripts/wiki-delta-emitter.selftest.sh, python3 scripts/paperclip-archive-export.py --selftest and python3 scripts/paperclip-readonly-monitor.py --selftest (pg_dump COPY allowlist parsing into JSONL plus sha256 MANIFEST.json), node scripts/live-identity-evidence.test.mjs and node scripts/integration-probes.test.mjs; it then builds @djimitflo/shared and @djimitflo/agent-catalog (their dist outputs are what test imports resolve under tsx type-stripping) and only afterwards runs npm run test --workspaces --if-present.",
       "evidence": [
         {
-          "resource": "repo://.env.docker.example#L1-L16",
-          "version": "repo-lines-v1:sha256:3eb0ab73583da88e05b5b710d5f83001dd3f0a207170f8b6a68cc36588ce468c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTNiZjc3MGM0MDFhNWMzYmU3MzRlMWUxOTg4Mjg4MmIzMjRhNjlhNGQxMzdmMTljYTljMjliNTZiODRkN2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZDkzMTkzMGM2NjMxNmM1YWE5YWQ3NzU4YjYyMDkwY2Y2MDE5YTRlNjBlNjZjMjVmODlkMWU1ZjljNWIzZjYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJkNmJlOWY2YjQxODU3ZTJiNTM3MWJiMmFhMDdlOWZiZDBiNTU5NWQwY2MyMWQxNTJhNzg1YWNkMjFkZTNmYWIifQ"
+          "resource": "repo://package.json#L18-L18",
+          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFhYjA4NDE4OTBiYWQxMjBiMWNjNDAwMWJlMTA5YmYyYmRmNTNkODAwMDk0YzQyZjM4ZWRkMmZhOWI5YmJmMCJ9"
         },
         {
-          "resource": "repo://.env.docker.example#L40-L42",
-          "version": "repo-lines-v1:sha256:56a98c758619d7115a8fc4a40a34622c0d45dd867be7271282691ee5850b8955:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzcxNjhmM2U3NWU1MzkwM2Q1MDdjNTM2OWZkNDgyYzU2ZGNmN2Q1ZTE0YzMxMjdiZTcxMWNmYzZjMDQ3ODQzNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTk5OWY5NTZjNTM0ZjJhMjkzZjcxNDQ4OWQzMmU3OWZkYjQ3MjJhZDQzODk4NWE1YWI0ZWMxZjM4ZjJmOGM0MiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTI5MWQwYzcyNzU1OTBjZjE4ZjE4NzVjOTBhNjMyMGY0MWI2YTU5ZjRmZWQ0ZDNkNmUwYmNkNTRhOGYwMmNiZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFkYTNkMzBkN2UzYjhiODJjNzBjYWVhMjU1MTVmYjcwNTIzODAxMDc1ODZjZjM0YWNhYzQxMzM1ZDA3ZGY3NiJ9"
+          "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L9",
+          "version": "repo-lines-v1:sha256:6cb2f35da21dbc98fbcda11cf0fd72abdebfebe03307c815b080b8f3456adfd2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODJjZTM5OTM1M2Q0MjlhNTVmZThkMzIwNzUwNjVhMmJlZGE0MmM3Y2NhNDUzNGE2YjFmYTdkZTNkYTA1YmY1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDc5NmQ3NjViMmMyYmMxZmI3Y2EwNjFmMmI3ZjhmZTZmNjMwMTY5M2QyNzMxODE3NDBmMjg2MjdmZGY4ZTU1ZSJ9"
         },
         {
-          "resource": "repo://.env.docker.example#L55-L63",
-          "version": "repo-lines-v1:sha256:93e854493b6359645863dbcd3be956375374ca1f900354b7e74d9f89ef865f7d:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjY5M2JmNzcwYzQwMWE1YzNiZTczNGUxZTE5ODgyODgyYjMyNGE2OWE0ZDEzN2YxOWNhOWMyOWI1NmI4NGQ3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzIyODIxODVlMmY2NTk4MDI5YmFhNGJiMDM5NWJjMTk4N2NlNGMyYjU3ZDQ5ZjI4NWQxNzI5ZWZjYTEzYzc5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTlkNmEzMTRlNDU0MzY4NjJhOGQwNDUwYzliNzI3YWMwNTg1ZDE4NTM0OGU0NWFkODE1YWZhMzA4OWRhYzA5YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2VhMmFlYTJhMDgzOGFiYjZhZjBmYmQ4ZGMwMTU1MzRiNzJjZjJhOGU3ZWVlZWE3YWNiN2MyMWY2MmVhZTI1MSJ9"
+          "resource": "repo://scripts/deploy-vps.sh#L1-L9",
+          "version": "repo-lines-v1:sha256:41f88f52159cff42276e40fb6681a7f99f0cf51a5bd7df885800ae498707cb39:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTI5Mzc0ZTUzODJlYTg4OGNiMjIxNzU0OTViMWI5ZDVlOWIxNzVjOTQxMzMzN2E4NDk0ZWU5NGFlYzg0MWQ5NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWUzMGRiMDM1M2EzYWQyMDk3NjBjNDI3MGNhOGJjY2UxZTgyOTJjYWM3ZjJjNTA0NGYxODBjMWJmYmRhYjBkMyJ9"
+        },
+        {
+          "resource": "repo://scripts/integration-probes.test.mjs#L1-L10",
+          "version": "repo-lines-v1:sha256:4d63223d8bd11aaa1e9a9a80f8efb6dcb8c1109dd574ff279702d5ea0660389d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3MWIyMDc2OWJlYjA1MWM2YWE3ZDFiZWViZDExNjM1ZjVkNmE0M2FlM2YzYjAzMjZiMjg2YjQ2OTcyNjY0NTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZTZkZmNmNjM5ZDMxOTIwZjBhNTUwOWI4NWIyZTAyZTgzNjMzODY2ZDgwZTRkYzBkM2NmODZlYmVhZTkwOWMifQ"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L12",
+          "version": "repo-lines-v1:sha256:1bd12926f09b255a813808895e697919205c954072f48405c9fbb76ee330cad8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOTIyMzZhOTA4ZDU4YzNmMDJhOTAzOTMxYjUyYzAzMjI0YmQyZjI3MDhkNWE4MjkyODY1ZDEzOGU3ZjlmNGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3NTJlMzE5OTAzMGU0YmExMTBhNzU3MmYzMGI3MWQ0ZGQwNzgzYTQ5NzA1OTU2OWZiMzk3YTQwNzIyY2IzNzIifQ"
+        },
+        {
+          "resource": "repo://scripts/paperclip-archive-export.py#L1-L11",
+          "version": "repo-lines-v1:sha256:6d89d8a26049e36defc03a60d642382fbb5f1c5d4b71e16d5560e7c85ede5153:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ2ODJjYmRiNGM4YjA3NTE4YmY0ODZjNTg5OTBmYzM5MTc4M2FhMjBhOTE2YmZiMjdhZDIxMWViMWQ1YzM2NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2MmY2ZDgyMzljYzU1MmJjMTNhYzg2OGNiNDQ1YTc0ZDA1NGQ3ZmFlMDM0ZWM3MDUxZjdiNDEyZGRhYmQ2MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2ODYwNjAwZTY3ZmRiY2RhYjQ5NDk1NWQ1NTFjNDQ3NmY1YTZhNDIwODQxMGZhODM3OWJjZTY4MWIxNzljNWEifQ"
+        },
+        {
+          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L5",
+          "version": "repo-lines-v1:sha256:79726edf4846b542d36214fddd8ab153b73b418138b08ddf0d7170c9371fe136:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWQ5NWZjMDRhODBjOTUyZjQ5Y2U0MTg4NjI3YzUzYjBmYmU4YzQ0MDQxYjk1MmQ1OTJhY2QxZGU5OTg2MTQ2NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3YTc0ZWIzMWVmOWZhYjIyZTkwYzA5YzY1OThjNGFjNTEzOGYxZmU2OWVkZGYyM2JiODFhNWE2NGZiYTBmYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2IyMjQ2ZDU2OWRhZTcwODJiNThhMDA3YmFmNzg4NmQwNzk0MmFlZTBhOWY3YmU3YmYyYTgwYTgyMDM0ZGZlZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_01bb9b9fe51f484d897e94c795874278",
+      "statement": "The repository defines two Stryker mutation lanes: test:mutation runs stryker run against stryker.config.js (curated critical code spans in approval-service, tool-broker, docker-sandbox-executor and runtime-governance, StringLiteral/ObjectLiteral excluded, vitest runner with vitest.mutation.config.ts limited to six named server test files, score thresholds high 85 / low 75 / break 70), and test:mutation:grounded runs node scripts/mutation-gain.mjs.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L20-L21",
+          "version": "repo-lines-v1:sha256:bc1ea140df5e81412ab0a4c8e04cdd40f4ab75e5a0deb47d66039560a5f555ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjEyZGIxZWExOWI4MjU5Y2YwZGQ3OWFlOTQwZjBiM2FiOWIxOWQzYmUzOTc5MWYzM2ZiYTdlNzRjZTMwODM1YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlODM2YjIxMWJmMzBlOTE3ODA5OGE3YTkzY2Y3OGY1ZDFmY2Y5MWYyZGRlYjBmMGZjZTZkYjE1YWIzOTUwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjE2NzEyMGQ4MmZkNDdmOGU2NWZlMzZjY2ZjMmVjMTJjYmMzNGY1MjE5ZjE3OGY0ZmJlYTBkMGQ5NzMwOTg2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDljYzczYjZmNTBkYjAwZTExYjYwYjlmM2U1YTY2ZWY3NGRkMmMxMDBiZjNiNjc5NGUxNWQ4ZThmMzdmMGVjOCJ9"
+        },
+        {
+          "resource": "repo://stryker.config.js#L4-L33",
+          "version": "repo-lines-v1:sha256:5af080b2583ffc8a6ae79e6d65e828b22c98147304e7dee4a739236a07ef73d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTYxZmRmMjAyOGEzOTQxMGYwNTFmOTdiZTBkYjU4MGMzZWZiYWJmNWE3ZjI3Yjc2ZDQ4N2U1ZDA5OWZiMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNmRjMzlmZGE0NDlmZmM2YTE2ZjFjN2E0MDFiZDUzMTc3NDhhNTA0NzNhN2Q1N2RhY2Q5MDNjOGFjMzc0YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYzIxZmY0MmZjZTdhYjI3NjUzMzg3ZDRiYTBjNTAzYzc2OTczYzJiMTg2NjQ0ZWRjNjJiNWVlYjAwYjBlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAifQ"
+        },
+        {
+          "resource": "repo://vitest.mutation.config.ts#L3-L16",
+          "version": "repo-lines-v1:sha256:0d5136859df55996eaf269aae8cfdc00b2d7b8ccfca4725b6c22775e79c4fadb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2VjYjE0NGE0NmY1ZGNmMTJhNjE2OWZjZWVkNzY5NWU4Mjk0YjA5MGRlNzZmMzY2MWNkZDAyNDkzMDAxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDAwYTAxZjhmODA4YzA2OThjMjlhMzNjMzczYmQ3MGJmYWYzN2VmN2IyNjI3NzAxMjY2YjM2OWQ2MGU2MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_274cdcb897f7480d87979176731f3a4c",
+      "statement": "scripts/mutation-gain.mjs (test:mutation:grounded) requires MUTATE_FILE (source to mutate) and MUTATE_TEST (test under evaluation); it runs Stryker twice via stryker.service.config.mjs — once against the committed HEAD version of the test written to a temporary .mutation-baseline.test.ts, once against the working-tree test — and exits 0 only when the after score gains at least MUTATE_MIN_GAIN points (default 10) or reaches 90; with neither env var set it skips with exit 0 so hosts can list it unconditionally in loop-daemon check scripts.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/mutation-gain.mjs#L1-L44",
+          "version": "repo-lines-v1:sha256:1d202aca97a253fcbd2c35bbdd4825fd65e876004f3fe539961b9495ebd9b41a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OWM0Nzg3MmI3MWYxMjU4OTk0Mjg5MjQ2NGU3NjRjMGRiMzUwYzIwYjcyMjI4NjQ1NjE1Y2MzNmUwYTA3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMzlmMDliOWUzMjdhZGM3ZTg3MDVmMjhjNDNkZTgxYmJkODI5OGM1ODVlNDI5Nzg2N2M1YzI3M2VhZTA5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ce456ff8f39e41f48731e2e3f9a4ab92",
+      "statement": "stryker.service.config.mjs mutates exactly the MUTATE_FILE path, reports JSON to MUTATE_REPORT (default a tmpdir file), and points the vitest runner at vitest.service-mutation.config.ts, a node-environment config whose include is solely [process.env.MUTATE_TEST ?? 'none'] with a 30s timeout, so only the single test file under scrutiny runs against the mutants.",
+      "evidence": [
+        {
+          "resource": "repo://stryker.service.config.mjs#L5-L16",
+          "version": "repo-lines-v1:sha256:4fd42cfd672eaee755e6b8591aefbfa9e72c976dbe1d1e846a45facd764ea388:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMjdiNmMyNmNjYTI4MDRiMjY2YTc3YTJhNGYxMTU1NTBkOTNiNmUyYzI3MjI4MmJiMGJjZjY0OWQ1Y2MzMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3YTE3NjU4YmUzN2MyNzcxOGVkZGNkNWYxMjNlNzFmNjYwNjkwMGQ2NWVkNzc3ZjUwZjE5YzliY2U3YTRlMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://vitest.service-mutation.config.ts#L1-L3",
+          "version": "repo-lines-v1:sha256:f555dd9ed5a6f40fa4adb0fdeea232e3fa30c96814ad6a64a6f417b9f5df30ae:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRhMTkyMTFjM2EwM2I5ODc5NDdmMjRiNjliZGNjNDY5ZjQ3OTQ4MjlhNWY1YTRhMTg4ZWEyZTE4MTY1NGI5YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzlhNTZlMzUzZjRmMjJmYmMyMWExNjVhOGNmMDlkNTZmYmI1NDA2ZjI1ZWU2Mzg5MzE3NDNlODZhYmI5MzVlZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_61c5ef358cc84d7082e96108c137d0c8",
+      "statement": "The gh CLI is installed in the runner image because the server's PR-review service shells out to it for PR comments and Check Runs, and the global agent runtimes are pinned to keep the production worker surface equal to the runtimes accepted by /swarms/runtime-readiness; the Dockerfile comments state both rationales.",
+      "evidence": [
+        {
+          "resource": "repo://Dockerfile#L66-L79",
+          "version": "repo-lines-v1:sha256:4b5aeb7d044a660eebe7ecf68da9de154f6d4278b08af41c84542f5924d1f6da:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZmFkY2RjOGE0YmViNDMxOGNhMTJlNjEwOWU5YmJkNGU3YWQyNWY5NWUzNmY1ZDMwYzJlNGEwMDBlMDNlZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5YzllMjdhOTkyOGJmYmEyYzJlNjE5OWJjMDQ4YmE2ZDliZDczZmE3Y2JmNzY3NTU2ZjIyNzQ5ZjA3MDYxNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3Nzg4YTVjMGYwN2FmZTEzOWM2NjVlNGUxYTczYjg2YzEzN2I2Njk0ODAyYTNlYjZkNGQ0ZGQ3ZWY5YTUzNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2NzM5MjEyYTNkMzNhYjhlMjM3MWYwNzFiODdkMzcxZTNlMWFlN2M3ZjBmMTM2ZGNmNDUzZmE4YmMzYmI4MWUifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

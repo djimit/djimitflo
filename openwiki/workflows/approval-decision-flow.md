@@ -3,9 +3,6 @@ type: operator-workflow
 title: "Approval Request & Decision Flow"
 description: The operator-facing approval lifecycle — how the server creates requests transactionally, realizes their 1-hour expiry, and applies decisions atomically with a data-layer self-approval ban — plus the authority-ledger/event-outbox records and the REST, dashboard, WebSocket, and Telegram surfaces operators use to act on them.
 tags: [approvals, decision-flow, expiry, separation-of-duties, atomicity, authority-ledger, event-outbox, telegram, dashboard, websocket]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-d92c9d196f1885a52b397aba
     resource: repo://packages/dashboard/src/components/ApprovalCard.tsx

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1c973a3ba21047a51b6a140dbd77aaa538e51f9f1ea8a9f036d248e05ba629f3",
+  "pageVersion": "sha256:c76aa453224ec5aa1ae7529dd0f156721686aafb32abd318d4064459b408991e",
   "claims": [
     {
       "id": "claim_7b3dee56ce994d138769a05bf42919bf",
@@ -180,11 +180,15 @@
     },
     {
       "id": "claim_5e94a0f3f5c645078deca3dccb0dc36e",
-      "statement": "The platform readiness endpoint (routes/health.ts) runs KnowledgeRuntimeService.health() and marks the knowledgeRuntime check 'error' (503 response) when the base is missing or validate_okf status is not pass, otherwise 'ok' with blocked_reasons surfaced as the message.",
+      "statement": "The platform deep-health endpoint GET /health/deep (routes/health.ts) runs KnowledgeRuntimeService.health() and marks the knowledgeRuntime check 'error' (503 overall response) when the base is missing or validate_okf status is not pass, otherwise 'ok' with blocked_reasons surfaced as the message.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/health.ts#L109-L110",
-          "version": "repo-lines-v1:sha256:d3088ba166d3103c90d0f68397e753e324790f22dc10aff8277e105678403263:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmViYmZiNTE3MzgzZDJiNGI3NjdlMWJmMzQ5OTY3Y2ExODEzYjc2Y2JkODc2OTFiOTM1OTY2YjFlZjcwMDMxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWNjNTRkNjY0MTM1NzE2ZDIxYmEzN2I2Nzk3MDk4N2YxMDIxODk1NjJmOGI5Mzg4NmM4NWZjYzBhYWU5YTMwNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM4M2YzNTk3NTIzNDcyNDM0NDQxYjQ4NmI1NDk2NjQ1YzU4NmU2MGQ2MWI0ZmM5MjI3OTU3NWRiZjFhNTEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA1NjNhNWM2NTIxZDBkM2E0MTI3ZmNmMDY3ZjFiZDc5NzY0ZjBkYjFhMzk1YzA1NWViNGZjYWZiMTM2NWU1OSJ9"
+          "resource": "repo://packages/server/src/routes/health.ts#L109-L115",
+          "version": "repo-lines-v1:sha256:ea2f3840c148f8dbc58851ee3e51796e50ed7e82b046d0c2117ecbc37f68973b:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmViYmZiNTE3MzgzZDJiNGI3NjdlMWJmMzQ5OTY3Y2ExODEzYjc2Y2JkODc2OTFiOTM1OTY2YjFlZjcwMDMxYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjJkMTFjYWY0M2U5N2VmMzY5ZTZiZWVkMWEyNjhiZDA1ODM4ZjI5YjlkZDI1NGJmNjliYTY0ODg0MTQ3MjM0YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM4M2YzNTk3NTIzNDcyNDM0NDQxYjQ4NmI1NDk2NjQ1YzU4NmU2MGQ2MWI0ZmM5MjI3OTU3NWRiZjFhNTEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTM1MTUzZWJlZTk1MjIxODI4MzFkZjQzMzEzNjhlYzg4YzAyNDQ5OTM2NzMzZjE4MDFjNmViZGE0MTQxOTkzNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L54-L56",
+          "version": "repo-lines-v1:sha256:6b9e75ead67175ca6b83dc56229d5d35b184bafd1402e97536e3eee3bca6814a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY5ZDhmYTQ4ZGNlNzU3YmJmMzY5ZTQwNzM1NWRhYzNlZDYwYzkzMjllZmUyOTYzZGMwNjVkYTMzNjZhZDYzMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzE4YjQ2MDQ2N2E3NDk4M2Q5ODgxODIzY2I3NjllMWNlZTI5MzhiNDUwMzdkMjkyZDJjOGY4NzZjMmY5NGE0NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTVkNDRjNzEwNmEwODI3ZWRlMTBjNDM0ODZjNDNlYTZkNDVlN2ExYzYxNTE0Y2JmNTljZmExY2NjMWRjNjk3OSJ9"
         },
         {
           "resource": "repo://packages/server/src/routes/health.ts#L80-L87",
@@ -281,6 +285,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

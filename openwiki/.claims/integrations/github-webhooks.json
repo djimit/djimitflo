@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ebc1ad3879678d9ab193256d8b3bf46f22a222d179536e6cd81560aa9a20fd1a",
+  "pageVersion": "sha256:5bd48f46f7fbc28d9355b90fd8efbe9e2914302c089e2f0983bf19ae8ec7d7a7",
   "claims": [
     {
       "id": "claim_17defd1293ac4151b7b92a058063261b",
@@ -192,17 +192,69 @@
     },
     {
       "id": "claim_de1d47a840ba43eab40f255c6eec9498",
-      "statement": "Because the PR review service shells out to gh, the production Dockerfile runner stage installs the GitHub CLI from a pinned .deb (GH_CLI_VERSION=2.100.0 fetched from github.com/cli/cli/releases, verified with gh --version at build time) alongside git and ca-certificates.",
+      "statement": "Because GithubPrReviewService shells out to gh for PR comments and commit statuses, the production Dockerfile runner stage installs the OS packages ca-certificates, git, python3-minimal, curl, and procps via apt (L61–L64), then installs the GitHub CLI from a statically fetched, pinned .deb — ARG GH_CLI_VERSION=2.100.0, downloaded from github.com/cli/cli/releases for the dpkg build architecture, installed with dpkg -i, and verified with gh --version at build time (L66–L74) — rather than adding a third-party apt repository; an inline comment names GithubPrReviewService as the consumer.",
       "evidence": [
         {
           "resource": "repo://Dockerfile#L61-L74",
-          "version": "repo-lines-v1:sha256:17eba1af7deb7ea4e481027a9c3763de20ef60bac41f36b61aa2b3bfa7caabd6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NWIxZDNjYzc2N2Q3ZmEwOTUxMTQ0MjJjMDBiYzk5Mjk1MjJiMDJiZjJhZWMyYjlmM2JhYzIxYmI5ODUzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzlmNDVlYThiNWNiNTJiMjE3NjlkMjZjNWY2MTJiMGU3NzcwMDllMjZlNjI5YTRjOWRkNzExYmZkMGJlZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YjdjMjk0YmZhYzljODg4YzIzZGI5MTUwMmRiODBmZGExNDIxNzYzYzNlMmZmNDc2MjVmZDU3MDZmYTlkMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
+          "version": "repo-lines-v1:sha256:73c1712b0c71712792f7e39dc0948b98137226ac1a764e7776144c294a354558:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5NWIxZDNjYzc2N2Q3ZmEwOTUxMTQ0MjJjMDBiYzk5Mjk1MjJiMDJiZjJhZWMyYjlmM2JhYzIxYmI5ODUzZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2YzlmNDVlYThiNWNiNTJiMjE3NjlkMjZjNWY2MTJiMGU3NzcwMDllMjZlNjI5YTRjOWRkNzExYmZkMGJlZjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1YjdjMjk0YmZhYzljODg4YzIzZGI5MTUwMmRiODBmZGExNDIxNzYzYzNlMmZmNDc2MjVmZDU3MDZmYTlkMDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhMDQ0YTIxN2IyOTY4N2YwMmI3YTA1MGFmYjc3YzAwNWU4MmFjYzg1MDU4MGM5Y2MzNTIyNWJmNzE1ZWJmZTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a79f9fa6c32e43b1aa7d9fef27f84f8d",
+      "statement": "After the loop daemon's verification pass finds all gates passing (step 9b), it calls LoopDraftPrService.openForRun for the certified run; the call is wrapped so a PR failure never fails the daemon, and the service itself returns null unless LOOP_AUTO_DRAFT_PR_ENABLED is exactly 'true' and GITHUB_REPOSITORY/GITHUB_TOKEN are set, keeping the GitHub-publishing hand-off opt-in by default.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L646-L650",
+          "version": "repo-lines-v1:sha256:a622718f552d5755b72bb275d1d490d873d5ae833cdf05f0ca9190ce2664e8ef:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDdjN2U2M2YyYmVkMmYwZmUzNWI2NTU2MzIxMjY1NDZjYjZkMTBmNGU3MmY0ZjQ4MzRiNjQ1Zjk4NjU1ZTY5NSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWExNWZkYWRhNzI3MGQyYTNjZDJkNGQyOGQ2MDEwMzVjNzI4ZjVmYTk4ODg2OWRlMTA4OWVhMjY5NDM3NTg5OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTJmOWRhOTg2ZTk3MmQzNzQxNTc5YWMzZmY1ZTFlNzkxNzc1MWZhZjI5NzhmM2NiMjBiYWVkM2Q0OTJjYzA1YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjk4Y2UwMjFkOTQxNzk3NDY2ZDJkYWM0ZDkwNmQ1NWU3Njg0MmJmYzY3ZTEyYTA4ZGNmOThiYmMxODFjMTVjZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L15-L20",
+          "version": "repo-lines-v1:sha256:587ab3c12ec5fb15f8342c6a470b6137aeea301fd4f01151dc40796a3e2d0a36:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjQ3YzUxOTNjOTVjZDcwM2ZkY2VhMGMxODExZGUwNmQ2YWVjOGQ4Nzk3MDY0ZmYyNzgyOGFiMDM2NWNjNDRmMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzU5MTJhNTMyZDVmMzhkOGFjZmI0NDNiMDhiMTlkNGU4ZDA1MjhkYTczMzI1MDRkNjgyMzlhYTk1NmU3MGEyNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTMyYjc1NDlmNTg5NmE2MmMzYzk0ZDUyZTM5YjA3ZTlkYWI2NGMxMWM3NzYxMzBlMjk1ZGY4ZDgxOTczODNhMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzk5MDBiZDkwNmY3MzMyMWI4YmQzNThhN2Y0MjNjM2IxMzEzMjk2YTdhNmEyZGQ5ODcwZjBiZTEwODAzYmU5ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a83ae81f85014964927d48fc91e8187d",
+      "statement": "LoopDraftPrService opens at most one draft PR per run: it only acts on loop_runs in status ready_for_human_merge or completed, returns the already-recorded loop_runs.metadata.pr_url unchanged when present, and converts every missing precondition or GitHub failure into a draft_pr_failed warning loop event with a null return instead of throwing.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L19-L25",
+          "version": "repo-lines-v1:sha256:5b89e42e227dd6972fed92539534a5e380b84e532bb9b68a7cfb99dce5f471a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmU0ZmUwYTYzZWU2NjliMGRmN2Q5YTkxYzAxMjdiMmE1OTU1NTNkZmVkZWY1NjJiNWUzOGVlMDQ1Y2QxYzdkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmZmN2Y2NTg1MDE4MGVlNTFiMDJiYjAwNWRiZTBlNGEwNDJhNmZlYjJmNzA2MjEzMTE2NzEwODk1OWQ0Mjc3NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2JjYTFkZTE3YjQzNzMxZjJhNzczNzBmOTY5NDc2NjI5NGY2MDAwNGExMDliNTAzM2RjY2Q5ZmNlNTMxYmFkYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDg5YmVhNTBjMzdlYzBkNTNmN2NmMDc1MDZmM2Y3ZTVkNGYwNmMyODFmMTM2NGEwZjhkMmE4YTIzNWViNGQxNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L63-L65",
+          "version": "repo-lines-v1:sha256:32ecad5a6cbc7c1418c0bb7780476cf498080ade9b0ebc1441433ad0c61e7225:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDhkYjc0NjA4MTgyY2I3Y2E0ZDlmYmE0OWEzOTQ5OWE3ZjM5MDdiNGVhMDMzYjE0OTJhZDVjZjBiZWVlZWNlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTgyMTEzMjNiY2NiZmUzODYwMTU4MWQ4OGQyNzY1NjYyZjgxYjk5ZTM3OGNkNmY2ZDk4NTYxNTE2YTEzMGVkYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGY3MzlhMDZjMWNiYjEyNDRlMzM2M2QzOGJjZjlmYTUwY2U4NGZlZDM5OWMyMTkzYTNjN2YwOGQ1OTkxOGIyYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_7c6476ba7c5349a28946c2209566f9aa",
+      "statement": "The draft-PR push commits only the maker's real files from the latest non-superseded completed maker lease's worktree — tracked diffs plus untracked files, excluding node_modules content, symlinks, and lockfile install noise (a package-lock.json whose sibling package.json was untouched) — failing with 'no changes in the maker worktree' if nothing qualifies, and authenticates the push with the token as a one-off http.extraheader basic-auth header so the token is never written to the remote URL or .git/config and is scrubbed from any recorded error message.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L27-L48",
+          "version": "repo-lines-v1:sha256:0ccdfa5cbaac8a65a5372d4accb121161d932338694be10c50b11aa0cfac0e34:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNjExYzA2ZmNhZWM3ZWI4YWJkOGExZjY5YzZjMDg3YTVmNTgyMjRmM2Q2ZmM2MWY5MjI4Y2I5OWQzNmQxM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmMjBhZjM3MDE1ZDkwMjc2YWYxYjU1YmM3NTAyOWZlMWQxNGE2ZTY5NzE4NWFiNmE4NjgxYmI1MGVhYWNlNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2ZjhhODUwY2JiN2Q1YjhmNmYzZmYzN2MyNzM5Y2VhNTgzMTUxNWY4Y2I2Y2Y2MDI0MWE5YzA1OGNkNDdlYTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1Mzk1ZDgxYTE0NzE4Njc2OWI1Nzk1ODFmMDEzZjlhYzY5OTY0YTJkMmM2MWNiNzQ4OGM4NDg5NGEzMmMzMGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L64-L64",
+          "version": "repo-lines-v1:sha256:966a7be1e249a92916a4fac837c48b3a4b5014d779271bd1d27473b6e21749c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY2YTdiZTFlMjQ5YTkyOTE2YTRmYWM4MzdjNDhiM2E0YjUwMTRkNzc5MjcxYmQxZDI3NDczYjZlMjE3NDljNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY2YTdiZTFlMjQ5YTkyOTE2YTRmYWM4MzdjNDhiM2E0YjUwMTRkNzc5MjcxYmQxZDI3NDczYjZlMjE3NDljNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzY2Zjg4M2E2OGU4Y2I3YmVlMjk3YzczNzVhNTRhZTI5ZWI2MzJmOWM3MzE5NzRlZjc5ZmEzM2YzZTZjZjc1ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGUwZjcyOTNkMTU2YTZkMTI1MjhkYjEyOTMzNzllNTJhNWY4MzY3MDQ0Mjk3YjIyODJiOTdmZjJjODYwNDM4ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_98a308f135dc4838a54b89f41ca16d73",
+      "statement": "The draft PR is opened via POST /repos/{GITHUB_REPOSITORY}/pulls with draft: true, a 'loop:'-prefixed title taken from the linked self-improvement proposal when the goal has one, base branch LOOP_DRAFT_PR_BASE (default main), push remote LOOP_DRAFT_PR_REMOTE (default origin), and a body listing the recorded checker/security_checker verdicts and the file list; on success the PR URL is persisted into loop_runs.metadata.pr_url and a draft_pr_opened loop event is recorded.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-draft-pr-service.ts#L50-L61",
+          "version": "repo-lines-v1:sha256:9a7c44c1da2ff12f512f8275d2844bf626acb882b958fde0fb5081ce138a1846:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlMTBlNWZlYTM0NTEzNzY1ZTg2N2I3NzVhNDA1Y2M0MjU3ZTI2MDlmNDRjY2M4NTIxMTY1NjJiMmY3ZDU3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyOWZmODIxZDk5NzkxYzZlNjU0NDRiOTI3MzJjNjRhNTk3YWFlZDZjY2QwZTYyODUxYmJmMjc3OTRmOGU4ZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3MzgxNTU4NGMwNDg0MmY5Y2M5MWI3NjZhOTQ3NzU3NGE0YWZkZTQxN2ExOWJhZTFjYzZlNjZiOTk0NzE0YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE3Y2NlMGY5ODdjZTFlNTFmNDc1NDU4YTEzNDRhYzZkZDc3Yzg3NTY0ZDBhZDY4NjhkNzY0MDJjN2UxYWY5NmUifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

@@ -3,9 +3,6 @@ type: runtime-architecture
 title: "Agent Runtimes & Executor Adapters"
 description: The ExecutorKind taxonomy, TaskExecutor/ExecutionSession contract, the eight always-registered CLI adapters plus the opt-in deep-agent runtime, the DockerSandboxExecutor wrapping isolation layer, and the circuit breaker + fallback chain that route executions across providers.
 tags: [executors, executor-kind, task-executor, docker-sandbox, circuit-breaker, fallback-chain, skip-permissions, runtimes, opencode, codex, claude]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
@@ -17,18 +14,24 @@ sources:
     resource: repo://packages/server/src/execution/execution-engine.ts
   - id: openwiki-source-99861e0d575ab3b523c675ce
     resource: repo://packages/server/src/execution/executor-output.ts
+  - id: openwiki-source-5e0b6675f3f54d9fe05c8031
+    resource: repo://packages/server/src/execution/executors/codex-executor.ts
   - id: openwiki-source-74b516a517202c2d66b1fc24
     resource: repo://packages/server/src/execution/executors/deep-agent-executor.ts
   - id: openwiki-source-5c4d39f74a55fb1a7927eaea
     resource: repo://packages/server/src/execution/executors/docker-sandbox-executor.ts
   - id: openwiki-source-7e38592c3e48faf34127be02
     resource: repo://packages/server/src/execution/executors/executor-env.ts
+  - id: openwiki-source-65409349d5e7cefaf6114fd8
+    resource: repo://packages/server/src/execution/executors/opencode-executor.ts
   - id: openwiki-source-a5ee7cd85d802e6d855cea8c
     resource: repo://packages/server/src/execution/executors/runtime-process.ts
   - id: openwiki-source-0ecf5370c0c64700498da232
     resource: repo://packages/server/src/execution/executors/structured-runtime-event.ts
   - id: openwiki-source-9c6ae5ef1182c548f8c5a898
     resource: repo://packages/server/src/execution/types.ts
+  - id: openwiki-source-e150fad964217ff0c31e33c3
+    resource: repo://packages/server/src/routes/loops.ts
   - id: openwiki-source-6f8d484158955a76b057d482
     resource: repo://packages/server/src/routes/swarm-knowledge.ts
   - id: openwiki-source-bd0aa237d1204fcb36b72c86
@@ -37,7 +40,18 @@ sources:
     resource: repo://packages/server/src/services/execution-mode-policy-service.ts
   - id: openwiki-source-c4bb7e048f7015721e621edf
     resource: repo://packages/server/src/services/fallback-chain-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+  - id: openwiki-source-34dbd5b3123e070678b30d30
+    resource: repo://packages/server/src/services/github-pr-review-service.ts
+  - id: openwiki-source-22994df3300631f173246b0b
+    resource: repo://packages/server/src/services/loop-service.ts
+  - id: openwiki-source-3a769a6d8998bdc53fa8b70d
+    resource: repo://packages/server/src/services/loop-worker-executor-service.ts
+  - id: openwiki-source-4420159e8c2bcabac04f85cb
+    resource: repo://packages/server/src/services/runtime-command-service.ts
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Agent Runtimes & Executor Adapters
@@ -127,8 +141,8 @@ provides it). They differ in binary, argument surface, and parsing strategy:
 | Kind | Binary (env override) | Skip-permissions flag | Notes on CLI contract |
 |---|---|---|---|
 | `mock` | — (in-process) | — | Deterministic fake event stream for tests and `docker`-free development. |
-| `opencode` | `opencode` (`OPENCODE_BIN_PATH`) | `--auto` | `run [--format json] [--dir] [--model] [--agent]`; NDJSON `step-start`/`tool`/`text`/`step-finish` with nested `part`; collects tokens/cost per `step_finish`. |
-| `codex` | `codex` (`CODEX_BIN_PATH`) | `--dangerously-bypass-approvals-and-sandbox` | `exec [--json] [--cd] [--model] [-c model_reasoning_effort=…] [--sandbox]`; accepts `thread/turn/item.*` NDJSON plus legacy `step-*`/`tool`/`text`. |
+| `opencode` | `opencode` (`OPENCODE_BIN_PATH`) | `--auto` | `run [--format json] [--dir] [--model] [--agent]`; NDJSON `step_start`/`tool_use`/`text`/`step_finish` with nested `part`; collects tokens/cost per `step_finish` and reports them as `tokenUsage`/`costDollars` metrics on the `ExecutionResult`. A run that exits 0 but contains a failed verification tool step resolves `failed` with code `VERIFICATION_FAILED` (`retryable: false`, `sideEffectsPossible: true`). |
+| `codex` | `codex` (`CODEX_BIN_PATH`) | `--dangerously-bypass-approvals-and-sandbox` | `exec [--json] [--cd] [--model] [-c model_reasoning_effort=…] [--sandbox]`; accepts `thread/turn/item.*` NDJSON plus legacy `step-*`/`tool`/`text`; sums `turn.completed` `usage.input_tokens + output_tokens` into the result `tokenUsage` metric. |
 | `claude` | `claude` (`CLAUDE_BIN_PATH`) | `--dangerously-skip-permissions` | `-p <prompt> --output-format json`; line-JSON then heuristic fallback. Worktree comes from spawn `cwd` (no `--cd`). |
 | `hermes` | `hermes` (`HERMES_BIN_PATH`) | `--yolo` | Uses the programmatic `chat -q <prompt> --oneshot --quiet` surface instead of `hermes -z`, because `-z` bypasses approvals entirely — Djimitflo stays the approval boundary. |
 | `gemini` | `gemini` (`GEMINI_BIN_PATH`) | `-y` | `-p <prompt> -o json [-m <model>]`; same line-JSON + heuristic pattern as Claude. |
@@ -270,16 +284,57 @@ can be injected via the constructor or `setChain()`.
 fallback executor <kind>` event carrying `failureCode`, `failureDomain`, `retryable`,
 and `sideEffectsPossible`.
 
+## Runtime contract checks in loop execution
+
+Before any loop worker spawns a CLI, `LoopWorkerExecutorService` (executeMaker /
+executeChecker) probes the binary through `LoopService.getRuntimeContract(runtime)` —
+delegated to `RuntimeCommandService`, which runs `<bin> --version` plus a
+`--help`-style probe per runtime (e.g. `codex exec --help`, `opencode run --help`) and
+marks the contract `drifted` when required flags (`--json`/`--format`, cwd flag,
+headless flag) are missing from the help output. Contracts are conformance-hashed
+(`withConformance` emits sha256 `contract_hash` + named checks), cached for
+`LOOP_RUNTIME_CONTRACT_CACHE_MS` (default 5 s), and persisted to the
+`runtime_contract_probes` table. Both worker paths then:
+
+1. record a `start` worker manifest (`recordWorkerManifest`, `gate_refs:
+   ['runtime_contract']`) capturing the contract plus capacity/budget snapshots, and
+2. if `!contract.available || contract.status !== 'ok'`, record a `fail` manifest with
+   `blocked_reasons: ['runtime_contract_drift']`, mark the lease failed with
+   `failure_reason: runtime_contract_unavailable_or_drifted`, and throw
+   `RUNTIME_CONTRACT_DRIFTED` — no provider process is ever spawned against a drifted
+   contract.
+
+The `manual` runtime is always "available" but is gated before contract probing:
+`executeMaker` refuses `manual` leases with `MANUAL_MAKER_REQUIRES_HUMAN` (manual
+runtime requires human execution), and manual checkers can only be dispatched with an
+explicit non-manual runtime. `LoopService.getRuntimeContracts()` exposes the contract
+set (`manual`, `mock`, `codex`, `opencode`, `claude`, `gemini`, `editor`, `pi`) over
+`GET /loops/runtime-contracts`, and the mock executor's deterministic in-process
+contract (`available: true, status: 'ok'`, `proof_class: static`) is what loop tests
+and `docker`-less development ride on. See
+[Loop Lifecycle](./loop-lifecycle.md) for where these checks sit in the run state
+machine.
+
 ## Production worker surface and readiness
 
-The production Dockerfile pins the two provider CLIs the server accepts for
-non-mock production runs — `npm install --global @openai/codex@0.146.0
-opencode-ai@1.18.10` — and verifies them at build time (`codex --version`,
-`opencode --version`). At runtime the operator-facing probe is
-`GET /swarms/runtime-readiness[?runtime=…]` which:
+The production Dockerfile pins the three provider CLIs the worker image ships —
+`npm install --global @openai/codex@0.146.0 opencode-ai@1.18.10
+@anthropic-ai/claude-code@2.1.282` — and build-time-verifies all three binaries
+(`git --version && codex --version && opencode --version && claude --version`)
+up front (Dockerfile L76–L79: "Versions are pinned for reproducible probes"). The same
+layer also installs the `gh` CLI as a static `.deb` pinned via `ARG
+GH_CLI_VERSION=2.100.0` (downloaded per-arch from `github.com/cli/cli` releases,
+installed with `dpkg`, then verified with `gh --version`) because
+`GithubPrReviewService` shells out to `gh pr diff` / `gh api` for PR review comments
+and Check Runs. The rationale for the pins is probe reproducibility:
+`runtime_contract` probes hash the binary's `--version` output, so an unpinned `latest`
+install would make probe evidence and drift detection non-deterministic.
 
-- only treats `codex` and `opencode` as production runtimes (others are blocked with
-  `non_mock_supported_runtime_required`),
+At runtime the operator-facing probe is `GET /swarms/runtime-readiness[?runtime=…]`
+which:
+
+- only treats `codex` and `opencode` as production runtimes (anything else is blocked
+  with `non_mock_supported_runtime_required`),
 - checks the loop runtime contracts for binary availability/version,
 - verifies provider credentials (`OPENAI_API_KEY`/`CODEX_API_KEY` or a live
   `codex login status` for codex; `DJIMITFLO_OPENCODE_MODEL` plus opencode config for
@@ -287,8 +342,9 @@ opencode-ai@1.18.10` — and verifies them at build time (`codex --version`,
 - reports `ready` / `blocked_reasons` per runtime without starting any worker
   (`starts_workers: false`).
 
-This keeps the deployable surface equal to what the `/swarms/runtime-readiness` contract
-accepts: pinned, probed, certified runtimes rather than whatever happens to be on `PATH`.
+This keeps the deployable surface at or above what the `/swarms/runtime-readiness`
+contract accepts: pinned, probed, certified runtimes rather than whatever happens to be
+on `PATH`.
 
 ## Related pages
 

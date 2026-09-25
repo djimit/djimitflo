@@ -3,14 +3,13 @@ type: operational reference
 title: Configuration & Environment Variable Reference
 description: Consolidated operator reference for DjimFlo environment variables grouped by subsystem — server/API, auth, execution & sandbox, loop daemon & budgets, governance gates & schedulers, memory sinks, Telegram, spawn control, and deployment identity — with defaults, danger levels, and default-on vs default-off flags.
 tags: [configuration, environment-variables, operations, deployment, security, reference]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-8451388bda3e1da2037247f2
     resource: repo://docker-entrypoint.sh
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
+  - id: openwiki-source-5b54a58d1b51cd490b0e7162
+    resource: repo://package.json
   - id: openwiki-source-13f830df0763d5b992eb8922
     resource: repo://packages/mcp-server/src/db.ts
   - id: openwiki-source-5118f56b448a51e1df06691c
@@ -51,10 +50,16 @@ sources:
     resource: repo://packages/server/src/services/auth-service.ts
   - id: openwiki-source-d9c3cb47a041478666b1a412
     resource: repo://packages/server/src/services/authority-gate.ts
+  - id: openwiki-source-acb0c714a338db8e27c87232
+    resource: repo://packages/server/src/services/autonomy-shadow-service.ts
+  - id: openwiki-source-790788547c100e85b63f8531
+    resource: repo://packages/server/src/services/commons-grounding.ts
   - id: openwiki-source-7157a98eacc8d729f8927d85
     resource: repo://packages/server/src/services/compliance-report-scheduler.ts
   - id: openwiki-source-3520db2e41877a293398e0b2
     resource: repo://packages/server/src/services/event-outbox-service.ts
+  - id: openwiki-source-d462b6da96ed3b4d8d9cdf35
+    resource: repo://packages/server/src/services/evolve-selection.ts
   - id: openwiki-source-bf72a960552217b4f14efa94
     resource: repo://packages/server/src/services/external-event-ingest-service.ts
   - id: openwiki-source-25c427faa85fa8ced5997286
@@ -81,6 +86,8 @@ sources:
     resource: repo://packages/server/src/services/objective-loop-gate.ts
   - id: openwiki-source-1d325602f6e42c58a8679f0d
     resource: repo://packages/server/src/services/openmythos-nightly-service.ts
+  - id: openwiki-source-81edd86b77c2bd7a96c6017d
+    resource: repo://packages/server/src/services/runtime-bandit.ts
   - id: openwiki-source-8aaff226df3ca5c2697d015e
     resource: repo://packages/server/src/services/self-healing-scheduler.ts
   - id: openwiki-source-6ecf9d7aad389f4461296d21
@@ -89,9 +96,18 @@ sources:
     resource: repo://packages/server/src/services/spawn-token.ts
   - id: openwiki-source-badcccb746d578e88ded0f9b
     resource: repo://packages/server/src/services/specialist-panel-backlog-scheduler.ts
+  - id: openwiki-source-4d27018e194b0a6409bc016e
+    resource: repo://packages/server/src/services/test-gap-source-service.ts
   - id: openwiki-source-d441a5558c86cce9b01f7575
     resource: repo://packages/telegram/src/index.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+  - id: openwiki-source-feb37ed0f6ea03890107dd5c
+    resource: repo://scripts/auto-deploy.sh
+  - id: openwiki-source-468f882d40bb8c52d27a2b9f
+    resource: repo://scripts/mutation-gain.mjs
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Configuration & Environment Variable Reference
@@ -236,9 +252,24 @@ goals.
 |---|---|---|---|
 | `GOAL_QUEUE_POLL_MS` | `5000` | Goal-queue poll interval for the loop daemon. | low |
 | `GOAL_MAX_CONCURRENT` | `4` | Max concurrent goals (separate from per-runtime leases; effectively `min(this, dynamicLimit)`). | medium |
-| `LOOP_REVIEWER_TIMEOUT_MS` | `300000` | Checker/security reviewer timeout; accepted values clamp to `[1000, 900000]`. Raised because production reviews took 45–119 s against the old fixed 120 s. | low |
-| `LOOP_DAEMON_CHECK_SCRIPTS` | (empty → repo default check set) | Comma-separated deterministic check scripts run per daemon cycle, e.g. `test:changed,lint,type-check`. The full `test` script cannot finish in the default timeout, so hosts scope this down. | medium |
-| `LOOP_DAEMON_CHECK_TIMEOUT_MS` | `120000` | Per-check-script timeout, clamped to a 600000 max. | low |
+| `LOOP_MAKER_TIMEOUT_MS` | `300000` (clamped `[1000, 600000]`) | Maker execution timeout on non-mutation lanes. The **mutation lane is not tunable**: a mutation-gap maker (npm ci + two Stryker runs) is always granted the executor maximum `600000` regardless of this var. | low |
+| `LOOP_REVIEWER_TIMEOUT_MS` | `300000` (clamped `[1000, 900000]`) | Checker/security reviewer timeout. Raised because production reviews took 45–119 s against the old fixed 120 s. | low |
+| `LOOP_DAEMON_CHECK_SCRIPTS` | (empty → repo default check set) | Comma-separated deterministic check scripts run per daemon cycle, e.g. `test:changed,lint,type-check`. The full `test` script cannot finish in the default timeout, so hosts scope this down. Add `test:mutation:grounded` when the mutation lane is armed; that script is a no-op for other lanes (no `MUTATE_FILE`). | medium |
+| `LOOP_DAEMON_CHECK_TIMEOUT_MS` | `120000` (clamped `[1000, 600000]`) | Per-check-script timeout. | low |
+| `LOOP_DAEMON_REPOSITORY_PATH` | (unset → `process.cwd()`) | Absolute path of a real git checkout for **objective-mode** runs (the production image's cwd is `/app`, not a repository, so worktree creation fails without it; deploy mounts it at `/workspace/djimitflo`, chowned `1001:1001`). Also the default repo scanned by the test-gap/mutation-gap sources and commons grounding. Objective mode only — doc-drift runs ignore it. | medium |
+| `LOOP_DAEMON_MAKER_RUNTIME` | (unset → **no auto maker**: leases stay `manual` and goals die with `MANUAL_MAKER_REQUIRES_HUMAN`) | Operator's explicit maker runtime (`codex`, `opencode`, `claude`, `gemini`, `pi`, `editor`, `mock`) for objective-mode goals. A maker runtime is never inferred from planner recommendations; when set it also beats the bandit's choice. | medium |
+| `LOOP_BANDIT_ENABLED` / `LOOP_BANDIT_SPECIES` / `LOOP_BANDIT_MAX_SHARE` | `false` / (required, `runtime[@model]` list, first = incumbent) / `0.1` | E12 outcome-driven maker selection: Thompson sampling over each species' verified/failed runs in `skill_outcomes` chooses the maker species per loop. A challenger with fewer than 20 outcomes is capped at `LOOP_BANDIT_MAX_SHARE` of runs. Never overrides `LOOP_DAEMON_MAKER_RUNTIME`. | medium (unproven runtime/model picks a live maker) |
+| `LOOP_EVOLVE_ENABLED` / `LOOP_EVOLVE_SPECIES` | `false` / (list of up to 2 extra species) | E13 multi-maker evolution: eligible goals (test-gap/mutation-gap proposals, or goal `metadata.evolve = true`) get sibling makers of the other species on the same objective; deterministic fitness (checks, diff budget, mutation score, tokens) selects the winner and supersedes the losers before the reviewers run. | medium (multiplies maker spend per goal) |
+| `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` | `false` | Dispatches the checker automatically using **the same runtime as the maker** (self-review, not an independent reviewer) with the `LOOP_REVIEWER_TIMEOUT_MS` budget. Off by default because it removes human code review from verification — an explicit autonomy expansion, not a bug fix. | high (removes human review gate; enables loop closure/learning) |
+| `LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED` | `false` | Same dispatch for the `security_checker` lease; a deliberately separate, higher flag because it removes human *security* review. Inert unless the base checker flag is also on. | high (removes human security-review gate) |
+| `AUTONOMY_SHADOW_ENABLED` | `false` | Records a `auto_approve_shadow` judgment (decision + reason) for every human approval a loop run waits for, so agreement with the operator's real decision can be measured first. Conservative rule: "yes" only for test-only, non-high-risk, non-security changes whose class already has ≥3 verified outcomes and no regression. **Approves nothing** — measurement only (inserts into `judgments` and never blocks the loop). | low (read/record only) |
+| `LOOP_AUTO_APPROVE_TEST_GAP` / `LOOP_AUTO_APPROVE_MUTATION_GAP` | `false` / `false` | J5/M2 first real auto-approves, one lane each. `LOOP_AUTO_APPROVE_TEST_GAP` lets a maker approval auto-pass when the goal comes from the test-gap source and its artifact is a single new `packages/server/src/__tests__/*.test.ts` file; `LOOP_AUTO_APPROVE_MUTATION_GAP` applies the same one-test-file scope to mutation-gap goals but only after the lane already has ≥1 verified, human-approved run. The returned file becomes the enforced `auto_approved_scope` (the only path the maker may touch); checker, deterministic checks and a human merge stay. | **critical** (first unsupervised auto-approval of maker execution) |
+| `TEST_GAP_SOURCE_ENABLED` / `TEST_GAP_MAX_PER_DAY` / `TEST_GAP_MAX_IN_FLIGHT` / `TEST_GAP_REPO_PATH` | `false` / `2` / `2` / (defaults to `LOOP_DAEMON_REPOSITORY_PATH`) | Deterministic proposal source (autonomous profile): server services no test imports become fully grounded test-only proposals (target, runtime command, artifact, budget). A file that ever had a test-gap proposal is never proposed again automatically. `TEST_GAP_EXPORTS_ENABLED` additionally covers untested exports of tested services. | low (creates proposals, not changes) |
+| `MUTATION_GAP_ENABLED` / `MUTATION_GAP_MAX_PER_DAY` | `false` / `2` (1 in flight) | M2 mutation-gap lane: tested, non-sensitive services (30–400 lines) get "strengthen the test" proposals whose fitness is measured in code by the mutation-gain check below. | medium (spins two Stryker runs per check) |
+| `MUTATE_FILE` / `MUTATE_TEST` / `MUTATE_MIN_GAIN` | (unset / unset → check **no-ops**) / `10` | Inputs to `npm run test:mutation:grounded` (`scripts/mutation-gain.mjs`): Stryker runs the committed and the working-tree test against `MUTATE_FILE` and passes when the score gains ≥ `MUTATE_MIN_GAIN` points or reaches 90. Without `MUTATE_FILE`/`MUTATE_TEST` the script exits 0 immediately, so `test:mutation:grounded` is safe to keep in `LOOP_DAEMON_CHECK_SCRIPTS` for all lanes. The daemon injects both from the goal's grounding automatically (`mutationCheckEnv`). | low |
+| `LOOP_EVIDENCE_ROOT` | (empty → `<dirname(absolute DB_PATH)>/agent-evidence/agentic-control-loop-fleet`; else `<repo>/.data/…` for local dev) | Where worker stdout/stderr evidence is written. Verification checks this evidence exists, so it must outlive the container: prod 2026-09-24 wrote it into the image's `/app/.data` and lost it on every deploy — point it at (or leave it next to) the persistent volume. | medium (wrong placement = evidence silently lost on deploy) |
+| `LOOP_SKILL_CARDS_ENABLED` / `LOOP_MEMORY_RULES_ENABLED` | `false` | K1/K2 assignment-context enrichment: accepted loop-written tests of the same lane, resp. up to 3 recently promoted memory rules, are injected into maker assignment packets. | low |
+| `LOOP_REVIEWER_APPROVAL_INHERIT` | `false` | One human approval per loop run: the reviewer inherits the maker's approval instead of asking a second time. | high (halves approval prompts per run) |
 | `SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED` | `false` | Allows a qualifying goal to drive a **real objective-mode maker/checker cycle** instead of the safe doc-drift no-op. First path where free-text goals reach a real code-writing maker unsupervised. | high |
 | `SELF_IMPROVEMENT_OBJECTIVE_LOOP_MAX_PER_TICK` | `1` (hard ceiling `3`) | Per-tick cap on objective-mode dispatches; a qualifying goal that loses the cap waits for the next tick instead of falling through to the no-op. | medium |
 | `AUTHORITY_GATE` | `off` | `on` = observe (emit a DENY authority event), `enforce` = fail-closed: a goal without an ALLOW approval record in `authority_events` is refused by the daemon. | high when `enforce` (blocks all goal execution if the table is absent) |
@@ -394,6 +425,29 @@ baked build revision agree.
 | `DJIMITFLO_FEDERATION_ENABLED` | (unset = fully no-op) | Discovery-only reading of external agent commons via gateway discovery; no hardcoded endpoints. Leaving it empty disables federation entirely. | low |
 | `DJIMITFLO_BOARD_HANDOFF_AUTONOMY` | `true` (in autonomous profile) | Default-on board-handoff reconcile loop; set `false` to disable. | medium |
 
+## Auto-deploy (VPS systemd timer)
+
+`scripts/auto-deploy.sh` runs **on the VPS** (systemd timer) and self-deploys `main`
+only when every precondition holds: `main` differs from the commit recorded in
+`compose.yml`, every CI check-run on that commit completed green
+(`success`/`skipped`/`neutral`), the commit is at least `AUTO_DEPLOY_SETTLE_MIN`
+minutes old (a merge train collapses into one deploy), zero loop workers are running
+(running `worker_leases` plus `loop-worker-%` tasks — an approved maker resumes
+in-engine while its lease still says `prepared`), and no kill-switch file exists. The
+deploy itself re-downloads `scripts/deploy-vps.sh` **of the commit being deployed**
+and runs it `--local` with its health wait + rollback. Pre-deploy disk hygiene and
+chown-to-1001 of the checkout (needed for objective-mode git worktrees) live in
+`deploy-vps.sh`, whose own overrides are `DEPLOY_HOST` / `DEPLOY_PORT` /
+`DEPLOY_KEY` / `DEPLOY_ROOT` / `DEPLOY_REPO_URL`.
+
+| Variable / file | Default | Purpose | Danger |
+|---|---|---|---|
+| `AUTO_DEPLOY_SETTLE_MIN` | `20` | Minimum age of `main` before a deploy fires, so a commit train settles into a single deploy. | low |
+| `AUTO_DEPLOY_REPO` | `djimit/djimitflo` | GitHub `owner/repo` slug for `git ls-remote`, the check-runs API, and the raw-script download. | low |
+| `DEPLOY_ROOT` | `/srv/djimitflo` | On-host deploy root holding `compose.yml`, `runtime-source-*` checkouts, and the kill switch. | medium |
+| `/srv/djimitflo/AUTO_DEPLOY_DISABLED` (file) | absent | Kill switch: when the file exists the timer run logs "disabled by kill switch" and exits 0. `touch` it to stop all auto-deploys. | medium (when deleted accidentally, deploys resume) |
+| `AD_MAIN_SHA` / `AD_CURRENT_SHA` / `AD_CHECKS` / `AD_COMMIT` / `AD_LEASES` / `AD_DEPLOY` | (unset) | Per-probe overrides: when an `AD_<NAME>` var is non-empty it is **evaluated as shell** instead of the real probe command, making the decision logic testable without a VPS (`auto-deploy.test.ts`). Dangerous to leave set on a real host. | high (a spoofed probe lies about CI/leases and deploys anyway) |
+
 Operational note on MCP identity: `database_instance_id` is created once per database
 (`ensureDatabaseInstanceId` inserts a random UUID into `system_state` on first use)
 and is what `DJIMITFLO_EXPECTED_INSTANCE_ID` guards against.
@@ -407,6 +461,8 @@ Arm these only when you understand the bypass they create:
 | `RUNTIME_ALLOW_SKIP_PERMISSIONS=true` | Master gate letting a per-task `skip_permissions` request actually skip approvals/sandbox. |
 | `OPENCODE_SKIP_PERMISSIONS=true` / `CODEX_SKIP_PERMISSIONS=true` | The runtime CLI's own permission prompts. |
 | `DOCKER_SANDBOX_SKIP_DIGEST_CHECK=true` | Sandbox-image digest pinning (supply-chain protection). |
+| `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED=true` (+ `…_SECURITY_CHECKER_ENABLED`) | Human code (resp. security) review of maker output — self-review by the maker's own runtime instead. |
+| `LOOP_AUTO_APPROVE_TEST_GAP` / `LOOP_AUTO_APPROVE_MUTATION_GAP=true` | The human approval step for maker execution in the test-gap / mutation-gap lanes (still scope-enforced, checked, and human-merged). |
 | `DOCKER_NETWORK_MODE=bridge|host` | Sandbox network isolation (`none` is the safe default). |
 | `SPAWN_DEPTH_BUDGET>0` | Nested spawning entirely (default `0` = off, default-deny). |
 | `DJIMITFLO_DATA_MODE=live` (MCP) | Read-only MCP snapshot protection — mutating tools now hit the operational DB. Pair with `DJIMITFLO_EXPECTED_INSTANCE_ID`. |

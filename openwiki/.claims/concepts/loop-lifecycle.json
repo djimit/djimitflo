@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:25387b3106550e44d91546ae082d34cece1835a7d6d1b511cc2b5ce4a72b979f",
+  "pageVersion": "sha256:f26ac9d8c6a8aaf152e843575384248c046e332f82b227b4196ee6c3f5ae1f93",
   "claims": [
     {
       "id": "claim_d4f5a64d5a624ae49ba14e028bb7d2cb",
-      "statement": "LoopService is a facade that keeps the loop subsystem's external method surface stable while delegating substantive work to focused sub-services constructed in its constructor: LoopLifecycleService (continue/retry/split), LoopWorkerExecutorService (maker/checker execution), LoopVerificationService (completion gates), LoopDiscoveryService (finding scanners), LoopBudgetService (budgets/escalation/cost), WorktreeManager (git worktrees), WorkerLeaseRepo (worker_leases persistence and lineage), LoopEventService (loop_events), LoopRunQueryService/LoopRunMutationService (loop_runs read/write), LoopRecoveryService (crash recovery), RuntimeCommandService (runtime contracts/process spawning), and LoopPersistenceService (LOOP_STATE.md, diffs, evidence dirs).",
+      "statement": "LoopService is a facade that keeps the loop subsystem's external method surface stable while delegating substantive work to focused sub-services constructed in its constructor: LoopLifecycleService (continue/retry/split), LoopWorkerExecutorService (maker/checker execution and worker-approval decisions), LoopVerificationService (completion gates), LoopDiscoveryService (finding scanners), LoopBudgetService (budgets/escalation/cost), WorktreeManager (git worktrees), WorkerLeaseRepo (worker_leases persistence and lineage), LoopEventService (loop_events), LoopRunQueryService/LoopRunMutationService (loop_runs read/write), LoopRecoveryService (crash recovery), RuntimeCommandService (runtime contracts/process spawning), and LoopPersistenceService (LOOP_STATE.md, diffs, evidence dirs). The stop/continue/split/retry/delegate/verify/certify entrypoints delegate to lifecycle/verification/workerExecutor.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L2386-L2499",
-          "version": "repo-lines-v1:sha256:4909967c6cb8b0c5793299afeb865a364858d5c545121a55bee72d6eb3cf7872:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0NWI5MGZlNjU4ODEyMDk5YTNmOTExNmVhZGRhYTU1MDdmMDM4YTA0ZTU3NmQwYjhlOTc1ZGYwMjQzNTk2MDBiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMTcyNjMyMmRkNTY3MTZmMTdkOTJiNTEwYjIxZjIzNjgzZjM0Mzk2MzA4ZjNlMjU3MWNhNTIxMjZmNDk1NmQ4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4MGFjMDA0ZGU4ODc3MDg4NzY1ODdjZjg5ZDY1N2NhN2IwNTBhOWQxOGVlOGM2MDExMTJjMDY1Y2NiZjU1OWY1In0"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2386-L2539",
+          "version": "repo-lines-v1:sha256:3f66516fdcac97068892f778e67ec04c097a5bc641af2262ed0be6aea0aa8a09:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWE3ZTY1MDQ3NGFlZjRlOWY4NTAyNDBmOTM4MzM5MDczYjFkYzk0MTU4NjkyNDZjOWFjOTZkNzg3ZGQ2NGQxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZmU5MDI3NWQzMGNjOGFiOGY5ZTQzNmNhYmQ1NjZlZGNiODg4M2IzNzhjZDNjNTc2Y2EwNmQ5NWU1M2M2YmVlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L283-L337",
-          "version": "repo-lines-v1:sha256:b0ed80c615ebdc9a751ad703ad4dfd4bd39ffed76f05b578cd9256210d0a8a31:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1NTkyZWZkMWZlZmRmYjhmNmRhNDMwMTFlMTlmOWU4MmM0ZmI1ZGRlMzY4MDVlNjExY2E4MGM3MTcwMzI0YWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmZDIyMDhkZDRjOWI0NGM2OGE5MDUyZjQ1ZjA0ZjUzZDQ3MDQ5Yjg2MTllOWYyNmRkOTE2YzFiOThjNTk4YzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNGY2ODJkYmRjZTA0ODVmZTIwMGMyYjM4MGExZmYyOTkwYWFhNDIzYmViMTYzMzU0MDZmMWFiNzhlYmNlM2IifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L283-L347",
+          "version": "repo-lines-v1:sha256:13d7bcb3c14867cba54a3c82f21ad11879ac617329fa39270a0425e25d39091b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNTFjZTZlNjNjNTQ3OWFkODdjNGExMGIwMzc4NTEyMjNkNjcwZjZhMzU2MDk0Y2JjZjVjODk5MDk1N2Y4NWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhMzIzNTA1NGJhNTliYjhjOGEyM2IyODE5Y2MxYzVlYjY5NzNlYjZlMGY1ZDNiYWIyYzlkNGFiM2Q2MTI2YWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmNGY2ODJkYmRjZTA0ODVmZTIwMGMyYjM4MGExZmYyOTkwYWFhNDIzYmViMTYzMzU0MDZmMWFiNzhlYmNlM2IifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L714-L729",
-          "version": "repo-lines-v1:sha256:1e560ad1351abb006be6d166cc42d4270637223f2ad417dcf9ce556e368a14f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxN2U0MjNmY2I1YzQwNjA2OTIzYTNlZWExNjhiMjE3NWRjMDQ3NWY4ZjU1YTkzMTZkYWIyOTk1NTQ4YTFiM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMjJiNDg1Y2NkMjMzNjFlZmJhYTYyN2VlYmJhYWMyMGM2NzI0MmQwZGViZGRlYTQxZDNiM2FkM2ViYTIxYmMifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L724-L744",
+          "version": "repo-lines-v1:sha256:e4d525da7186a9f1776f01ab3927bcbe3af1b25b0f2afd48ad68c815e315aa71:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxN2U0MjNmY2I1YzQwNjA2OTIzYTNlZWExNjhiMjE3NWRjMDQ3NWY4ZjU1YTkzMTZkYWIyOTk1NTQ4YTFiM2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlMjJiNDg1Y2NkMjMzNjFlZmJhYTYyN2VlYmJhYWMyMGM2NzI0MmQwZGViZGRlYTQxZDNiM2FkM2ViYTIxYmMifQ"
         }
       ]
     },
@@ -72,7 +72,7 @@
         },
         {
           "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L166-L235",
-          "version": "repo-lines-v1:sha256:e9515dacfa008d4c070ce795491912b31ba8a36826c312ae800ff67b14284e3e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YzU0MGRhMmUzNDExYWMxMGQxMDkxMzRmYjVjNDFkZWUyNzQ4ZTNlZDJjNzRhZTMzZDU5OWU5NGYyYzRmMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkNGZiNzVhOWViMzZjYjdmYjdkNmJiZjFlNDQ0OTlhZmQzNTQ4NDMwNmJkOTE3MWMzZGYwYWY1NjQxNTcxOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+          "version": "repo-lines-v1:sha256:a19cd4e3a3b36a03606c23af3d08e9b6126079b9a182dd93ec02794ae1486e5c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5YzU0MGRhMmUzNDExYWMxMGQxMDkxMzRmYjVjNDFkZWUyNzQ4ZTNlZDJjNzRhZTMzZDU5OWU5NGYyYzRmMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkNGZiNzVhOWViMzZjYjdmYjdkNmJiZjFlNDQ0OTlhZmQzNTQ4NDMwNmJkOTE3MWMzZGYwYWY1NjQxNTcxOGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
         }
       ]
     },
@@ -150,7 +150,7 @@
       "evidence": [
         {
           "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L59-L200",
-          "version": "repo-lines-v1:sha256:bee296f347a155b3e080381e61340ca2e20eea34316dc63e0032a6a880e71a40:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDc4YTI3OWE5YTA3MTYzZWMxN2ZlZmQ4OTg2Mzg4ZTI0MTMxYjNhZjdkODVkZThlM2NhN2QxMDU3ODJiODM5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZjNjNTZmM2QzYTBmMThmNDczZGVjNWQ2MDgwZWQ4ZTg2MWUwNmIyNmQ3NjI4YjE2NjQ3MDRmZTI4ZjRhNzQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDhkNmMxZTAzZjA0NzUwMTNhYWM4ZGU4ZDA3ZDE5NzBhMTYwNDA5YWEyNGJjMzQxNmRiMWFiMDY1YzU3MmVmIn0"
+          "version": "repo-lines-v1:sha256:4a769532caf9b16b5f88e1f560ff036dc736429d02d2ff7f4dffa97677a5b2c4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDc4YTI3OWE5YTA3MTYzZWMxN2ZlZmQ4OTg2Mzg4ZTI0MTMxYjNhZjdkODVkZThlM2NhN2QxMDU3ODJiODM5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkZjNjNTZmM2QzYTBmMThmNDczZGVjNWQ2MDgwZWQ4ZTg2MWUwNmIyNmQ3NjI4YjE2NjQ3MDRmZTI4ZjRhNzQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlNDhkNmMxZTAzZjA0NzUwMTNhYWM4ZGU4ZDA3ZDE5NzBhMTYwNDA5YWEyNGJjMzQxNmRiMWFiMDY1YzU3MmVmIn0"
         }
       ]
     },
@@ -176,11 +176,11 @@
     },
     {
       "id": "claim_3ed06fb84f4c43cebbf1d1342cb0a878",
-      "statement": "verifyLoopRun evaluates ten gates (run_not_cancelled, maker_completion, maker_checker_separation, worktree_isolation, assignment_file_present, diff_threshold_all_makers, checker_verdict, tests_lint_typecheck, security_checker_verdict, no_automatic_merge) over non-superseded makers and their linked reviewers, deriving run status ready_for_human_merge/blocked/verifying and recording block_reason=gate_failed with failed-gate evidence on run metadata.",
+      "statement": "verifyLoopRun evaluates eleven gates (run_not_cancelled, maker_completion, maker_checker_separation, worktree_isolation, assignment_file_present, diff_threshold_all_makers, checker_verdict, tests_lint_typecheck, security_checker_verdict (high-risk only), auto_approved_scope (J5 one-file scope), no_automatic_merge) over non-superseded makers and their linked reviewers, deriving run status ready_for_human_merge/blocked/verifying and recording block_reason=gate_failed with failed-gate evidence on run metadata; a maker_completion failure does not block while makers are still prepared/running (waitingForMakers), and cancelled/completed runs keep their status.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L37-L166",
-          "version": "repo-lines-v1:sha256:fd01a556209607beddf9f7b7b11ddb667c8ee3ecfc93ddcd2a226efc8ec31f7a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4YjNmMTMxNDQ2ZmM4ZWFmYzQ2MWIzODBkNmM0NDYxZDdmZTNlODk1NzI0YjViYThiNDNmYTk2NzAyNGM4ZDNkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2OTAzODc1NjllNWQwYjMwZDBmMjhiYTlkM2QxNWViYjhlMGI4NjhjZTZkZmZmN2E4ZDljYzFlOWU2NjFlYzI3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NmY2NGY4OTQxY2I2ODljOTViODBjMmZiYWIyODM1NjQ4NTk3MGVjM2Y5NjI2MDljZmMwOGQwOWMwNjg3YmFiIn0"
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L61-L172",
+          "version": "repo-lines-v1:sha256:2022c7e7135ad989b66cac7d067b870c1b414664d346fd1c80d4fb440ae7c061:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyYzZhOGFiZTIwN2IyYTc4YWE0YTkzZTY4OTk0M2NmZjU5ZTZkMGM2M2RjNjY1MTExMTE4N2VkYzE0ODFmMGNkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzOTNiZGE1NjRiNmI1M2RmNzllMDRmYjJlN2MzNWMxMmU5Yjc2MzgxODdlNmEzYzAxODBhZDZhOTI5ZTZjZTA2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1NmY2NGY4OTQxY2I2ODljOTViODBjMmZiYWIyODM1NjQ4NTk3MGVjM2Y5NjI2MDljZmMwOGQwOWMwNjg3YmFiIn0"
         }
       ]
     },
@@ -232,15 +232,15 @@
     },
     {
       "id": "claim_772456924183495796612108716e8359",
-      "statement": "evaluateTokenBudget skips the token_budget gate when no budget is configured or the runtime reported no usage (usage is parsed only from runtime stdout JSON, never estimated); otherwise it fails the gate when per-worker tokens exceed max_tokens_per_worker or run totals exceed max_tokens, and flags efficiencyExceeded when tokens per diff line exceed max_tokens_per_diff_line.",
+      "statement": "evaluateTokenBudget skips the token_budget gate when no budget is configured or the runtime reported no usage (never estimated); otherwise it fails the gate when per-worker tokens exceed max_tokens_per_worker or run totals exceed max_tokens, and flags efficiencyExceeded when tokens per diff line exceed max_tokens_per_diff_line. extractRuntimeUsage first aggregates opencode per-step step_finish events (part.tokens), then falls back to scanning stdout JSON lines for a usage/token_usage object with normalized aliases.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/services/loop-budget-service.ts#L207-L258",
           "version": "repo-lines-v1:sha256:26816e3decad8c9b4f2a1fa7055e0f3b4f16f716aa978f7af4e9c09ba38accb2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1M2EzOTdmMTE0MmU3YTAzODg4MGQyNmE0NjY2M2FmZmY0YzMzMjY2NWJjZGNkOTBkMzZjNGNmOGYwMDM5MWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4ZDBmYmU4MjVjMTZkZTcxMzMxMWMzNjc1MTE3YzY2YWZmMTAyZjUxOWRmYjlkZWM0NjMxMzBkODUzYWZkNDMifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-service.ts#L1444-L1467",
-          "version": "repo-lines-v1:sha256:245fc2a0f1c5c414375c29e57cd44f2ee1b62bbee42351231fefafc019ba3f79:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NjNiYjhkMmQ3MThjZDJkNWRiMWI1ZGVhZmQ1ODA5Mjk3MDU2MTI5MmViMDg1Yzk0N2Y3NWVjMTliNjgyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDcwYTJmZmJiNDIwYzI5Y2Q4YzlkMzFiNTZjNmM4MDM1MjdmN2UyYjI0ZTNiNjBiZTAwYmI0NDE4OGYyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMDQ2ZmQ0NTZlZGJlYmFiZTUwZGJmYjQzMThlMWZkMThhNmNmZGI3YTVjNTFlNjAyZDc1N2E1Njc4ZGNmZTYifQ"
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1459-L1494",
+          "version": "repo-lines-v1:sha256:9eb3e2f0fce43272e6c76dfaafdb52f1ecf8acf563522dda854f3a07769b051a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0NjNiYjhkMmQ3MThjZDJkNWRiMWI1ZGVhZmQ1ODA5Mjk3MDU2MTI5MmViMDg1Yzk0N2Y3NWVjMTliNjgyZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZDcwYTJmZmJiNDIwYzI5Y2Q4YzlkMzFiNTZjNmM4MDM1MjdmN2UyYjI0ZTNiNjBiZTAwYmI0NDE4OGYyZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxMDQ2ZmQ0NTZlZGJlYmFiZTUwZGJmYjQzMThlMWZkMThhNmNmZGI3YTVjNTFlNjAyZDc1N2E1Njc4ZGNmZTYifQ"
         }
       ]
     },
@@ -325,6 +325,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

@@ -1,11 +1,11 @@
 ---
 type: testing-strategy
 title: Test Strategy, Assurance Scripts & Mutation Gate
-description: How DjimFlo verifies correctness — layered vitest workspace suites, supertest HTTP contract tests, route-inventory and permission contract tests that keep the mount table honest, integration spine suites, root-level selftest scripts gating npm test, the targeted Stryker mutation gate, and the assurance:* audit scripts — plus the README discipline that green tests are necessary but not sufficient for production assurance.
+description: How DjimFlo verifies correctness — layered vitest workspace suites, supertest HTTP contract tests, route-inventory and permission contract tests that keep the mount table honest, integration spine suites, root-level selftest scripts gating npm test, the targeted Stryker mutation gate plus the M2 mutation-gain lane that scores one service against one test, and the assurance:* audit scripts — plus the README discipline that green tests are necessary but not sufficient for production assurance.
 tags: [testing, vitest, supertest, http-contract, route-inventory, integration-spine, stryker, mutation-testing, assurance, ci, selftest]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-164e2da859b5277df81c7d94
     resource: repo://.github/workflows/ci.yml
@@ -13,24 +13,40 @@ sources:
     resource: repo://package.json
   - id: openwiki-source-3359b4b58cb2139352175d4b
     resource: repo://packages/server/src/__tests__/critical-http-contracts.test.ts
+  - id: openwiki-source-fb6448935313fa16c79835fd
+    resource: repo://packages/server/src/__tests__/evolve-selection.test.ts
   - id: openwiki-source-81765f1f349d9e6566d4ffe4
     resource: repo://packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts
   - id: openwiki-source-d622e42c2ef3804af3c3d1bc
     resource: repo://packages/server/src/__tests__/integration-spine-service.test.ts
   - id: openwiki-source-09e65fe3712f19d3b6ce727b
     resource: repo://packages/server/src/__tests__/integration-spine-smoke.test.ts
+  - id: openwiki-source-95d8a127f2c9b8a4d3bb47e7
+    resource: repo://packages/server/src/__tests__/j5-test-gap-auto-approve.test.ts
+  - id: openwiki-source-149493f45fc5eef46f4b16ca
+    resource: repo://packages/server/src/__tests__/loop-daemon-check-options.test.ts
   - id: openwiki-source-f5435020aa95ebec27e5276f
     resource: repo://packages/server/src/__tests__/manual-approvals.test.ts
   - id: openwiki-source-9fcec281def24087a485e4b6
     resource: repo://packages/server/src/__tests__/route-inventory.test.ts
   - id: openwiki-source-61277ed32feccd161c392600
     resource: repo://packages/server/src/__tests__/route-permission-contract.test.ts
+  - id: openwiki-source-acb0c714a338db8e27c87232
+    resource: repo://packages/server/src/services/autonomy-shadow-service.ts
+  - id: openwiki-source-d462b6da96ed3b4d8d9cdf35
+    resource: repo://packages/server/src/services/evolve-selection.ts
+  - id: openwiki-source-6996102cb8a12952e08c5888
+    resource: repo://packages/server/src/services/loop-daemon.ts
+  - id: openwiki-source-4d27018e194b0a6409bc016e
+    resource: repo://packages/server/src/services/test-gap-source-service.ts
   - id: openwiki-source-a3695f6a34078796ab87072d
     resource: repo://packages/server/src/utils/route-inventory.ts
   - id: openwiki-source-87adb2ccdee03194bce22ada
     resource: repo://packages/server/vitest.config.mts
   - id: openwiki-source-23775c3de52f3ab95a13cb8b
     resource: repo://README.md
+  - id: openwiki-source-df33533d6cb33342d0902aac
+    resource: repo://scripts/agent-social-poller.py
   - id: openwiki-source-4a7746e3275df756cb195de5
     resource: repo://scripts/assurance-truth.mjs
   - id: openwiki-source-0c45648cfd55504aeaec69ff
@@ -49,6 +65,8 @@ sources:
     resource: repo://scripts/live-identity-evidence.mjs
   - id: openwiki-source-35f18adcb52dc5682aa3f7d0
     resource: repo://scripts/live-identity-evidence.test.mjs
+  - id: openwiki-source-468f882d40bb8c52d27a2b9f
+    resource: repo://scripts/mutation-gain.mjs
   - id: openwiki-source-bf9b550be82c7efe11f6cfbf
     resource: repo://scripts/openmythos-evidence.mjs
   - id: openwiki-source-29c2506c65adc0de528f9094
@@ -57,13 +75,19 @@ sources:
     resource: repo://scripts/route-source-inventory.mjs
   - id: openwiki-source-72399d1b73a116b4fb388363
     resource: repo://scripts/table-reachability.mjs
+  - id: openwiki-source-1a2e28f441877f492578b582
+    resource: repo://scripts/test_agent_social_poller.py
   - id: openwiki-source-411dd1fcf68de6a41850c6fc
     resource: repo://scripts/wiki-delta-emitter.selftest.sh
   - id: openwiki-source-78f33dbc13edb0630c5e1cd3
     resource: repo://stryker.config.js
+  - id: openwiki-source-d2c279c31b4146cba13a6432
+    resource: repo://stryker.service.config.mjs
   - id: openwiki-source-6369b39e1545dd104877b6e7
     resource: repo://vitest.mutation.config.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+  - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
+    resource: repo://vitest.service-mutation.config.ts
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 ---
 
 # Test Strategy, Assurance Scripts & Mutation Gate
@@ -72,13 +96,15 @@ DjimFlo treats verification as a layered pipeline, not a single test suite. At
 the bottom sit hundreds of workspace unit/service suites and HTTP contract
 suites under `packages/server/src/__tests__/`; on top of them sit
 root-level selftest scripts that guard `npm test` itself; beside them sit a
-targeted Stryker mutation gate on the highest-risk decision code; and above
-all of it sit the `assurance:*` audit scripts, which produce signed evidence
-about what was actually verified, against what source state, with which
-limitations. The README states the governing discipline explicitly: "Claims
-are falsifiable via the test suite. Green tests are necessary but not
-sufficient for production assurance." Every layer below exists to make a
-specific claim falsifiable while honestly declaring its own limits.
+targeted Stryker mutation gate on the highest-risk decision code and, since the
+baseline window, a second mutation lane (`test:mutation:grounded`) that scores
+one service against one test file in the working tree; and above all of it sit
+the `assurance:*` audit scripts, which produce signed evidence about what was
+actually verified, against what source state, with which limitations. The
+README states the governing discipline explicitly: "Claims are falsifiable via
+the test suite. Green tests are necessary but not sufficient for production
+assurance." Every layer below exists to make a specific claim falsifiable
+while honestly declaring its own limits.
 
 ```mermaid
 flowchart TD
@@ -89,12 +115,14 @@ flowchart TD
     WS --> H["HTTP contract suites<br>supertest plus listening server"]
     WS --> SP["integration spine suites<br>import plan execute check close"]
     GATE["npm run test:mutation<br>Stryker on governance decision lines"] -.->|CI mutation-test job| WS
+    MG["npm run test:mutation:grounded<br>mutation-gain on MUTATE_FILE x MUTATE_TEST"] -.->|M2 lane via LOOP_DAEMON_CHECK_SCRIPTS| WS
     A["assurance scripts<br>truth contracts integrations live tables"] -.->|on demand evidence runs| WS
 ```
 
 The layers of `npm test`: selftests guard the harness, builds place workspace
 dependencies, then per-workspace vitest suites run unit, HTTP-contract, and
-spine tests; mutation and assurance runs stand beside the main gate.
+spine tests; the mutation gate, the mutation-gain lane, and assurance runs
+stand beside the main gate.
 
 ## Layer 1 — Workspace Vitest Suites
 
@@ -154,6 +182,102 @@ than a feature:
   requiring more than 100 guarded calls so the check cannot pass on an empty
   scan.
 
+### Baseline-window suites: the autonomous-improvement loop's own tests
+
+The recent window added a cluster of suites that pin the behaviour of the
+self-improvement / maker-checker machinery itself. They run in the same vitest
+workspace but deserve to be named, because each guards a specific operational
+invariant of the autonomous pipeline:
+
+- **`loop-daemon-check-options.test.ts`** — pins the deterministic-check
+  knobs the daemon hands to every maker run: `daemonCheckOptions` defaults to
+  a 120 s timeout, scopes scripts via `LOOP_DAEMON_CHECK_SCRIPTS`, and clamps
+  `LOOP_DAEMON_CHECK_TIMEOUT_MS` to 600 s; `daemonReviewerTimeoutMs` defaults
+  to 300 s and clamps to 900 s; `daemonMakerTimeoutMs` returns 600 s for the
+  mutation lane and a clamped `LOOP_MAKER_TIMEOUT_MS` (default 300 s)
+  otherwise. Its A3 test proves `runOutcomeOnFailure` returns `infra_failed`
+  (not `regressed`) for a maker that timed out or exited non-zero before its
+  change could be evaluated.
+- **`j5-test-gap-auto-approve.test.ts`** — the J5 auto-approve lane.
+  `testGapAutoApproveScope` returns the single artifact path only when
+  `LOOP_AUTO_APPROVE_TEST_GAP=true`, the goal comes from the test-gap source,
+  and its grounding artifact is one new file under
+  `packages/server/src/__tests__/`; the M2 mutation-gap variant additionally
+  requires `LOOP_AUTO_APPROVE_MUTATION_GAP=true` and at least one already
+  `verified` mutation-gap run before it returns a scope. The daemon test shows
+  the auto-approval is recorded with `auto_approved_scope` pinned on the lease
+  and a `goal_auto_approved` loop event.
+- **`loop-daemon-checker-dispatch.test.ts`** — regression coverage for the
+  2026-09-20/21 root cause: `LoopDaemon.executeGoal` created a checker lease
+  but never dispatched it, so `verifyLoopRun`'s `checker_verdict` gate could
+  never pass. Automated dispatch is gated behind
+  `LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` (default off) and reuses whichever
+  maker lease actually ran.
+- **`evolve-selection.test.ts`** — the E13 evolve loop: `evolveSpecies` only
+  returns extra makers when `LOOP_EVOLVE_ENABLED=true` (at most two),
+  `evolveEligible` limits the pilot to test-gap / mutation-gap goals (or goals
+  flagged `metadata.evolve`), and `selectEvolveWinner` keeps the fittest maker
+  as the only non-superseded one, cancelling the losers' reviewer leases and
+  emitting an `evolve_selected` / `evolve_no_winner` loop event.
+- **`runtime-bandit.test.ts`** — the `runtime-bandit` species chooser: off
+  unless `LOOP_BANDIT_ENABLED=true`, the first species is the incumbent, a
+  strong challenger with too few outcomes is capped to its traffic share
+  ("challenger capped: not enough outcomes yet"), and a challenger that has
+  proven itself over `PROMOTE_AFTER` outcomes is promoted.
+- **`dream-state.test.ts`** — the `DreamStateService` failure classifier:
+  `pendingFailures` collects only failed/blocked runs (with failed gates,
+  worker verdicts and dispatch events as evidence), shows a failed worker its
+  own redacted stderr tail (secrets stripped, ≤ 600 chars), skips runs that
+  never had a worker, and classifies each failed run only once — off by
+  default, shadow-classifying when `TYPESAFE_FAILURE_CAUSE_MODE=shadow`.
+- **`commons-grounding.test.ts`** — the grounding helper that turns a parked
+  `needs_grounding` proposal into a placed one: `candidateFiles` finds
+  candidate source files by distinctive words (never tests or sensitive
+  paths), `parseGrounding` reads the last `TARGET`/`TEST` lines, and
+  `validateGrounding` rejects a missing target, a sensitive path
+  (`middleware/auth.ts`), a path escape (`../../etc/passwd`), and a non-test
+  `TEST` target.
+- **`improvement-funnel.test.ts`** — `ImprovementFunnelService` aggregates
+  proposal conversion per source, reports TypeSafe judgment agreement with
+  final outcomes (skipping open outcomes, `uncertain`, and pre-#334 checker
+  rows), and survives an empty database.
+- **`social-learning-campaign-service.test.ts`** — builds a
+  `SocialLearningCampaignService` worldlab evidence object whose
+  `evidence_hash` is a canonical sha256 over the campaign core, then replays
+  threaded question/response/learning messages against it.
+- **`approval-ttl.test.ts`** — `approvalTtlMs` is 1 h by default, honours
+  `APPROVAL_TTL_MS`, and is clamped to 5 min … 7 days (a prod-anchored guard
+  against approvals expiring overnight).
+- **`worktree-repair.test.ts`** — `WorktreeManager.repairWorktree`
+  re-registers a worktree whose runtime clone was replaced by a deploy,
+  keeping its files and its branch, and reports `false` once healthy.
+- **`zombie-reaper.test.ts` / `phase3-queue-hygiene.test.ts`** — the
+  `QueueHygieneService` sweeps: reaping stale `running` goals that have no
+  live run, cancelling old `blocked` goals without a wait reason (never ones
+  awaiting approval), closing stale interrupted/planning runs, and expiring
+  only consumer-less work items past their TTL, stale curiosity claims via
+  `valid_until`, and stale meta-evolution drafts — all idempotent.
+- **`mcp-openapi-catalog.test.ts`** — `syncOpenApiCatalog` resolves the spec
+  URL from `openapi_url`/`openapi_path`, imports operations (reads allowed,
+  writes need approval) idempotently, and refuses to bulk-mirror a huge admin
+  API (`> MAX_OPERATIONS`, e.g. LiteLLM's 528), returning the reason string
+  instead of throwing.
+- **`opencode-token-usage.test.ts`** — `LoopService.extractRuntimeUsage` sums
+  opencode `step_finish` token events (a prod fix: `tokens_used` was always
+  0) while leaving other runtimes' usage parsing unchanged.
+- **`autonomous-goal-generator-security.test.ts`** — security findings route
+  through the reviewed self-improvement pipeline: `generateFromSecurityFindings`
+  now creates a reviewed `security` proposal instead of an unreviewed
+  `risk_class:'high'` goal, so the highest-risk category no longer skips
+  specialist-panel review.
+- **`auto-deploy.test.ts`** — the auto-deploy selftest as a vitest suite: it
+  drives `scripts/auto-deploy.sh` with every probe simulated (`AD_MAIN_SHA`,
+  `AD_CURRENT_SHA`, `AD_CHECKS`, `AD_COMMIT`, `AD_LEASES`) and proves the
+  deploy fires only when CI is green, `main` has settled, and no loop worker
+  is running; that it holds (saying why) for up-to-date / in-progress /
+  failed CI, an unsettled commit, or active workers; and that the
+  `AUTO_DEPLOY_DISABLED` kill-switch file stops everything.
+
 The dashboard workspace runs `vitest run --passWithNoTests`, and the root
 `vitest.config.mts` configures `jsdom` for any tests executed from repo root.
 
@@ -203,10 +327,50 @@ purity*, not live infrastructure: `deploy-vps.selftest.sh` sources
 remote script to assert `chown -R 1001:1001` precedes the first
 `docker compose up` and that a rollback path exists.
 
+### The agent-social-poller selftest discipline
+
+`scripts/agent-social-poller.py` runs one bounded Commons peer-learning poll
+for a real runtime. It has its own Python unittest suite,
+`scripts/test_agent_social_poller.py`, run in CI (and by hand) via:
+
+```bash
+python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py'
+```
+
+Because the poller hands untrusted peer data to a real CLI, the suite is
+security- and containment-focused rather than feature-focused:
+
+- **Provider-error hygiene** — a provider error event only ever exposes the
+  numeric HTTP status (`opencode provider HTTP 401`); a non-numeric status
+  collapses to a generic message so a secret-laden provider body is never
+  forwarded.
+- **Environment allowlist** — `runtime_env` never lets `DJIMITFLO_SOCIAL_TOKEN`,
+  `NODE_OPTIONS`, or `OPENCODE_CONFIG_CONTENT` escape into a child runtime, and
+  a provider credential (e.g. `ANTHROPIC_API_KEY`) reaches only its own
+  runtime, not the others.
+- **No-tools confinement** — each CLI runs in a fresh temporary working
+  directory with tools disabled (Claude `--safe-mode`/empty tools, Gemini
+  deny-all admin policy with hooks off, OpenCode `--pure` with
+  `permission:{'*':'deny'}`, Pi `--no-tools`/`--no-extensions`).
+- **Isolated, secret-scoped custom provider** — an OpenCode provider config is
+  written mode-600 into the temp dir, scoped to a dedicated provider key, and
+  deleted after the run; unsafe provider URLs (public IP, embedded
+  credentials, `file:` scheme, `{env:…}` substitution) are rejected.
+- **Untrusted-reply hardening** — nested or unexpected reply fields cannot
+  replace the answer or spoof `runtime`/`model_id`/`runtime_run_id`/
+  `delivery_lease_token`/`usage`/`approved`/`agent_id` before the server
+  validates evidence and leases.
+- **Bounded execution** — `bounded_process` runs the CLI in a new session with
+  a wall-clock limit; a SIGTERM stops the detached runtime *and* its worker,
+  and a timeout kills the process group.
+
+This is the selftest discipline applied to a runtime connector: the suite
+proves containment properties, not that any real provider call succeeded.
+
 CI (`.github/workflows/ci.yml`) mirrors this: type-check → lint → build →
-`npm run test --reporter=verbose → Python poller unittests → `npm run
-audit:ci`, all on a Node 22/24 matrix, followed by Trivy filesystem and
-container scans.
+`npm run test --reporter=verbose` → Python poller unittests (`python3 -m
+unittest discover -s scripts -p 'test_*poller.py'`) → `npm run audit:ci`, all
+on a Node 22/24 matrix, followed by Trivy filesystem and container scans.
 
 ## Layer 4 — Stryker Targeted Mutation Gate
 
@@ -234,6 +398,58 @@ fails below 70 % mutation score), excludes `StringLiteral` and
 `npm run test:mutation` green**; if a behavior-preserving refactor moves the
 lines, the ranges in `stryker.config.js` must move with the code in the same
 change.
+
+## Layer 4b — The M2 Mutation-Gain Lane (`test:mutation:grounded`)
+
+The baseline window added a second, complementary mutation lane. Where the
+layer-4 gate pins five *fixed* code ranges, the M2 lane measures whether a
+*working-tree* test file kills more mutants of a *single* service than the
+committed version of that test did. It is wired from three small pieces:
+
+- **`vitest.service-mutation.config.ts`** — a one-line vitest config whose
+  only `include` is `process.env.MUTATE_TEST ?? 'none'`, node environment, 30 s
+  timeout. With no `MUTATE_TEST` it runs nothing.
+- **`stryker.service.config.mjs`** — a Stryker config that mutates exactly
+  `process.env.MUTATE_FILE`, uses the vitest runner pointed at
+  `vitest.service-mutation.config.ts`, `coverageAnalysis: 'perTest'`,
+  concurrency 2, excludes `StringLiteral`/`ObjectLiteral`, and writes a JSON
+  report to `process.env.MUTATE_REPORT` (default a tmp file). With no
+  `MUTATE_FILE` the `mutate` list is empty.
+- **`scripts/mutation-gain.mjs`** (the orchestrator, aliased
+  `npm run test:mutation:grounded`) — reads `MUTATE_FILE`/`MUTATE_TEST`;
+  without both it is a no-op exit 0 so hosts can list it unconditionally in
+  `LOOP_DAEMON_CHECK_SCRIPTS`. It runs Stryker twice: once against
+  `HEAD:<test>` written to a temporary `*.mutation-baseline.test.ts` (score
+  `before`, 0 for a brand-new test) and once against the working-tree test
+  (`after`), then passes when `after >= before + MUTATE_MIN_GAIN`
+  (default **10 points**) **or `after >= 90`**. It prints a single
+  `{"mutation_gain":{before,after,gain,min_gain,pass}}` JSON line and exits
+  non-zero on a failed working-tree run.
+
+The mutation score counts `Killed`+`Timeout` mutants as detected over the
+valid set (`+ Survived + NoCoverage`). `evolve-selection.ts:mutationScoreOf`
+reads the `after` value back out of that JSON line from the check's captured
+stdout, which is what gives the mutation lane a continuous fitness signal for
+the E13 evolve loop.
+
+### How the lane is reached from the loop daemon
+
+`TestGapSourceService.runMutationGaps` (behind `MUTATION_GAP_ENABLED=true`,
+default off, `MUTATION_GAP_MAX_PER_DAY` default 2, at most one in flight)
+discovers tested, mid-sized, non-sensitive services and creates a grounded
+self-improvement proposal whose runtime command is literally
+`MUTATE_FILE=<service> MUTATE_TEST=<test> npm run test:mutation:grounded`.
+`mutationCheckEnv(db, goalId)` returns those two variables for a
+mutation-gap goal; the loop daemon treats a goal with a non-empty
+`mutationCheckEnv` as the **mutation lane** and gives its maker 600 s and a
+400-line diff budget (vs. 300 s / 200 lines elsewhere). The deterministic
+check is dispatched through the normal `daemonCheckOptions` mechanism, so a
+host opts the daemon into the lane by adding `test:mutation:grounded` to
+`LOOP_DAEMON_CHECK_SCRIPTS`. Test coverage: `test-gap-source.test.ts` pins
+discovery, the one-at-a-time/daily-cap gating, and the `MUTATE_*` env
+wiring; `loop-daemon-check-options.test.ts` pins the 600 s maker timeout and
+the `infra_failed` outcome that keeps a timed-out mutation maker from being
+recorded as a regression.
 
 ## Layer 5 — `assurance:*` Audit Scripts
 
