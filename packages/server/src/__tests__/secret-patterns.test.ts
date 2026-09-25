@@ -80,6 +80,13 @@ describe('redactSecrets', () => {
     expect(count).toBeGreaterThanOrEqual(3);
   });
 
+  it('does not redact repository paths as high-entropy strings (prod 2026-09-25: Commons could not see file paths)', () => {
+    const text = 'candidate files: packages/server/src/services/configurationvalidationservice.ts';
+    expect(redactSecrets(text)).toEqual({ redacted: text, count: 0 });
+    const secret = 'Zq8' + 'xL2mN9pQ4rS7tU1vW3yA5bC6dE8fG0hJ2kLmNoPq';
+    expect(redactSecrets(`key ${secret}`).redacted).toBe('key [REDACTED:High Entropy String]');
+  });
+
   it('handles empty string input', () => {
     const { redacted, count } = redactSecrets('');
     expect(count).toBe(0);
