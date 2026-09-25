@@ -7,7 +7,7 @@ import { LoopDaemon } from '../services/loop-daemon';
 import { GoalService } from '../services/goal-service';
 import type { LoopService } from '../services/loop-service';
 
-const ENV = ['LOOP_AUTO_APPROVE_TEST_GAP', 'AUTONOMY_SHADOW_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'AUTHORITY_GATE'];
+const ENV = ['LOOP_AUTO_APPROVE_MUTATION_GAP', 'LOOP_AUTO_APPROVE_TEST_GAP', 'AUTONOMY_SHADOW_ENABLED', 'SELF_IMPROVEMENT_OBJECTIVE_LOOP_ENABLED', 'AUTHORITY_GATE'];
 const ARTIFACT = 'packages/server/src/__tests__/foo.test.ts';
 let db: Database.Database;
 let goalId: string;
@@ -67,4 +67,14 @@ it('the daemon only waits for the human when the flag is off', async () => {
   const decide = await tick(false);
   expect(decide).not.toHaveBeenCalled();
   expect(leaseScope()).toBeUndefined();
+});
+
+it('mutation-gap goals: only with their own flag and after the lane has one verified run', () => {
+  process.env.LOOP_AUTO_APPROVE_TEST_GAP = 'true';
+  db.prepare("UPDATE self_improvements SET evidence_refs_json = '[\"mutation-gap:foo\"]' WHERE id = 'cur'").run();
+  expect(testGapAutoApproveScope(db, goalId)).toBeNull(); // flag off
+  process.env.LOOP_AUTO_APPROVE_MUTATION_GAP = 'true';
+  expect(testGapAutoApproveScope(db, goalId)).toBeNull(); // lane not proven yet
+  si('mut-ok', 'verified', '["mutation-gap:bar"]');
+  expect(testGapAutoApproveScope(db, goalId)).toBe(ARTIFACT);
 });

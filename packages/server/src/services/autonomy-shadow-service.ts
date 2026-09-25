@@ -51,6 +51,13 @@ export function testGapAutoApproveScope(db: Database, goalId: string): string | 
   if (process.env.LOOP_AUTO_APPROVE_TEST_GAP !== 'true') return null;
   const imp = db.prepare(`SELECT s.evidence_refs_json AS refs, json_extract(s.grounding_json, '$.artifactPath') AS artifact
     FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE g.id = ?`).get(goalId) as { refs: string | null; artifact: string | null } | undefined;
-  if (!imp?.artifact || !/"test-gap:/.test(imp.refs || '')) return null;
-  return /^packages\/server\/src\/__tests__\/[\w.-]+\.test\.ts$/.test(imp.artifact) ? imp.artifact : null;
+  if (!imp?.artifact || !/^packages\/server\/src\/__tests__\/[\w.-]+\.test\.ts$/.test(imp.artifact)) return null;
+  if (/"test-gap:/.test(imp.refs || '')) return imp.artifact;
+  // M2 lane (LOOP_AUTO_APPROVE_MUTATION_GAP, default off): same one-test-file scope, and its fitness is measured in code by
+  // the mutation-gain check; only after the lane itself has >= 1 verified, human-approved run.
+  if (/"mutation-gap:/.test(imp.refs || '') && process.env.LOOP_AUTO_APPROVE_MUTATION_GAP === 'true') {
+    const proven = (db.prepare("SELECT COUNT(*) AS n FROM self_improvements WHERE status = 'verified' AND evidence_refs_json LIKE '%\"mutation-gap:%'").get() as { n: number }).n;
+    return proven >= 1 ? imp.artifact : null;
+  }
+  return null;
 }
