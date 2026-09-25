@@ -77,6 +77,14 @@ describe('SelfImprovementAgentReviewService', () => {
     expect(updated.consensus.needs_evidence_count).toBe(2);
   });
 
+  it('ignores a <think> block with braces before the JSON answer', async () => {
+    const { db, panel } = setup();
+    const reviewer = new SelfImprovementAgentReviewService(db, async () =>
+      `<think>maybe {"stance": "oppose"} ... no</think>\n${JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] })}`);
+    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    expect(updated.consensus.support_count).toBe(2);
+  });
+
   it('extracts JSON from a markdown-fenced response', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () =>
