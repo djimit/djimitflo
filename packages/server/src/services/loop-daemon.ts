@@ -583,7 +583,7 @@ export class LoopDaemon {
         const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
         const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
         // One outcome per run: two daemon passes can finish the same run.
-        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? LIMIT 1').get(skillId, run.id)) skills.recordOutcome(skillId, {
+        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
           success: allGatesPass,
           tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
           durationMs: Date.now() - startedAtMs,

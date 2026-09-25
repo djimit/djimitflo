@@ -1,6 +1,8 @@
+import fs from 'node:fs';
 import type { Database } from 'better-sqlite3';
 import { rankEvolveCandidates, evolveWinner, type EvolveCandidate } from './evolve-fitness-service';
 import { LoopEventService } from './loop-event-service';
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 
 /**
  * E13 steps 2–3 (docs/design/evolve-loop.md): several makers on one objective, the fittest (computed in code) wins.
@@ -23,14 +25,20 @@ export function evolveEligible(db: Database, goalId: string): boolean {
     .get(goalId) as { metadata: string | null; evidence_refs_json: string | null } | undefined;
   if (!row) return false;
   try { if (JSON.parse(row.metadata || '{}').evolve === true) return true; } catch { /* not json */ }
-  return (row.evidence_refs_json || '').includes('"test-gap:');
+  return /"(test-gap|mutation-gap):/.test(row.evidence_refs_json || ''); // M2: the mutation lane has a continuous fitness
+}
+
+/** M2: the `after` score from the mutation-gain check's JSON line (scripts/mutation-gain.mjs), or null when not measured. */
+export function mutationScoreOf(checks: Array<{ name?: string; stdout_path?: string }>): number | null {
+  const path = checks.find((c) => c.name === 'test:mutation:grounded')?.stdout_path;
+  try { return path ? Number(/"after":(\d+(?:\.\d+)?)/.exec(fs.readFileSync(path, 'utf8'))?.[1] ?? NaN) || null : null; } catch { return null; }
 }
 
 interface LeaseRow { id: string; runtime: string; status: string; metadata: string; updated_at: string }
 
 function candidate(l: LeaseRow): EvolveCandidate {
   const m = JSON.parse(l.metadata || '{}') as Record<string, unknown>;
-  const checks = Array.isArray(m.deterministic_checks) ? m.deterministic_checks as Array<{ status?: string }> : [];
+  const checks = Array.isArray(m.deterministic_checks) ? m.deterministic_checks as Array<{ name?: string; status?: string; stdout_path?: string }> : [];
   const diffLines = Number(m.diff_lines ?? 0); const maxLines = Number(m.diff_max_lines ?? 0);
   return {
     makerLeaseId: l.id,
@@ -38,7 +46,7 @@ function candidate(l: LeaseRow): EvolveCandidate {
     exitZero: l.status === 'completed' && Number(m.exit_status ?? 1) === 0,
     checksPassed: checks.length > 0 && checks.every((c) => c.status === 'pass' || c.status === 'skipped'),
     withinBudget: maxLines > 0 && diffLines > 0 && diffLines <= maxLines,
-    mutationScore: null, // step 4 (Stryker) not wired yet
+    mutationScore: mutationScoreOf(checks),
     diffLines,
     tokens: Number((m.runtime_usage as { total_tokens?: unknown } | undefined)?.total_tokens) || null,
     finishedAt: String(m.completed_at ?? l.updated_at),
@@ -75,6 +83,20 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
       }
     }
   })();
+  // N7 lineage: a species that lost the head-to-head is an outcome too (success 0), or the bandit would only ever see
+  // winners. The winner's own outcome is recorded when the run finishes (loop-daemon 9a'').
+  try {
+    const loop = (db.prepare('SELECT loop_name FROM loop_runs WHERE id = ?').get(runId) as { loop_name: string } | undefined)?.loop_name ?? 'unknown';
+    const skills = new SkillEvolutionEngine(db);
+    for (const r of ranked.filter((x) => x.makerLeaseId !== winner.makerLeaseId)) {
+      const lease = leases.find((l) => l.id === r.makerLeaseId)!;
+      const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
+      skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
+        success: false, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,
+        ...(typeof model === 'string' ? { model } : {}), evidenceRefs: [`loop_run:${runId}`, `evolve:lost_to:${winner.species}`, `evolve:reason:${r.reason}`],
+      });
+    }
+  } catch { /* lineage bookkeeping must never change the selection */ }
   events.recordEvent(runId, 'evolve_selected', 'info', `Evolve: ${winner.species} won out of ${ranked.length} makers.`, { winner: winner.makerLeaseId, fitness: table });
   return winner.makerLeaseId;
 }
