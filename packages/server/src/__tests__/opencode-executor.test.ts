@@ -207,7 +207,14 @@ describe('OpenCodeExecutor', () => {
       const buffer = (executor as any).collectMetricsFromText(`${first}\n${second}\n`, metrics);
 
       expect(buffer).toBe('');
-      expect(metrics).toEqual({ tokenUsage: 250, costDollars: 0.03 });
+      expect(metrics).toEqual({ tokenUsage: 250, costDollars: 0.03, tokenSum: 350 });
+    });
+
+    it('A4: the runaway brake is off by default and reads OPENCODE_MAX_RUN_TOKENS', async () => {
+      const { maxRunTokens } = await import('../execution/executors/opencode-executor');
+      expect(maxRunTokens({})).toBeNull();
+      expect(maxRunTokens({ OPENCODE_MAX_RUN_TOKENS: '1000000' })).toBe(1_000_000);
+      expect(maxRunTokens({ OPENCODE_MAX_RUN_TOKENS: 'x' })).toBeNull();
     });
 
     it('returns null for blank lines', () => {

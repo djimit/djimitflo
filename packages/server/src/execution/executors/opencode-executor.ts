@@ -102,6 +102,18 @@ interface ParsedOutput {
 interface OpenCodeRunMetrics {
   tokenUsage: number;
   costDollars: number;
+  /** sum over steps (each step re-sends its context), i.e. what the run actually consumed so far */
+  tokenSum?: number;
+}
+
+/**
+ * A4 runaway brake (OPENCODE_MAX_RUN_TOKENS, default off). Prod 2026-09-25: one maker fighting its environment used
+ * 1.95 M tokens before the wall-clock timeout; the post-run token gate only notices afterwards. The run is stopped as soon
+ * as the summed step tokens pass the cap.
+ */
+export function maxRunTokens(env: NodeJS.ProcessEnv = process.env): number | null {
+  const n = Number(env.OPENCODE_MAX_RUN_TOKENS);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 interface OpenCodeRunOutcome {
@@ -168,10 +180,17 @@ export class OpenCodeExecutor implements TaskExecutor {
         emitter.emit('error', new Error(`OpenCode execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
+      const tokenCap = maxRunTokens();
+      let braked = false;
       child.stdout?.on('data', (data) => {
         const text = data.toString();
         metricsBuffer = this.collectMetricsFromText(text, metrics, metricsBuffer, outcome);
         emitter.emit('output', text, 'stdout');
+        if (tokenCap && !braked && (metrics.tokenSum ?? 0) > tokenCap) {
+          braked = true;
+          stopRuntimeProcess(child);
+          emitter.emit('error', new Error(`OpenCode token budget exceeded: ${metrics.tokenSum} > ${tokenCap} tokens (OPENCODE_MAX_RUN_TOKENS)`));
+        }
       });
 
       child.stderr?.on('data', (data) => {
@@ -300,6 +319,7 @@ export class OpenCodeExecutor implements TaskExecutor {
     const total = part.tokens?.total;
     if (typeof total === 'number') {
       metrics.tokenUsage = Math.max(metrics.tokenUsage, total);
+      metrics.tokenSum = (metrics.tokenSum ?? 0) + total;
     }
     if (typeof part.cost === 'number') {
       metrics.costDollars = Math.max(metrics.costDollars, part.cost);

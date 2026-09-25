@@ -26,6 +26,7 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { EvolutionGymService, gymEnabled } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
@@ -126,6 +127,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Test-gap source failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
+  try {
+    if (gymEnabled()) {
+      const gym = new EvolutionGymService(db, recoverySvc);
+      gym.start();
+      lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
+      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Evolution gym failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Outcome-driven dream state (plan E11): replay failed runs and classify their causes (shadow). Default off.
@@ -229,6 +242,14 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
       const generated = autonomousGoals.generateAll();
       if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security)`);
     });
+    // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
+    // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
+    const scheduledTimer = setInterval(() => {
+      try { const n = autonomousGoals.generateFromSelfImprovements(); if (n) console.log(`🎯 ${n} goal(s) from scheduled proposals`); }
+      catch (err) { console.warn('Scheduled-proposal goals failed:', err instanceof Error ? err.message : String(err)); }
+    }, Number(process.env.SCHEDULED_PROPOSAL_GOALS_INTERVAL_MS) || 3_600_000);
+    scheduledTimer.unref?.();
+    lifecycleManager.register({ serviceName: 'ScheduledProposalGoals', stop: () => clearInterval(scheduledTimer) });
   } catch (error) {
     console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
   }
