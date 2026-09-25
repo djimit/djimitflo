@@ -49,6 +49,29 @@ export interface CouncilResult {
 }
 
 /**
+ * The first complete JSON object in a model answer. Reasoning models add a <think> block, prose after the JSON, or echo
+ * the schema example ({"checks":[...]}); "first { to last }" broke on all three (prod 2026-09-26: 43 of 50 reviews).
+ * Scans every "{" and returns the first balanced, parseable object; null when there is none.
+ */
+export function firstJsonObject(content: string): Record<string, unknown> | null {
+  const text = content.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
+    let depth = 0; let inString = false; let escaped = false;
+    for (let i = start; i < text.length; i += 1) {
+      const ch = text[i];
+      if (inString) { if (escaped) escaped = false; else if (ch === '\\') escaped = true; else if (ch === '"') inString = false; continue; }
+      if (ch === '"') inString = true;
+      else if (ch === '{') depth += 1;
+      else if (ch === '}' && --depth === 0) {
+        try { const value = JSON.parse(text.slice(start, i + 1)); if (value && typeof value === 'object' && !Array.isArray(value)) return value; } catch { /* not JSON: try the next "{" */ }
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Model-backed runner, resolved lazily: the provider module (social-runtime-providers, PR #223) may not be
  * present on every branch, and without FRONTIER_EXPERTS_RUNTIME the council must abstain rather than fake output.
  */
@@ -63,10 +86,7 @@ export async function createModelPerspectiveRunner(env: NodeJS.ProcessEnv = proc
   if (!providersModule.isRuntimeConfigured(spec, providers)) return null;
   const runner: PerspectiveRunner = async (_role, system, user) => {
     const result = await providersModule.chat(spec, providers, system, user, undefined, undefined, undefined, { maxTokens: 4096 });
-    try { return JSON.parse(result.content); } catch {
-      const start = result.content.indexOf('{'); const end = result.content.lastIndexOf('}');
-      return start >= 0 && end > start ? JSON.parse(result.content.slice(start, end + 1)) : null;
-    }
+    return firstJsonObject(result.content);
   };
   return { runner, label: `${spec.runtime}:${spec.model}` };
 }
