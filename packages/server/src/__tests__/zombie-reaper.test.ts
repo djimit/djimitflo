@@ -38,3 +38,24 @@ it('closes stale interrupted/planning runs and parks the proposal of a reaped go
   expect(status('self_improvements', 'p1')).toBe('needs_more_evidence');
   expect(svc.sweepZombies(NOW)).toEqual({ goalsReaped: 0, runsReaped: 0 });
 });
+it('cancels a running run whose workers are all finished, never one with a prepared or running worker', () => {
+  const lease = (id: string, runId: string, st: string) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES (?, ?, 'maker', 'opencode', ?)").run(id, runId, st);
+  goal('g', 'decomposed', 1);
+  run('r-orphan', 'g', 'running', 10); lease('l1', 'r-orphan', 'cancelled');
+  run('r-waiting', 'g', 'running', 10); lease('l2', 'r-waiting', 'prepared'); // awaiting approval
+  run('r-busy', 'g', 'running', 10); lease('l3', 'r-busy', 'running');
+  run('r-young', 'g', 'running', 2); lease('l4', 'r-young', 'cancelled');
+  expect(new QueueHygieneService(db).sweepZombies(NOW).runsReaped).toBe(1);
+  expect(status('loop_runs', 'r-orphan')).toBe('cancelled');
+  for (const id of ['r-waiting', 'r-busy', 'r-young']) expect(status('loop_runs', id)).toBe('running');
+});
+
+it('cancels a running run (and its prepared leases) whose goal already ended, e.g. after an expired approval', () => {
+  const lease = (id: string, runId: string, st: string) => db.prepare("INSERT INTO worker_leases (id, loop_run_id, role, runtime, status) VALUES (?, ?, 'maker', 'opencode', ?)").run(id, runId, st);
+  goal('g-failed', 'failed', 3); goal('g-live', 'blocked', 3, { awaiting_approval: { approval_id: 'a' } });
+  run('r-dead', 'g-failed', 'running', 2); lease('l-dead', 'r-dead', 'prepared');
+  run('r-wait', 'g-live', 'running', 2); lease('l-wait', 'r-wait', 'prepared');  // still waiting for a live approval
+  expect(new QueueHygieneService(db).sweepZombies(NOW).runsReaped).toBe(1);
+  expect(status('loop_runs', 'r-dead')).toBe('cancelled'); expect(status('worker_leases', 'l-dead')).toBe('cancelled');
+  expect(status('loop_runs', 'r-wait')).toBe('running'); expect(status('worker_leases', 'l-wait')).toBe('prepared');
+});

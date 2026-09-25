@@ -2,6 +2,10 @@ name: OpenWiki Update
 
 on:
   workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama Cloud model id (default: repo variable OPENWIKI_MODEL_ID, else kimi-k3)"
+        required: false
   schedule:
     - cron: "0 8 * * *"
 
@@ -33,15 +37,27 @@ jobs:
       - name: Run OpenWiki
         id: openwiki
         continue-on-error: true
-        run: openwiki code --update --print
+        # `--update` only works on an existing wiki. main has no generated pages yet, so every run since 2026-09-23 generated
+        # pages under --update and then crashed rolling them back (ENOENT on openwiki/<dir>/*.md) — runs 35824396170,
+        # 2026-09-23 13:30 and 2026-09-24 13:25. The first run therefore uses --init; later runs update.
+        run: |
+          if find openwiki -name '*.md' ! -name INSTRUCTIONS.md -print -quit 2>/dev/null | grep -q .; then
+            openwiki code --update --print
+          else
+            openwiki code --init --print
+          fi
         env:
-          # Routed via OpenRouter to anthropic/claude-sonnet-5 -- validated in the
-          # OpenWiki canary (Step 2b): 100% page completion, 100% sampled factual
-          # accuracy, vs. 5% completion with a local open-weight model.
+          # Ollama Cloud (OpenAI-compatible). GitHub runners cannot reach the Tailnet/LAN Ollama hosts,
+          # so this must be the hosted endpoint. glm-5.3 ends the planner without submit_plan; kimi-k3 plans and writes pages.
+          # OpenRouter was dropped after its key started returning 401. Try others via the dispatch input.
           OPENWIKI_PROVIDER: openai-compatible
-          OPENAI_COMPATIBLE_BASE_URL: https://openrouter.ai/api/v1
-          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENWIKI_MODEL_ID: "anthropic/claude-sonnet-5"
+          OPENAI_COMPATIBLE_BASE_URL: https://ollama.com/v1
+          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OPENWIKI_MODEL_ID: ${{ inputs.model || vars.OPENWIKI_MODEL_ID || 'kimi-k3' }}
+          # One page at a time: a page worker that hits a provider rate limit gets "restored", and on a first generation that
+          # page (and its directory) does not exist yet, so the restore crashed the whole run with ENOENT (run 36050609947).
+          OPENWIKI_PAGE_CONCURRENCY: "1"
+          OPENWIKI_PROVIDER_RETRY_ATTEMPTS: "6"
 
       - name: Remove transient OpenWiki run state
         if: ${{ !cancelled() }}

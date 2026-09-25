@@ -44,6 +44,8 @@ describe('agent commons read-model', () => {
     expect(learning.reflection_id).toBeTruthy();
     expect(learning.creative_alternative).toBe('Blind the evaluator.');
     expect(learning.answer).not.toContain('abcdefghijklmnop');
+    // totals come from the server, not from the loaded page (prod 2026-09-24: "Reflecties 40" was the page size)
+    expect(commons.stats).toMatchObject({ threads_7d: 1, open_7d: 0, learnings_7d: 1, proposals_verified: 0 });
   });
 
   it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {
@@ -150,6 +152,8 @@ describe('agent commons read-model', () => {
     const fourth = comms.socialize(0);
     expect(fourth.topic).toBe('The OKF index lacks provenance for imported skills');
     expect(fourth.messages[0].payload.evidence).toEqual(['claim:gap-1', 'okf:x']);
+    // a gap is discussed once: the next round moves on instead of re-picking the newest gap (prod: 264 repeated threads)
+    expect(comms.socialize(0).topic).not.toBe('The OKF index lacks provenance for imported skills');
   });
 
   it('shows non-social agent activity in the commons read-model', () => {

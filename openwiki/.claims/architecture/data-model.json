@@ -1,0 +1,290 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:92bad785f645b42c15edcf179d6de40ef98ea0e1a55934dc8bece30b01cf9c02",
+  "claims": [
+    {
+      "id": "claim_48570ae21e3041729102f618497c918d",
+      "statement": "resolveDbPath() in packages/server/src/database/path.ts resolves the SQLite database location by reading DB_PATH (preferred) or the legacy DJIMITFLO_DB env var; relative values are resolved against INIT_CWD (falling back to process.cwd()), and when neither is set it defaults to <monorepo-root>/.data/djimitflo.sqlite where monorepoRoot() strips a trailing /packages/server from cwd.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/.env.example#L11-L13",
+          "version": "repo-lines-v1:sha256:d9b93135c87f18e21b4ed1318de2ded29a35df2d3dbced0b4c745d812d9e9134:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZkN2I5YTZjMTZjYmUyMjE5Mjc1OGU3MjFjODg0M2U1M2FmZjU3NjJlMjhjYjc2NWMwOTdmODkzNDhhMmZmMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQ4MzhiNjQzMzIzZDg3NTFhMjU0ZGNkYzRhZjg1NjQ2ZDNjNjk1MDJiMDBiNzNjNDliYzE4YTYzNWI4ZTZiZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWNmYWE0ODc3NjFiMTUyMzhkZDRjMjZjMzAxMzg4YmU0YTFjZDAwNjJkNmMzNTIzM2IzNzBmYzQyMzhhMDY5MCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDhjZmIzMWYyYjQwMDNiNWFlMTQxOWRkMzQ4ZjZkZDUyOTY0NTFlNDFkZGEzYzI1OTFkNjQyY2RmNDg0MDdjZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/path.ts#L1-L13",
+          "version": "repo-lines-v1:sha256:4d54cc3e3cb02c335fcc0de261787224f4615d5108ea4927a7c2642926f33bb0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmYmI3Y2UzNDk2NzA4NjQyZWJmM2QxYmIxOWU4MTA2NTZjZDk3YTE4YWRlNmMwNTA0YmQ4NDMxOWNkOTI4YjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzYjRlMDFjMTdmZjI3MGYyNjg1MDAzMDJjNTcwMWM3OTUwODA1MDY5N2MwNzc1ZjhkYzc3YzYxMjI3NTMyNTcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_32e69ddb457040228eb644fba0d9df4e",
+      "statement": "resolveBackupDir() mirrors DB path resolution for BACKUP_DIR, defaulting to <monorepo-root>/.data/backups, which is where staged-restore markers are written.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/path.ts#L15-L20",
+          "version": "repo-lines-v1:sha256:392688d65aed8e6f52e1d1cea183bda2680f941de14b88e4ec25c0582c22ed7a:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTZiYWYzOGVjMDI5YWNlZTQyNDJjZjBlNjU4NzZjZjQyODgwY2ZiMDNmNDUyNmM4YjQwODBjNGJjNmNkY2JmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTg4YjRmZjJhZWUzMDQ5YWMxODZiODRjZTI5NDUxMDRmYTQxNjc5NWFlMzcwYjkxOWQ1ODcwNWU5ZThmNGY4OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb2c86db62954ae895c6f7e51de24e30",
+      "statement": "initializeDatabase() in packages/server/src/database/index.ts opens the database with better-sqlite3 and sets foreign_keys = ON and journal_mode = WAL pragmas on every connection; verbose logging forwards SQL to stdout only when NODE_ENV=development.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L94-L102",
+          "version": "repo-lines-v1:sha256:ec1c95d5c708cd2efe76b8fdc245cef37ddef7e2c891e8c00457af967de2c6e2:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWNhOWNjMzBlYmE3OTIwM2NhZjQ5NmM3ZDVkZTRkMDM5MmQzNmI0OGYyZTM2YzBlNGMyNzAwZTljZDc5MjdjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTI5YzE0NjFjNGU3ZTRkMWUyYTEwM2I1NmQ0MzQ0NTE2ZmEwMDY2ZjU5OGQ5MmZiMTYyOGNjYWVhNGMwOTZkMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDZlMWM4OGM0YTYyZDg0YmViZjE3MTVjZTAxNTc3YWI3Yjg2ODU1Nzc4ZTlhMDdjZmY2YmU3NDY4MmNjZTcxMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ0NzcwNzE5ZjJiYjBjODEzMjZhNDQ2ZTNiYWNkYTZjOWVkOTg2NGZhNzFjYjkzYmM1OGNkYTA4ZTFhOTYwOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3f0a7f355d884481b73c804fb2b8d242",
+      "statement": "The boot sequence in initializeDatabase() runs, in order: applyStagedRestore(), open handle and set pragmas, runPreSchemaMigrations(), exec canonical schema, exec explainerSchema, runMigrations(), ensureDatabaseInstanceId(), and finally records a BACKUP_RESTORE_COMPLETED audit event if a restore was applied.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L89-L142",
+          "version": "repo-lines-v1:sha256:a8db25e73c5f2f8571fb8d39ee6b4de016920babb725188a19e4f2b3ade8d80b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxYjkxYzE5MjA1MDA0YzQ3MTU2MTM2ZTMxOTk0OTYzZDE3YWI1ZWRiODIwZGRjNzQ5YWJjYmU4M2VkYzQyYTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0ZWE3MjlmOGYyMmYyZDhkZDFiMTdhZmM2ODExZWRjZWIwOTdjODE3MWZhMDRhZmFjNGU5NWM1OTAyZDkyOWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d1b9f4f97f80420eb928ce39b8f3d1c8",
+      "statement": "runPreSchemaMigrations() only ALTERs token_usage_log, explainer_tasks, explainer_jobs, external_events, and messages to add columns that the canonical schema's CREATE INDEX statements reference; it exists because CREATE TABLE IF NOT EXISTS does not alter stale pre-existing tables, whose missing columns would otherwise crash schema application with 'no such column'.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1493-L1532",
+          "version": "repo-lines-v1:sha256:c545eb57e3b784b44adb2e1673dd04a47e39e11db6b2ccdae94e9404bc7ea94b:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NzMwZjAzNzM5OTFhNzA3ZjUwNzY3YTZjNDU4NzUzZmU0NDI4MmQ5ZGZjNzExNzFkMDdhMWVjNzliM2U4MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwMDhmYzcyMjE2YjBiYjY2YjlmZGQzZjk4YjgxY2YzODVhYzkzYTAzNmM5ZTZhZDFkZDc3OGFmNmM5NjRiMGYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5015eca9e17144c1a6ba53e9cf61b45d",
+      "statement": "applyStagedRestore() reads restore-pending.json from BACKUP_DIR before opening the database, rejects markers missing paths or containing NUL/'..'/'\\\\' (renaming the marker to .failed), verifies the staged file exists, then renameSync()s the staged DB over the target and deletes the marker. The restored staged file is produced by BackupService at <DB_PATH>.restore-pending with a safety backup taken first.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/index.ts#L36-L87",
+          "version": "repo-lines-v1:sha256:09edc9ef0cd26cfb8462618a667df8c90e33859f26e54b7beb449e7f5af969f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmNjViYmUyYjc0Nzg4ZmFkOTYwNTM4NTY4ZTE2ODY3NjY4YmYyYmYxNjc4ZTA3MzE2ODY1ZjQyOTA1MzI2ZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1MjFlMGIwNzQ0NzY2ZTg5OTgyNzRiNTgwZDgxNTFmYmI1N2I2MmJmM2NkNjBkYTE4M2QwYzMwNzk2NjE0MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MzlhNDNmOTZjMTczNzY4ZTYxNGZiNDkwNjVkMGVkNGUxMjY1YmEyYTM2Yjg2YTQwOTAxY2I3YzVmYTUzMTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/backup-service.ts#L346-L411",
+          "version": "repo-lines-v1:sha256:c8e1bb28f4a21646e2972adda77551dbda8e71faa3ed4e53e12a69dff70e2008:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmY2RjYTJjZTc5MzU4MDg0YmNiOTZjN2UzOWRjN2EzZTk1OTBjMTg5YTdkMTZmMWRjMjczYmVlYWJmNDMwNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkMzE3YTMzYTBlZjFiYTFmYWQzZWU2MzY3ZGRkNTM4M2U1MWJiZTY2NzFiYjVkZGU1ZGQwNjJmYWM3NjhlZjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZWIzZTcwODM1YzA0YzA0NzM1YjE2MzhhMWMxMjBjOWQwZjk2MzNiN2MzMjMwMDAyNGUwNzM0OTAyZjJmMmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_61b54a2d08954c78baad665e5490d58a",
+      "statement": "schema.ts defines a tasks table carrying outcome, previous_hash (default 'genesis'), hash, and chain_sequence columns; audit_events is the append-oriented evidence table whose chain columns (outcome, previous_hash, hash, chain_sequence) are added on demand by ComplianceAuditService.ensureTables(). No SQLite trigger on the audit_events table itself enforces append-only behavior — enforcement is the service-side chain hash; the only INSTEAD OF triggers apply to the compliance_audit_log compatibility view.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L344-L367",
+          "version": "repo-lines-v1:sha256:695002df3977e4dab990667e0feba6ba0ccdccc90a3d2ebc6bd0b69d64eb90b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYTJhNTFjN2YwYjAwM2IxMjQxMDkzNWExNjM3MzU5NDZlYTVhODVmNDViMjIwODRjOThhZTIxNTFiNmEwZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk5OTE3MmQyOTI4NmFkOWRkYjEwNDgwYzA5ZTcxOWRjNWVhNzFmZGE1MzBjODMwNWNhZjRiM2JhNzk5ZDUxM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2NzNhNjdjMDc0ZTU5ZTQ2MGYzOGU2NTQ1MjM2MjZmMmZjMTQ5NzE4OTk1MzU1MzQ5OWM0YTliM2I4NTBlYjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L6-L36",
+          "version": "repo-lines-v1:sha256:62261d124e33556fec43825cef47f6fb827f5b850a070c4051029b124edcce54:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3ZDYyZjg5OTk4NWM4ZTEzNDdmZjBiNmI1NGI1ZjFiOTM3Mzg3OGYzYmYxMGU3MTBiZmNlODQzNWNhMjNiNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5OTY3ZWMxZWQzODM2ZjhlYjE3YWZmMTcyYjViZmVmN2RlNjA0ODVhNDM5YzZjYTExYzU5MWUxNzU1NzM5YWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyY2Y3YTkxMDkyMzA4NTkzYmE2MmNiYmY5YWY2ZmIzMjcyY2JjODY4YWMzY2QyZjc0NzBiMjBhMTZiZTY1NTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwNzczODMxMjkzYjNmZDM2ZjA3OGJlZDU2M2FkYTBmNGJlMzExMDNlYjZhYTAyODBlYmM3NDUxOTIxNzc0YTkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L464-L580",
+          "version": "repo-lines-v1:sha256:dffd63c1cbbb652fa6b2a6079fdfab7a3b98ce8548d906c9141c14417625bb91:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2OTUzZDBlZWE2NjEwMWE0YjQ0NTMzMjE4MGZhNjBlMzVmZmMzZDliZGQ5ODhkMmU4OGIzMTM5NWNlNmRkY2ViIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxOWQzNDFmNTM1YTMyOWRlMGRjNzRkODdhNDNjMjBkNTYwMDdjNjcyZjk5MGU0Y2U3YjU5MDliMmQwZjFkMDRjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ZTEyYjYxMTg5NDNlMzBjMDA2ODMzZTc4MTYzMGE1M2IzMmY0MTdlZjVmOTc5NWMzZjEyZjMzMDgwMjRjNWQ5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1YjJkYmY3YTVmZjMyYjNjNmUzODZiOGNiNjRiZWRkZDM1NGZmYTE5NTdmNTEzMTg5NjkxOGYxMGQwYzgyNjc1In0"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L72-L121",
+          "version": "repo-lines-v1:sha256:12557715938513dbcfbeecc9f5b996bb2c45d60d7ecbc2804092648462fce3d7:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OGNjNzNjNjBjOGI4OGNiZGNkY2QxZTdkYzBjMzVjNmI0MDdhMWYxNDZlYThhMDM1OTBjODk3NDEwMTMzNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3NzBiZTI4ZTNkNTgzZTZjMTEzOWQwYTgwM2VhNmExZDVhNzA3NDZkMWM5YmFkYTcwZmIzNDhkNzQwYTI1OTUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJkN2FhM2U5MzAwNTFjNzRkMDBiNzQ0OGFjNWZjY2I3MTE5ZTFmOGJkYjg0YTRjODE2NjJjMmMxZTNkMzk4YmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4ZDRmNjExNjFiNDM4MDg0YjQxMzQyZmUyOWM5ZDJhZTZlMGIxNjUzMzQzYmMyYTM1M2Q0MmFlZGI0YTYwOWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1158e66bba7742409a82715ce02b3c28",
+      "statement": "seedDefaultPolicies() inserts four default approval policies only when approval_policies is empty: allow low-risk task execution, require approval for medium+ risk, deny sensitive-path commands (~/.ssh, ~/.aws, ~/.config), and deny critical-risk task execution.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L202-L319",
+          "version": "repo-lines-v1:sha256:ab00d0b6e901dcbce50dabe943eb889e8427d487fe1da28a85a36b297ea9a049:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzMjE0MTE5NzI5NmZlOGYzOThiOWQ5MTU3YjlhOTVlODRmNjg0MDM2MGNlM2VjOTAxMDllMzY5MGFkOTdkOTQ3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmNTkzMjQ3MzAwYTIyNDA2NjgzNDlhZjllZTY2YmRlYWNmZDAwZTdlM2U5NGI4YTljZTNkODhkMWI4ZDE5NWQ0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIyNDM2MzUzMDRkZWI3OWYxMDNkMDljN2M2NGY1MTczNTIyMjM5Yzk3N2YwYmM2OThiNTkyNmI0ZjhlODc1NzE0In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_b44879ce1531450badfd610cdf06ff15",
+      "statement": "createAgenticLoopTables() creates the loops family — goals, loop_runs (mode closed|open, statuses including ready_for_human_merge and interrupted via LOOP_RUN_STATUSES), loop_events, worker_leases (roles planner/maker/checker/security_checker/memory_curator/governance_guard), work_items, memory_candidates, specialist_panels/reviews, agent_trace_spans, system_state, loop_checkpoints, agent_eval_runs, capability_tokens, and reflection_candidates.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L17-L18",
+          "version": "repo-lines-v1:sha256:24ef9db6579665982ad04b6ed1d32eb08a69ec87986e8b7a17b5c61c412cb3f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJiOTQxYTZhMWQwMjI1NGYxMzk3ZjYxYzNhMzdjYmJiZGNmYmQ3NWNmZTI0NjZkNTQ4MWNhZmQwOTMwMDVlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGI2YWI3Njk5ZjMwZGE5NjIzYjhjM2RjODMzMDY0YjJjNDllYjNjZjMxMzYwZTY1NjQzYjM4ZTAzZDg5OGVhMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWI1Y2RiMzFmMjA5OGE1Njc0N2IzMmIxNDc0ZWM4ZWMwYTk2YWI0OGJlZjJhZjVmYWU0NWM4NjBlOTM3NmRkZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L723-L1011",
+          "version": "repo-lines-v1:sha256:33174e2b31539b57d0e1ce6d2bcdf4f51e9d3b257ff22ab9faa4aa36967cc0d1:eyJzZWxlY3RlZExpbmVDb3VudCI6Mjg5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YTdiZWFkOTA0OTZkODZmODU1NTY5M2Y2M2E5ZmZlNmM2NGRhZjg2NTQ2YWFiMDBiZDAxOGMzOWRkNTNhZTQ4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxN2FhN2UyNmEwNWE0YjNiYTNhMzM0OTEzYmNkZWNiOGU4NDk3NThjZjljYTk1ZTBhNjlkY2IzOGMzMDQ3NTVjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiYjQ3ZTI2ZGUyMDI0MTI4NWZhYWUxNWI4NDhjOGJkNjEyZDVjNWRlZjA3MmU2NTI2YTU2MzVkYzE3YWM2MWI0In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_bbe7d24a1e9f43508b867807aabc4f8a",
+      "statement": "ensureLoopRunsReadyStatus() and ensureLoopRunsInterruptedStatus() detect stale CHECK constraints on pre-existing loop_runs tables via tableSql(sqlite_master) and rebuild loop_runs, loop_events, worker_leases, agent_trace_spans, and loop_checkpoints inside a foreign_keys = OFF transaction, copying rows between old and new tables.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1339-L1491",
+          "version": "repo-lines-v1:sha256:c014eddb3ca898c5497179226be5cf6776b01a7169f2cd414f33b04594d5f61c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhMDM3MzZlYWE4MGM1ZDcwNGI3ZjE2OTNlMWM5Yjk3MjYyNmI3MmM5ZDQzZjIyMjE3ZDlhY2NmZDE1ZjU2M2NjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmNTkzMjQ3MzAwYTIyNDA2NjgzNDlhZjllZTY2YmRlYWNmZDAwZTdlM2U5NGI4YTljZTNkODhkMWI4ZDE5NWQ0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3NjFkYTEwNzJkOGVjM2UyMzgxYzhmOTAyNzEyNzIwMjY2NGRjYjQ0MzQyZmFlOGNjMmU5Mjk5Y2U5NGY2NmI2In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_02a9017fee18498196b810c30205e90f",
+      "statement": "createNestedSpawnTables() adds parent_lease_id, spawn_tree_id, depth, spawned_by_agent_id, and capability_id columns to worker_leases, and creates sub_agent_spawns (with prompt_digest = sha256(role|prompt|capability_ids) used for dedup and cycle guard, and reject_reason enumerating depth/cycle/capability/token/wall/concurrency budget failures) plus spawn_trees whose depth_budget is operator-armed via SPAWN_DEPTH_BUDGET defaulting to 0 (nested spawning off).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L637-L710",
+          "version": "repo-lines-v1:sha256:891373bfaf2018af4c2543fadc7fd47f38eaef8dd29fbad5509966ce6f1e3615:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmNDQ5NDEzMGRhNmQxN2E3NTdlOTIzMGE0MmI0OTMwMzJlNDA3YzJkMjUzNGFhMGQwZDljM2Y5NDhmNTBjMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1OTMyNDczMDBhMjI0MDY2ODM0OWFmOWVlNjZiZGVhY2ZkMDBlN2UzZTk0YjhhOWNlM2Q4OGQxYjhkMTk1ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzOWIxNDM5YmJkYmUyOGJmYjkwNjA0YTgyZGY0ZDA4NWFlZTlmNTI2YzJhYmNhOTU4ZDVhYjQyMmVlZDQ1ZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3607e8af6726415596203bbfe9387506",
+      "statement": "memory_candidates carries a store column (episodic/procedural/semantic/working) added as a G8 migration so the flywheel routes memories to typed cognitive stores, and a promotion_status gate with human_required and sensitivity checks including secret_detected.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L651-L658",
+          "version": "repo-lines-v1:sha256:347e2ec3183471938d7c0f910e322a60743a973b1e41b5b0d825d7769db18219:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ4MTE0ZTQ1ZGYxMTM4ZTk0YzI3ZTAyZGM2NWE5N2ZmOTdhMGM0OGUxZGRiNzRjMmU4MGY2MmMxMjZiZTZlYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjAyZDJjMGQ2ZGM1ZTc0ZDkyZmExNGI5MWRiZWEyNjQwOTBiZWIzNWZkYjkxODhkOWIzNDExODFkY2U5ZjRjZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTk1N2UwNzAyNmFhM2FjZjk1NDhiN2ZjYjQ4ZGJhYzdlYmI0ZDQ2ZTJkMzUxZjA0YjhhYWRmMjY1MmEzZTk0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGNiOWVhNDIzOTExZmM5ZDQ2YmZkM2ZiYzIzOGY5OGUyYzQ4MjM5NjlkZmU1NWVlMTI4YjFjM2NiMTdkNzQyYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L830-L859",
+          "version": "repo-lines-v1:sha256:aa71246585357f8df3da05e2a18d486c880fe94e63297bf466fe4fa00c3a4015:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxYzk3YjM0ZmViZDUwNTA4YzllNmY0Y2JiN2RiNTJiNTQxZjM2ZGMyOWNhY2FmNWFjYTA2YWMxN2FlYWY3OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkM2NlZDNiYzg0NTM1OGQ1ZGUxYzNhZjZhMjM4NjE5NDRlMjIxZDdmYjEyMGYxYzNiYTk1MGM0ZGNkN2NmMjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4MmNmOTA1NThiMmQ5MGE3OTJjMGYzMjA1OGFkMDVmYTllMjhlYWQyNzQxMDdiOWE0MWI4YTAyZDFlNDEwNmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0N2ZlNDQ2YWY0MmFiNzkwOTJkN2Y0YmMxMGUxNGE2MzUyYTNiMDI1OWQ1NjkyMDZmMDNlMmY3NTc4NGM5MTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_161c19100b0c4a78a72e61057e369e0b",
+      "statement": "swarm_claims supports claim types observation/hypothesis/decision/memory/capability/backlog/policy, statuses from proposed through promoted/review_required, and cross-reference columns contradicts_ref and supports_ref; swarm_missions/swarm_tasks/swarm_decisions model a mission/task/decision state machine with decision types state_transition, route, gate, quorum, split, kill, escalate, review.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1041-L1163",
+          "version": "repo-lines-v1:sha256:da456cef355a610ce93014c0d32430f8e41263189c5cc55f70f0c719539a2f32:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3NWEyZGE5ZTg2ODhmMWZmMTQyOWFjNzhlOWYxMWM5ZTQwMjYzOWVmMTc2NGNlN2UwNDc4YTQwMGQxMjdjMTBiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0OWM5OGFkODlmNmUwZmY1ZmRhNjIzMjJhZTZlMjNkNWY3YWVhMDQ0NTgwNDAzZGI0Mzg2MTEwZDBlOTlmYmJkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmNTIzNmMwMmI2MTJhZmNiNGViNTZkMGI0NmM0NWMwYTIzZDE2MzFkMjk0MmFmNGYwY2E4MzFhYmRlZDZiYzQzIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_72ede64859e84e278d66e2caadaf33c4",
+      "statement": "createSelfImprovementTables() deduplicates self_improvements by fingerprint only among live statuses (proposed/scheduled/executing/verified/evaluating) before creating the partial UNIQUE index idx_self_improve_fingerprint_unique, because an earlier unscoped delete removed parked proposals in production (2026-09-21 incident comment).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1294-L1323",
+          "version": "repo-lines-v1:sha256:90ccf1525833e40f17f8f92b9e98996cbf045550bd3500f651618296a035a06c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlOWExZTE1OTBiMjViNWQwMWY5ZDkxNmUzZmExZmEyZDgwODdhNWMwNjAxNDg1NTk4Mzc0YmNhM2Y0MTMwMjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJjZTI2YWZmYTg5NGNiNzc4ZDFjNWIzZmYxYTZmYmZjMTEyYmVkZWMzOThjMTc5YWEzZGVmZDBhMTM4NTcxY2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZGU2OTE0YmQyNjZmYzEyMWE0YmNmNzk4YjEwY2RmNzFlZDNlNWE1OWVhYzA5ZmFlY2M4NzhlZmFlZDQ5M2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_63260d97c3134bac92a4a747a809b354",
+      "statement": "applyMultiTenancyMigration() adds organization_id columns to agents, loops, loop_runs, and approvals, creates organizations and a tenant-scoped audit_logs table with seeded default/org-a/org-b organizations, and the historical migrations/20260823-multi-tenancy-audit-trail.sql file is kept in the repo but superseded by this TS-side idempotent migration and by the ComplianceAuditService audit_events chain.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1742-L1788",
+          "version": "repo-lines-v1:sha256:bbe917ae769022ffd22d77961eaf4d32323d6aacb7d3c6e169c3aca03820f109:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhNDRkNmYzM2U1ZDg1NTZiY2M5Y2MyY2UxM2UxODYyOWRjN2VmMzM5N2ZlZGU4NDc1MmE0YWYwZmM0MGY3ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ2Nzc1NjYwMjg4MTNhMDFkY2ZhOTIzN2IxZjNiYzU0YmY1ZGNhZDUxMWM2NDdmY2NhYmRlNWY3ZWM3NTliNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4OTllMWZiMDM2M2ZiNWUyNDYyMmIxNTg4NDBjODVjNjFhOGZiZTZkODViZmUxN2JmNTIzN2VkYzFhZDExZTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrations/20260823-multi-tenancy-audit-trail.sql#L1-L48",
+          "version": "repo-lines-v1:sha256:b1030023d2b11c6935cb319acd6c9b7870f150840e9fb32869cd01c74b24c572:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZDM4YTE3MjVjMGNiZWFmNTgzM2FlYmQwMGY2N2E2NDhlZWQ5ZjMzMzk3NzI3MjZjZDY5NWQ0ZmVmZWNkNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0NjA5YjgxODgyY2E3OWNmZTJiMDNlMTYzNzliMGE3Y2ZkMTQ1N2RkOThmODZmOGI2OWRlZmVjMjM1NDcwNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ea813c00c6b844a8933911eada422248",
+      "statement": "runMigrations() composes additive phases (Phase42 risk_assessments/policy_violations/mcp_tool_permissions; Phase43 execution_evidence/execution_summaries/file_changes; Phase44 repository health; Phase52 users; Phase55 ownership columns; Phase56 provider configs; plus loop/swarm/self-improvement/multi-tenancy/explainer/calibration/outcome-learning/frontier-expert families) and finishes with createPerformanceIndexes(); migrate.ts also runs standalone when invoked directly against resolveDbPath().",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1790-L1828",
+          "version": "repo-lines-v1:sha256:54cd83c1d36ad4dc9e43b8b14a6e29c7907c7b68e9ad07e0116c95ae76fc4960:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhlMDA3YTM2MjIxMjY5MGM5Yzc5NmJmMjdmZDBjY2Q0MTg5NGM1NzU0OGJiMzc3ZTJhMWVjNTgyY2I1MmJkMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZjVmYmQzZGI1NWU1MWZjZmJlNWMwM2E4Zjc0ZDg4NzQxYTQxNTQ1MjlmYjY4NTllYWNhOTZlOTg0ZDQ3NjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0YWQ2YzA5MmVjNzYyNWFiNTI1ZjcwNGJhMzRjYjdkOTg1NDI4ZTU5Y2E4YzRkZTU1ODZhMTYxZDQwNTMyYTMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L2205-L2211",
+          "version": "repo-lines-v1:sha256:de8503082b08fdcbd3c83b17cbd5724fd7234ddce786135420fed47fee89be5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjc3M2MzYTgwMTNjYTNjOGQ2MzQ0NjEwMmViNmNlZGNmYWUxZGM2ZTY3YWU4NDVhYmFkZDNiOGMyMWRlNzVhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjU5MzI0NzMwMGEyMjQwNjY4MzQ5YWY5ZWU2NmJkZWFjZmQwMGU3ZTNlOTRiOGE5Y2UzZDg4ZDFiOGQxOTVkNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a82edbe94d8046fdbef58de15f174147",
+      "statement": "migrate-v2.ts defines a schema_migrations tracking table and transactional up/down migration framework with rollback safety, but its registered migrations array is empty in this revision, so all production migrations flow through the additive v1 path in migrate.ts.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate-v2.ts#L1-L131",
+          "version": "repo-lines-v1:sha256:2dd94512ccb8a4ad603246115a318bb96b3de61c83d1375cc281c3d93e0d3fa8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlYWYyMmNmMDczMjU5MmMyNDcxNDFjYmU2MWVmYTExMDEyNjEyZjVhMzEyMmI5YWY5YmJhZjUyZjU3MjRkMTk0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_bb2b8c887fe744fc97d806d729fcfc32",
+      "statement": "ensureDatabaseInstanceId() reads the system_state key 'database_instance_id' and, on first boot, inserts a randomUUID() that remains stable for the lifetime of that database file; database-provenance.test.ts asserts the same id is returned across calls and surfaced by getDatabaseProvenance.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/database-provenance.test.ts#L5-L14",
+          "version": "repo-lines-v1:sha256:35bbe4ba6d3b827589d33de9f12a3e9cd0a070ea1e08f5e3fc2bb5022d3e2c33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NWQ5OWQyODJkNjZkN2FjZDk1ZmQ4OTQ5ZjI3NTQwYWYzNjgyY2Y3ZTMwM2FhZjQ0NWFkMGNhYmUzNjAzMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYyNmFkODAwNjgwMzVhNTZkODdjZDkyYjAxOWMwNzdjZmYxYWI4Y2M1NDBhYTA1NTg1ODM0MGRhNTI5MTAwZjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/provenance.ts#L6-L15",
+          "version": "repo-lines-v1:sha256:91fe2619ac15d380f74bfaae2b84018bd3834b932cc83a19a2ab3b101a996d81:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmOGNiM2FkMjMxMmVjMDkwZmI3OTc2ZWFiNmJhYWVjMmNlNDI4M2Y1ZTRlNTM0OWJmZTZkMjUxYTViOGViZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4MTdhNmVkOTBkY2QzODUzZDlhOThlNDlmNzFkZThmODE5MmI4NjFiZDA0ZjQ4ZjlkMGU4Njk2MzkxMDIyMDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg5YmMyZDc0NDZmNWYyZDQ4Mjg2YTA4ZjIyNjkyZDc4NTdiNjNmNmJiZGQ5YTQ4YTFmMzFjOTQ2OGQxZjkwYzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6a02afda115843a1b3677275d56de57b",
+      "statement": "getDatabaseProvenance() returns instance_id, node_id (DJIMITFLO_NODE_ID or hostname()), path from resolveDbPath(), mode (DJIMITFLO_DATA_MODE, default 'live'), and commit_sha (DJIMITFLO_COMMIT_SHA); the /api/health/deep route exposes this object, and scripts/live-identity-evidence.mjs (npm run assurance:live) compares the reported instance_id against DJIMITFLO_EXPECTED_DATABASE_INSTANCE_ID or the local system_state value read via sqlite3 -readonly, failing on mismatch.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L27-L27",
+          "version": "repo-lines-v1:sha256:3df0cf8cad16706730427055eceecb3efa851f4f848646f1da2027c71abe4eee:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RmMGNmOGNhZDE2NzA2NzMwNDI3MDU1ZWNlZWNiM2VmYTg1MWY0Zjg0ODY0NmYxZGEyMDI3YzcxYWJlNGVlZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2RmMGNmOGNhZDE2NzA2NzMwNDI3MDU1ZWNlZWNiM2VmYTg1MWY0Zjg0ODY0NmYxZGEyMDI3YzcxYWJlNGVlZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjMzMzA4ZDU5MDlmZDEzMTZjYWJlOTRiOWM2OTJhMzgzYThjOWI4MTk3Yzk2NDNlNjgyNTY0N2JkYmNhZjE2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWY2MGY2ZGJmM2MyODk4Zjg3ZjQ0YzIwOTJmYzNhYzRmZTdmMTVlMTRiNTVmNDAxYWZjZjNiMzI2MDAwZTYyNyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/provenance.ts#L17-L25",
+          "version": "repo-lines-v1:sha256:843e32363657ad8922ebfc152f7fd8e8a196cda9a2d9920d022f2809bb10007c:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2YxZDBhZWI3NTdkMjNjZTUyMjE3MTM0MGJlZDNhZTE0ODY2MjFjYjdiYTg1NDM5MGM4ZGM2MzgzZGFiOGI0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDJhMmNiMjVhMTIyYjQ0MjIxYTYyMzRlYzY2MGE3YjVmYjdmOWJkZTdiM2I5ZTJiM2M1NTlhMGQ5NmZhYzczOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiODEzMDI5YzVkYWVhOTFhODQ1MjQ5Mzg0MTk1YjdmNGY3Y2U4MTIxNzg5NTJlMzE3NzIxN2E0ZDI5YmQ4MzI5YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/health.ts#L110-L115",
+          "version": "repo-lines-v1:sha256:72fac59216128536378305d71ef85ea33d04e9aa9df6066deb8a8599d7ba0bc7:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWNjNTRkNjY0MTM1NzE2ZDIxYmEzN2I2Nzk3MDk4N2YxMDIxODk1NjJmOGI5Mzg4NmM4NWZjYzBhYWU5YTMwNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjJkMTFjYWY0M2U5N2VmMzY5ZTZiZWVkMWEyNjhiZDA1ODM4ZjI5YjlkZDI1NGJmNjliYTY0ODg0MTQ3MjM0YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzdjOGQ1N2UzYmZkMGU1NmI4ZDUwZTFiOTAxNjgwM2Y1ZWRjMjY5NWUwMWRmYjJhZmQ2ZDU1N2NkMzQwZjg0OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTM1MTUzZWJlZTk1MjIxODI4MzFkZjQzMzEzNjhlYzg4YzAyNDQ5OTM2NzMzZjE4MDFjNmViZGE0MTQxOTkzNyJ9"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.mjs#L30-L65",
+          "version": "repo-lines-v1:sha256:9c2f9e09bdd169da63d412e15fd0d6c21700033eb3973a8164921c164d67ec13:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ZGRkMjY3ZDZmMDJmZTA3YTgwODhmNDQ0ZGVjMjRmODI4ODM1MjBkOTM5NDRmZjgyMDQ3MTkwMTMxNjQyMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkODNmMzk0MzIyMzYxOGY4NDI1MzNmOTQ2NjE3NzM4OGI5NjYwNDRlNGQxN2Y3MWYyMjc4OTM4NDY5YzUxM2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZlYmYwNTRiNDU4M2FlZDdmOWE4NjBjYmIzNzEzYTU5MjExMjNkZTY4ZGJjMzFlNWIyMDc4MDA2NmNhYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkY2UxNzkwYzFlYmY4N2IyMzZjNTZlMjE1NDVmMDk3NGEyZTI3ZjBlYzlhNmM4Y2Q3MWVmMjJjYjdlNDExMmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1a7049911304821b307017d862612d7",
+      "statement": "The README cites 165 audited database tables in the local schema, and the page notes deployment schemas may differ because services also ensureTables() lazily at init; the audit_events chain columns and compliance_audit_log view are an example created by ComplianceAuditService.ensureTables() rather than schema.ts or migrate.ts.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L36-L36",
+          "version": "repo-lines-v1:sha256:06b0d1350af48b9ebb398dcb77608e120c7334c46a6e95a3f1812e369e5de015:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZiMGQxMzUwYWY0OGI5ZWJiMzk4ZGNiNzc2MDhlMTIwYzczMzRjNDZhNmU5NWEzZjE4MTJlMzY5ZTVkZTAxNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZiMGQxMzUwYWY0OGI5ZWJiMzk4ZGNiNzc2MDhlMTIwYzczMzRjNDZhNmU5NWEzZjE4MTJlMzY5ZTVkZTAxNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjU2Zjc5NGUzMDcyYjMzYjdmYzEzYzM3OGFiZDRhMWRhOTY3OGFiZGVjYTM4MGQ5ODhhODE0NjMxYzczNmMzMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTNlODY1NzQ5NTFkMGViNTUzNjcxM2ZkNDVhMTI4ODcwYmY1Y2NiOThkOTRiYmU5OWI0ODlmNDNlYmZmZDExNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/compliance-audit-service.ts#L45-L48",
+          "version": "repo-lines-v1:sha256:ea0f6588e134a561cbde45772c8020dd3a29567d14e7c83bbb549b6944ebbbd0:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGIyYjAzNjA5OWIzM2FiMDI1ZjFkY2M0OWY5YTZkNTNiMjVkY2YzZTFmNDU1NmFhYjYxMTU0Y2FlZjFkYzZmYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWExMGI0YTQ0Y2ZkYjEyYjI5ZjQxNDdjOGMzYzJhOTk4OWFjYjNhMGI0ZjMxODQ3YmNkNjllYTdiMzBhM2FhMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGNmNDUyNjcwZGQ0MTEzN2UzZTcwMjliNGU2Y2MyZTEwNWRjZGUxZmQ3OGZmY2IyN2QzNTI1MTg1MWM3MjVhNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_3cb07f2ec8aa4d83923e223840f9a91e",
+      "statement": "authority_events stores djimit.io/v1alpha1 LifecycleEvent records with actor_type CHECK (human/agent/service/ci), policy_decision CHECK (ALLOW/DENY/HOLD), and UNIQUE(correlation_id, sequence); event_outbox and board_handoff_outbox provide pending/published/failed outbox plumbing.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1242-L1280",
+          "version": "repo-lines-v1:sha256:0f224623c55eb38fc6a816dc93c7f9841b9d6c6a290f43a94e0b091c65c64e7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NzY0MjlkODE2YmVkZGRhNDg0MmUyMGI2MWYyMTM3YTE2ZmVlNThlOTkyZDQ3YWI4Njk3MmYzMTcwMWM3YTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4ZmEyMjFkZWRjNjBkY2E4MWJmNDYwOTdiZGE2NTllOWIwZmY0ZWM1N2JlMDdjOGYyNmQ2NWJhYWFkNzg4MDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhNDg3ZWZjNzEyZTkwMTJjOTQ2NmE3MzFmZGRkMmY5YjM1NTAyM2NiNGIyMjg5OWJjNzk5YjRkMTA4MGIzMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4YTg0MTBhNDdlZGNlNmQxNjc5NTdhOGI0YWU5NzRhOThlMGNlYmJiZjk2NTRiYjc4NWRjZTdhMTI1NjdlNjQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L605-L635",
+          "version": "repo-lines-v1:sha256:3b72309b210f697e472dd9194c1b58b5618f9e533ef5385730c945bade6b7094:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1YmYwMGZlOTAxM2I4MzFiOWJhN2ZhMjUyOGNlY2MyYzViNDhlZGZiOTc1M2VlNWE2M2NmNzcxMzRmOWM2ZGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1OTMyNDczMDBhMjI0MDY2ODM0OWFmOWVlNjZiZGVhY2ZkMDBlN2UzZTk0YjhhOWNlM2Q4OGQxYjhkMTk1ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzZTc3YTgxZGU2NTM2MjYyYWY0YTNiOTQ4NDdmMTY3YzEwNTM1OGM5NzZlZTJkZDAyNWZmZmIxNDYxYjQ1MGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b3ffc2efeef4c11a5da732af1b9ea51",
+      "statement": "The council engine schema includes council_sessions (modes fast/review/council), council_outputs (phases diverge/review/synthesize), council_evaluations, council_models (privacy_class local/private_cloud/public_api), council_reliability, and council_aggregations (methods borda/reciprocal_rank_fusion/weighted_borda/condorcet/weighted_borda_with_uncertainty).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/schema.ts#L528-L648",
+          "version": "repo-lines-v1:sha256:a0d913a26c16143cb8fdbbfb4d28f345022a5e08cf05c29d0b2200abb639b03f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYzRlOTU0Y2MwMWQwN2VhYzE4ZDM1YTU2MjZmMzNkODhjMTA1MDc5MTVjZDlmYjJiOWZlMjViM2UzMzYxZGE0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxYzFmYjAxOWMyYzg4YWZhNTgyZjVkZmE3MWIzZWFhZDA0YWE0MDA1NjYyNTY0Yzc5N2NkYWUyMTQ2NmQ0MDUzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3YjgyZDhlZjYwMmU5MTBiNWRkYWFhY2U0YmE5ZTAzZTk0OGRhMGNkMzgxNjY0YWZkMzhmYmZiYmI2NmJkN2Y5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NzlhYjUyZGE2MmMzZmVmZDAxOTNhMDgyNzlkM2RhYjI0ZTIwMjgwYjcwYTIxYWUyMWYzMjEyYzRmYjBiMjliIn0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { generateText, llmEndpoints } from './llm-fallback';
 import { prepareState } from './typesafe-client';
+import { buildDecisionContext } from './decision-context-service';
 import type { Database } from 'better-sqlite3';
 import { SpecialistPanelService, type SpecialistPanelRecord, type SpecialistProfile } from './specialist-panel-service';
 
@@ -84,12 +85,14 @@ export function readTargetExcerpt(target: unknown, repoRoot = process.env.REVIEW
 }
 const CONNECTIVITY_ERROR = /fetch failed|ECONN|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|aborted|timed? ?out|socket hang up/i;
 
+const UNPARSEABLE = 'model response could not be parsed as a structured review';
+
 export class SelfImprovementAgentReviewService {
   private readonly panels: SpecialistPanelService;
   private readonly callModel: ModelCaller;
   private readonly generationFailures = new Map<string, number>();
 
-  constructor(db: Database, callModel: ModelCaller = callOllama) {
+  constructor(private readonly db: Database, callModel: ModelCaller = callOllama) {
     this.panels = new SpecialistPanelService(db);
     this.callModel = callModel;
   }
@@ -99,9 +102,13 @@ export class SelfImprovementAgentReviewService {
     let panel = this.panels.getPanel(panelId);
     const reviewed = new Set((panel.reviews || []).map((review) => review.specialist_id));
     const missing = panel.panel.filter((profile) => !reviewed.has(profile.id));
+    // one advisory lookup per panel (not per specialist); null unless TYPESAFE_DECISION_CONTEXT_MODE=enforce
+    const lessons = missing.length
+      ? (await buildDecisionContext(this.db, { type: 'specialist_panel', id: panel.id }, { topic: panel.topic, context: panel.context }).catch(() => null))?.text
+      : undefined;
 
     for (const profile of missing) {
-      const outcome = await this.reviewOne(panel, profile);
+      const outcome = await this.reviewOne(panel, profile, lessons);
       if ('error' in outcome) {
         // A failed model call is not a judgement. It used to be stored as a confidence-0 needs_evidence review
         // (208 of 2309 production reviews: 404 on a missing model, 'fetch failed'), which parked the proposal
@@ -121,7 +128,7 @@ export class SelfImprovementAgentReviewService {
           continue;
         }
       }
-      const parsed = 'error' in outcome ? this.failureReview(outcome.error) : outcome;
+      const parsed = !('error' in outcome) ? outcome : outcome.error === UNPARSEABLE ? this.needsEvidenceFallback() : this.failureReview(outcome.error);
       panel = this.panels.submitReview(
         panel.id,
         { specialist_id: profile.id, ...parsed },
@@ -131,10 +138,15 @@ export class SelfImprovementAgentReviewService {
     return panel;
   }
 
-  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile): Promise<ParsedReview | { error: string }> {
+  private async reviewOne(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): Promise<ParsedReview | { error: string }> {
     try {
-      const raw = await this.callModel(this.buildPrompt(panel, profile));
-      return this.parseResponse(raw);
+      const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
+      // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
+      // of a 6/6 lane); retry it like a failed call.
+      const parsed = this.parseResponse(raw);
+      // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
+      if (!parsed) console.warn(`self-improvement review for ${profile.id}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
+      return parsed ?? { error: UNPARSEABLE };
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
@@ -150,7 +162,7 @@ export class SelfImprovementAgentReviewService {
     };
   }
 
-  private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile): string {
+  private buildPrompt(panel: SpecialistPanelRecord, profile: SpecialistProfile, lessons?: string): string {
     return [
       `You are acting as an independent "${profile.title}" reviewer on a governance panel.`,
       `Your domains: ${profile.domains.join(', ')}.`,
@@ -162,6 +174,7 @@ export class SelfImprovementAgentReviewService {
       `Question to answer: ${panel.question}`,
       `Context: ${JSON.stringify(panel.context)}`,
       ...(this.targetEvidence(panel) ? ['', this.targetEvidence(panel) as string, 'The target source is provided above: judge the proposal against it and do not ask for the source code again.'] : []),
+      ...(lessons ? ['', lessons] : []),
       '',
       'You are one of several independent reviewers. Your job is to genuinely evaluate this proposal',
       "from your domain's perspective, not to approve it by default. If the evidence is insufficient,",
@@ -181,7 +194,7 @@ export class SelfImprovementAgentReviewService {
     return readTargetExcerpt(grounding?.target);
   }
 
-  private parseResponse(raw: string): ParsedReview {
+  private parseResponse(raw: string): ParsedReview | null {
     const jsonText = this.extractJson(raw);
     let candidate: Partial<ParsedReview> | null = null;
     try {
@@ -190,7 +203,7 @@ export class SelfImprovementAgentReviewService {
       candidate = null;
     }
 
-    if (!candidate || typeof candidate !== 'object') return this.needsEvidenceFallback();
+    if (!candidate || typeof candidate !== 'object') return null;
 
     const stance = typeof candidate.stance === 'string' && VALID_STANCES.has(candidate.stance)
       ? (candidate.stance as ParsedReview['stance'])
@@ -221,7 +234,8 @@ export class SelfImprovementAgentReviewService {
   }
 
   private extractJson(raw: string): string | null {
-    const trimmed = raw.trim();
+    // thinking models (and the LLM fallback) may prefix the answer with a reasoning block that itself contains braces
+    const trimmed = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fenced) return fenced[1].trim();
     const firstBrace = trimmed.indexOf('{');
