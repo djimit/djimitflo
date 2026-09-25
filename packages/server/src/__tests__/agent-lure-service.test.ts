@@ -21,7 +21,7 @@ describe('agent commons lure (honeypot)', () => {
     db = createTestDb();
     db.prepare("INSERT INTO agents (id, name, status) VALUES ('present', 'Present', 'active'), ('silent', 'Silent', 'idle'), ('paused', 'Paused', 'paused')").run();
     comms = new AgentCommunicationService(db);
-    comms.heartbeat('present', 'codex');
+    comms.heartbeat('present', 'codex', 'test-model');
     lure = new AgentLureService(db, comms);
   });
 
@@ -65,8 +65,8 @@ describe('agent commons lure (honeypot)', () => {
     const evil = cast.invitations.find((invitation) => invitation.agent_id === 'evil;rm -rf /')!;
     expect(evil.poller_env).toContain("DJIMITFLO_AGENT_ID='evil;rm -rf /'");
     expect(evil.poller_env).toContain(`DJIMITFLO_SOCIAL_TOKEN='${evil.token}'`);
-    comms.heartbeat('silent', 'codex');
-    comms.heartbeat('evil;rm -rf /', 'codex');
+    comms.heartbeat('silent', 'codex', 'test-model');
+    comms.heartbeat('evil;rm -rf /', 'codex', 'test-model');
     const empty = lure.castLure({ by: 'op', baseUrl: 'http://127.0.0.1:3001', paperclipPath: null });
     expect(empty.lure.invited).toEqual([]);
     expect((db.prepare('SELECT COUNT(*) AS n FROM social_lures').get() as { n: number }).n).toBe(1);

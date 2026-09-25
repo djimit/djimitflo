@@ -48,6 +48,7 @@ interface InternalPair {
     falsifiability_specificity: number;
     explicit_correction_signal: number;
     repetition_risk: number;
+    exact_peer_copy: number;
   };
 }
 
@@ -102,6 +103,7 @@ export interface CampaignReport {
   metrics: Record<string, MetricSummary>;
   signals: {
     peer_learning: CampaignEvidenceStatus;
+    peer_learning_noncopy_sensitivity: CampaignEvidenceStatus;
     operational_outcome_lift: CampaignEvidenceStatus;
     causal_support: boolean;
   };
@@ -155,7 +157,7 @@ export class SocialLearningCampaignService {
       started_at: startedAt, ends_at: endsAt, minimum_pairs: minimumPairs,
       unit_of_analysis: 'paired agent proposal and post-peer-feedback learning within one social thread',
       independent_variables: ['peer feedback exposure'],
-      dependent_variables: ['peer uptake delta', 'content novelty', 'evidence retention', 'falsifiability specificity', 'explicit correction signal', 'repetition risk', 'linked operational outcome lift'],
+      dependent_variables: ['peer uptake delta', 'non-copy peer uptake sensitivity', 'content novelty', 'evidence retention', 'falsifiability specificity', 'explicit correction signal', 'repetition risk', 'exact peer copy rate', 'linked operational outcome lift'],
       controls: ['same thread', 'same agent', 'same topic', 'pre-feedback proposal'],
       confounders: ['fixed ordering', 'topic drift', 'model updates', 'runtime retries', 'mandatory response fields', 'runtime deployment drift', 'operator-triggered social rounds'],
       allowed_social_trigger: 'autonomous',
@@ -221,9 +223,14 @@ export class SocialLearningCampaignService {
     const windowEnd = complete ? state.ends_at : observedAt;
     const pairs = this.pairs(state.started_at, windowEnd);
     this.addRepetitionRisk(pairs);
-    const metrics = Object.fromEntries((['peer_uptake_delta', 'content_novelty', 'evidence_retention', 'field_completeness', 'falsifiability_specificity', 'explicit_correction_signal', 'repetition_risk'] as const)
+    const metrics = Object.fromEntries((['peer_uptake_delta', 'content_novelty', 'evidence_retention', 'field_completeness', 'falsifiability_specificity', 'explicit_correction_signal', 'repetition_risk', 'exact_peer_copy'] as const)
       .map(metric => [metric, this.summarize(pairs.map(pair => pair.metrics[metric]), `${state.campaign_id}:${metric}`)]));
+    metrics.peer_uptake_delta_noncopy = this.summarize(
+      pairs.filter(pair => pair.metrics.exact_peer_copy === 0).map(pair => pair.metrics.peer_uptake_delta),
+      `${state.campaign_id}:peer_uptake_delta_noncopy`,
+    );
     const peerSignal = this.classify(metrics.peer_uptake_delta, state.minimum_pairs, 0.05);
+    const noncopyPeerSignal = this.classify(metrics.peer_uptake_delta_noncopy, state.minimum_pairs, 0.05);
     const checker = this.check(pairs);
     const outcome = this.outcomeEvidence(pairs, state.started_at, windowEnd, state.minimum_pairs);
     const runtimeProvenance = this.runtimeProvenance(pairs, this.string(this.object(state.manifest.provenance).runtime_commit));
@@ -232,26 +239,26 @@ export class SocialLearningCampaignService {
     let status: CampaignStatus = 'RUNNING';
     if (complete && !worldlab) status = 'AWAITING_ASSURANCE';
     else if (complete) {
-      status = peerSignal === 'FALSIFIED' || outcome.status === 'FALSIFIED' || checker.status === 'FAIL' || worldlab?.status === 'FAIL'
+      status = peerSignal === 'FALSIFIED' || noncopyPeerSignal === 'FALSIFIED' || outcome.status === 'FALSIFIED' || checker.status === 'FAIL' || worldlab?.status === 'FAIL'
         ? 'FALSIFIED'
-        : peerSignal === 'SUPPORTED' && outcome.status === 'SUPPORTED' && checker.status === 'PASS' && runtimeProvenance.status === 'PASS' && triggerProvenance.status === 'PASS' && worldlab?.status === 'PASS' && worldlab.causal_claim_supported
+        : peerSignal === 'SUPPORTED' && noncopyPeerSignal === 'SUPPORTED' && outcome.status === 'SUPPORTED' && checker.status === 'PASS' && runtimeProvenance.status === 'PASS' && triggerProvenance.status === 'PASS' && worldlab?.status === 'PASS' && worldlab.causal_claim_supported
           ? 'SUPPORTED' : 'UNDETERMINED';
     }
     const publicPairs = pairs.map(pair => this.publicPair(pair));
-    const evidenceHash = `sha256:${this.hash({ campaign_id: state.campaign_id, observation_window: { start: state.started_at, end: windowEnd }, pairs: publicPairs, metrics, peerSignal, checker, outcome, runtimeProvenance, triggerProvenance, worldlab })}`;
+    const evidenceHash = `sha256:${this.hash({ campaign_id: state.campaign_id, observation_window: { start: state.started_at, end: windowEnd }, pairs: publicPairs, metrics, peerSignal, noncopyPeerSignal, checker, outcome, runtimeProvenance, triggerProvenance, worldlab })}`;
     const goalBatch = status === 'SUPPORTED' ? this.goalBatch(state, evidenceHash, metrics, outcome, worldlab!) : null;
     const generatedAt = complete ? state.ends_at : observedAt;
     const core = {
       schema: 'djimit.social-learning-campaign.report.v1' as const, campaign_id: state.campaign_id, generated_at: generatedAt,
       observation_window: { start: state.started_at, end: windowEnd, complete }, status,
       pairs: publicPairs, metrics,
-      signals: { peer_learning: peerSignal, operational_outcome_lift: outcome.status, causal_support: outcome.causal },
+      signals: { peer_learning: peerSignal, peer_learning_noncopy_sensitivity: noncopyPeerSignal, operational_outcome_lift: outcome.status, causal_support: outcome.causal },
       independent_checker: checker, worldlab,
       outcome_evidence: { matched: outcome.matched, causal: outcome.causalCount, metric: outcome.metric },
       runtime_provenance: runtimeProvenance,
       trigger_provenance: triggerProvenance,
       promotion: { allowed: false as const, reason: status === 'SUPPORTED' ? 'supported evidence may create a review-gated goal batch; promotion still requires approval' : 'evidence is not fully supported' },
-      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'Falsifiability specificity measures structured detail, not whether a proposed test is valid.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.', 'Missing or changed facilitator commits block supported status.', 'Missing or non-autonomous facilitator triggers block supported status.'],
+      limitations: ['Paired ordering is observational, not randomized.', 'Text-overlap metrics diagnose uptake and repetition but do not establish truth.', 'The non-copy sensitivity excludes exact answer copies; paraphrased copying remains undetected.', 'Falsifiability specificity measures structured detail, not whether a proposed test is valid.', 'Structural checker independence does not establish content correctness.', 'No operational claim is supported without linked causal outcome events.', 'Missing or changed facilitator commits block supported status.', 'Missing or non-autonomous facilitator triggers block supported status.'],
       evidence_hash: evidenceHash, goal_batch: goalBatch,
     };
     const report: CampaignReport = { ...core, report_hash: `sha256:${this.hash(core)}` };
@@ -261,7 +268,7 @@ export class SocialLearningCampaignService {
       this.saveState(nextState);
       this.event(state.campaign_id, complete && worldlab ? 'social.campaign.finalized' : 'social.campaign.observed', observedAt,
         complete && worldlab ? 10_000 : day + 2,
-        { report_hash: report.report_hash, status, pairs: pairs.length, peer_signal: peerSignal, outcome_signal: outcome.status, checker: checker.status, runtime_provenance: runtimeProvenance.status, trigger_provenance: triggerProvenance.status, worldlab: worldlab?.status || 'UNDETERMINED' });
+        { report_hash: report.report_hash, status, pairs: pairs.length, peer_signal: peerSignal, peer_noncopy_sensitivity: noncopyPeerSignal, outcome_signal: outcome.status, checker: checker.status, runtime_provenance: runtimeProvenance.status, trigger_provenance: triggerProvenance.status, worldlab: worldlab?.status || 'UNDETERMINED' });
     })();
     return report;
   }
@@ -306,6 +313,7 @@ export class SocialLearningCampaignService {
           falsifiability_specificity: Math.min(1, this.tokens(`${this.string(learning.params.falsifiable_next_step)} ${this.string(learning.params.stop_condition)}`).size / 12),
           explicit_correction_signal: CORRECTION.test(learning.answer) ? 1 : 0,
           repetition_risk: 0,
+          exact_peer_copy: learning.answer && learning.answer === peer.answer ? 1 : 0,
         },
       });
     }
@@ -409,7 +417,7 @@ export class SocialLearningCampaignService {
       schema: 'djimit.openmythos.worldlab.goal.v1', campaign_id: state.campaign_id,
       source: { experiment_id: state.campaign_id, evidence_hash: evidenceHash, worldlab_evidence_hash: worldlab.evidence_hash },
       finding: { failure_mode: 'social_learning_outcome_lift', severity: 'medium', confidence: 0.95, status: 'SUPPORTED' },
-      waves: [{ wave_id: 'review-supported-social-learning', ordered_goals: [{ key: `review-${state.campaign_id}`, objective: 'Review the supported social-learning intervention without automatic promotion', risk_class: 'medium', constraints: ['preserve ToolBroker mediation', 'no automatic learning promotion'], acceptance_criteria: ['independent human review', 'targeted WorldLab regression', 'static OpenMythos gates'], falsification_tests: ['peer-learning lower bound <= 0.05', 'causal outcome lower bound <= 0'], recommended_loop: 'maker-checker-approver', metadata: { promotion_eligible: false, peer_metric: metrics.peer_uptake_delta, outcome_metric: outcome.metric } }] }],
+      waves: [{ wave_id: 'review-supported-social-learning', ordered_goals: [{ key: `review-${state.campaign_id}`, objective: 'Review the supported social-learning intervention without automatic promotion', risk_class: 'medium', constraints: ['preserve ToolBroker mediation', 'no automatic learning promotion'], acceptance_criteria: ['independent human review', 'targeted WorldLab regression', 'static OpenMythos gates'], falsification_tests: ['peer-learning lower bound <= 0.05', 'non-copy peer-learning lower bound <= 0.05', 'causal outcome lower bound <= 0'], recommended_loop: 'maker-checker-approver', metadata: { promotion_eligible: false, peer_metric: metrics.peer_uptake_delta, peer_noncopy_metric: metrics.peer_uptake_delta_noncopy, outcome_metric: outcome.metric } }] }],
     };
   }
 

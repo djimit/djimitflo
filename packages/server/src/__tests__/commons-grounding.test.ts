@@ -80,7 +80,7 @@ it('end to end: a grounding round asks for TARGET/TEST and its learning makes no
   const [q] = comms.receiveSocial('agent-b');
   expect(q.payload.context).toContain('TARGET: <repo path>');
   const reply = { answer: 'The reaper. TARGET: packages/server/src/services/queue-hygiene-service.ts', uncertainty: 'u', falsifiable_next_step: 'TEST: packages/server/src/__tests__/zombie-reaper.test.ts',
-    creative_alternative: 'c', stop_condition: 's', runtime: 'opencode', ecosystem_component: 'Djimitflo', proposed_improvement: 'Reap orphaned runs.', delivery_lease_token: q.deliveryLeaseToken };
+    creative_alternative: 'c', stop_condition: 's', runtime: 'opencode', model_id: 'm', ecosystem_component: 'Djimitflo', proposed_improvement: 'Reap orphaned runs.', delivery_lease_token: q.deliveryLeaseToken };
   const response = comms.respondSocial('agent-b', q.id, reply);
   const peer = comms.receiveSocial('agent-a').find((m) => m.id === response.message.id)!;
   const learning = comms.respondSocial('agent-a', peer.id, { ...reply, delivery_lease_token: peer.deliveryLeaseToken });
@@ -130,7 +130,7 @@ it('strips prose punctuation after a path, and reads TARGET/TEST from the peer r
   comms.socialize(0);
   const [q] = comms.receiveSocial('agent-b');
   expect(q.payload.context).toContain('a NEW file under packages/server/src/__tests__/');
-  const base = { uncertainty: 'u', creative_alternative: 'c', stop_condition: 's', runtime: 'opencode', ecosystem_component: 'Djimitflo', proposed_improvement: 'Reap orphaned runs.' };
+  const base = { uncertainty: 'u', creative_alternative: 'c', stop_condition: 's', runtime: 'opencode', model_id: 'm', ecosystem_component: 'Djimitflo', proposed_improvement: 'Reap orphaned runs.' };
   const response = comms.respondSocial('agent-b', q.id, { ...base, answer: 'The reaper. TARGET: packages/server/src/services/queue-hygiene-service.ts', falsifiable_next_step: 'TEST: packages/server/src/__tests__/zombie-reaper.test.ts', delivery_lease_token: q.deliveryLeaseToken });
   const peer = comms.receiveSocial('agent-a').find((m) => m.id === response.message.id)!;
   comms.respondSocial('agent-a', peer.id, { ...base, answer: 'Agreed with the peer.', falsifiable_next_step: 'Run it.', delivery_lease_token: peer.deliveryLeaseToken });
