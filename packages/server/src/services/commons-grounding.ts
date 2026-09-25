@@ -41,6 +41,8 @@ export function candidateFiles(text: string, root: string, max = 5): string[] {
     try { out = execFileSync('git', ['-C', root, 'grep', '-l', '-i', '-F', '-e', kw, '--', ':(glob)packages/*/src/**'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 5_000 }); } catch { continue; } // exit 1 = no match
     for (const f of out.split('\n').filter(Boolean)) if (!f.includes('__tests__') && !SENSITIVE.test(f)) hits.set(f, (hits.get(f) ?? 0) + 1);
   }
+  // A file validateGrounding would reject as too broad is no candidate (prod 2026-09-25: 5 threads in a row picked loop-service.ts).
+  for (const f of hits.keys()) { try { if (readFileSync(resolve(root, f), 'utf8').split('\n').length > MAX_TARGET_LINES) hits.delete(f); } catch { hits.delete(f); } }
   return [...hits.entries()].sort((a, b) => b[1] - a[1] || a[0].length - b[0].length).slice(0, max).map(([f]) => f);
 }
 
@@ -90,7 +92,7 @@ export function pickGroundingTopic(db: Database, root = repoRoot()): GroundingTo
     const ask = `Ground the parked Djimitflo proposal "${p.title.slice(0, 120)}": ${p.description.replace(/\s+/g, ' ').slice(0, 300)}. `
       + `A code search found these candidate files: ${files.join(', ')}. `
       + (wiki.length ? `The project wiki explains them in: ${wiki.join(', ')}. ` : '')
-      + 'Pick the ONE file this change belongs in and ONE test that proves it works. '
+      + `Pick the ONE file this change belongs in (a focused file of at most ${MAX_TARGET_LINES} lines) and ONE test that proves it works. `
       + 'The test may be an existing test file or a NEW file under packages/server/src/__tests__/ (for example packages/server/src/__tests__/<service>.test.ts). '
       + 'End every reply with two lines: "TARGET: <repo path>" and "TEST: <test file path>". If no file fits, write "TARGET: none".';
     return {

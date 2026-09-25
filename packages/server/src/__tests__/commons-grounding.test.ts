@@ -143,3 +143,9 @@ it('a huge core file is too broad to be a grounding target', () => {
   expect(validateGrounding({ target: 'packages/server/src/services/loop-core.ts', test: 'packages/server/src/__tests__/loop-core.test.ts' }, root))
     .toEqual({ valid: false, reason: 'target too broad (901 lines): packages/server/src/services/loop-core.ts' });
 });
+
+it('never offers a file too broad to be a target as a candidate', () => {
+  write('packages/server/src/services/huge-sweepZombies.ts', 'sweepZombies\n'.repeat(900));
+  execFileSync('git', ['-C', root, 'add', '.']);
+  expect(candidateFiles('Make sweepZombies close stale runs', root)).toEqual(['packages/server/src/services/queue-hygiene-service.ts']);
+});
