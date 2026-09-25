@@ -181,7 +181,8 @@ describe('LoopDaemon checker dispatch', () => {
       return {};
     });
     const decide = vi.fn(async () => null);
-    (stubLoops as unknown as { decideWorkerApproval: typeof decide }).decideWorkerApproval = decide;
+    (stubLoops as unknown as { decideWorkerApproval: typeof decide; awaitWorkerExecution: () => Promise<null> }).decideWorkerApproval = decide;
+    (stubLoops as unknown as { awaitWorkerExecution: () => Promise<null> }).awaitWorkerExecution = vi.fn(async () => null);
     process.env.LOOP_EVOLVE_ENABLED = 'true'; process.env.LOOP_EVOLVE_SPECIES = 'opencode';
     try {
       await runOneTick(new LoopDaemon(db, stubLoops as unknown as LoopService, { pollMs: 3_600_000, maxConcurrentGoals: 4 }));

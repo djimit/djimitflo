@@ -90,6 +90,8 @@ export function selectEvolveWinner(db: Database, runId: string, makerLeaseIds: s
     const skills = new SkillEvolutionEngine(db);
     for (const r of ranked.filter((x) => x.makerLeaseId !== winner.makerLeaseId)) {
       const lease = leases.find((l) => l.id === r.makerLeaseId)!;
+      // a maker that never finished (still prepared/running) did not compete: no fitness verdict, only an event
+      if (lease.status !== 'completed' && lease.status !== 'failed') continue;
       const model = (JSON.parse(lease.metadata || '{}') as { model?: unknown }).model;
       skills.recordOutcome(`loop-maker:${loop}:${lease.runtime}`, {
         success: false, tokensUsed: r.tokens ?? 0, durationMs: 0, domain: loop, taskId: runId, agentId: r.makerLeaseId,

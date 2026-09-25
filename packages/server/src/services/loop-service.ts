@@ -730,6 +730,22 @@ export class LoopService {
   retryLoopRun(id: string, input: RetryLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord } {
     return this.lifecycle.retryLoopRun(id, input);
   }
+  /**
+   * After an approval the engine runs the worker asynchronously; executeWorker() only returns its result once that task is
+   * terminal (else LOOP_WORKER_EXECUTION_IN_PROGRESS). Prod 2026-09-25: an auto-approved evolve sibling was read back
+   * immediately and recorded as a loss while it was still running. Waits until the lease's engine task is terminal.
+   */
+  async awaitWorkerExecution(leaseId: string, timeoutMs = 660_000, pollMs = 5_000): Promise<string | null> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const lease = this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(leaseId) as { metadata: string } | undefined;
+      const taskId = (JSON.parse(lease?.metadata || '{}') as { execution_task_id?: string }).execution_task_id;
+      const status = taskId ? (this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(taskId) as { status: string } | undefined)?.status ?? null : null;
+      if (!status || !['running', 'queued', 'awaiting_approval', 'pending'].includes(status) || Date.now() >= deadline) return status;
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+  }
+
   /** Decide a worker's approval through the engine that paused it (a human decision uses the approvals route). */
   decideWorkerApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
     return this.workerExecutor.decideApproval(approvalId, approved, decidedBy, reason);
