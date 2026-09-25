@@ -45,13 +45,6 @@ describe('dream tasks: native Djimitflo intake, Paperclip file is legacy', () =>
     expect(fs.existsSync(legacyFile())).toBe(false);
   });
 
-  it('still writes the legacy file when PAPERCLIP_EXPORT_ENABLED=true', () => {
-    seedOpportunity();
-    process.env.PAPERCLIP_EXPORT_ENABLED = 'true';
-    new DreamTaskPlannerService(db).exportPending();
-    expect(fs.readFileSync(legacyFile(), 'utf8')).toContain('dream.opportunity');
-    expect(db.prepare("SELECT COUNT(*) n FROM work_items WHERE source = 'dream_cycle'").get()).toEqual({ n: 1 });
-  });
 });
 
 describe('roborev findings become Djimitflo work items via the event bus', () => {

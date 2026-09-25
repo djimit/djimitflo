@@ -20,7 +20,7 @@ const DEFAULT_TTL_MS = 24 * 3600_000;
 
 export interface LureInvitation { agent_id: string; name: string; token: string; expires_at: string; poller_env: string }
 export interface LureCast {
-  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[]; paperclip_exported: boolean };
+  lure: { id: string; topic: string; topic_ref: string; created_at: string; expires_at: string; invited: string[] };
   invitations: LureInvitation[];
 }
 /** lapsed = was in the Commons before (can bite once its poller runs again); never = no social runtime ever (needs an adapter first). */
@@ -68,7 +68,7 @@ export class AgentLureService {
   }
 
   /** Autonomous lure: cast only when no unexpired lure exists, and never mint tokens (nobody is there to receive them). */
-  castIfQuiet(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null }): LureCast | null {
+  castIfQuiet(input: { by: string; baseUrl: string; ttlMs?: number }): LureCast | null {
     const open = this.db.prepare('SELECT 1 FROM social_lures WHERE expires_at > ? LIMIT 1').get(new Date().toISOString());
     if (open) return null;
     // Without an operator nobody receives tokens, so only agents that were connected before can come back.
@@ -76,7 +76,7 @@ export class AgentLureService {
     return cast.lure.invited.length ? cast : null;
   }
 
-  castLure(input: { by: string; baseUrl: string; ttlMs?: number; paperclipPath?: string | null; mintTokens?: boolean; reach?: LureReach }): LureCast {
+  castLure(input: { by: string; baseUrl: string; ttlMs?: number; mintTokens?: boolean; reach?: LureReach }): LureCast {
     const ttlMs = Math.max(60_000, input.ttlMs ?? DEFAULT_TTL_MS);
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
@@ -119,12 +119,10 @@ export class AgentLureService {
       }];
     }))();
 
-    // F2: Paperclip is retired (2026-09-21); the lure itself is recorded in social_lures and shown on the Commons page
-    const paperclipExported = false;
     // Nothing to lure: report it, but do not persist an empty lure (it would block autonomous casts until it expires).
-    if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json, paperclip_exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)), paperclipExported ? now.toISOString() : null);
-    return { lure: { id: lureId, topic, topic_ref: topicRef, created_at: now.toISOString(), expires_at: expiresAt, invited: absent.map((agent) => agent.id), paperclip_exported: paperclipExported }, invitations };
+    if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)));
+    return { lure: { id: lureId, topic, topic_ref: topicRef, created_at: now.toISOString(), expires_at: expiresAt, invited: absent.map((agent) => agent.id) }, invitations };
   }
 
   /** Honeypot log: who knocked on the social-runtime door without a valid key. */

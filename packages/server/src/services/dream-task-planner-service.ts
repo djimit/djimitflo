@@ -1,10 +1,7 @@
-import { appendFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { DreamOpportunity } from './dream-cycle-service';
 import { WorkItemService } from './work-item-service';
-import { paperclipExportEnabled } from './paperclip-legacy';
 
 export interface DreamTaskEnvelope {
   event: 'dream.opportunity'; task_title: string; task_type: 'skill_candidate' | 'triage';
@@ -42,7 +39,7 @@ export class DreamTaskPlannerService {
         summary: opportunity.rationale,
         context: `${opportunity.suggestedAction} Capability=${opportunity.capabilityId}. This is an inert proposal; Paperclip/DAPS/OpenMythos gates remain authoritative.`,
         assignee_role: evaluate ? 'architecture/security-reviewer' : 'skill-factory-agent',
-        labels: ['dream-cycle', 'paperclip-ready', evaluate ? 'evaluation' : 'capability-improvement'],
+        labels: ['dream-cycle', evaluate ? 'evaluation' : 'capability-improvement'],
         metadata: { source: 'djimitflo.dream_cycle', opportunity_id: opportunity.id, capability_id: opportunity.capabilityId, score: opportunity.score, execution_tier: 'A2', human_required: true },
       };
       const inserted = insert.run(dedupeKey, opportunity.id);
@@ -59,7 +56,7 @@ export class DreamTaskPlannerService {
     return planned;
   }
 
-  exportPending(path: string | undefined = process.env.DENNIS_AGENT_PAPERCLIP_PENDING, limit = 3, minScore = 0.25): number {
+  exportPending(limit = 3, minScore = 0.25): number {
     const tasks = this.plan(limit, minScore);
     if (!tasks.length) return 0;
     // Native intake: one Djimitflo work item per dream task, idempotent on the task's dedupe key.
@@ -71,12 +68,6 @@ export class DreamTaskPlannerService {
         recommended_loop: task.task_type === 'triage' ? 'outcome-learning-loop' : 'research-loop',
         metadata: { ...task.metadata, labels: task.labels, assignee_role: task.assignee_role },
       });
-    }
-    // Legacy Paperclip file: only with an explicit path (env or argument) or PAPERCLIP_EXPORT_ENABLED=true.
-    const legacyPath = path || (paperclipExportEnabled() ? `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl` : null);
-    if (legacyPath) {
-      mkdirSync(dirname(legacyPath), { recursive: true });
-      appendFileSync(legacyPath, tasks.map(task => JSON.stringify(task)).join('\n') + '\n', 'utf8');
     }
     const now = new Date().toISOString();
     for (const task of tasks) this.db.prepare('UPDATE dream_task_emissions SET exported_at = ? WHERE dedupe_key = ?').run(now, task.dedupe_key);
