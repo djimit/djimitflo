@@ -105,7 +105,7 @@ export function pickGroundingTopic(db: Database, root = repoRoot()): GroundingTo
 /** The last TARGET:/TEST: lines of an answer. */
 export function parseGrounding(text: string): { target?: string; test?: string } {
   // trailing punctuation is prose, not part of the path (prod 2026-09-25: "TARGET: none," was read as the file "none,")
-  const last = (label: string) => [...text.matchAll(new RegExp(`${label}:\\s*\`?([^\\s\`"]+)`, 'gi'))].at(-1)?.[1]?.replace(/[.,;:)\]]+$/, '');
+  const last = (label: string) => [...text.matchAll(new RegExp(`${label}:\\s*\`?([^\\s\`"]+)`, 'gi'))].at(-1)?.[1]?.replace(/[.,;:)\]'"]+$/, '');
   return { target: last('TARGET'), test: last('TEST') };
 }
 

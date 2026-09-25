@@ -119,6 +119,7 @@ it('K3: wiki pages that cite a candidate file join the evidence and the question
 
 it('strips prose punctuation after a path, and reads TARGET/TEST from the peer response when the learning omits them (prod 2026-09-25)', () => {
   expect(parseGrounding('TARGET: none,').target).toBe('none');
+  expect(parseGrounding("TARGET: none'").target).toBe('none'); // prod 2026-09-25 02:11Z
   expect(parseGrounding('TARGET: packages/x.ts. TEST: packages/server/src/__tests__/x.test.ts)')).toEqual({ target: 'packages/x.ts', test: 'packages/server/src/__tests__/x.test.ts' });
 
   process.env.COMMONS_AGENDA_GROUNDING = 'true';
