@@ -1,5 +1,6 @@
 import type { Database } from 'better-sqlite3';
 import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
+import { mutationCheckEnv } from './test-gap-source-service';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
@@ -20,6 +21,16 @@ export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scri
   const scripts = (env.LOOP_DAEMON_CHECK_SCRIPTS || '').split(',').map((v) => v.trim()).filter(Boolean);
   const timeout = Number(env.LOOP_DAEMON_CHECK_TIMEOUT_MS);
   return { ...(scripts.length ? { scripts } : {}), timeout_ms: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 120_000 };
+}
+
+/**
+ * Maker timeout. Prod 2026-09-25: the first mutation-lane maker (npm ci + two Stryker runs) hit the fixed 300 s; that lane
+ * gets the executor maximum (600 s), others LOOP_MAKER_TIMEOUT_MS (default 300 000).
+ */
+export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessEnv = process.env): number {
+  if (mutationLane) return 600_000;
+  const timeout = Number(env.LOOP_MAKER_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 300_000;
 }
 
 /** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
@@ -453,10 +464,14 @@ export class LoopDaemon {
       }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
+      const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
+      const makerTimeout = daemonMakerTimeoutMs(mutationLane);
+      // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
+      const makerDiffMax = mutationLane ? 400 : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
-        timeout_ms: 300_000, // 5 min timeout for production goals
-        diff_max_lines: 200,
+        timeout_ms: makerTimeout,
+        diff_max_lines: makerDiffMax,
         skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
       });
 
@@ -475,8 +490,8 @@ export class LoopDaemon {
             const retryMaker = retry.retry_maker;
             await this.loops.executeWorker(run.id, {
               lease_id: retryMaker.id,
-              timeout_ms: 300_000,
-              diff_max_lines: 200,
+              timeout_ms: makerTimeout,
+              diff_max_lines: makerDiffMax,
               skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
             });
             this.loops.runDeterministicChecks(run.id, {
@@ -498,7 +513,7 @@ export class LoopDaemon {
             const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
             // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
             contenders.push(sibling.id);
-            const siblingInput = { lease_id: sibling.id, timeout_ms: 300_000, diff_max_lines: 200, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
+            const siblingInput = { lease_id: sibling.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
             try {
               await this.loops.executeWorker(run.id, siblingInput);
             } catch (error) {
