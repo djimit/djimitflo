@@ -26,6 +26,7 @@ import { CommonsProposalReviewService, commonsReviewEnabled } from '../services/
 import { EventOutboxService, bridgeGoalEvents, eventPublishEnabled } from '../services/event-outbox-service';
 import { AgentRegistrySyncService, registryUrl } from '../services/agent-registry-sync-service';
 import { TestGapSourceService, testGapSourceEnabled } from '../services/test-gap-source-service';
+import { EvolutionGymService, gymEnabled } from '../services/evolution-gym-service';
 import { DreamStateService, dreamStateEnabled } from '../services/dream-state-service';
 import { NeedsGroundingTriageService, needsGroundingTriageEnabled } from '../services/needs-grounding-triage-service';
 import { DiskGuardService, diskGuardEnabled } from '../services/disk-guard-service';
@@ -126,6 +127,18 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }
   } catch (error) {
     console.warn('⚠️  Test-gap source failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
+  }
+
+  // C2 evolution gym: sandbox replay tasks from our own history; outcomes feed species selection. Default off.
+  try {
+    if (gymEnabled()) {
+      const gym = new EvolutionGymService(db, recoverySvc);
+      gym.start();
+      lifecycleManager.register({ serviceName: 'EvolutionGym', stop: () => gym.stop() });
+      console.log(`🏋️ Evolution gym on (max ${Number(process.env.EVOLUTION_GYM_MAX_PER_DAY) || 12} attempts/day).`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Evolution gym failed to start (non-fatal):', error instanceof Error ? error.message : String(error));
   }
 
   // Outcome-driven dream state (plan E11): replay failed runs and classify their causes (shadow). Default off.
