@@ -131,6 +131,7 @@ export class EvolutionGymService {
       : undefined);
     if (!approvalId) throw new Error('gym maker approval not found');
     await this.loops.decideWorkerApproval(approvalId, true, 'autonomy:gym-rule-v1', 'evolution gym sandbox: nothing is pushed, reviewed or merged');
+    await this.loops.awaitWorkerExecution(leaseId);
     await this.loops.executeWorker(runId, input);
   }
 

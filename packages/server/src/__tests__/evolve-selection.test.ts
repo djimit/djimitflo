@@ -67,3 +67,10 @@ it('N7: losing species are recorded as outcomes, and a measured mutation score o
   expect(db.prepare('SELECT skill_id, success, agent_id FROM skill_outcomes').all()).toEqual([{ skill_id: 'loop-maker:doc-drift-and-small-fix-loop:opencode', success: 0, agent_id: 'm-small' }]);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+it('a loser that never finished (still prepared) is not recorded as a lost outcome', () => {
+  maker('m-done', 'opencode', ok(20));
+  db.prepare(`INSERT INTO worker_leases (id, loop_run_id, role, runtime, status, metadata, created_at, updated_at) VALUES ('m-pending', 'run-1', 'maker', 'opencode', 'prepared', '{"model":"kimi"}', ?, ?)`).run(now, now);
+  expect(selectEvolveWinner(db, 'run-1', ['m-done', 'm-pending'])).toBe('m-done');
+  expect(db.prepare('SELECT COUNT(*) AS n FROM skill_outcomes').get()).toEqual({ n: 0 });
+});
