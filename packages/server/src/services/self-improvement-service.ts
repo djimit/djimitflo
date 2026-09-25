@@ -5,7 +5,7 @@ import { SpecialistPanelService } from './specialist-panel-service';
 import { judgmentMode, runJudgment } from './judgment-service';
 import { reflectionTriage } from './judgments/reflection-triage';
 
-export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived';
+export type ImprovementStatus = 'proposed' | 'scheduled' | 'executing' | 'verified' | 'evaluating' | 'applied' | 'rejected' | 'no_change' | 'regressed' | 'needs_more_evidence' | 'needs_grounding' | 'archived' | 'infra_failed';
 
 export interface ImprovementProposal {
   id: string;
@@ -416,8 +416,9 @@ export class SelfImprovementService {
    * 'verified' also overrides a 'regressed': a later passing verification of the same work is the truer outcome
    * (2026-09-24: a verify racing a still-running security checker recorded 'regressed' for two verified runs).
    */
-  recordOutcome(id: string, outcome: 'verified' | 'regressed' | 'no_change'): boolean {
-    const from = outcome === 'verified' ? "('scheduled', 'executing', 'regressed')" : "('scheduled', 'executing')";
+  /** `infra_failed`: the run never produced an evaluable change (runtime exit/timeout/contract) — no verdict on the proposal. */
+  recordOutcome(id: string, outcome: 'verified' | 'regressed' | 'no_change' | 'infra_failed'): boolean {
+    const from = outcome === 'verified' ? "('scheduled', 'executing', 'regressed', 'infra_failed')" : "('scheduled', 'executing')";
     const result = this.db.prepare(`UPDATE self_improvements SET status = ?, updated_at = ? WHERE id = ? AND status IN ${from}`)
       .run(outcome, new Date().toISOString(), id);
     return result.changes === 1;

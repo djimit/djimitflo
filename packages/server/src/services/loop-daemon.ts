@@ -33,6 +33,16 @@ export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessE
   return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 300_000;
 }
 
+/**
+ * A3: a failed run is a regression only when the change was evaluated. Prod 2026-09-25: the first mutation-lane maker hit the
+ * timeout in an image without `ps` and its proposal was recorded `regressed`, which the guardrail then counted.
+ */
+export function runOutcomeOnFailure(db: Database, makerLeaseId: string): 'regressed' | 'infra_failed' {
+  const lease = db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(makerLeaseId) as { metadata: string } | undefined;
+  const meta = JSON.parse(lease?.metadata || '{}') as { failure_reason?: string; timed_out?: boolean; runtime_timed_out?: boolean };
+  return meta.timed_out || meta.runtime_timed_out || /maker_runtime_exit_zero|runtime_contract/.test(meta.failure_reason ?? '') ? 'infra_failed' : 'regressed';
+}
+
 /** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
 export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
@@ -610,7 +620,7 @@ export class LoopDaemon {
       // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
       try {
         const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
-        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : 'regressed');
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : runOutcomeOnFailure(this.db, activeMakerLease.id));
       } catch { /* best-effort learning */ }
 
       // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
