@@ -44,8 +44,24 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `COMMONS_GROUNDING_APPLY` | **operator decision**: a valid Commons grounding becomes one grounded refinement that goes to the specialist panel |
 | `SOCIAL_AUTOPILOT_RESIDENTS` | per-resident model, e.g. `commons-oracle=openai-compatible:kimi-k2.6,…` (no `:` in model names) |
 | `AUTONOMY_SHADOW_ENABLED` | record "would auto-approve" per loop approval; approves nothing |
+| `LOOP_AUTO_APPROVE_TEST_GAP` | **operator decision** (J5): when the shadow rule says yes, a test-gap maker approval whose artifact is one new `__tests__/*.test.ts` is approved by `autonomy:test-gap-rule-v1`; the `auto_approved_scope` gate fails the run if the maker touched any other file. Checker and human merge stay |
 | `SEGML_ENABLED`, `DREAM_CYCLE_LEGACY_ENABLED` | restore the gated-off legacy loops (off since 2026-09-24) |
 | **Operator decisions** `NEEDS_GROUNDING_TRIAGE_ENABLED`, `DREAM_STATE_PROPOSALS_ENABLED`, any `…_MODE=enforce` | act on shadow judgments; switch on only after the funnel agreement numbers justify it |
+
+## Prod status (2026-09-25, E4)
+
+| Area | State | Measured |
+|---|---|---|
+| Proposal → panel → goal → run → verify | on | 7 verified / 7 d; test-gap lane 6/6, 0 regressed |
+| Test-gap + exports lanes | on, 4/day | goal risk from type (#397) keeps them in objective mode |
+| Reflection cap | on, 25/day | 0 new since 24-09 22:00 while the rolling 24 h count (60) drained |
+| Commons grounding guild + APPLY | on | valid groundings after the path-redaction fix (#396); first refinement parked by the panel |
+| Skill cards (K1) | on | examples in maker assignments |
+| Memory rules (K2), evolve, bandit | off | wait for token data (#402) and ≥2 species with outcomes |
+| Auto-approve test-gap (J5) | off | operator decision; shadow rule history is the evidence |
+| Auto draft PR (G4) | off | needs `GITHUB_TOKEN` with contents + PR write |
+| TypeSafe judgments | 7 × shadow | enforce is an operator decision |
+| Auto-deploy (J2) | on | systemd timer, several unattended deploys |
 
 ## Read-only probes
 
