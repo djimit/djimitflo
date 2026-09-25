@@ -530,6 +530,7 @@ export class LoopDaemon {
               // N6: a sibling is a maker, so it needs its own approval and used to fail here every time. In an auto-approved
               // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
               if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.autoApproveSibling(run.id, makerLease.id, sibling.id))) throw error;
+              await this.loops.awaitWorkerExecution(sibling.id);
               await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
             }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
