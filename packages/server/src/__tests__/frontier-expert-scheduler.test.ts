@@ -116,6 +116,33 @@ describe('FrontierExpertScheduler', () => {
     expect(reviewer.calls.every((call) => call.actor === 'autopilot:frontier-experts')).toBe(true);
   });
 
+  it('reviews people only: paper and repository units at CAPABILITY_INFERRED are never sent to the peer review', async () => {
+    capabilityInferredExpert('Ada', 'alignment');
+    capabilityInferredExpert('Grace', 'alignment');
+    for (const title of ['Paper one', 'Paper two']) {
+      const unit = registry.discover({ canonicalName: title, aliases: [`arxiv:${title}`], kind: 'paper', provenance: { source: 'test' }, actor: 'ingestion:test' });
+      registry.resolveIdentity(unit.id, { confidence: 1, actor: 'ingestion:test' });
+      const ev = registry.addEvidence(unit.id, { kind: 'paper', title, sourceRef: `arxiv:${title}` });
+      registry.transition(unit.id, 'EVIDENCE_COLLECTED', { actor: 'ingestion' });
+      registry.inferCapability(unit.id, { capability: 'alignment', confidence: 0.6, evidenceRefs: [ev], derivedBy: 'test' });
+      registry.transition(unit.id, 'CAPABILITY_INFERRED', { actor: 'ingestion' });
+    }
+    const reviewer = fakeReviewer();
+    await new FrontierExpertScheduler(db, { ingestion: fakeIngestion(), enrichment: fakeEnrichment(), council: reviewer }).tick();
+    const names = reviewer.calls.map((call) => registry.get(call.expertId)!.canonical_name).sort();
+    expect(names).toEqual(['Ada', 'Grace']);
+  });
+
+  it('caps review attempts per tick (FRONTIER_EXPERTS_REVIEWS_PER_TICK)', async () => {
+    for (const name of ['A1', 'A2', 'A3', 'A4']) capabilityInferredExpert(name, 'alignment');
+    process.env.FRONTIER_EXPERTS_REVIEWS_PER_TICK = '2';
+    try {
+      const reviewer = fakeReviewer();
+      await new FrontierExpertScheduler(db, { ingestion: fakeIngestion(), enrichment: fakeEnrichment(), council: reviewer }).tick();
+      expect(reviewer.calls).toHaveLength(2);
+    } finally { delete process.env.FRONTIER_EXPERTS_REVIEWS_PER_TICK; }
+  });
+
   it('does not attempt peer review with fewer than two CAPABILITY_INFERRED experts', async () => {
     capabilityInferredExpert('Solo', 'alignment');
     const reviewer = fakeReviewer();
