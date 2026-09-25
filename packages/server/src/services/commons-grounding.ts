@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { resolve, sep } from 'path';
 import type { Database } from 'better-sqlite3';
@@ -43,6 +43,30 @@ export function candidateFiles(text: string, root: string, max = 5): string[] {
   return [...hits.entries()].sort((a, b) => b[1] - a[1] || a[0].length - b[0].length).slice(0, max).map(([f]) => f);
 }
 
+/**
+ * K3: OpenWiki pages (generated, sourced) that cite any of the files. Each page's front matter lists its sources as
+ * `resource: repo://<path>`; a page that cites a candidate file is the fastest way for a resident to understand it.
+ */
+export function wikiPagesFor(files: string[], root: string, max = 3): string[] {
+  const dir = resolve(root, 'openwiki');
+  if (!files.length || !existsSync(dir)) return [];
+  const want = new Set(files);
+  const pages: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name.startsWith('.')) continue;
+      const full = resolve(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.name.endsWith('.md')) {
+        const head = readFileSync(full, 'utf8').split('\n---', 2)[0];
+        if ([...head.matchAll(/resource:\s*repo:\/\/(\S+)/g)].some((m) => want.has(m[1]))) pages.push(full.slice(resolve(root).length + 1));
+      }
+    }
+  };
+  try { walk(dir); } catch { return []; }
+  return pages.sort().slice(0, max);
+}
+
 export interface GroundingTopic { topic: string; topicRef: string; evidence: string[]; contexts: [string, string] }
 
 /** Newest parked proposal not discussed yet that the code search can place; skips ones triage already called another system. */
@@ -61,13 +85,16 @@ export function pickGroundingTopic(db: Database, root = repoRoot()): GroundingTo
     const files = candidateFiles(`${p.title} ${p.description}`, root);
     if (!files.length) continue;
     const topicRef = `proposal:${p.id}`;
+    const wiki = wikiPagesFor(files, root);
     const ask = `Ground the parked Djimitflo proposal "${p.title.slice(0, 120)}": ${p.description.replace(/\s+/g, ' ').slice(0, 300)}. `
-      + `A code search found these candidate files: ${files.join(', ')}. Pick the ONE file this change belongs in and ONE test that proves it works. `
+      + `A code search found these candidate files: ${files.join(', ')}. `
+      + (wiki.length ? `The project wiki explains them in: ${wiki.join(', ')}. ` : '')
+      + 'Pick the ONE file this change belongs in and ONE test that proves it works. '
       + 'End your answer with two lines: "TARGET: <repo path>" and "TEST: <test file path>". If no file fits, write "TARGET: none".';
     return {
       topic: `Ground parked proposal: ${p.title.slice(0, 200)}`,
       topicRef,
-      evidence: [topicRef, ...files.map((f) => `file:${f}`)],
+      evidence: [topicRef, ...files.map((f) => `file:${f}`), ...wiki.map((w) => `wiki:${w}`)],
       contexts: [ask, `${ask} Challenge the peer's choice if a different candidate file fits better.`],
     };
   }
