@@ -10,10 +10,7 @@
  * blocked token — logged, never escalated.
  */
 
-import { paperclipExportEnabled } from './paperclip-legacy';
 import { randomUUID } from 'crypto';
-import { appendFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
 import type { Database } from 'better-sqlite3';
 import type { AgentCommunicationService } from './agent-communication-service';
 import { mintSpawnToken, resolveSpawnTokenSecret } from './spawn-token';
@@ -84,9 +81,15 @@ export class AgentLureService {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlMs).toISOString();
     const heartbeatCutoff = new Date(now.getTime() - 20 * 60_000).toISOString();
-    const absent = lureTargets(this.db, heartbeatCutoff).filter((agent) => !input.reach || agent.reach === input.reach);
+    const dormant = this.dormantAgents();
+    // without tokens (autonomous) only agents that can still bite are worth a lure: lapsed and not dormant
+    const absent = lureTargets(this.db, heartbeatCutoff).filter((agent) => (!input.reach || agent.reach === input.reach)
+      && (input.mintTokens !== false || (agent.reach === 'lapsed' && !dormant.has(agent.id))));
     // Bait with real open work first (a parked proposal that needs a file and a test), then a non-heuristic gap.
-    const parked = this.db.prepare(`SELECT id, title FROM self_improvements WHERE status = 'needs_grounding' ORDER BY created_at DESC LIMIT 1`).get() as { id: string; title: string } | undefined;
+    // F1: rotate the bait — a proposal used as bait in the last 7 days is not used again (prod: one claim was cast 9 times)
+    const recentBait = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+    const parked = this.db.prepare(`SELECT id, title FROM self_improvements WHERE status = 'needs_grounding'
+      AND ('proposal:' || id) NOT IN (SELECT topic_ref FROM social_lures WHERE created_at >= ?) ORDER BY created_at DESC LIMIT 1`).get(recentBait) as { id: string; title: string } | undefined;
     const gap = parked ? undefined : this.db.prepare(`
       SELECT id, claim FROM swarm_claims WHERE predicate = 'gap' AND status IN ('proposed', 'review_required', 'supported') AND claim NOT LIKE ?
       ORDER BY created_at DESC LIMIT 1
@@ -99,8 +102,11 @@ export class AgentLureService {
     const secret = mintTokens ? resolveSpawnTokenSecret() : '';
     // Agent ids and URLs are untrusted; the command is meant to be pasted into a shell.
     const sq = (value: string) => `'${value.replace(/'/g, `'\\''`)}'`;
+    // F1: an invitation on the bus only reaches an agent whose poller runs again. 'never' agents need an adapter first, and
+    // an agent that left 3 lures unanswered since its last heartbeat is dormant: neither gets bus messages (prod: 0 of 128
+    // invitations were ever read). A manual cast still mints tokens for all of them — that is what installs an adapter.
     const invitations = this.db.transaction(() => absent.flatMap((agent) => {
-      this.comms.send({
+      if (agent.reach === 'lapsed' && !dormant.has(agent.id)) this.comms.send({
         from: LURE_SENDER, to: agent.id, type: 'question', action: 'social.invite', context: bait, evidence: [topicRef],
         threadId: lureId, epistemicRole: 'question', ttl: Math.ceil(ttlMs / 1000),
         params: { topic, topic_ref: topicRef, lure_id: lureId, join: `${input.baseUrl}/api/swarm-v2/social-runtime/${agent.id}/heartbeat`, effect_scope: 'isolated', board_summary: bait.slice(0, 500) },
@@ -113,7 +119,8 @@ export class AgentLureService {
       }];
     }))();
 
-    const paperclipExported = this.exportPaperclip(input.paperclipPath, { lureId, topic, topicRef, invited: absent.map((agent) => agent.id) });
+    // F2: Paperclip is retired (2026-09-21); the lure itself is recorded in social_lures and shown on the Commons page
+    const paperclipExported = false;
     // Nothing to lure: report it, but do not persist an empty lure (it would block autonomous casts until it expires).
     if (absent.length) this.db.prepare('INSERT INTO social_lures (id, topic, topic_ref, created_by, created_at, expires_at, invited_json, paperclip_exported_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
       .run(lureId, topic, topicRef, input.by, now.toISOString(), expiresAt, JSON.stringify(absent.map((agent) => agent.id)), paperclipExported ? now.toISOString() : null);
@@ -161,22 +168,14 @@ export class AgentLureService {
     return { lures, probes, probe_count: probeCount };
   }
 
-  private exportPaperclip(path: string | null | undefined, lure: { lureId: string; topic: string; topicRef: string; invited: string[] }): boolean {
-    if (path === null || !lure.invited.length) return false;
-    const target = path || process.env.DENNIS_AGENT_PAPERCLIP_PENDING || (paperclipExportEnabled() ? `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl` : null);
-    if (!target) return false; // legacy Paperclip export is off: the lure itself is already recorded in social_lures
-    const envelope = {
-      event: 'social.invite', task_title: `Agent Commons: connect ${lure.invited.length} silent agent(s) to peer learning`,
-      task_type: 'skill_candidate', priority: 'low', severity: 'low', status: 'backlog', dedupe_key: `agent-commons:${lure.lureId}`,
-      summary: `Open question "${lure.topic}" has no live peers. Wire a runtime poller (scripts/agent-social-poller.py) for: ${lure.invited.join(', ')}.`,
-      context: 'Tokens were issued once to the operator who cast the lure; never store them in the task. Isolated effect scope; nothing touches production.',
-      assignee_role: 'skill-factory-agent', labels: ['agent-commons', 'lure', 'paperclip-ready'],
-      metadata: { source: 'djimitflo.agent_commons', lure_id: lure.lureId, topic_ref: lure.topicRef, invited: lure.invited, execution_tier: 'A2', human_required: true },
-    };
-    try {
-      mkdirSync(dirname(target), { recursive: true });
-      appendFileSync(target, `${JSON.stringify(envelope)}\n`, 'utf8');
-      return true;
-    } catch { return false; }
+  /** Agents invited to at least 3 lures since their last heartbeat (or ever, when they never beat). */
+  dormantAgents(): Set<string> {
+    const beats = new Map((this.db.prepare(`SELECT id, json_extract(COALESCE(metadata, '{}'), '$.social_runtime.last_heartbeat_at') AS beat FROM agents`).all() as Array<{ id: string; beat: string | null }>).map((r) => [r.id, r.beat ?? '']));
+    const unanswered = new Map<string, number>();
+    for (const lure of this.db.prepare('SELECT created_at, invited_json FROM social_lures').all() as Array<{ created_at: string; invited_json: string }>) {
+      for (const id of JSON.parse(lure.invited_json || '[]') as string[]) if (lure.created_at > (beats.get(id) ?? '')) unanswered.set(id, (unanswered.get(id) ?? 0) + 1);
+    }
+    return new Set([...unanswered].filter(([, n]) => n >= 3).map(([id]) => id));
   }
+
 }
