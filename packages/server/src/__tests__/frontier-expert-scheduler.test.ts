@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations } from '../database/migrate';
@@ -146,6 +146,22 @@ describe('FrontierExpertScheduler', () => {
     const scheduler = new FrontierExpertScheduler(db, { ingestion: fakeIngestion(), enrichment: fakeEnrichment(), council: fakeReviewer() });
     await scheduler.tick();
     expect(registry.get(ada.id)!.lifecycle_state).toBe('CAPABILITY_INFERRED');
+  });
+
+  it('E1: retries names without a match after 30 days, and says so when a tick is idle with a backlog', async () => {
+    let seen: { retryBefore?: string } = {};
+    const enrichment = { enrichBatch: async (input: { retryBefore?: string }) => { seen = input; return []; } };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    registry.discover({ canonicalName: 'Waiting Person', aliases: [], provenance: { source: 'pacingthefrontier.com' }, actor: 'ingestion:pacing' });
+    const scheduler = new FrontierExpertScheduler(db, { ingestion: fakeIngestion(false), enrichment, council: fakeReviewer() });
+    await scheduler.tick();
+    const days = (Date.now() - Date.parse(seen.retryBefore!)) / 86_400_000;
+    expect(days).toBeGreaterThan(29.9); expect(days).toBeLessThan(30.1);
+    expect(warn.mock.calls.map((c) => String(c[0])).join()).toContain('frontier experts idle');
+    expect(warn.mock.calls.map((c) => String(c[0])).join()).toContain('DISCOVERED=1');
+    await scheduler.tick();
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('idle'))).toHaveLength(1); // at most once a day
+    warn.mockRestore();
   });
 
   it('falls back to a 60-minute interval for invalid configuration', () => {
