@@ -22,6 +22,7 @@ export function repoRoot(env: NodeJS.ProcessEnv = process.env): string {
 
 const STOP = new Set(['about', 'after', 'agent', 'agents', 'before', 'being', 'change', 'could', 'djimitflo', 'every', 'evidence', 'first', 'improve', 'improvement', 'means', 'other', 'peer', 'proposal', 'should', 'system', 'their', 'there', 'these', 'thing', 'through', 'unverified', 'where', 'which', 'while', 'would']);
 // Never ground into these: the same boundary as the evolve-loop design (no security/auth/deploy changes by the loop).
+const MAX_TARGET_LINES = 800;
 const SENSITIVE = /(^|\/)(auth|secrets?|deploy|\.env|\.github)(\/|\.|$)|middleware\/auth|spawn-token/i;
 
 /** Distinctive words of a proposal: identifiers first (camelCase, kebab, snake), then long words. */
@@ -117,6 +118,10 @@ export function validateGrounding(g: { target?: string; test?: string }, root: s
   const target = inside(root, g.target);
   if (!target || !existsSync(target) || !statSync(target).isFile()) return { valid: false, reason: `target not found: ${g.target}` };
   if (SENSITIVE.test(g.target)) return { valid: false, reason: `sensitive target: ${g.target}` };
+  // A grab-bag core file is not a grounding. Prod 2026-09-25: 3 of the first 5 valid groundings named loop-service.ts
+  // (2,517 lines), the loop's own core; a precise home for a small change is a focused file.
+  const lines = readFileSync(target, 'utf8').split('\n').length;
+  if (lines > MAX_TARGET_LINES) return { valid: false, reason: `target too broad (${lines} lines): ${g.target}` };
   if (!g.test) return { valid: false, reason: 'no test' };
   const test = inside(root, g.test);
   if (!test) return { valid: false, reason: `test outside repo: ${g.test}` };

@@ -137,3 +137,9 @@ it('strips prose punctuation after a path, and reads TARGET/TEST from the peer r
   expect(db.prepare("SELECT decision, reason FROM judgments WHERE judgment = 'commons_grounding'").get())
     .toEqual({ decision: 'yes', reason: 'target=packages/server/src/services/queue-hygiene-service.ts test=packages/server/src/__tests__/zombie-reaper.test.ts' });
 });
+
+it('a huge core file is too broad to be a grounding target', () => {
+  write('packages/server/src/services/loop-core.ts', 'export const x = 1;\n'.repeat(900));
+  expect(validateGrounding({ target: 'packages/server/src/services/loop-core.ts', test: 'packages/server/src/__tests__/loop-core.test.ts' }, root))
+    .toEqual({ valid: false, reason: 'target too broad (901 lines): packages/server/src/services/loop-core.ts' });
+});
