@@ -90,7 +90,8 @@ export function pickGroundingTopic(db: Database, root = repoRoot()): GroundingTo
       + `A code search found these candidate files: ${files.join(', ')}. `
       + (wiki.length ? `The project wiki explains them in: ${wiki.join(', ')}. ` : '')
       + 'Pick the ONE file this change belongs in and ONE test that proves it works. '
-      + 'End your answer with two lines: "TARGET: <repo path>" and "TEST: <test file path>". If no file fits, write "TARGET: none".';
+      + 'The test may be an existing test file or a NEW file under packages/server/src/__tests__/ (for example packages/server/src/__tests__/<service>.test.ts). '
+      + 'End every reply with two lines: "TARGET: <repo path>" and "TEST: <test file path>". If no file fits, write "TARGET: none".';
     return {
       topic: `Ground parked proposal: ${p.title.slice(0, 200)}`,
       topicRef,
@@ -103,7 +104,8 @@ export function pickGroundingTopic(db: Database, root = repoRoot()): GroundingTo
 
 /** The last TARGET:/TEST: lines of an answer. */
 export function parseGrounding(text: string): { target?: string; test?: string } {
-  const last = (label: string) => [...text.matchAll(new RegExp(`${label}:\\s*\`?([^\\s\`"]+)`, 'gi'))].at(-1)?.[1];
+  // trailing punctuation is prose, not part of the path (prod 2026-09-25: "TARGET: none," was read as the file "none,")
+  const last = (label: string) => [...text.matchAll(new RegExp(`${label}:\\s*\`?([^\\s\`"]+)`, 'gi'))].at(-1)?.[1]?.replace(/[.,;:)\]]+$/, '');
   return { target: last('TARGET'), test: last('TEST') };
 }
 

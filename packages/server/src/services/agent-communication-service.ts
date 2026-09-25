@@ -580,7 +580,11 @@ export class AgentCommunicationService {
           // G10: a grounding thread's output is a target + test for the existing proposal, never a new proposal.
           const parkedId = topicRef.slice('proposal:'.length);
           let refinementId: string | null = null;
-          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
+          // The peer's response often carries the TARGET/TEST lines and the learning does not repeat them: parse both,
+          // the learning last so its lines win (prod 2026-09-25: 4/4 recorded as "no target").
+          const peer = this.object(original.payload.params);
+          const threadText = ['answer', 'falsifiable_next_step', 'proposed_improvement'].map((k) => this.string(peer[k])).join('\n');
+          try { ({ refinementId } = recordCommonsGrounding(this.db, parkedId, message.id, `${threadText}\n${answer}\n${nextStep}\n${improvement}`)); } catch { /* best-effort: never lose the learning */ }
           message.payload.params.improvement_id = refinementId ?? parkedId;
           this.db.prepare('UPDATE agent_messages SET payload_json = ? WHERE id = ?').run(JSON.stringify(message.payload), message.id);
         } else if (improvement && !topicRef.startsWith('improvement:')) {
