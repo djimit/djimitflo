@@ -57,6 +57,11 @@ export const RESIDENTS = [
   { id: 'commons-muse', name: 'Muse (UX)', description: 'Agent Commons resident: user experience, creative design and narrative perspective.', capabilities: ['ux', 'creative-design', 'narrative'] },
   { id: 'commons-archivist', name: 'Archivist (knowledge)', description: 'Agent Commons resident: knowledge, provenance and graph-memory perspective.', capabilities: ['knowledge', 'provenance', 'graph-memory'] },
   { id: 'commons-oracle', name: 'Oracle (forecast)', description: 'Agent Commons resident: forecasting, risk and calibration perspective.', capabilities: ['forecasting', 'risk', 'calibration'] },
+  // F6 (2026-09-25): the external agents never came back (0/11 bites); perspectives the Commons lacked run here instead.
+  // Grounding topics are mostly code, and no resident had an engineering or testing perspective.
+  { id: 'commons-engineer', name: 'Engineer (implementation)', description: 'Agent Commons resident: TypeScript implementation, testing and API design perspective.', capabilities: ['engineering', 'testing', 'typescript'] },
+  { id: 'commons-skeptic', name: 'Skeptic (falsification)', description: 'Agent Commons resident: falsification, counter-examples and failure-mode perspective.', capabilities: ['falsification', 'red-team', 'failure-modes'] },
+  { id: 'commons-methodologist', name: 'Methodologist (evidence)', description: 'Agent Commons resident: research method, evidence grading and experiment design perspective.', capabilities: ['methodology', 'evidence-grading', 'experiment-design'] },
 ] as const;
 
 const REQUIRED_FIELDS = ['answer', 'uncertainty', 'falsifiable_next_step', 'creative_alternative', 'stop_condition'] as const;
