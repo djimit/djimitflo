@@ -11,6 +11,7 @@
 # Dry-run by default (prints the remote script). Usage:
 #   scripts/deploy-vps.sh <40-char-sha>                # dry run
 #   scripts/deploy-vps.sh <40-char-sha> --apply        # deploy
+#   scripts/deploy-vps.sh <40-char-sha> --apply --local  # deploy from the VPS itself (scripts/auto-deploy.sh)
 # Overrides (env): DEPLOY_HOST (root@100.86.47.122) DEPLOY_PORT (22122)
 #   DEPLOY_KEY (~/.ssh/id_ed25519_vps) DEPLOY_ROOT (/srv/djimitflo) DEPLOY_REPO_URL
 #
@@ -20,7 +21,7 @@ set -euo pipefail
 
 DEPLOY_HOST="${DEPLOY_HOST:-root@100.86.47.122}"
 DEPLOY_PORT="${DEPLOY_PORT:-22122}"
-DEPLOY_KEY="${DEPLOY_KEY:-$HOME/.ssh/id_ed25519_vps}"
+DEPLOY_KEY="${DEPLOY_KEY:-${HOME:-/root}/.ssh/id_ed25519_vps}"  # systemd units have no HOME (set -u)
 DEPLOY_ROOT="${DEPLOY_ROOT:-/srv/djimitflo}"
 DEPLOY_REPO_URL="${DEPLOY_REPO_URL:-https://github.com/djimit/djimitflo.git}"
 
@@ -62,7 +63,7 @@ if [ "$AVAIL_KB" -lt 8000000 ]; then prune_old_builds; AVAIL_KB="$(df --output=a
 [ "$AVAIL_KB" -ge 6000000 ] || { echo "not enough free disk to build (${AVAIL_KB} KB free); free space first" >&2; exit 1; }
 if [ ! -d "runtime-source-$SHORT" ]; then git clone -q "$REPO" "runtime-source-$SHORT"; fi
 (cd "runtime-source-$SHORT" && git checkout -q "$SHA" && git log -1 --oneline)
-(cd "runtime-source-$SHORT" && docker build -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
+(cd "runtime-source-$SHORT" && docker build --build-arg VCS_REF="$SHA" --build-arg BUILD_SOURCE=deploy-vps.sh --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -t "djimitflo:main-$SHORT" . 2>&1 | tail -n 2)
 # The container runs as uid 1001; objective-mode needs a writable .git for git worktrees.
 chown -R 1001:1001 "runtime-source-$SHORT"
 cp compose.yml "compose.yml.bak-$SHORT"
@@ -92,6 +93,10 @@ main() {
     echo "# dry run — would run on ${DEPLOY_HOST}:${DEPLOY_PORT} (root ${DEPLOY_ROOT}, sha ${sha}); use --apply"
     remote_script
     return 0
+  fi
+  if [ "${3:-}" = "--local" ]; then
+    remote_script | bash -s -- "$DEPLOY_ROOT" "$sha" "$DEPLOY_REPO_URL"
+    return
   fi
   remote_script | ssh -o IdentitiesOnly=yes -i "$DEPLOY_KEY" -p "$DEPLOY_PORT" "$DEPLOY_HOST" bash -s -- "$DEPLOY_ROOT" "$sha" "$DEPLOY_REPO_URL"
 }

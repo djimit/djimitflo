@@ -1,0 +1,6 @@
+# Files
+
+- [Backup, Restore & Data Retention](backup-restore.md) - How the Djimitflo server snapshots its SQLite database into validated tar.gz bundles, stages two-phase restores through a restore-pending.json marker applied at startup, and guards disk capacity via RetentionService purges and the DiskGuardService alerting loop.
+- [Configuration & Environment Variable Reference](configuration-reference.md) - Consolidated operator reference for DjimFlo environment variables grouped by subsystem — server/API, auth, execution & sandbox, loop daemon & budgets, governance gates & schedulers, memory sinks, Telegram, spawn control, and deployment identity — with defaults, danger levels, and default-on vs default-off flags.
+- [Knowledge Runtime & OKF Bundle Operations](knowledge-runtime.md) - How to operate the DjimFlo knowledge substrate — the OKF bundle layout (skills/agents/memory/services/repos/models), canonical path resolution with the packages/knowledge legacy guard, the validator-gated capability sync, health/drift reporting, and the MCP okf_* read tools.
+- [Local Development, Build & Test Commands](local-development.md) - Developer runbook for the DjimFlo monorepo covering prerequisites, install, dev servers, workspace build order, test/type-check/lint pipelines, database migrate/seed scripts, and Docker Compose/container operation.

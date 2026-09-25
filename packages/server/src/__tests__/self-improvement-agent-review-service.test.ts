@@ -46,11 +46,25 @@ describe('SelfImprovementAgentReviewService', () => {
   it('falls back to needs_evidence on an unparseable model response, without fabricating evidence', async () => {
     const { db, panel } = setup();
     const reviewer = new SelfImprovementAgentReviewService(db, async () => 'not json at all');
-    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // an unreadable answer is retried like a failed call; only after 3 attempts is it recorded
+    expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-1')).reviews ?? []).toHaveLength(0);
+    await reviewer.reviewMissingSpecialists(panel.id, 'run-2');
+    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-3');
     expect(updated.consensus.needs_evidence_count).toBe(2);
     for (const review of updated.reviews || []) {
       expect(review.evidence_refs).toContain('agent-review:model-response-unparseable-or-missing-evidence');
     }
+  });
+
+  it('a garbled answer followed by a readable one yields the real review (prod 2026-09-25)', async () => {
+    const { db, panel } = setup();
+    let n = 0;
+    const reviewer = new SelfImprovementAgentReviewService(db, async () => (n++ < 2 ? 'garbled {'
+      : JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] })));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    expect((await reviewer.reviewMissingSpecialists(panel.id, 'run-2')).consensus.support_count).toBe(2);
   });
 
   it('downgrades a claimed-support response with no evidence_refs to needs_evidence', async () => {
@@ -61,6 +75,14 @@ describe('SelfImprovementAgentReviewService', () => {
     const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
     expect(updated.consensus.support_count).toBe(0);
     expect(updated.consensus.needs_evidence_count).toBe(2);
+  });
+
+  it('ignores a <think> block with braces before the JSON answer', async () => {
+    const { db, panel } = setup();
+    const reviewer = new SelfImprovementAgentReviewService(db, async () =>
+      `<think>maybe {"stance": "oppose"} ... no</think>\n${JSON.stringify({ stance: 'support', confidence: 0.9, findings: ['ok'], evidence_refs: ['context:rationale'] })}`);
+    const updated = await reviewer.reviewMissingSpecialists(panel.id, 'run-1');
+    expect(updated.consensus.support_count).toBe(2);
   });
 
   it('extracts JSON from a markdown-fenced response', async () => {

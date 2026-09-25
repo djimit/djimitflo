@@ -5,6 +5,7 @@ import { runMigrations } from '../database/migrate';
 import { AgentCommunicationService } from '../services/agent-communication-service';
 import { CommonsProposalReviewService } from '../services/commons-proposal-review-service';
 import { SelfImprovementService } from '../services/self-improvement-service';
+import { AutonomousGoalGenerator } from '../services/autonomous-goal-generator';
 
 describe('CommonsProposalReviewService', () => {
   let db: Database.Database;
@@ -88,5 +89,23 @@ describe('CommonsProposalReviewService', () => {
     db.prepare("INSERT INTO commons_proposal_reviews (improvement_id, thread_id, status, summary, posted_at) VALUES (?, 't', 'completed', '- guidance', datetime('now'))").run(id);
     svc.recordGoalOutcome('g1', 'completed', 'ok');
     expect((memCreate.mock.calls[0][0] as { store: string }).store).toBe('procedural');
+  });
+
+  it('infrastructure failures re-schedule the proposal (bounded) and a new goal is created', () => {
+    const id = seedParked();
+    const goal = (gid: string) => db.prepare("INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at) VALUES (?,'o','failed','low','[]','{}',?, json_object('improvement_id', ?), datetime('now'), datetime('now'))").run(gid, id, id);
+    const status = () => (db.prepare('SELECT status FROM self_improvements WHERE id = ?').get(id) as { status: string }).status;
+    db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+    goal('g1');
+    svc.recordGoalOutcome('g1', 'failed', "WORKTREE_CREATE_FAILED: fatal: cannot lock ref 'refs/heads/agent/loop/x'");
+    expect(status()).toBe('scheduled');
+    expect(new AutonomousGoalGenerator(db).generateImprovement(id)).toBe(1); // the failed goal does not block the retry
+    expect(status()).toBe('executing');
+    db.prepare("DELETE FROM goals WHERE improvement_id = ? AND status = 'created'").run(id); // stand-in for the retry goal failing
+    goal('g2'); svc.recordGoalOutcome('g2', 'failed', 'approval expired');
+    expect(status()).toBe('scheduled');
+    db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+    goal('g3'); svc.recordGoalOutcome('g3', 'failed', 'approval expired');
+    expect(status()).toBe('needs_more_evidence'); // retry budget spent
   });
 });

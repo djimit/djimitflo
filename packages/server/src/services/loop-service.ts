@@ -1,3 +1,4 @@
+import { mutationCheckEnv } from './test-gap-source-service';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -28,6 +29,7 @@ import { LoopRecoveryService, RuntimeLeaseRegistry } from './loop-recovery-servi
 import { LoopPersistenceService } from './loop-persistence-service';
 import { ExperienceRetrievalService } from './experience-retrieval-service';
 import { SelfImprovementService } from './self-improvement-service';
+import { assignmentContext, assignmentContextMarkdown } from './assignment-context';
 import type {
   LoopName,
   WorkerRole,
@@ -125,9 +127,17 @@ const MONOREPO_ROOT = process.cwd().includes('/packages/server')
   ? path.resolve(process.cwd(), '../..')
   : process.cwd();
 
-const DEFAULT_EVIDENCE_ROOT = process.env.LOOP_EVIDENCE_ROOT
-  ? path.resolve(process.env.LOOP_EVIDENCE_ROOT)
-  : path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+/**
+ * Where worker stdout/stderr evidence lives. Verification checks it exists, so it must outlive the container: prod
+ * 2026-09-24 wrote it to the image's /app/.data and lost it on every deploy. Default = next to the database (DB_PATH is on
+ * the persistent volume in prod); LOOP_EVIDENCE_ROOT overrides; the repo's .data only when neither is set (local dev).
+ */
+export function resolveEvidenceRoot(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.LOOP_EVIDENCE_ROOT) return path.resolve(env.LOOP_EVIDENCE_ROOT);
+  if (env.DB_PATH && path.isAbsolute(env.DB_PATH)) return path.join(path.dirname(env.DB_PATH), 'agent-evidence', 'agentic-control-loop-fleet');
+  return path.join(MONOREPO_ROOT, '.data', 'agent-evidence', 'agentic-control-loop-fleet');
+}
+const DEFAULT_EVIDENCE_ROOT = resolveEvidenceRoot();
 
 const CONTROL_DIR = '.djimitflo';
 const LOOP_WORK_FILE = 'LOOP_WORK.md';
@@ -720,6 +730,11 @@ export class LoopService {
   retryLoopRun(id: string, input: RetryLoopInput = {}): { run: LoopRunRecord; leases: WorkerLeaseRecord[]; retry_maker: WorkerLeaseRecord; retry_checker: WorkerLeaseRecord } {
     return this.lifecycle.retryLoopRun(id, input);
   }
+  /** Decide a worker's approval through the engine that paused it (a human decision uses the approvals route). */
+  decideWorkerApproval(approvalId: string, approved: boolean, decidedBy: string, reason?: string): Promise<unknown> {
+    return this.workerExecutor.decideApproval(approvalId, approved, decidedBy, reason);
+  }
+
   verifyLoopRun(id: string): { run: LoopRunRecord; gates: LoopGate[]; leases: WorkerLeaseRecord[] } {
     return this.verification.verifyLoopRun(id);
   }
@@ -1020,7 +1035,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: this.buildRuntimeEnv(),
+        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
@@ -1442,6 +1457,18 @@ export class LoopService {
   }
 
   public extractRuntimeUsage(stdout: string): RuntimeUsage | null {
+    // opencode reports tokens per step (`step_finish` events, `part.tokens`), never as one usage object; the first-match
+    // loop below therefore always returned null for opencode (prod 2026-09-25: every skill_outcome had tokens_used 0).
+    let steps = 0; let input = 0; let output = 0; let total = 0;
+    for (const line of stdout.split(/\r?\n/)) {
+      if (!line.includes('"step_finish"')) continue;
+      try {
+        const tokens = JSON.parse(line.trim())?.part?.tokens as { total?: unknown; input?: unknown; output?: unknown } | undefined;
+        if (!tokens) continue;
+        steps += 1; input += Number(tokens.input) || 0; output += Number(tokens.output) || 0; total += Number(tokens.total) || 0;
+      } catch { /* not a JSON event line */ }
+    }
+    if (steps > 0 && total > 0) return { prompt_tokens: input, completion_tokens: output, total_tokens: total, usage_source: 'runtime_stdout' };
     for (const line of stdout.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) {
@@ -2164,6 +2191,11 @@ export class LoopService {
   ): void {
     this.ensureControlDir(worktreePath);
     const advisoryContext = this.advisoryAssignmentContext(worktreePath, run, finding);
+    const extra = assignmentContext(this.db, run, worktreePath, `loop-maker:${run.id}`);
+    if (extra.examples.length || extra.rules.length) {
+      this.recordLoopEvent(run.id, 'assignment_context', 'info', `Maker assignment includes ${extra.examples.length} proven example(s) and ${extra.rules.length} rule(s).`,
+        { examples: extra.examples, rule_ids: extra.rules.map((r) => r.id) });
+    }
     const content = [
       `# ${run.loop_name} Assignment`,
       '',
@@ -2188,10 +2220,12 @@ export class LoopService {
       '',
       advisoryContext.text || 'No matching observed episodes were retrieved.',
       '',
+      ...assignmentContextMarkdown(extra),
       '## Rules',
       '',
       '- Keep the diff small and local to the finding.',
       '- Do not merge, push, deploy, edit secrets, or change policy.',
+      '- Install dependencies with `npm ci --legacy-peer-deps` if node_modules is missing; never edit package.json. Lockfile changes are reverted automatically before review.',
       '- Run relevant deterministic checks before handing off to checker.',
       '- Checker approval is required before completion.',
       '',
@@ -2273,7 +2307,7 @@ export class LoopService {
 
   public buildCheckerPrompt(run: LoopRunRecord, maker: WorkerLeaseRecord, checker: WorkerLeaseRecord): string {
     const worktreePath = maker.worktree_path || '';
-    const diff = worktreePath ? this.git(worktreePath, ['diff', '--', '.']) : '';
+    const diff = worktreePath ? this.workingTreeDiff(worktreePath) : '';
     const assignmentPacket = typeof maker.metadata.assignment_packet_file === 'string' && fs.existsSync(maker.metadata.assignment_packet_file)
       ? fs.readFileSync(maker.metadata.assignment_packet_file, 'utf8').slice(0, 20_000)
       : '';
@@ -2288,6 +2322,7 @@ export class LoopService {
       `Maker lease: ${maker.id}`,
       '',
       'You are an independent checker. Do not edit files, merge, push, deploy, modify secrets or change policy.',
+      'Work only inside your own worktree (the maker\'s changes are already in it); do not read the maker\'s worktree. To run tests, install dependencies here with `npm ci --legacy-peer-deps` first; lockfile rewrites are reverted automatically.',
       checker.role === 'security_checker'
         ? 'You are the separate security checker. Review high-risk paths, related sibling paths, the original failure or exploit, and preserved governance invariants. Do not relax gates. Your verdict is not human approval or permission to merge.'
         : 'Your technical verdict is not human approval or permission to merge.',
@@ -2353,10 +2388,12 @@ export class LoopService {
         const text = candidates.flatMap((candidate) => [candidate?.text, candidate?.result, candidate?.response]).find((value) => typeof value === 'string');
         if (typeof text === 'string') {
           // Models often put a prose paragraph before the requested one-line JSON verdict inside the same text part.
-          const jsonLine = text.trim().startsWith('{') ? text.trim() : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).pop();
-          if (jsonLine) {
-            try { candidates.push(JSON.parse(jsonLine) as Record<string, unknown>); } catch { /* not a verdict line */ }
-          }
+          // Models also drop the final brace of the verdict line (prod 2026-09-23: an 'accepted' security verdict was lost and
+          // counted as insufficient_evidence): try every '{' line from last to first, with one repaired closing brace.
+          const lines = text.trim().startsWith('{') ? [text.trim()] : text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith('{')).reverse();
+          const verdictLine = lines.map((l) => [l, `${l}}`].map((c) => { try { return JSON.parse(c) as Record<string, unknown>; } catch { return undefined; } }).find(Boolean))
+            .find((p) => p && (typeof p.verdict === 'string' || typeof p.checker_verdict === 'string'));
+          if (verdictLine) candidates.push(verdictLine);
         }
         const payload = candidates.find((candidate) => candidate && (
           typeof candidate.verdict === 'string'
@@ -2448,6 +2485,10 @@ export class LoopService {
 
   public git(repositoryPath: string, args: string[]): string {
     return this.persistence.git(repositoryPath, args);
+  }
+
+  public workingTreeDiff(repositoryPath: string): string {
+    return this.persistence.workingTreeDiff(repositoryPath);
   }
 
   public titleForFinding(finding: LoopFinding): string {

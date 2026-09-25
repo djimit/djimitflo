@@ -71,3 +71,14 @@ describe('meta-evolution draft synthesis', () => {
     } finally { delete process.env.META_EVOLUTION_MAX_OPEN_DRAFTS; }
   });
 });
+
+it('N13: proposals parked for grounding or evidence longer than 14 days are archived with the reason; others untouched', () => {
+  const si = (id: string, status: string, age: number) => db.prepare(`INSERT INTO self_improvements (id, type, title, description, rationale, source, status, priority, evidence_refs_json, created_at, updated_at)
+    VALUES (?, 'feature', 't', 'd', 'r', 'reflection', ?, 0.5, '["reflection:x"]', ?, ?)`).run(id, status, daysAgo(age), daysAgo(0));
+  si('old-ng', 'needs_grounding', 15); si('old-nme', 'needs_more_evidence', 20); si('fresh-ng', 'needs_grounding', 13); si('old-verified', 'verified', 30);
+  expect(new QueueHygieneService(db).sweep().proposalsArchived).toBe(2);
+  const row = (id: string) => db.prepare('SELECT status, evidence_refs_json AS refs FROM self_improvements WHERE id = ?').get(id) as { status: string; refs: string };
+  expect(row('old-ng')).toEqual({ status: 'archived', refs: '["reflection:x","hygiene:parked_14d"]' });
+  expect(row('old-nme').status).toBe('archived');
+  expect([row('fresh-ng').status, row('old-verified').status]).toEqual(['needs_grounding', 'verified']);
+});

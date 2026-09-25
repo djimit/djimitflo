@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3';
+import { DreamStateService } from './dream-state-service';
 
 /** Read-only SQL aggregation of the whole improvement chain, so "where does it leak" is one call. */
 
@@ -13,10 +14,32 @@ export interface ImprovementFunnel {
   kpi: {
     windowDays: number; verified: number; regressed: number; regressionRate: number | null; panels24h: number; panels7d: number;
     panelsPerVerified: number | null; medianHoursToVerified: number | null; approvalsPerRun: number | null;
+    /** J6: what a verified change costs — maker tokens and runs over the window (skill_outcomes, one row per run). */
+    runs: number; runSuccessRate: number | null; tokensPerVerified: number | null;
   };
   hygiene: { zombieGoals: number; staleRuns: number; blockedBoardItems: number };
   queues: { openWorkItems: number; workItemsByLoop: Array<{ loop: string; status: string; n: number }>; commonsReviews: Record<string, number> };
+  /** TypeSafe judgments (ADR 0002): volume, latency and agreement with the final outcome where one exists (plan E7/E10). */
+  judgments: Array<{ judgment: string; total: number; byDecision: Record<string, number>; medianLatencyMs: number | null; withOutcome: number; agreement: number | null }>;
+  /**
+   * E11 step 5: calibration per panel specialist against what the proposal became. A vote is right when `support` met a
+   * verified outcome or `oppose` met a regressed one; mean confidence next to accuracy shows over-confidence.
+   */
+  panelCalibration: Array<{ specialist: string; votes: number; withOutcome: number; accuracy: number | null; meanConfidence: number | null }>;
+  /** Last dream passes, one verdict each (G13a). */
+  dreamLedger: ReturnType<DreamStateService['ledger']>;
 }
+
+/** How a judgment's subject resolves to a final outcome: true = positive, false = negative, null = still open / no outcome. */
+const OUTCOME_SQL: Record<string, string> = {
+  proposal_prescreen: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
+  reflection_triage: `SELECT CASE WHEN status IN ('verified','evaluating','applied') THEN 1 WHEN status IN ('archived','regressed','rejected','no_change') THEN 0 END AS o FROM self_improvements WHERE id = ?`,
+  checker_second_opinion: `SELECT CASE WHEN r.status = 'completed' THEN 1 WHEN r.status IN ('blocked','failed','cancelled') THEN 0 END AS o FROM worker_leases l JOIN loop_runs r ON r.id = l.loop_run_id WHERE l.id = ?`,
+  // plan E3: agreement of the shadow auto-approve rule with the operator's real decision
+  auto_approve_shadow: `SELECT CASE WHEN status = 'approved' THEN 1 WHEN status IN ('denied','rejected','expired') THEN 0 END AS o FROM approvals WHERE id = ?`,
+};
+/** Before #334 the checker opinion saw an empty diff for new files; those rows say nothing about the model (ADR 0002). */
+const EXCLUDE_BEFORE: Record<string, string> = { checker_second_opinion: '2026-09-23T18:30:00Z' };
 
 const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'applied', 'no_change', 'regressed'];
 
@@ -29,6 +52,52 @@ export class ImprovementFunnelService {
 
   private counts(sql: string): Record<string, number> {
     return Object.fromEntries(this.rows<{ k: string | null; n: number }>(sql).map((r) => [r.k ?? 'unknown', r.n]));
+  }
+
+  private runCost(since: string, verified: number): { runs: number; runSuccessRate: number | null; tokensPerVerified: number | null } {
+    try {
+      const r = this.db.prepare('SELECT COUNT(*) AS runs, SUM(success) AS ok, SUM(tokens_used) AS tokens FROM skill_outcomes WHERE skill_id LIKE ? AND created_at >= ?')
+        .get('loop-maker:%', since) as { runs: number; ok: number | null; tokens: number | null };
+      return { runs: r.runs, runSuccessRate: r.runs ? (r.ok ?? 0) / r.runs : null, tokensPerVerified: verified && r.tokens ? Math.round(r.tokens / verified) : null };
+    } catch { return { runs: 0, runSuccessRate: null, tokensPerVerified: null }; } // skill_outcomes is created lazily
+  }
+
+  panelCalibration(): ImprovementFunnel['panelCalibration'] {
+    try {
+      const rows = this.db.prepare(`
+        SELECT r.specialist_id AS specialist, COUNT(*) AS votes,
+          SUM(s.status IN ('verified', 'regressed')) AS withOutcome,
+          SUM((r.stance = 'support' AND s.status = 'verified') OR (r.stance = 'oppose' AND s.status = 'regressed')) AS right,
+          AVG(CASE WHEN s.status IN ('verified', 'regressed') THEN r.confidence END) AS meanConfidence
+        FROM specialist_reviews r JOIN self_improvements s ON s.panel_id = r.panel_id
+        WHERE r.status = 'submitted'
+        GROUP BY r.specialist_id ORDER BY votes DESC`).all() as Array<{ specialist: string; votes: number; withOutcome: number | null; right: number | null; meanConfidence: number | null }>;
+      return rows.map((r) => ({ specialist: r.specialist, votes: r.votes, withOutcome: r.withOutcome ?? 0,
+        accuracy: r.withOutcome ? (r.right ?? 0) / r.withOutcome : null,
+        meanConfidence: r.meanConfidence === null ? null : Math.round(r.meanConfidence * 100) / 100 }));
+    } catch { return []; }
+  }
+
+  judgmentAgreement(): ImprovementFunnel['judgments'] {
+    const rows = this.rows<{ judgment: string; subject_id: string; decision: string; latency_ms: number | null; created_at: string }>(
+      'SELECT judgment, subject_id, decision, latency_ms, created_at FROM judgments ORDER BY judgment');
+    const byJudgment = new Map<string, typeof rows>();
+    for (const r of rows) byJudgment.set(r.judgment, [...(byJudgment.get(r.judgment) ?? []), r]);
+    return [...byJudgment.entries()].map(([judgment, list]) => {
+      const byDecision: Record<string, number> = {};
+      for (const r of list) byDecision[r.decision] = (byDecision[r.decision] ?? 0) + 1;
+      const lat = list.map((r) => r.latency_ms).filter((v): v is number => typeof v === 'number').sort((a, b) => a - b);
+      let withOutcome = 0; let agree = 0;
+      const sql = OUTCOME_SQL[judgment];
+      if (sql) for (const r of list) {
+        if (r.decision !== 'yes' && r.decision !== 'no') continue;
+        if (EXCLUDE_BEFORE[judgment] && r.created_at < EXCLUDE_BEFORE[judgment]) continue;
+        const o = this.rows<{ o: number | null }>(sql, r.subject_id)[0]?.o;
+        if (o === null || o === undefined) continue;
+        withOutcome += 1; if ((r.decision === 'yes') === (o === 1)) agree += 1;
+      }
+      return { judgment, total: list.length, byDecision, medianLatencyMs: lat.length ? lat[Math.floor(lat.length / 2)] : null, withOutcome, agreement: withOutcome ? agree / withOutcome : null };
+    });
   }
 
   compute(): ImprovementFunnel {
@@ -69,6 +138,7 @@ export class ImprovementFunnelService {
       panelsPerVerified: verified7 ? Math.round(panels7 / verified7) : null,
       medianHoursToVerified: hours.length ? Math.round(hours[Math.floor(hours.length / 2)] * 10) / 10 : null,
       approvalsPerRun: approvals?.runs ? Math.round((approvals.approvals / approvals.runs) * 10) / 10 : null,
+      ...this.runCost(iso(7 * DAY), verified7),
     };
     const hygiene: ImprovementFunnel['hygiene'] = {
       zombieGoals: one(`SELECT COUNT(*) AS n FROM goals WHERE (status = 'running' AND updated_at < '${iso(DAY)}' AND NOT EXISTS (SELECT 1 FROM loop_runs r WHERE r.goal_id = goals.id AND r.status IN ('running', 'planning', 'verifying') AND r.updated_at >= '${iso(DAY)}'))
@@ -77,6 +147,9 @@ export class ImprovementFunnelService {
       blockedBoardItems: one("SELECT COUNT(*) AS n FROM work_items WHERE source = 'agent_board' AND status = 'blocked'"),
     };
     return {
+      judgments: this.judgmentAgreement(),
+      dreamLedger: new DreamStateService(this.db).ledger(),
+      panelCalibration: this.panelCalibration(),
       generatedAt: new Date().toISOString(),
       proposals: { total, byStatus },
       bySource: [...perSource.values()].sort((a, b) => b.total - a.total),
