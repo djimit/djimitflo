@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:109a3dfea767a0375b3d9faf87634304c44244bbdf78c2f8940ce86b693036a1",
+  "claims": [
+    {
+      "id": "claim_6cf598aba30145d48fd3af3a2725a6dd",
+      "statement": "Djimitflo has two independent Telegram surfaces with no shared transport code: the @djimitflo/telegram long-polling gateway (TelegramGatewayService in packages/telegram) and the single-bot webhook route at /api/telegram (createTelegramRoutes with TelegramBotService); both resolve Telegram senders to DjimFlo actors through an allowedUsers list plus an explicit userMap before any command runs.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L47-L59",
+          "version": "repo-lines-v1:sha256:beda41e87fd8582b041493886f21ff8c29d38c419099b7ddecdfbee266c151a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YmNhZTVmNzRiN2UwODI3OGI0MTMwZmE0Mjk3YjYxNjE2NGQ3NTI0YWIyZjNhNTYyZWZkMGFlODMxZTlkOTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExOWQ4NGNjNjA4ZWUzNzAwYjQ4MTM4Mjc4YjJmZGMxNjA4NjEyMmYxYjU0MjlhYmJjNTYzODljMWRhYjE1YzMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L75-L100",
+          "version": "repo-lines-v1:sha256:ca1cefc1d8e9fdf84eb9736b530a2b8eae0211944f79b9d8e0a52470605c0acb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYmJlYjRmNTJhYTI2YmEwZDBiNGIwZTIzZTlmM2FkYWZhMWVhZTYwMGZkMmVmNDYzOTU3NmU4NTQ5YWU3ZTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJhZjZmYzNkYzdhZmM4YTYxMmU1ZmY4MmEzMGJhYjc4MTVhZmIzNTBkZGJkOWEyNGU4YzNiOTljZDczMTFmM2MiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWM0YzRiZjE1M2ZlNzU2NTI3M2FhYzk2ZTk4MGYyMWRjM2FlNjlkNmQyNDZjYmMxNTI4MjliZDdhOTVjMzgifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L18-L35",
+          "version": "repo-lines-v1:sha256:f5fe5c6ed217b227340dee22c19e8dcf2ce32927a0d1bf4a640c87cf584de70f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MjBhMmE4YjllOGQyZjBjZjJlODk2YzA0M2E2ZGYxMGNkMDFmNzAwYmVhODI2ZjRmZmFiYWIwZWYzYTVkZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE4ODljMGE3YWFkN2IzMzhhMmMxYjljZmQ5Y2QxOWE0YmQxMzc2ZjAzMzZiMTQxZTIyYjRkNmU5MzUwYzFmNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFhOTA2ZWMzNjQ4YjhlNmNjNWZkMGViY2ZlNGRhYWNlMzgxODAyMmI2Yjc5MGMzZWVlMGM4MDQ5OGUzM2M1ZTkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a60e343d6b9643699c5d03d53f7d3d1f",
+      "statement": "The polling gateway starts only in operator-capable runtime profiles (operator or autonomous, never the default api profile) and only when TELEGRAM_BOTS_CONFIG is set; the JSON array's per-bot allowedUsers/userMap fall back to the TELEGRAM_ALLOWED_USERS/TELEGRAM_USER_MAP parsers shared with the webhook route, TelegramGatewayService is dynamically imported from @djimitflo/telegram, and its ops are a TelegramApiService pointed at the loopback base http://127.0.0.1:${PORT}/api. Missing config or init failure logs and continues without blocking boot.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/config/runtime-profile.ts#L13-L15",
+          "version": "repo-lines-v1:sha256:f95a58b45eb8b3584a3264c56f7d2cde100faa68ab7793b261b8b3c688cfc350:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGM3NmYxMjkzZmJlYWRhMDhjMDA1MWZlYWNmOTJkZjU2Y2QwNGQzMjk1ZjFlMjJhYTAwZTU3M2U5YTA2YjVhNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiN2RlOGFjMTFmMWY0YTAyNzA5NzE2ODQ4ZTE5NmMyNGY1ZDFiODZjMTlmZWI5Njc5YzJiNTMzOWY3MTE3OWY3MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzM4MmNhOTY5MDE2NDljMWZmODE1ODBhMGI3MDNhNTgwNTFkZmYyZGZmNjExYjY4NjA4M2Q0NWVhMGNmMDUyNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L325-L343",
+          "version": "repo-lines-v1:sha256:4ece4e37b89355a677652de8a0703267c9be277b38ab43ee81c447b694b43b22:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwMzgxM2MzNTRkOTgxYjkwMmNlZDQzMDJmNDNlNmRmNDY4OTg4YzI1MTY4YWZiNGRiOGJmNDYwMDFiOWIyYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YmUyMTMwNWY2OGNlYzQ2NjkwNGE1MWUyMGQzN2RlZjMxOGQ5ZmIwMmU1MjRmNzQ2NWQ0NmVjMDM3ZmQxZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgyYzYyOTVkMTBiZGE5OGNlY2Y2MGVhMTM1Mjc2ZmFhYzU4YTVmMmNkYjUyNDIyNzBmM2UwODYwYjYyMGFkNDEifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/package.json",
+          "version": "repo-file-v1:sha256:d5e02323547280921c4f079a1e8be017044d7881f634c8bc587d71843bca7ac2"
+        }
+      ]
+    },
+    {
+      "id": "claim_1ecd2c946c014a26884364f7b16e0ccd",
+      "statement": "TelegramGatewayService serializes pollers with a per-token filesystem lease: the lock file is named by the first 16 hex chars of sha256(token) under DJIMIT_TELEGRAM_LEASE_DIR or os.tmpdir()/djimit-telegram-leases, created atomically with fs.openSync 'wx', carries a JSON payload of machineId/name/hostId/pid/startedAt, has a 2-minute TTL, and is kept fresh by a 30-second unref'd heartbeat that refreshes mtimes of all held leases.",
+      "evidence": [
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L26-L45",
+          "version": "repo-lines-v1:sha256:4f3e1449dee5bfdb85a13788bffbc0be057f5aae5c9aaa72fac9eb25b2ce14b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjOWVjYmNlNjNlOTNlMmExNTU2Yjc5ODZmYzgxNjkzNTM2ZjIwZTVhNzc4Zjc0OGM4ZTE1Mzg5NTI0ZjU5YzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1YzBhOGFlNWI3MTE3NGZmZjMwODg1MjU2NTY4Yzg5YWQ5ZGVjZjA3MzNmYTIzOWQ5N2YzZDE1Mjc0NjE0MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ODM5OWFkZmYwNjU1ZjVkMDFjN2FmM2MyMTczYmQwNzRkOGViYmE0YWM5ODI4ODg2ZWVkNTY0ZjA5YjFkZWUifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L47-L63",
+          "version": "repo-lines-v1:sha256:68248d267b5ea9dcbdc6aef9f25461313ccd3ed6893bb2867a4e64f77c45b5a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhMTg1OGFjNDQ4Y2M1NWE5ZmIzYTU2Y2Y3ODAzMmRkM2IwZjYyNzhlMWY3MjI4ODk2MWZlOTNiZTA5OWQ1OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3NmE1NjI1ODUwNGI3MTQzODliOTMzM2FjODRhMzNkNWFhZGNjNTNiYzIxOTBmYTU5OWM3M2ZkZTJkYjE2YmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZlMDk5MWQ0NTk2ZDJlMmVmNWI0ZGQyNTYyYzJkZThkMGRlOTZhNWI2ZmRhZjUzZTUzOTE2MjJhNTMxYmE5YzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNWUwMWEzMWU0ZWIyZGE3NTZlY2JjNGZjOGM3NjcyNGU2MGFkYjMwODBkNzJiMGJhODNhNmU3YmMwMzNmMGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_898223366c4b4d65a2a648bc480dc3ec",
+      "statement": "On EEXIST the lease is reclaimed only through two tiers: a host-qualified dead-pid probe (same recorded host and process.kill(pid,0) raising ESRCH, with EPERM treated as alive so a live owner on the same host is never taken over and cross-host pid probes are skipped), or TTL expiry applied regardless of host or payload readability so a truncated lease from a crashed writer cannot wedge polling; an ENOENT between EEXIST and statSync is retried as a release race.",
+      "evidence": [
+        {
+          "resource": "repo://packages/telegram/src/index.test.ts#L85-L162",
+          "version": "repo-lines-v1:sha256:5a2e52a3c8f8a966d7835b7e8957214c6ef32b21597fbab1af12c6fb576a049b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiMDkxMTgyMTY0YjY0YTA1Y2Y1OWVmNzFmNzI3ZDcxNDE0NTc5NTAyZmY3NzYyYTY4NGFhZDNhYTQyYWIwYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmZmUyYjgxMzk3MWU1ZWNkNjBiNjU0YTdjYjlhOWFiZGJiNTYyMWUxOGI3MWUyYWEwN2EyZTdkZjNkNzdlMzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MTdmYmI3M2M5MmIzNmQ1ZTQ4OTZmZjUxYzFiNThlZWMzMzBiYmU5NjFiYTA1ZmM2MjA1Zjg2N2VhMWJjZjYifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L64-L111",
+          "version": "repo-lines-v1:sha256:7a2af64f09295fdae2feaec409686283148bffa68d9d4968b29199e7418d9eb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzMmEzYzFjNzc2OWYwNjJhZjhlNGZlNTcyNjY3ZDhlMDIxNmQ3M2FiYTZiMmQ0ODZjMmEwOTIwMjNkOGU5ODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5ZjY4NGJmY2NiYWVhYTlmZGRlNzRjZmU4MzYyYTg0MDRmZTNkZTIwZjYwNmQ1ZWU0MDQyMGIzODI0NDEyY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIwNjFkZGYyN2YyNzBlYzI5ZDIyZGY1NzM0MGFmZTNlZDI4NGI4ZTk3OTc0OWQwNGE5NGNhYTQ0NWQzODg0Y2YifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d688765bac174fbcbf54af2301dd600f",
+      "statement": "When lease acquisition fails, startAll retries with 2s/5s/15s/30s/60s backoff to ride out overlapping restarts and then skips that bot with a warning; per-bot init failure removes that bot's lease, and stopAll clears the heartbeat, settles every bot.stop(), and unlinks all held leases. The server retains the gateway and calls stopAll() in the SIGTERM handler specifically so a restart does not see EEXIST and skip polling forever.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L335-L337",
+          "version": "repo-lines-v1:sha256:4451c83a2bd7e3da2c0a891c453182feef1cc1dccf25a6483a4ae5a4bc71b58c:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmRlNDRiNDAyM2Y3MmEzZmRhMWQ5YTIwMzE4ZjE2MWI0ZDA1M2Q4YmZmNzU0OGEwZTZmYmM4ZDk3NWU5N2Q5OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzYyYzRmN2FjMDRlYzcxZTE2NzRjYzQ1MDExYjQ5ZDA1YmMzZTZlZDljYTgzZTQ3Mjc0ZTA2ZGM3NzUwMzhhNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmVhYmQ4ZjI3YWZmZDA0MTBhNWY5MzA3ZmYxZDc0ZmYwYzE0MjkxOGFjODg5YWU5MjkwNTY3MDU1MzYxOTZhZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBhMjg3ODgzZTFhMjBlMzI3NDFmYjJkYWNkZTdjNGMyM2YyN2M0YzUwZTdiZjBlOTJjMWQ2YzdiNmJmZTQ3NCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L403-L405",
+          "version": "repo-lines-v1:sha256:97e20a168d5887ef1739878192e50efb66076fefb247097c2b50faee8bf080b8:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE1ZDNmZmM1YTNiZDNkZjQ5NzRhOWVhZmVjZDE3YTdmNjI3Zjg4MjQ5NTk2MmIwZmZhNWUwZjU5NWQ5Y2E2MSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDg1NGY1NWE0ODUxMDFkZTVmZjVlMjQ5MzU1MzBhMmZmMzI1YTcxNTMwZjgwYzViMTlhZGRhM2ViNDcwMDk0MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGFmZWVjZDllOWI4ZTZkMjRmMGRiNDc1Njc0NjE4ZmZkMGQxYmRmNWUzNTRmODcyZjc3YjZkMWJhYTExZWZhMyJ9"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L119-L141",
+          "version": "repo-lines-v1:sha256:1f1898a77b3afd42017f6a4a66341261fc837bcf05defa3d131d110bed9e14e0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjNWIyOTgyNzNkNzFmNTkwMjkwMmJjZDViODcyOTkxNjY5YjI0MTJkYTQ0M2Q4ZGVlMzJhNDRmNzdhMmFhMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2YjA0NDkxNDY5NzIyZTgzNjNhOTRlNDA0NDUzOGUwMTNhMmEyMTdlMzZiMWU1NjhiYTYwYWNiN2I0YzhmMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3ZDg2MzJlNTRlOTI5OGFiYjk1ODcyN2UyZDUxNDA4YWJhZjEzNjYwMzUzNzkxMDE0MGFiZjY1YjMwYWI2MTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0OTZiYzYyYWYwZWZmY2Y4ZDJhZTkxYmM2OTNiNjA4YmNjNDhhYjBhYmM2ZDdjOGU1ZDhkMjA4MmFhYTdjMjYifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L208-L225",
+          "version": "repo-lines-v1:sha256:9acb58058cd52c04047735f1ef8f2676eb6030cc1e13822a7e3bab0d7b452894:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0YjIyNjU1OWZlOTU4Mjg0NGI3NDI4NzYzYzRhNTQ0OGI0OTc0NTdmNTkzZTlhYmRmNjkwNTMwODY3ZGFiNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmMWQ0YTg4MjUxNmYzZTgyNjUwMjY5NmVjN2MzMWVmMmYzN2I5ZGMwMGUyM2E5MDM3ZmFlNDgyMmVkYmE5ZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a746baa41ba94a48bf0dc1b5577b694a",
+      "statement": "A grammY middleware in the gateway enforces authorization before any command handler: the sender id must be present, be in the bot config's allowedUsers, and map through userMap to a non-blank actor string, otherwise the update is answered with '⛔ Telegram user is not authorized and linked to a DjimFlo account.' and dropped — the code comments that a bot token identifies the transport, never the requesting user.",
+      "evidence": [
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L143-L153",
+          "version": "repo-lines-v1:sha256:1fc2e62f3eb362521481760ce698d7537083b620689d1165f90d29d555e74aae:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWYwODQ4NTQzOGNhNTY0MTg1NzNmOGQ0Y2JiMGJhODAzM2ZjZDA5NzViZDYwM2E4YWZmZjZjZjM2OGJhOTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwMWJiNzAwMjgzNzc2ZTgxNzk2Zjk4NjA4OTIwMTEwMjdjNzFmY2I1NjVjYTg3Nzg2MjlhNDAyNzBkZTVmZjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMzkwMmNjNDRiMWY1YzNkZDA0ZDg4MTU5ZGZkNDQ3ZjJiNjAzYjUwMTkzMjZjNGQyOTEyZTNjZGMzNmQwYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNmNjQyZGZlNTg5NjNlYWJiZjFjYjMwMmFlNzIyOTI3ZDQ0NmM2ZDFiYTMwODgyMjYwNjkxMzBkZjVkYmUxMDAifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/transport.test.ts#L36-L43",
+          "version": "repo-lines-v1:sha256:a287eb4455f521c03a3c7bdcd836b115100b18cded36447dd6250cbdcdb7e7df:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTc4ZWE4M2JhNzIzOTI0MDkyN2MyZGZkMjExMTFhZjE3YjVjOTlkZDFmMzQxODA0NzlhNDk3Y2Y0YmMxNzM3YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdlNmZhNTM3Y2Q4ZThjMGRkNTYzZjc3Y2ZmZDgzMGNmYjNhODBmODJhYWM1NzhiNWU4ZjA3NzFkZWQyNGM0MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWQ3YWJjZDc1ZTkyMGYwNzIxODQwMTZkOGM2Y2I3ZWJiYzE4Y2M4NjQ3MDcyZjRhNjYyNzRhOTFiYmJmYWU3OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjk0ZTQxZWU5NGEwZDQwYzE2OTliZjBmMGU3ZGFkMmYwZWUwZGI4NjdkMTc0OTljNzAwMTJmNzkyZGRiMDQzNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_9515e7fabafe4b98a774f3542fff3d8e",
+      "statement": "Gateway commands are limited to /start, /status, /task <beschrijving>, /cancel <task_id>: /task forwards the prompt with the bot config's machineId to ops.createTask binding the task to that machine, /cancel without a wired cancelTask op surfaces TASK_CANCELLATION_UNAVAILABLE, and Telegram 409 getUpdates conflicts (another consumer of the same token) are handled in both bot.catch and the bot.start() rejection as warnings without crashing the process.",
+      "evidence": [
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L155-L206",
+          "version": "repo-lines-v1:sha256:1f48dec1b34013f8054d4432690f8d1b6f608e1f989fc2ed8a07c57535f83aeb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5ZTgwOGY1MTZiMzcxZWE1MDA1Mjc0YzRjNDBkYTI1Yjk4MmVlNDM2ZTllM2QyOTJkMDg3NjNjMDVhZDU2NWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NzZkMTRmODlkNWM4OWFkZjAzYTc3NWFiYTg3OTU3Mzk3N2ZjMjc4NGQ5NDYxYzE5NTYxOTdlMWRjOGM4OTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhYWE2NjVmZjg2MTc4MjQ2ZWI4ZDU1OTdjMTI3ZDhkMGY4OWFmYzI3NDI1NmY4Mzg4ZjBhNzQ3Zjc3NGMyYjYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7da01eeb1e23443cb7989465cfad468d",
+      "statement": "The /telegram prefix is mounted under /api with no mount-level middleware because the webhook authenticates itself via the secret header, and each diff handler self-authenticates at the '/' mount so a blanket guard would not intercept the public Telegram webhook.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L193-L195",
+          "version": "repo-lines-v1:sha256:535da556b73bf1115f4ac46fdb1f29f4d15b1540c3c31268261cdc60feb0d1d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWMyNjM1ZDQ3Mjk2YzAyODRiMGJiOTBkMjYyMWY1MzlkZGE1ZjQzZWU2YTk0OTE4YTgyY2FkYjJmNDMxYTgxOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTU1YTA1OTVmNGFlMDUwNTc5MzY0YTM2NzVkYzY4ZDM3ZGUxZTI1NjBhN2VkOWVkMDg2NGQyMzk2ZWI1MjAzZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDg3YzhjYzBkZjE1ZDg3NmQzZTM2MDE3YzhlOGI1Y2JhOTJiMjU0NjM4ZjU4ZDlmZWE2NGE3NmIwN2Q5MTIxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhiN2VmNDBjMDI5NjlmZTVlNzRhNjM3ZjUwNGEyYjhlYmU1MTVjYTRlYmMzMThhM2I2MjI0YThlYjhiYTUxNCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L223-L223",
+          "version": "repo-lines-v1:sha256:4278fa4598ad98aaedabda9faf08f1d7288a719fa57120ee325064896b02e850:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDI3OGZhNDU5OGFkOThhYWVkYWJkYTlmYWYwOGYxZDcyODhhNzE5ZmE1NzEyMGVlMzI1MDY0ODk2YjAyZTg1MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDI3OGZhNDU5OGFkOThhYWVkYWJkYTlmYWYwOGYxZDcyODhhNzE5ZmE1NzEyMGVlMzI1MDY0ODk2YjAyZTg1MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTE1YzAxZDViYWViNzlmMjdkNGM1NWJlZTRlNzRmOTczOTliNWFkYmE5NmQxZWQ2NDE5OWMxNDIxODJjNGY2NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjlkODNjYzIyOTBjNmVhOGMyMGI3MDRkMWM1MWQ4ZmUwYWMxNGI3MDQyNzZlMjJhYTkxZWY0ZGI4NDMxNTA1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_d8e9a19abe9e45779f48b12b9c3afb41",
+      "statement": "POST /api/telegram/webhook fails closed before body handling: 503 when the bot is unconfigured, 503 when TELEGRAM_WEBHOOK_SECRET is unset, and 401 when the X-Telegram-Bot-Api-Secret-Token header does not match; only then is the body passed to TelegramBotService.handleWebhook, returning {ok:true} on success and 500 on internal error.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/public-boundaries.test.ts#L75-L96",
+          "version": "repo-lines-v1:sha256:7e2e17b4447b37656c1c8217de30c27f254d6224e83639190f521a2b18bb30b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NjI4Y2YzNzc0MjY4MjY5Mjc0OGFhMWQ0ODkwMTlhNzcyMzg0Y2NjOTg4Zjk4YTcwYjA4MWYzMmUwMWJjNDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUyZTNkNTAxMTg4ZjIzNDdhZjA1MjE0YzcxNDU4YjE0NWE1OTkyZWE4MmQ1MzM1OWVjODcwNzg2YTFmYWIyZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L60-L61",
+          "version": "repo-lines-v1:sha256:f023d1fbc305a559a0fbae2291a41a764df95cba055af1e42b7293e5c3769d3e:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjZlM2I1ZTdkMWRkMTIyNGM4NWI2NzQ3OGZhY2E2OTM0NjhkNTU5YzcwZDY4MzIxNGE1NGY2ODFmNDgyMDlkYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmQzYzc0YWVhOTJiNTliYjQyZDU4MTljZjg0Y2M5Nzk2YzMwZDliZTE4YzkzZmFiMTZmMTQ3Y2FkNmI1MDQzMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdhODhhNDQ4YzgzMGVhY2E5Yzk1NDU2OWRiMjFlZGVjYjhlN2Q2NDY5ZDE5NzQ5NjM4MzM0YzQ0Y2RmNjc2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM0NTM4MDM0YmM3NWU2NDMzNGFiMWNjMTczMzU1YzBkMzE2MDRlZDIzMDgyOTkwZWY5MjIxMjk3ZWYyYTE2MCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L61-L83",
+          "version": "repo-lines-v1:sha256:5823e9868025dcb592a4b96cb48e0aea2ff994b325fcb1cc98c24844cee49cbb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyMDM1NjI3ZTA4ZTQzMTcxZDA3YjJhNWQ5ZWQyZDI2MDgxODI4ZWE0OGNjZTc4NjkwNDdiYzM1MDAwYTAzZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVlMTJiNjExODk0M2UzMGMwMDY4MzNlNzgxNjMwYTUzYjMyZjQxN2VmNWY5Nzk1YzNmMTJmMzMwODAyNGM1ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4YTU4ZWViZDhjZTA4MTY3ZTVmMGFhOTRjNDVmMGMwMDZlNDI3NTQ4MTBjN2MwYjVkMWMzZTI4YjZmZDdlZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7fdce00fedb24638b3a3a52059f966cd",
+      "statement": "parseTelegramAllowedUsers keeps only finite numbers from the comma-separated list, and parseTelegramUserMap accepts only a JSON object with all-digit string keys mapping to non-blank string user refs, returning {} on parse failure; TELEGRAM_USER_MAP can therefore reference DjimFlo users who must exist at configure time.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/live-canvas.test.ts#L126-L143",
+          "version": "repo-lines-v1:sha256:fb405764c77606370e52ba55542f4d64cfb9dc2a10ab24c18b4d6b0e540da17e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0OThhNDViMDZjYmU5N2QzZjE5MGFiZTI0NzU1MTgxMmJlZjhkN2U1YWVmNjkxMGZkZThkNDExYzM5OWY4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwZDI2MGE5ZTVhZjVlZGJkZjgxMmVlYjhhNTcyNDQxNGY5OGY3Nzg0OTYxYjFjOTA2ZjJiYTgzOGExNGEyZTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0ODc0ZDU1MjhlNGY3NzI1ZTgwZDY4YTNkYzlhMzg5NmE4ZTRlMjVjNGQ5MTc2Zjk4ZWFkOGQxMTcyOWQ2NjgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L12-L24",
+          "version": "repo-lines-v1:sha256:c7d58369ac958313f3a06885f0a81a24f79f41a5d2f42b315e234172585bf0c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkMDA0NzY4NjExNTc3MTdjYzM2MjBmYjQ0MjE1ODhiNmM5NzA1NGYyYzZiYjQ0NjJjZjJiZTNhYzAwYTRjNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0NmQ2MGMzZjAyOThkYzk0ZTg1ZmQ3ZGI4ODhhZGU2MGVkZjY0OWM2ODVmYjNjZWQ0YmU4ZGE2Y2M2ZDA1ODQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjYWExMjI4OTUzNzdlNGI3Mzg4NjEzNGY2ZGIzYzE5ZDdjNDZmMDQyZGJjZGU1M2Y4OTFlMjZiMWU3NTUyNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f771403ea4a4c06876590c1584112ab",
+      "statement": "GET /api/telegram/status requires auth and returns telegramConfigStatus: configured/ready booleans, allowed_user_count, webhook_configured, linked_identity_count and a missing_env name list, where ready requires all five of TELEGRAM_BOT_TOKEN, a non-empty allowed-user list, TELEGRAM_WEBHOOK_URL, TELEGRAM_WEBHOOK_SECRET, and a non-empty user map; the serialized status never contains the token, secret, URL or mapped user ref values.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/live-canvas.test.ts#L129-L142",
+          "version": "repo-lines-v1:sha256:89acfa21d247b30c4557f7bf96419c8de1edc5ed1d15f845506d59b989df1829:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNDcwNDQyMDZmYmFlNWY3ZmQ3ZjViMWQxZTNhNzUwZjdhZTg4NmY3ZjEyNWY1YzRhNjFlMGJkYmMyYTRmNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzNjE4ZGMwODBmOGM2NmU3MThkMzg0ZjMyNTZlZDczNGI4MTE2ZmU1Njk3OTQ5ZjM5M2M2NTliMGYzOGNmMzEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjZTZmODIzYWQzMjY1MGRjNDVlNDc1YTQxZjVmMWM1YzJmNWFiZWY2MDgyNmE0Nzk4MGU5ZjgzYzNlZGI4ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVhYmY2YjFhZjgxMTZmNzBiODg5ZTUxZjk3YjczMWQyYTEzZWYxMzJjMDhkMmMwYWNiZWQ1YjM3ZjI3YzBiMWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L26-L45",
+          "version": "repo-lines-v1:sha256:3596edb4107de6332efc8ad11ece45e43b8fa4ae68906cb512e32f56a51c57d3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTQyZWY1ZTdkMmY3NmMxNGI0Nzc4NGExZjhiOWFmMzE1ODg1MWExMzAxYjg2NTkzYWMzYzZiMTc4NzYxNDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNWQ2ZTQxNzQxNTMwYzRhY2QwZTAyYTBkNjJjMWYyOTM3MjU4OTAzNWViODhmYjU4N2IzM2E5ZTE4MzE0YjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MDM4MWE4NTljOWU2OTFjZGYxYWNhMjVhZTc2N2E2MWZjYWM2MjYxOTllYjI5MjNjNmE0ZDlhZjYyYjUwMDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/telegram.ts#L85-L88",
+          "version": "repo-lines-v1:sha256:074c238ab9d5b1c48b4283aaf1fa49a56486b1236e138ae89d40eff49e76e0a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWE2MGFmMGI2NWE4YTFhZTliZDczOTI2ZmE5OGIxMmNhMThlOTExNmNiM2ZjNDNkNmM3Yzk3NDcyM2NhNmU5YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2EzZTQ2Zjk0Mjc2YjZmNmY0ZWQxZjAyYWY3OGJlZjZhMmVlMWM0MzlkZDU1ODRiOTczOTQ4MzEzMjE0ZDJiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjBlY2U3N2Q2NTQ5NGYxNTFkODVmNDA3ODExZjQ3YmIwNjM3ZTc0ZjUwOTVjNWEyMWM1YmQwMmNlODc0YzAzMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_4b9d565b976d479ca5eee3896baa9aa0",
+      "statement": "TelegramBotService resolves userMap entries at configure() time against users.id or users.email, and handleWebhook enforces a three-step identity ladder before any command: sender in allowedUsers, sender linked to a DjimFlo user, and that account still is_active — each failure replies with a distinct refusal and no command executes.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L114-L121",
+          "version": "repo-lines-v1:sha256:8582df92a784a533f7ff593fb85fbe71e9c4c2ae76d131ed2b17bb39757504be:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTk1OTdhZTc2NjE4N2Q2NjUyOGI1MmZlZWJiOGQxOWFmMWJhODM4ZWFkYjJlNjRiODA4ZTcxNmQ1NTE2Y2MxMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiODRjNGMzNzA1YzU4OTk2M2FjMDcwN2YyMzZmYjNhZGYzMTZiNjgwZDIxOTJlMDI1OWQzNDdkYzRhMmJhZmM4YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMWRmOGI3MTEzMmMyN2ExOGE5MWNiMWUzMTM4MmQ2ZDcxNDAwOTQ1YWFlYzIxNGIxYzQzNTIxYTE1OGFhZmM3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTk4YTM4NTgyN2U1MmFmZjI5YzhiNjFhZTA4NzJiMGM0Y2E2NTFhMWEyOThiOGYwZDU0ZTQ3ZGJkZDkzODEwZSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L43-L50",
+          "version": "repo-lines-v1:sha256:c5b0e12cfcfd71cb50ba24a74d4a681acdac3251e26e7322722f56b72c52f0a7:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzE1YWJmYzU4ODZjZDEzNmIyNjE4M2E0ZGFkNDEwMTQxOWY2MzQ3NzU3YTZkODAwYTkwMjU2NGNiMjAyZGZmNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjExMTNhZjg2NTYzMDMwM2M2ZTNlNzJiYWY3MjQwOWIzN2NiYWUzNDhiMTYxODlkMjg5Njc3YTE5YmIzYzUwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODhjNjg1MzA5M2Q2YjQ0NjEwNDgyZTBiODU3ZmZmMTA5YTcxOWVhYjA5NDE4NjJmMmM2M2ZmOTk1NzRiODE1NCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L70-L100",
+          "version": "repo-lines-v1:sha256:24463416dea5153e235dd015232e33f7558a2f9f32c2dc9003f9b9f8525edb19:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYjcxYWU1ODg1ODRkZGRlMTkwYzM5YzM0YTgzZWNhZDYxNTNiMTUwMmQ1YjYzNTQ4NTMwMGZkZmMyMmM0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIzNThjOTM4MDM0NTE1ZGM5NjI3YjQ4NWUwMzQzMTM5Y2ZmMGJmYWNkYjJiNDlkNDY3MTFhYjcwMzQ1YzA1ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI0NWM0YzRiZjE1M2ZlNzU2NTI3M2FhYzk2ZTk4MGYyMWRjM2FlNjlkNmQyNDZjYmMxNTI4MjliZDdhOTVjMzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9089f4e3352942709faba95ad93b78b3",
+      "statement": "Webhook commands split into read-only SQLite summaries (/status, /loops, /agents, /mission, /dennis — loop start/stop is deliberately not exposed) and mutations routed through an injected TelegramApiService (/task creates a pending local task on machine 'telegram-webhook', /cancel hits the task cancel route, /approve and /reject hit approval routes with SELF_APPROVAL_FORBIDDEN translated to a refusal, /dennis_task permission-checks create:task and creates a dry_run-only task pinned to dennis-agent); with no api injected every mutation answers TELEGRAM_API_UNAVAILABLE.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L1-L12",
+          "version": "repo-lines-v1:sha256:7fa99d71ac455df4773fa21352901bd123359a2c4b087f71eb5a8577085a9abc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzZjlkNjk0YjBmODI1NDBkMDI5NGU0NjcxNmFhMGJjYjQ3MjAzMzM5N2Q4MWFiZTUwMjg0OTI2MzYyYjAwYTcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L105-L172",
+          "version": "repo-lines-v1:sha256:ad81e422f9aa742995fe789b79b742e01228e9b8dcbccb1c9f0e5776af54d49b:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MmEzOWE1MDMwYjE2YTM1MTAyYjdmNWE1YzQ3NDFlNDA1YmNkYTQ4YWMwYmJiMzM4MGYzZDNhMzJlZGMwZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5OWI3ODM1NmI5Nzk2YmIxZGM3OTdhNWYxZDA3OTViOGVkNTY4MDRlM2VlMmMyNTBhMmI4NDk3ZjMzMDhlZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMwNGI2OTBlNDY4Y2YxODE4ZmYwMTMyYmEwODQ1MDBmMmI1OTczODFiYjJkODFhOTlmYTA3NWE3OGI1YzMxZjEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L324-L387",
+          "version": "repo-lines-v1:sha256:89b14edbf0985a02aef4c04685975264ed01ab25ba551bfb79c022e077ea02eb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNjU3MTBjMzEzN2I0OTkwY2JjOGU1NDFkODFiMjBlMDM3M2VmZjY5YWRiMzBjOWI3ZjI0NzEyNDUxMTViNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkYjNlN2NkMGMzYTYyMzA0NzY2ODE2MWQxMDRlOTlkODYyMDljYTNlNzc1NGEyNWIxMTlhNDkwNzg3ODA0MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRlODVhMzZiNDlmNzE2NTAxYzBiOWI3NTMzNjg2OGE2NmNlOGY1MDQyMTI1YTE3NGI0YjYyY2M1OGQwMGJmY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f72830e1aed4b49af1f12f19da38bbf",
+      "statement": "All outbound delivery (sendMessage and the broadcastAlert/requestApproval fan-out to allowed users) posts MarkdownV2-escaped text to api.telegram.org/bot<token>/sendMessage with a 15-second timeout, and every failure — including non-2xx Telegram rejections — is collapsed to TELEGRAM_DELIVERY_FAILED because the request URL embeds the bot credential and raw fetch errors must never reach logs or callers.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L129-L134",
+          "version": "repo-lines-v1:sha256:158c3a1163c2f4b67b9b5ab7e3a84e067c6ba917ce5b9dceb4ffe24d48075eb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTU2NWRlNmVhNTViZTFlODQ4NTllN2ZiZjQ3NjgzYzI3Yjk3OTM1ZjhiOTNmOGFhYzVjMzliMzkwZGNlMTg5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDM0YjRiM2NhMTNiMTkzYjk3MTFjMDkzYzEwYzU2NDA5NjNiYzU5ODAwYzc3YWMwNmFiZTRmNjU4NDhjYzg2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTZmNTBhYWE2NmMzMjU5NzgyMGEyOGJiZTViMzdlYzQ4MTRiNjJiZjIyMDFjZWRhZGJhNTIzYWE2ZjY1MTIwMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L177-L208",
+          "version": "repo-lines-v1:sha256:fe3523cfb1a944cb23245d848bae4bcccd5843d27e1964a875ef7033d097b2c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZWY3ZTAzNGYwYTQ2MjFkMGM5NTEwZjliYTdlMWRiNGI3OGY3MmUwZGNiYWY4MmViMzYzNGY3Yzk5N2ExMDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5MWQ3ODI2ZWRiYzk1YWFlYWM0MDIwZjdjMzY4NjI0Nzc2MjNlYWM5YTMwNTQzNzU1ZDExY2M1ODFlOGQzZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0ZGQ2NzY2ZjFlMTRjYWFmOGY3ZjA3NWU1MmNkZjcxZmU5ZWFhNzA1ZjFjNjc3ZjQ1ZThiNDRmZDM3MDg0ZmMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-bot-service.ts#L395-L398",
+          "version": "repo-lines-v1:sha256:d83d8e4926d152de13f1aa47a1b848d0ce274c5110c28c04217f9feab6f0e58d:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTMxNGEzODIxZTFkMThhNTJhZjYyZWEzMjc3NGUwMzUzOGFjYTkxOThmOWM1OGY0ZWZkYzk2MzAzMDJlYzFiMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzk0MGExNDVkZWYyOTIwY2ZjODQzZDQwN2MwMDNlMzQxMjg3ZjAxOWYxYjM2N2YwYjUyOGM2YjY0NTAyZTAzYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5af3e125d8ef4a83967e82f0e7d034eb",
+      "statement": "TelegramApiService is an authenticated API client rather than a task/approval writer: its constructor throws TELEGRAM_API_MUST_BE_LOCAL unless the base URL is http on 127.0.0.1/localhost/[::1] without embedded credentials so mapped-user Bearer tokens can never be forwarded remotely, requireActor resolves actors by id or email, rejects disabled accounts (AUTH_DISABLED_OR_UNLINKED) and enforces RBAC (FORBIDDEN), and each request mints a fresh JWT for that actor with redirect:'error' and a 15-second timeout, surfacing the server's error code on non-2xx.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L125-L127",
+          "version": "repo-lines-v1:sha256:951a6c7bf197595886f8ed01e8ecd54db6f4f7854702303679c05d959f179c87:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjhlMGVhODM2YjAwYTYyNjJiZDIwM2UwZmJjMmUyNWY1ZWI1YWJmZDEzMjJiODUzZDYxNWUyMWY3ZGZjNGFmNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTk4YTM4NTgyN2U1MmFmZjI5YzhiNjFhZTA4NzJiMGM0Y2E2NTFhMWEyOThiOGYwZDU0ZTQ3ZGJkZDkzODEwZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTFjMzg0MzAyNTAwNjAzMmI4OGRlMzYzZjNmOTczNGU2NGE0ZTVlZjc0ZDMzMWY5ZTJiOTc0MmM2MTM5NTYyNSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-api-service.ts#L1-L30",
+          "version": "repo-lines-v1:sha256:0a8d8bb265eb5937c95425080a4579b3a98a707a8c14fbfa5c442c75a7ced540:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzNjZhYmEwMjEwMmUwYjc5MDU5NWZhYmVjYjJhMDdjYTc1M2UxZDZkOGRkNzM3ZjUzMzhkZWRhOTdjZTJmYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE1ODI5NmY4N2NjNTA0MmI0NzFlMzIyYjBiYWQ5YjkzNTkwNDEzMDFjYTA2ZWEzZjBhYjY1OWViYTZlNzhkZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9297ca428320423f8b429a9eb631224d",
+      "statement": "TelegramApiService's createTask/getStatus/cancelTask arrow-function fields are exactly the ops shape consumed by TelegramGatewayService: createTask posts a pending local-execution task tagged 'telegram' with the machineId in metadata and returns its id, getStatus counts visible active/pending tasks for that machineId, and cancelTask posts to /tasks/:id/cancel — so both Telegram surfaces funnel mutations into the same authenticated REST/approval spine.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/index.ts#L332-L334",
+          "version": "repo-lines-v1:sha256:beabd8f27affd0410a5f9307ff1d74ff0c142918ac889ae929056705536196ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmIzNjJlNDI1ZThlMjIzOTQ2ZDE2N2MwNTg2NDkwM2QwMzA2ZGFlYjYzODdiNDdhNTRkOWZkMzZmMmExOTAwYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmI0Y2FmMDJlMjc4MTFlNTIyNmJhYTIxNDg1ZThiN2NlMGVhMmFlNGViNzk4ODZlYWM0N2JkMTJhODg2MmI0ZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTE3YjM2YTQzNDdkMTM3NDYxODZlZjNlZjE2Zjc0ZmMxMjliZGYxNzU3MmFlOTk5ZTJlNzE0NTRiYjQ0MDk0YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDQ1MWM4M2EyYmQ3ZTNkYTJjMGE4OTFjNDUzMTgyZmVlZjFjYzFkY2NmMjVhNjQ4M2E0YWU1YTRiYzcxYjU4YyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/telegram-api-service.ts#L32-L46",
+          "version": "repo-lines-v1:sha256:eb2f2581f60945a937a87b9e05b46dee8aa00df94987f2bc718a483ee2847e8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZjgzYzk1Mzk1MTcxOWQ1MzJiZWU2M2U2M2JkNjc3ZWJmNGFjYTMxMDdkOTYwZTJlNTQ0ZTMwYzZkZjQ3OTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYTJjYjI1YTEyMmI0NDIyMWE2MjM0ZWM2NjBhN2I1ZmI3ZjliZGU3YjNiOWUyYjNjNTU5YTBkOTZmYWM3MzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ1ODA3ZjQ3MzY4NDFjZThhZTUzMDE2YjZjOGE1ZjQ5ZWVmYTU3NjJiZjU4NWNkMGJmYTYxNTcyMmY2YTlhNDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/telegram/src/index.ts#L20-L24",
+          "version": "repo-lines-v1:sha256:8378e57a7bc0b5484bf2e2f2212569aafec5e5582bd744734fdc87c0d5d4f4da:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDkyNGI2NDVmMDkxMzEyNzY2YzEzMWRkZWM0YjI2MDk2ZDQ4YjRjMjlmMDkyYWNhNjQzYmZhOTRkZDc4NTM4ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDJhMmNiMjVhMTIyYjQ0MjIxYTYyMzRlYzY2MGE3YjVmYjdmOWJkZTdiM2I5ZTJiM2M1NTlhMGQ5NmZhYzczOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDliNmQ3OWRmOTA2NDAyMDgyMTcwZDFhMmE3OGU3ODJmYzc4NDc5NjRhZDg4NzI4MWMwZDYyMjRkM2U1YjBkMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzIzMTFiOGZlOGUyYTNlNTBhZWU1ZGQ4ZTU4ZDQyMzU1YjE2OTZhMzAyZTNlMjFkYjczOGE2YzdjOGMxNDE0NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_bc0cd7c5f19c4e908421f1bce2cb72ad",
+      "statement": "The end-to-end chain test proves the ownership and governance invariants for Telegram-created work: an allowed sender's /task lands as a pending task owned and created_by the mapped user with a task.created audit event, the owner cannot self-approve (SELF_APPROVAL_FORBIDDEN), a viewer-role user gets FORBIDDEN, approval by an approver-role user lets mock execution complete, only the owner can cancel a running task, and unknown, unlinked, disabled, or downgraded senders create zero tasks.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/telegram-api-chain.test.ts#L20-L123",
+          "version": "repo-lines-v1:sha256:c7e8c5a4c7a110b6909255f5c6b5915b35b8b72acfb7a4c1ddccc1b6f76a636a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MjM5NjRkOTdkNTFhZWQ3NDdhYWJiNzIwYmVmYjM2MTNkY2ViMDA4NDY5MWFkNTM0NTI0YWRmNWE5YWE4YmE4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI1Y2JmZGU2OGUyMDQxNTExMGMxMGFlMGI1ZjIzNDZkOGE3NWM5OWIxOGFhY2U1MjNiZjgzNWRkNzRiMjg1N2VhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIwM2Y0MjlkODhhOGQ1ZjM5ZGY0ZjAzYmQwZmFhMGEwMzI0NDM0YzgzYTZhMTQ2ODEzOThkOGQzM2QzNzhhMzdiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ZThhNDVkZGM4NWFkNDc3Njg3ZmU0NzczYjM1MjJmNDMyMmIzNGQ3N2MwMmM0MGRkYTQ0NTliYmJiYjliNmI3In0"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-25T13:29:02.244Z"
+  }
+}

@@ -1,11 +1,8 @@
 ---
 type: operations-runbook
 title: Local Development, Build & Test Commands
-description: Developer runbook for the DjimFlo monorepo covering prerequisites, install, dev servers, workspace build order, test/type-check/lint pipelines, database migrate/seed scripts, and Docker Compose/container operation.
-tags: [local-development, build, test, docker, monorepo, runbook, operations]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+description: Developer runbook for the DjimFlo monorepo covering prerequisites, install, dev servers, workspace build order, test/mutation/type-check/lint pipelines, database migrate/seed scripts, and Docker Compose/container operation.
+tags: [local-development, build, test, mutation-testing, docker, monorepo, runbook, operations]
 sources:
   - id: openwiki-source-1f0d192b6513e0b0feb8e9e4
     resource: repo://.env.docker.example
@@ -37,17 +34,32 @@ sources:
     resource: repo://packages/shared/package.json
   - id: openwiki-source-799e7191e1567795c17e1e46
     resource: repo://scripts/deploy-vps.selftest.sh
+  - id: openwiki-source-6ca3f66d80046a53b657fb35
+    resource: repo://scripts/deploy-vps.sh
   - id: openwiki-source-4e9cb0ebdb9a9943a148029e
     resource: repo://scripts/integration-probes.test.mjs
   - id: openwiki-source-35f18adcb52dc5682aa3f7d0
     resource: repo://scripts/live-identity-evidence.test.mjs
+  - id: openwiki-source-468f882d40bb8c52d27a2b9f
+    resource: repo://scripts/mutation-gain.mjs
   - id: openwiki-source-29c2506c65adc0de528f9094
     resource: repo://scripts/paperclip-archive-export.py
   - id: openwiki-source-411dd1fcf68de6a41850c6fc
     resource: repo://scripts/wiki-delta-emitter.selftest.sh
+  - id: openwiki-source-78f33dbc13edb0630c5e1cd3
+    resource: repo://stryker.config.js
+  - id: openwiki-source-d2c279c31b4146cba13a6432
+    resource: repo://stryker.service.config.mjs
   - id: openwiki-source-b58f839a189d87a7e1f37d39
     resource: repo://vitest.config.mts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+  - id: openwiki-source-6369b39e1545dd104877b6e7
+    resource: repo://vitest.mutation.config.ts
+  - id: openwiki-source-ecc4c6c168f7ce5ad8ec280e
+    resource: repo://vitest.service-mutation.config.ts
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Local Development, Build & Test Commands
@@ -65,6 +77,7 @@ operating the container build.
 | Node.js | `>=22.0.0 <25.0.0` | Enforced via root `engines`; the Dockerfile uses `node:22-bookworm-slim` |
 | npm | `>=9.0.0` | Enforced via root `engines` |
 | Python 3 + `make` + `g++` | any recent | Required when `better-sqlite3` has no prebuilt binary and must compile its native addon during `npm install` |
+| bash + Python 3 | any recent | Required to run the root `npm test` pipeline (script selftests) even for Node-only changes |
 | Docker | any recent | Only needed for sandboxed execution and the container workflow |
 
 `.npmrc` sets `legacy-peer-deps=true`, so installs already account for legacy
@@ -152,6 +165,8 @@ server.
 ```bash
 npm run test                # full pipeline, see below
 npm run test:changed        # server vitest --changed
+npm run test:mutation           # Stryker mutation run over curated critical spans
+npm run test:mutation:grounded  # mutation-gain check for one file/test pair (env-driven)
 npm run test --workspace=@djimitflo/server -- <file>   # single server test file
 npx vitest run              # inside any one workspace: that workspace's suite
 ```
@@ -160,8 +175,9 @@ The root `npm run test` is broader than "run vitest everywhere". Its exact
 pipeline is:
 
 1. `bash scripts/deploy-vps.selftest.sh` — pure-function checks of the VPS
-   deployer (compose rewrite must swap image/commit/mounts, refuse no-op
-   rewrites, `chown` before recreate, rollback present).
+   deployer (`scripts/deploy-vps.sh`) against fixture compose files: the
+   compose rewrite must swap image/commit/mounts to the new commit, refuse
+   no-op rewrites, `chown` before recreate, and keep a rollback path.
 2. `bash scripts/wiki-delta-emitter.selftest.sh` — throwaway-git-repo check
    that the wiki delta emitter baselines on first run, stays silent when
    unchanged, honors `--dry-run`, and publishes one `wiki.page.changed` event
@@ -187,6 +203,32 @@ Vitest configuration: the root `vitest.config.mts` selects the `jsdom`
 environment with no setup files (tests stub `localStorage`/`fetch`
 themselves); the dashboard's `vite.config.ts` also sets `jsdom` + `globals`.
 Dashboard and shared use `vitest run --passWithNoTests`.
+
+### Mutation testing
+
+Two Stryker lanes complement the unit suites:
+
+- `npm run test:mutation` runs `stryker run` against `stryker.config.js`: a
+  curated set of critical code spans (approval-service decision guards,
+  tool-broker, docker-sandbox-executor abort handling, runtime-governance
+  release boundaries) mutated with `StringLiteral`/`ObjectLiteral` excluded,
+  executed through the vitest runner with `vitest.mutation.config.ts` (a fixed
+  list of six server test files) and score thresholds `high: 85, low: 75,
+  break: 70`.
+- `npm run test:mutation:grounded` runs `scripts/mutation-gain.mjs`, the "does
+  my new test actually kill more mutants" lane. It requires two env vars:
+  `MUTATE_FILE` (source file to mutate) and `MUTATE_TEST` (the test file under
+  evaluation). It runs Stryker twice via `stryker.service.config.mjs` — once
+  against the committed `HEAD:` version of the test (written to a temporary
+  `.mutation-baseline.test.ts`), once against the working-tree test — computes
+  each mutation score, and passes when `after ≥ before + MUTATE_MIN_GAIN`
+  (default 10 points) or `after ≥ 90`. With neither env var set it is a no-op
+  so hosts can list it in loop-daemon check scripts unconditionally.
+  - `stryker.service.config.mjs` mutates exactly `MUTATE_FILE`, reports JSON
+    to `MUTATE_REPORT` (default a tmpdir file), and points the vitest runner
+    at `vitest.service-mutation.config.ts` — a node-environment config whose
+    `include` is solely `[process.env.MUTATE_TEST]`, so only the test file
+    under scrutiny runs against the mutants (30s timeout).
 
 ### Type-check and lint
 
@@ -238,14 +280,29 @@ The `Dockerfile` is a two-stage build:
   copies all package manifests first for layer caching, runs
   `npm install` (with devDependencies), copies sources, then runs the same
   `npm run build` chain used locally.
-- **Runner** (`node:22-bookworm-slim`): production-only `npm install
-  --omit=dev`, the compiled `better-sqlite3` is smoke-tested with an
-  in-memory open before the build toolchain is purged; pins global agent CLIs
-  (`@openai/codex`, `opencode-ai`) and the `gh` CLI; bakes build provenance
-  (`DJIMITFLO_BUILD_COMMIT`, `DJIMITFLO_BUILD_TIME`, `DJIMITFLO_BUILD_SOURCE`
-  from `VCS_REF`/`BUILD_TIME`/`BUILD_SOURCE` build args) so `/health` reports
-  the built revision rather than a mutable runtime env; creates the non-root
-  `djimitflo` user (UID 1001), `VOLUME /data`, healthcheck against `/health`,
+- **Runner** (`node:22-bookworm-slim`): upgrades the base image and installs
+  exactly `ca-certificates git python3-minimal curl procps` via apt. It then
+  pins and installs the `gh` CLI as a static `.deb` from the GitHub CLI release
+  (`ARG GH_CLI_VERSION=2.100.0`, downloaded per `dpkg --print-architecture`,
+  verified with `gh --version`) — the server's own PR-review service shells
+  out to it for PR comments and Check Runs. Next it pins the global agent-cli
+  runtimes to keep the production worker surface equal to what
+  `/swarms/runtime-readiness` accepts: `npm install --global
+  @openai/codex@0.146.0 opencode-ai@1.18.10 @anthropic-ai/claude-code@2.1.282`,
+  immediately probed with `git --version && codex --version && opencode
+  --version && claude --version` so a missing or broken runtime fails the
+  image build. It creates the non-root runtime identity
+  (`groupadd -g 1001 djimitflo` / `useradd -u 1001 -g djimitflo -m -s
+  /bin/bash djimitflo`) and `mkdir -p /data && chown djimitflo:djimitflo
+  /data`. Only then come the dependency layers: production-only `npm install
+  --omit=dev`, with the compiled `better-sqlite3` smoke-tested via an
+  in-memory open before the build toolchain (`make`/`g++`) is purged; npm
+  itself is pinned to 12.0.2 with targeted dependency patches; build
+  provenance is baked (`DJIMITFLO_COMMIT_SHA`, `DJIMITFLO_BUILD_COMMIT`,
+  `DJIMITFLO_BUILD_TIME`, `DJIMITFLO_BUILD_SOURCE` from the
+  `VCS_REF`/`BUILD_TIME`/`BUILD_SOURCE` build args) so `/health` reports the
+  built revision rather than a mutable runtime env; and the image ends with
+  `EXPOSE 3001`, a `/health` healthcheck, `USER djimitflo`, `VOLUME /data`,
   `ENTRYPOINT ["./docker-entrypoint.sh"]`, `CMD ["node",
   "packages/server/dist/index.js"]`.
 
@@ -278,14 +335,16 @@ which the image pre-creates and chowns to the non-root user).
 
 ### Configuration template
 
-`.env.docker.example` is the authoritative container config template. Beyond
+`.env.docker.example` is the container config template. Beyond
 the dev variables it adds container-specific values: `DB_PATH=/data/djimitflo.sqlite`,
 `DASHBOARD_PATH=/app/packages/dashboard/dist`, `BACKUP_DIR=/data/backups`,
 `DJIMITFLO_HOST_PORT`, EventBus ingest (`DJIMIT_EVENT_BUS_URL`,
 `DJIMIT_EVENT_STREAM`), and a mandatory `JWT_SECRET` (the entrypoint enforces
-it in production). It also documents that OpenCode is **not** installed in the
-image by default — mount the binary or derive a custom image to enable that
-executor.
+it in production). Its OpenCode section predates the pinned global
+`opencode-ai` install in the current Dockerfile (the binary is now on `PATH`
+in the image); `OPENCODE_BIN_PATH` and the other `OPENCODE_*` tunables still
+work as overrides for either a mounted binary or a non-default executor
+configuration.
 
 ## Failure Modes & Gotchas
 
@@ -304,3 +363,6 @@ executor.
 - **Root `npm run test` requires Python 3 and bash** even for pure Node work,
   because the Paperclip selftests and the bash script selftests run before any
   vitest suite.
+- **`test:mutation:grounded` without env vars is a silent no-op** — it must be
+  invoked with both `MUTATE_FILE` and `MUTATE_TEST` set (or via a loop-daemon
+  check harness that sets them), otherwise it skips and exits 0.

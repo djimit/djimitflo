@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0e3d2803fbe2ec6d58aeea634cb298797189240c580753de09f99f89f5c6ebee",
+  "pageVersion": "sha256:9f4bd263626fc4c42f4db69335159a09d209e3fe33fba467a356fda8681eef2e",
   "claims": [
     {
       "id": "claim_15b3bc080b674f18a4a995e40843858d",
@@ -50,15 +50,19 @@
     },
     {
       "id": "claim_6ccaedb4af8746c8b1af3c8027108515",
-      "statement": "DjimFlo behavior varies by runtime profile ('api', 'operator', or 'autonomous'), resolved from DJIMITFLO_RUNTIME_PROFILE; the profile gates operator services (e.g., Telegram gateway, retention) and autonomous services (e.g., LoopDaemon, MetaOrchestration) at startup.",
+      "statement": "DjimFlo behavior varies by runtime profile ('api', 'operator', or 'autonomous'), resolved from DJIMITFLO_RUNTIME_PROFILE; the profile gates operator services (e.g., Telegram gateway, retention) and autonomous services (e.g., LoopDaemon, schedulers) at startup.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/config/runtime-profile.ts#L1-L19",
           "version": "repo-lines-v1:sha256:e71eb8e61830385d2fb28df231ed44a5358d945d665729c99ed665688bab1036:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ODYxYjMyZGI5MWEwYjJhYmQ4MDE3NmVlNDAwZDRhZTNmZWYzY2E3Y2Q1ODJmMDc4YWE2NTQ1ZDFiMmI3MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         },
         {
-          "resource": "repo://packages/server/src/index.ts#L75-L115",
-          "version": "repo-lines-v1:sha256:7b27aa2ac1e8c0602d194322c477680169bbe1af574b0968660a4635678a3c55:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3YTQwZjE0ZTI0OGVmYmU1NzVkYmQwZDJlNjExYzczYzFiNDQ1NjMzYzZkNDI0ZGU4YTM5OGE1Yzg4NTJmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
+          "resource": "repo://packages/server/src/index.ts#L42-L49",
+          "version": "repo-lines-v1:sha256:f31760cdf8f1fedb6330ae553ffb4ef58962912e70585c4794ab911f11b6c7b4:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY0ZjM3YzZiZmRjMWJlMzE1NTQwMWFjOWQ4Nzg2ZmIyOGFkMzA4ZDdmZDYwMTQwYmQwM2VmZjI1NWQzYmYyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzJjNTcyMDQyMjY4MDkzNzNiMTA2OTA4MjE3OWFhNWZjMTcxNTQyZjNlZWQzNDVmNzE4YzllMjljM2QzZjE4MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDg1YjA3ZDdlOWViM2Y5N2JlZTMwYTRjMDY5NmZmZGE3NjA0YmFiYzcyZTZlYmQxZjgwY2ZhN2JiOWU0MGUyMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWM5MTAyN2M0N2Q0ZTRhMDg2OGE0ZDQ4ZjUyYzQ1OGNiMTkyZTg5ZTg0YzQ3YjZhMzc2ZTU1Y2FmZjdkNWI0ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/index.ts#L75-L80",
+          "version": "repo-lines-v1:sha256:962eddfedbbb4d22f175c81f3a26a696f6d1c3c8fd6279967c17178f7bb55152:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiY2U4MjAwZWJkMTcwOWI2YTY3NWJlY2IzYmU5ZjM5ZTUzYmJhYzAyY2M5MjcyMzQ2MmMwNTQ2OGViMGRhNmExNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTBiMTlhNTI4MjdlNjAxYWYyOTk2MmRhZmY3MzhjMTUzNjAzMDI3MjA4ZDQ3YmZkM2Q1OWYyNTczNDdkZDIwZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDdhNDBmMTRlMjQ4ZWZiZTU3NWRiZDBkMmU2MTFjNzNjMWI0NDU2MzNjNmQ0MjRkZThhMzk4YTVjODg1MmY5NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzdmMDhjNmNlM2M4NDU4MWJjYmJhMzA4NWYzYTY5ODNmOTk3NzQxOTlhN2QzZmUwZTE5NTYzNzg0OTQwZmYxNCJ9"
         }
       ]
     },
@@ -88,15 +92,11 @@
     },
     {
       "id": "claim_3c3f9c1bfb5f4a88ad1f9ac12976bdaf",
-      "statement": "The server aggregates API routes via a declarative mount table under /api with per-prefix auth middleware; the same table feeds a source-derived /api/openapi.json route inventory.",
+      "statement": "The server aggregates API routes via routes/index.ts, which composes domain routers (tasks, agents, approvals, policies, goals, loops, swarms, spawns, MCP, telegram, and more) into the /api surface; a source-derived route inventory feeds the OpenAPI metadata.",
       "evidence": [
         {
-          "resource": "repo://packages/server/src/routes/index.ts#L139-L168",
-          "version": "repo-lines-v1:sha256:1d40a8256d577be2303a57f925313a4af019acd81eabc2adc86805bb6e515376:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOGM2ZTdmYTZkOWFmMGMwOWRlY2FmMGZkNzFmYTQzOTM2ZTc0NDYzMGJlMzJmNTM0ODQyMGUxYmVjMzcyMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNjQ4YmMyYWEyODlkNmM2YzcwZmQ2ZjIxMmY1OGQwMDU5YmYzMjUzMWU0YTQ1M2RlNzc2NjMyOTZmZDE1MzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZmYwODBjZjg4ODdmYzhlOWRmZjExOTNlODMxOTQ1MDU3MDgzNzM2NWVlMGE4NzliZTA1MjYyNjA3ZTM1NWIifQ"
-        },
-        {
-          "resource": "repo://packages/server/src/routes/index.ts#L180-L253",
-          "version": "repo-lines-v1:sha256:265841abe41c91108d60422aa71e322cbba41b8eac6d2bd8aef359c6be969978:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2YjM5M2QxNmRlYWQwYTYzMjBmMmQ4ZGViMjJhYmUxN2IxZThjZmE0MjM0NjI3ZGY0MGZlNjJhMjFhNTI3NTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4OWZlZjE2ZWRkY2YxY2E3NTlhOWEzOTc0NTc4NzkyMzUwZTE0Zjg3NjQxYzI1NDI2MDgxMzU4NDQwMzRiNTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYzEwNTUxMmM5YWFhOWYxY2ZmNWIyZDA0MDU1ZjQ0MDE3YTE5NDJiMmNiZWJiYjA4YWU0NTgzMmQ4YmNlYmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjZTM0MWE4ZDNmNGU4ZWU3YzE4Njg1ZjBlNWRmYTA4NzgxMWZlY2VhZjVmMmQ4YzIwNWZkOTQ5NTdhMmZmMjQifQ"
+          "resource": "repo://packages/server/src/routes/index.ts#L1-L60",
+          "version": "repo-lines-v1:sha256:75030cf3ec66dd5e06fe672732070e5c31434d75e9ae31e9b4f54dda8ad38ad1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ1NGQ5OTE3ZWVjMTEyZjhjNzY2MjRjM2UxYjlmNDMzNWIwNWMzNTJmNjE5ZjVlYzQ1YTlmMWYyMzFjNTk4YzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNTZlMzZjZTMxNzNjYzQyN2U5YzExZDllZjZjMDQ0YzI5MjY5YzBiMzk2NTM2NGZlZWQwMjljYmVlMDJhYjcifQ"
         }
       ]
     },
@@ -117,6 +117,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

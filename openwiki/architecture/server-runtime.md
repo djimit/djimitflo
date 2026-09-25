@@ -3,9 +3,6 @@ type: architectural-mechanism
 title: Server Runtime & Startup Composition
 description: How packages/server/src/index.ts boots the Djimitflo control plane — database init, crash recovery of loops and tasks, profile-gated service wiring, the Express middleware chain, route aggregation, the authenticated WebSocket server, dashboard static serving, and SIGTERM graceful shutdown.
 tags: [server-startup, express, sqlite, crash-recovery, graceful-shutdown, runtime-profile, websocket, middleware]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-be80b8bb0c3f3a4106e1484a
     resource: repo://packages/server/package.json

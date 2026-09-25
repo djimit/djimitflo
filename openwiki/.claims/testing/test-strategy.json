@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:81dfc92c7c7b47fb0dc21cf684807ffaf66b5846f89c6ffc5f8dc16f919e3a75",
+  "pageVersion": "sha256:7d0f0cb3610078ab228af4426b85dfcbb155f963b1a2aa67e9f29a36bc1dc097",
   "claims": [
     {
       "id": "claim_012e9d5c7b1e48d9abe7878e562dc189",
@@ -199,10 +199,112 @@
           "version": "repo-lines-v1:sha256:ad2375ef381e244a6fa30a0c3713fad9f99825623fa038a83b0e853885839dbc:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk3ZWE0NGYyZDA5MDhiYjhjZTBmZTE0NTEzZTQ0ZDhkZjYyMmYzYWYxODM3YzBmYmE2MmQyOWQyZGMzYTcyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmFkNWM2NmQ4N2Y2ZmFjZDFmODY1YzdlM2Y3M2MzYjVjOThlNmJlOGYxZTBmYTI3NjFjMWQ5MzhkZmQ3NzBjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTUxYmYxYjQ1MjQyYzcwODBmZWExZmM4ZDlmMjliZTY2MDJiNTdkNDM4Nzg4NWE1ZDk2M2NhY2JhYjc4NzQ3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE0OTNlZjExZmVhMzAzMzY0YTJiMmQxODYyN2NiNTRmMmNjZWM5NjQ5Y2Y3MTdjOWY0MDU2MmRiYzQ2NzVlOSJ9"
         }
       ]
+    },
+    {
+      "id": "claim_2722b3068d524caa9c1406ac060b9923",
+      "statement": "The M2 mutation-gain lane is wired from three pieces: vitest.service-mutation.config.ts (include = process.env.MUTATE_TEST ?? 'none'), stryker.service.config.mjs (mutates exactly process.env.MUTATE_FILE, vitest runner at that config, perTest coverage, concurrency 2, excludes StringLiteral/ObjectLiteral, JSON report to MUTATE_REPORT), and scripts/mutation-gain.mjs which orchestrates both. Without MUTATE_FILE/MUTATE_TEST the script is a no-op exit 0 so hosts can list it unconditionally in LOOP_DAEMON_CHECK_SCRIPTS.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/mutation-gain.mjs#L1-L12",
+          "version": "repo-lines-v1:sha256:9045fefe6352c4ba7a674f469b08fa79869bb764f85c3c9c05a752ce393e1671:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OWM0Nzg3MmI3MWYxMjU4OTk0Mjg5MjQ2NGU3NjRjMGRiMzUwYzIwYjcyMjI4NjQ1NjE1Y2MzNmUwYTA3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YmU4NzI2MWY2MzY3MWZjZGY2N2FlZTcxMDAyNzU3ZTUzYmM5MzFmZjhlOWY2ZWJiMWY4NjIxMTE1YTFjNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyZTA5YzFiNWZiOGY1NWRjOTBlNDdjZWMxMGZiMzllNGQ2NTMyODFiZDI4MWZmNGU4NzhlM2RhZjQ1OGMzZDcifQ"
+        },
+        {
+          "resource": "repo://stryker.service.config.mjs#L5-L16",
+          "version": "repo-lines-v1:sha256:4fd42cfd672eaee755e6b8591aefbfa9e72c976dbe1d1e846a45facd764ea388:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMjdiNmMyNmNjYTI4MDRiMjY2YTc3YTJhNGYxMTU1NTBkOTNiNmUyYzI3MjI4MmJiMGJjZjY0OWQ1Y2MzMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3YTE3NjU4YmUzN2MyNzcxOGVkZGNkNWYxMjNlNzFmNjYwNjkwMGQ2NWVkNzc3ZjUwZjE5YzliY2U3YTRlMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://vitest.service-mutation.config.ts#L3-L3",
+          "version": "repo-lines-v1:sha256:79a56e353f4f22fbc21a165a8cf09d56fbb5406f25ee638931743e86abb935ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzlhNTZlMzUzZjRmMjJmYmMyMWExNjVhOGNmMDlkNTZmYmI1NDA2ZjI1ZWU2Mzg5MzE3NDNlODZhYmI5MzVlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzlhNTZlMzUzZjRmMjJmYmMyMWExNjVhOGNmMDlkNTZmYmI1NDA2ZjI1ZWU2Mzg5MzE3NDNlODZhYmI5MzVlZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjIsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjQwMDBhMDFmOGY4MDhjMDY5OGMyOWEzM2MzNzNiZDcwYmZhZjM3ZWY3YjI2Mjc3MDEyNjZiMzY5ZDYwZTYyMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f7744381e1640e6a893432c584509c8",
+      "statement": "scripts/mutation-gain.mjs (npm run test:mutation:grounded) runs Stryker twice — once on the committed HEAD version of the test written to a temporary .mutation-baseline.test.ts and once on the working-tree test — and passes when the after score >= before + MUTATE_MIN_GAIN (default 10 points) or after >= 90, printing a single mutation_gain JSON line and exiting non-zero on a failed working-tree run; the score counts Killed+Timeout mutants over valid (detected+Survived+NoCoverage).",
+      "evidence": [
+        {
+          "resource": "repo://scripts/mutation-gain.mjs#L14-L44",
+          "version": "repo-lines-v1:sha256:a00482d19bd41c7f0229ca93963bcd702db43c3460f281b3a936894629b10b36:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYwYzg0MTgzMjNlM2M0ZmQ4NDg3MzBjOWRkOGM4MDVmMmI3NWQxMDJiNGFhMTk4YWMzYTU0YWY4Y2JhNjZiNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlMzlmMDliOWUzMjdhZGM3ZTg3MDVmMjhjNDNkZTgxYmJkODI5OGM1ODVlNDI5Nzg2N2M1YzI3M2VhZTA5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzMmRjYzdlYzQyYjMwZjM3YjBkYjJmM2E4NTFiNDk0NTM1ZjE1MjQzYjBiMDYzYjllYTliOGE0ZmZiY2FmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_74d59e5810fc4bc2a37df8beabdcf8dc",
+      "statement": "The loop daemon reaches the mutation lane via test-gap-source-service: runMutationGaps (behind MUTATION_GAP_ENABLED, default off, MUTATION_GAP_MAX_PER_DAY default 2, one in flight) creates a grounded proposal whose runtime command is 'MUTATE_FILE=<service> MUTATE_TEST=<test> npm run test:mutation:grounded'; mutationCheckEnv returns MUTATE_FILE/MUTATE_TEST for a mutation-gap goal, and the daemon treats a goal with a non-empty mutationCheckEnv as the mutation lane, giving its maker 600 s and a 400-line diff budget (vs. 300 s / 200 lines elsewhere), dispatched through the normal daemonCheckOptions mechanism so a host opts in by adding test:mutation:grounded to LOOP_DAEMON_CHECK_SCRIPTS.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L20-L24",
+          "version": "repo-lines-v1:sha256:7bd1d122681d054f22841aad2023e7c4b819c837be2a054c8a7cbed9bf3d931b:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjM0NjJiMTE0NGU5OWM4ZDBiMDUwNDI2MzhmMTRmNDFmYTFkNDViMTE2NjAxOTVkZWViNjdmZWQ1YjRhNDI5NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTc1NmJkZjU0MDdjY2NiNDc3YmU3NmQ5MjUzZTZkNDk5OTkyYjQyYzQzMThjZjIwMDlmNGZkZDJjZmUwYzkwMyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGNlZDEyYWIwOTdmMDYxOTQ4NDM3ZmYwMWRkODhlYjE3MGE4MGQxOTczMGE2ZTc1YWU5YzVlY2I1NThmNTgzNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L477-L485",
+          "version": "repo-lines-v1:sha256:3f333c5c0e3eeff70f4441d3fd5bcd2fca5ef2055b531318521abb796e15f417:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdkYjk4ZGE1MTNhMDhmNjAwOWUzOTAyYTBjOTMyOGE4MGY5NmQ5ZTg5YzExNDIxOTllMWI4YjBjMDZhNjA0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzk5M2JiZmMwNDA3NjZmMmFlMjMzYzk1NGNmMDk1MzlhNTU2MDcwNjc0Y2FhMTE4MmJkNjkzZGU2ZTQ1OGQ5OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTIzNzA0NmEwZjg1OWE3N2MwMTRjYmQ3NGQzMTE1ZWYxOWI2ZGUyNWFkNTFkZTQwZGFlYzAyYzY2MzY1ZjNlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmM4MGRjMmE2NzU5OTBhZDhiNDcyMWU4YjAwMGIxOGFjN2ExZDAwNTkzM2M4YzJhYzc0ZWIxN2YxYTU5NzZiZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L121-L128",
+          "version": "repo-lines-v1:sha256:f0f9531d0e18fa525c95d925d7209559c863f93b7e9fa084e1fc45d8c8863c0e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5ZWYxMTk0MzE3YTAzOGVjYTcxOTVhOWIyNTRhYzE0MjhhYjljNDA0ODU4MzM5ZTE0N2RlYmFiNzQzMzZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ3NzExMDFiYjA2NmZhMjUwNjFlOTY2ODE1NTg1NDhjNGU5YWVlNGVkOTE0MDMwM2E0NDI1N2I3NjMzNzhiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODg4OGE4M2I5ZTZjZDBlNTA5ODA1NWJlYzk3MDM4ZThhZmM4NmE5ZDU0ZjU0NDkzZmIwZGUwMGNkM2JkYThkMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L183-L209",
+          "version": "repo-lines-v1:sha256:9b3edd0da319b0fb9b4347167f3a34379141ae5bded2f517155d2ff13d6531d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5ZTU1MDlmMTFmMjBlOTVjMjgxODI1NDkwYzk5YjczNzc2YWM2MGI1NjI4ZjYxYTlkY2NhMmI5NjQxYWFlNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEwMDc3NjU3OGI4MDZhZGYxM2VjZmM4MWI0ZDViNTZiOGQ5OTgzZGY3YWUyM2M0ZjNiNjVlMDI0MDE2NTkzNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d8882cd5daac4ff0b8c80d341532261e",
+      "statement": "evolve-selection.ts:mutationScoreOf reads the 'after' value back out of the mutation_gain JSON line from the test:mutation:grounded check's captured stdout, giving the mutation lane a continuous fitness signal for the E13 evolve loop; evolveSpecies returns extra makers only when LOOP_EVOLVE_ENABLED=true (at most two), evolveEligible limits the pilot to test-gap/mutation-gap goals (or metadata.evolve), and selectEvolveWinner keeps the fittest maker as the only non-superseded one while cancelling the losers' reviewer leases.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/evolve-selection.test.ts#L26-L59",
+          "version": "repo-lines-v1:sha256:af5d763e1b368e027e927b498d7796f881076bc64f0739517b42e760395d6a28:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5MmYwMTcwYjFhMWYyOTMxZjlkMWYwYTczMGQwNWNhYWJkOTc1ZDU3NzE5OGJiNjk3Y2RiY2Y1YTZiMzc1YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZiMTk0YzI5ZjBkZmViNjdjMmI0MTFiMDQwOTdhZTY0YjM1YjUxZjBjYjA0YjUxMWRlODg5MjJhMGM4ZDFhYzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjllM2JkYjhjYzNmMjRkNjI3MTNlNjIyODJhMmRmOGQxNDI1NzM5NDk0MmQzZTI0ZWFkYjlkZmQ0OWJlODBkMWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/evolve-selection.ts#L31-L54",
+          "version": "repo-lines-v1:sha256:67a0294761a83aec94c097243ae8302fa32bd2fa451a01f5d0e0d7d922e59a36:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1MmMzYWExMGQyNGYzZmUwYmQ2NTU4YzVjNmM2Y2YwYzdlNzM4MTU0ZGFlM2I5ZTIxZmY2MmQzMzA1Y2RiNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzYmQ1ZTBlZDM0YmU5M2ZjMzgwNTFmM2JkOTdmOGE4Yzg4YjQ3MTcyZWM2NTM0ODUzYWY5MTc4MTRmYjBiYzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4ZDg0NTVjYjM3Yzg0MDMwMDFmYjBiMTMyY2ExZTUzMzJhNmU4Y2RhNDcwODIzZTJmNzc3NzdlMWNmM2Y3MzEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c63ccc33d7c04e82819748c3e46ff0af",
+      "statement": "The agent-social-poller selftest (scripts/test_agent_social_poller.py, run via python3 -m unittest discover -s scripts -p 'test_agent_social_poller.py') is containment-focused: provider errors expose only the numeric HTTP status; runtime_env never leaks DJIMITFLO_SOCIAL_TOKEN/NODE_OPTIONS/OPENCODE_CONFIG_CONTENT to a child and a provider credential reaches only its own runtime; each CLI runs in a fresh temp dir with tools disabled; an OpenCode custom provider config is written mode-600 scoped to a dedicated key and deleted after, with unsafe provider URLs rejected; untrusted reply fields cannot spoof runtime/model/lease/usage; and bounded_process SIGTERM-stops the detached runtime and its worker and a timeout kills the process group.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/agent-social-poller.py#L44-L80",
+          "version": "repo-lines-v1:sha256:09dd0d58ccd11092e80dd8fe443b2c27d429a926c3ad01c3768eef8b6ac4d07d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkM2U2MzhkMDgwOTYwNWM2Yjc0MzcwYTQ1ZjczZmI2MzA5NjQ2MDUyNmU4NWYyOThhYTk2YzE4MjI1NTY5MGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRhYTg0MWYzZGEyMzQ5YzI0NDJiYjM3MzVlNDBiNmZmMTFmY2VhMjUzNDJhYjI2ZjBhNjdmZGVlYmU1NjdlYTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkYWRmZjFlMWI5MmFlYmIzNzM5ZDk5NGU4YzM5ZGViNDkzYWFiYjIxOGM2NDIzOTcxYjc1MTkzZGJiN2I3YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5MTk2YjUwMDAyZTA1OTg3NmJiMjkzOTExNjI1YTYxY2MwMjVmYTMzNDdkYmU0Y2RkZTgzOTU3YTU2ZmU3ZjYifQ"
+        },
+        {
+          "resource": "repo://scripts/test_agent_social_poller.py#L21-L193",
+          "version": "repo-lines-v1:sha256:ebf1ef662daa9e072d35124b7478bcc564a53187bce9609d2537f85f7402577c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTczLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4Nzg1ZDM3NzcwNDk2YTFlYmYyN2YxYjU1OWFkYjI3NTgzNTYxODNjYWJkNTIwMjYwOGEwOGYzMzA5ZmYzMzA4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzNmRmMWEyNjEyMWMwY2ExZjVjNmEwZGEwZjI2NTUxMzU5OTJjZWU1ZDkzNDMxMzVmM2Y1ZjUxNDc3YTQ0MWU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkNWZhZTEyZTg4NjAxMDRkOGMzY2E5ZWY3NmUyNTc3OWEwMjBmMTY1OThjZDhlYjJjZDBkNGUwM2Q2ODM2MzQ2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkZTkzZDg5MzkwNmVlYWYyY2FkY2M2NTU4NTk3YmQ5MzMwZTJlYjY5ZGZiNjBhOWM4MTc1MjE4NTI3ZTcyNjgxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ab4b848a8c6442a2aaef2cb94cfa5c8a",
+      "statement": "j5-test-gap-auto-approve.test.ts pins the J5 auto-approve lane: testGapAutoApproveScope returns the single artifact path only when LOOP_AUTO_APPROVE_TEST_GAP=true, the goal comes from the test-gap source, and its grounding artifact is one new file under packages/server/src/__tests__/; the M2 mutation-gap variant additionally requires LOOP_AUTO_APPROVE_MUTATION_GAP=true and at least one already-verified mutation-gap run. Auto-approval is recorded with auto_approved_scope pinned on the lease and a goal_auto_approved loop event.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/j5-test-gap-auto-approve.test.ts#L32-L79",
+          "version": "repo-lines-v1:sha256:8eef7865ad7949f9108bdbe745c1ec3f0314eda3541e6316e6a2be89550d86b5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4ZmJkZWY3M2QwZmYwZTQxMDc4OWYyN2NjMWU1N2JkYjkzMDhlMGRmN2NhMzM3NWI2NjQ2NDU1YTFjODJmZTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiODU5ZGY5MTc4MWNmNDI1YzA2NTkwOWRjYzY0NzhiZTU1OTcxNDgxODUyOGJmZGQ5ZTM1MjQ1ZTA4ZTFkYTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE1ODM1MTY0ZTU2MzM3ZjE4M2ViMzlhYTBiMjgzYjNkYWI0YzkxZGJjODhkMDA5MDYwNzg5MDA3YzA2YzBlOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/autonomy-shadow-service.ts#L50-L63",
+          "version": "repo-lines-v1:sha256:5ccb71a8900e77446960140e0d5c4aa653aa6779b116a89c62985f7b46caa2aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0OGYzOTZhZjk4YWM3OTNjNDVmMzRiYWM3Njk0NzhiMzcwNjE1MDE5MDFlYjlhMzk2ODRmYTU5M2JlOTI0ZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjZDZmMThjOGIwZDBhZmVjNDJmYjQ3OTg0N2FjM2I1NDczODU0YWFlNjhlM2JmY2ZkMDlhN2NjM2ZhODUxY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6855f4f537404dd5929ebb7607d3d9a8",
+      "statement": "loop-daemon-check-options.test.ts pins the deterministic-check knobs: daemonCheckOptions defaults to 120 s, scopes scripts via LOOP_DAEMON_CHECK_SCRIPTS, and clamps LOOP_DAEMON_CHECK_TIMEOUT_MS to 600 s; daemonReviewerTimeoutMs defaults to 300 s clamped to 900 s; daemonMakerTimeoutMs returns 600 s for the mutation lane and a clamped LOOP_MAKER_TIMEOUT_MS (default 300 s) otherwise; and runOutcomeOnFailure returns infra_failed (not regressed) for a maker that timed out or exited non-zero before its change was evaluated.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/loop-daemon-check-options.test.ts#L4-L37",
+          "version": "repo-lines-v1:sha256:82a85193c4582e318327d94307129feb1ee0cc90f7d5cb6e54e0cb30e412a809:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkM2YxYTQ1ZTRkMDRjOTMwMGMyMzkzYWEzMWEwMDJhYjQzMmJkNmNlMjk1NjU1MzYyODk0MDQ2MDg5MjIzNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVkYTVjMjQ4YWY4MDA1OTFhZTAzYTJiYmVmNTQzMzdkNmZkZGRlZmJiNWRjYTFkNzQyYjc5MDk1NzE2OGNkNzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjOWMxOGM1Mjc1NmYxY2RhMmY0MTc2MTVmZTJkM2M5NTAwOWMwZjM1MDNlNDVjODQ1NjkzYzUyODcyMzhiNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

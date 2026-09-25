@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4a5ed7b254129ace843af4ff3cd7809149bf76146dca8d6cb0674efe30f09f48",
+  "pageVersion": "sha256:c4fd57524965028758757f850fe48ac0db58ebedc0eccf0fd812207731749be2",
   "claims": [
     {
       "id": "claim_ba0e430361374ce6868f5cd080fb4a7f",
@@ -224,21 +224,99 @@
     },
     {
       "id": "claim_2bb4f236e5cb4b95ab0e6dbb9a969058",
-      "statement": "The production Dockerfile pins @openai/codex@0.146.0 and opencode-ai@1.18.10 globally and build-time-verifies codex --version / opencode --version; at runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
+      "statement": "The production Dockerfile pins @openai/codex@0.146.0, opencode-ai@1.18.10, and @anthropic-ai/claude-code@2.1.282 globally and build-time-verifies them with git/codex/opencode/claude --version probes; the same layer installs the gh CLI as a static .deb pinned via ARG GH_CLI_VERSION=2.100.0 (verified with gh --version) for GithubPrReviewService, which shells out to gh for PR review comments and Check Runs. At runtime GET /swarms/runtime-readiness treats only codex and opencode as production runtimes, checks their binary contracts and provider credentials, returns ready/blocked_reasons per runtime, and never starts a worker (starts_workers: false).",
       "evidence": [
         {
+          "resource": "repo://Dockerfile#L66-L74",
+          "version": "repo-lines-v1:sha256:e950cde6e523b22154160a441a952852374affa3addddcbfd63284e68533a8bb:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRmYWRjZGM4YTRiZWI0MzE4Y2ExMmU2MTA5ZTliYmQ0ZTdhZDI1Zjk1ZTM2ZjVkMzBjMmU0YTAwMGUwM2VkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDZjOWY0NWVhOGI1Y2I1MmIyMTc2OWQyNmM1ZjYxMmIwZTc3NzAwOWUyNmU2MjlhNGM5ZGQ3MTFiZmQwYmVmMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjc3ODhhNWMwZjA3YWZlMTM5YzY2NWU0ZTFhNzNiODZjMTM3YjY2OTQ4MDJhM2ViNmQ0ZDRkZDdlZjlhNTM1OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGEwNDRhMjE3YjI5Njg3ZjAyYjdhMDUwYWZiNzdjMDA1ZTgyYWNjODUwNTgwYzljYzM1MjI1YmY3MTVlYmZlNyJ9"
+        },
+        {
           "resource": "repo://Dockerfile#L76-L79",
-          "version": "repo-lines-v1:sha256:70f79ddd586dd76d9d8652e8b821567b055d2fa49d3758619534126c764e4adb:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNhMWU0NzNhYmVjYWU4YWM2OGU5ZmY4ODM3OWM3MTdlM2QxM2I4OTdkZDM4OWNjYmFkMGJiMTMwNWVkMGViMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE4NTc5ZDM2NjZiMmQ4NTBkMGIzZWNkOThmOWEzODU5OWFiNDE2NTZmOGFhYzAzMzE1MTQyYTM0MGIyY2JkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
+          "version": "repo-lines-v1:sha256:6580f3f36d39ef20623f649d59aa29e7414a1bb0719d66f37aec09053f0ca3a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDVmNjE0YTllNjQxMTJkMmZlZDE3NDlhNTJkYzVlMWRmMDg5ZWQ1ZjE2ZmJjYzFkZDVhNGU4NTBhMGZiNjNmYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzljOWUyN2E5OTI4YmZiYTJjMmU2MTk5YmMwNDhiYTZkOWJkNzNmYTdjYmY3Njc1NTZmMjI3NDlmMDcwNjE0OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE4NTc5ZDM2NjZiMmQ4NTBkMGIzZWNkOThmOWEzODU5OWFiNDE2NTZmOGFhYzAzMzE1MTQyYTM0MGIyY2JkYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDY3MzkyMTJhM2QzM2FiOGUyMzcxZjA3MWI4N2QzNzFlM2UxYWU3YzdmMGYxMzZkY2Y0NTNmYThiYzNiYjgxZSJ9"
         },
         {
           "resource": "repo://packages/server/src/routes/swarm-knowledge.ts#L26-L51",
           "version": "repo-lines-v1:sha256:260e13657b516e716a1b23c1f2b11dd8293a0ace544181882cf1c766710034d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1ZjMyYWViY2MyOGJmYzdlODNmNDljMGQ3ZWQ1NWJlYjkzMGYxZTJjNDdlNDM3NGIxN2ViODA4MTZmY2M5YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzNTMzMzNiZjA0OGJlMmFjMTYzNmQ3MzFkY2U3ZWZkOGE1ZmJkODg5MTBhMTRlYmYzM2ZhOTg5YTk4ZjgzYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYzMjkyMzJhYTY3NDY1YzUzZjM1YmZiN2Y5NWIwNmZlZDM0NzljOTgwNzI1NmEyZDE3N2Q5ZjY2NWE5N2I1MTMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/github-pr-review-service.ts#L215-L215",
+          "version": "repo-lines-v1:sha256:ea8cb93aee714379cdab282b5d879237808d4b65981c8e5235ca4de628a9ae9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWE4Y2I5M2FlZTcxNDM3OWNkYWIyODJiNWQ4NzkyMzc4MDhkNGI2NTk4MWM4ZTUyMzVjYTRkZTYyOGE5YWU5YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIzZDVhZjlhZDFmNzFjNzYxMGI3YmU0MDk5NjBmMDQyMjZkZWQ2YmExMmMwYWM0ZDcyY2NkODhmNGIwMzY3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTEwZWMzM2M1YTllMGI3YmI0N2Y2ZGY1OTExYjIyNWY2NjNlNzk1ZDgxOTExODYzMjg1NTZlOTNmN2U5MDVjYSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9796821dad1462ab5d162c169f19f63",
+      "statement": "Before spawning a loop worker, LoopWorkerExecutorService probes the lease runtime via LoopService.getRuntimeContract(), records a start worker manifest with the contract, and if the contract is unavailable or status is not ok records a fail manifest with blocked_reasons runtime_contract_drift, fails the lease with runtime_contract_unavailable_or_drifted, and throws RUNTIME_CONTRACT_DRIFTED — no provider process is spawned against a drifted contract.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L234-L256",
+          "version": "repo-lines-v1:sha256:b28c027ff4d65c8bc1a4b3dc8e2b1dfa74e70addc976342fac5cc9a7786812c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3YWM5MzQ2ODgzMTBkZGM2NmVmYWYwN2M2NTZiNzdhYmJjNzM0YTM1YzY4NmZiNjBjYWEyMjUyYmNjYTE2NTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5ODQ1ODE0MWQyYTI5MWIzM2U3NzgyMWE3ZmZmNmQ5ODUxMDA3YWJlNjlkMWIzNzNmZTVmYTdmYzA3ZmQ1MGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkMjNkZjMzMDJiM2ZmOTllMmFkMDBhZjkxZWVkMDgwZWQ2YmQyZmViODQ3MTg1N2NiNmE4MmFkOTI1YTUwOTAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L98-L125",
+          "version": "repo-lines-v1:sha256:70e7878109b32163ed778bcff4beff299d66c7c18b61683dac5ee6b3780ec469:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhOGU1NTU3NjQyNzVmMzM2MDRiM2JmYzg3M2EwY2EyNjIzZWY5MGI3Y2M1MmMwNzdhODFkNzAxYjEyOGIyNDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4OTNmNDBlMzc4MWViODk2YzgyZDA0NmEwODA2N2ExMWUzNWNkZjJmMWRmYWYyNmZlYTkwYjhkYjY2NzY0MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YjlhMGIxNmI5OTEwYmFhNWQwYTRkY2FmZjhhNjBjNDI5NjMzYmYyYWUzY2JhY2M4MjAyOTA3NTgwZDEwY2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1NTJmMWQyMjY4ZDE2MTk2MjIxNjYyYmRlZDQ4ODA0MWM2YWU5M2Y4NjI0OGYxYjVmMWM0ZTAyM2VkYTA0ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f9046342e3a34922ac01c230f29ac466",
+      "statement": "RuntimeCommandService.getRuntimeContract probes each CLI runtime with <bin> --version plus a --help probe, marks the contract drifted when required json/cwd/headless flags are missing from the help output, stamps a sha256 conformance contract_hash with named checks (runtime_available, contract_not_drifted, structured_events, usage_accounting, bounded_lifecycle), caches contracts for LOOP_RUNTIME_CONTRACT_CACHE_MS (default 5s), and persists probes to the runtime_contract_probes table.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/runtime-command-service.ts#L148-L236",
+          "version": "repo-lines-v1:sha256:7cc5d1beff2a63eb88994d24b7c28641a70344b49bbfb75cafc71ea084157be8:eyJzZWxlY3RlZExpbmVDb3VudCI6ODksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2YmE0NjI0ZjMxYzIzMWNjMTZhNDIyZTk5YjI1MmRmNGI1NmIxYmEzNjU3MTU0MGFjYTU1NDVkNjRkOGVlODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYTQyMWMyZGFlNDBlY2E5MmFhNTU0ZjBjMDYzODBkN2VlOTk1NWU1YmI2MzUwMTA4NjYyNDI0NzdkMTU0MzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI4N2M4NGU3N2U4Y2ZhZGExOGYxNDIwNDBhZWRmMmNjMTYzYzUwNDBkOGNhMzVlMmVlZTg0ZDZjNTExYTA1Y2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ca924fa45154220a0c93964e29cee27",
+      "statement": "The LoopService runtime contract set covers manual, mock, codex, opencode, claude, gemini, editor, and pi, exposed via getRuntimeContracts() at GET /loops/runtime-contracts; the manual runtime is always available (status ok, proof_class static) but LoopWorkerExecutorService.executeMaker rejects manual maker leases with MANUAL_MAKER_REQUIRES_HUMAN, and manual checkers require an explicit non-manual runtime to dispatch (CHECKER_RUNTIME_REQUIRED).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/loops.ts#L81-L83",
+          "version": "repo-lines-v1:sha256:bfa55793501157be57f6f7e0d2189e8c5bc472a18c8dafea4a3277de2d4ae76a:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmRjZTMxZDlkMDUzYjg5ZWE3YTExOTFmM2ZkODE4NjlmMWNmOGViMDg1MzVlYjFmNGY2ODgwZGZiN2RlM2M0NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDA5NGQzNzEwNmYxN2E2N2E5MjM0NWVmYWM0NGM4ZGY0YzYwNzllNjU5NDBmMDU2NDFiN2VkMGI1OGNlOTJkMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzIwZmM5ZTY3ZGIwN2VkMjM5YmIzYWQyMzEyZWFhYjlhNzBlMWY2ZmJhMDEyODhiMGJhNmU2MWQ3ZjhlZTc4OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWFiZjJkMTE0ZTFjZjgwNDg3ZmYyOWM1MzJjMjIyOGNiZTZiOTE5NTUxMWU5Y2IyZWVjY2RkZTFlZmI5MGJiOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L1228-L1241",
+          "version": "repo-lines-v1:sha256:384d100d5a76ee9ad78c13e7b27dd9c25cee11fc45aab6228f0b78a9d5f849cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZDNkZDk0NGNkYjQ2ZjA4OWFmYThhODc5MjQxMTcxZTY3NzU1YmZhMWI1ZDI3NjNhOTk1YzFjYjYwMTdhMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkxYTVjZDI0OTMwOThlNzhiMmM5OWQwMWI2MDEwZDAwY2Y4YTE5OTAyYTdmYTJmMmI3ZGU5YTU2MmY2ZmQ5MWEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L229-L233",
+          "version": "repo-lines-v1:sha256:e5551e3695f4db57811eac374cf2a6cc7793837e9ea4bec568dd0d7e4c27d1bd:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTZjNTJlZGFiNWJhMzFmM2FlNjUwMWM2YjczMTYzNjQxNmE0ZWRkOWYzNDk5YmFiOTUwNzFhMWY3ZTlmYzVjMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTliZTY4ZjRjODdhZmI3MTcwOWQxYWM2OWVkYmZlZTJiOGYxZDU2YjcxMzAzNzE0M2U1Y2ZkYzVlMzA0YmVlNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGExNDM0ODcxNWZkMDRjMTk2NzQ0NGQyY2E1YzkxOTU1N2UxZTZjOTNlM2ZlN2JiNDU1Y2RiOWQ4OWJlY2I0YSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-executor-service.ts#L75-L78",
+          "version": "repo-lines-v1:sha256:287cd93aca6780593ece253ae265f740e9b0f72ae6b85a3032819f9d296ee612:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2QxZWY4NDFmZWM0MDg4OGJhYTRkNWQ2NWUxMmFkZTgzNmE1N2Y1NjU2YTYzZTdkZDMxMTRlYmM5MzYzYzRiZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWNlOTIzYTQzOThiYzExODMzMTgyYjE3M2EyYzk5NTk1NjQ2YjBkNzY2NjJiNGMxZjI4NDkyMDgzN2E4ZTFiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2Y4YzJkOTAzMjc5ZjJjNjAyY2I3N2IwYjc3ZWNhMTcyNTNlMGFmNmM1YmFjMDc4N2YzOTQ1YWEwZmI0M2VkNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b99865c75f24d84bbf26cb6ed688f23",
+      "statement": "OpenCodeExecutor reports token usage and cost collected from NDJSON step_finish parts as tokenUsage/costDollars metrics on the ExecutionResult, and resolves an exit-0 run as failed with code VERIFICATION_FAILED (retryable: false, sideEffectsPossible: true) when a verification tool step (build_check/lint/test/typecheck or a bash command matching tsc/eslint/vitest/jest/pytest/…) reports failure.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L282-L346",
+          "version": "repo-lines-v1:sha256:b50b49355002fc2b8d704fb9f7677155e93c40aae264282229cbe6081ee68bce:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjZWMwZDkzMDcyZGMzMjMxNmUwNzc3Mjk0MzFkMTE2MGMyZDU2ZTM3N2RkNjYwNzM4NzQxNTU3NjliZTkyN2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhYjE3ODUyYTIzOTk1ZGYwODUzY2MwMTNkMzkzMTM5MDkzZGIyOGVhYzYzZDJiMjQwN2Y3MDRhYjQzNDJjYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNWMzOTJhYTAzNzM0OTcyMzZjZDk1ZWZiYzgxYjk1MWE2MDZlMGUwMzg4NzUwMTE4ZDkyYWM5ZWQ3NGU4MTcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/execution/executors/opencode-executor.ts#L633-L658",
+          "version": "repo-lines-v1:sha256:ef07d8ea535a3b99a483a766ab04d55f5dc86d0ce4486d023e5868a71caba351:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNjYjRhYzg5NzJjYmYwN2FiMTI5YzcyZWMwZTZlM2U1YzUwNzU3ZWE0ZmI1NjMyMzY2ZDQ5NTViZDA2NjZjMTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhMzdlM2MwOTQxZDE1NzdjMDM5OGUzYjY3ODRlZjNiM2YwMTI4OGJjZGVjOWE0YmJhMWFiZmFhNzQwYWI2ZjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwNjdkMDM2NTc5MGY1Y2EzZDlmMmRkMWY1NjYwMTY2OTQxMjQ1OTNiZjYxYWMxZWVkYmQ5Mzc5YTNiMzZmNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzNjI0NmJhMDBkN2ZiMjUzNzcwMmM5NDA4NmNmMTUwYThmOTcyYzNiZjA1NTdiNTJjYWExN2NkNGUzMDU0ZGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8553b9229c2a44f1894531c12cbe8c2f",
+      "statement": "CodexExecutor sums usage.input_tokens and usage.output_tokens from turn.completed NDJSON events into the result tokenUsage metric.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/execution/executors/codex-executor.ts#L544-L552",
+          "version": "repo-lines-v1:sha256:b2ff7dcbba9aeb75be73d08b7eb64ea38b4587eeec86e5d4d47152ed0d48de7b:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjQ3MDMzZGMzZWQ1ODhmMjdjZDQ4MGI2OTgyNjZlYjg3MGQ4MDZiZGQ4MjFmMzZhMmRlNjQwMDIwYzExMTE2MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjI0MjYzMDIyZjZjODhkZDBjZTk0NjJlNjY0NTEwYzIzMTFiZDg3NjM2OTJlZWFhNDM2MmE3NGMxYTdlMDNjZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2E5N2FmY2MxNDEzMjA5Njk2YzAzNDdhOTgzMjdmYjg0MjFhMjU0NzYyNTlkZWUzODRkNDFjN2YyZmQwNTdlOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjViZTc2MDIyNzlkNjVmN2QzZDgxOWE3ZDg2YjBjNjQ2YjY1YWY5NTY0N2M2ZjIxMWNlMDAzZWIzZmJmMjdmNCJ9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

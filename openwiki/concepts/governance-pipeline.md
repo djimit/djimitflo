@@ -3,12 +3,11 @@ type: security-architecture
 title: "Governance Pipeline: Policy, ToolBroker, Approvals & Audit Chain"
 description: The pre-execution governance spine of Djimitflo's server — how CommandRiskClassifier, PolicyDecisionService, GovernanceGateService, ToolBroker, and ApprovalService order and bind every task dispatch, and how AuditService/ComplianceAuditService hash-chain the evidence.
 tags: [governance, policy, approvals, audit-chain, risk-classification, tool-broker, capability-tokens, compliance, separation-of-duties]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-cd524ffa0394e6f0b9d7b1d5
     resource: repo://packages/server/src/__tests__/approval-atomicity.test.ts
+  - id: openwiki-source-9287baaf5ea380972e0a1e6e
+    resource: repo://packages/server/src/__tests__/approval-ttl.test.ts
   - id: openwiki-source-5256266ed42b742b60f7fe45
     resource: repo://packages/server/src/__tests__/execution-approval-binding.test.ts
   - id: openwiki-source-d77928939568025601f76bb2
@@ -39,7 +38,10 @@ sources:
     resource: repo://packages/server/src/services/runtime-governance-service.ts
   - id: openwiki-source-39bff2b9dbe3e565ff3d8077
     resource: repo://packages/server/src/services/tool-broker.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Governance Pipeline: Policy, ToolBroker, Approvals & Audit Chain
@@ -59,9 +61,9 @@ before an executor is allowed to start. The spine runs inside
 4. **ToolBroker** — per-tool-call default-deny evaluation issuing durable, scoped
    capability tokens; currently an opt-in boundary for callers that mediate tool
    calls explicitly, not something CLI executors enforce internally.
-5. **ApprovalService** — the approval lifecycle (1-hour expiry, transaction-wrapped
-   create/decide, data-layer self-approval ban) plus authority-ledger and event-outbox
-   side records.
+5. **ApprovalService** — the approval lifecycle (configurable TTL defaulting to 1
+   hour, transaction-wrapped create/decide, data-layer self-approval ban) plus
+   authority-ledger and event-outbox side records.
 
 Every meaningful transition in the pipeline — requested, granted, denied, expired —
 is appended to the hash-chained `audit_events` log through the AuditService façade
@@ -106,7 +108,7 @@ sequenceDiagram
         E->>D: record EXECUTION_DENIED
         E-->>C: denied, task cancelled
     else decision is require_approval and no bound approved grant
-        E->>A: createApproval (1h expiry, input hash bound)
+        E->>A: createApproval (APPROVAL_TTL_MS expiry, input hash bound)
         A->>D: record APPROVAL_REQUESTED in transaction
         A-->>C: WebSocket approval broadcast and ledger or outbox records
         E-->>C: awaiting_approval with approvalId
@@ -256,38 +258,64 @@ must call `evaluateToolCall()`/`validateCapabilityToken()` themselves.
 `ApprovalService` (packages/server/src/services/approval-service.ts) owns the
 `approvals` table lifecycle. Its invariants are the core of the pipeline:
 
-- **1-hour expiry:** `createApproval()` stamps `expires_at = now + 60 minutes`;
-  there is no configuration knob (L61-L64). Expiry is lazy — realized on read
-  (`getLatestPendingForTask` expires overdue pending rows first, L42-L49) or on a
-  decision attempt (`decideApproval` turns an expired decision attempt into a
-  persisted `expired` record and then throws `APPROVAL_EXPIRED`, L149-L152 and
-  L205-L208).
-- **Transaction-wrapped create/decide:** both the approval row and its canonical
-  audit entry are written in one `db.transaction().immediate()`; if the audit insert
-  fails, the approval row rolls back with it (L66-L113, L138-L198; verified by
-  packages/server/src/__tests__/approval-atomicity.test.ts). WebSocket broadcasts and
-  authority-ledger/outbox records happen **after** the commit, and a failed
-  broadcast is only logged, never a domain failure (L265-L273).
+- **Configurable expiry, fail-closed:** `createApproval()` stamps
+  `expires_at = now + approvalTtlMs()` (L71–L74). `APPROVAL_TTL_MS` configures the
+  TTL — default 1 hour, clamped to 5 minutes … 7 days on valid input; an expired
+  approval still never executes anything (L23–L31; pinned by
+  packages/server/src/__tests__/approval-ttl.test.ts). Expiry is lazy — realized on
+  read or on a decision attempt (below).
+- **Pending-query semantics:** `getLatestPendingForTask(taskId, { executionOnly })`
+  (L52–L69) first runs an **expiry sweep** — every `pending` row whose `expires_at`
+  is missing or already past is moved to `expired` (with its audit row, publish, and
+  ledger record) before any read. With `executionOnly: true` it filters out
+  `metadata.manual_action === true` reviews via
+  `COALESCE(json_type(metadata,'$.manual_action'), 'null') != 'true'` — `json_type`
+  deliberately distinguishes the server-owned boolean `true` from strings/numbers —
+  applied **before** `ORDER BY created_at DESC LIMIT 1`, so a newer manual review
+  cannot hide an older execution gate. The engine's pending check
+  (`execution-engine.ts` L278) always passes `executionOnly: true`.
+- **Transaction-wrapped create/decide:** `createApproval()` writes the approval row
+  and its canonical `APPROVAL_REQUESTED` audit entry in one
+  `db.transaction().immediate()`; if the audit insert fails, the approval row rolls
+  back with it (L71–L123; `decideApproval` does the same for the status UPDATE and
+  its `APPROVAL_GRANTED`/`APPROVAL_DENIED` audit, L144–L208 — both pinned by
+  packages/server/src/__tests__/approval-atomicity.test.ts). Only after commit does
+  it broadcast `APPROVAL_REQUESTED` over WebSocket and call `recordDecision()`
+  (L124–L129); a failed broadcast is only `console.warn`'d, never a domain failure
+  (L275–L283).
+- **`decideApproval` ordering of checks:** inside its immediate transaction it
+  requires a boolean `approved` (else `INVALID_APPROVAL_DECISION`, thrown before the
+  transaction, L145–L147), loads the row (404), rejects an already-`expired` row with
+  `APPROVAL_EXPIRED`, rejects any non-`pending` row as "Approval already processed"
+  — the double-process/double-decide guard — then realizes TTL expiry: if
+  `expires_at` is missing or past, `expireApprovalRecord()` persists `expired` plus
+  its audit **inside the same transaction**, commits, broadcasts `APPROVAL_EXPIRED`,
+  records a ledger `DENY`, and only then throws `APPROVAL_EXPIRED` — so the refusal
+  is durable evidence, written exactly once (L148–L162, L209–L218; test
+  "persists expired decision refusal and its audit once, outside the throwing
+  transaction"). Only a still-pending, unexpired row reaches the decision UPDATE.
 - **Self-approval is forbidden at the data layer:** `decideApproval` throws
   `SELF_APPROVAL_FORBIDDEN` when `decidedBy === approval.requested_by`, independent
-  of any route-level permission check (L153-L158).
+  of any route-level permission check (L163–L168). Status transitions to `approved`
+  or `denied` set `decided_at`/`decided_by`/`decision_reason` (and
+  `approved_at`/`denied_at`/`denial_reason`) via a guarded
+  `WHERE id = ? AND status = 'pending'` update (L169–L195).
 - **Expired approvals unstick their tasks:** realizing expiry cancels a task still
   in `awaiting_approval` (guarded, so a task that moved on is untouched), with its
-  own audit row — mirroring what a denial does (L240-L262).
+  own audit row — mirroring what a denial does (L235–L273).
 - **`manual_action` approvals never gate execution:** approvals created via
   `POST /api/approvals` for human action review carry `metadata.manual_action: true`
-  (packages/server/src/routes/approvals.ts#L31-L58). `getLatestPendingForTask` with
-  `executionOnly: true` excludes them using a `json_type(...) != 'true'` predicate
-  *before* `LIMIT`, so a newer manual review cannot hide an older execution gate
-  (approval-service.ts L50-L57); `handleApprovalDecision` records their decision as
-  evidence and returns without dispatching (execution-engine.ts L840-L849).
+  (packages/server/src/routes/approvals.ts#L31-L58). Besides the `executionOnly`
+  filter above, `handleApprovalDecision` records their decision as evidence and
+  returns without dispatching (execution-engine.ts L840-L849), and `hasApprovedStart`
+  applies the same `json_type(...) != 'true'` exclusion (L1482–L1495).
 
-Every lifecycle step also calls `recordDecision()` (L124-L132), which appends a
+Every lifecycle step also calls `recordDecision()` (L134–L142), which appends a
 best-effort, never-blocking event to the append-only `authority_events` ledger
 (sequenced per `correlationId` = task id, with a sha-256 payload digest;
 packages/server/src/services/authority-ledger-service.ts) and enqueues a
 `djimitflo.approval.*` domain event in `event_outbox` — the outbox insert is a no-op
-unless `EVENT_PUBLISH_ENABLED=true`, and a `EventOutboxService` drain publishes
+unless `EVENT_PUBLISH_ENABLED=true`, and an `EventOutboxService` drain publishes
 pending rows to the external bus (`DJIMIT_EVENT_BUS_URL`)
 (packages/server/src/services/event-outbox-service.ts).
 
@@ -350,10 +378,14 @@ Auditing has two layers with a single physical store:
 ## Related pages
 
 - [Roles & Permissions](/openwiki/concepts/roles-and-permissions.md) — who may call
-  the approval decision routes (`approve:task`) and task visibility filters.
-<!-- openwiki: broken internal link [/openwiki/concepts/security-model.md] file "/openwiki/concepts/security-model.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-- [Security Model](/openwiki/concepts/security-model.md) — the broader threat model
-  this pipeline enforces.
+  the approval decision routes (`approve:task`), task visibility filters, and the
+  role/governance model this pipeline's checks sit on top of.
+- [Approval Decision Flow](/openwiki/workflows/approval-decision-flow.md) — the
+  human-facing approve/deny UX on top of `handleApprovalDecision`.
+<!-- openwiki: broken internal link [/openwiki/workflows/task-execution-lifecycle.md] file "/openwiki/workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
+- [Task Execution Lifecycle](/openwiki/workflows/task-execution-lifecycle.md) — what
+  happens after the pipeline admits a task.
+after the pipeline admits a task.
 - [Approval Decision Flow](/openwiki/workflows/approval-decision-flow.md) — the
   human-facing approve/deny UX on top of `handleApprovalDecision`.
 <!-- openwiki: broken internal link [/openwiki/workflows/task-execution-lifecycle.md] file "/openwiki/workflows/task-execution-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->

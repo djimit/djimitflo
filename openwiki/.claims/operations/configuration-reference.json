@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f25daf814ee2eb585f2bfe397c5660bdfdf1e64fdeb6e87be7c5ced6b868033b",
+  "pageVersion": "sha256:ff984b38a181e95cc325e24d33eabda4134248c019c75fb6cb7e9d198e333b18",
   "claims": [
     {
       "id": "claim_731d9d3000f74dbd820d8a789c28a0ad",
@@ -150,19 +150,23 @@
     },
     {
       "id": "claim_6c61c52f1b2f412699689e6b9af07278",
-      "statement": "The `LoopDaemon` runs only in the autonomous profile; each tick it loads pending goals, sorts by `(risk_class desc, created_at asc)`, and starts as many as fit in available slots, with `GOAL_QUEUE_POLL_MS` (default 5000) and `GOAL_MAX_CONCURRENT` (default 4) as its pacing controls. `LOOP_REVIEWER_TIMEOUT_MS` defaults to 300000 (clamped [1000,900000]) and `LOOP_DAEMON_CHECK_SCRIPTS`/`LOOP_DAEMON_CHECK_TIMEOUT_MS` (default 120000, clamp 600000) scope the daemon's deterministic checks.",
+      "statement": "The `LoopDaemon` runs only in the autonomous profile; each tick it loads pending goals, sorts by `(risk_class desc, created_at asc)`, and starts as many as fit in available slots, with `GOAL_QUEUE_POLL_MS` (default 5000) and `GOAL_MAX_CONCURRENT` (default 4) as its pacing controls. `LOOP_REVIEWER_TIMEOUT_MS` defaults to 300000 (clamped [1000,900000]) and `LOOP_DAEMON_CHECK_SCRIPTS`/`LOOP_DAEMON_CHECK_TIMEOUT_MS` (default 120000, minimum 1000, maximum 600000) scope the daemon's deterministic checks.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/index.ts#L105-L115",
           "version": "repo-lines-v1:sha256:833c723ad1ee96c3894b3a5e78f1299c6daf4babc1a15c85a396e0aa4d5e5d79:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYTkyY2M1YTllMWM1ZjY1YTI4MDI3YzliYmY0ZDliMzhjZTkxMzAwNWE4NDM0NzdlNjllNWU1MmJkNzFkOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5YjlkM2M4NmM4YzFhZTEwNWU2MmM2ZmM5N2ZmNjg0ODgxMTVhNGYwODIwY2QyYTVmNmRlZmVjOWMzMDQzZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFkNjFlNmRhZTk1NTRhMzgwYTZiMmY2N2Q3M2JiZGM2MzYyZGYwNjYyMzMwOWNjNzEwNDUyNTc3NmUzMGMzNTEifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-daemon.ts#L15-L27",
-          "version": "repo-lines-v1:sha256:3c5af63bd6fb436bbbe150e4204790c6f80adb86905eca9c15bcffdf03667f53:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMjVjYjU2MzdiM2M2OWJlMTNjZjgyMzEzMDc0Mjk1NWVlNGY3MDg5M2FhMGQ4NDVkZDE5MjZiMTNlYWRiMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxZWM1MWIyMjE3NjgzZDcyMmM1ZTlhMjZjNTU2ZmI5MWI5MjBhNzg4ZWM3ODIwYTQ0MDQzOTU1YzA2ZjJhZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4Y2Q4ZTBiMGI2MDRjNTE1M2EyNmY5ZTFiMWQ3ZDQ2YTg4MDlmMjQxMTRjYTZhOTIzMTJiMjA0ZDc5YjdlZWMifQ"
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L18-L50",
+          "version": "repo-lines-v1:sha256:8976e4f5e12e702ff09b50f20999632b0cc52984ebddc05843894e741a4144e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRjMjVjYjU2MzdiM2M2OWJlMTNjZjgyMzEzMDc0Mjk1NWVlNGY3MDg5M2FhMGQ4NDVkZDE5MjZiMTNlYWRiMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3ZjY3MzdiZTA2ZWViYjlmYzU4NmM1ZjI1YjE5MGFlZjczOWM2MTg4YThhZThmMmJjY2RhOTZkN2E3N2E4ZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM4Y2Q4ZTBiMGI2MDRjNTE1M2EyNmY5ZTFiMWQ3ZDQ2YTg4MDlmMjQxMTRjYTZhOTIzMTJiMjA0ZDc5YjdlZWMifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/loop-daemon.ts#L30-L80",
-          "version": "repo-lines-v1:sha256:807e29e2c3c3c6699cd955c462dd19898b279213f7eb60c97db77d4980f43800:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1NmFiZDJjOGEyMzMyODMwYzg3ZWJhZDM2YmFjZWE1ZGFlZDE5ZTc1NzBkMzdmODdhMmRkYTEzNDFkMTY2MGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxOGE0NWJmMDAxODVjZDYzY2Q2ZjBkM2RiMDVkMzE4MmZkMzhlMWRlMjE5ODdjYjMyZWUzNTQ4YzY0MDhlYTkifQ"
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L342-L365",
+          "version": "repo-lines-v1:sha256:da0d3a0ca390e129b1948d9042d2297732f430aa19099c36b27815e79ec0c9f2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmMmEyZjk5NmYwOGU2ODBiZDI5MjEzNWE2ZmE0OTc4YmRhMjZlNjAyZDg0ZjMzY2IxZDU5NDc3NWQ0MzA0YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExNjI0MjdkM2RiNTBkNGEwYTYxZjgyYjBiYjJhOTRlZjY3YTU0M2YzYmJjZDY3MDhlMDJmN2Q2OGE3ODZkZTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVkZTZiOTFiYzMxZDM3ODE3MGZmMjFmZGExMDUwMmI1NDUzOTY0Mjc5MWJjMDAwZmZiZTUwMTJmZmQ0YjgwNGUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L96-L99",
+          "version": "repo-lines-v1:sha256:ab58a2d07df663f063e8058d30713ab67838a415b26ea03adbb13db4598eeaa4:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmIxODdmN2E3ZDkwMDQ2ZmEzODAyMGQyZTkxMmMyNzRhNmU3YmM0MGViZjZiY2E1NDdiNDdmMWM2MGEyY2FlNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiN2NkYWIwN2IzNmVmN2I3MGU0YjdmZDc0ZTNkYzE4NzdiYWJjNTgxNDY3MzUwMmI5OTVmMzRjZjkxMzkwMzRlMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzg3NzYwYjI0MGI1ZjUzMGFhNjU3ZTM5NDU3YjE1MmRiYWU3MTQwZWU4MmI3ZTBiMDEyNWVlOTNmNTM0ZGRjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTdkYzNlNWFiODU4NmEwM2VjY2EzODg5ZTkwMjUzMzU3YjcwMDU1YzIzMGVmM2U1ZjFlMDU3NGMyNDQ0NzY0ZCJ9"
         }
       ]
     },
@@ -451,10 +455,192 @@
           "version": "repo-lines-v1:sha256:4fef57a24d91eb7eef6be2b6e5d2c4f18eac42773189630b0df4991297492cb3:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2Y2NTdmOWJjZGEwODQxOTBhY2YwZmYxMmZmY2E4ZjM3MTgwM2ExYWZlYjY2MzJjZTE0MGNjZmNmNzhjMzE4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzA0NGI2ZDNiMTMwNjVjOGYyYjQyMDlhMzg0ZjkwOGQ2YzcxMGU4NTRmNTM5YmQyMmQxN2YwZWZlODI4NzFiNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiY2VjZTFmNDRhODk5MmRlMmYwZmNkZjBlMTI4MmY2Mzk4YWUwNDAwY2JkYThiNmEwYTJjN2MwZDdkMjZmMjI3NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzNlOGQ5YjRhMzljODVhYWU2NjNjNDM0ZDg2Y2U1ZGJjZDZjMjg1MWViYzYyNGU5MjFmMDdkZjA1MGZkODk5ZiJ9"
         }
       ]
+    },
+    {
+      "id": "claim_09cb2714e9864ad79471ef3584ae2a36",
+      "statement": "`LOOP_MAKER_TIMEOUT_MS` sets the daemon's maker execution timeout with default 300000, accepted values clamped to [1000, 600000] — but the mutation lane bypasses it entirely: `daemonMakerTimeoutMs` returns a fixed 600000 for mutation-gap runs (npm ci + two Stryker runs exceeded the old fixed 300 s in production).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L26-L34",
+          "version": "repo-lines-v1:sha256:d6e8d4738254a27bb4b18483c079782b160112a1815209b5ff524b3b46e6cabc:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGY4NjcwMWI1MmEzN2RjZTliNjI1MTkzYWU0NTM3MGRjY2ZmOTkyOTMwNTY2OGE1NTM1YmM1ZDk5NmM0YzhjMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzJjMmViMTE0YjJkZjdhMTNjNWNlNWJmMjVhOTMwMjI0OTBjMWNjOGIxZjhjZTEyZTMyMzQ1NzUyMDNhZWY4ZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L477-L478",
+          "version": "repo-lines-v1:sha256:ea8b75d4dbe11c621f1cc2bfe0e8a78eef8c6de93999c89b8b3dd4fabe64eb36:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDdkYjk4ZGE1MTNhMDhmNjAwOWUzOTAyYTBjOTMyOGE4MGY5NmQ5ZTg5YzExNDIxOTllMWI4YjBjMDZhNjA0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTJhMmRlMThmZjc5NWUzZTAxN2VlMTlhN2RiNDFhYzJmYjYzNDQzODdmOWJkODFlNDIyNmVjNDBkODZkYWNiOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTIzNzA0NmEwZjg1OWE3N2MwMTRjYmQ3NGQzMTE1ZWYxOWI2ZGUyNWFkNTFkZTQwZGFlYzAyYzY2MzY1ZjNlMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWJkNjA4NzhjODk2NTNhY2Q3Yjk0OTgyYzdhMDg0MTYxZDRlOGIwMmE0ZGJkYTNkYjNhYTYwYTVlZGYxOGVlMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_858b57692b794cfaa30a41360a7c9720",
+      "statement": "The deterministic-check knobs are resolved by `daemonCheckOptions`: `LOOP_DAEMON_CHECK_SCRIPTS` is a comma-separated script list (empty means the repo default check set) and `LOOP_DAEMON_CHECK_TIMEOUT_MS` defaults to 120000, is only honored when >= 1000, and is capped at 600000; the repo-wide `test` script cannot finish in 120 s, so hosts scope the script list down.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L18-L24",
+          "version": "repo-lines-v1:sha256:45b399e1c9ada86b197d53442b0f888e142ad8680ec94679b11d195ae590501a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGMyNWNiNTYzN2IzYzY5YmUxM2NmODIzMTMwNzQyOTU1ZWU0ZjcwODkzYWEwZDg0NWRkMTkyNmIxM2VhZGIyYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjdmNjczN2JlMDZlZWJiOWZjNTg2YzVmMjViMTkwYWVmNzM5YzYxODhhOGFlOGYyYmNjZGE5NmQ3YTc3YThmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMGNlZDEyYWIwOTdmMDYxOTQ4NDM3ZmYwMWRkODhlYjE3MGE4MGQxOTczMGE2ZTc1YWU5YzVlY2I1NThmNTgzNiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_15d7adc613ed489bb03b7e3459d1b835",
+      "statement": "`LOOP_DAEMON_REPOSITORY_PATH` points objective-mode loop runs at a real git checkout (the production image's cwd is /app, not a repository, so worktree creation fails without it) and is passed to `startObjectiveLoop` only — doc-drift runs ignore it; it is also the fallback repo root for the test-gap/mutation-gap sources and commons grounding.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/commons-grounding.ts#L20-L20",
+          "version": "repo-lines-v1:sha256:9bbf046792b2d68678c779731cb1cf9919566b85b43afe9947e8f1309c1ce1f9:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWJiZjA0Njc5MmIyZDY4Njc4Yzc3OTczMWNiMWNmOTkxOTU2NmI4NWI0M2FmZTk5NDdlOGYxMzA5YzFjZTFmOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWJiZjA0Njc5MmIyZDY4Njc4Yzc3OTczMWNiMWNmOTkxOTU2NmI4NWI0M2FmZTk5NDdlOGYxMzA5YzFjZTFmOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMmUxZWZiMjQ4MzUyMzAyZmNiYWIxMDY0NDgyZmExOTBjYWYzMmM5NmIxM2ZmNjZmYmNlZjU3ZjIwYzg2YzZmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjJjMDhmNDI5NjQ2ZTE1OTc2MWJkYTE5M2VmMWNjZDEzNzMzZmYzNjhlNDc4ZTc2YWIxNTJmNzhjOWFhODc3NyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L404-L408",
+          "version": "repo-lines-v1:sha256:c42395ff305c95500d00823b0a6bb689ae3b0e05b49256f4e798bcbc5e7be271:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGMyNzZjYzc2N2ExZGViZjdmMGM0NGI2YzM2NWE4OWJlYjQ1NDA4YjQ5NTdkZDQzZTU2YjU5MDMyZDk0NWI4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWVlZDJhZWEzNmUwZTc5YzI2ZTNjNTM0MmEzOGE4NGZmYmQyZDBkZGY5NTkzMmZhZTYwNGZmY2JkNWZlOWY1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjk3YzhiNDY2YjA0NzU4NWUxMDZjMDIwM2U1ZWI3ZjI0Mzg5MWQ2MzEwYzc3YmUwNWY1MDFiOTQ4ZTJiMmJhZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjUxOTI4NDk4NjZlYjIyNWE0NmIzZjYxYWFjZjdjMGRkZDBiZmUzZTg2YzBmZGE5ODJhNDIyZGNkM2ZmZjRiYyJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L146-L147",
+          "version": "repo-lines-v1:sha256:50b9909fd323ad1c67a7c32c4a22f496026ed4d2f7227c19c85247b98b7e75ee:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYThlYzFkMmU4YTM1YTIyODhjNGI2ZGYwM2RmMTBkYmJiMTBmYjM0YmJmNGZjYWZmOTU2MjQ4MTU5NTY0MDg1NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiM2VkOTFlNjNhZjFkODgzMDZmYzIwNTA1YTg0ZDg1ZDg4NDEwY2ZjMzJlNzI0ZWYyOGFhZDM5ZDI5MDBhMTMwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTIxYWI2MzY5YmJkY2VjNTIwODVkZDFiNDExMjUzZmY4ZjBhNzJjZTExYTk2ZDYwYzg4NjZmYzIxNTZkNWMyNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjAwMGUyMDQyZDcwZWUzNzBjMDk4YzMwYjJlYWM0ZjYzZmY3ODYzNDJlY2Q5NWJiMGVhMjI1ZTc4NjFlMWE0YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_633070c7aefc494d8a0b3b1150cbf395",
+      "statement": "A maker runtime is never inferred from a recommendation: without `LOOP_DAEMON_MAKER_RUNTIME` (objective mode only) the maker lease stays `manual` and daemon goals die with MANUAL_MAKER_REQUIRES_HUMAN; when set, the operator's explicit choice also takes precedence over the runtime bandit's selection.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L438-L448",
+          "version": "repo-lines-v1:sha256:061958cacb284ed447dac529a97a7762ee2b1e67c743a8976d832821e0e4ed83:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NWM3YWFlNjJiNDlkYzMwMTIwOGNmOTQxM2NjNTI3MWFhNjkzYTI4YWQzZThlM2MzOTYwNjE2ZDRkYjcyMWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YzEzNTkwNjY1NjMyM2QxYzVlYTQxNjU0ZWU2NmFmYjU4NWFjZGNmYWVhY2ExMjFkNWUzMGJmMTkzZWVkZDciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyZmVkYWU4ZDJjMzc4NmYxNTAwOTkwZGE1NjFlOGUzNGQ4NzU5ZDEyMWNkYzYwMTE2NDM1N2QwYzY5MmI0NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2YjgxNmMwMTdkY2IyNTNlODk0ZDExOWMxYjQ2NTc1M2E1NDYyMjg2NzA5Zjg2ZjU4MDA5ZTQwNTM1ZDAyN2MifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L458-L461",
+          "version": "repo-lines-v1:sha256:588ec8775c27566fca6008f3f20fae51c1c893ac7ecf306b58a77b9bdc70cf8e:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTMwMDQzMmQ4YWEyNjExNWU2Mjg4ZDYwODA5ODExNzdiNGZhM2YxOTE0ZWZhZjgwNmYwOTVjNWJlMzUzNzI0MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg1ZjY5OGZmZmU0NTgzNDk1ODRjMWMxOTg1NGFkYTJkMTFmOTU1ZmYzNmQwNDljNGRmZTgyMTU5ZWRhN2M2YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDA1Yjc5ZWEwZGFmYmJkNTE2YTc4NTkyMmI0YmM4MjE0NDg1NGY0NzUxYjcwNzE4NzdiYmJiMWJiMTZjMzNmZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNWZhOGUzZGNhMmNmYzg0ODlmMGVhMTBkNDczNDk2OTA1YTIwMTQ5NjUxZTFhZTVhYjhiZGZmYmMwNWY3YjQ2OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6b26ace970f64a83852857800a06bc29",
+      "statement": "`LOOP_BANDIT_ENABLED`/`LOOP_BANDIT_SPECIES` (default off) arm E12 outcome-driven maker selection: Thompson sampling over each species' verified/failed runs in `skill_outcomes` picks the maker species per loop, and a challenger with fewer than 20 outcomes is capped at `LOOP_BANDIT_MAX_SHARE` (default 0.1) of runs.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L458-L474",
+          "version": "repo-lines-v1:sha256:7389422b640072b5680180f0899bb6b33495f4af0399ed7c69b8cc9ce7f92675:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzMDA0MzJkOGFhMjYxMTVlNjI4OGQ2MDgwOTgxMTc3YjRmYTNmMTkxNGVmYWY4MDZmMDk1YzViZTM1MzcyNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNWI3OWVhMGRhZmJiZDUxNmE3ODU5MjJiNGJjODIxNDQ4NTRmNDc1MWI3MDcxODc3YmJiYjFiYjE2YzMzZmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3ZTcyZDA0MmNiYjhiYTczZDNiNzcwMDFmNjM1ZmM2M2FkY2MyNmI2ZGQ5NGI5YjUyODhiNWEzYWEyMTc5MjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-bandit.ts#L26-L41",
+          "version": "repo-lines-v1:sha256:12643b86dad777252946d1ba14128a5b8a54c1536f5882616799bc0d90ce9b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiOTIyZWFhM2ViODc2NTY5NGFlOWE3N2QwMTIyMTZlY2RkMTY0YTkwNGEyNTg2MDJlMjU3ZDZkNmYyNWQ2OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzNjZjNjE0YzU1YmY2OWIyNDc2NmZlOGU0YzRjMGM0NTg3YzYwM2ViMDk2NjFjYTYwMTViYjNiNGMxZjVlM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2NTUyOTFiZWVmMTM4MDBiYzFjZjMzMjZlYmUyZDI5NGY3YzY0YmUwY2FlNzBhOWIyN2U4ZDljNzgxOGQyOGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/runtime-bandit.ts#L5-L20",
+          "version": "repo-lines-v1:sha256:fa3aff342d4bd4d2d5e87a968e8f68b54b4618bba4377de8e44083b12a8932e4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc2ODRiOTM0YzA5MzU5M2U3NDcxNDNiOWZhODkzNTM2MDkxNTNmMjg4MmY4MmU2Mzk0NzE5YWZmOTEwYmQ2Y2YiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZTk3ZWVmMDc4NmVmMGI2MTA2YzQ0Y2NhNmJiODA0YzI1YWUwOGZiNzEyNDBhMTZhYzAyN2ExNzJkNWZjMDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ff2495af2ff4b31b75a82f559a6b6c4",
+      "statement": "`LOOP_EVOLVE_ENABLED`/`LOOP_EVOLVE_SPECIES` (default off, at most 2 extra species) arm E13 multi-maker evolution on eligible goals — test-gap/mutation-gap proposals or goals with metadata.evolve=true: sibling makers of other species run the same objective and deterministic fitness (checks, diff budget, mutation score, tokens) keeps only the winner before the reviewers run.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/evolve-selection.ts#L7-L29",
+          "version": "repo-lines-v1:sha256:10825ac813e38ef85a08559eb023a99e517bb208ffaa9f0e5443b1808f201879:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyYzYwZGYyZDUxNjQ4NjVhY2QwMDFkOGY0ZDk1MmQ5YTQyYTQyOGFlMDkwMDhiODE4OTNmOGFiZWJhM2E4ZTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImExZTFhMmRiNDVlMTlhNmZlYTA2ZTE5YzUyYjBhOGI1YjNlZTc0ZWRkOTI2ZTFkMDBiNDFkMzVjZWY0MzMyMWQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L516-L543",
+          "version": "repo-lines-v1:sha256:308405fdc401cc2681a0cb91bd3f4cc6c78111248f1ef7c57997afa22476b554:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVkMmMxODQ2YTRmYjAyMjMyZGM0MjI5NGUzN2IxNWI5NDQ5YjNhMTRjNWQxODQ3MjRkYjUzYTNmMjlkNDFlMmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMWQyNzc2YTcwODBhN2VkNGU2MDAwYjg0NGFlZDkxMTQ0MTdjODA3NDY4M2I4MWRmMDBlNDk5OWJiMGJhNjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3MGQzNWUwN2M3MWM3ZWMyMTk2M2IwNGJkYWNjODNlMjEyZTk2NGE4YzhkOGRhYzYyMWRhNGY0ZTc2Yjg0MDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_312ffd7ac56e4556ac470863c1129999",
+      "statement": "`LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED` (default off) makes the daemon dispatch the checker automatically using the same runtime as the maker (self-review, not an independent reviewer) under `LOOP_REVIEWER_TIMEOUT_MS`; a LOOP_WORKER_APPROVAL_REQUIRED error blocks the goal for human approval rather than being swallowed. `LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED` is a deliberately separate, higher flag that does the same for the security_checker lease and is inert without the base flag.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L545-L589",
+          "version": "repo-lines-v1:sha256:ce21dfbea4ee47b12e80be27136c6d62bb20f6ce53361bfa6c2510175f26bfd7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YThiOWU0NTdjMjVmZTJlY2E1ZDI0NWRmNmUxZjdkZWUyNzZiZDM5YWM3MmZkMTY4NmU5ZjQ1OGQ2YTQ3YzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliNjJmNjBkODU5MGE1NzljZjQ2ZjhkNjczNzhjNGM1NzJiOTYyY2VjY2RiOTBjN2E1ZjdiNDJiOTYwNzgyYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRmOTI4ZDkyMTNjOTEzNGRmNTc1ZjhjZmIwYjkyZjY1ZThmMTU4MGQ4NDNjNzdmM2QxMWQ5ODk4N2JlODQ2NmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwOTliMDg0OTk2MTUyZDc0YTIxZmUwNTEzYTBhM2NkMmRhOTU5MzNlMTgxMTVjZDIwM2Q3YWNiN2QwZTkzMTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bd7fab83c7f4d44b177add8df0f2ec9",
+      "statement": "`AUTONOMY_SHADOW_ENABLED` (default off) records an `auto_approve_shadow` judgment for every human approval a loop run waits for — decision 'yes' only for test-only, non-high-risk, non-security changes whose class has >= 3 verified outcomes and no regression — and approves nothing; failure of the shadow bookkeeping is caught so it can never affect the loop.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomy-shadow-service.ts#L4-L42",
+          "version": "repo-lines-v1:sha256:8171a36b27c8e3d51a93d74f324eb14997792bd7289dc6f078396e7a87b8e6a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxYzhiZDZiNTc4YjNlZThmOWRhNDY1Zjk5NGY1OTg5MDQwYmE5NzAyNDgyZDM3OGZiZDg4MWFmMGYzOTdjMTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIyY2Q2ZDAwNzNiNDhlOWY2Y2Y4ZGE5OWIzMTQzNjZkYmYzZTYyNzU4ZGZkZjQzYjE4N2ZmODAzMzEzOGM1YWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ace7f965149143f28b8000438a1cbca8",
+      "statement": "`LOOP_AUTO_APPROVE_TEST_GAP` and `LOOP_AUTO_APPROVE_MUTATION_GAP` (both default off) are the first real auto-approves: `testGapAutoApproveScope` returns the proposal's single new test-file artifact, which the daemon writes onto the maker lease as the enforced `auto_approved_scope` before approving, and the mutation lane additionally requires at least one already-verified human-approved mutation-gap run.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/autonomy-shadow-service.ts#L44-L63",
+          "version": "repo-lines-v1:sha256:077b388a38fda7c93354766d17ba417c78ea0a83f31c695af3861520047cb530:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhNzY4NDM3NTc1MGRiOWNhNTEzYzc2ODAyOGY0ZjNhY2FlN2RmZjI3Zjg4ZDkxNTkxMTA2NGFhZmMxOGY4NjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L281-L289",
+          "version": "repo-lines-v1:sha256:569cc591a12801cb40d7e09d8bc72536812fbeb85656f28c9a04cb07a2a88ba3:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUxZmVhYzNhZjNkMmIyMTZiZTY2YjliMjJhYmUxY2FiZmU2YTE1MzRlNzg1ZWY1OGNkYTY0NTBiMmU0M2VjMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDg5M2Y0MGUzNzgxZWI4OTZjODJkMDQ2YTA4MDY3YTExZTM1Y2RmMmYxZGZhZjI2ZmVhOTBiOGRiNjY3NjQxMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWI1MTg0NDg5NzBjMjkyZWY2NTUyYTU5Y2ZhZTdjNjI2YjlhOTM5MTRmZTgyMzBhMDFhZDE3MjhiNDE4Mzc5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmFlYTk1NTkyZmZlMTNjODBhZTNlOTI2MzQ3NjkyNDY5YjFmM2VlZmMzODE4YTY0OWQ5NWQ0OTdhZTk2MTAzYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_560f238d5c284387ac9ca3a9c332cfe7",
+      "statement": "`TEST_GAP_SOURCE_ENABLED` (default off) starts the TestGapSourceService in the autonomous profile (6 h interval): untested-but-imported server services become fully grounded test-only proposals capped by `TEST_GAP_MAX_PER_DAY`/`TEST_GAP_MAX_IN_FLIGHT` (default 2/2) over `TEST_GAP_REPO_PATH` (default `LOOP_DAEMON_REPOSITORY_PATH`), and a file that ever had a test-gap proposal is never proposed again automatically. `MUTATION_GAP_ENABLED`/`MUTATION_GAP_MAX_PER_DAY` (default off/2, one in flight) run the parallel mutation-gap lane for tested non-sensitive services of 30–400 lines.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/bootstrap/autonomous-services.ts#L119-L129",
+          "version": "repo-lines-v1:sha256:5182d12f3526ab53324a1178ff0f2c847575e2cce557c1b63a74c8ab82258f3e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2YjkzYTlkNjc0MzViYmFmZmI1ZGFkY2MyN2E0MDA2YTk5YTQzYWRhM2RhMTNhMzBlY2Y2MjUzYzk1OTc5MmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkYzBiZTU2YjI1NmFmMjMxMzEzODVjYTMxMTQxODM4ZjhmNzJhMmM2ZjI1YWFhOWIxMWNiZjVlYjhiNjQxNDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4ZTdiYzUyYWMyOGU4N2QxNWRhMjJhMmMxOTFiMDM0MzU4ZDUxN2NlYmVlYTgzZGIwMjY1ZGI2YTZkOTc1NmEifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L101-L119",
+          "version": "repo-lines-v1:sha256:ce54978c2eb058a83686ca32f74406a815e432e5f33a7905c276c8aa0ff8c6a1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZDg4MzE5OTY2NjBmNGE0M2UxYjgyMDU3MzMxMzc4NGVhY2RhODgyZWY0ZGQ2MGQxMjNjMzM4NDYwZDQwY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI1YWJmNjFkZTdjOGZlZGNhMzhiZGNlYjg2NWY5MzExYTA0ZmMzYzNkYzMzNWI4YmQyZTU3MzcyNmNiODJjYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOGM3NDNjMjEyNmQxMTJkZDY1OGJhMjFkNTZiM2VmZDViN2E3MjFiMTYzMjdjN2MxZDc2NWYyNzJiNWUwOGUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L130-L210",
+          "version": "repo-lines-v1:sha256:1835afe562ed55cd4043cfa9282fcc537f290cab0a1f2681c56ec99f738caea4:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImViNjEzZDBmYmIwMGNlYmJjZjdmOWZkZmZiYzBiNTI5NmY3ZjgyMGFkNWE4YWE0YWYzNTU5MzAzNTM5OGY2MzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmMjA5Y2I4NmUwZGUxOTY5MTc4YmY1OGViMTk1OWE1ODBmYzY3ZjNjOGVkNWY4ODhlMzJjMzhlZWIxZTk0M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_993e8e24ca0a4e23a6191e90155969d2",
+      "statement": "`scripts/mutation-gain.mjs` (npm script `test:mutation:grounded`) is the mutation lane's deterministic fitness check: with `MUTATE_FILE`/`MUTATE_TEST` set it runs Stryker on the committed and the working-tree test and passes when the mutation score gains >= `MUTATE_MIN_GAIN` points (default 10) or reaches 90; without them it exits 0 immediately, so the script is a safe listing in `LOOP_DAEMON_CHECK_SCRIPTS` for all lanes, and the daemon injects both variables from the goal's grounding via `mutationCheckEnv` — which also activates the fixed-600000 mutation-lane maker timeout and the 400-line diff budget.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L21-L21",
+          "version": "repo-lines-v1:sha256:4ee836b211bf30e9178098a7a93cf78f5d1fcf91f2ddeb0f0fce6db15ab39508:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlODM2YjIxMWJmMzBlOTE3ODA5OGE3YTkzY2Y3OGY1ZDFmY2Y5MWYyZGRlYjBmMGZjZTZkYjE1YWIzOTUwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGVlODM2YjIxMWJmMzBlOTE3ODA5OGE3YTkzY2Y3OGY1ZDFmY2Y5MWYyZGRlYjBmMGZjZTZkYjE1YWIzOTUwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmJhZWMxNmQ2NjllMGM1NGI2NzAwZjJlZGE1ZGRlM2I5YzdlZWU2MGQ2Yzk0OWVhMTJjMWM2ZWM3MmFmNzFlMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDljYzczYjZmNTBkYjAwZTExYjYwYjlmM2U1YTY2ZWY3NGRkMmMxMDBiZjNiNjc5NGUxNWQ4ZThmMzdmMGVjOCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/test-gap-source-service.ts#L121-L128",
+          "version": "repo-lines-v1:sha256:f0f9531d0e18fa525c95d925d7209559c863f93b7e9fa084e1fc45d8c8863c0e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDM5ZWYxMTk0MzE3YTAzOGVjYTcxOTVhOWIyNTRhYzE0MjhhYjljNDA0ODU4MzM5ZTE0N2RlYmFiNzQzMzZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ3NzExMDFiYjA2NmZhMjUwNjFlOTY2ODE1NTg1NDhjNGU5YWVlNGVkOTE0MDMwM2E0NDI1N2I3NjMzNzhiNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiODg4OGE4M2I5ZTZjZDBlNTA5ODA1NWJlYzk3MDM4ZThhZmM4NmE5ZDU0ZjU0NDkzZmIwZGUwMGNkM2JkYThkMiJ9"
+        },
+        {
+          "resource": "repo://scripts/mutation-gain.mjs#L1-L12",
+          "version": "repo-lines-v1:sha256:9045fefe6352c4ba7a674f469b08fa79869bb764f85c3c9c05a752ce393e1671:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OWM0Nzg3MmI3MWYxMjU4OTk0Mjg5MjQ2NGU3NjRjMGRiMzUwYzIwYjcyMjI4NjQ1NjE1Y2MzNmUwYTA3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YmU4NzI2MWY2MzY3MWZjZGY2N2FlZTcxMDAyNzU3ZTUzYmM5MzFmZjhlOWY2ZWJiMWY4NjIxMTE1YTFjNTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyZTA5YzFiNWZiOGY1NWRjOTBlNDdjZWMxMGZiMzllNGQ2NTMyODFiZDI4MWZmNGU4NzhlM2RhZjQ1OGMzZDcifQ"
+        },
+        {
+          "resource": "repo://scripts/mutation-gain.mjs#L42-L44",
+          "version": "repo-lines-v1:sha256:409e082922c4cebe210a2d4f143f4c0ddfe8d99ae807116b86d23ff810d85ad9:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGMwZGE4OGQ3OTYzMTQ4NGE4MGZhMTZhYWU0YTBkNzFiOGQ2ZWRmNmRjZjVmNjI1ODc1Mjc3ODVkODExMGM4NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWUzOWYwOWI5ZTMyN2FkYzdlODcwNWYyOGM0M2RlODFiYmQ4Mjk4YzU4NWU0Mjk3ODY3YzVjMjczZWFlMDk3ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTAxNmE2ZDIxODZjNTEzZDJlNzdiNWQ1NmFmODIxNjA3ZjI4MTM1MDhiY2IzZDBkNzU5NGNkNWNiMWQ2Mzg0OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_f2c8edb7165745bbadda95ab67ae5528",
+      "statement": "Worker stdout/stderr evidence lives under `resolveEvidenceRoot()`: `LOOP_EVIDENCE_ROOT` wins, otherwise the `agent-evidence/agentic-control-loop-fleet` directory beside an absolute `DB_PATH` (the persistent volume in prod), falling back to the repo's `.data` for local dev — prod 2026-09-24 wrote evidence into the image's /app/.data and lost it on every deploy, so the default deliberately follows DB_PATH.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L130-L140",
+          "version": "repo-lines-v1:sha256:fdb25fe192824b403d07206ea544761d855061d239b4c0b94326622b2d0ba089:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkOWYxMzBhZTY2MWZiNjMyNWE3NDU5NDNkYTUyZWU5YzRjY2ZjMTljMDZlNTY2NzE5MGY1M2NmNDFjMWUzOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlM2QwY2I3NTEyZmExMWFiYjE5YTcwNmVkOTA1MzQ0NGI5MmU0M2I2N2Q2MmYyMjViZDc2ZTI4ZDU5MmI4ZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1OGMzOTk1YTdiN2I3YmU1NTE1ZjZiYzg5N2Y4OWQwYTE1YTZhODI1MTk1MGZkZWE1Yzc3N2MyYzUxODVjYjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_dc872c0d90d04e73a40bddc8826513c2",
+      "statement": "`scripts/auto-deploy.sh` runs on the VPS from a systemd timer and self-deploys main only when all preconditions hold: main differs from the commit in compose.yml, every CI check-run completed green, the commit is at least `AUTO_DEPLOY_SETTLE_MIN` (default 20) minutes old, zero loop workers are running (running worker_leases plus running `loop-worker-%` tasks), and no kill-switch file `$DEPLOY_ROOT/AUTO_DEPLOY_DISABLED` (default `/srv/djimitflo/AUTO_DEPLOY_DISABLED`) exists; the deploy uses `deploy-vps.sh` downloaded from the commit being deployed, and each probe (MAIN_SHA/CURRENT_SHA/CHECKS/COMMIT/LEASES/DEPLOY) can be overridden by an evaluated `AD_<NAME>` env var so the decision logic is testable without a VPS.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/auto-deploy.sh#L1-L54",
+          "version": "repo-lines-v1:sha256:cd382a4cd8c021c7a00022d92d2afff855db2bd0297c141a4371548c05ce09b8:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxNGNiOGU4OWRkNTk1ZGZiNDY3Y2QzNmMzYzM4ZWYwZTk2YjA5YjFmYTVlNDAyYmQ2Nzk2N2E5ZmRkOTZhYWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

@@ -3,9 +3,6 @@ type: subsystem-interface-map
 title: HTTP/WebSocket API Surface & Route Inventory
 description: The server's public network surface — the declarative /api route mount table with per-prefix auth, the derived /api/openapi.json, METRICS_TOKEN-armed /metrics, build-attributable /health endpoints, public /explore pages, global rate/body limits, and the WebSocket `/ws` event protocol to the dashboard.
 tags: [http-api, openapi, route-inventory, websocket, rate-limiting, metrics, health, explore-pages]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-5b54a58d1b51cd490b0e7162
     resource: repo://package.json

@@ -5,7 +5,7 @@ description: How DJIMITFLO_RUNTIME_PROFILE is resolved and exactly which backgro
 tags: [runtime-profile, bootstrap, operator-services, autonomous-services, explainer-fleet, configuration]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-6f28e3706fee061aefa2c0e9
     resource: repo://packages/server/src/__tests__/runtime-profile.test.ts
@@ -33,7 +33,7 @@ sources:
     resource: repo://packages/server/src/services/nested-spawn-service.ts
   - id: openwiki-source-d5f2846ded726ca7ba790a19
     resource: repo://packages/server/src/services/repo-explainer-scheduler.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 ---
 
 # Runtime Profiles (api / operator / autonomous)
@@ -80,7 +80,7 @@ flowchart TD
     RES --> AU{"runtimeProfileEnablesAutonomy?<br/>autonomous only"}
     OP -->|true| OPSVCS["External event ingest + PromptIntel<br/>Dennis queue · Retention · CognitiveLoopClosure<br/>Telegram gateway (needs TELEGRAM_BOTS_CONFIG)"]
     AU -->|true| AUSVCS["initAutonomousServices() + LoopDaemon<br/>MetaOrchestration wired into engine+loops<br/>SelfModificationPipeline · OpenMythos nightly"]
-    ALL["Every profile: database + loop recovery, auth, HTTP/WebSocket, ExecutionEngine,<br/>memory/reasoning/trajectory wiring, always-on schedulers (each default-off),<br/>ExplainerFleetWorker (unless DJIMITFLO_EXPLAINER_AUTONOMY=false)"]
+    ALL["Every profile: database + loop recovery, auth, HTTP/WebSocket, ExecutionEngine,<br/>memory/reasoning/trajectory wiring, always-constructed schedulers (each default-off),<br/>ExplainerFleetWorker (unless DJIMITFLO_EXPLAINER_AUTONOMY=false)"]
 ```
 
 ## Startup sequence and gates
