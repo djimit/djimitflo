@@ -114,6 +114,13 @@ export class QueueHygieneService {
       WHERE status = 'running' AND updated_at < ?
         AND NOT EXISTS (SELECT 1 FROM worker_leases l WHERE l.loop_run_id = loop_runs.id AND l.status IN ('prepared', 'running'))
     `).run(iso, iso, ago(ORPHAN_RUNNING_RUN_HOURS * H)).changes;
-    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning + runsOrphaned };
+    // A run whose goal already ended (e.g. its approval expired: the daemon fails the goal and re-schedules the proposal)
+    // keeps its prepared leases, so the orphan rule above never sees it. Prod 2026-09-25: 84bc044b/4c11f3f5 stayed 'running'.
+    const goalEnded = `status = 'running' AND updated_at < ? AND goal_id IN (SELECT id FROM goals WHERE status IN ('failed', 'cancelled', 'completed'))`;
+    this.db.prepare(`UPDATE worker_leases SET status = 'cancelled', updated_at = ? WHERE status = 'prepared' AND loop_run_id IN (SELECT id FROM loop_runs WHERE ${goalEnded})`)
+      .run(iso, ago(H));
+    const runsOfEndedGoals = this.db.prepare(`UPDATE loop_runs SET status = 'cancelled', metadata = ${tag('goal_ended')}, updated_at = ? WHERE ${goalEnded}`)
+      .run(iso, iso, ago(H)).changes;
+    return { goalsReaped: goalsRunning + goalsBlocked, runsReaped: runsInterrupted + runsPlanning + runsOrphaned + runsOfEndedGoals };
   }
 }
