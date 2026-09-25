@@ -50,6 +50,8 @@ export class EvolutionGymService {
     if (this.timer || !gymEnabled()) return;
     const run = () => { this.runOne().then((r) => { if (r.status !== 'skipped') console.log(`🏋️ gym: ${r.status} (${r.reason}) ${r.species ?? ''} ${r.task?.source ?? ''}`); }).catch((err) => console.warn('Gym attempt failed:', err instanceof Error ? err.message : String(err))); };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
+    // auto-deploy restarts the server every hour or two: waiting a full interval after boot would starve the gym
+    setTimeout(run, Number(process.env.EVOLUTION_GYM_FIRST_DELAY_MS) || 600_000).unref?.();
   }
   stop(): void { if (this.timer) { clearInterval(this.timer); this.timer = null; } }
 
