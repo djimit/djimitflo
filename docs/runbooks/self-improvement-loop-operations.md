@@ -29,6 +29,7 @@ Back up before editing (`cp -p runtime.env runtime.env.bak-<date>`), then `docke
 | `REFLECTION_PROPOSALS_MAX_PER_DAY` | cap on reflection proposals per 24 h (unset = no cap); they rarely ground, so a bounded inflow keeps `needs_grounding` drainable |
 | `TEST_GAP_EXPORTS_ENABLED` | second test-gap lane: exported functions of tested services that no test names → a new `<service>.exports.test.ts` (same caps) |
 | `LOOP_REVIEWER_APPROVAL_INHERIT` | one human approval per run; reviewers inherit it |
+| `APPROVAL_TTL_MS` | how long a pending approval stays valid (default 1 h, 5 min .. 7 days); prod uses 12 h so night-time requests survive until the operator is back |
 | `LOOP_REVIEWER_TIMEOUT_MS` | time a daemon-dispatched checker/security checker gets (default 300 000, max 900 000) |
 | `LOOP_EVOLVE_ENABLED`, `LOOP_EVOLVE_SPECIES` | evolve-loop pilot (test-gap goals): extra makers per species (`runtime[@model]`, max 2); fitness in code picks the one maker that goes to review |
 | `LOOP_BANDIT_ENABLED`, `LOOP_BANDIT_SPECIES`, `LOOP_BANDIT_MAX_SHARE` | E12: maker species chosen per run by Thompson sampling over `skill_outcomes`; first species is the incumbent, challengers get ≤ 10 % of runs until they have 20 outcomes |
