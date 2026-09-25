@@ -41,7 +41,7 @@ const OUTCOME_SQL: Record<string, string> = {
 /** Before #334 the checker opinion saw an empty diff for new files; those rows say nothing about the model (ADR 0002). */
 const EXCLUDE_BEFORE: Record<string, string> = { checker_second_opinion: '2026-09-23T18:30:00Z' };
 
-const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'applied', 'no_change', 'regressed'];
+const REACHED_GOAL = ['scheduled', 'executing', 'verified', 'evaluating', 'applied', 'no_change', 'regressed', 'infra_failed'];
 
 export class ImprovementFunnelService {
   constructor(private readonly db: Database) {}
