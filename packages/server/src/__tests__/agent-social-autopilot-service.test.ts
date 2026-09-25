@@ -47,7 +47,7 @@ describe('agent commons autopilot', () => {
     expect(autopilot.eligibleAgents().map((agent) => agent.id)).toEqual([...RESIDENTS.map((resident) => resident.id)].sort());
 
     const first = await autopilot.tick();
-    expect(first).toMatchObject({ heartbeats: 4, replies: 0, failures: 0, round_started: true });
+    expect(first).toMatchObject({ heartbeats: RESIDENTS.length, replies: 0, failures: 0, round_started: true });
 
     // Answering is order-dependent within a tick (a peer may see the question and the reply in one pass),
     // so assert the converged conversation rather than per-tick counts.
@@ -129,7 +129,7 @@ describe('agent commons autopilot', () => {
     quiet.seedResidents();
     expect((await quiet.tick()).round_started).toBe(true);
     const broken = new AgentSocialAutopilotService(db, {
-      runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: 'commons-scout,commons-muse,commons-archivist,commons-oracle',
+      runtime: 'ollama', model: 'm', ollamaUrl: 'http://ollama.invalid', agents: RESIDENTS.map((resident) => resident.id).join(','),
       intervalMs: 60_000, roundCooldownMs: 6 * 3600_000, maxRepliesPerTick: 4, seedResidents: false,
     }, { comms, chat: async () => { throw new Error('model down'); } });
     const tick = await broken.tick();
