@@ -27,10 +27,39 @@ export class ExpertSourceUnitsService {
     this.enrichment = new ExpertEvidenceEnrichmentService(db, { registry: this.registry });
   }
 
+  private knownRefs(): Set<string> {
+    return new Set((this.db.prepare("SELECT aliases_json FROM expert_identities WHERE kind IN ('paper', 'repository')").all() as Array<{ aliases_json: string }>)
+      .flatMap((row) => JSON.parse(row.aliases_json) as string[]));
+  }
+
+  /**
+   * G1: a paper or repository a fleet agent (Hermes on the Mac mini, Eve-V, ...) discovered, sent as a `discovery.paper` /
+   * `discovery.repository` bus event. Only arXiv ids and GitHub slugs are accepted (they identify the unit exactly), text is
+   * untrusted and clipped, and only discoveries that match the capability taxonomy become units — most briefing papers
+   * (quantum, clinical) are noise for Djimitflo and stay in external_events only.
+   */
+  ingestDiscovery(event: Record<string, unknown>): 'unit' | 'known' | 'irrelevant' | 'invalid' {
+    const str = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
+    const kind = event.event_type === 'discovery.repository' ? 'repository' : 'paper';
+    const raw = str(event.ref ?? event.arxiv_id ?? event.repo, 200).replace(/^(arxiv:|github:|https?:\/\/(arxiv\.org\/abs\/|github\.com\/))/i, '').replace(/\/$/, '');
+    const id = kind === 'paper' ? /^\d{4}\.\d{4,5}/.exec(raw)?.[0] : /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(raw) ? raw.replace(/\.git$/, '').toLowerCase() : undefined;
+    const title = str(event.title, 300) || id || '';
+    if (!id || !title) return 'invalid';
+    const ref = kind === 'paper' ? `arxiv:${id}` : `github:${id}`;
+    if (this.knownRefs().has(ref)) return 'known';
+    const note = str(event.note ?? event.summary, 1000);
+    const categories = Array.isArray(event.categories) ? event.categories.filter((c): c is string => typeof c === 'string').slice(0, 10) : [];
+    const capabilities = this.enrichment.capabilitiesFor({ arxiv_id: id, url: '', title, summary: note, authors: [], categories, primary_category: categories[0] ?? null, published: null });
+    if (!capabilities.length) return 'irrelevant';
+    const agent = str(event.agent ?? event.source, 80) || 'unknown-agent';
+    const url = kind === 'paper' ? `https://arxiv.org/abs/${id}` : `https://github.com/${id}`;
+    this.unit(kind, kind === 'paper' ? title : id, ref, { kind, title, url, sourceRef: ref, sourceFamily: `agent:${agent}`, metadata: { derived: 'fleet-discovery', agent, note, categories } }, capabilities, { source: 'fleet-discovery', agent });
+    return 'unit';
+  }
+
   /** Materialises up to `limit` new units; returns how many papers and repositories became units this call. */
   materialize(limit = 20): { papers: number; repositories: number } {
-    const known = new Set((this.db.prepare("SELECT aliases_json FROM expert_identities WHERE kind IN ('paper', 'repository')").all() as Array<{ aliases_json: string }>)
-      .flatMap((row) => JSON.parse(row.aliases_json) as string[]));
+    const known = this.knownRefs();
     const rows = this.db.prepare(`SELECT source_ref, title, url, metadata_json FROM expert_evidence
       WHERE kind = 'paper' AND lifecycle = 'active' GROUP BY source_ref ORDER BY MIN(created_at)`).all() as StoredPaper[];
     let papers = 0; let repositories = 0;

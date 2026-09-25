@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { schema } from '../database/schema';
 import { runMigrations, runPreSchemaMigrations } from '../database/migrate';
 import { ExternalEventIngestService } from '../services/external-event-ingest-service';
+import { FrontierExpertRegistryService } from '../services/frontier-expert-registry-service';
 
 describe('ExternalEventIngestService', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -30,6 +31,20 @@ describe('ExternalEventIngestService', () => {
     expect(db.prepare('SELECT id, correlation_id, causation_id, aggregate_id, aggregate_version FROM external_events').all()).toEqual([
       { id: 'paperclip:issue-1:1', correlation_id: 'issue-1', causation_id: null, aggregate_id: 'issue-1', aggregate_version: 1 },
     ]);
+    db.close();
+  });
+
+  it('G1: turns a fleet discovery into an expert unit only when source units are enabled', async () => {
+    const db = createDb();
+    new FrontierExpertRegistryService(db).seedTaxonomy();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ events: [
+      { _id: 'd-1', event_id: 'discovery:arxiv:2609.12345', event_type: 'discovery.paper', source: 'hermes-macmini', ref: 'arxiv:2609.12345', title: 'Scalable oversight for coding agents', dedupe_key: 'discovery:arxiv:2609.12345' },
+    ] }), { status: 200 })));
+    vi.stubEnv('FRONTIER_EXPERT_SOURCE_UNITS_ENABLED', 'true');
+    try {
+      expect(await new ExternalEventIngestService(db, 'http://event-bus').pollOnce()).toBe(1);
+    } finally { vi.unstubAllEnvs(); }
+    expect(db.prepare("SELECT kind, lifecycle_state AS state FROM expert_identities WHERE kind = 'paper'").all()).toEqual([{ kind: 'paper', state: 'CAPABILITY_INFERRED' }]);
     db.close();
   });
 
