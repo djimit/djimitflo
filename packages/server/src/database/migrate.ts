@@ -1854,6 +1854,7 @@ export function createFrontierExpertTables(db: BetterSqlite3Database) {
       identity_confidence REAL NOT NULL DEFAULT 0 CHECK(identity_confidence >= 0 AND identity_confidence <= 1),
       provenance_json TEXT NOT NULL DEFAULT '{}',
       version INTEGER NOT NULL DEFAULT 1,
+      kind TEXT NOT NULL DEFAULT 'person',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -1969,6 +1970,8 @@ export function createFrontierExpertTables(db: BetterSqlite3Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_expert_source_snapshots_source ON expert_source_snapshots(source, retrieved_at);
   `);
+  // E2: expertise units beyond people — a paper or a repository can itself carry evidence-backed capabilities.
+  addMissingColumns(db, 'expert_identities', [{ name: 'kind', definition: "TEXT NOT NULL DEFAULT 'person'" }]);
 }
 
 /**
