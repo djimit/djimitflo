@@ -14,9 +14,9 @@ last_validated: 2026-06-21T22:50:00Z
 review_cycle_days: 90
 tags: [memory, architecture, knowledge-work, software-brain, loops, okb, evidence, specialists]
 related:
-  - openspec/changes/agentic-control-loop-fleet:RELATED_TO
-  - openspec/changes/next-level-swarm-skills-specialists:RELATED_TO
-  - openspec/changes/g15-enforced-swarm-intelligence:RELATED_TO
+  - openspec/changes/archive/2026-06-26-agentic-control-loop-fleet:RELATED_TO
+  - openspec/changes/archive/2026-06-26-next-level-swarm-skills-specialists:RELATED_TO
+  - openspec/changes/archive/2026-06-26-g15-enforced-swarm-intelligence:RELATED_TO
   - memory.okb-foundation-build:RELATED_TO
 ---
 
@@ -142,8 +142,8 @@ update `knowledge/memory/index.md`.
 
 - `notes/software-brain-problem-discussion.md` — full two-part discussion with
   source-code evidence
-- `openspec/changes/agentic-control-loop-fleet/proposal.md` — loop contract model
-- `openspec/changes/next-level-swarm-skills-specialists/proposal.md` —
+- `openspec/changes/archive/2026-06-26-agentic-control-loop-fleet/proposal.md` — loop contract model
+- `openspec/changes/archive/2026-06-26-next-level-swarm-skills-specialists/proposal.md` —
   specialist councils, hypothesis workbench, evidence graph, claim ledger
-- `openspec/changes/g15-enforced-swarm-intelligence/proposal.md` — enforcement
+- `openspec/changes/archive/2026-06-26-g15-enforced-swarm-intelligence/proposal.md` — enforcement
 - `memory/okb-foundation-build.md` — OKB schema and validator build status

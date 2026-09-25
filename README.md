@@ -10,13 +10,14 @@
 
 DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI coding agents, managing tasks across multiple runtimes, and governing agent behavior with approval workflows, policy enforcement, and audit trails.
 
-**Status**: Research prototype. Not production-ready for sensitive data. See [Security Status](#security-status) and [Threat Model](.swarm/THREAT-MODEL.md).
+**Status**: Research prototype. Not production-ready for sensitive data. See [Security Status](#security-status) and the [Security Model](docs/security.md).
 
 ---
 
 ## Table of Contents
 
 - [Status](#status)
+- [What runs in production](#what-runs-in-production)
 - [What DjimFlo Does](#what-djimflo-does)
 - [Architecture](#architecture)
 - [Security Status](#security-status)
@@ -38,13 +39,37 @@ DjimFlo is a TypeScript monorepo backend + React dashboard for orchestrating AI 
 | **Packages** | 7 npm workspaces + knowledge runtime directory |
 | **Node** | >= 22 and < 25 |
 | **TypeScript** | 6.x strict mode |
-| **Last Updated** | 2026-09-09 |
+| **Production** | Single VPS container, auto-deployed from green `main` ([deployment](docs/deployment.md)) |
+| **Last Updated** | 2026-09-25 |
 
-Execution evidence and limitations from the current local reconstruction are in
-[the verification report](reports/autonomous-audit-20260909/VERIFICATION_REPORT.md),
-[capability graph](reports/autonomous-audit-20260909/CAPABILITY_MATRIX.md), and
-[runtime matrix](reports/autonomous-audit-20260909/RUNTIME_MATRIX.md).
+Current operating state, flags and procedures: the
+[self-improvement loop runbook](docs/runbooks/self-improvement-loop-operations.md) and the ADRs in [`docs/adr/`](docs/adr/).
+The 2026-09-09 audit ([verification report](reports/autonomous-audit-20260909/VERIFICATION_REPORT.md),
+[gap register](reports/autonomous-audit-20260909/GAP_REGISTER.md)) is kept as a historical baseline.
 Adapter registration, rendered screens and passing unit tests do not establish production readiness.
+
+---
+
+## What runs in production
+
+Djimitflo is the work control plane of the Djimit ecosystem (Paperclip was retired on 2026-09-21,
+[ADR 0001](docs/adr/0001-djimitflo-core-retire-paperclip.md)). What is live today, each behind its own flag:
+
+- **Self-improvement loop** — proposal → expert panel → goal → approval → maker in a disposable worktree →
+  deterministic checks (`test:changed`, lint, type-check, grounded mutation score) → checker and security review →
+  verification → draft PR. Humans merge; gates, auth and deploy are never evolved by the loop.
+- **Grounded lanes** — test-gap, exports and mutation-gap proposals with objective fitness; low-risk lanes are
+  auto-approved within a scope gate. Fitness, lineage and failure causes land in `skill_outcomes`.
+- **Evolution** — competing maker species per goal ([evolve loop](docs/design/evolve-loop.md)), an
+  [evolution gym](docs/design/evolution-gym.md) that replays past fix commits as scored tasks, memory rules and skill
+  cards under selection, and typed judgments in shadow ([ADR 0002](docs/adr/0002-typesafe-judgment-layer.md),
+  [ADR 0003](docs/adr/0003-closing-the-learning-cycle.md)).
+- **Frontier Experts** — a governed registry of people, papers and repositories (DISCOVERED → … → ACTIVE, two humans
+  for promotion), technique cards with contradictions, and paper/repository discoveries from fleet agents
+  (`discovery.*` events).
+- **Agent Commons** — resident model perspectives, a grounding guild, and invitations for agents on other hosts.
+- **Native intake** — the Djimit event bus feeds roborev findings, fleet discoveries, board handoffs and outcomes into
+  work items; GitHub pull requests get an automated review status.
 
 ---
 
@@ -97,14 +122,16 @@ djimitflo/
 │   ├── agent-catalog/      # Agent import from catalog files
 │   ├── ransomware-module/  # Anti-ransomware detection (private)
 │   └── knowledge/          # Knowledge storage (runtime-generated)
-├── .swarm/                 # Threat model, evidence, security docs
+├── docs/                   # ADRs, design notes, runbooks
+├── openspec/               # Specs and change proposals (finished ones in changes/archive)
+├── scripts/                # Deploy, probes, fleet publishers
 ├── Dockerfile              # Reproducible multi-stage build
 └── docker-entrypoint.sh    # Container entrypoint
 ```
 
 ### Security Architecture
 
-See the [Security Model](docs/security.md) and [current evidence-backed gaps](reports/autonomous-audit-20260909/GAP_REGISTER.md). A complete current STRIDE assessment is not claimed.
+See the [Security Model](docs/security.md) and the [security risk register](docs/security-risk-register.md). A complete current STRIDE assessment is not claimed.
 
 **Trust Boundaries**:
 1. External Internet → API Server (TLS 1.3, JWT 15min, CSP)
