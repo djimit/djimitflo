@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { mineGymTasks, parseNumstat, selectGymTasks } from '../services/gym-task-miner';
 
 const log = [
@@ -18,8 +19,12 @@ it('selects commits that changed one small, live, non-sensitive service together
   ]);
 });
 
-it('mines real replay tasks from this repository', () => {
-  const tasks = mineGymTasks(path.resolve(__dirname, '../../../..'), { sinceDays: 3650 });
+const repo = path.resolve(__dirname, '../../../..');
+// CI checks out with depth 1: there is no history to mine there
+const shallow = (() => { try { return execFileSync('git', ['-C', repo, 'rev-parse', '--is-shallow-repository'], { encoding: 'utf8' }).trim() === 'true'; } catch { return true; } })();
+
+it.skipIf(shallow)('mines real replay tasks from this repository', () => {
+  const tasks = mineGymTasks(repo, { sinceDays: 3650 });
   expect(tasks.length).toBeGreaterThan(20); // prod 2026-09-25: 151 candidates since June before the live/sensitive filters
   for (const t of tasks) expect(t.source).toMatch(/^packages\/server\/src\/services\//);
 });
