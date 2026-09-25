@@ -271,6 +271,21 @@ export class LoopDaemon {
     return true;
   }
 
+  /** N6: approve an evolve sibling when the run's first maker was auto-approved (J5), with the same scope. */
+  private async autoApproveSibling(runId: string, primaryLeaseId: string, siblingLeaseId: string): Promise<boolean> {
+    const lease = (id: string) => this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata: string } | undefined;
+    const scope = (JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string }).auto_approved_scope;
+    const meta = JSON.parse(lease(siblingLeaseId)?.metadata || '{}') as { approval_id?: string; execution_task_id?: string };
+    const approvalId = meta.approval_id ?? (meta.execution_task_id
+      ? (this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(meta.execution_task_id) as { id: string } | undefined)?.id
+      : undefined);
+    if (!scope || !approvalId) return false;
+    this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, siblingLeaseId);
+    try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved evolve sibling ${approvalId} (scope ${scope})`, { approval_id: approvalId, sibling_lease_id: siblingLeaseId }); } catch { /* logging */ }
+    await this.loops.decideWorkerApproval(approvalId, true, 'autonomy:test-gap-rule-v1', `evolve sibling of auto-approved maker ${primaryLeaseId}`);
+    return true;
+  }
+
   /** approved + task finished -> requeue the goal on its existing run; denied/expired -> fail it. Otherwise keep waiting. */
   private resumeApprovalBlockedGoals(): void {
     const rows = this.db.prepare("SELECT id, metadata FROM goals WHERE status = 'blocked' AND json_extract(metadata, '$.awaiting_approval') IS NOT NULL").all() as Array<{ id: string; metadata: string }>;
@@ -483,7 +498,15 @@ export class LoopDaemon {
             const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
             // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
             contenders.push(sibling.id);
-            await this.loops.executeWorker(run.id, { lease_id: sibling.id, timeout_ms: 300_000, diff_max_lines: 200, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) });
+            const siblingInput = { lease_id: sibling.id, timeout_ms: 300_000, diff_max_lines: 200, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
+            try {
+              await this.loops.executeWorker(run.id, siblingInput);
+            } catch (error) {
+              // N6: a sibling is a maker, so it needs its own approval and used to fail here every time. In an auto-approved
+              // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
+              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.autoApproveSibling(run.id, makerLease.id, sibling.id))) throw error;
+              await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
+            }
             this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
           } catch (error) {
             try { new LoopEventService(this.db).recordEvent(run.id, 'evolve_sibling_failed', 'warning', `Evolve sibling ${sp.runtime}${sp.model ? `@${sp.model}` : ''} failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id }); } catch { /* logging */ }
