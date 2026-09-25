@@ -241,6 +241,9 @@ export function initAutonomousServices(db: any, recoverySvc: LoopService): void 
     }).then(() => {
       const generated = autonomousGoals.generateAll();
       if (generated.total > 0) console.log(`🎯 Autonomous goals generated: ${generated.total} (${generated.improvements} improvements, ${generated.security} security)`);
+    }).catch((error) => {
+      // an error here used to be an unhandled rejection that killed the process on every boot (prod 2026-09-25)
+      console.warn('⚠️  Autonomous goal generation failed (non-fatal):', error instanceof Error ? error.message : String(error));
     });
     // Panel-authorised (scheduled) proposals used to become goals only at boot: a requeued or late-scheduled proposal
     // waited for the next restart (prod 2026-09-25: dc1143b8 sat 'scheduled' for 40+ min). Only this generator, hourly.
