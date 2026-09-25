@@ -464,11 +464,14 @@ export class LoopDaemon {
       }
 
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
-      const makerTimeout = daemonMakerTimeoutMs(Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0);
+      const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
+      const makerTimeout = daemonMakerTimeoutMs(mutationLane);
+      // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
+      const makerDiffMax = mutationLane ? 400 : 200;
       if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
         timeout_ms: makerTimeout,
-        diff_max_lines: 200,
+        diff_max_lines: makerDiffMax,
         skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
       });
 
@@ -488,7 +491,7 @@ export class LoopDaemon {
             await this.loops.executeWorker(run.id, {
               lease_id: retryMaker.id,
               timeout_ms: makerTimeout,
-              diff_max_lines: 200,
+              diff_max_lines: makerDiffMax,
               skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
             });
             this.loops.runDeterministicChecks(run.id, {
@@ -510,7 +513,7 @@ export class LoopDaemon {
             const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
             // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
             contenders.push(sibling.id);
-            const siblingInput = { lease_id: sibling.id, timeout_ms: makerTimeout, diff_max_lines: 200, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
+            const siblingInput = { lease_id: sibling.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
             try {
               await this.loops.executeWorker(run.id, siblingInput);
             } catch (error) {
