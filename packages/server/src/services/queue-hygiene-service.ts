@@ -16,7 +16,11 @@ export const WORK_ITEM_TTL_DAYS: Record<string, number> = {
 const CLAIM_TTL_DAYS = 14;
 const DRAFT_CAPABILITY_TTL_DAYS = 30;
 
-export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number; goalsReaped: number; runsReaped: number }
+export interface HygieneResult { workItemsExpired: number; claimsExpired: number; draftsDeprecated: number; goalsReaped: number; runsReaped: number; proposalsArchived: number }
+
+// N13 (operator-approved 2026-09-25): a proposal parked for grounding or evidence that nobody grounded in 14 days is
+// archived (reason appended to its evidence refs), so the parked stock stays drainable instead of growing forever.
+export const PARKED_PROPOSAL_TTL_DAYS = 14;
 
 // Zombie thresholds (prod 2026-09-22: 12 goals `running` for 9-14 days, 20 `blocked` without a wait reason, 204 `interrupted` runs).
 const RUNNING_GOAL_STALE_HOURS = 24;
@@ -39,7 +43,7 @@ export class QueueHygieneService {
     const run = () => {
       try {
         const r = this.sweep();
-        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated || r.goalsReaped || r.runsReaped) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated} goals=${r.goalsReaped} runs=${r.runsReaped}`);
+        if (r.workItemsExpired || r.claimsExpired || r.draftsDeprecated || r.goalsReaped || r.runsReaped || r.proposalsArchived) console.log(`🧹 queue hygiene: work_items=${r.workItemsExpired} claims=${r.claimsExpired} drafts=${r.draftsDeprecated} goals=${r.goalsReaped} runs=${r.runsReaped} parked_proposals=${r.proposalsArchived}`);
       } catch (err) { console.warn('Queue hygiene sweep failed:', err instanceof Error ? err.message : String(err)); }
     };
     this.timer = setInterval(run, intervalMs);
@@ -70,8 +74,13 @@ export class QueueHygieneService {
       UPDATE swarm_capabilities SET status = 'deprecated', updated_at = ?
       WHERE status = 'draft' AND owner = 'meta-evolution' AND created_at < ?
     `).run(iso, cutoff(DRAFT_CAPABILITY_TTL_DAYS)).changes;
+    const proposalsArchived = this.db.prepare(`
+      UPDATE self_improvements SET status = 'archived', updated_at = ?,
+        evidence_refs_json = json_insert(COALESCE(NULLIF(evidence_refs_json, ''), '[]'), '$[#]', 'hygiene:parked_${PARKED_PROPOSAL_TTL_DAYS}d')
+      WHERE status IN ('needs_grounding', 'needs_more_evidence') AND created_at < ?
+    `).run(iso, cutoff(PARKED_PROPOSAL_TTL_DAYS)).changes;
     const zombies = this.sweepZombies(now);
-    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts, ...zombies };
+    return { workItemsExpired, claimsExpired: claims, draftsDeprecated: drafts, ...zombies, proposalsArchived };
   }
 
   /**
