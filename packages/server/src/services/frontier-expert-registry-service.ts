@@ -57,6 +57,12 @@ export const CAPABILITY_TAXONOMY: Array<{ id: string; label: string; aliases: st
   { id: 'coordination_mechanisms', label: 'Coordination mechanisms', aliases: ['international coordination', 'compute governance', 'mechanism design', 'racing dynamics'], parent: 'ai_governance' },
   { id: 'human_ai_interaction', label: 'Human-AI interaction', aliases: ['hci', 'human-ai collaboration'] },
   { id: 'multi_agent_systems', label: 'Multi-agent systems', aliases: ['multi-agent', 'agent societies', 'autonomous agents', 'collusion', 'negotiation between agents'] },
+  // E4 (2026-09-25): the engineering work Djimitflo itself does had no capability, so the resolver abstained on it.
+  { id: 'ai_software_engineering', label: 'AI for software engineering', aliases: ['software engineering', 'large language models for code', 'llms for code', 'code llms'] },
+  { id: 'code_generation', label: 'Code generation', aliases: ['program synthesis', 'code synthesis', 'code completion'], parent: 'ai_software_engineering' },
+  { id: 'program_repair', label: 'Program repair', aliases: ['automated program repair', 'bug fixing', 'patch generation', 'fault localization', 'swe-bench'], parent: 'ai_software_engineering' },
+  { id: 'software_testing', label: 'Software testing', aliases: ['test generation', 'unit test generation', 'mutation testing', 'flaky tests', 'fuzzing', 'regression testing'], parent: 'ai_software_engineering' },
+  { id: 'coding_agents', label: 'Coding agents', aliases: ['software agents', 'swe-agent', 'agentic coding', 'code agents', 'repository-level'], parent: 'ai_software_engineering' },
 ];
 
 const TRANSITIONS: Record<ExpertLifecycleState, ExpertLifecycleState[]> = {
