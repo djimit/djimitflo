@@ -2,7 +2,7 @@
 
 > See root `.github/copilot-instructions.md` for global conventions.
 
-Codex-native agent orchestration control plane. Monorepo with server and dashboard workspaces.
+Work control plane of the Djimit ecosystem with a self-improving, multi-runtime agent loop (OpenCode, Codex, Claude, Hermes, …). npm-workspaces monorepo.
 
 ## Commands
 
@@ -29,21 +29,20 @@ npm run clean            # rm -rf packages/*/dist packages/*/node_modules node_m
 
 ## Architecture
 
-Monorepo (`npm workspaces`). Uses `ws` for WebSocket communication. Server and dashboard are separate workspaces.
+Monorepo (`npm workspaces`). Uses `ws` for WebSocket communication.
 
 ```
-packages/server/
-├── package.json          # @djimitflo/server workspace
-└── src/                  # Server source
-
-packages/dashboard/
-├── package.json          # @djimitflo/dashboard workspace
-└── src/                  # Dashboard source (React + Vite)
-
-packages/shared/
-├── package.json          # @djimitflo/shared workspace
-└── src/                  # Shared utilities
+packages/server/            # @djimitflo/server — Express + SQLite backend, loops, services (src/services), routes
+packages/dashboard/         # @djimitflo/dashboard — React + Vite
+packages/shared/            # @djimitflo/shared — types, roles, auth helpers
+packages/mcp-server/        # MCP server (stdio + HTTP); pinned to zod v3 for the MCP SDK
+packages/telegram/          # Telegram gateway
+packages/agent-catalog/     # agent profile import/evaluate/activate
+packages/ransomware-module/ # defensive anti-ransomware detection
 ```
+
+Operating state and flags: `docs/runbooks/self-improvement-loop-operations.md`; decisions: `docs/adr/`.
+Production deploys itself from green `main` (`scripts/auto-deploy.sh`); manual deploys use `scripts/deploy-vps.sh`.
 
 ## Key Details
 

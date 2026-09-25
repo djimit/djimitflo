@@ -9,7 +9,7 @@ confidence: reasoning
 classification: internal
 created_at: 2026-06-21T22:45:00Z
 tags: [notes, architecture, knowledge-work, software-brain, loops, okb, evidence]
-related: [openspec/changes/agentic-control-loop-fleet:RELATED_TO, openspec/changes/next-level-swarm-skills-specialists:RELATED_TO, openspec/changes/g15-enforced-swarm-intelligence:RELATED_TO]
+related: [openspec/changes/archive/2026-06-26-agentic-control-loop-fleet:RELATED_TO, openspec/changes/archive/2026-06-26-next-level-swarm-skills-specialists:RELATED_TO, openspec/changes/archive/2026-06-26-g15-enforced-swarm-intelligence:RELATED_TO]
 ---
 
 # The Software-Brain Problem
