@@ -15,6 +15,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { WorktreeManager } from './worktree-manager';
 
 interface HealthCheck {
   name: string;
@@ -89,17 +90,14 @@ export class SelfHealingService {
     });
 
     // Check 3: Orphaned worktrees
-    const orphaned = this.db.prepare(`
-      SELECT COUNT(*) as c FROM worker_leases
-      WHERE worktree_path IS NOT NULL
-      AND status = 'completed'
-      AND updated_at < datetime('now', '-24 hours')
-    `).get() as any;
+    // Count real directories on disk (same rule the daemon's pruner uses), not completed leases
+    // that merely still carry a worktree_path (which reported 82 while disk held ~19 tiny dirs).
+    const orphaned = { c: new WorktreeManager(this.db).pruneOrphanedWorktrees({ dryRun: true }) };
 
     checks.push({
       name: 'orphaned_worktrees',
       status: (orphaned.c || 0) > 10 ? 'degraded' : 'healthy',
-      message: `${orphaned.c || 0} potentially orphaned worktrees`,
+      message: `${orphaned.c || 0} orphaned worktree directories on disk`,
       lastChecked: now,
     });
 

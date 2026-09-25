@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DbHandle } from './db.js';
 import { registerAgentTools } from './tools/agents.js';
+import { registerExpertTools } from './tools/experts.js';
 import { registerExplainerTools } from './tools/explainer.js';
 import { registerGoalTools } from './tools/goals.js';
 import { registerGovernanceTools } from './tools/governance.js';
@@ -24,4 +25,5 @@ export function registerTools(server: McpServer, db: DbHandle): void {
   registerExplainerTools(server, db.db);
   registerGovernanceTools(server, db);
   registerPlatformTools(server, db);
+  registerExpertTools(server, db);
 }

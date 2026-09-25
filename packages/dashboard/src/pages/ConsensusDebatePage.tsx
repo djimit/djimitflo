@@ -5,6 +5,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { MessageSquare, Trophy, Plus, Play } from 'lucide-react';
 import { api } from '../lib/api';
+import { PageHeader, primaryButton, panel } from '../components/PageHeader';
 
 interface CouncilSession {
   id: string;
@@ -14,6 +15,7 @@ interface CouncilSession {
   final_confidence: number | null;
   cost_dollars: number;
   token_usage: number;
+  metadata?: { failure?: { message: string; phase: string } };
 }
 
 export function ConsensusDebatePage() {
@@ -48,78 +50,70 @@ export function ConsensusDebatePage() {
   const activeDebate = sessions.find((session) => session.id === selected);
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <MessageSquare size={28} color="#6366f1" />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>Consensus Debates</h1>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
+      <PageHeader
+        title="Consensus Debates"
+        icon={<MessageSquare className="h-7 w-7 text-accent" />}
+        description="Several models answer the same question, review each other and a synthesis is produced. A failed debate shows the phase and the reason."
+      />
 
-      {/* Create Debate */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+      <div className="flex gap-2">
         <input
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
           placeholder="Enter debate topic..."
-          style={{ flex: 1, padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: '6px' }}
+          aria-label="Debate topic"
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-foreground"
         />
-        <button onClick={createDebate} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-          <Plus size={14} /> Create
-        </button>
+        <button onClick={createDebate} className={primaryButton}><Plus className="h-4 w-4" /> Create</button>
       </div>
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', margin: '-12px 0 24px' }}>
-        <label><input type="checkbox" checked={independentJudge} onChange={event => setIndependentJudge(event.target.checked)} /> Independent judge</label>
-        {independentJudge && <input value={judgeModel} onChange={event => setJudgeModel(event.target.value)} placeholder="Optional judge model" style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: '6px' }} />}
+      <div className="flex items-center gap-3 text-sm text-foreground-secondary">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={independentJudge} onChange={event => setIndependentJudge(event.target.checked)} /> Independent judge</label>
+        {independentJudge && <input value={judgeModel} onChange={event => setJudgeModel(event.target.value)} placeholder="Optional judge model" aria-label="Judge model" className="rounded-lg border border-border bg-background px-3 py-1.5 text-foreground" />}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: '24px' }}>
-        {/* Debate List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div className="grid gap-6 md:grid-cols-[300px_1fr]">
+        <div className="space-y-2">
           {sessions.map((debate) => (
-            <div
+            <button
               key={debate.id}
               onClick={() => setSelected(debate.id)}
-              style={{
-                padding: '12px', borderRadius: '6px', cursor: 'pointer',
-                background: selected === debate.id ? '#eef2ff' : '#f8fafc',
-                border: `1px solid ${selected === debate.id ? '#6366f1' : '#e2e8f0'}`,
-              }}
+              className={`w-full rounded-lg border p-3 text-left transition-colors ${selected === debate.id ? 'border-accent bg-accent/10' : 'border-border bg-background-secondary hover:bg-background-elevated'}`}
             >
-              <div style={{ fontWeight: 500, fontSize: '14px' }}>{debate.task_description.slice(0, 40)}</div>
-              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>{debate.status}</div>
-            </div>
+              <div className="text-sm font-medium text-foreground">{debate.task_description.slice(0, 40)}</div>
+              <div className={`mt-1 text-xs ${debate.status === 'failed' ? 'text-status-error' : 'text-foreground-tertiary'}`}>{debate.status}</div>
+            </button>
           ))}
           {sessions.length === 0 && (
-            <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '14px' }}>
-              No debates yet. Create one above.
-            </div>
+            <div className="p-6 text-center text-sm text-foreground-muted">No debates yet. Create one above.</div>
           )}
         </div>
 
-        {/* Debate Detail */}
         <div>
           {activeDebate ? (
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>{activeDebate.task_description}</h2>
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold text-foreground">{activeDebate.task_description}</h2>
+              {activeDebate.status === 'failed' && (
+                <p role="alert" className="text-status-error">
+                  Failed{activeDebate.metadata?.failure ? ` in ${activeDebate.metadata.failure.phase}: ${activeDebate.metadata.failure.message}` : ' (no reason recorded — created before failure logging)'}
+                </p>
+              )}
               {!activeDebate.final_output && (
-                <button onClick={() => void execute(activeDebate.id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: '#6366f1', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                  <Play size={14} /> Run council
-                </button>
+                <button onClick={() => void execute(activeDebate.id)} className={primaryButton}><Play className="h-4 w-4" /> Run council</button>
               )}
               {activeDebate.final_output && (
-                <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', marginTop: '12px' }}>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                    <Trophy size={14} color="#f59e0b" />
+                <div className={panel}>
+                  <div className="mb-2 flex gap-2 text-foreground">
+                    <Trophy className="h-4 w-4 text-status-paused" />
                     <strong>{Math.round((activeDebate.final_confidence || 0) * 100)}% confidence</strong>
-                    <span style={{ marginLeft: 'auto' }}>{activeDebate.token_usage} tokens · ${activeDebate.cost_dollars.toFixed(4)}</span>
+                    <span className="ml-auto text-foreground-secondary">{activeDebate.token_usage} tokens · ${activeDebate.cost_dollars.toFixed(4)}</span>
                   </div>
-                  <p style={{ whiteSpace: 'pre-wrap' }}>{activeDebate.final_output}</p>
+                  <p className="whitespace-pre-wrap text-foreground-secondary">{activeDebate.final_output}</p>
                 </div>
               )}
             </div>
           ) : (
-            <div style={{ padding: '48px', textAlign: 'center', color: '#94a3b8' }}>
-              Select a debate to view details
-            </div>
+            <div className="p-12 text-center text-foreground-muted">Select a debate to view details</div>
           )}
         </div>
       </div>

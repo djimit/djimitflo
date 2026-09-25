@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:81dfc92c7c7b47fb0dc21cf684807ffaf66b5846f89c6ffc5f8dc16f919e3a75",
+  "claims": [
+    {
+      "id": "claim_012e9d5c7b1e48d9abe7878e562dc189",
+      "statement": "The root npm test script runs shell/Python/Node selftests (deploy-vps, wiki-delta-emitter, paperclip-archive-export, paperclip-readonly-monitor, live-identity-evidence, integration-probes) before building the shared and agent-catalog workspaces and running workspace vitest suites, so harness breakage fails the gate before any vitest assertion executes.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L18-L18",
+          "version": "repo-lines-v1:sha256:fc5157e4fa43b3ef911b2d0ef5c413035ff969f0f38b4564360e65996cb0af73:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmM1MTU3ZTRmYTQzYjNlZjkxMWIyZDBlZjVjNDEzMDM1ZmY5NjlmMGYzOGI0NTY0MzYwZTY1OTk2Y2IwYWY3MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDQ4MmQyOGE3ZTNlMmZjNjgxZmZlM2NlNTJmZTcwODg1YjI1MTUwYzQ1Y2VmMmMyMjc4OTg4ZmMwNzU4YTQ4NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzhlMGQ0ZGEzYmI3MjQwNGRlYjA4MjJkMzYwNTE3Nzc0ZmVhMDE5NzMwODZlYWE0YzlmMWI2NjUyZWNjM2U0YyJ9"
+        },
+        {
+          "resource": "repo://scripts/deploy-vps.selftest.sh#L1-L39",
+          "version": "repo-lines-v1:sha256:77fdfe14b1fe799f7252aeed39791dc9b174d549b3ec0918d91f2cfe3a973990:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YTkwOWRhMGE5MGQ0ZjEyZjljOThjNGU4MDYyZWU0YTNmNWZmZGViMDlmZjExYTBkMjI1ZDBhMmI2OGY2NjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/integration-probes.test.mjs#L1-L35",
+          "version": "repo-lines-v1:sha256:c470ccfb72090e7717e32497485cb3d47bac0d446a542636142574f35a65daf2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1MTgzZWRkMzRlN2FmNTNmY2ZlMGMwMzg5NzY4NDQ3NTViMjMwNTUyN2RjZTNkYWVhNmNmOTA1ZGNhOWJmNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.test.mjs#L1-L40",
+          "version": "repo-lines-v1:sha256:ccf8388b94d289bee37f0e8e1ab93ebdcb0b041851ed04ac8b402d1a0eb47860:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwNjYyZmJjYzBkNGQ4YzExOTY4M2RhMTk0N2IxMjA0NjgwM2Q0OGI0NDc5ODgxOTdlYzMwOTJmZmU1YThiNGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNWNmMTZiMmE4YjZkZWNiOTI4MmM0M2IxOWQ2NTA0MmY2ZTA0OTM4ODM1YzdmMmYxYzIxZDU4MzFmNzU3OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/paperclip-archive-export.py#L44-L54",
+          "version": "repo-lines-v1:sha256:a345740b993b2657c66c250ee0b2691a6c366386ecfbb15a75b76852a4570a7b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1OGM3MzJjN2Y3MTQ3OTM0OGQ4NTE0NGYyMjEzZjY3YjdlMGRhZDIxODFhZTEwYTNhY2VkMTNkNjg0MGEwZmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MDlhZTVmZTk2NmQyOGQ5YmIyODcxY2QzOTNiN2JkNTNiY2M0NzFkYjM2Yzk0MTJiZmJiYTVjNWZjYjBiZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNGU0ZmU2NDI5NWE0MTY3NzVhMWRmZjNiNDU1NjI2YzJhNmQ4NzFkODE1ZGVhMWQ2ODRiNDZjOThiODM3MzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxNDE3YjQyOGFiNmQxZTRhNzdmY2YxYjUwNzhjZTU2YTE0MjhkNTAwNzg4ZDRjZWMzMmM2ODJjNzUyNzQ0MDYifQ"
+        },
+        {
+          "resource": "repo://scripts/wiki-delta-emitter.selftest.sh#L1-L35",
+          "version": "repo-lines-v1:sha256:06daa66e62cbf56f5fc58273bfc5b36f5084fc9dda7c636a3419ef57e50caa49:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkOTVmYzA0YTgwYzk1MmY0OWNlNDE4ODYyN2M1M2IwZmJlOGM0NDA0MWI5NTJkNTkyYWNkMWRlOTk4NjE0NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM3ODA1YWIwNDA2YTE5ZDAyMGI0ZGYyZWI1OGU0MzU5MDU2NTBmMzNiMzQ4ZjczMTQyOGZmZTJjMTZlZTE3MDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_bea754930d8f4c4bb76bb4f2ac3ac000",
+      "statement": "The server workspace vitest config (packages/server/vitest.config.mts) enables globals, uses the node environment, includes src/**/*.test.ts, sets NODE_ENV=test, and raises testTimeout and hookTimeout to 30 s because integration tests exercising the loop (git worktree add, working-tree diff application, multiple runtime spawns) legitimately exceed the 5 s default.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/vitest.config.mts#L3-L17",
+          "version": "repo-lines-v1:sha256:1ec2816ffe1ae9d2e49bffc9707508bf7eef70d293e0aca4ff93d1f8ced591de:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2VjYjE0NGE0NmY1ZGNmMTJhNjE2OWZjZWVkNzY5NWU4Mjk0YjA5MGRlNzZmMzY2MWNkZDAyNDkzMDAxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDAwYTAxZjhmODA4YzA2OThjMjlhMzNjMzczYmQ3MGJmYWYzN2VmN2IyNjI3NzAxMjY2YjM2OWQ2MGU2MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_067ca00fd7dd48c2bab56e4d3b79fd36",
+      "statement": "HTTP contract test suites stand up real Express apps and assert status codes, error codes, and response shapes over HTTP; most use supertest against in-process apps while critical-http-contracts.test.ts binds an ephemeral listening server (app.listen(0)) and drives it with fetch, covering auth, approvals (404 for unknown ids, 410/APPROVAL_EXPIRED for expired records, 400 for coerced decisions, 409 against cancelling terminal approvals), backups, runtime governance, MCP, spawns, swarms, SBOM, and repository-index surfaces.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/critical-http-contracts.test.ts#L101-L140",
+          "version": "repo-lines-v1:sha256:71c55b0e1f347636d3868bb46634d069e32b04d37b4e76f03a2a2907a3b598b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0ZmVmMWNjODFjMjc0YmFjNTdlMmYxOGQ4MDkzZjgxNGQ3MmY2MTQwMzgzNDBjYjFhM2Q0Y2U3ZWIwZDRhMmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2MTYyOTgwMWRkMzI0NDZmMTQ4MGViMGRjMWIwYmVlNzMzMDMyYzU3YmIyNmRkM2Q5ODliNTc2NWU0ODg1YjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY2NTBkZTY2MWFiMWUzNWUzNGVjM2UxZWUyOGZkNDc4YmRhY2ZmNDNiNDIxNjhjYTFjZjJmN2I1ODkzN2I5NDcifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/critical-http-contracts.test.ts#L29-L99",
+          "version": "repo-lines-v1:sha256:d4e27b31837d07d7de4dc37c1c3d2215d2bb1c72e75c6709624d9428a1e3e5f7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjYmVlNjQyNWNkNGM2MjUyM2Q2YzIyYTJkNzg0MmY5OTE1MWFmYTEyYzAwOGE1YmRiOGIwNDk1ZTQ0OTgzZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNkMDFiNzQzYTc4YTM4MTAyYTk5NGVhMzA4MTQzOGUzNDk5MjY3MzE3ZmVhZWYxOWIxZDA4MTA3YTY3Y2Y1OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlkN2I0MmEyYjgxNDc3MDczY2JlZmIyNWE2MGY4MjYyMzgyMjliZjc2ZTYxYmM2ZWEzNjQ0OWYzMmE2MGM1NDAifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/manual-approvals.test.ts#L1-L45",
+          "version": "repo-lines-v1:sha256:3f878f5612329cd24bdf567b331fb2918d9b66db96603ec79c85cf42064ac083:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4MmM1YzIyM2UyNDU5Mjk5ZTJkY2ZiOTI3MzA2MzU1MjUwOWVmNGQ2MThkNWI3MTY0ZDU1YThlZjQyZGFlYjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZjZkYzQxODQzNmEwMGRiMzgwNDYwNmIyNTk0NzE5YzIyZDZmZmNkMGU2OTMxZmY4OTI5NjNhOTllNmExMTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwNDZmOWU5ZjY2Y2U0NWEyZmI1NTVmOTc0ZTFiOTA1MzFlMWE0MGYwYmZkZTFhZDliNzdiMDQwM2U4NTRjOGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6ae01b00f60040c8907da815f2bfb9a4",
+      "statement": "The production mount table in routes/index.ts is registered exclusively through mountRoutes, and collectRoutes throws on any unrecorded nested router, so a manually re-mounted router cannot silently vanish from the inventory; the full-aggregator test compares the instantiated router against a static TypeScript-AST inventory (requiring declared_not_registered and registered_not_declared to be empty) and probes every auth-marked route over HTTP expecting anonymous 401s.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/route-inventory.test.ts#L35-L57",
+          "version": "repo-lines-v1:sha256:b4e0d00b67fdc61824072ed4ea248ff14b9205fecf1283a93bcf64ab2a858030:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg0YTA4ZGJlNDNhNTU1N2MzMmJhMjMyMmE3MDk2YmRjMzdjZDgxYWM2ZTgwMDczZjQwMGMyYTM5YzcwNzVjNmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiZGJmMmE1NDcxNDIzNWI1N2ViNjg2YjI4NDhjYTk0MjU0YjhmZmE1ZjhkZDIzMjUwZTcyYzIxOTc0ZjE3ZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlNzdlOWZhNmFiMTgwYmM3Y2JmOWI1YmVhNTZiNDkxYzhkMjU5YjA4NGIyYjk0N2Y3ODI2ZDliMDVmMDFmNTkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/route-inventory.test.ts#L72-L138",
+          "version": "repo-lines-v1:sha256:667a6e55ef7edef37a3d68a9572034b186329c0059700fb3c7ce0c4d0b3f7daf:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkOTNlY2VmYWVlZmVhMzQyMTI4NWE2YjFhYjVkZmZiYjgzYmY5Yjk5ZjZjMTg1NGFhNGU3ZmRlMTc5NDA5MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTY1NTgyZTIwMmQxZTYzMmYwZDdlNDNhMWRjNTliMWMyNWZkMGNkNTc5ODNjMGViNGE3MDI1MjdiNjEzNmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NzlkMTE4ZDZlM2NiZjQ1MDUzOTc0OGRlZTdhNDMwN2FjYmU2NDQ2Y2JhMjk3ZjI3NjBmYTVkMGJiYTFiYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2MThjZGVmYTYzNmE5MWJiZjI4ODlmZDBkNDM3Y2FlY2EzMzAwZjdkN2I4MWY4ZjQ5MWI5M2JiMWJhNzVhZDkifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/utils/route-inventory.ts#L34-L84",
+          "version": "repo-lines-v1:sha256:9feb6e62d797b25309ada8bd722c4df6148f96ecd8d9f3fa67d3d1ce9e39e842:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiNjI0ZTQ2M2JhMjdlYTVhNGM0NzU0MzEyZWFmODgwNzJkYmU3NWZkNjA0YjA0YmIxNmEwNmJhNjEwOWYxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEzNmIwMTUyOWQzMzBmYzRlZGY0OWE2YTZlMTI4YjhhYjEzYTc4ZTZmNDY1ZmQ4MWJjMzAwNTJmMWE4NDA2OTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBjNGJhNDRjNzJiNWU2MDI0ZjhmODVmZjY0YTQ5MzUxYmJhZmQ0ODIxM2U4ZTllNjM3ZWZiOGIyNzUzYzk5MzQifQ"
+        },
+        {
+          "resource": "repo://scripts/route-source-inventory.mjs#L22-L88",
+          "version": "repo-lines-v1:sha256:7ea198749f4a142aee3b7858bd447d90f6a6c24a3b2e602da5990da708c6678e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YmM3Mzg1MDI1OTczOGJlY2ExY2U2YTAxODE4YzA0ZDhjMjA0ZTBkN2RmYTQyNWQ4MGI4NzAwMzI0M2RiMDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzY2UzMzVjZGJhMjRmZmQzOGRmZWUwZDM1YWUwZmZjNTY1OTRkOGY0MWYyMDdlODAxOTVlN2E1M2M5YjMxOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFiNTFkMDZmMTk3YjRmMDMzYzNiMTYwNDViYjgxMGE4MzFhMGU2NDJkMmFmYmU2MzZjZGQ0ZjlmMGIyYzVhYjEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8d62c425f93b40fe8119ed431715322e",
+      "statement": "route-permission-contract.test.ts scans route sources for literal requirePermission('…') calls and rejects any permission name absent from ROLE_PERMISSIONS in @djimitflo/shared, requiring more than 100 guarded calls so the check cannot pass on an empty scan.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/route-permission-contract.test.ts#L6-L18",
+          "version": "repo-lines-v1:sha256:92db3da2225544d294a00eedc7ffdf3970645c8f0e4f4c4e520f60bd5ee55c07:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyYmVmYzZmOTk0YTFhMTA5MTU3N2NkYTgwMTIzZGExN2U3NThlMDQ5YTk5ZTFmOGY0MGQxMzhmZmIyZjlkNWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2NzZhMGJhMTY1YjUyMzFlZDNkZWUxNjA0YzdiMjU1NTdiMjc4Y2ZlOTI5ZDVlZmI2YTYxOGE2YjIxNmIyODYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_39239bf981dc48a89b756c8a259f612e",
+      "statement": "The integration-spine suites tie the operational loop together over real HTTP and a temporary git repository: they mount createWorkItemRoutes and createSwarmRoutes on in-memory SQLite with schema and migrations, point LOOP_WORKTREE_ROOT at a temp directory, and push one imported integration event through worker dispatch, checker, and learning closure; integration-spine-real-runtime-smoke is gated behind RUN_REAL_RUNTIME_SMOKE=1 with a default-only variant otherwise so certification is never silently substituted.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/integration-spine-real-runtime-smoke.test.ts#L20-L42",
+          "version": "repo-lines-v1:sha256:c1c3cf8c8e951df13fa7f48fd33878aacda9191bcfbd3ccdabe1294a93d1dd13:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1OTQ4Mzc1YzFiOTlmZGY2OGE3MTZhZDhhZTJhODU5MDAwMmQzMmQ4ZDk1ZGFkZDViM2Y0N2U4NTEwM2RlNWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjViNGM2MWJjNGNjMDZiYTNmMTkzN2FlZDY0OWQwZGIzMTI1YmQ1ZWY5MWY0ZGQ5ZjhlNjk1MmI2Y2MzZDA5YTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwNmJjM2U0OTQ3NGZiYTI0ZGU2M2Y0MDVlNzhjZjE0YjY0ODQxZGI1YzdkMTcyODMxOTBiNGIxZGMwNjkwMmQifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/integration-spine-service.test.ts#L76-L120",
+          "version": "repo-lines-v1:sha256:97a1f8d38928953ad4b53165acf3b9b6555f890595ad4bc4f91f633470834b45:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyOTU5MDM2NzRmYmU2YWFhMDI4M2JmNDEyNjc3ZWZhYWYzZWU0YTI5OTM2N2VjNDQxMTA0NmI1ZGNkODgyMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNjczYWJkNDU3YTk3ZWVhMTdhNjAwNjJlYjBmYWVhNmJkZjA5NDg2OGNjNmI4ZjhjMGViZGEyZjYxZWQ0MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyMDQwZTA5NWE5NGUyYWRhNzRlNDIxZjM3MTg3NTFhOTFhODEwYmZkNjZmNDhmNGU5MzljN2I3NDgwZWI2NzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg3ZDEyMjlkOTJiNTkxNWJjMDVhOTM5MWJmZjVmMmQ4Yzg0YmIwZjdkZTAwY2MyYmNjMDRjN2I3MzljNjcxOGIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/integration-spine-smoke.test.ts#L58-L100",
+          "version": "repo-lines-v1:sha256:4ac71ba252d9b4e094151b883dc7af2642784f93bdaccee745c1ce36256b97b4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYjBmZTNiZDlhZWMzZTkwY2QxODEwN2NiZWRmNTkxNWJkODE3NGY0N2E1YzQ1NDNhNDIxNWYxZDlmODc4YTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1NTI4YTQzNWNlMjlmY2E1NDMyMWQ0OTU5Y2Q2YzI0NzdkZTAzZDkyYmU4NDI3NGE5OGMxNjE4YjgxZThmOGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3NWU1NDk3MWU0ZTA1MGMxMmVjZGMxMTA0YjdmYzdhMjNlNWE1OTIwNzE4YmRhY2IzMWFhZGZkYmQzYzFmOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjYmMxZWUwNjhiMWJiMWI1YmQ5YmFhNWZkZWQxNDc2ZmEwMjBmZWJjNTg1YjlhZmQ1ZGE3MDUwNGQ2ZGM3MTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1ae6a790cef843ba908faa7bb371e254",
+      "statement": "The Stryker mutation gate (npm run test:mutation) deliberately mutates only narrow line ranges in approval-service.ts (122:4–145:7: decision input validation, status/expiry checks, self-approval guard), tool-broker.ts (243:4–269:43: capability-token validation/re-evaluation), docker-sandbox-executor.ts (108:2–113:3: inner-command guard and /workspace working-directory enforcement), and runtime-governance.ts (20:0–22:1, 53:4–63:5: baseline score bounds and no-write validation boundary), with thresholds high 85 / low 75 / break 70; the CI mutation-test job builds @djimitflo/shared and runs this gate on every push and PR.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L77-L98",
+          "version": "repo-lines-v1:sha256:40b7f3fcfa7066d94b9cccd7f445b4e0accb6f450a289f4a7dae39d4f238b937:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgwMTA4N2FjN2M1MzEwYzc0YTM4YjU5YWMzMGE0NmI0OWM5NDE1MmEwZDdiMzIzN2MxYmMyYmRiYzY3NmIzMjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI5M2VjMTJmN2VhYmY1ZDdiYzY5NTVkM2JlYjY1NzQ1OGNjNmUyMmRmOTcyZWYwMTMxOGIzNGYxM2Y1YjQ2NDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAxZTNmYWIzNmQ0YjJjN2RhMDcwZjkyMzM1Nzg2ZDlmZjZhNmJhYTA4ZjYzZWNjZDgzODM3NjU4M2RiYWJkZDEifQ"
+        },
+        {
+          "resource": "repo://stryker.config.js#L4-L34",
+          "version": "repo-lines-v1:sha256:6c72328fd2ed177706588dbe28659bcda141d3fc2f71eaaa69289da103e7a09d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ZTYxZmRmMjAyOGEzOTQxMGYwNTFmOTdiZTBkYjU4MGMzZWZiYWJmNWE3ZjI3Yjc2ZDQ4N2U1ZDA5OWZiMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhYzIxZmY0MmZjZTdhYjI3NjUzMzg3ZDRiYTBjNTAzYzc2OTczYzJiMTg2NjQ0ZWRjNjJiNWVlYjAwYjBlY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://vitest.mutation.config.ts#L3-L15",
+          "version": "repo-lines-v1:sha256:28d56cb8d45a5d58771b6f093f56c734c1a22283b49f0d7b5a14b8d79cee0ef9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyY2VjYjE0NGE0NmY1ZGNmMTJhNjE2OWZjZWVkNzY5NWU4Mjk0YjA5MGRlNzZmMzY2MWNkZDAyNDkzMDAxNDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0MDAwYTAxZjhmODA4YzA2OThjMjlhMzNjMzczYmQ3MGJmYWYzN2VmN2IyNjI3NzAxMjY2YjM2OWQ2MGU2MjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d7d91c6d7364c718c67531b461edd8e",
+      "statement": "The assurance:* scripts are CI-gated evidence producers distinct from npm test: ci-audit fails on high/critical production advisories outside a commented allowlist including transitive chains; contract-inventory requires critical route modules to be source_referenced or carry written exemptions with a non-zero exit otherwise; integration-probes performs read-only checks of the live dependency graph (djimitflo /health, event bus, Paperclip, UAMS, Ollama, Qdrant, LiteLLM, Context7 MCP discovery, codex/opencode binaries); live-identity-evidence proves deployment identity via clean git state, health-commit match to git rev-parse HEAD, and authenticated deep-health provenance reporting mode live with matching commit_sha and database.instance_id.",
+      "evidence": [
+        {
+          "resource": "repo://package.json#L21-L28",
+          "version": "repo-lines-v1:sha256:75f3475095e256d9a281200069218764bcd714146f8ea161eebbec0bc60f5f00:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmYzMWQ3OGQ5YmY2ZWVmYmY0ODQ4MDg0NmZkYTc5ZmYwZGU2NWIzYmI3YmFkMzJmY2JmODE2MmE1ZTNkY2MxYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzMyNGE3YjI5ZGZmOTExM2UyYzg5ZjMyMTUzYzM0YTcyNGY1N2ZkOWZlMWM5Mzg2Y2QzY2Q2Mzc2ZDI4NTNlNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmJhZWMxNmQ2NjllMGM1NGI2NzAwZjJlZGE1ZGRlM2I5YzdlZWU2MGQ2Yzk0OWVhMTJjMWM2ZWM3MmFmNzFlMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjI3MmNiZWRhMTBjODVlZDBjZGE3N2VmY2NmODc1YzVmZTNhZjZkNDc1YzIzMDZiOWIyNDM1YmJjODY5MTRiZiJ9"
+        },
+        {
+          "resource": "repo://scripts/ci-audit.mjs#L1-L35",
+          "version": "repo-lines-v1:sha256:1f192835c27d55508782448e00f29cdd7af0b6d174cbc3ef1121b150a5cbd7a9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2MjZiZDkyYTFjMDZiMTBjZGM1ZjA0YTM2OGMyMWExNWNlNjQzOGRlNzQxN2QzZjA5YWVkMDBiNDM5NmU4YWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0MzM0MmM0NGJiYjNlODhhZmM5YmJlMWExNzY2ZTczZDIzZDNkOTA2NGEwNTc4MzZmNGQxNGQ0NGNmMjczYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/contract-inventory.mjs#L1-L75",
+          "version": "repo-lines-v1:sha256:1b29476eadc71a1f10df4fed9b0100d1742757f67cd0aaf6af56d721dff5d7b7:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OWM0Nzg3MmI3MWYxMjU4OTk0Mjg5MjQ2NGU3NjRjMGRiMzUwYzIwYjcyMjI4NjQ1NjE1Y2MzNmUwYTA3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiZmIwZjFlNTFhZjgwYWQyZWUwZGFlZWRiYjYxZTNhODhiYjBjMTI0MmVlNTM5OTUwYTE1Zjk4MTlkNTQwMzAifQ"
+        },
+        {
+          "resource": "repo://scripts/integration-probes.mjs#L112-L139",
+          "version": "repo-lines-v1:sha256:c09209745bf329e97eb7f5cdf2e29de6faaf418642a402a3794e8dc12f48e410:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNlODIwMGViZDE3MDliNmE2NzViZWNiM2JlOWYzOWU1M2JiYWMwMmNjOTI3MjM0NjJjMDU0NjhlYjBkYTZhMTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1ZTg4MjE1N2JlMDk4NmMxNDQ3ODFjNTcwZThlNDU1N2Q5MTJmMGE4NmViMmM1YTE2ZmQxNzZmN2NjN2U1MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNTgwZTk2NGY4M2E0NzNmNDNkNDQzODQ2Mjk0OWQ2OGI1NjAwZmRhNzg3ZjE2Mzc0NWQwMGRlODljYmYzNmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.mjs#L30-L84",
+          "version": "repo-lines-v1:sha256:19b54521814bf3f9c8b6a09ee9669b67b8312004c8cd8466366aacefcee0f822:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ZGRkMjY3ZDZmMDJmZTA3YTgwODhmNDQ0ZGVjMjRmODI4ODM1MjBkOTM5NDRmZjgyMDQ3MTkwMTMxNjQyMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyYjlhMDY5NmFmZDQyZTVhMmQ5ZjU0NDVkMWI0NjRjODJiOWRiZmU4NjBhMGUxNGQyNzE5OTJhMTk4YTk2Y2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwYjZlYmYwNTRiNDU4M2FlZDdmOWE4NjBjYmIzNzEzYTU5MjExMjNkZTY4ZGJjMzFlNWIyMDc4MDA2NmNhYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1NDQ1OGJkYTg0NDIzZWI2MGM1NDdiYzhjMDcxZDFhMjViYTU5NGRiZDQ3MjgyOTNkMzllZDcxNWU2NmFiZWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5f01123d68de4dd1b82d07fd071ef1ac",
+      "statement": "assurance-truth.mjs composes the other assurance gates into a single evidence.json: it asserts a supported Node version (>=22 <25), runs audit, contract inventory, OpenMythos evidence, integration probes, live identity, and git diff --check (plus npm test/type-check/lint/build under --full), redacts credentials from captured output, hashes the dirty source state, and exits non-zero unless the aggregate status is pass.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/assurance-truth.mjs#L40-L105",
+          "version": "repo-lines-v1:sha256:7b843211c368383a41e3c0c887869d82e321608c18d1c1e913c36bb5dd66a71f:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1OWU3MWI4NzRhMjhhYThjZTk1ZWE5MTk3YmVhMWViY2FkMjk1OGRhYjFjNDI1NjM4ZWM4YzAwMDM5NTJlMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MGUxZTA2OWRkNzY4ZWUxZDZjMjllOTkwMDJiNjg4NGI5MzczYTlhNGYxOGZmYjZhMjU5NGY3ZDYzMjRjMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkMGYyZDNhM2FhZGEyNzU4NjQ1NzhkMGE0MzkxNTYzOGQ1NDNmZWNhMmM5NDg1OGRiOTQxMjExZTg2Y2VmMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoyLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ5YmViOWU4NTQ0ZWRkMWQxYmI3ZTQ0NzczNzhmNmQyMzhhNWZlOGNjZDY5MTlkYmJiZWQyZWQzMTUwNDljZjIifQ"
+        },
+        {
+          "resource": "repo://scripts/openmythos-evidence.mjs#L45-L54",
+          "version": "repo-lines-v1:sha256:dadbb1d9ac5c3c7dba88c87e9ac1c0b736b53fc793d953a3af248af052051cc2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhNTNiYTM1MDk2Njc2YzUyNDBjYzA4NDQ4M2ZlMDM1NjE3Zjk0ZjA5MGMyYTA5YTI4NjdjMDQwYWEzNjE5ZTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2YzU1YmE3YjAzMmM2YjhhZjZhYmUzMzFjYWI1MDcyMGFjNjNjNzgzMDQyOTdhZTRmM2MyZjdiMjE4YzdhNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3Y2NkYzE1MWRjMDUwZGJiYjYwNjc2YmFhODViYjlkMTAyNjI2MTFjYzA4MjNhN2QwOGFjODRhZGRhMDVjMGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyYWU5ZTI2ZGQyOTNhZDdmOTYyYWVjZGI1MzQzYTFjZmE2ZWU5MzBhZDA2MDNmZDFjNDIxYzZmNmI0NGVlYmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d9338b1f8d847dea8747269bc17140a",
+      "statement": "The assurance scripts themselves are tested: assurance-truth.test.mjs proves redact() strips bearer tokens and passwords and that sourceState fails closed on a missing repository rather than substituting a clean identity, while live-identity-evidence.test.mjs proves verifyIdentity rejects dirty trees, commit mismatches, unconfigured remote identity, and non-live database mode.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/assurance-truth.test.mjs#L7-L42",
+          "version": "repo-lines-v1:sha256:8f542d30fb02c2e53850d6f4af0022c3ef0f0cf185582d4a35605e8e1d767c8e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2NzQ5YzJjNzY4M2M3MTRmNjFiNThiMDI4NjM1MWIwNTY1OGQ5YWFjMWUzYzc2OTNjYWE5YWViMGU4Y2JiNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2YjI1MzJjODI4OGQyZjlhMzA4NDE3YTViNGU0ZjM3NDZlZGNhMDQ3MWE4MWU3ZDcwOTAzZDRlZmViOGNmM2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://scripts/live-identity-evidence.test.mjs#L11-L40",
+          "version": "repo-lines-v1:sha256:df1f05623d09bd21ea27383573ee81faeef86658dce6b87db8c2fa623bacbf6a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMWQxYTYzMzkwMjI5Yzc5ODM0N2U4M2EwNDA1NDQxYzk0MDAwMzUyODRhZDE2OGMxYmY2Y2RmMWQ3MGEzNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNWNmMTZiMmE4YjZkZWNiOTI4MmM0M2IxOWQ2NTA0MmY2ZTA0OTM4ODM1YzdmMmYxYzIxZDU4MzFmNzU3OTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3MGEyODIyZTA5MGQxYjBmZDU1YWM5MTU0OTI0OTY0YTBiMzU1YzlhYjc4MjA1Njk3MzdkNTc4NzZjMDBhYjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3d3c1cec4904055ba57c24f6e958c3f",
+      "statement": "The README states the governing discipline that claims are falsifiable via the test suite and green tests are necessary but not sufficient for production assurance; each assurance script declares its limits inline (contract-inventory's 'source_referenced means a static source-code match only; it is not proof a test ran', table-reachability's 'Static SQL regex references, not runtime execution proof.').",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L244-L256",
+          "version": "repo-lines-v1:sha256:5c0029b462a2c7db709f1dab78879a778090b0f63c05d641369b255ddee61615:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3MWNiYjAyYmFiOTMwOWEwNTBhMTRiMTRjMjBlMzhiNGQyYTVjYjllOGRiYmQ0NzVhN2U1MDI5OTVhNDA1YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1YWE1MjQ4MTBjOTQ2M2FjNTk1ZTI2ZWQxN2JlMzNmZjY4MmViYWZkMGIwZjlkZDdkNjIyNDFmOWM2ZGYwNzkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEifQ"
+        },
+        {
+          "resource": "repo://scripts/contract-inventory.mjs#L127-L130",
+          "version": "repo-lines-v1:sha256:b74f45d8257864f20f3501d8e6bdcf34d03b5bc265ec7eaac3355219a88524c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGYxMDU5NDAxYTFlZDM1N2IyN2Q2MjA1NTQwNzdhYmI5ZGU2Yzg0ZmRlYWY1MzMwMDBkNTYyMWQ1YzgzNTUyOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJlZTNjNDM4MDRjMmQ5YTFhOTlhZDMzMTg1MTIzNWJjY2FhNWNjZjI4MjEwNzZmMmYxMGRiNDA0N2UwOWU4ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ODBlOTY0ZjgzYTQ3M2Y0M2Q0NDM4NDYyOTQ5ZDY4YjU2MDBmZGE3ODdmMTYzNzQ1ZDAwZGU4OWNiZjM2YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDg2Zjc3OTAwNGYwNzFiOGEyZjE2ZjZkZDkxZjMwODMzNzM1NTc4NzNiZTBiNGRjMGRmNDQ1Yjc3MzI1NGJlMyJ9"
+        },
+        {
+          "resource": "repo://scripts/table-reachability.mjs#L48-L55",
+          "version": "repo-lines-v1:sha256:ad2375ef381e244a6fa30a0c3713fad9f99825623fa038a83b0e853885839dbc:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk3ZWE0NGYyZDA5MDhiYjhjZTBmZTE0NTEzZTQ0ZDhkZjYyMmYzYWYxODM3YzBmYmE2MmQyOWQyZGMzYTcyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmFkNWM2NmQ4N2Y2ZmFjZDFmODY1YzdlM2Y3M2MzYjVjOThlNmJlOGYxZTBmYTI3NjFjMWQ5MzhkZmQ3NzBjYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTUxYmYxYjQ1MjQyYzcwODBmZWExZmM4ZDlmMjliZTY2MDJiNTdkNDM4Nzg4NWE1ZDk2M2NhY2JhYjc4NzQ3ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTE0OTNlZjExZmVhMzAzMzY0YTJiMmQxODYyN2NiNTRmMmNjZWM5NjQ5Y2Y3MTdjOWY0MDU2MmRiYzQ2NzVlOSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.5.2",
+    "at": "2026-09-24T19:59:50.419Z"
+  }
+}

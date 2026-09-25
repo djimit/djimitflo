@@ -1,11 +1,44 @@
 import type { Database } from 'better-sqlite3';
+import { recordAutoApproveShadow, testGapAutoApproveScope } from './autonomy-shadow-service';
+import { mutationCheckEnv } from './test-gap-source-service';
 import { LoopService } from './loop-service';
 import { swarmEventBus } from './swarm-event-bus';
 import { GoalDecomposer } from './goal-decomposer';
 import { ResourceScheduler } from './resource-scheduler';
 import { SwarmIntelligenceService } from './swarm-intelligence-service';
 import { KnowledgeRuntimeService } from './knowledge-runtime-service';
+import { LoopEventService } from './loop-event-service';
+import { CommonsProposalReviewService } from './commons-proposal-review-service';
+import { SelfImprovementService } from './self-improvement-service';
+import { LoopDraftPrService } from './loop-draft-pr-service';
+import { evolveEligible, evolveSpecies, selectEvolveWinner } from './evolve-selection';
+import { banditSpecies, chooseSpecies, speciesKey } from './runtime-bandit';
+import { SkillEvolutionEngine } from './skill-evolution-engine';
 import { authorityGateForGoal } from './authority-gate';
+/** Deterministic checks for daemon runs. The repo-wide `test` script cannot finish in 120 s, so hosts can scope it
+ *  (LOOP_DAEMON_CHECK_SCRIPTS=test:changed,lint,type-check) and raise the per-script timeout (LOOP_DAEMON_CHECK_TIMEOUT_MS, max 600000). */
+export function daemonCheckOptions(env: NodeJS.ProcessEnv = process.env): { scripts?: string[]; timeout_ms: number } {
+  const scripts = (env.LOOP_DAEMON_CHECK_SCRIPTS || '').split(',').map((v) => v.trim()).filter(Boolean);
+  const timeout = Number(env.LOOP_DAEMON_CHECK_TIMEOUT_MS);
+  return { ...(scripts.length ? { scripts } : {}), timeout_ms: Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 120_000 };
+}
+
+/**
+ * Maker timeout. Prod 2026-09-25: the first mutation-lane maker (npm ci + two Stryker runs) hit the fixed 300 s; that lane
+ * gets the executor maximum (600 s), others LOOP_MAKER_TIMEOUT_MS (default 300 000).
+ */
+export function daemonMakerTimeoutMs(mutationLane: boolean, env: NodeJS.ProcessEnv = process.env): number {
+  if (mutationLane) return 600_000;
+  const timeout = Number(env.LOOP_MAKER_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 600_000) : 300_000;
+}
+
+/** Reviewer (checker/security) timeout. Prod 2026-09-24: accepted reviews took 45–119 s; 2/7 reviews hit the old fixed 120 s. */
+export function daemonReviewerTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const timeout = Number(env.LOOP_REVIEWER_TIMEOUT_MS);
+  return Number.isFinite(timeout) && timeout >= 1000 ? Math.min(timeout, 900_000) : 300_000;
+}
+import { objectiveModeEnabled, objectiveModeMaxPerTick, goalQualifiesForObjectiveMode } from './objective-loop-gate';
 
 /**
  * G16+G19: ParallelLoopDaemon — continuous + parallel operation mode.
@@ -110,6 +143,7 @@ export class LoopDaemon {
     this.pruneWorktrees();
 
     try {
+      this.resumeApprovalBlockedGoals();
       const queue = this.loadQueue();
       if (queue.length === 0) {
         this.scheduleNext();
@@ -119,6 +153,7 @@ export class LoopDaemon {
       // G19: start as many goals as fit in the available slots.
       const slots = this.getAvailableSlots();
       const toStart = queue.slice(0, slots);
+      let objectiveModeDispatchedThisTick = 0;
 
       for (const goal of toStart) {
         // G3.4 authority gate (fail-closed; flag AUTHORITY_GATE).
@@ -145,11 +180,55 @@ export class LoopDaemon {
         }
         // originele loop-body volgt hieronder
 
+
+        // Objective-mode dispatch decision: whether this goal reaches a real
+        // maker/checker cycle driven by its own objective, instead of the
+        // safe doc-drift-and-small-fix-loop no-op. Deliberately conservative:
+        // requires the flag, a qualifying goal (self-improvement source,
+        // risk_class 'low'), and the per-tick cap not yet reached.
+        //
+        // Originally also required AUTHORITY_GATE=enforce as a
+        // belt-and-suspenders condition, but that flag isn't scoped to this
+        // feature — authorityGateForGoal() runs for every goal the daemon
+        // processes, and fail-closes ALL goal execution (not just
+        // self-improvement) when the authority_events table is missing,
+        // which it is in every environment this has been checked against.
+        // Dropped after finding this would have halted the entire daemon,
+        // not just gated this feature — see PR history.
+        const qualification = goalQualifiesForObjectiveMode(goal);
+        const capped = objectiveModeDispatchedThisTick >= objectiveModeMaxPerTick();
+        // A qualifying goal that only lost the per-tick cap must WAIT for the next tick. It used to fall through to the
+        // doc-drift no-op, which "completed with no changes required" and marked its proposal no_change (2026-09-22: a
+        // valid test-gap proposal was wasted this way, and the system learned a wrong lesson from it).
+        if (objectiveModeEnabled() && qualification.qualifies && capped) {
+          swarmEventBus.emit('convergence', { daemon: 'objective_mode_decision', goal_id: goal.id, allowed: false, reason: 'deferred_per_tick_cap', enabled: true });
+          continue;
+        }
+        const allowObjectiveMode = objectiveModeEnabled() && qualification.qualifies && !capped;
+        if (allowObjectiveMode) objectiveModeDispatchedThisTick += 1;
+
         // Mark goal as active + start it asynchronously.
         this.activeGoals.add(goal.id);
         this.persistActiveGoals();
+
+        // Observability: log every self-improvement goal's dispatch decision,
+        // not just the ones that succeed — closes the exact blind spot that
+        // let 10/10 goals silently produce identical doc-drift no-ops.
+        if (qualification.qualifies || objectiveModeEnabled()) {
+          swarmEventBus.emit('convergence', {
+            daemon: 'objective_mode_decision',
+            goal_id: goal.id,
+            allowed: allowObjectiveMode,
+            reason: allowObjectiveMode
+              ? 'dispatched'
+              : capped ? 'per_tick_cap_reached'
+              : qualification.reason,
+            enabled: objectiveModeEnabled(),
+          });
+        }
+
         // Non-blocking: start the goal and don't wait for it to finish.
-        this.executeGoal(goal).catch((err) => {
+        this.executeGoal(goal, { allowObjectiveMode }).catch((err) => {
           console.error('[LoopDaemon] goal execution error:', err instanceof Error ? err.message : String(err));
         });
       }
@@ -167,6 +246,82 @@ export class LoopDaemon {
     }
 
     this.scheduleNext();
+  }
+
+  /**
+   * The execution engine asks a human before a worker runs (approval policy). That is a wait, not a failure:
+   * the goal used to be marked failed and its proposal parked (the approval then expired unseen, 2026-09-21).
+   * Park the goal as 'blocked' with what it waits for; resumeApprovalBlockedGoals() continues or fails it.
+   */
+  private blockForApproval(goal: QueueEntry, runId: string, role: 'maker' | 'checker' | 'security_checker' = 'maker'): boolean {
+    const lease = this.db.prepare("SELECT id, metadata FROM worker_leases WHERE loop_run_id = ? AND role = ? ORDER BY created_at DESC LIMIT 1").get(runId, role) as { id: string; metadata: string } | undefined;
+    const leaseMeta = lease ? (JSON.parse(lease.metadata || '{}') as { approval_id?: string; execution_task_id?: string }) : {};
+    // The engine records the approval on the task; not every lease path copies it onto the lease metadata (the checker's doesn't).
+    const approvalId = leaseMeta.approval_id
+      ?? (leaseMeta.execution_task_id
+        ? (this.db.prepare('SELECT id FROM approvals WHERE task_id = ? ORDER BY created_at DESC LIMIT 1').get(leaseMeta.execution_task_id) as { id: string } | undefined)?.id
+        : undefined);
+    if (!lease || !approvalId) return false; // cannot resume without knowing what to wait for: fail as before
+    const waiting = { approval_id: approvalId, run_id: runId, lease_id: lease.id, since: new Date().toISOString() };
+    this.db.prepare("UPDATE goals SET status = 'blocked', metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.awaiting_approval', json(?)), updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(waiting), new Date().toISOString(), goal.id);
+    try {
+      new LoopEventService(this.db).recordEvent(runId, 'goal_awaiting_approval', 'warning', `Waiting for human approval ${approvalId}`, { goal_id: goal.id, approval_id: approvalId });
+    } catch { /* best-effort */ }
+    const shadow = recordAutoApproveShadow(this.db, goal.id, runId, approvalId); // plan E3: the rule; approves only via J5 below
+    const scope = role === 'maker' && shadow?.decision === 'yes' ? testGapAutoApproveScope(this.db, goal.id) : null;
+    if (scope) {
+      // Record the scope before approving: the maker resumes right after, and verification needs it to hold the diff to one file.
+      this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, lease.id);
+      try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved ${approvalId} (test-gap lane, scope ${scope})`, { goal_id: goal.id, approval_id: approvalId, reason: shadow!.reason }); } catch { /* best-effort */ }
+      this.loops.decideWorkerApproval(approvalId, true, 'autonomy:test-gap-rule-v1', shadow!.reason)
+        .catch((err: unknown) => console.warn(`[loop-daemon] auto-approve ${approvalId} failed:`, err instanceof Error ? err.message : String(err)));
+    }
+    console.warn(`[loop-daemon] goal ${goal.id} waits for approval ${approvalId} (run ${runId})`);
+    swarmEventBus.emit('convergence', { daemon: 'goal_awaiting_approval', goal_id: goal.id, run_id: runId, approval_id: approvalId });
+    return true;
+  }
+
+  /** N6: approve an evolve sibling when the run's first maker was auto-approved (J5), with the same scope. */
+  private async autoApproveSibling(runId: string, primaryLeaseId: string, siblingLeaseId: string): Promise<boolean> {
+    const lease = (id: string) => this.db.prepare('SELECT metadata FROM worker_leases WHERE id = ?').get(id) as { metadata: string } | undefined;
+    const scope = (JSON.parse(lease(primaryLeaseId)?.metadata || '{}') as { auto_approved_scope?: string }).auto_approved_scope;
+    const meta = JSON.parse(lease(siblingLeaseId)?.metadata || '{}') as { approval_id?: string; execution_task_id?: string };
+    const approvalId = meta.approval_id ?? (meta.execution_task_id
+      ? (this.db.prepare("SELECT id FROM approvals WHERE task_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1").get(meta.execution_task_id) as { id: string } | undefined)?.id
+      : undefined);
+    if (!scope || !approvalId) return false;
+    this.db.prepare("UPDATE worker_leases SET metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.auto_approved_scope', ?) WHERE id = ?").run(scope, siblingLeaseId);
+    try { new LoopEventService(this.db).recordEvent(runId, 'goal_auto_approved', 'info', `Auto-approved evolve sibling ${approvalId} (scope ${scope})`, { approval_id: approvalId, sibling_lease_id: siblingLeaseId }); } catch { /* logging */ }
+    await this.loops.decideWorkerApproval(approvalId, true, 'autonomy:test-gap-rule-v1', `evolve sibling of auto-approved maker ${primaryLeaseId}`);
+    return true;
+  }
+
+  /** approved + task finished -> requeue the goal on its existing run; denied/expired -> fail it. Otherwise keep waiting. */
+  private resumeApprovalBlockedGoals(): void {
+    const rows = this.db.prepare("SELECT id, metadata FROM goals WHERE status = 'blocked' AND json_extract(metadata, '$.awaiting_approval') IS NOT NULL").all() as Array<{ id: string; metadata: string }>;
+    for (const row of rows) {
+      const waiting = (JSON.parse(row.metadata || '{}') as { awaiting_approval?: { approval_id: string; run_id: string; lease_id: string } }).awaiting_approval;
+      if (!waiting) continue;
+      const approval = this.db.prepare('SELECT status, task_id FROM approvals WHERE id = ?').get(waiting.approval_id) as { status: string; task_id: string } | undefined;
+      const now = new Date().toISOString();
+      if (!approval || approval.status === 'pending') continue;
+      if (approval.status === 'approved') {
+        // Approving resumes the task inside the engine; continue only once it reached a terminal state, then
+        // executeViaEngine returns the stored result instead of running the maker twice.
+        const task = this.db.prepare('SELECT status FROM tasks WHERE id = ?').get(approval.task_id) as { status: string } | undefined;
+        if (!task || !['completed', 'failed', 'cancelled'].includes(task.status)) continue;
+        this.db.prepare("UPDATE goals SET status = 'decomposed', metadata = json_set(json_remove(metadata, '$.awaiting_approval'), '$.resume_run_id', ?), updated_at = ? WHERE id = ?")
+          .run(waiting.run_id, now, row.id);
+        continue;
+      }
+      // denied | expired: the human gate said no (or nobody answered in time)
+      this.db.prepare("UPDATE goals SET status = 'failed', metadata = json_remove(metadata, '$.awaiting_approval'), updated_at = ? WHERE id = ?").run(now, row.id);
+      const reason = `approval ${approval.status}`;
+      try { new LoopEventService(this.db).recordEvent(waiting.run_id, 'goal_failed', 'error', reason, { goal_id: row.id, approval_id: waiting.approval_id }); } catch { /* best-effort */ }
+      try { new CommonsProposalReviewService(this.db).recordGoalOutcome(row.id, 'failed', reason); } catch { /* best-effort learning */ }
+      swarmEventBus.emit('loop_completed', { loopRunId: waiting.run_id, goalId: row.id, goalType: 'doc-drift-and-small-fix-loop', mode: 'closed', status: 'failed', durationMs: 0, strategy: 'objective', startedAt: now, completedAt: now });
+    }
   }
 
   private scheduleNext(): void {
@@ -205,8 +360,12 @@ export class LoopDaemon {
    * The daemon discovers findings, creates leases, executes the maker+checker, runs
    * deterministic checks, and certifies the result.
    */
-  private async executeGoal(goal: QueueEntry): Promise<void> {
+  private async executeGoal(goal: QueueEntry, opts: { allowObjectiveMode: boolean } = { allowObjectiveMode: false }): Promise<void> {
     let runId: string | null = null;
+    const startedAtMs = Date.now();
+    // The cognitive/meta layer keys tuning by the run's loop name (loop-service getActiveLoopTuning), not by execution mode.
+    let loopName = 'doc-drift-and-small-fix-loop';
+    const executionMode = opts.allowObjectiveMode ? 'objective' : 'doc_drift';
     try {
       // 1. Decompose the goal if not already decomposed.
       const currentStatus = this.db.prepare('SELECT status FROM goals WHERE id = ?').get(goal.id) as { status: string } | undefined;
@@ -225,11 +384,20 @@ export class LoopDaemon {
         this.decomposer.decomposeGoalToDAG(goal.id);
       }
 
-      // 2. Start the loop (discovers findings, creates the loop_run).
-      const run = this.loops.startDocDriftAndSmallFixLoop({
-        goal_id: goal.id,
-      });
+      // 2. Start the loop (discovers findings, creates the loop_run). A
+      // qualifying self-improvement goal reaches a real maker/checker cycle
+      // driven by its own objective instead of the safe doc-drift no-op —
+      // see objective-loop-gate.ts for the dispatch decision made in tick().
+      const resumeRunId = typeof goal.metadata?.resume_run_id === 'string' ? goal.metadata.resume_run_id : null;
+      const run = resumeRunId
+        ? this.loops.getLoopRun(resumeRunId) // approved: continue the same run, its maker lease is prepared
+        : opts.allowObjectiveMode
+        // Objective mode needs a real git checkout to create worktrees; process.cwd() is /app in the
+        // production image (not a repository). LOOP_DAEMON_REPOSITORY_PATH points at the checkout.
+        ? this.loops.startObjectiveLoop({ goal_id: goal.id, ...(process.env.LOOP_DAEMON_REPOSITORY_PATH ? { repository_path: process.env.LOOP_DAEMON_REPOSITORY_PATH } : {}) })
+        : this.loops.startDocDriftAndSmallFixLoop({ goal_id: goal.id });
       runId = run.id;
+      loopName = (run as { loop_name?: string }).loop_name ?? loopName;
 
       // 3. Skip execution if no findings were discovered.
       if (run.findings.length === 0) {
@@ -240,6 +408,7 @@ export class LoopDaemon {
           goal_id: goal.id,
           run_id: run.id,
           reason: 'no findings — goal completed (nothing to fix)',
+          execution_mode: executionMode,
         });
         return;
       }
@@ -250,35 +419,68 @@ export class LoopDaemon {
         run_id: run.id,
         objective: goal.objective,
         active_goals: this.activeGoals.size,
+        execution_mode: executionMode,
       });
 
       // 4. Continue the loop — creates maker+checker leases (prepared status).
       // G28+G33: the planner selects the runtime per finding based on per-runtime
       // competence (not hardcoded 'codex'). The plan is produced inside continueLoopRun.
-      const prepared = this.loops.continueLoopRun(run.id, {
-        max_assignments: 1,
-        max_maker_workers: 1,
-      });
+      // A maker runtime is never inferred from a recommendation (loop-lifecycle-service): without an explicit
+      // one the lease is 'manual' and every daemon goal died with MANUAL_MAKER_REQUIRES_HUMAN (seen in the
+      // 2026-09-21 loop proof). LOOP_DAEMON_MAKER_RUNTIME is the operator's explicit choice, objective mode only.
+      const makerRuntime = opts.allowObjectiveMode ? (process.env.LOOP_DAEMON_MAKER_RUNTIME as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock' | undefined) : undefined;
+      const prepared = resumeRunId
+        ? { run, leases: this.loops.listWorkerLeases(run.id) }
+        : this.loops.continueLoopRun(run.id, {
+          max_assignments: 1,
+          max_maker_workers: 1,
+          ...(makerRuntime ? { runtime: makerRuntime } : {}),
+        });
 
       // 5. Find the prepared maker lease and execute it.
-      const makerLease = prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
+      // A run resumed after the checker's approval already has a completed maker: don't run it twice.
+      const makerAlreadyDone = resumeRunId ? prepared.leases.find(l => l.role === 'maker' && l.status === 'completed') : undefined;
+      const makerLease = makerAlreadyDone ?? prepared.leases.find(l => l.role === 'maker' && l.status === 'prepared');
       if (!makerLease) {
         throw new Error('No prepared maker lease found after continueLoopRun');
       }
 
+      // 5b. E12 (LOOP_BANDIT_ENABLED): the maker species is chosen by outcome — Thompson over skill_outcomes, challengers
+      // capped until they have enough runs. Never overrides the operator's LOOP_DAEMON_MAKER_RUNTIME.
+      if (!makerAlreadyDone && !makerRuntime) {
+        const choice = chooseSpecies(this.db, loopName, banditSpecies());
+        if (choice) {
+          try {
+            this.loops.assertRuntimeAvailable(choice.species.runtime);
+            this.db.prepare(`UPDATE worker_leases SET runtime = ?, metadata = json_set(json_remove(COALESCE(metadata, '{}'), '$.model'), '$.bandit', json(?))
+              WHERE id = ? AND status = 'prepared'`).run(choice.species.runtime, JSON.stringify({ reason: choice.reason, posterior: choice.posterior }), makerLease.id);
+            if (choice.species.model) this.db.prepare(`UPDATE worker_leases SET metadata = json_set(metadata, '$.model', ?) WHERE id = ?`).run(choice.species.model, makerLease.id);
+            (makerLease as { runtime: string }).runtime = choice.species.runtime;
+            new LoopEventService(this.db).recordEvent(run.id, 'bandit_selected', 'info', `Maker species ${speciesKey(choice.species)}: ${choice.reason}`, { posterior: choice.posterior });
+          } catch (error) {
+            try { new LoopEventService(this.db).recordEvent(run.id, 'bandit_skipped', 'warning', `Bandit choice ${speciesKey(choice.species)} not applied: ${error instanceof Error ? error.message : String(error)}`, {}); } catch { /* logging */ }
+          }
+        }
+      }
+
       // 6. Execute the maker (runs the runtime — codex/opencode/pi).
-      await this.loops.executeWorker(run.id, {
+      const mutationLane = Object.keys(mutationCheckEnv(this.db, goal.id)).length > 0;
+      const makerTimeout = daemonMakerTimeoutMs(mutationLane);
+      // strengthening a thin test to kill surviving mutants legitimately adds more lines (prod: 23-line test → 276 diff lines)
+      const makerDiffMax = mutationLane ? 400 : 200;
+      if (!makerAlreadyDone) await this.loops.executeWorker(run.id, {
         lease_id: makerLease.id,
-        timeout_ms: 300_000, // 5 min timeout for production goals
-        diff_max_lines: 200,
+        timeout_ms: makerTimeout,
+        diff_max_lines: makerDiffMax,
         skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
       });
 
       // 7. Run deterministic checks (test, lint, type-check).
+      let activeMakerLease = makerLease;
       try {
         const checks = this.loops.runDeterministicChecks(run.id, {
           lease_id: makerLease.id,
-          timeout_ms: 120_000,
+          ...daemonCheckOptions(),
         });
 
         // 8. If checks fail, retry once (G3 feedback law).
@@ -288,28 +490,182 @@ export class LoopDaemon {
             const retryMaker = retry.retry_maker;
             await this.loops.executeWorker(run.id, {
               lease_id: retryMaker.id,
-              timeout_ms: 300_000,
-              diff_max_lines: 200,
+              timeout_ms: makerTimeout,
+              diff_max_lines: makerDiffMax,
               skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS),
             });
             this.loops.runDeterministicChecks(run.id, {
               lease_id: retryMaker.id,
-              timeout_ms: 120_000,
+              ...daemonCheckOptions(),
             });
+            activeMakerLease = retryMaker;
           } catch { /* best-effort retry */ }
         }
       } catch { /* best-effort: checks are not fatal for the daemon */ }
+
+      // 8a. Evolve (E13, LOOP_EVOLVE_ENABLED, test-gap goals only): sibling makers of other species on the same objective;
+      // the fittest (computed in code) stays the only non-superseded maker and goes on to the reviewers.
+      const species = !makerAlreadyDone && evolveEligible(this.db, goal.id) ? evolveSpecies() : [];
+      if (species.length) {
+        const contenders = [activeMakerLease.id];
+        for (const sp of species) {
+          try {
+            const sibling = this.loops.retryLoopRun(run.id, { maker_lease_id: makerLease.id, sibling: true, runtime: sp.runtime as never, ...(sp.model ? { model: sp.model } : {}) }).retry_maker;
+            // Ranked even if it crashes below: creating it superseded the first maker, and selection must be able to undo that.
+            contenders.push(sibling.id);
+            const siblingInput = { lease_id: sibling.id, timeout_ms: makerTimeout, diff_max_lines: makerDiffMax, skip_permissions: Boolean(process.env.RUNTIME_ALLOW_SKIP_PERMISSIONS) };
+            try {
+              await this.loops.executeWorker(run.id, siblingInput);
+            } catch (error) {
+              // N6: a sibling is a maker, so it needs its own approval and used to fail here every time. In an auto-approved
+              // lane (J5) it gets the same one-file scope and the same rule decision; anywhere else it still fails.
+              if (!/APPROVAL_REQUIRED/.test(error instanceof Error ? error.message : String(error)) || !(await this.autoApproveSibling(run.id, makerLease.id, sibling.id))) throw error;
+              await this.loops.executeWorker(run.id, siblingInput); // returns the result of the approved execution
+            }
+            this.loops.runDeterministicChecks(run.id, { lease_id: sibling.id, ...daemonCheckOptions() });
+          } catch (error) {
+            try { new LoopEventService(this.db).recordEvent(run.id, 'evolve_sibling_failed', 'warning', `Evolve sibling ${sp.runtime}${sp.model ? `@${sp.model}` : ''} failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id }); } catch { /* logging */ }
+          }
+        }
+        const winnerId = contenders.length > 1 ? selectEvolveWinner(this.db, run.id, contenders) : null;
+        const winner = winnerId ? this.db.prepare('SELECT * FROM worker_leases WHERE id = ?').get(winnerId) as typeof activeMakerLease | undefined : undefined;
+        if (winner) activeMakerLease = { ...activeMakerLease, id: winner.id, runtime: winner.runtime };
+      }
+
+      // 8b. Dispatch the checker — gated, off by default. Checker leases are
+      // always created with runtime:'manual' (loop-lifecycle-service.ts),
+      // independent of whatever runtime the maker used — by design, code
+      // review requires a human today. Without this, no maker-completed run
+      // has ever had an accepted checker verdict: verifyLoopRun()'s
+      // checker_verdict gate could never pass, allGatesPass was always
+      // false, and closeLoop() (gated on allGatesPass) was never even
+      // reached — the real reason loop_learning_closures stayed near-empty.
+      // Found 2026-09-20/21, and explicitly confirmed with the user this is
+      // a real autonomy expansion (removes human review from verification),
+      // not a bug fix — so it stays off unless LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED
+      // is set, using the same runtime as whichever maker attempt actually
+      // ran (self-review, not an independent reviewer — the simplest
+      // automatable option, chosen deliberately over inventing a second
+      // "reviewer runtime" concept). executeChecker() already auto-discovers
+      // the current prepared checker lease (correctly picking up a retry's
+      // checker lease) and already writes the real checkpoint/trace-span/
+      // manifest evidence closeLoop() requires — no new writer needed.
+      if (process.env.LOOP_DAEMON_AUTOMATED_CHECKER_ENABLED === 'true') {
+        const runtime = activeMakerLease.runtime as 'codex' | 'opencode' | 'claude' | 'gemini' | 'editor' | 'pi' | 'mock';
+        const leaseDone = (role: string) => Boolean(this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role = ? AND status = 'completed' LIMIT 1").get(run.id, role));
+        const dispatch = async (role: 'checker' | 'security_checker', leaseId?: string): Promise<boolean> => {
+          try {
+            await this.loops.executeChecker(run.id, { ...(leaseId ? { lease_id: leaseId } : {}), runtime, timeout_ms: daemonReviewerTimeoutMs() });
+          } catch (error) {
+            // A reviewer is a worker too: the execution engine asks a human before it runs. That is a wait, not a failure
+            // (previously swallowed here, so the run was verified without a verdict and failed).
+            if (error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, run.id, role)) return true;
+            // Best-effort otherwise (verifyLoopRun's verdict gates reflect reality below) — but never silently:
+            // a swallowed dispatch error made the 2026-09-21 loop proof undiagnosable.
+            try {
+              new LoopEventService(this.db).recordEvent(run.id, 'checker_dispatch_failed', 'warning',
+                `Automated ${role} dispatch failed: ${error instanceof Error ? error.message : String(error)}`, { goal_id: goal.id });
+            } catch { /* logging must never break the daemon */ }
+          }
+          return false;
+        };
+        // A run resumed after a reviewer's approval already has the earlier reviewer's verdict: don't dispatch it twice.
+        if (!leaseDone('checker') && await dispatch('checker')) return;
+        // The security reviewer is a separate, higher autonomy step (removes human security review): its own flag.
+        if (process.env.LOOP_DAEMON_AUTOMATED_SECURITY_CHECKER_ENABLED === 'true' && !leaseDone('security_checker')) {
+          const security = this.db.prepare("SELECT id FROM worker_leases WHERE loop_run_id = ? AND role = 'security_checker' AND status = 'prepared' ORDER BY created_at DESC LIMIT 1").get(run.id) as { id: string } | undefined;
+          if (security && await dispatch('security_checker', security.id)) return;
+        }
+      }
+
+      // 9-. A reviewer still running belongs to another pass over this run (e.g. an approval resume); verifying now
+      // fails its verdict gate and records a false 'regressed'. That pass verifies when its reviewer finishes.
+      const reviewerRunning = this.db.prepare("SELECT 1 FROM worker_leases WHERE loop_run_id = ? AND role IN ('checker', 'security_checker') AND status = 'running' LIMIT 1").get(run.id);
+      if (reviewerRunning) {
+        try {
+          new LoopEventService(this.db).recordEvent(run.id, 'verify_deferred', 'info', 'Verification deferred: a reviewer lease is still running.', { goal_id: goal.id });
+        } catch { /* logging must never break the daemon */ }
+        return;
+      }
 
       // 9. Verify the run (G3.4 convergence verification).
       const verification = this.loops.verifyLoopRun(run.id);
       const allGatesPass = verification.gates.length > 0 && verification.gates.every(g => g.status === 'pass');
 
+      // 9a. Feed the cognitive layer: it only learns from 'loop_completed' bus events, which were
+      // previously sent solely by the human-approval completeLoopRun() route — so it stayed at 0
+      // episodes. Emit one per executed run (recordEpisode dedupes on loopRunId).
+      swarmEventBus.emit('loop_completed', {
+        loopRunId: run.id,
+        goalId: goal.id,
+        goalType: loopName,
+        mode: 'closed',
+        status: allGatesPass ? 'completed' : 'failed',
+        durationMs: Date.now() - startedAtMs,
+        strategy: executionMode,
+        startedAt: new Date(startedAtMs).toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+
+      // 9a'. What the run achieved is the proposal's outcome (feeds the source bandit + panel calibration).
+      try {
+        const linked = this.db.prepare('SELECT improvement_id FROM goals WHERE id = ?').get(goal.id) as { improvement_id: string | null } | undefined;
+        if (linked?.improvement_id) new SelfImprovementService(this.db).recordOutcome(linked.improvement_id, allGatesPass ? 'verified' : 'regressed');
+      } catch { /* best-effort learning */ }
+
+      // 9a''. Heritability (E10): each run is one outcome of its maker "skill" (loop × runtime) — the fitness signal the
+      // skill-evolution engine and a later runtime bandit select on. Before this, skill_outcomes only got manual API writes.
+      try {
+        const maker = this.db.prepare('SELECT id, runtime, metadata FROM worker_leases WHERE id = ?').get(activeMakerLease.id) as { id: string; runtime: string; metadata: string } | undefined;
+        const meta = maker ? JSON.parse(maker.metadata || '{}') as { model?: unknown; runtime_usage?: { total_tokens?: unknown } } : {};
+        const skills = new SkillEvolutionEngine(this.db); // ensures skill_outcomes exists
+        const skillId = `loop-maker:${loopName}:${activeMakerLease.runtime}`;
+        // One outcome per run: two daemon passes can finish the same run.
+        if (!this.db.prepare('SELECT 1 FROM skill_outcomes WHERE skill_id = ? AND task_id = ? AND agent_id = ? LIMIT 1').get(skillId, run.id, activeMakerLease.id)) skills.recordOutcome(skillId, {
+          success: allGatesPass,
+          tokensUsed: Number(meta.runtime_usage?.total_tokens) || 0,
+          durationMs: Date.now() - startedAtMs,
+          domain: loopName,
+          taskId: run.id,
+          agentId: activeMakerLease.id,
+          ...(typeof meta.model === 'string' ? { model: meta.model } : {}),
+          evidenceRefs: [`loop_run:${run.id}`, ...verification.gates.filter(g => g.status !== 'pass').map(g => `gate:${g.name}:${g.status}`)],
+        });
+      } catch { /* best-effort learning */ }
+
       // 9b. Close learning loop (reflection + memory + follow-up).
       if (allGatesPass) {
+        try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'completed', `run ${run.id} certified`); } catch { /* best-effort learning */ }
+        // G4: hand verified work to a human as a draft PR (default off; records draft_pr_failed on any problem).
+        try { await new LoopDraftPrService(this.db).openForRun(run.id); } catch { /* never fail the daemon over a PR */ }
         try {
           const knowledge = new KnowledgeRuntimeService(this.db);
-          knowledge.closeLoop({ loop_run_id: run.id });
-        } catch { /* best-effort: learning closure is not fatal */ }
+          const closure = knowledge.closeLoop({ loop_run_id: run.id });
+          if (closure.status === 'blocked') {
+            // Previously silently discarded — this is the one signal that
+            // explains why loop_learning_closures stays near-empty even
+            // when most runs pass their gates. Not fatal for the daemon.
+            new LoopEventService(this.db).recordEvent(
+              run.id,
+              'learning_closure_blocked',
+              'info',
+              `Learning closure blocked: ${closure.blocked_reasons.join('; ') || 'no reason reported'}`,
+              { blocked_reasons: closure.blocked_reasons },
+            );
+          }
+        } catch (err) {
+          // Best-effort: learning closure is not fatal for the daemon, but
+          // record why it threw instead of discarding the error silently.
+          try {
+            new LoopEventService(this.db).recordEvent(
+              run.id,
+              'learning_closure_blocked',
+              'warning',
+              `Learning closure threw: ${err instanceof Error ? err.message : String(err)}`,
+              {},
+            );
+          } catch { /* logging must never break the daemon */ }
+        }
       }
 
       // 10. Update goal + run status.
@@ -326,18 +682,40 @@ export class LoopDaemon {
         run_id: run.id,
         certified: allGatesPass,
         gates: verification.gates.map(g => `${g.name}:${g.status}`),
+        execution_mode: executionMode,
       });
 
     } catch (error) {
+      if (runId && error instanceof Error && error.message === 'LOOP_WORKER_APPROVAL_REQUIRED' && this.blockForApproval(goal, runId)) return;
       // Mark the goal as failed if execution fails.
       this.db.prepare('UPDATE goals SET status = ?, updated_at = ? WHERE id = ?')
         .run('failed', new Date().toISOString(), goal.id);
+
+      const failureMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[loop-daemon] goal ${goal.id} failed (run ${runId ?? 'none'}): ${failureMessage}`);
+      if (runId) {
+        try {
+          new LoopEventService(this.db).recordEvent(runId, 'goal_failed', 'error', failureMessage, {
+            goal_id: goal.id,
+            execution_mode: executionMode,
+          });
+        } catch { /* best-effort: never mask the original failure */ }
+      }
+      try { new CommonsProposalReviewService(this.db).recordGoalOutcome(goal.id, 'failed', failureMessage); } catch { /* best-effort learning */ }
+      if (runId) {
+        swarmEventBus.emit('loop_completed', {
+          loopRunId: runId, goalId: goal.id, goalType: loopName, mode: 'closed', status: 'failed',
+          durationMs: Date.now() - startedAtMs, strategy: executionMode,
+          startedAt: new Date(startedAtMs).toISOString(), completedAt: new Date().toISOString(),
+        });
+      }
 
       swarmEventBus.emit('convergence', {
         daemon: 'goal_failed',
         goal_id: goal.id,
         run_id: runId,
         error: error instanceof Error ? error.message : String(error),
+        execution_mode: executionMode,
       });
     } finally {
       // G19: remove from active goals when done (success or failure).

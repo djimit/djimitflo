@@ -12,7 +12,7 @@ module.exports = {
     'packages/server/src/routes/runtime-governance.ts:53:4-63:5',
   ],
   testRunner: 'vitest',
-  ignorePatterns: ['/knowledge'],
+  ignorePatterns: ['/knowledge', '/evaluate', '/djimitflo-ruvnet-evolution', '/.playwright-cli'],
   concurrency: 4,
   reporters: ['html', 'clear-text', 'progress'],
   coverageAnalysis: 'perTest',

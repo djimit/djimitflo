@@ -15,6 +15,19 @@ import type { AuthMiddleware } from '../middleware/auth';
 import type { WebSocketService } from '../services/websocket-service';
 import { AuditService } from '../services/audit-service';
 
+/**
+ * List views need the shape of a task's metadata, not its bulk: production metadata averaged ~14 KB per
+ * task (1.4 MB of a 1.5 MB response, fetched on every dashboard page). Values longer than `maxValueChars`
+ * are replaced by a marker; GET /tasks/:id and ?full=1 still return everything.
+ */
+export function slimMetadata(metadata: unknown, maxValueChars = 500): unknown {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return metadata;
+  return Object.fromEntries(Object.entries(metadata as Record<string, unknown>).map(([key, value]) => {
+    const size = JSON.stringify(value ?? null).length;
+    return [key, size > maxValueChars ? `[truncated ${size} chars; fetch the task for the full value]` : value];
+  }));
+}
+
 function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number, name: string): number {
   if (value === undefined) return fallback;
   const parsed = Number(value);
@@ -91,7 +104,11 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       const tasks = db.prepare(query).all(...params);
 
-      const parsed = tasks.map((task: any) => parseTask(task));
+      const full = req.query.full === '1';
+      const parsed = tasks.map((task: any) => {
+        const t = parseTask(task);
+        return full ? t : { ...t, metadata: slimMetadata(t.metadata) };
+      });
 
       res.json({ tasks: parsed, total: tasks.length });
     } catch (error) {
@@ -153,6 +170,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
 
       // Inject swarm context (Qdrant + OKF) if enabled
       let contextSnapshot;
+      let context_retrieval_degraded = false;
+      let context_retrieval_reason: string | undefined;
       try {
         contextSnapshot = await contextInjector.injectContextSnapshot(`${title} ${description}`, use_swarm_context);
       } catch (error) {
@@ -160,6 +179,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
         // the task intake unavailable. The empty hash is still persisted so
         // the executor input has explicit, auditable provenance.
         console.warn('Task context retrieval unavailable:', error instanceof Error ? error.message : String(error));
+        context_retrieval_degraded = true;
+        context_retrieval_reason = error instanceof Error ? error.message : String(error);
         contextSnapshot = await contextInjector.injectContextSnapshot('', false);
       }
       // Context retrieval is advisory. A failed source must not prevent task
@@ -179,6 +200,8 @@ export function createTaskRoutes(db: Database, executionEngine?: ExecutionEngine
           sources: contextSnapshot.sources,
           advisory: true,
           independently_reviewed: false,
+          degraded: context_retrieval_degraded,
+          degraded_reason: context_retrieval_reason,
           server_generated_at: new Date().toISOString(),
         },
       };

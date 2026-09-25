@@ -99,6 +99,14 @@ export interface StartDocDriftLoopInput {
     description: string;
     category: 'bug' | 'security' | 'performance' | 'refactor';
   };
+  /**
+   * Synthesizes a single LoopFinding from goal_id's objective instead of
+   * running discovery. Requires goal_id to resolve to a real goal — fails
+   * loudly (OBJECTIVE_MODE_REQUIRES_GOAL) rather than silently falling back
+   * to discovery, so an objective-mode run can never be mistaken for a
+   * doc-drift no-op. See LoopService.createObjectiveFinding().
+   */
+  objective_mode?: boolean;
 }
 
 export interface ContinueLoopInput {
@@ -118,6 +126,8 @@ export interface RetryLoopInput {
   /** Explicit model choice; advisory routing never supplies this implicitly. */
   model?: string;
   reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** Evolve (E13): an extra maker next to a successful one, not a retry after failure; selection decides later. */
+  sibling?: boolean;
 }
 
 export interface SplitLoopInput {
@@ -193,6 +203,8 @@ export interface CheckerVerdictInput {
   maker_lease_id?: string;
   verdict: 'accepted' | 'needs_revision' | 'rejected' | 'insufficient_evidence';
   notes?: string;
+  /** P1a: manual-runtime verdicts require explicit attestation (reviewer + reason). */
+  manual_attestation?: { reviewer: string; reason: string };
 }
 
 export interface RunChecksInput {

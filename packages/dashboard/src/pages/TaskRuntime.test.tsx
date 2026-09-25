@@ -118,10 +118,13 @@ it('shows the selected existing agent through the Swarm detail-link route', () =
   expect(screen.getByRole('link', { name: 'All agents' }).getAttribute('href')).toBe('/agents');
 });
 
-it('makes previously unlinked research and evidence pages reachable from navigation', () => {
+it('keeps every page reachable from the grouped navigation, once each', () => {
   render(<MemoryRouter><Layout /></MemoryRouter>);
-  fireEvent.click(screen.getByText('Research & evidence'));
-  for (const path of ['/authority', '/audit/logs', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers']) {
-    expect(document.querySelector(`a[href="${path}"]`)).toBeTruthy();
+  const hrefs = [...document.querySelectorAll('nav a')].map((a) => a.getAttribute('href'));
+  for (const path of ['/authority', '/audit', '/governance', '/pipeline-builder', '/agi-reasoning', '/consensus-debates', '/predictive-analytics', '/self-healing', '/explainers', '/improvement-funnel', '/approvals']) {
+    expect(hrefs).toContain(path);
   }
+  expect(new Set(hrefs).size).toBe(hrefs.length); // no duplicate menu targets
+  expect(hrefs).not.toContain('/audit/logs'); // merged into /audit (tab)
+  expect(hrefs).not.toContain('/compliance'); // merged into /governance (tab)
 });

@@ -1,0 +1,89 @@
+name: OpenWiki Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Ollama Cloud model id (default: repo variable OPENWIKI_MODEL_ID, else kimi-k3)"
+        required: false
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history so `openwiki code --update` can diff HEAD against the
+          # commit it last documented; a shallow clone hides that commit and the
+          # update runs against an empty change summary.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Install OpenWiki
+        # mermaid + jsdom are optional; they add high-fidelity validation of Mermaid diagrams. Remove if your wiki has none.
+        run: npm install --global openwiki@0.5.2 mermaid@11.16.0 jsdom@29.1.1
+
+      - name: Run OpenWiki
+        id: openwiki
+        continue-on-error: true
+        # `--update` only works on an existing wiki. main has no generated pages yet, so every run since 2026-09-23 generated
+        # pages under --update and then crashed rolling them back (ENOENT on openwiki/<dir>/*.md) — runs 35824396170,
+        # 2026-09-23 13:30 and 2026-09-24 13:25. The first run therefore uses --init; later runs update.
+        run: |
+          if find openwiki -name '*.md' ! -name INSTRUCTIONS.md -print -quit 2>/dev/null | grep -q .; then
+            openwiki code --update --print
+          else
+            openwiki code --init --print
+          fi
+        env:
+          # Ollama Cloud (OpenAI-compatible). GitHub runners cannot reach the Tailnet/LAN Ollama hosts,
+          # so this must be the hosted endpoint. glm-5.3 ends the planner without submit_plan; kimi-k3 plans and writes pages.
+          # OpenRouter was dropped after its key started returning 401. Try others via the dispatch input.
+          OPENWIKI_PROVIDER: openai-compatible
+          OPENAI_COMPATIBLE_BASE_URL: https://ollama.com/v1
+          OPENAI_COMPATIBLE_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          OPENWIKI_MODEL_ID: ${{ inputs.model || vars.OPENWIKI_MODEL_ID || 'kimi-k3' }}
+          # One page at a time: a page worker that hits a provider rate limit gets "restored", and on a first generation that
+          # page (and its directory) does not exist yet, so the restore crashed the whole run with ENOENT (run 36050609947).
+          OPENWIKI_PAGE_CONCURRENCY: "1"
+          OPENWIKI_PROVIDER_RETRY_ATTEMPTS: "6"
+
+      - name: Remove transient OpenWiki run state
+        if: ${{ !cancelled() }}
+        run: rm -f -- openwiki/.run.json
+
+      - name: Create OpenWiki update pull request
+        if: ${{ !cancelled() }}
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7
+        with:
+          add-paths: |
+            openwiki
+            AGENTS.md
+            CLAUDE.md
+            .github/workflows/openwiki-update.yml
+          branch: openwiki/update
+          commit-message: "docs: update OpenWiki"
+          title: "docs: update OpenWiki"
+          body: |
+            Automated OpenWiki documentation update.
+
+            OpenWiki result: ${{ steps.openwiki.outcome }}
+
+            When the result is `failure`, this PR intentionally preserves only the
+            pages completed before the failure. Merge it to make that progress the
+            baseline for the next scheduled run.
+
+      - name: Propagate OpenWiki failure
+        if: ${{ steps.openwiki.outcome == 'failure' }}
+        run: exit 1

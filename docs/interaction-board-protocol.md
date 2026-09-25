@@ -30,7 +30,7 @@ token cannot close a reclaimed delivery.
 
 The daily digest must report `OBSERVED` or `NO_ACTIVITY`, participating agents,
 threads, evidence-linked records and source counts. A downstream action is
-created only with a correlation ID and evidence references; EVE-V, Paperclip,
+created only with a correlation ID and evidence references; EVE-V, Djimitflo work intake,
 content publication and revenue systems retain their own approval gates. Until
 the EVE-V consumer is live and authenticated, board-origin handoff remains
 `NOT_PROVEN` rather than being inferred from a digest or HTTP response.

@@ -15,6 +15,28 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
   const requirePermission = auth?.requirePermission ?? ((_perm: string) => (_req: any, _res: any, next: any) => next());
   const requireAuth = auth?.requireAuth ?? ((_req: any, _res: any, next: any) => next());
 
+  /**
+   * Build provenance from the image itself (build args), independent of the
+   * runtime environment. Runtime env can drift or be duplicated across files;
+   * this reflects what was actually baked into the artifact.
+   */
+  function buildProvenance() {
+    const runtimeCommit = process.env.DJIMITFLO_COMMIT_SHA || null;
+    const builtCommit = process.env.DJIMITFLO_BUILD_COMMIT && process.env.DJIMITFLO_BUILD_COMMIT !== 'unknown'
+      ? process.env.DJIMITFLO_BUILD_COMMIT
+      : null;
+    return {
+      commit: runtimeCommit,
+      built_commit: builtCommit,
+      build_source: process.env.DJIMITFLO_BUILD_SOURCE || null,
+      build_time: process.env.DJIMITFLO_BUILD_TIME || null,
+      instance_id: process.env.DJIMITFLO_INSTANCE_ID || null,
+      // A deployed artifact is only attributable when the running revision and the
+      // baked build revision agree.
+      commit_matches_build: !!(runtimeCommit && builtCommit && runtimeCommit === builtCommit),
+    };
+  }
+
   // GET /api/health — basic health check (public)
   router.get('/', (_req, res) => {
     res.json({
@@ -23,6 +45,7 @@ export function createHealthRoutes(db: Database, auth?: AuthMiddleware): Router 
       version: getAppVersion(),
       // Non-secret build identity makes public liveness checks attributable.
       commit: process.env.DJIMITFLO_COMMIT_SHA || null,
+      build: buildProvenance(),
       timestamp: new Date().toISOString(),
     });
   });

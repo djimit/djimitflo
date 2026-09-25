@@ -9,8 +9,14 @@ type DashboardStats = {
   compliance: Awaited<ReturnType<typeof api.getComplianceStatus>> | null;
 };
 
+type TuningEntry = {
+  goalType: string; tuningType: string; applied: boolean;
+  confidence: number; createdAt: string;
+};
+
 export function SelfDrivingDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [tuningHistory, setTuningHistory] = useState<TuningEntry[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [tuningResult, setTuningResult] = useState<string>('');
   const [tuning, setTuning] = useState(false);
@@ -25,6 +31,13 @@ export function SelfDrivingDashboard() {
     ]).then(([cognitive, memory, meta, compliance]) => {
       setStats({ cognitive, memory, meta, compliance });
       setLoading(false);
+      // Only fetch tuning-history when meta is enabled; otherwise show the disabled state.
+      if (meta?.enabled) {
+        api.getMetaTuningHistory({ limit: 20 }).catch(() => null)
+          .then((result) => setTuningHistory(result && !('enabled' in result) ? result : []));
+      } else {
+        setTuningHistory(null);
+      }
     });
   }, []);
 
@@ -74,6 +87,35 @@ export function SelfDrivingDashboard() {
               }}>{tuning ? 'Tuning...' : 'Run bounded tuning'}</button>
               {tuningResult && <p className="mt-2 text-xs text-foreground-secondary">{tuningResult}</p>}
               {tuningError && <p role="alert" className="mt-2 text-sm text-status-error">{tuningError}</p>}
+
+              {stats.meta?.enabled && (
+                <div className="mt-4 border-t border-border pt-4">
+                  <h3 className="mb-2 text-sm font-medium text-foreground">Tuning history</h3>
+                  {tuningHistory === null ? (
+                    <p className="text-xs text-foreground-secondary">Tuning history laden…</p>
+                  ) : tuningHistory.length === 0 ? (
+                    <p className="text-xs text-foreground-secondary">Nog geen tuning-aanpassingen.</p>
+                  ) : (
+                    <ul className="space-y-1 text-xs">
+                      {tuningHistory.map((entry, index) => (
+                        <li key={index} className="flex items-center justify-between gap-3">
+                          <span className="font-mono">{entry.goalType}</span>
+                          <span className="text-foreground-secondary">{entry.tuningType}</span>
+                          <span className="text-foreground-tertiary">
+                            {Math.round(entry.confidence * 100)}% · {entry.applied ? 'toegepast' : 'voorgesteld'}
+                          </span>
+                          <span className="text-foreground-tertiary">{new Date(entry.createdAt).toLocaleDateString()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {!stats.meta?.enabled && stats.meta && (
+                <p className="mt-4 border-t border-border pt-4 text-xs text-foreground-secondary">
+                  Meta-orchestration uitgeschakeld (runtime-profiel)
+                </p>
+              )}
             </Panel>
 
             <Panel title="Proactive Memory" icon={<Database className="w-5 h-5 text-blue-600" />}>

@@ -13,12 +13,14 @@ describe('MCP routes', () => {
     db.exec(`
       CREATE TABLE mcp_servers (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL UNIQUE,
         description TEXT NOT NULL,
         status TEXT NOT NULL,
         command TEXT NOT NULL,
         args TEXT NOT NULL,
         env TEXT NOT NULL,
+        version TEXT,
+        author TEXT,
         url TEXT,
         last_ping_at TEXT,
         error_message TEXT,
@@ -49,14 +51,15 @@ describe('MCP routes', () => {
         updated_at TEXT NOT NULL
       );
     `);
-    db.prepare("INSERT INTO mcp_servers VALUES ('s1', 'deerflow', '', 'running', '', '[]', '{}', null, '2000-01-01T00:00:00.000Z', null, '{}', 'now', 'now')").run();
-    db.prepare("INSERT INTO mcp_servers VALUES ('s2', 'knowledge', '', 'running', '', '[]', '{}', null, '2000-01-01T00:00:00.000Z', null, '{}', 'now', 'now')").run();
+    db.prepare("INSERT INTO mcp_servers VALUES ('s1', 'deerflow', '', 'running', '', '[]', '{}', null, null, null, '2000-01-01T00:00:00.000Z', null, '{}', 'now', 'now')").run();
+    db.prepare("INSERT INTO mcp_servers VALUES ('s2', 'knowledge', '', 'running', '', '[]', '{}', null, null, null, '2000-01-01T00:00:00.000Z', null, '{}', 'now', 'now')").run();
     db.prepare("INSERT INTO mcp_tools VALUES ('t1', 's1', 'post_job', '', 'requires_approval', 'medium', '{}', '{}', 'now', 'now')").run();
     db.prepare("INSERT INTO mcp_tools VALUES ('t2', 's2', 'get_search', '', 'allowed', 'low', '{}', '{}', 'now', 'now')").run();
     db.prepare("INSERT INTO mcp_tool_permissions VALUES ('p1', 't1', 'requires_approval', 'medium', 'mutates', '{}', 'now', 'now')").run();
     db.prepare("INSERT INTO mcp_tool_permissions VALUES ('p2', 't2', 'allowed', 'low', 'reads', '{}', 'now', 'now')").run();
 
     const app = express();
+    app.use(express.json());
     app.use(createMCPRoutes(db, {
       requireAuth: (req: any, _res: any, next: any) => { req.user = { role: 'admin' }; next(); },
       requirePermission: () => (_req: any, _res: any, next: any) => next(),
@@ -92,5 +95,48 @@ describe('MCP routes', () => {
     const body = await response.json() as { servers: Array<Record<string, unknown>> };
     expect(body.servers[0]).toMatchObject({ status: 'running', effective_status: 'stale', status_stale: true });
     expect((db.prepare("SELECT status FROM mcp_servers WHERE id = 's1'").get() as { status: string }).status).toBe('running');
+  });
+
+  it('registers a new MCP server via POST /servers', async () => {
+    const response = await fetch(`${baseUrl}/servers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'my-tool-server', description: 'A new tool server', url: 'http://example.com' }),
+    });
+    expect(response.status).toBe(201);
+    const body = await response.json() as { server: Record<string, unknown> };
+    expect(body.server).toMatchObject({ name: 'my-tool-server', description: 'A new tool server', url: 'http://example.com', status: 'unknown' });
+    const row = db.prepare("SELECT * FROM mcp_servers WHERE name = 'my-tool-server'").get();
+    expect(row).toBeTruthy();
+  });
+
+  it('rejects POST /servers with a missing name or description', async () => {
+    const missingName = await fetch(`${baseUrl}/servers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: 'no name' }),
+    });
+    expect(missingName.status).toBe(400);
+    const missingDescription = await fetch(`${baseUrl}/servers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'no-description' }),
+    });
+    expect(missingDescription.status).toBe(400);
+  });
+
+  it('rejects POST /servers with a duplicate name', async () => {
+    const response = await fetch(`${baseUrl}/servers`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'deerflow', description: 'duplicate' }),
+    });
+    expect(response.status).toBe(409);
+  });
+
+  it('skips the health probe and reports a calm status for a known_unreachable server', async () => {
+    db.prepare("INSERT INTO mcp_servers VALUES ('s3', 'offline-tool', '', 'unknown', '', '[]', '{}', null, null, 'http://192.168.1.28:9', null, null, ?, 'now', 'now')")
+      .run(JSON.stringify({ known_unreachable: true, known_unreachable_reason: 'Firewalled from this deployment.' }));
+    const response = await fetch(`${baseUrl}/servers?refresh=true`);
+    const body = await response.json() as { servers: Array<Record<string, unknown>> };
+    const offline = body.servers.find((s) => s.name === 'offline-tool');
+    expect(offline).toMatchObject({ status: 'stopped', error_message: 'Firewalled from this deployment.' });
   });
 });

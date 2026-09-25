@@ -237,7 +237,12 @@ describe('ExecutionEngine', () => {
     expect(() => approvalService.decideApproval('approval-expired', true, 'maker-1')).toThrow('APPROVAL_EXPIRED');
     expect((db.prepare('SELECT status FROM approvals WHERE id = ?').get('approval-expired') as any).status).toBe('expired');
     expect(approvalService.getLatestPendingForTask(task.id)).toBeNull();
-    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(1);
+    // 2, not 1: expiry now also cancels the still-awaiting_approval task in
+    // the same transaction, recording a second event_type='approval.expired'
+    // audit row scoped to the task (action='task_cancelled_after_approval_expiry')
+    // alongside the original one scoped to the approval.
+    expect((db.prepare("SELECT COUNT(*) AS count FROM audit_events WHERE event_type = 'approval.expired'").get() as any).count).toBe(2);
+    expect((db.prepare('SELECT status FROM tasks WHERE id = ?').get(task.id) as any).status).toBe('cancelled');
     expect(broadcastTaskEventById).toHaveBeenCalledWith(task.id, expect.objectContaining({ type: 'approval.expired' }));
   });
 

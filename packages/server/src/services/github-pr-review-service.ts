@@ -167,7 +167,10 @@ export class GithubPrReviewService {
 
     const stat = this.fetchPrStat(input.owner, input.repo, input.number);
     const { verdict, notes } = this.computeVerdict(stat);
-    this.loops.submitCheckerVerdict(input.loopRunId, { lease_id: checkerLeaseId, verdict, notes });
+    this.loops.submitCheckerVerdict(input.loopRunId, {
+      lease_id: checkerLeaseId, verdict, notes,
+      manual_attestation: { reviewer: 'roborev-webhook', reason: 'automated pull_request review webhook verdict' },
+    });
 
     return { verdict, checkerLeaseId };
   }

@@ -10,6 +10,8 @@ export interface ExpertAnswer {
   metadata?: Record<string, unknown>;
 }
 
+export type PromotionDecision = 'VERIFIED_FOR_USE' | 'HUMAN_REVIEW_REQUIRED' | 'CONTRADICTED' | 'INSUFFICIENT_EVIDENCE' | 'UNVERIFIABLE';
+
 export interface JudgeVerdict {
   id: string;
   score: number;
@@ -18,6 +20,11 @@ export interface JudgeVerdict {
   contradictions: string[];
   recommendations: string[];
   verification_status: 'verified' | 'pending' | 'contradicted' | 'unverifiable';
+  /**
+   * Promotion decision, separate from the heuristic score. The heuristic alone never
+   * yields VERIFIED_FOR_USE: that requires an external checker or human verification.
+   */
+  promotion_decision: PromotionDecision;
   created_at: string;
   score_kind: 'heuristic';
   sub_scores?: {
@@ -88,6 +95,7 @@ export class JudgeService {
       contradictions,
       recommendations,
       verification_status: verificationStatus,
+      promotion_decision: this.decidePromotion(score, contradictions, answers),
       created_at: new Date().toISOString(),
       score_kind: 'heuristic',
       sub_scores: {
@@ -283,6 +291,19 @@ export class JudgeService {
     return 'unverifiable';
   }
 
+  /**
+   * Promotion decision derived from evidence presence, contradictions and the heuristic
+   * score. Deliberately never returns VERIFIED_FOR_USE: a heuristic cannot verify; an
+   * external checker or human review upgrades a HUMAN_REVIEW_REQUIRED candidate later.
+   */
+  decidePromotion(score: number, contradictions: string[], answers: ExpertAnswer[]): PromotionDecision {
+    if (contradictions.length >= 1) return 'CONTRADICTED';
+    const evidenced = answers.filter((answer) => answer.source !== 'none' && (answer.evidence_refs?.length ?? 0) > 0);
+    if (evidenced.length === 0) return 'INSUFFICIENT_EVIDENCE';
+    if (score >= 50) return 'HUMAN_REVIEW_REQUIRED';
+    return 'UNVERIFIABLE';
+  }
+
   private calculateConfidence(answers: ExpertAnswer[]): number {
     if (answers.length === 0) return 0;
     const avg = answers.reduce((sum, a) => sum + a.confidence, 0) / answers.length;
@@ -300,6 +321,7 @@ export class JudgeService {
       confidence: 0,
       reasoning: 'No expert answers to evaluate.',
       contradictions: [],
+      promotion_decision: 'INSUFFICIENT_EVIDENCE',
       recommendations: ['Provide at least one expert answer'],
       verification_status: 'unverifiable',
       created_at: new Date().toISOString(),

@@ -3,6 +3,8 @@ import { dirname } from 'path';
 import { createHash } from 'crypto';
 import type { Database } from 'better-sqlite3';
 import type { DreamOpportunity } from './dream-cycle-service';
+import { WorkItemService } from './work-item-service';
+import { paperclipExportEnabled } from './paperclip-legacy';
 
 export interface DreamTaskEnvelope {
   event: 'dream.opportunity'; task_title: string; task_type: 'skill_candidate' | 'triage';
@@ -12,7 +14,7 @@ export interface DreamTaskEnvelope {
   labels: string[]; metadata: Record<string, unknown>;
 }
 
-/** Converts inert dream proposals into idempotent Paperclip-ready backlog events. */
+/** Converts inert dream proposals into idempotent Djimitflo work items (native intake); the Paperclip JSONL is legacy. */
 export class DreamTaskPlannerService {
   constructor(private readonly db: Database) {
     this.db.exec(`CREATE TABLE IF NOT EXISTS dream_task_emissions (
@@ -57,11 +59,25 @@ export class DreamTaskPlannerService {
     return planned;
   }
 
-  exportPending(path = process.env.DENNIS_AGENT_PAPERCLIP_PENDING || `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl`, limit = 3, minScore = 0.25): number {
+  exportPending(path: string | undefined = process.env.DENNIS_AGENT_PAPERCLIP_PENDING, limit = 3, minScore = 0.25): number {
     const tasks = this.plan(limit, minScore);
     if (!tasks.length) return 0;
-    mkdirSync(dirname(path), { recursive: true });
-    appendFileSync(path, tasks.map(task => JSON.stringify(task)).join('\n') + '\n', 'utf8');
+    // Native intake: one Djimitflo work item per dream task, idempotent on the task's dedupe key.
+    const workItems = new WorkItemService(this.db);
+    for (const task of tasks) {
+      workItems.upsertBySourceRef({
+        title: task.task_title, description: `${task.summary}\n\n${task.context}`, source: 'dream_cycle', source_ref: task.dedupe_key,
+        risk_class: 'low', status: 'candidate',
+        recommended_loop: task.task_type === 'triage' ? 'outcome-learning-loop' : 'research-loop',
+        metadata: { ...task.metadata, labels: task.labels, assignee_role: task.assignee_role },
+      });
+    }
+    // Legacy Paperclip file: only with an explicit path (env or argument) or PAPERCLIP_EXPORT_ENABLED=true.
+    const legacyPath = path || (paperclipExportEnabled() ? `${process.env.HOME || '/tmp'}/.djimit/roborev/paperclip-tasks.pending.jsonl` : null);
+    if (legacyPath) {
+      mkdirSync(dirname(legacyPath), { recursive: true });
+      appendFileSync(legacyPath, tasks.map(task => JSON.stringify(task)).join('\n') + '\n', 'utf8');
+    }
     const now = new Date().toISOString();
     for (const task of tasks) this.db.prepare('UPDATE dream_task_emissions SET exported_at = ? WHERE dedupe_key = ?').run(now, task.dedupe_key);
     return tasks.length;

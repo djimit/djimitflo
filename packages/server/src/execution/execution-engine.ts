@@ -55,7 +55,7 @@ import { runtimeConcurrencySemaphore } from '../services/concurrency-semaphore';
 import { RuntimeGovernanceService } from '../services/runtime-governance-service';
 import { canonicalJson, DeepAgentContractIssuer } from '../services/deep-agent-contract-issuer';
 import { DennisAgentService } from '../services/dennis-agent-service';
-import { EvidenceType, EvidenceSeverity } from '@djimitflo/shared';
+import { EvidenceType, EvidenceSeverity, RiskLevel } from '@djimitflo/shared';
 import { createError } from '../middleware/error-handler';
 
 export interface ExecuteTaskResult {
@@ -1490,9 +1490,41 @@ export class ExecutionEngine {
       LIMIT 1
     `).get(taskId, executorKind) as any;
     if (!approval || approval.status !== 'approved' || !approval.expires_at
-      || !(Date.parse(approval.expires_at) > Date.now())) return false;
+      || !(Date.parse(approval.expires_at) > Date.now())) return this.reviewerInheritsRunApproval(taskId);
     // Historical unbound approvals stay evidence, not reusable execution grants.
     return JSON.parse(approval.metadata).executionInputHash === this.executionInputHash(this.getTask(taskId), executorKind);
+  }
+
+  /**
+   * One human approval per loop run (opt-in: LOOP_REVIEWER_APPROVAL_INHERIT=true). The maker is the mutating worker and
+   * keeps its own approval; the checker / security checker of the SAME run are read-only by contract (the run fails
+   * their read_only gate otherwise), so a human-approved, unexpired maker approval of that run also covers them.
+   * Never inherits for makers, across runs, from a system/auto decision, or after the maker approval expired.
+   */
+  private reviewerInheritsRunApproval(taskId: string): boolean {
+    if (process.env.LOOP_REVIEWER_APPROVAL_INHERIT !== 'true') return false;
+    const task = this.db.prepare('SELECT tags, metadata FROM tasks WHERE id = ?').get(taskId) as { tags: string; metadata: string } | undefined;
+    if (!task) return false;
+    let tags: unknown; let meta: { loop_run_id?: unknown };
+    try { tags = JSON.parse(task.tags || '[]'); meta = JSON.parse(task.metadata || '{}'); } catch { return false; }
+    const runId = typeof meta.loop_run_id === 'string' ? meta.loop_run_id : '';
+    if (!runId || !Array.isArray(tags) || !(tags.includes('checker') || tags.includes('security_checker')) || tags.includes('maker')) return false;
+    const grant = this.db.prepare(`
+      SELECT a.id FROM approvals a JOIN tasks t ON t.id = a.task_id
+      WHERE a.status = 'approved' AND a.decided_by IS NOT NULL AND a.decided_by NOT IN ('system', 'auto')
+        AND a.expires_at IS NOT NULL AND a.expires_at > ?
+        AND json_valid(COALESCE(t.metadata, '{}')) = 1 AND json_extract(t.metadata, '$.loop_run_id') = ?
+        AND json_valid(COALESCE(t.tags, '[]')) = 1 AND EXISTS (SELECT 1 FROM json_each(t.tags) WHERE value = 'maker')
+      ORDER BY a.created_at DESC LIMIT 1
+    `).get(new Date().toISOString(), runId) as { id: string } | undefined;
+    if (!grant) return false;
+    try {
+      this.auditService.record({
+        event_type: AuditEventType.APPROVAL_GRANTED, action: 'reviewer_inherited_run_approval', resource_type: 'task', resource_id: taskId,
+        task_id: taskId, risk_level: RiskLevel.MEDIUM, metadata: { loop_run_id: runId, inherited_from_approval: grant.id },
+      });
+    } catch { /* the audit trail must not break the gate */ }
+    return true;
   }
 
   private capturePreExecutionDiff(taskId: string, repositoryId: string | null | undefined): void {

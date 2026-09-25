@@ -810,6 +810,7 @@ const SCHEMA = `
     evidence_refs_json TEXT NOT NULL DEFAULT '[]',
     panel_id TEXT,
     approved_by TEXT,
+    grounding_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT ''
   );

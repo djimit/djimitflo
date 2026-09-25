@@ -1,16 +1,14 @@
+import { recordAuthorityEvent } from './authority-ledger-service';
+import { enqueueEvent } from './event-outbox-service';
 import { randomUUID } from 'crypto';
 import type { Database } from 'better-sqlite3';
+import { SelfImprovementService } from './self-improvement-service';
 
 export class AutonomousGoalGenerator {
   constructor(private db: Database) {
     this.db.exec(`CREATE TABLE IF NOT EXISTS security_scans (
       id TEXT PRIMARY KEY, target TEXT NOT NULL, scan_type TEXT NOT NULL DEFAULT 'code',
       findings_json TEXT NOT NULL DEFAULT '[]', summary_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
-    this.db.exec(`CREATE TABLE IF NOT EXISTS knowledge_gaps (
-      id TEXT PRIMARY KEY, domain TEXT NOT NULL, description TEXT NOT NULL,
-      priority REAL NOT NULL DEFAULT 0.5, status TEXT NOT NULL DEFAULT 'open',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`);
   }
@@ -40,7 +38,8 @@ export class AutonomousGoalGenerator {
     if (!improvement) return 0;
 
     const existing = this.db.prepare(
-      "SELECT id, improvement_id FROM goals WHERE improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ? LIMIT 1"
+      // a failed/cancelled goal does not block a retry (infrastructure failures re-schedule the proposal)
+      "SELECT id, improvement_id FROM goals WHERE (improvement_id = ? OR json_extract(metadata, '$.improvement_id') = ?) AND status NOT IN ('failed', 'cancelled') LIMIT 1"
     ).get(id, id) as { id: string; improvement_id: string | null } | undefined;
     if (existing) {
       if (!existing.improvement_id) this.db.prepare('UPDATE goals SET improvement_id = ? WHERE id = ?').run(id, existing.id);
@@ -48,91 +47,69 @@ export class AutonomousGoalGenerator {
       return 0;
     }
 
+    const goalId = randomUUID();
     this.db.prepare(`
       INSERT INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, improvement_id, metadata, created_at, updated_at)
       VALUES (?, ?, 'created', ?, ?, '{}', ?, ?, datetime('now'), datetime('now'))
     `).run(
-      randomUUID(),
+      goalId,
       improvement.title,
-      improvement.priority > 0.9 ? 'high' : improvement.priority > 0.7 ? 'medium' : 'low',
+      // Risk is what the change could break, not how important it is. It used to come from priority, which the source bandit
+      // raises for sources that verify: prod 2026-09-25, the test-gap lane went 4/4 verified, its next proposals got priority
+      // 0.86/0.74 -> risk 'medium' -> no objective mode -> doc-drift no-op -> 'no_change'. Success was punishing itself.
+      improvement.type === 'security' ? 'high' : 'low',
       JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
       improvement.id,
       JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
     );
     this.db.prepare("UPDATE self_improvements SET status = 'executing' WHERE id = ?").run(id);
+    // The panel authorised this goal: record it as the PLAN_APPROVED ALLOW the (optional) authority gate looks for.
+    recordAuthorityEvent(this.db, { correlationId: goalId, artifactId: goalId, actorSubject: 'specialist-panel', actorType: 'agent', requestedState: 'PLAN_APPROVED', decision: 'ALLOW', payload: { improvement_id: id, title: improvement.title }, evidenceRefs: [`improvement:${id}`] });
+    enqueueEvent(this.db, { type: 'djimitflo.goal.created', aggregateId: goalId, payload: { goal_id: goalId, improvement_id: id, title: improvement.title, source: 'self-improvement' } });
     return 1;
   }
 
+  /**
+   * Found 2026-09-21: this used to create a goal directly at risk_class:'high',
+   * fully autonomous, with no specialist panel review at all — the one
+   * category needing the most scrutiny skipped it entirely. Now routes
+   * through SelfImprovementService's reviewed pipeline, exactly like every
+   * other proposal source — a goal is still created, but only once a
+   * specialist panel authorizes it (via the existing generateFromSelfImprovements()
+   * path above). Incidental fix: dedup is now by finding content
+   * (fingerprint), not scan id, so an hourly re-scan reporting the same
+   * unresolved finding no longer creates a fresh duplicate every cycle.
+   */
   generateFromSecurityFindings(): number {
-    let findings: Array<{ id: string; findings_json: string }> = [];
+    let scans: Array<{ id: string; findings_json: string }> = [];
     try {
-      findings = this.db.prepare(
+      scans = this.db.prepare(
         "SELECT * FROM security_scans WHERE created_at > datetime('now', '-1 day') ORDER BY id DESC LIMIT 1"
       ).all() as Array<{ id: string; findings_json: string }>;
     } catch { return 0; }
 
-    if (findings.length === 0) return 0;
+    if (scans.length === 0) return 0;
 
-    const latestScan = findings[0];
-    const scanFindings = JSON.parse(latestScan.findings_json) as Array<{ severity: string; message: string; location: string }>;
+    const latestScan = scans[0];
+    const scanFindings = JSON.parse(latestScan.findings_json) as Array<{ severity: string; category?: string; message: string; location?: string }>;
 
     const highFindings = scanFindings.filter(f => f.severity === 'high' || f.severity === 'critical');
     if (highFindings.length === 0) return 0;
 
-    const goalId = `security-scan:${latestScan.id}`;
-    const result = this.db.prepare(`
-      INSERT OR IGNORE INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
-      VALUES (?, ?, 'created', ?, ?, '{}', ?, datetime('now'), datetime('now'))
-    `).run(
-      goalId,
-      `Fix ${highFindings.length} high-severity security findings`,
-      'high',
-      JSON.stringify(['All security findings addressed', 'Tests pass']),
-      JSON.stringify({ source: 'security-scan', scan_id: latestScan.id, findings_count: highFindings.length, autonomous: true })
+    const descriptions = highFindings.map(f =>
+      `${f.severity}${f.category ? ` ${f.category}` : ''} finding${f.location ? ` at ${f.location}` : ''}: ${f.message}`
     );
-
-    return result.changes;
+    return new SelfImprovementService(this.db).generateFromSecurityFindings(descriptions).length;
   }
 
-  generateFromCuriosityGaps(): number {
-    let gaps: Array<{ id: string; domain: string; description: string; priority: number }> = [];
-    try {
-      gaps = this.db.prepare(
-        "SELECT * FROM knowledge_gaps WHERE status = 'open' ORDER BY priority DESC LIMIT 3"
-      ).all() as Array<{ id: string; domain: string; description: string; priority: number }>;
-    } catch { return 0; }
-
-    let created = 0;
-    for (const gap of gaps) {
-      const goalId = randomUUID();
-      this.db.prepare(`
-        INSERT OR IGNORE INTO goals (id, objective, status, risk_class, acceptance_criteria_json, budget_json, metadata, created_at, updated_at)
-        VALUES (?, ?, 'created', ?, ?, '{}', ?, datetime('now'), datetime('now'))
-      `).run(
-        goalId,
-        `Investigate knowledge gap: ${gap.domain}`,
-        'low',
-        JSON.stringify(['Knowledge gap addressed', 'Documentation updated']),
-        JSON.stringify({ source: 'curiosity-gap', gap_id: gap.id, autonomous: true })
-      );
-
-      this.db.prepare("UPDATE knowledge_gaps SET status = 'addressing' WHERE id = ?").run(gap.id);
-      created++;
-    }
-
-    return created;
-  }
-
-  generateAll(): { improvements: number; security: number; curiosity: number; total: number } {
+  generateAll(): { improvements: number; security: number; total: number } {
     const improvements = this.generateFromSelfImprovements();
     const security = this.generateFromSecurityFindings();
-    const curiosity = this.generateFromCuriosityGaps();
 
     return {
       improvements,
       security,
-      curiosity,
-      total: improvements + security + curiosity,
+      total: improvements + security,
     };
   }
 

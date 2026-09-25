@@ -29,9 +29,16 @@ function getSuccessColor(rate: number): string {
   return "text-red-600";
 }
 
+// Server returns the strategy object, or a friendly message, or null when <3 episodes.
+type StrategyResponse = {
+  id: string; name: string; goalType: string;
+  successRate: number; episodeCount: number;
+} | { message: string } | null;
+
 export function CognitiveRuntimePage() {
   const [stats, setStats] = useState<CognitiveStats | null>(null);
   const [metaLearning, setMetaLearning] = useState<MetaLearningRecord[]>([]);
+  const [strategy, setStrategy] = useState<StrategyResponse>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -47,6 +54,14 @@ export function CognitiveRuntimePage() {
       if (!active) return;
       setStats(s);
       setMetaLearning(Array.isArray(ml?.records) ? ml.records : ml || []);
+      // Fetch strategy only for a real goal type; absent bestGoalType shows the
+      // friendly "no strategy" card instead of calling with undefined.
+      if (s?.bestGoalType) {
+        api.getBestStrategy(s.bestGoalType).then((value) => { if (active) setStrategy(value); })
+          .catch(() => { if (active) setStrategy(null); });
+      } else {
+        setStrategy(null);
+      }
     }).catch((failure: unknown) => {
       if (active) setError(failure instanceof Error ? failure.message : 'Cognitive evidence could not be loaded');
     }).finally(() => { if (active) setLoading(false); });
@@ -86,6 +101,21 @@ export function CognitiveRuntimePage() {
           <StatCard icon={<Award className="w-5 h-5" />} label="Best Goal Type" value={stats.bestGoalType || "—"} color="pink" />
         </div>
       )}
+
+      <div className="bg-background-elevated rounded-xl border border-border p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-2">Beste strategie</h2>
+        {strategy && 'successRate' in strategy ? (
+          <div className="text-sm space-y-1">
+            <div className="font-medium text-foreground">{strategy.name}</div>
+            <div className="text-foreground-secondary">
+              {formatPercent(strategy.successRate)} succesvol over {strategy.episodeCount} episodes
+              {stats?.bestGoalType ? ` · ${stats.bestGoalType}` : ''}
+            </div>
+          </div>
+        ) : (
+          <p className="text-foreground-tertiary text-sm">Nog geen strategie (≥3 episodes nodig)</p>
+        )}
+      </div>
 
       <div className="bg-background-elevated rounded-xl border border-border p-6">
         <h2 className="text-lg font-semibold text-foreground mb-4">Meta-Learning Status</h2>

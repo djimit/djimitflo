@@ -44,12 +44,15 @@ describe('agent commons read-model', () => {
     expect(learning.reflection_id).toBeTruthy();
     expect(learning.creative_alternative).toBe('Blind the evaluator.');
     expect(learning.answer).not.toContain('abcdefghijklmnop');
+    // totals come from the server, not from the loaded page (prod 2026-09-24: "Reflecties 40" was the page size)
+    expect(commons.stats).toMatchObject({ threads_7d: 1, open_7d: 0, learnings_7d: 1, proposals_verified: 0 });
   });
 
   it('turns agent interests into bounded peer challenges and proposals into governed candidates', () => {
     comms.socialize(0);
     const [question] = comms.receiveSocial('agent-b');
-    expect(question.payload.params.ecosystem_context).toContain('Paperclip');
+    expect(question.payload.params.ecosystem_context).toContain('the core (work control, approvals');
+    expect(question.payload.params.ecosystem_context).not.toContain('Paperclip');
     const reply = {
       answer: 'Let peers compare retrieval failures.', uncertainty: 'No live measurements yet.',
       falsifiable_next_step: 'Compare ten known queries against the baseline.', creative_alternative: 'Try a blinded query set.',
@@ -149,6 +152,23 @@ describe('agent commons read-model', () => {
     const fourth = comms.socialize(0);
     expect(fourth.topic).toBe('The OKF index lacks provenance for imported skills');
     expect(fourth.messages[0].payload.evidence).toEqual(['claim:gap-1', 'okf:x']);
+    // a gap is discussed once: the next round moves on instead of re-picking the newest gap (prod: 264 repeated threads)
+    expect(comms.socialize(0).topic).not.toBe('The OKF index lacks provenance for imported skills');
+  });
+
+  it('shows non-social agent activity in the commons read-model', () => {
+    comms.send({ from: 'agent-a', to: 'agent-b', type: 'task', action: 'task.assigned', context: 'Review OKF index' });
+
+    const commons = comms.listSocialCommons();
+    const agentA = commons.agents.find((agent) => agent.id === 'agent-a');
+    expect(agentA?.activity).toHaveLength(1);
+    expect(agentA?.activity[0]).toEqual(expect.objectContaining({ to: 'agent-b', action: 'task.assigned' }));
+
+    // social messages stay in threads; non-social messages do not leak into threads.
+    comms.socialize(0);
+    const commons2 = comms.listSocialCommons();
+    const [thread] = commons2.threads;
+    expect(thread.messages.map((message) => message.action)).toEqual(['social.question', 'social.question']);
   });
 
   it('reads the production agents schema capability column', () => {

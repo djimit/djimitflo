@@ -2,9 +2,10 @@
  * Predictive Analytics Page — visualize loop outcome predictions and system health.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import { TrendingUp, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
 import { api } from '../lib/api';
+import { PageHeader, primaryButton, panel } from '../components/PageHeader';
 
 interface Prediction {
   successProbability: number;
@@ -34,69 +35,60 @@ export function PredictiveAnalyticsPage() {
     }
   }, []);
 
+  const likely = (prediction?.successProbability ?? 0) > 0.7;
+
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-        <TrendingUp size={28} color="#10b981" />
-        <h1 style={{ fontSize: '24px', fontWeight: 700, margin: 0 }}>Predictive Analytics</h1>
-        <button onClick={runPrediction} disabled={loading} style={{
-          marginLeft: 'auto', padding: '8px 16px', background: '#10b981', color: 'white',
-          border: 'none', borderRadius: '6px', cursor: 'pointer',
-        }}>
-          {loading ? 'Predicting...' : 'Run Prediction'}
-        </button>
-      </div>
+    <div className="mx-auto max-w-6xl space-y-6 p-6">
+      <PageHeader
+        title="Predictive Analytics"
+        icon={<TrendingUp className="h-7 w-7 text-status-completed" />}
+        description="Estimates the success chance, duration and cost of a typical closed-loop run on the mock runtime, with the risk factors behind the estimate."
+        actions={<button onClick={runPrediction} disabled={loading} className={primaryButton}>{loading ? 'Predicting...' : 'Run Prediction'}</button>}
+      />
 
       {error && <p role="alert" className="text-status-error">{error}</p>}
 
+      {!prediction && !loading && !error && (
+        <div className={`${panel} py-12 text-center text-foreground-secondary`}>Press "Run Prediction" to estimate a typical run.</div>
+      )}
+
       {prediction && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-          <MetricCard
-            title="Success Probability"
-            value={`${(prediction.successProbability * 100).toFixed(0)}%`}
-            icon={<CheckCircle size={20} color={prediction.successProbability > 0.7 ? '#10b981' : '#f59e0b'} />}
-            color={prediction.successProbability > 0.7 ? '#dcfce7' : '#fef3c7'}
-          />
-          <MetricCard
-            title="Expected Duration"
-            value={`${Math.round(prediction.expectedDurationMs / 60000)}min`}
-            icon={<Activity size={20} color="#6366f1" />}
-            color="#eef2ff"
-          />
-          <MetricCard
-            title="Expected Cost"
-            value={`$${prediction.expectedCostDollars.toFixed(3)}`}
-            icon={<TrendingUp size={20} color="#8b5cf6" />}
-            color="#f5f3ff"
-          />
+        <div className="grid gap-4 md:grid-cols-3">
+          <MetricCard title="Success Probability" value={`${(prediction.successProbability * 100).toFixed(0)}%`}
+            icon={<CheckCircle className={`h-5 w-5 ${likely ? 'text-status-completed' : 'text-status-paused'}`} />}
+            tone={likely ? 'bg-status-completed/10' : 'bg-status-paused/10'} />
+          <MetricCard title="Expected Duration" value={`${Math.round(prediction.expectedDurationMs / 60000)}min`}
+            icon={<Activity className="h-5 w-5 text-accent" />} tone="bg-accent/10" />
+          <MetricCard title="Expected Cost" value={`$${prediction.expectedCostDollars.toFixed(3)}`}
+            icon={<TrendingUp className="h-5 w-5 text-accent-secondary" />} tone="bg-accent-secondary/10" />
         </div>
       )}
 
       {prediction && prediction.riskFactors.length > 0 && (
-        <div style={{ marginBottom: '24px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '12px' }}>Risk Factors</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <section>
+          <h2 className="mb-3 text-lg font-semibold text-foreground">Risk Factors</h2>
+          <div className="space-y-2">
             {prediction.riskFactors.map((risk, i) => (
-              <div key={i} style={{ padding: '12px', background: '#fef2f2', borderRadius: '6px', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertTriangle size={14} color="#dc2626" />
-                <span style={{ fontSize: '14px' }}>{risk}</span>
+              <div key={i} className="flex items-center gap-2 rounded-lg border border-status-error/20 bg-status-error/5 p-3">
+                <AlertTriangle className="h-4 w-4 text-status-error" />
+                <span className="text-sm text-foreground">{risk}</span>
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
 }
 
-function MetricCard({ title, value, icon, color }: { title: string; value: string; icon: React.ReactNode; color: string }) {
+function MetricCard({ title, value, icon, tone }: { title: string; value: string; icon: ReactNode; tone: string }) {
   return (
-    <div style={{ padding: '20px', background: color, borderRadius: '8px', border: '1px solid #e5e7eb' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+    <div className={`rounded-lg border border-border p-5 ${tone}`}>
+      <div className="mb-2 flex items-center gap-2">
         {icon}
-        <span style={{ fontSize: '13px', fontWeight: 500, color: '#6b7280' }}>{title}</span>
+        <span className="text-sm font-medium text-foreground-secondary">{title}</span>
       </div>
-      <div style={{ fontSize: '28px', fontWeight: 700 }}>{value}</div>
+      <div className="text-3xl font-bold text-foreground">{value}</div>
     </div>
   );
 }

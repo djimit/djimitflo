@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { PlugZap, Circle } from 'lucide-react';
 import type { MCPServer } from '@djimitflo/shared';
 import { api } from '../lib/api';
@@ -26,6 +26,12 @@ export function MCPPermissionsPage() {
   const [query, setQuery] = useState('');
   const [serversLoading, setServersLoading] = useState(true);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const [showAddServer, setShowAddServer] = useState(false);
+  const [newServerName, setNewServerName] = useState('');
+  const [newServerUrl, setNewServerUrl] = useState('');
+  const [newServerDescription, setNewServerDescription] = useState('');
+  const [addServerError, setAddServerError] = useState<string | null>(null);
+  const [addingServer, setAddingServer] = useState(false);
   const serverStats = permissions.reduce<Record<string, { tools: number; approvals: number }>>((stats, permission) => {
     const id = String(permission.server_id || '');
     if (!id) return stats;
@@ -36,7 +42,12 @@ export function MCPPermissionsPage() {
   }, {});
 
   useEffect(() => {
-    api.getMCPServers()
+    refreshServers();
+  }, []);
+
+  function refreshServers() {
+    setServersLoading(true);
+    return api.getMCPServers()
       .then((serversResult) => {
         setServers(serversResult.servers);
       })
@@ -44,7 +55,25 @@ export function MCPPermissionsPage() {
         console.error('Failed to load MCP servers:', error);
       })
       .finally(() => setServersLoading(false));
-  }, []);
+  }
+
+  function handleAddServer(event: FormEvent) {
+    event.preventDefault();
+    setAddServerError(null);
+    setAddingServer(true);
+    api.createMCPServer({ name: newServerName.trim(), description: newServerDescription.trim(), command: '', url: newServerUrl.trim() || undefined })
+      .then(() => {
+        setNewServerName('');
+        setNewServerUrl('');
+        setNewServerDescription('');
+        setShowAddServer(false);
+        return refreshServers();
+      })
+      .catch((error) => {
+        setAddServerError(error instanceof Error ? error.message : 'Failed to add server');
+      })
+      .finally(() => setAddingServer(false));
+  }
 
   useEffect(() => {
     setPermissionsLoading(true);
@@ -69,12 +98,56 @@ export function MCPPermissionsPage() {
 
       {/* MCP Servers */}
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-foreground">
-          Servers
-          <span className="ml-2 text-sm font-normal text-foreground-secondary">
-            ({servers.length})
-          </span>
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">
+            Servers
+            <span className="ml-2 text-sm font-normal text-foreground-secondary">
+              ({servers.length})
+            </span>
+          </h2>
+          <button
+            type="button"
+            onClick={() => setShowAddServer((value) => !value)}
+            className="text-sm px-3 py-1.5 rounded-md border border-border text-foreground-secondary hover:text-foreground hover:border-accent"
+          >
+            {showAddServer ? 'Cancel' : 'Add server'}
+          </button>
+        </div>
+
+        {showAddServer && (
+          <form onSubmit={handleAddServer} className="bg-background-secondary border border-border rounded-lg p-4 space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input
+                required
+                value={newServerName}
+                onChange={(event) => setNewServerName(event.target.value)}
+                placeholder="Name (e.g. my-tool-server)"
+                className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+              />
+              <input
+                value={newServerUrl}
+                onChange={(event) => setNewServerUrl(event.target.value)}
+                placeholder="URL (optional)"
+                className="bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+              />
+            </div>
+            <input
+              required
+              value={newServerDescription}
+              onChange={(event) => setNewServerDescription(event.target.value)}
+              placeholder="Description"
+              className="w-full bg-background border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-foreground-tertiary"
+            />
+            {addServerError && <p className="text-xs text-red-400">{addServerError}</p>}
+            <button
+              type="submit"
+              disabled={addingServer}
+              className="text-sm px-3 py-1.5 rounded-md bg-accent text-white disabled:opacity-50"
+            >
+              {addingServer ? 'Adding…' : 'Add server'}
+            </button>
+          </form>
+        )}
 
         {serversLoading ? (
           <div className="bg-background-secondary border border-border rounded-lg p-6 text-foreground-secondary text-sm">
