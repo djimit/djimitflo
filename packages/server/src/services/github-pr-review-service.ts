@@ -111,6 +111,7 @@ export class GithubPrReviewService {
 
       this.db.prepare("UPDATE github_pull_request_reviews SET status='commented', check_run_id=?, metadata=?, updated_at=? WHERE id=?")
         .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId }), new Date().toISOString(), id);
+      this.settleReviewRun(input.loopRunId);
 
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_reviewed', resource: input.loopRunId, outcome: 'success',
@@ -173,6 +174,17 @@ export class GithubPrReviewService {
     });
 
     return { verdict, checkerLeaseId };
+  }
+
+  /**
+   * The review's loop_run exists only as bookkeeping (synthetic maker, no worktree), so loop verification always leaves it
+   * 'blocked'. Prod 2026-09-25: after the webhook fix 32 such runs in 3 h inflated the blocked count and would have been
+   * replayed as failures by the dream state. Once the verdict is on GitHub the run has done its job: settle it completed.
+   */
+  private settleReviewRun(loopRunId: string): void {
+    this.db.prepare(`UPDATE loop_runs SET status = 'completed', updated_at = ?,
+      metadata = json_set(COALESCE(NULLIF(metadata, ''), '{}'), '$.settled_by', 'github-pr-review') WHERE id = ? AND status IN ('running', 'blocked')`)
+      .run(new Date().toISOString(), loopRunId);
   }
 
   private resolveLlmRuntime(): LlmRuntime | null {
@@ -246,6 +258,7 @@ export class GithubPrReviewService {
 
       this.db.prepare("UPDATE github_pull_request_reviews SET status='commented', check_run_id=?, metadata=?, updated_at=? WHERE id=?")
         .run(checkRunId, JSON.stringify({ verdict, checker_lease_id: checkerLeaseId, runtime }), new Date().toISOString(), reviewId);
+      this.settleReviewRun(input.loopRunId);
       this.audit.appendEntry({
         actor: 'github-pr-review', action: 'github_pr_reviewed', resource: input.loopRunId, outcome: 'success',
         evidence: { owner: input.owner, repo: input.repo, number: input.number, head_sha: input.headSha, verdict, runtime },

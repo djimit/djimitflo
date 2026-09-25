@@ -105,6 +105,9 @@ describe('GitHub pull_request review webhook', () => {
 
     const commentArgs = vi.mocked(execFileSync).mock.calls.find(([, args]) => Array.isArray(args) && args[0] === 'pr' && args[1] === 'comment');
     expect(commentArgs).toBeTruthy();
+    // the bookkeeping run is settled once the verdict is posted, not left 'blocked'
+    expect(db.prepare("SELECT status, json_extract(metadata, '$.settled_by') AS by FROM loop_runs WHERE id = ?").get(reviewRow.loop_run_id))
+      .toEqual({ status: 'completed', by: 'github-pr-review' });
     db.close();
   });
 
