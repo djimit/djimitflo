@@ -69,13 +69,48 @@ export function discoverExportGaps(repoPath: string): TestGap[] {
   return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
 }
 
+/**
+ * M2 (plan WS-M): the mutation-gap lane. A service with a same-named test can still let most mutants survive (prod
+ * 2026-09-25: secret-patterns.test.ts, written by the loop, killed 31 % of them). The task is to strengthen that test;
+ * fitness is measured in code by scripts/mutation-gain.mjs (Stryker on the committed vs the working-tree test, pass at
+ * +10 points or >= 90). MUTATION_GAP_ENABLED=true (default off), MUTATION_GAP_MAX_PER_DAY (default 2), 1 in flight.
+ */
+export interface MutationGap { service: string; sourcePath: string; testPath: string; loc: number }
+const MAX_MUTATION_LOC = 400;
+const SENSITIVE = /(^|[-_])(auth|secrets?|deploy|token|credential|spawn)([-_]|$)/i;
+export function discoverMutationGaps(repoPath: string): MutationGap[] {
+  const servicesDir = path.join(repoPath, SERVICES_DIR); const testsDir = path.join(repoPath, TESTS_DIR);
+  if (!fs.existsSync(servicesDir) || !fs.existsSync(testsDir)) return [];
+  const gaps: MutationGap[] = [];
+  for (const file of fs.readdirSync(servicesDir).filter((f) => /\.ts$/.test(f) && !/\.d\.ts$/.test(f))) {
+    const service = file.replace(/\.ts$/, '');
+    if (SENSITIVE.test(service) || !fs.existsSync(path.join(testsDir, `${service}.test.ts`))) continue;
+    const loc = fs.readFileSync(path.join(servicesDir, file), 'utf8').split('\n').length;
+    if (loc < MIN_LOC || loc > MAX_MUTATION_LOC) continue;
+    gaps.push({ service, sourcePath: `${SERVICES_DIR}/${file}`, testPath: `${TESTS_DIR}/${service}.test.ts`, loc });
+  }
+  return gaps.sort((a, b) => a.loc - b.loc || a.service.localeCompare(b.service));
+}
+
+/** MUTATE_FILE/MUTATE_TEST for the deterministic `test:mutation:grounded` check of a mutation-gap run, else {}. */
+export function mutationCheckEnv(db: Database, goalId: string | null | undefined): Record<string, string> {
+  if (!goalId) return {};
+  const row = db.prepare(`SELECT s.evidence_refs_json AS refs, json_extract(s.grounding_json, '$.artifactPath') AS test
+    FROM goals g JOIN self_improvements s ON s.id = g.improvement_id WHERE g.id = ?`).get(goalId) as { refs: string | null; test: string | null } | undefined;
+  const service = row?.refs?.match(/"mutation-gap:([A-Za-z0-9_-]+)"/)?.[1];
+  return service && row?.test ? { MUTATE_FILE: `${SERVICES_DIR}/${service}.ts`, MUTATE_TEST: row.test } : {};
+}
+
 export class TestGapSourceService {
   private timer: ReturnType<typeof setInterval> | null = null;
   constructor(private readonly db: Database) {}
 
   start(intervalMs = 6 * 3600_000): void {
     if (this.timer || !testGapSourceEnabled()) return;
-    const run = () => { try { const r = this.run(); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); } };
+    const run = () => {
+      try { const r = this.run(); if (r.created) console.log(`🧪 test-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Test-gap source failed:', err instanceof Error ? err.message : String(err)); }
+      try { const r = this.runMutationGaps(); if (r.created) console.log(`🧬 mutation-gap source: ${r.created} proposal(s) created`); } catch (err) { console.warn('Mutation-gap source failed:', err instanceof Error ? err.message : String(err)); }
+    };
     this.timer = setInterval(run, intervalMs); this.timer.unref?.();
     setTimeout(run, 90_000).unref?.();
   }
@@ -117,5 +152,33 @@ export class TestGapSourceService {
       if (proposal) created += 1;
     }
     return { created, skipped: created ? '' : 'no untested candidate' };
+  }
+
+  runMutationGaps(now = new Date()): { created: number; skipped: string } {
+    if (process.env.MUTATION_GAP_ENABLED !== 'true') return { created: 0, skipped: 'disabled' };
+    const repo = process.env.TEST_GAP_REPO_PATH || process.env.LOOP_DAEMON_REPOSITORY_PATH;
+    if (!repo) return { created: 0, skipped: 'no repository path' };
+    const day = new Date(now.getTime() - 86_400_000).toISOString();
+    const createdToday = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%mutation-gap:%' AND created_at >= ?").get(day) as { n: number }).n;
+    const inFlight = (this.db.prepare("SELECT COUNT(*) n FROM self_improvements WHERE evidence_refs_json LIKE '%mutation-gap:%' AND status IN ('proposed', 'scheduled', 'executing')").get() as { n: number }).n;
+    if (createdToday >= (Number(process.env.MUTATION_GAP_MAX_PER_DAY) || 2)) return { created: 0, skipped: 'daily cap reached' };
+    if (inFlight >= 1) return { created: 0, skipped: 'one in flight' };
+    for (const gap of discoverMutationGaps(repo)) {
+      const ref = `mutation-gap:${gap.service}`;
+      if (this.db.prepare("SELECT 1 FROM self_improvements WHERE evidence_refs_json LIKE ? LIMIT 1").get(`%"${ref}"%`)) continue;
+      const command = `MUTATE_FILE=${gap.sourcePath} MUTATE_TEST=${gap.testPath} npm run test:mutation:grounded`;
+      const description = `Strengthen ${gap.testPath} so it kills more Stryker mutants of ${gap.sourcePath}. Edit only that test file; no production code edits. `
+        + `RUNTIME COMMAND: from the repository root run \`${command}\` — it runs Stryker on the committed and on your version of the test and exits 0 `
+        + `when the mutation score gains >= 10 points (or reaches 90). Its JSON line shows before/after; aim at the surviving mutants. `
+        + 'ARTIFACT: the command output plus the diff of the one test file. BUDGET: one maker lease, <= 15 minutes, one checker lease.';
+      const proposal = new SelfImprovementService(this.db).generateFromGroundedGap({
+        title: `Raise the mutation score of services/${gap.service}.ts`, description,
+        rationale: `${gap.testPath} exists, but a test that lets mutants survive does not guard behaviour; the gain is measured by one command`,
+        evidenceRef: ref,
+        grounding: { target: gap.testPath, acceptanceTest: command, runtimeCommand: command, artifactPath: gap.testPath, budget: 'one maker lease, <= 15 minutes, one checker lease' },
+      });
+      if (proposal) return { created: 1, skipped: '' };
+    }
+    return { created: 0, skipped: 'no candidate' };
   }
 }

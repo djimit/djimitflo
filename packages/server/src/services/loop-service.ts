@@ -1,3 +1,4 @@
+import { mutationCheckEnv } from './test-gap-source-service';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -1034,7 +1035,7 @@ export class LoopService {
         cwd: makerLease.worktree_path!,
         encoding: 'utf8',
         timeout: timeoutMs,
-        env: this.buildRuntimeEnv(),
+        env: { ...this.buildRuntimeEnv(), ...mutationCheckEnv(this.db, run.goal_id) },
         maxBuffer: 5 * 1024 * 1024,
       });
       const exitStatus = typeof result.status === 'number' ? result.status : null;
