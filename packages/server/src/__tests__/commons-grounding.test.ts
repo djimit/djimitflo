@@ -106,3 +106,33 @@ it('failure and grounding topics alternate, so a failure backlog cannot starve g
   const refs = [0, 1, 2].map(() => comms.socialize(0).messages[0].payload.params.topic_ref as string);
   expect(refs.map((r) => r.split(':')[0])).toEqual(['run', 'proposal', 'run']);
 });
+
+it('K3: wiki pages that cite a candidate file join the evidence and the question', () => {
+  write('openwiki/operations/hygiene.md', '---\ntype: concept\nsources:\n  - id: s1\n    resource: repo://packages/server/src/services/queue-hygiene-service.ts\n---\n# Hygiene\n');
+  write('openwiki/concepts/other.md', '---\nsources:\n  - id: s2\n    resource: repo://packages/server/src/services/other.ts\n---\n# Other\n');
+  park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
+  const t = pickGroundingTopic(db, root)!;
+  expect(t.evidence).toContain('wiki:openwiki/operations/hygiene.md');
+  expect(t.evidence).not.toContain('wiki:openwiki/concepts/other.md');
+  expect(t.contexts[0]).toContain('The project wiki explains them in: openwiki/operations/hygiene.md');
+});
+
+it('strips prose punctuation after a path, and reads TARGET/TEST from the peer response when the learning omits them (prod 2026-09-25)', () => {
+  expect(parseGrounding('TARGET: none,').target).toBe('none');
+  expect(parseGrounding('TARGET: packages/x.ts. TEST: packages/server/src/__tests__/x.test.ts)')).toEqual({ target: 'packages/x.ts', test: 'packages/server/src/__tests__/x.test.ts' });
+
+  process.env.COMMONS_AGENDA_GROUNDING = 'true';
+  park('p-1', 'Close orphaned runs', 'sweepZombies should close stale running runs');
+  db.prepare(`INSERT INTO agents (id, name, description, status, capabilities) VALUES ('agent-a', 'A', 'a', 'active', '["security"]'), ('agent-b', 'B', 'b', 'active', '["ux"]')`).run();
+  const comms = new AgentCommunicationService(db);
+  comms.heartbeat('agent-a', 'codex', 'm'); comms.heartbeat('agent-b', 'opencode', 'm');
+  comms.socialize(0);
+  const [q] = comms.receiveSocial('agent-b');
+  expect(q.payload.context).toContain('a NEW file under packages/server/src/__tests__/');
+  const base = { uncertainty: 'u', creative_alternative: 'c', stop_condition: 's', runtime: 'opencode', ecosystem_component: 'Djimitflo', proposed_improvement: 'Reap orphaned runs.' };
+  const response = comms.respondSocial('agent-b', q.id, { ...base, answer: 'The reaper. TARGET: packages/server/src/services/queue-hygiene-service.ts', falsifiable_next_step: 'TEST: packages/server/src/__tests__/zombie-reaper.test.ts', delivery_lease_token: q.deliveryLeaseToken });
+  const peer = comms.receiveSocial('agent-a').find((m) => m.id === response.message.id)!;
+  comms.respondSocial('agent-a', peer.id, { ...base, answer: 'Agreed with the peer.', falsifiable_next_step: 'Run it.', delivery_lease_token: peer.deliveryLeaseToken });
+  expect(db.prepare("SELECT decision, reason FROM judgments WHERE judgment = 'commons_grounding'").get())
+    .toEqual({ decision: 'yes', reason: 'target=packages/server/src/services/queue-hygiene-service.ts test=packages/server/src/__tests__/zombie-reaper.test.ts' });
+});
