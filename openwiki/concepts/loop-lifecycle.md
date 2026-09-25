@@ -3,9 +3,6 @@ type: domain-model
 title: "Loop Domain Model: Runs, Leases, Worktrees & Recovery"
 description: The maker/checker agentic-loop architecture of Djimitflo's server — the loop catalog and contracts, LoopService's delegation map to focused sub-services, worker lease lineage, git worktree isolation with path-traversal guards, budget accounting, verification gates, and crash-recovery invariants.
 tags: [agentic-loop, maker-checker, worker-leases, git-worktrees, budgets, verification-gates, crash-recovery, sqlite, concurrency, facade]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-cef00d5450997e8a52db8e89
     resource: repo://packages/server/src/bootstrap/recovery.ts
@@ -39,7 +36,10 @@ sources:
     resource: repo://packages/server/src/services/worktree-manager.ts
   - id: openwiki-source-cc57a9eb4496f91fdc73afb9
     resource: repo://packages/shared/src/loop-catalog.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # Loop Domain Model: Runs, Leases, Worktrees & Recovery
@@ -194,8 +194,18 @@ creates **one maker lease plus a manual `checker` lease linked by
 `high`/`critical`, security-category finding, or auth/secret/policy-sounding
 finding content) it also creates a `security_checker` lease with
 `requires_security_review`. `retryLoopRun` follows `retry_root_maker_lease_id`
-to count used retries against a `max_retries` budget (default 1, hard cap 10)
-and prepares a new worktree suffixed `-r<attempt>`.
+to count used retries against a `max_retries` budget (default 1, hard cap 10,
+resolved goal > request > lease > default) and prepares a new maker worktree
+suffixed `-retry-<attempt>` on a `branchNameFor(runId, findingId, attempt)`
+branch, plus a fresh checker (and, when `isHighRiskRun`, a fresh
+`security_checker`); the prior maker is not rewritten but marked
+`superseded_by_maker_lease_id`. Retryability is checked by
+`isRetryableMakerLease` (a non-superseded maker that either failed or drew a
+`needs_revision`/`rejected`/`insufficient_evidence` checker verdict);
+exceeding the budget throws `LOOP_RETRY_BUDGET_EXHAUSTED`. Passing
+`input.sibling` (Evolve E13) bypasses the retryability check and retry budget
+and tags the new maker `evolve_sibling_of`, so the daemon can run sibling
+makers of other species on the same objective and later select a winner.
 
 ### Worker roles and nested-spawn lineage
 
@@ -277,8 +287,11 @@ paths:
   `max_tokens_per_diff_line` evaluated against `runtime_usage` parsed from
   runtime stdout; exhaustion fails the `token_budget` gate and emits
   `loop_budget_exhausted`, while exceeding a per-diff-line budget is recorded
-  as a `budget_risk` on the run metadata. Token usage parsed from stdout JSON
-  lines is never guessed: absent usage data simply "skips" the gate.
+  as a `budget_risk` on the run metadata. `extractRuntimeUsage` first
+  aggregates opencode's per-step `step_finish` events (`part.tokens`), because
+  opencode never emits one summary usage object, then falls back to scanning
+  stdout JSON lines for a `usage`/`token_usage` object with normalized aliases.
+  Usage is never guessed: absent usage data simply "skips" the gate.
 - **Dollar cost** — `computeDollarCost` prices tokens per runtime
   (`codex` ≈ $2/Mtok, `opencode` $0.5, `claude` $3, `gemini` $1, `pi`/`editor`/
   `mock` $0). `computeEfficiencyMetric` reports verified artifacts per dollar,
@@ -298,17 +311,25 @@ via the same registry, so a stopped lease never hangs the queue.
 
 ## Verification gates and certification
 
-`LoopVerificationService.verifyLoopRun` evaluates ten gates against the live
+`LoopVerificationService.verifyLoopRun` evaluates eleven gates against the live
 lease set (excluding superseded makers and their linked reviewers):
 `run_not_cancelled`, `maker_completion`, `maker_checker_separation`,
 `worktree_isolation`, `assignment_file_present` (`.djimitflo/LOOP_WORK.md` or a
 historical `LOOP_WORK.md`), `diff_threshold_all_makers`, `checker_verdict`,
 `tests_lint_typecheck`, `security_checker_verdict` (skipped for non-high-risk
-runs), and a policy `no_automatic_merge` gate that always passes — it exists to
-prove the loop never merged, pushed, or deployed. A failed gate records a
-structured block reason (`block_reason=gate_failed`, failed gate evidence,
-recommendations) on run metadata and flips the run to `blocked`; when all
-makers complete and no gate fails, the run lands at `ready_for_human_merge`.
+runs), `auto_approved_scope` (J5: a maker carrying `metadata.auto_approved_scope`
+may have changed only that one approved test file), and a policy
+`no_automatic_merge` gate that always passes — it exists to prove the loop
+never merged, pushed, or deployed. A failed gate records a structured block
+reason (`block_reason=gate_failed`, failed gate evidence, recommendations) on
+run metadata and flips the run to `blocked`. One deliberate exception keeps a
+mid-flight run out of the blocked lane: when some makers are still `prepared`
+or `running` and none has `failed`/`cancelled` (the `waitingForMakers`
+condition), a failing `maker_completion` gate does not block. When all makers
+complete and no gate fails, the run lands at `ready_for_human_merge`;
+otherwise (makers still working, no hard block) it stays in `verifying`. A
+`cancelled`/`completed` run keeps its status, and clearing the block removes
+the `gate_failed` block metadata.
 
 "Accepted" is deliberately strict. `hasAcceptedReviewEvidence` requires the
 checker lease to be `completed` with `verdict=accepted` **and** either a manual

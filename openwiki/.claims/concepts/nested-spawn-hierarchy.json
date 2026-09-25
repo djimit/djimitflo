@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8876738c1e23a40c3105cef97325a2ade1dc5904ba408bf365683a86864656d0",
+  "pageVersion": "sha256:d47546cfc9963e2fc25349a166cc460f2167570b3a556f38fdc873be5b13fe36",
   "claims": [
     {
       "id": "claim_4814f19743814e92a38aaa0783302339",
@@ -357,10 +357,38 @@
           "version": "repo-lines-v1:sha256:5ecd6cbb467112e5f4cd1309ad915006f075e6683964aa7884cf25c26fefa457:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWM3MWYxODlhODk1OGVmYWY5ZTkzOWIwOWJmMzA0ZmMyYjg1NGM2YWJhMDZiNjU4MWE3MzA0NjMyYmQ5OGYxZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOWJiMjFhNTQ3ZWJhODI1MTI2MTYwOTUzNTljYjdhODkxOTYyMDRiMWVhNmFkYjhjZDNlNjgwOTFmNWZhMWMwMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWIxYzIyMmViMTQyMmFkMzY1M2VmMzdhMTlmOGUzNjExMTFhZDA0MmZlYTI4MDU5YWJmMGU0YmNkZmU2ZDVjOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTc1ZjIxYTY0Mzc1ZDdhY2MwYTFiZTg3NjVhMTQyYjgyYWVhZmM2NDAxNzIyMWE0NmZjODZmMjAyNGRkZWUyMyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_6feabd3bbcd548959526936eda23f99c",
+      "statement": "The nested-spawn page's related pages retarget the security-model concept to AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth (concepts/roles-and-permissions.md), which documents the requireAuth/requirePermission middleware and RBAC default-deny posture that nested spawning mirrors.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/middleware/auth.ts#L107-L139",
+          "version": "repo-lines-v1:sha256:5604cbdf011d8d476531857af85590603c319759fdfc9ca2fdc85a121494ce99:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmFjMDUxODFhM2Q2Y2IxNDM0NzFjNjZmNTgwZjkwNWQ4ZWI5MzQ2MDBkMzVjMTEwYmU2YWZlYWRkOWIxMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJiNTNkNzY0ZTViMDAwYWQ4MGMxODI2MDZlNjU4ZDFhOTlkMjZhNDRhYTZkM2M5NzczNDI4ZDkyNmFmZmQ4NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MGVmZGM2OWEwYzc5ODA1YWJkNzdiNDZlNjNlM2VlODFkMTNiMmVmZjZkMzk2MzliMGRlMzY2YWY0ZmZmZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkYjRjMjZjOThkNWM5ZDkzNjVlNzBhMTEwMDgyNGM4MTIyNzI3YTVhNjI4Y2MwZjJhNDY3YjJlYmMzNzI0MjUifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/nested-spawn-service.ts#L137-L141",
+          "version": "repo-lines-v1:sha256:938fb514a75aa0b981b76569954d2d2a1068acf40b4e1a06e213e2e5581562bb:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjg4YjI2NGEyNWUzOTk2NTYwOTEzZjNlODNmMjZkNzUzODU1YWEyZWRhMzJhZTVkMmJjNTQyNTI2OGIxNmNjMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGVhOThlNTc4YWRmNjU1ZTgwMGNmMTI1M2Y5ZGI2YjljODE3OTYyMmNlZjdhMmM5ODkxYmU5ZTU1ZTkwOGM2OCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmQ2OGUyMzFkOGZlY2NlNGZkZjAyMDM4MmY4MWNmMGIzNDA2YWQ0NjliMThiZmU2NDMxNzQ3YzA3OTRkMmJjNyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_07734e9b08b24028ab9b3b648d83caf2",
+      "statement": "The nested-spawn page's related pages retarget the swarm control-plane concept to the Maker–Checker Loop Execution workflow (workflows/maker-checker-loop.md), which documents the goal/daemon queue under which the /api/swarms/spawns control routes are mounted.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/routes/index.ts#L185-L187",
+          "version": "repo-lines-v1:sha256:360765ee5630fb3800806c55837014f247d4c5d441c294b19e04277b18f1b562:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzIxNTQ0N2FjMzc2NTk3NDUzOThiNjY1NjAyOTQ2YTM2NDkxOWMzMDI1ZjUzNjE2MDJkMjgxNWIwNGU5NzY0ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTY5MTI3NmY4YzBmMzk0MjBlNWU4N2IyYTVkMDFlZWMzZjc0YmVmOGQ5ZDY1NzcyZmYzNDRhNWMwY2RmZGM1NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmRjMGI5ZTNlNzk0Mjc4OWVlZTdjYzRkM2QwOWY2ZjY0OGUwYzRjZTM0NjA1NTAwZGNjY2Q0ZDAwZjE1ODNmMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDFlMzMxNTJiNDU5ZDdjNmMzOGI1NjMwMjBhN2FhYzliYzMxOTY5MDQ1MjlmNTJhMDQyYmY2ODViMTljMDI3OCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/routes/spawns.ts#L1-L16",
+          "version": "repo-lines-v1:sha256:603393ab966c60c65ce436a0ee10e2333c73644a7055d104a31dd9c7671dca77:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MmE0MjkzODJiMmUxNDcxOGUwZTM3YjA1NzBhOGExNzAyOTkxZmNkODQ5OGNkODQwNjBhOGJmNGYwNTAxN2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MDM1NTE2MzgyZGI2M2M3ZWU2NDBlNWNmYzI1OGI2ODM3ZTIzZDE1ZGUxZGZkOGZmZmRjNDgyNTdjNmY4MjkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

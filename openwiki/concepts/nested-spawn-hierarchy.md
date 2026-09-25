@@ -5,7 +5,7 @@ description: How NestedSpawnService gives running runtime children a gated, budg
 tags: [nested-spawn, spawn-trees, worker-leases, spawn-tokens, default-deny, budgets, capability-routing, auth-middleware, control-endpoint, audit]
 verified:
   - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+    at: 2026-09-25T13:29:02.244Z
 sources:
   - id: openwiki-source-c0941a928920f2167e6565c3
     resource: repo://packages/server/src/__tests__/loop-routing-continuation.test.ts
@@ -35,7 +35,7 @@ sources:
     resource: repo://packages/server/src/services/spawn-token.ts
   - id: openwiki-source-0dfefeca89a6d1280d92409c
     resource: repo://packages/shared/src/types/websocket.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
 ---
 
 # Nested Spawn & Swarm Trees
@@ -313,9 +313,7 @@ Operator-facing configuration (all resolved with `envInt` fallbacks):
 - [Loop Domain Model: Runs, Leases, Worktrees & Recovery](/openwiki/concepts/loop-lifecycle.md) —
   the `worker_leases` lineage, worktree isolation, and `prepareNestedLease`
   this service delegates to.
-<!-- openwiki: broken internal link [/openwiki/concepts/security-model.md] file "/openwiki/concepts/security-model.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-- [Security Model](/openwiki/concepts/security-model.md) — auth middleware and
-  default-deny posture nested spawning mirrors.
-<!-- openwiki: broken internal link [/openwiki/workflows/swarm-goal-lifecycle.md] file "/openwiki/workflows/swarm-goal-lifecycle.md" does not exist. Fix the href or restore the target, then delete this comment. -->
-- [Swarm Goal Lifecycle](/openwiki/workflows/swarm-goal-lifecycle.md) — the
-  swarm control plane the spawn routes are mounted under.
+- [AuthN/AuthZ: Roles, JWT Sessions & WebSocket Auth](/openwiki/concepts/roles-and-permissions.md) —
+  the auth middleware and RBAC/default-deny posture nested spawning mirrors.
+- [Maker–Checker Loop Execution](/openwiki/workflows/maker-checker-loop.md) —
+  the goal/daemon queue and swarm control plane the spawn routes are mounted under.

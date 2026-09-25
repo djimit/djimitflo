@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:92bad785f645b42c15edcf179d6de40ef98ea0e1a55934dc8bece30b01cf9c02",
+  "pageVersion": "sha256:729d09a0a9ac96982b9793c091d679592d3b64c3700b4f53e594ade67f4333dd",
   "claims": [
     {
       "id": "claim_48570ae21e3041729102f618497c918d",
@@ -281,10 +281,146 @@
           "version": "repo-lines-v1:sha256:a0d913a26c16143cb8fdbbfb4d28f345022a5e08cf05c29d0b2200abb639b03f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYzRlOTU0Y2MwMWQwN2VhYzE4ZDM1YTU2MjZmMzNkODhjMTA1MDc5MTVjZDlmYjJiOWZlMjViM2UzMzYxZGE0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxYzFmYjAxOWMyYzg4YWZhNTgyZjVkZmE3MWIzZWFhZDA0YWE0MDA1NjYyNTY0Yzc5N2NkYWUyMTQ2NmQ0MDUzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3YjgyZDhlZjYwMmU5MTBiNWRkYWFhY2U0YmE5ZTAzZTk0OGRhMGNkMzgxNjY0YWZkMzhmYmZiYmI2NmJkN2Y5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NzlhYjUyZGE2MmMzZmVmZDAxOTNhMDgyNzlkM2RhYjI0ZTIwMjgwYjcwYTIxYWUyMWYzMjEyYzRmYjBiMjliIn0"
         }
       ]
+    },
+    {
+      "id": "claim_168c91438a6f44479184b13a55503ea4",
+      "statement": "seedMCPServers() in seed-mcp-servers.ts runs on every runMigrations() call and upserts 8 external MCP servers (research-agent, deerflow, context7, qdrant, searxng, litellm-mgmt, uams-read, knowledge-mcp-bridge) into mcp_servers keyed ON CONFLICT(name); on conflict only url, description, metadata, and updated_at are overwritten, so the row id, runtime status, last_ping_at, and error_message owned by the health checker survive reboot reseeds.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/seed-mcp-servers.test.ts#L34-L58",
+          "version": "repo-lines-v1:sha256:593f4cd1b83263ef2d549dff9403436575818244795995aa5ae90fd4449fead4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzNzBkYjZkNGNhZmFiNDFhZWM3MmE1NjAzYmZmYzI4NDQxMWMxMzRiZDgyN2ZmY2FjZGFhODY2Zjg1M2E5ZjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhM2U0NmY5NDI3NmI2ZjZmNGVkMWYwMmFmNzhiZWY2YTJlZTFjNDM5ZGQ1NTg0Yjk3Mzk0ODMxMzIxNGQyYjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxZjNhYzg1NGE2MDJhMjdiYzg1NTQ0ZTEzYTY5YzJiNjllYzEyNzEwODBjZjYxYjM5MDQzN2I0YzI0NDQyY2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1805-L1805",
+          "version": "repo-lines-v1:sha256:54e80db90379180aff25ac652dc1a0c18282d4262e9c5c0f3b1484ff5433d7a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTRlODBkYjkwMzc5MTgwYWZmMjVhYzY1MmRjMWEwYzE4MjgyZDQyNjJlOWM1YzBmM2IxNDg0ZmY1NDMzZDdhMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTRlODBkYjkwMzc5MTgwYWZmMjVhYzY1MmRjMWEwYzE4MjgyZDQyNjJlOWM1YzBmM2IxNDg0ZmY1NDMzZDdhMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjA0ZWNiOWZmM2IyMDNiY2IzYTk4NDI2Njc4NTlkN2JkN2E2ZGQxNGMzY2YwYzA4NDJiYjYxNzAzNDM1M2ExNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTBmZDE4MjdhOWQ2MWZjZmVmNWUwZTM2YjdmMGFiZDYwMGM0YzMwMTEwYTVkMDA4NGQxMzcxZGUwNGEyNmNjNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/seed-mcp-servers.ts#L20-L46",
+          "version": "repo-lines-v1:sha256:d3d2b9c91d1e604376b7df9526bb4ab030564b9597b4fe1faa648989bc6b9439:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ODllNjllNDQ2ZjBiZDNkMmFjYzM5ZDg0YTJiNTA2ZmQ5MTM5YTkzZjUyZTc1ZGNlZjIyZjliYTRlNzY0MzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxOGY0Y2E0NmQxMDNiMzgxOWQxZmIxMzRjOTkzOWQxNDA5MDhiN2MyODMzZDZlNDcwMGIxMzIwNjQ2NmQ4ODMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjoxLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_118527da66be42d183d1dc97a0a8e428",
+      "statement": "seedMCPServers() merges metadata as { ...stored, ...seeded }, so stored operator/runtime keys the seed does not know about survive reseeding while seed-owned keys (probe_path, openapi_path, api_url) win; because of this merge, clearing a known_unreachable marker requires explicitly re-seeding known_unreachable: false with a null reason rather than omitting the key, which is what the seed does for research-agent and uams-read once the Tailscale port answered again (2026-09-24).",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/seed-mcp-servers.ts#L15-L28",
+          "version": "repo-lines-v1:sha256:4fb14e49bf57901d4b41f757703251b76631404028dc94585e654696c56e3653:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUxODg2Y2I1MTllNmYyMmUxMDBmNGFjMTc2ZTMyMzI0NTE5ODJkODI1MTZmMTcxYTcwNmMzYWEwOGNjMjA3NzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYTc1MjZhZWU0NTA5YTc4NGEwY2M2NzZjMjQwNDdhOGIzOTQ5NGQ3N2VmYjgyYzQ0NmFkMGZlNTMzMGJmOGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyYzc4NjM1ODg5NTgzMWJmOTQ3NTczOWQxYTY5OTc5OTk4MmU4OGMzMWJhOThiZDU4ODEwNDdkMzk3MjE4NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5ZjQ2MzYwNTY1YmQ1MmIxNzVhNDYwZTJjNTEwMDU5NGFiNjY1YTk0M2U5YTZjY2ViNDdkZWJjYzAwNmZkODYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/database/seed-mcp-servers.ts#L42-L46",
+          "version": "repo-lines-v1:sha256:f0828140cd5615e8bed743fb5232d62876fb7a2ced2f6997249b7db303619503:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZGJlMjJhMTVmMzRmZjRiYjFkNDQ3NTYxNDVhNTI0NDQyMjM1MzcyNWMzOGFlYWQxZmI5ODRiZmQ1N2QyODRiNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZmI1ZTYxYWZmZjMyMGEyMmM4ZDQzNWI5MzNmMGNhZDBiNTQxYzAyZDBjNzU1ZTg1YTJkMWU3Y2FkNmQ2ZGY4MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6672aa8ab94c4b8a93f1bd47eb47646f",
+      "statement": "resolveEvidenceRoot() in loop-service.ts resolves the worker evidence root in priority order: LOOP_EVIDENCE_ROOT if set, else dirname(DB_PATH)/agent-evidence/agentic-control-loop-fleet when DB_PATH is absolute, else <monorepo-root>/.data/agent-evidence/agentic-control-loop-fleet; the DB-adjacent default exists because evidence must outlive the container (the 2026-09-24 incident wrote evidence to the image's /.data and lost it on every deploy), and evidence-root.test.ts pins all three branches.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/__tests__/evidence-root.test.ts#L4-L9",
+          "version": "repo-lines-v1:sha256:9b8da075c75a4bd0105a3bf22fb73ee4042d2e604f510c76861c6c7dbbcd1b00:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzQ3Nzg0ODNjYjA2ZmJjMmNkYjAzODY3MWMxMWQyZmFkZWRkNjdjYjA5NWMzNjZlM2E2ZGY1OTg1NmY5MDE0YSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjc3NDIyMmM5NDRmM2FlYjYzZDYwYmQ5ZGJlYzJmNTFiNzY3NDE1OTkwMzc4ODc0NTYzYTJlMGI5ZTg3MzA4MiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L130-L140",
+          "version": "repo-lines-v1:sha256:fdb25fe192824b403d07206ea544761d855061d239b4c0b94326622b2d0ba089:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhZjIyY2YwNzMyNTkyYzI0NzE0MWNiZTYxZWZhMTEwMTI2MTJmNWEzMTIyYjlhZjliYmFmNTJmNTcyNGQxOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZkOWYxMzBhZTY2MWZiNjMyNWE3NDU5NDNkYTUyZWU5YzRjY2ZjMTljMDZlNTY2NzE5MGY1M2NmNDFjMWUzOTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlM2QwY2I3NTEyZmExMWFiYjE5YTcwNmVkOTA1MzQ0NGI5MmU0M2I2N2Q2MmYyMjViZDc2ZTI4ZDU5MmI4ZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1OGMzOTk1YTdiN2I3YmU1NTE1ZjZiYzg5N2Y4OWQwYTE1YTZhODI1MTk1MGZkZWE1Yzc3N2MyYzUxODVjYjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9af765a5793b493ba04a4f061d620caa",
+      "statement": "The loop_runs status CHECK is driven by the LOOP_RUN_STATUSES constant in migrate.ts with the full vocabulary created/planning/running/verifying/ready_for_human_merge/blocked/completed/failed/escalated/cancelled/interrupted, and loop-types.ts mirrors it as the LoopRunStatus union type so the TypeScript type and SQLite constraint cannot silently diverge; ensureLoopRunsReadyStatus/ensureLoopRunsInterruptedStatus rebuild pre-existing tables to land ready_for_human_merge and interrupted.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L17-L17",
+          "version": "repo-lines-v1:sha256:b2b941a6a1d02254f1397f61c3a37cbbbdcfbd75cfe2466d5481cafd093005ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJiOTQxYTZhMWQwMjI1NGYxMzk3ZjYxYzNhMzdjYmJiZGNmYmQ3NWNmZTI0NjZkNTQ4MWNhZmQwOTMwMDVlZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjJiOTQxYTZhMWQwMjI1NGYxMzk3ZjYxYzNhMzdjYmJiZGNmYmQ3NWNmZTI0NjZkNTQ4MWNhZmQwOTMwMDVlZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGI2YWI3Njk5ZjMwZGE5NjIzYjhjM2RjODMzMDY0YjJjNDllYjNjZjMxMzYwZTY1NjQzYjM4ZTAzZDg5OGVhMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDZlNDcyYzVlOTZlYTUyMTk4NzU5NTViOTc1ZjdhMWE1OTc0YmUxMTc4MzI2ZDEyZWEwMmZlMDUwYjUzZDViZCJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1814-L1815",
+          "version": "repo-lines-v1:sha256:62be278de0a7f7916b9f6fabd7ca3c00a2e76a029cdf6415e7c76844fac3bde5:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGMwMTIzNTYxMjE2ZDk0ODdmYTQ0MTBjYTU0NDM0YTEyODU4ZDE1OTMwYTY1NWJmMTY4MjExODExMTIyMDFjNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmFiNjJiNzhjMWFjYWYwYjIxYjRlY2YxNWU3ZWExZGFmMmVhNmNmM2VkOTgzYjY1YzU2MDNmNmZiZmVkZTM5OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWFiM2Q0ZmU0NjVhYTgzNjZlNGQ1MjA2YjkyOTNmMzE2ZDQ5NjU2NzllMzc2Njg3Nzk1NGZlZDhiYjc5MTQxZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjE1MjlmNmQ5OGFkZGNlMzVmNDg3OGQ2YjM5YjA0NWQwYWE4OWJlNzcxMWM1MzlmODdjNTRmM2YyODIzMzZkZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L749-L749",
+          "version": "repo-lines-v1:sha256:a77ed834c0408f1c00aa34346a7e3455c0cd93e748bc16fc3edc10ac5ed50e8c:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc3ZWQ4MzRjMDQwOGYxYzAwYWEzNDM0NmE3ZTM0NTVjMGNkOTNlNzQ4YmMxNmZjM2VkYzEwYWM1ZWQ1MGU4YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc3ZWQ4MzRjMDQwOGYxYzAwYWEzNDM0NmE3ZTM0NTVjMGNkOTNlNzQ4YmMxNmZjM2VkYzEwYWM1ZWQ1MGU4YyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTdiNzQ2MDBlOWI2ZDJjMGE1Zjg2ZDIzODQ0MTkyY2Q4MzU1ODYyNmYzYTI5MzdjN2MxMjQzOTc1YzgzMjhiZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzk4ODMzOTQyYTM0NWIwZDg3YjFhZjYwODYxOGY0ZDViYWVjY2U5YjI1ODM2NDY4ZTczYjE1NWZjODNlMDhlNiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-types.ts#L15-L15",
+          "version": "repo-lines-v1:sha256:1b9e4203410dd9dedea45274b09a8bdc6034d40b46f829169c9f079c8ca2f54b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI5ZTQyMDM0MTBkZDlkZWRlYTQ1Mjc0YjA5YThiZGM2MDM0ZDQwYjQ2ZjgyOTE2OWM5ZjA3OWM4Y2EyZjU0YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWI5ZTQyMDM0MTBkZDlkZWRlYTQ1Mjc0YjA5YThiZGM2MDM0ZDQwYjQ2ZjgyOTE2OWM5ZjA3OWM4Y2EyZjU0YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU1YmY4OWUzYTNjMmMwZDFhZTUxYmY0OGM1NjkzYzg2MWIwZTllNjdhNzU1Y2RiYTcwYzcxODZkZWYzNGVjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWVjYmE0NDExMTMyNjM5ZTMxNTYyNzg4M2E1ZDJmMGE3ODczZmE1NjJjMjIwNGVhNzMzM2VkN2NhNzQ2NTY3YSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_075f73f5479242ac81da91c19dd54502",
+      "statement": "worker_leases.metadata is used as load-bearing control state: auto_approved_scope (set by the daemon's test-gap auto-approve path before approval and enforced by the same-named verification gate to hold the diff to exactly one approved file), retry lineage keys retry_root_maker_lease_id/retry_of_maker_lease_id/retry_attempt with superseded_by_maker_lease_id marking the retried maker (retry budget enforced by counting leases sharing a root), evolve_sibling_of for sibling-evolve retries, and bandit {reason, posterior} written when the LOOP_BANDIT_ENABLED species chooser rewrites the lease runtime.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L282-L308",
+          "version": "repo-lines-v1:sha256:ac7f2c3a5dd555e653f6cca4c2b4ccf59415e1312bd202976c0c7286393d1063:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNjdlZmI4ZmVkMzMwNDA0NTA5NDdhYWVmZmFlNjQ2MzFkMzI4MjRkZWMwZjExZmJiMTc2NzVjOWQzNTFjNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjlhYWM2MjE5NmUzMmE2OWVlMDFkZjZkODkxNjU3ZWZmY2Q3NWNmOTRkYjRmZmQ1ZTdiYTFiYmM0NjA2ZGYzNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkNjk2MmFiNjcyNTgxYjgzMDRkNDUyMjIzOWNjZGE1YjEzMjc3YTAyZTM0NDNjYWYwNDY5NzNiNzJmZGRlNTgifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-daemon.ts#L460-L469",
+          "version": "repo-lines-v1:sha256:ea5f32183b86fdd9e43658f7d3aaee3b6a2b23e2524bbd15f858f28a04d631c9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJhODBjYzEyMmM4NTdmOThmZWQxYTI5ZDMxYTEwZDQ3MzliZDUwOWRiMjYxMzc2NTA5YWU2ZWY5MzkyYTk4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzYzc2NjBjZWFjZDdkYTcxMTRmODk4MWUxMTczYmRiNzIyM2Q4OTBlOWFmYjAxMWZkMjk4ODQ4YTVmMmVhMGYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzMmRiNmIyYjY2ZjNlMDliZDQ1NGI1Yjk5YjA2MDZlY2FkY2VhMDYzNmQwN2E5ZWUxMGE2MjRhZWE4YWQ5ZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzMWM5YmY1ZTc3YzUxNjJjODhiOTkxZWQ4ZGY2YTEyNzA1MzY1MDdhM2UzYzE3ZTRiZWM0ZmI4MjNlNGQ4ZjYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-lifecycle-service.ts#L184-L213",
+          "version": "repo-lines-v1:sha256:669c368aff0bc0ac6e090f3a438ba36a75d0650e96363bbf9a15ed0a33e99812:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2OTc4OWU2MDNiZDIxZTFiNDQ3YjYxMzNmOWYyZTcxYTI5MDE0NGExN2ZkYWU0ZGI5MjZkNjQ1Y2UzN2FmOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyZDExY2FmNDNlOTdlZjM2OWU2YmVlZDFhMjY4YmQwNTgzOGYyOWI5ZGQyNTRiZjY5YmE2NDg4NDE0NzIzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlMGI3MWU0MmU0ODAzMmViZTcxZDgxZGI4MmNlNGRiZTY0ZTllYjkwZDRiZDgzZjBiNTVhOGMzYTIyMjZjZTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhOGFjZDBiZjBhODMxYWVkYjE5Y2Y3ZTRiYzkzMDY1OTEzODZlZjhlMmQ5M2UxOGE4YzM2ZDRkMWUxM2VmMWYifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2071-L2075",
+          "version": "repo-lines-v1:sha256:845b4e95e62114aa9b2220d7d8b02da2c9da2518e7d372ddd366b2c6bf2925fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDNjMzk3YzQ1MDhjZTE5OTQyY2U0ODc0NjdlYmQwNDQyODRmMzUyNTA0ZGE2ZDU2Y2NjYWRiYmI2YzgwYjJiMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGY1OTUzZGM1OTg4NWI4NGZlMmJmZGM4ODE3YjMwYjBlNGNkNTRlNDUxODlmMDg3N2QyYWY5NjU3NGJjMjE4NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDM5OWQ4MDdiNjNlMTI1NzNiNDYxZTBkYzQ3ZmUyMGRhMTAwODBkZTViMTQzMzNjMzkyYjdkYzE1M2JjMmNjZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-verification-service.ts#L119-L124",
+          "version": "repo-lines-v1:sha256:4a1b00f74514c1ac42e18f11ac677a0b46eeb6b982a792e2600d7294ed6f61a5:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDk1YjhjNWJmODYzNzQzNjcxZGVmM2Y2MzBlYjIzMmQ1OWE3YTYzNGEwNzBmYzQzNmVlYzM3YTg2NzRlNmMzMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk3OGUyNTAzYjhjZjM3YTA2ZjdkNmYwYTNhNmI2ZmUzNTY5MWZiY2FiNTBiODc3NWNhYjZmYWJjNzFjNTkyYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWZmZTAyM2M5Y2VlNWNkMmVmYjYyODRkYjllZTcyNGY3YWExMDRhNjY4NDllN2RjNmVjNGFmNTNiZWUzZjE0MyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDQ3NmJjODY2YzY0NDBkZjdjODZjYTZjNTMyOTRmNWI0ZTEwNGRmZTlmMDY5MWY0ZmVhODIwOTQ0NmYzMDYxNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0ee311ba50684f2282150bb60c3b699f",
+      "statement": "WorkerLeaseRepo.updateStatus() refuses to write a lease as failed without a failure_reason, deriving one from execution_denied_reason, runtime_contract_failed_at, timed_out, or a non-zero exit_status and falling back to 'unspecified: caller supplied no reason' — a guard added after 136 production leases failed with no stored reason.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/services/loop-worker-lease-repo.ts#L77-L93",
+          "version": "repo-lines-v1:sha256:34a091f9de796c9eaeeea7a46a10ca2e73cbbf4e6062b60a848b31bcf3fa76f8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkM2Q2ZjcxZWI2MDljYTYzM2NkZTQ5NTc1MjgxYTg2MmQ5NWE2MzE3ZDI5Mjk4MmUwYTI0YzZkOWZkMGZjMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxMGI1Mzg3YjZiNGQ1ZTgyNmY5MTQwZmFlZjAwYzZjZDVhNzgzNWQzMzk2NjJlNmFmNTZlYzFmNjYxZGM3NjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkYjBmMGJhMjVkYjk4NDFjODA3NmEzNWEwOTY2ZDAwY2Y0MzlhYTBhNmQ4MDE2ZDE4YTI5OWNhNjU3NzNkZmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cd0638eedd994060928a56aad7ab7125",
+      "statement": "LoopService.recordWorkerManifest() persists every worker action as a swarm_runner_manifests row (decision_id UNIQUE) carrying the action (plan/start/skip/fail/stop/kill/complete), the loop-runtime-bridge-v1 policy version, runtime_contract_json, capacity/budget snapshots, gate_refs, and blocked_reasons; persistence is best-effort so a failure emits a worker_manifest_error warning loop event instead of breaking execution.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L1083-L1101",
+          "version": "repo-lines-v1:sha256:e02200e9b352bb4453bb0bcc37628067fda3ec1df4c41d8d5afb2b605a0b29e9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NmEyMTYwZmU4MTg5OTIwOTkzY2JlMDZkMzg1ZTBjNjA5Mjk3ZWQ3MGRiZDg2MjZkZTk4YjAxYzViYjNhNDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5NWEyODUwZGZkOWUwOGE1YjZkYTg5NWM1NWQwNWNlMGVlMjE4N2UwNGFkYWEyOTMwN2E4MWQwMjc3NjcxYmEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyMmY2NTdmOTExZTRkZjI3YTQ1MGRjZWI1ZmNiMDQ0MTlmOWViZDRiODI1MjlhY2IxZTYxMWFjNzk1YTQwMzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2MDNjMGJjMjgyNWFlODZiYTczYmJhOTE5ZDEwMGI5MjY5YzI2ODM2ZjRhNTU5MmRhOWFiODczMjdiMTE2MGMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L124-L124",
+          "version": "repo-lines-v1:sha256:5b411a9b5f07eb4e0d15f622ce806b943f4fbb86939514904aab03d87b305a78:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWI0MTFhOWI1ZjA3ZWI0ZTBkMTVmNjIyY2U4MDZiOTQzZjRmYmI4NjkzOTUxNDkwNGFhYjAzZDg3YjMwNWE3OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNWI0MTFhOWI1ZjA3ZWI0ZTBkMTVmNjIyY2U4MDZiOTQzZjRmYmI4NjkzOTUxNDkwNGFhYjAzZDg3YjMwNWE3OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGU3OGY4Y2IyZTU3YTNjMGY2ZmM3MTFlOWM1YjVmOWUwOTA5ZGU2NDk4YmZhMjA5MzA2MDk3ZTA1YWJlMjlkOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2Y5ZDA0MWRkMGJhODMzYWRjY2IwMmY2MTNjMDZhM2EzYWU1ZWM2ZWYzMDc4NGI2ODg4ZTA4OTFmYjdkMTEwOSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/loop-service.ts#L2014-L2052",
+          "version": "repo-lines-v1:sha256:37973f3a96bf6f3a76eb4c564120da240dbf640393a6b73ac4cb0c1577ee6928:eyJzZWxlY3RlZExpbmVDb3VudCI6MzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMDZmYWQ2YmVhNTlhNzRkYzYwYzExNWExYmYwMjRlMmVjZmQ3ZmViYTIxN2MxMjY3OWQzMmEwZDU5MzQ0NDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJlZWVmZGQ1MTEzZDk5MDU2ZjFlMTlkZTFiN2Q1YmVkZTZlMGEzMDFmOWU4ZjdiZTRlYWQzZjhmOGRhODY2YzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA4ZTc4OWQyZmQzNDMzYjY0MjcwYTJmOGI1ZTY3YTY3NzgwMGM4YmI2M2RlYjBhYmU0MDRhMWZkNDM2ZWQyM2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_304117e7c36f4e2799037ebbc2cfcf1a",
+      "statement": "Migrations in migrate.ts are ColumnSpec-driven: addMissingColumns reads PRAGMA table_info and issues ALTER TABLE ADD COLUMN only for missing columns, returning early when the table does not exist yet so a fresh database gets the canonical CREATE from schema.ts instead and ALTERs only ever apply to pre-existing stale tables.",
+      "evidence": [
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L12-L15",
+          "version": "repo-lines-v1:sha256:1bdf586cdd7e67344da753c295ae49abe9c685ca3593716ffc254656db1dd132:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWY2YzRmNGI4NzMxOTE0MmU1OGIzMjcyMDVmYzUyNDlmOTdmODdhOTU0ZGI3MGE4MDU0MDIwYjdjYzc1ZTJjZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWExZDFhNjMzOTAyMjljNzk4MzQ3ZTgzYTA0MDU0NDFjOTQwMDAzNTI4NGFkMTY4YzFiZjZjZGYxZDcwYTM3MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTk1NGJkNGRiYjlkNGVmYjY2MDg2NWEwNDE3ZGE3ODJiZjRjNjgyYmU0ZWVkZDcxMTFhMGRmYjc0MzI2MjVjZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTkxNmUwOTEyNjc5ZDI1ZGI2MTFlY2Y3MTE1N2JjYzIwNjY0YTVhNDg0YWZhMjc2YWRlZjRhYTI3ZWZkMWZhYSJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/database/migrate.ts#L98-L116",
+          "version": "repo-lines-v1:sha256:61828c2ef2687e258c46f5712ae76425261baabf231c982f5abf82f12c7fda98:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExZmZjYjZlYmFjMTM2ODdkNjdhZDFjNzk0YTdiMDQyZWI1ODg4MzhlNDQxNjY0MDI0NDhmMWVmNDIwZTU0OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4NGQ0ZWJiMDg3OTg3MTY2MDRhN2E3ZDk3YzczODg5MGVlMmNiYmFiMTA5OWUzZjhkOGNiYmJiZmJkYjM4NjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiYjI1MTNkNjI5MDc3OTRiZmVlODVjYjM2NmU1NzVmMTk0ZTM0NDUxZWUyMGIxYmQzNzU2YmU5MmM1MDQ4MDMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

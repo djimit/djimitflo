@@ -1,11 +1,8 @@
 ---
 type: integration-connector
 title: "GitHub Integration: Webhooks & PR Review"
-description: The GitHub connector surface — the raw-body HMAC-verified webhook at /github/webhook handling issues and pull_request events, deduped integration-inbox intake keyed by delivery ID and payload sha256, the GITHUB_REPOSITORY_PATHS allowlist, and the GithubPrReviewService loop runs that post comments and commit statuses through the gh CLI.
-tags: [github, webhook, hmac-signature, pr-review, integration-inbox, gh-cli, dedupe, loop-run]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
+description: The GitHub connector surface — the raw-body HMAC-verified webhook at /github/webhook handling issues and pull_request events, deduped integration-inbox intake keyed by delivery ID and payload sha256, the GITHUB_REPOSITORY_PATHS allowlist, the GithubPrReviewService loop runs that post comments and commit statuses through the gh CLI, and the LoopDraftPrService that ships certified loop runs as draft PRs (G4, default off).
+tags: [github, webhook, hmac-signature, pr-review, integration-inbox, gh-cli, dedupe, loop-run, draft-pr]
 sources:
   - id: openwiki-source-bb1ebe868e35e9e500714501
     resource: repo://Dockerfile
@@ -23,30 +20,44 @@ sources:
     resource: repo://packages/server/src/services/github-pr-review-service.ts
   - id: openwiki-source-875d6fe4c748ad23e7800ff1
     resource: repo://packages/server/src/services/integration-inbox-service.ts
+  - id: openwiki-source-6996102cb8a12952e08c5888
+    resource: repo://packages/server/src/services/loop-daemon.ts
+  - id: openwiki-source-b41bf296406aa0c468600a4e
+    resource: repo://packages/server/src/services/loop-draft-pr-service.ts
   - id: openwiki-source-6c7f10ad81b9df82a04d3c57
     resource: repo://packages/server/src/services/work-item-service.ts
-generated: { by: "openwiki/0.5.2", at: "2026-09-24T19:59:50.419Z" }
+generated: { by: "openwiki/0.5.2", at: "2026-09-25T13:29:02.244Z" }
+verified:
+  - by: openwiki/0.5.2
+    at: 2026-09-25T13:29:02.244Z
 ---
 
 # GitHub Integration: Webhooks & PR Review
 
-This page covers the inbound GitHub connector: the `POST /github/webhook`
-endpoint implemented by `createGitHubWebhookRoutes` in
-`packages/server/src/routes/github-webhooks.ts`, its two event branches
-(`issues` and `pull_request`), the `IntegrationInboxService` intake for
-issues, the repository path allowlist, and the `GithubPrReviewService` that
-turns pull_request deliveries into reviewed `loop_run`s posted back to GitHub
-via the `gh` CLI. Outbound Telegram, MCP drift, and other inlets share the
-inbox service but are documented separately; the broader route inventory lives
-in `/openwiki/integrations/exposed-surface.md`, and the goal/loop state
-machine used by the review path in `/openwiki/workflows/swarm-goal-lifecycle.md`.
+This page covers the GitHub connector in both directions. Inbound, the
+`POST /github/webhook` endpoint implemented by `createGitHubWebhookRoutes` in
+`packages/server/src/routes/github-webhooks.ts` has two event branches
+(`issues` and `pull_request`), with `IntegrationInboxService` intake for
+issues and the `GithubPrReviewService` turning pull_request deliveries into
+reviewed `loop_run`s posted back to GitHub via the `gh` CLI. Outbound,
+`LoopDraftPrService` ships certified loop runs as draft PRs (G4, default
+off). The repository path allowlist guards everything that touches a local
+checkout. Outbound Telegram, MCP drift, and other inlets share the inbox
+service but are documented separately; the broader route inventory lives in
+`/openwiki/integrations/exposed-surface.md`, and the goal/loop state machine
+used by both PR flows in `/openwiki/workflows/maker-checker-loop.md`.
 
 ## Mounting order is load-bearing: raw bytes before JSON
 
 In `packages/server/src/index.ts` the router is mounted at `/github/webhook`
-**before** `app.use(express.json())`, with an inline comment spelling out why:
-the `X-Hub-Signature-256` HMAC authenticates the exact wire bytes, so the body
-must never be reserialized JSON. The router itself layers, in order:
+**before** `app.use(express.json())`, with an inline comment spelling out
+why: the `X-Hub-Signature-256` HMAC authenticates the exact wire bytes, so
+the body must never be reserialized JSON. The same comment re-affirms the
+second half of the ordering invariant: **this connector imports work items
+only; it never starts goals/loops/workers** (that holds for the issues
+intake at the HTTP boundary; the pull_request branch's internal,
+non-LLM-interpretation review pipeline is the documented exception described
+below). The router itself layers, in order:
 
 1. an `express-rate-limit` limiter of **60 requests per minute** (draft-8
    standard headers);
@@ -228,17 +239,68 @@ code explains the Checks API rejects personal-access-token auth with a hard
 `status: 'failed'` on the review row with the error in metadata, a
 `github_pr_review_failed` audit entry is written, and the webhook still
 answers 202, keeping Djimitflo's own database authoritative over a transient
-GitHub outage. All `gh` calls carry a 15s timeout.
+GitHub outage. Every `git`/`gh` subprocess call in both phases carries a
+**15s timeout** (`GH_TIMEOUT_MS`); only the Phase 2 checker LLM runs longer
+(480s).
+
+## LoopDraftPrService: certified runs leave the VPS as draft PRs (G4)
+
+The outbound counterpart of the review flow lives entirely outside the
+webhook. When the loop daemon's verification pass finds all gates passing
+(step 9b of `packages/server/src/services/loop-daemon.ts`), it calls
+`LoopDraftPrService.openForRun(run.id)` inside a try/catch whose comment
+promises a PR failure will **never fail the daemon**. The service
+(`packages/server/src/services/loop-draft-pr-service.ts`) is gated on
+`LOOP_AUTO_DRAFT_PR_ENABLED === 'true'` — its docstring explains the
+rationale: a certified run used to sit in a VPS worktree until it was
+harvested by hand (#357, #363), but publishing to GitHub must stay opt-in,
+and the merge stays human because the PR is opened as a **draft** hand-off.
+
+`openForRun` then requires `GITHUB_REPOSITORY` (`owner/repo`) and
+`GITHUB_TOKEN`; any missing precondition is not thrown but recorded as a
+`draft_pr_failed` warning loop event with a null return. Only runs in
+`ready_for_human_merge` or `completed` qualify, and a run whose metadata
+already carries `pr_url` returns it unchanged — at most one PR per run.
+
+The publication itself is deliberately hygienic:
+
+- From the latest non-superseded **completed** maker lease it takes the
+  worktree and branch, then commits only the maker's real files: tracked
+  diffs plus untracked files, excluding anything under `node_modules`,
+  lockfile install noise (a `package-lock.json` whose sibling
+  `package.json` was not itself touched), and symlinks. An empty change set
+  fails with `no changes in the maker worktree` instead of pushing noise.
+- The push authenticates with the token passed as a one-off
+  `http.extraheader` basic-auth header, so the token is never written into
+  the remote URL or `.git/config` (a test asserts the absence), and any
+  error message is scrubbed of `basic …` credentials before it lands in the
+  `draft_pr_failed` event.
+- The PR is opened over the REST API (`POST /repos/{repo}/pulls`, bearer
+  token) with `draft: true`, a title prefixed `loop:` taken from the linked
+  self-improvement proposal when the goal has one, base
+  `LOOP_DRAFT_PR_BASE` (default `main`), remote `LOOP_DRAFT_PR_REMOTE`
+  (default `origin`), and a body listing the recorded checker and
+  security_checker verdicts plus the file list.
+- On success the PR URL is persisted into `loop_runs.metadata.pr_url` and a
+  `draft_pr_opened` event is recorded; on any failure the run is untouched
+  and only the `draft_pr_failed` event remains.
 
 ## Production dependency: the pinned gh CLI in the Dockerfile
 
-Because both review phases shell out to `gh`, the production image
-(`Dockerfile`, runner stage) installs the official CLI from a statically
-fetched, pinned `.deb` (`ARG GH_CLI_VERSION=2.100.0`,
-`gh_<version>_linux_<arch>.deb` from `github.com/cli/cli/releases`, verified
-with `gh --version` at build time) rather than adding a third-party apt
-repository. `git` and `ca-certificates` are installed alongside it, which
-Phase 2's worktree/fetch/reset commands also rely on.
+Because the review phases shell out to `gh` and the draft-PR flow shells out
+to `git`, the production image (`Dockerfile`, runner stage) provisions both.
+The apt layer (`L61`–`L64`) installs
+`ca-certificates git python3-minimal curl procps` with
+`--no-install-recommends` after a full `apt-get upgrade`; a comment over the
+`gh` block (`L66`–`L68`) names `GithubPrReviewService` as the consumer of the
+CLI for PR comments and Check Runs. The CLI itself is installed from a
+**statically fetched, pinned `.deb`** — `ARG GH_CLI_VERSION=2.100.0`,
+downloading `gh_${GH_CLI_VERSION}_linux_${ARCH}.deb` from
+`github.com/cli/cli/releases` with `curl -fsSL`, installing via `dpkg -i`,
+and probed with `gh --version` so a broken install fails the build — rather
+than adding a third-party apt repository. The `git`, `curl`, and
+`ca-certificates` packages in the same layer are what Phase 2's
+fetch/reset worktree commands and the draft-PR push rely on.
 
 ## Configuration summary
 
@@ -250,6 +312,9 @@ Phase 2's worktree/fetch/reset commands also rely on.
 | `GITHUB_PR_REVIEW_RUNTIME` | Opt-in Phase 2 LLM checker runtime; unset → Phase 1 stub |
 | `ROBOREV_PENDING_PATH` | Location of pending roborev findings folded into the comment |
 | `LOOP_WORKTREE_ROOT` | Worktree root used by the Phase 2 path |
+| `LOOP_AUTO_DRAFT_PR_ENABLED` | Master switch for the G4 draft-PR hand-off (default off) |
+| `GITHUB_REPOSITORY` / `GITHUB_TOKEN` | Target repo and bearer token for the draft-PR push and REST call |
+| `LOOP_DRAFT_PR_BASE` / `LOOP_DRAFT_PR_REMOTE` | Draft PR base branch (default `main`) and push remote (default `origin`) |
 
 Operator-facing defaults and environment setup are cross-referenced in
 `/openwiki/operations/configuration-reference.md`.
@@ -274,3 +339,10 @@ Operator-facing defaults and environment setup are cross-referenced in
   worktree is materialized and reset to the PR SHA, the mock checker runs
   for real, and the review settles as `commented` with both leases completed
   and the worktree containing the PR's commit.
+- `packages/server/src/__tests__/loop-draft-pr-service.test.ts` — the G4
+  hand-off with a real bare git remote and mocked fetch: disabled flag and
+  refused GitHub responses both no-op (`draft_pr_failed` recorded, nothing
+  thrown); the pushed branch contains only the maker's files (lockfile noise
+  and the `node_modules` symlink excluded); the token never lands in
+  `.git/config`; a second call for the same run returns the stored URL
+  without re-opening the PR.

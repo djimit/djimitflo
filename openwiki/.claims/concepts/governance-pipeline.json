@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a2a6dfc8f0f1a49347ba2dcd8b052665a10e0acb19814664af9a4aeb4c1ecfd0",
+  "pageVersion": "sha256:a909bd8227dc60fe2d036b155be4643ec761d5695ce42d85af941ece7dd5aaa1",
   "claims": [
     {
       "id": "claim_0246c3f0ed8e442893cc280dca959af0",
@@ -134,19 +134,31 @@
     },
     {
       "id": "claim_ba75aca6bf124406892d363913073abf",
-      "statement": "ApprovalService.createApproval stamps a fixed 1-hour expires_at and writes the approval row plus its canonical audit entry in a single immediate transaction, so a failed audit insert rolls back the approval; WebSocket broadcast and authority-ledger/outbox records happen only after commit and broadcast failure is logged but never undoes the decision.",
+      "statement": "ApprovalService.createApproval stamps expires_at with approvalTtlMs() (APPROVAL_TTL_MS, default 1 hour, clamped to 5 min .. 7 days) and writes the approval row plus its canonical APPROVAL_REQUESTED audit entry in a single immediate transaction, so a failed audit insert rolls back the approval; the WebSocket broadcast and best-effort recordDecision (recordAuthorityEvent + enqueueEvent ledger/outbox records) happen only after commit, and broadcast failure is logged but never undoes the decision.",
       "evidence": [
         {
           "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L38-L54",
           "version": "repo-lines-v1:sha256:1211449ca05e02ba267d4b201ca3aa1a21591ecb80cdf2cf6202bfbec9c7a4b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4YmZlNDJlMTNhNzI0MjJkNTc3YjlhMjU4MDY0MWRhNzUyODg0MmNhZmFjZjAyZjIyMWQzZWJiYWZmNWUwMDgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMzYmRmY2ZjZmFhZjBmMTc3MmI3ZjQxZTk1NWI2OTM2YWFlYmY4MDIwM2M2MWE4ZGUyNGUyNzIzMzY2NzYzYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxOTllMzg5M2NiMjE2ZWI5ZjdiNmIyZmMxYjNjZGM2MGEzODY3NzAwYTdlMDEyMzA1ZGY1NTMzYzJlMjUxOWQifQ"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L265-L273",
+          "resource": "repo://packages/server/src/__tests__/approval-atomicity.test.ts#L98-L123",
+          "version": "repo-lines-v1:sha256:43ff19e5321e22b02c1a36ccb1595f0e9d8bd6c4aa7583d4ebca87bdd3e974bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMjZmYTBiOTA2YjJkZGU4MzgzZmQyYTdkYzVkOWY2ZTY1YTE4NzFkYjIyMTRmOTVhZThkNjk0NDhhZDllNzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY2ZjViNDBiMTU4NDU3ZDE3ODY0ZjIxNzkwNzg2ZGQ1YTJlY2RiNjRiNjZhNjUxZjc4OGQ0ZTI1Y2QzMzAzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMxOGY3YjhiZThlYzBlMzBiOGExZTRiOTIzNjE1ZGE2MzRkMTI5YTQzNTRjZDlmMzg5NGJmYTAyNjI1OGJiZDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4YmRlNzBiNWQwNWJmZmViZDYxYzIwZTJjMzVhYzlhMzgyODU3M2U1MzAyMTViNTc4YjVhMGQ3NDRjZWY3MWMifQ"
+        },
+        {
+          "resource": "repo://packages/server/src/__tests__/approval-ttl.test.ts#L1-L9",
+          "version": "repo-lines-v1:sha256:dab33782cd7f6d60c3cfdd8b1f9828ce009282fd6040078c4bd0b55be8de250f:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMGU3M2FmNDg1OTMzZmMxNmYyYWY1NTc5YmI4MTk4YTQ2MDBkNGUzOWNiODE5YTQwYjZhMDQ5NGJiZWNkNzI2ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWE5MTRlODBlMTkwODRhZmJjOWYwNjgwY2U3OWNiYzA0Zjk1MmFkMDliOWIwYjk1OGUzY2JkNmFmYTk0YWNjNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZmNWI0MGIxNTg0NTdkMTc4NjRmMjE3OTA3ODZkZDVhMmVjZGI2NGI2NmE2NTFmNzg4ZDRlMjVjZDMzMDNkMiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L23-L31",
+          "version": "repo-lines-v1:sha256:02f5d967751004ddb5189d6e7541938085a690e1116504f49474d86c431165db:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWFmMjJjZjA3MzI1OTJjMjQ3MTQxY2JlNjFlZmExMTAxMjYxMmY1YTMxMjJiOWFmOWJiYWY1MmY1NzI0ZDE5NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2U4NWQ1NTExNGQ5OWNkMWZhOThjOTgwODg1MWE3MjMwYWNkMmEwMjIxNWE5ODg1Mzc3NDc3OTVhYzA0MGQ5ZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjA1OTY3MDYyZDNmM2IzZDViNzAzZjFmODlhYzEzMGRmZjA1OTNmNzc0N2IxMTBhYjZlMDg1ZGJhMDQ5MmY1ZiJ9"
+        },
+        {
+          "resource": "repo://packages/server/src/services/approval-service.ts#L275-L283",
           "version": "repo-lines-v1:sha256:3c36d7f92ad2b4f7dd1eb97ee3bf0bdde2c79a344e034e7c29617a24f4d85330:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzgzYTAxYTczNWEyMmY2OTg3ZDJiNDMwMDVhZTI2ZDc2ZGU1ZjllY2FlYjA2YzNjMDQyZWFkYTc2Njg2ZTZkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdlNTc4OGQ1ZDlkNzNkMjRhODFkYmMwYTVhNzRiZmE4MmM5YzNiM2FmOTllNTJhZjc5NmU5MGI0NjhhOGEzZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZDA3NDNhMjk2MjA4Mjk5OTkwZWRmNGI3OTVkNzY4OGE3MzgyMzI2Y2I2ODAxNDAwYmFhMjQ4YzI0OTk0ZTg3OSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTFhZWQ3N2JmZjM3NmMzMTBkZjEzZmEwNDIyOTkzMmIwZGFlNjViNmNiNGY0MWJlMTg4N2M4MThmNDE5MjI3MyJ9"
         },
         {
-          "resource": "repo://packages/server/src/services/approval-service.ts#L61-L122",
-          "version": "repo-lines-v1:sha256:8c5f8c2e2f4b8840d0d5f1309402417124e157e0a22fa5bf537f4a31eb8fb282:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmMDI1NTkxZjIxMzJmMDYwNzFiZTE1MWU2NWUxOTIxNTE2YjNhZDcyN2I3Y2ZmNmI2ZmI3NDg3M2Y4ZmM3OTQifQ"
+          "resource": "repo://packages/server/src/services/approval-service.ts#L71-L142",
+          "version": "repo-lines-v1:sha256:7bfa08889d8ea21059de1ff97dfe51c623e6bfdf9fa0bc03155b9887cc4cb486:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4ODIxZTI3ZTM5NWJlZjdmMmI5OTBiMGJlOTUxN2Q4NjExMjZjNTNkODVhOTZjODE1ODE5ZTE1NWNlNDY0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3ZTU3ODhkNWQ5ZDczZDI0YTgxZGJjMGE1YTc0YmZhODJjOWMzYjNhZjk5ZTUyYWY3OTZlOTBiNDY4YThhM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhkNDZjODRkOTBjNzI4MzMzODMyMGY2YTNmYTY5ZGNlNmI5MWJhNzE5NzE1YTBlM2FiMDdlYjAxMGQzNTNhZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNWMyOGJhZmY4OTUyYTE4YWIzMjgzMWVlMmE5NTQwYzc2ZmFhZDMyMmRjMjcwNjU3NWZhMmZmNjg3OTc5YzIifQ"
         }
       ]
     },
@@ -287,6 +299,6 @@
   ],
   "verification": {
     "by": "openwiki/0.5.2",
-    "at": "2026-09-24T19:59:50.419Z"
+    "at": "2026-09-25T13:29:02.244Z"
   }
 }

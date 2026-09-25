@@ -3,9 +3,6 @@ type: integration-package
 title: MCP Server Package
 description: The @djimitflo/mcp-server package exposes Djimitflo state and control actions to MCP clients (Claude Code, Cursor, VS Code) over stdio or an authenticated HTTP/SSE transport, reading and writing the SQLite database directly with a snapshot-vs-live safety boundary and per-principal role context.
 tags: [mcp, mcp-server, stdio, http-transport, sqlite, snapshot-live-gating, tool-families, auth-context, integrations]
-verified:
-  - by: openwiki/0.5.2
-    at: 2026-09-24T19:59:50.419Z
 sources:
   - id: openwiki-source-ba912540c58d3dce145e1625
     resource: repo://packages/mcp-server/package.json
