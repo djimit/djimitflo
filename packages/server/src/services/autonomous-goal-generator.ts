@@ -54,7 +54,10 @@ export class AutonomousGoalGenerator {
     `).run(
       goalId,
       improvement.title,
-      improvement.priority > 0.9 ? 'high' : improvement.priority > 0.7 ? 'medium' : 'low',
+      // Risk is what the change could break, not how important it is. It used to come from priority, which the source bandit
+      // raises for sources that verify: prod 2026-09-25, the test-gap lane went 4/4 verified, its next proposals got priority
+      // 0.86/0.74 -> risk 'medium' -> no objective mode -> doc-drift no-op -> 'no_change'. Success was punishing itself.
+      improvement.type === 'security' ? 'high' : 'low',
       JSON.stringify(['Tests pass', 'No regressions', 'Checker evidence accepted']),
       improvement.id,
       JSON.stringify({ source: 'self-improvement', improvement_id: improvement.id, type: improvement.type, autonomous: false })
