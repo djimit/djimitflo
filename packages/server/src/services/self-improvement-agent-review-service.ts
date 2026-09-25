@@ -143,7 +143,10 @@ export class SelfImprovementAgentReviewService {
       const raw = await this.callModel(this.buildPrompt(panel, profile, lessons));
       // An unreadable answer is no judgement either (prod 2026-09-25: one garbled reply parked two test-gap proposals
       // of a 6/6 lane); retry it like a failed call.
-      return this.parseResponse(raw) ?? { error: UNPARSEABLE };
+      const parsed = this.parseResponse(raw);
+      // keep a short sample so the next unreadable answer can be diagnosed (prod 2026-09-25: 16 in 7 days, in pairs per panel)
+      if (!parsed) console.warn(`self-improvement review for ${profile.id}: unreadable answer (${raw.length} chars): ${JSON.stringify(raw.slice(0, 160))} … ${JSON.stringify(raw.slice(-160))}`);
+      return parsed ?? { error: UNPARSEABLE };
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
@@ -231,7 +234,8 @@ export class SelfImprovementAgentReviewService {
   }
 
   private extractJson(raw: string): string | null {
-    const trimmed = raw.trim();
+    // thinking models (and the LLM fallback) may prefix the answer with a reasoning block that itself contains braces
+    const trimmed = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
     const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fenced) return fenced[1].trim();
     const firstBrace = trimmed.indexOf('{');
