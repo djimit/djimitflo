@@ -72,6 +72,20 @@ export class FrontierExpertScheduler {
     return true;
   }
 
+  private lastIdleReport = 0;
+
+  /** Every tick used to be silent. Log what happened; when nothing did while a backlog waits, say so once a day. */
+  private report(result: FrontierExpertTickResult): void {
+    if (result.ingested || result.enriched || result.reviewed.length || result.failed.length) {
+      console.log(`🔭 frontier experts tick: ingested=${result.ingested} enriched=${result.enriched} reviewed=${result.reviewed.length} failed=${result.failed.length}${result.failed.length ? ` (${result.failed.map((f) => `${f.stage}: ${f.error}`).join('; ').slice(0, 300)})` : ''}`);
+      return;
+    }
+    if (Date.now() - this.lastIdleReport < 86_400_000) return;
+    this.lastIdleReport = Date.now();
+    const backlog = this.db.prepare("SELECT lifecycle_state AS s, COUNT(*) AS n FROM expert_identities WHERE lifecycle_state IN ('DISCOVERED', 'CAPABILITY_INFERRED', 'AMBIGUOUS') GROUP BY lifecycle_state").all() as Array<{ s: string; n: number }>;
+    console.warn(`🔭 frontier experts idle: nothing to ingest, enrich or review this tick; backlog ${backlog.map((b) => `${b.s}=${b.n}`).join(' ') || 'none'} (discovery has a single source; retries after ${Number(process.env.FRONTIER_EXPERTS_RETRY_DAYS) || 30} days)`);
+  }
+
   stop(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -93,14 +107,17 @@ export class FrontierExpertScheduler {
     }
 
     try {
-      const enrichResults = await this.enrichment.enrichBatch({ actor: SCHEDULER_ACTOR, limit: 5 });
+      // E1: names without a match are retried after FRONTIER_EXPERTS_RETRY_DAYS (default 30): new papers appear. Before,
+      // every DISCOVERED name was tried once (14-09) and never again, so the pipeline sat idle for 11 days without a word.
+      const retryBefore = new Date(Date.now() - (Number(process.env.FRONTIER_EXPERTS_RETRY_DAYS) || 30) * 86_400_000).toISOString();
+      const enrichResults = await this.enrichment.enrichBatch({ actor: SCHEDULER_ACTOR, limit: 5, retryBefore });
       result.enriched = enrichResults.length;
     } catch (err) {
       result.failed.push({ stage: 'enrich', error: err instanceof Error ? err.message : String(err) });
     }
 
     await this.reviewCapabilityInferred(result);
-
+    this.report(result);
     return result;
   }
 
